@@ -122,7 +122,13 @@ const EXEMPT = {
     '#filterbar',
   ],
   // V4 겹침 — 의도적으로 겹치는 구조
-  overlap: [],
+  overlap: [
+    // 개인 월간 기간 막대(docs/PERSONAL-IMPROVE-PLAN.md 결정 1~4, 2026-10-23): 주 줄(#grid.bars > .gridrow)은 격자이고
+    // 칸(.cell)은 그 줄의 모든 행을 덮으며(grid-row:1 / -1) 막대(.chip-bar)와 +N 은 그 위 차선 행에 놓인다. 겹침이 곧 짜임이다.
+    // 근거: CSS `.grid.bars > .gridrow{display:grid;...}`, `.chip.chip-bar{position:relative;z-index:1}`, renderMonthBars 의 칸 style="grid-row:1 / -1".
+    // 과제 탭의 같은 짜임(.pc-week)도 같은 이유로 겹친다.
+    '#grid.bars > .gridrow', '.pc-week',
+  ],
   // V7 터치 타깃 — 인라인 텍스트 링크는 '버튼'이 아니라 문장 안 링크라 높이 규범이 다르다.
   smallTargetWarnOnly: ['a', '.lnk', '.link', '.off-subtick'],
   // V8 대비 — 없음(대비는 예외 대신 '판정 불가'로 뺀다)

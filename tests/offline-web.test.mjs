@@ -63,7 +63,8 @@ const GATED_HANDLERS = [
   ['보고서 글꼴', "if(_ff) _ff.addEventListener('change'", 'save()'],
   ['보고서 글자 크기', "if(_fs) _fs.addEventListener('change'", 'save()'],
   ['기록 모달 삭제 버튼', "$('#btnEntryDelete').addEventListener('click'", 'deleteEntry(e.id)'],
-  ['빠른 편집 → 자세히 편집', "$('#qaAdvanced').addEventListener('click'", 'updateEntry(id, d)'],
+  //  2026-10-23 '빠른 편집 → 자세히 편집'(#qaAdvanced) 진입점은 없앴다(docs/PERSONAL-IMPROVE-PLAN.md 결정 10, 한 화면 폼이 모든 칸을 가진다).
+  //  쓰는 길이 사라졌으므로 관문 목록에서도 뺀다. 되살아나지 않는지는 tests/personal-improve.test.mjs 가 본다. 한 화면 폼 저장은 qaSave(위 GATED_FUNCTIONS).
 ];
 
 //  2026-10-07 REPORT-EDIT §5 — 보고서 줄에서 캘린더 기록을 고치거나 지우던 진입점은 관문을 지나는 게 아니라 **아예 없다**.
@@ -108,7 +109,7 @@ const statics = {
 };
 
 test(`정적①: 편집 진입점 함수 ${GATED_FUNCTIONS.length}곳이 첫 쓰기 전에 guardEdit() 을 지난다`, () => statics.functionsGated(src));
-test('정적②: 배선 진입점 16곳(끌어 옮기기·할 일·과제·보고서 서식·근태·시간·삭제)이 guardEdit() 을 지난다', () => statics.handlersGated(src));
+test(`정적②: 배선 진입점 ${GATED_HANDLERS.length}곳(끌어 옮기기·할 일·과제·보고서 서식·근태·시간·삭제)이 guardEdit() 을 지난다`, () => statics.handlersGated(src));
 test('정적③: 연결 상태 경로는 메모리 전용이다(로컬 저장소 대기열 없음)', () => statics.memoryOnly(src));
 test('정적⑤: 보고서 줄편집·삭제 진입점(setCommitSubject, setEntryTitle, setTodoText, 줄 ✎/✕)은 관문이 아니라 아예 없다(REPORT-EDIT §5)', () => statics.reportLineEditGone(src));
 test('변이⑤s: 보고서 줄 삭제 처리기를 되살리면 정적⑤ 가 실패한다', () => {

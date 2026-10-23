@@ -3,7 +3,7 @@
  * ----------------------------------------------------------------------------
  *  제보(2026-10-01): "10월 1일을 누르면 9월 달력에선 10월로, 10월 달력에선 9월로 바뀐다."
  *  디버그 위젯(TC_DEBUG_PORT=9222)에 붙어 zz 기간 일정(9/29~10/2)을 앱 경로(save)로 만들고,
- *  진짜 칩을 click() 해서 달·선택 날짜·드러내기를 본다. 영속·정리는 앱을 거친다(DB 직접 접속 없음).
+ *  진짜 칩(2026-10-23 부터 주 줄의 막대)을 그 날 칸 가운데 좌표로 눌러 달·선택 날짜·드러내기를 본다. 영속·정리는 앱을 거친다(DB 직접 접속 없음).
  *  실행: node tests/loop-range-chip.mjs [--port=9222] [--seed=N]
  *  종료코드: 0 통과 · 1 실패 · 2 판정 없음
  * ==========================================================================*/
@@ -32,6 +32,9 @@ async function reloadAndWait() {
   await ev(`(() => { window.__rcApplied = false; const o = window.__applyState; window.__applyState = function(){ const r = o.apply(this, arguments); window.__rcApplied = true; window.__applyState = o; return r; }; hpost({cmd:'reloadState'}); return true; })()`);
   return waitFor('window.__rcApplied === true', 20000);
 }
+//  2026-10-23 개인 월간 기간 막대(docs/PERSONAL-IMPROVE-PLAN.md 결정 1~4): 내 창의 기록은 칸 안 칩이 아니라 주 줄의 막대(.chip-bar)다.
+//  HIT(칸, id) = 그 칸을 덮는 막대를 **그 칸 가운데 좌표**로 누른다(사람이 막대의 그 날 위를 누를 때와 같다). 칸 안 칩(예전 모양)이면 그 칩을 누른다.
+const HIT = `(function(cell, id){ if(!cell) return false; const inCell = [...cell.querySelectorAll('.chip')].find(c => c.dataset.id === id); if(inCell){ inCell.click(); return true; } const wk = cell.closest('.gridrow'); if(!wk) return false; const col = [...wk.querySelectorAll('.cell')].indexOf(cell); const bar = [...wk.querySelectorAll('.chip-bar')].find(c => c.dataset.id === id && Number(c.dataset.c0) <= col && Number(c.dataset.c1) >= col && c.offsetParent !== null); if(!bar) return false; const r = cell.getBoundingClientRect(), b = bar.getBoundingClientRect(); bar.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true, detail:1, clientX: r.left + r.width / 2, clientY: b.top + b.height / 2 })); return true; })`;
 const countMine = () => ev(`state.entries.filter(e => String(e.title||'').startsWith(${JSON.stringify(TAG)})).length`);
 
 (async () => {
@@ -52,7 +55,7 @@ const countMine = () => ev(`state.entries.filter(e => String(e.title||'').starts
 
     // K1 — 10월 달력, 10/1 칸 막대
     await ev(`(() => { view = {y:2026, m:9}; renderGrid(); return 1; })()`);
-    const k1 = await J(`(() => { const cell = document.querySelector('#grid .cell[data-date="2026-10-01"]'); const chip = cell && [...cell.querySelectorAll('.chip')].find(c => c.dataset.id === ${JSON.stringify(made)}); if (!chip) return { found:false }; chip.click(); return { found:true, view, sel:selectedDate, tab:noteTab, flash: !!document.querySelector('.card.flash[data-id="${made}"]'), card: !!document.querySelector('.card[data-id="${made}"]'), title: (document.getElementById('btnTitle')||{}).textContent || '' }; })()`);
+    const k1 = await J(`(() => { const cell = document.querySelector('#grid .cell[data-date="2026-10-01"]'); if (!(${HIT}(cell, ${JSON.stringify(made)}))) return { found:false }; return { found:true, view, sel:selectedDate, tab:noteTab, flash: !!document.querySelector('.card.flash[data-id="${made}"]'), card: !!document.querySelector('.card[data-id="${made}"]'), title: (document.getElementById('btnTitle')||{}).textContent || '' }; })()`);
     if (!k1.found) undecide('K1 10월 10/1 칸 막대', '칩을 찾지 못했다'); else {
       ok('K1 10월 달력에서 10/1 막대 클릭 → 달 그대로(10월)', k1.view.y === 2026 && k1.view.m === 9, JSON.stringify(k1.view) + ' · ' + k1.title.trim());
       ok('K1 선택 날짜 = 10/1', k1.sel === '2026-10-01', k1.sel);
@@ -60,19 +63,19 @@ const countMine = () => ev(`state.entries.filter(e => String(e.title||'').starts
       ok('K1 일정 상세 탭 + 그 카드 표시·강조', k1.tab === 'detail' && k1.flash && k1.card, JSON.stringify({ tab:k1.tab, flash:k1.flash, card:k1.card }));
     }
     // K2 — 10/2 칸
-    const k2 = await J(`(() => { const cell = document.querySelector('#grid .cell[data-date="2026-10-02"]'); const chip = cell && [...cell.querySelectorAll('.chip')].find(c => c.dataset.id === ${JSON.stringify(made)}); if (!chip) return { found:false }; chip.click(); return { found:true, view, sel:selectedDate }; })()`);
+    const k2 = await J(`(() => { const cell = document.querySelector('#grid .cell[data-date="2026-10-02"]'); if (!(${HIT}(cell, ${JSON.stringify(made)}))) return { found:false }; return { found:true, view, sel:selectedDate }; })()`);
     if (k2.found) ok('K2 10/2 칸 막대 → 선택 10/2 · 10월 유지', k2.sel === '2026-10-02' && k2.view.m === 9, k2.sel); else undecide('K2', '칩 없음');
     // K3 — 9월 달력, 흐린 10/1 칸 막대
     await ev(`(() => { view = {y:2026, m:8}; renderGrid(); return 1; })()`);
-    const k3 = await J(`(() => { const cell = document.querySelector('#grid .cell[data-date="2026-10-01"]'); const chip = cell && [...cell.querySelectorAll('.chip')].find(c => c.dataset.id === ${JSON.stringify(made)}); if (!chip) return { found:false, dim: !!(cell && cell.classList.contains('dim')) }; chip.click(); return { found:true, view, sel:selectedDate }; })()`);
+    const k3 = await J(`(() => { const cell = document.querySelector('#grid .cell[data-date="2026-10-01"]'); if (!(${HIT}(cell, ${JSON.stringify(made)}))) return { found:false, dim: !!(cell && cell.classList.contains('dim')) }; return { found:true, view, sel:selectedDate }; })()`);
     if (k3.found) ok('K3 9월 달력 흐린 10/1 막대 → 10월로 · 선택 10/1(누른 칸 기준)', k3.view.m === 9 && k3.sel === '2026-10-01', JSON.stringify(k3)); else undecide('K3', '9월 달력에 10/1 칸 막대가 없다 ' + JSON.stringify(k3));
     // K3b — 9월 달력 9/30 칸 막대 → 9월 유지
     await ev(`(() => { view = {y:2026, m:8}; renderGrid(); return 1; })()`);
-    const k3b = await J(`(() => { const cell = document.querySelector('#grid .cell[data-date="2026-09-30"]'); const chip = cell && [...cell.querySelectorAll('.chip')].find(c => c.dataset.id === ${JSON.stringify(made)}); if (!chip) return { found:false }; chip.click(); return { found:true, view, sel:selectedDate }; })()`);
+    const k3b = await J(`(() => { const cell = document.querySelector('#grid .cell[data-date="2026-09-30"]'); if (!(${HIT}(cell, ${JSON.stringify(made)}))) return { found:false }; return { found:true, view, sel:selectedDate }; })()`);
     if (k3b.found) ok('K3b 9월 달력 9/30 막대 → 9월 유지 · 선택 9/30', k3b.view.m === 8 && k3b.sel === '2026-09-30'); else undecide('K3b', '칩 없음');
     // 같은 자리 반복 클릭: 10월에서 10/1 막대를 세 번 → 계속 10월
     await ev(`(() => { view = {y:2026, m:9}; renderGrid(); return 1; })()`);
-    const rep = await J(`(() => { const out = []; for (let i = 0; i < 3; i++) { const cell = document.querySelector('#grid .cell[data-date="2026-10-01"]'); const chip = cell && [...cell.querySelectorAll('.chip')].find(c => c.dataset.id === ${JSON.stringify(made)}); if (!chip) { out.push('none'); continue; } chip.click(); out.push(view.m); } return out; })()`);
+    const rep = await J(`(() => { const out = []; for (let i = 0; i < 3; i++) { const cell = document.querySelector('#grid .cell[data-date="2026-10-01"]'); if (!(${HIT}(cell, ${JSON.stringify(made)}))) { out.push('none'); continue; } out.push(view.m); } return out; })()`);
     ok('같은 자리 3번 클릭 → 달이 번갈아 바뀌지 않는다(10월 유지)', rep.every(m => m === 9), JSON.stringify(rep));
     // 원래 화면으로
     await ev(`(() => { view = ${JSON.stringify(view0)}; selectedDate = ${JSON.stringify(sel0)}; renderAll(); return 1; })()`);

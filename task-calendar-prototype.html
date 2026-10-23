@@ -344,6 +344,36 @@ main{flex:1;display:flex;min-height:0;position:relative}
 /* P0① 기간 막대: 모든 세그먼트 동일 고정 높이(빈 mid/end가 4px로 붕괴하던 것 → 연속 밴드). 비겹침 기간은 segSort가 같은 행에 정렬 → 셀 간 연속. */
 .chip-range{height:19px;line-height:15px}
 .chip-spacer{height:19px;flex:none;pointer-events:none}   /* 멀티데이 레인 빈 칸 — 기간 막대를 셀 간 같은 행에 고정 */
+/* 개인 월간 기간 막대(docs/PERSONAL-IMPROVE-PLAN.md 결정 1~4). 내 창의 #grid 는 .bars 이고 주마다 한 줄 격자(.gridrow)다.
+   칸(.cell)은 그 줄의 모든 행을 덮고, 기록(.chip-bar)은 차선 행에 놓이며 여러 날이면 칸을 가로지른다(과제 탭 .pc-week 와 같은 짜임).
+   열람 창(PEER)은 예전 칸별 칩 그대로라(renderMonthGrid) 이 규칙이 닿지 않는다. 높이: 머리 27px, 차선 19px, 차선 사이 2px(pmMonthCap). */
+.grid.bars{display:flex;flex-direction:column}
+.grid.bars > .gridrow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));column-gap:1px;row-gap:2px;background:var(--line);flex:1 1 0;min-height:0;overflow:hidden}
+.grid.bars.dense > .gridrow{flex:none;height:176px}
+.grid.bars.expand > .gridrow{flex:1 0 auto;min-height:74px}
+.grid.bars .cell:focus-visible{z-index:0}   /* 칸이 막대 위로 올라와 막대를 덮지 않게(포커스 링은 막대 사이로 보인다) */
+.chip.chip-bar{position:relative;z-index:1;height:19px;line-height:15px;margin:0 4px;min-width:0;display:flex;align-items:center;gap:4px}
+.chip-bar .ctitle,.chip-bar .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
+.chip-bar .chip-t{flex:none}
+.chip.chip-bar.chip-timed{container-type:inline-size}   /* 시각 접기(@container 112px)를 칩 폭으로 판정한다(예전엔 칸의 .chips) */
+.chip.chip-bar.chip-timed .ctitle{flex:1}
+.chip.chip-bar.cl{margin-left:0;border-top-left-radius:0;border-bottom-left-radius:0;border-left-width:0}
+.chip.chip-bar.cr{margin-right:0;border-top-right-radius:0;border-bottom-right-radius:0}
+.chip.chip-bar[draggable="true"]{cursor:grab}
+.chip-arrow{flex:none;color:var(--muted);font-size:var(--fs-micro)}
+.chip-span{margin-left:auto;font-size:var(--fs-micro);color:var(--muted);flex:none;padding-left:8px}
+.chip-todo.chip-bar{padding:0 5px 0 4px}
+.chip-todo.chip-bar.range{border-style:dashed}   /* 기간 할 일은 막대에서도 점선 띠(결정 4) */
+.chip-todo.chip-bar.cl{border-left-width:0 !important;padding-left:5px}
+.chip-todo.chip-bar.cr{border-right-width:0}
+.grid.bars .more{position:relative;z-index:1;height:16px;line-height:16px;padding:0 6px;align-self:start;container-type:inline-size}
+@media (max-width:760px){ .chip-span{display:none} }
+@media (max-width:560px){
+  .chip.chip-bar{margin:0 2px}
+  .chip.chip-bar.cl{margin-left:0}
+  .chip.chip-bar.cr{margin-right:0}
+  .chip-arrow{display:none}
+}
 /* 좁은 위젯에서도 기간 막대는 균일 높이 유지(5px 붕괴 제거 — '깨진 선'처럼 보이던 문제) */
 
 /* ---------- day panel ---------- */
@@ -1984,22 +2014,20 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
 .qa-head{display:flex;align-items:center;margin-bottom:6px;flex:none}
 .qa-tg{flex:0 1 auto;margin-right:auto}
 /* 일정/할 일 = 저장되는 값(type) → 공용 .seg(seg-lg). 전용 규칙 없음 */
-.qa-title{width:100%;border:none;border-bottom:2px solid var(--accent);font-size:var(--fs-title);padding:4px 0 7px;outline:none;font-family:inherit;color:var(--text);background:transparent}
-/* outline:none 위 — 포커스 링은 .modal input:focus(0,2,1)가 이 규칙(0,1,0)을 이겨 이미 그려진다.
-   여기에 .qa-title:focus-visible(0,2,0)을 더해도 .modal input:focus에 밀려 죽은 규칙이 되므로 두지 않는다. */
-.qa-title::placeholder{color:var(--faint)}
-.qa-ctx{display:flex;gap:8px;margin-top:12px}
-.qa-ctx input[type=date],.qa-ctx select{flex:1;min-width:0;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;background:var(--panel);color:var(--text)}
-/* 시간 영역(첫 화면, 옵션 더보기 밖) — 시·분 분리 드롭다운 */
-.qa-when{margin-top:var(--sp-3);border-top:1px solid var(--line);padding-top:var(--sp-3)}
-.qa-when .qa-chk{margin-bottom:9px}
-.qa-trow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:5px}
-.qa-tcell{display:flex;align-items:center;gap:7px}
-.qa-tlbl{font-size:var(--fs-meta);color:var(--muted);min-width:28px}
-.qa-tarrow{color:var(--faint)}
-.timepick{display:inline-flex;align-items:center;gap:3px}
-.timepick select{border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:7px 8px;font-size:var(--fs-body);font-family:inherit;background:var(--panel);color:var(--text);font-variant-numeric:tabular-nums}
-.timepick .t-sep{color:var(--muted);font-weight:700}
+/* 한 화면 입력 폼(#quickAdd .qa-one, docs/PERSONAL-IMPROVE-PLAN.md 결정 6~10). 칸 모양은 과제 등록 폼(.pcf-grid, .pcf-f)을 그대로 쓴다.
+   예전 옵션 더보기(.qa-more, .qa-detail)와 자세히 편집(.qa-advanced), 큰 제목 줄(.qa-title), 날짜와 과제 한 줄(.qa-ctx)은 걷었다. */
+.qa-one .qa-head{margin-bottom:10px}
+.qa-one .pcf-grid{margin-top:2px}
+.modal.qa-one .qa-chk{display:inline-flex;align-items:center;gap:6px;margin:0;font-weight:400;font-size:var(--fs-body);color:var(--text)}
+.qa-tblock{display:flex;flex-direction:column;gap:8px}
+.qa-tblock .qa-hint{margin-top:0}
+.qa-tblock .rem-block{margin-top:0}
+.modal .qa-tblock .rem-block > .qa-lb{margin:0 0 3px;font-size:var(--fs-meta);font-weight:400}   /* 다른 칸 라벨(.pcf-f)과 같은 크기와 굵기 */
+.qa-one .qa-foot{justify-content:flex-end}
+/* 시각 칸(결정 7): 한 칸에서 시와 분을 같이 고르는 input type=time, 분은 5분 단위(step=300). 일정 입력과 기록 수정(작업일지), 과제 등록 폼 공통.
+   5분 단위가 아닌 예전 값(11:38)도 그대로 보이고 저장된다. 이 앱은 폼 검증(checkValidity)을 쓰지 않아 step 어긋남이 저장을 막지 않는다. */
+.qa-trow2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 12px}
+.qa-trow2 input[type=time]{font-variant-numeric:tabular-nums}
 /* 라벨 + 바로가기 링크 한 줄 */
 .lbl-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .lbl-row>label{margin:0}
@@ -2020,29 +2048,13 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
 .rpt-send-status.busy{color:var(--accent-2)} .rpt-send-status.ok{color:var(--accent-2)} .rpt-send-status.err{color:var(--danger-text)}
 .rpt-send-hint{font-size:var(--fs-meta);color:var(--muted);align-self:center;line-height:1.4;margin-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 전송 모드 배지와 전송 버튼의 「실제 제출」 톤은 없앴다 — 회사 전송은 늘 실제 제출이다(UI-CLARITY U3 · 2026-10-01). */
-.qa-detail{margin-top:var(--sp-3);border-top:1px solid var(--line);padding-top:var(--sp-3)}
-/* 라벨행과 컨트롤행을 '두 칼럼이 공유하는 그리드 행'으로 묶는다.
-   칼럼별 flex였을 땐 '회의실 관리' 링크(SVG 아이콘)가 장소 라벨행만 높여, 옆 칼럼(반복)의
-   라벨·셀렉트가 각각 8px·7px 위로 떠 있었다. 행 높이를 공유해야 정렬이 구조적으로 성립한다.
-   minmax(0,…) — 링크 등 내용 폭이 칼럼을 밀어 셀렉트가 잘리는 것 방지. */
-.qa-detail .row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:8px;row-gap:0;margin-top:4px}
-.qa-detail .row2 select{width:100%}
 .qa-lb{display:block;font-size:var(--fs-meta);color:var(--muted);margin:8px 0 3px}
-.qa-detail input[type=time],.qa-detail select,.qa-detail textarea{width:100%;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:6px 8px;font-size:var(--fs-body);font-family:inherit;background:var(--panel);color:var(--text)}
 .qa-chk{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-body);color:var(--muted)}
 .qa-chk .ic{width:14px;height:14px}
 .qa-hint{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;line-height:1.5}
 /* 반복 안내는 자리를 남기고 글만 숨긴다 — display:none 이면 반복을 고를 때마다 빠른등록 모달이 38px 튄다(측정 233→271). #mbSoon 과 같은 규칙. */
 #qaRecurHint.hidden{display:block !important;visibility:hidden}
 .qa-foot{display:flex;align-items:center;gap:10px;margin-top:var(--sp-4);flex:none}
-/* 빠른등록 메모는 rows=1 + autoGrowArea(scrollHeight) 자동확장이 높이를 지배한다.
-   공용 .modal textarea의 min-height:90px가 그 바닥을 이겨서 '접힌 상태 압축'이 실제론 동작한 적이 없었다.
-   → 한 줄 높이(=폰트 14px·line-height 1.55 ≈ 22 + 패딩 12)만 바닥으로 남긴다.
-   rows=3인 할 일 '설명'과 entryModal 메모는 90px를 계속 원하므로 [rows="1"]로만 한정. */
-.qa-detail textarea[rows="1"]{min-height:34px}
-.qa-more{border:none;background:none;color:var(--accent-2);font-size:var(--fs-body);cursor:pointer;padding:4px 0;font-family:inherit;margin-right:auto}
-.qa-advanced{border:none;background:none;color:var(--muted);font-size:var(--fs-meta);cursor:pointer;padding:4px 0;font-family:inherit;text-decoration:underline}
-.qa-advanced:hover{color:var(--text)}
 .qa-edit-title{flex:1;font-size:var(--fs-h2);font-weight:700;color:var(--text)}   /* 빠른등록도 '서피스 제목' — 모달 제목과 같은 tier */
 /* ---------- 세그먼트 컨트롤(.seg) — 앱 전체 '값 선택'의 단일 컴포넌트 ----------
    선택 UI는 딱 두 갈래만 존재한다:
@@ -2989,10 +3001,9 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
       <section class="fsect">
         <div class="fsect-cap">시간과 장소</div>
         <label class="check"><input type="checkbox" id="fAllDay"> 종일</label>
-        <div class="qa-trow" id="timeRow" style="margin-top:8px">
-          <span class="qa-tcell"><span class="qa-tlbl">시작</span><span class="timepick"><select id="fStartH" aria-label="시작 시"></select><span class="t-sep">:</span><select id="fStartM" aria-label="시작 분"></select></span></span>
-          <span class="qa-tarrow">→</span>
-          <span class="qa-tcell"><span class="qa-tlbl">종료</span><span class="timepick"><select id="fEndH" aria-label="종료 시"></select><span class="t-sep">:</span><select id="fEndM" aria-label="종료 분"></select></span></span>
+        <div class="qa-trow2" id="timeRow" style="margin-top:8px">
+          <label class="pcf-f">시작 시각<input type="time" id="fStart" step="300"></label>
+          <label class="pcf-f">종료 시각<input type="time" id="fEnd" step="300"></label>
         </div>
         <div class="qa-hint" id="fTimeHint" aria-live="polite" style="margin-top:6px"></div>
         <div class="rem-block" id="fRemBlock">
@@ -3063,9 +3074,12 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
   </div>
 </div>
 
-<!-- ===== 빠른 등록(quick-create) — 모든 생성의 기본 진입점 (Google식) ===== -->
+<!-- ===== 일정과 할 일 입력: 한 화면 폼(docs/PERSONAL-IMPROVE-PLAN.md 결정 6~10). 모든 생성과 일정 수정의 진입점 =====
+     예전 빠른 등록은 장소, 반복, 기간, 메모를 '옵션 더보기' 뒤에 숨겼다. 지금은 모든 칸이 처음부터 보인다(id 는 예전 그대로).
+     칸 모양은 과제 등록 폼(.pcf-grid, .pcf-f)과 같다. 좁은 창(440px 이하)에서는 앱의 다른 창과 같은 아래 시트다
+     (.qa-modal 높이 88vh, 가운데 .qa-body 만 스크롤, 아래 .qa-foot 고정). 할 일은 시각, 미리알림, 반복, 장소 칸이 빠지고 중요가 생긴다. -->
 <div class="overlay hidden" id="quickAdd">
-  <div class="modal qa-modal">
+  <div class="modal qa-modal pcf-modal qa-one" role="dialog" aria-label="기록 입력">
     <div class="qa-head">
       <div class="seg seg-lg qa-tg" role="group" aria-label="유형 선택">
         <button type="button" class="seg-b active" data-qatype="event" aria-pressed="true">일정</button>
@@ -3075,42 +3089,51 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
       <button class="x" data-close aria-label="닫기">×</button>
     </div>
     <div class="qa-body">
-    <input type="text" id="qaTitle" class="qa-title" maxlength="200" placeholder="일정 제목">
-    <div class="qa-ctx">
-      <input type="date" id="qaDate" title="날짜" aria-label="날짜">
-      <select id="qaCat" title="과제"></select>
-    </div>
-    <div class="qa-when" id="qaWhen">
-      <label class="qa-chk"><input type="checkbox" id="qaAllDay"> 종일</label>
-      <div class="qa-trow" id="qaTimeRow">
-        <span class="qa-tcell"><span class="qa-tlbl">시작</span><span class="timepick"><select id="qaStartH" aria-label="시작 시"></select><span class="t-sep">:</span><select id="qaStartM" aria-label="시작 분"></select></span></span>
-        <span class="qa-tarrow">→</span>
-        <span class="qa-tcell"><span class="qa-tlbl">종료</span><span class="timepick"><select id="qaEndH" aria-label="종료 시"></select><span class="t-sep">:</span><select id="qaEndM" aria-label="종료 분"></select></span></span>
-      </div>
-      <div class="qa-hint" id="qaTimeHint" aria-live="polite"></div>
-      <div class="rem-block" id="qaRemBlock">
-        <label class="qa-lb" style="margin:8px 0 3px">미리알림</label>
-        <div class="rem-row">
-          <div class="seg seg-auto" id="qaRemSeg" role="group" aria-label="미리알림 방식">
-            <button type="button" class="seg-b" data-remmode="none">없음</button>
-            <button type="button" class="seg-b" data-remmode="def">놓침 방지</button>
-            <button type="button" class="seg-b" data-remmode="cust">직접</button>
+      <div class="pcf-grid">
+        <label class="pcf-f pcf-full">제목<input type="text" id="qaTitle" maxlength="200" placeholder="일정 제목" autocomplete="off"></label>
+        <label class="pcf-f"><span id="qaDateLb">시작일</span><input type="date" id="qaDate"></label>
+        <label class="pcf-f"><span id="qaEndLb">종료일</span><input type="date" id="qaEndDate"></label>
+        <div class="qa-hint pcf-full" id="qaRangeHint" aria-live="polite"></div>
+        <label class="pcf-f pcf-full">과제<select id="qaCat"></select></label>
+        <div class="pcf-full qa-tblock" id="qaWhen">
+          <label class="qa-chk"><input type="checkbox" id="qaAllDay"> 종일</label>
+          <div class="qa-trow2" id="qaTimeRow">
+            <label class="pcf-f">시작 시각<input type="time" id="qaStart" step="300"></label>
+            <label class="pcf-f">종료 시각<input type="time" id="qaEnd" step="300"></label>
           </div>
-          <span class="rem-cust" id="qaRemCust">
-            <input type="number" class="rem-num" id="qaRemNum" min="1" value="30" aria-label="미리알림 시간">
-            <select class="rem-unit" id="qaRemUnit" aria-label="미리알림 단위"><option value="1">분</option><option value="60">시간</option><option value="1440">일</option></select>
-            <span class="rem-jeon">전</span>
-          </span>
+          <div class="qa-hint" id="qaTimeHint" aria-live="polite"></div>
+          <div class="rem-block" id="qaRemBlock">
+            <label class="qa-lb">미리알림</label>
+            <div class="rem-row">
+              <div class="seg seg-auto" id="qaRemSeg" role="group" aria-label="미리알림 방식">
+                <button type="button" class="seg-b" data-remmode="none">없음</button>
+                <button type="button" class="seg-b" data-remmode="def">놓침 방지</button>
+                <button type="button" class="seg-b" data-remmode="cust">직접</button>
+              </div>
+              <span class="rem-cust" id="qaRemCust">
+                <input type="number" class="rem-num" id="qaRemNum" min="1" value="30" aria-label="미리알림 시간">
+                <select class="rem-unit" id="qaRemUnit" aria-label="미리알림 단위"><option value="1">분</option><option value="60">시간</option><option value="1440">일</option></select>
+                <span class="rem-jeon">전</span>
+              </span>
+            </div>
+            <div class="rem-hint" id="qaRemHint" aria-live="polite"></div>
+          </div>
         </div>
-        <div class="rem-hint" id="qaRemHint" aria-live="polite"></div>
+        <div class="pcf-full" id="qaRecurWrap">
+          <label class="pcf-f">반복<select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select></label>
+          <div class="qa-hint hidden" id="qaRecurHint" aria-live="polite"></div>
+        </div>
+        <div class="pcf-f pcf-full" id="qaLocWrap"><label for="qaLoc">장소</label>
+          <div class="loc-combo" data-pfx="qa"><input type="text" class="loc-in" id="qaLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="qaLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="고르거나 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="qaLocPop" role="listbox" aria-label="장소 추천"></div></div>
+        </div>
+        <label class="qa-chk pcf-full" id="qaPrioWrap"><input type="checkbox" id="qaPrio"> <svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="color:var(--star)"><path d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/></svg> 중요</label>
+        <div class="pcf-f pcf-full" id="qaTodoNoteWrap"><label id="qaMemoLb" for="qaMemo">메모</label><textarea id="qaMemo" rows="3" placeholder="상세 내용, 진행 상황, 참고 사항"></textarea></div>
       </div>
-    </div>
-    <div class="qa-detail hidden" id="qaDetail"></div>
+      <div class="pcf-err" id="qaErr" role="alert"></div>
     </div>
     <div class="qa-foot">
-      <button type="button" class="qa-more" id="qaMore">옵션 더보기 ▾</button>
-      <button type="button" class="qa-advanced hidden" id="qaAdvanced">자세히 편집</button>
-      <button class="btn primary" id="qaSave">저장</button>
+      <button type="button" class="btn" data-close>취소</button>
+      <button type="button" class="btn primary" id="qaSave">저장</button>
     </div>
   </div>
 </div>
@@ -3862,7 +3885,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
         <h3>일정, 할 일, 기간/반복</h3>
         <ul>
           <li><b>일정</b>은 시간/종일, <b>할 일</b>은 체크, 중요(★), 기한</li>
-          <li><b>시작·종료 시간</b>과 <b>종일</b>은 첫 화면에서 바로, <b>장소, 반복, 메모</b>는 '옵션 더보기'</li>
+          <li>입력 창 한 화면에 <b>시작일과 종료일, 시각(종일), 미리알림, 반복, 장소, 메모</b>가 모두 보입니다</li>
           <li>여러 날에 걸친 <b>기간</b> 일정과 <b>매주·매월 반복</b> 지원</li>
         </ul>
       </section>
@@ -4249,19 +4272,18 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
         <ol>
           <li><b>＋ 새 기록</b>을 누르거나 달력의 <b>빈 날짜를 더블클릭</b>합니다.</li>
           <li>위쪽 <b>일정 / 할 일</b> 토글에서 <b>일정</b>을 선택합니다.</li>
-          <li><b>제목</b>을 적고, <b>날짜</b>와 <b>과제(카테고리)</b>를 고릅니다.</li>
-          <li>바로 아래 <b>종일 / 시작·종료 시간</b>을 정합니다(아래 ‘시간 입력’ 참고).</li>
-          <li>장소, 반복, 메모가 필요하면 <b>옵션 더보기</b>를 눌러 펼칩니다.</li>
-          <li><b>저장(추가)</b>을 누르면 달력과 오른쪽 패널에 바로 반영됩니다.</li>
+          <li><b>제목</b>을 적고, <b>시작일과 종료일</b>, <b>과제</b>를 고릅니다. 두 날짜가 같으면 하루 일정, 다르면 여러 날 기간 일정입니다.</li>
+          <li>그 아래 <b>종일</b> 또는 <b>시작과 종료 시각</b>(아래 ‘시간 입력’ 참고), <b>미리알림</b>, <b>반복</b>(안 함, 매주, 매월), <b>장소</b>, <b>메모</b>를 정합니다. 모든 칸이 한 화면에 있습니다.</li>
+          <li><b>저장</b>을 누르면 달력과 오른쪽 패널에 바로 반영됩니다.</li>
         </ol>
-        <p class="g-tip">팁: 더 많은 항목(반복 간격·횟수 등)이 필요하면 <b>자세히 편집</b>으로 전체 편집기를 엽니다.</p>
+        <p class="g-tip">팁: 예전에 격주나 횟수처럼 반복 세부를 정해 둔 일정은 수정해도 그 값이 그대로 남고, 반복 칸 아래에 한 줄로 보입니다.</p>
       </section>
 
       <section class="guide-sec" id="g-time">
         <h3>3. 시간 입력</h3>
         <ul>
           <li><b>종일</b> 체크 시 시간 칸이 사라지고 하루 종일 일정이 됩니다. 회의처럼 시각이 있는 일정은 종일을 <b>꺼 둡니다</b>(기본 꺼짐).</li>
-          <li>시간은 <b>시(00~23)와 분(5분 단위)</b> 드롭다운에서 고릅니다. 분은 한 번에 선택할 수 있어 빠릅니다.</li>
+          <li>시각은 <b>한 칸</b>에서 시와 분을 함께 고릅니다. 분은 <b>5분 단위</b>로 고릅니다. 예전에 적은 5분 단위가 아닌 시각(예: 11:38)은 그대로 보이고 그대로 저장됩니다.</li>
           <li><b>시작</b>을 정하면 <b>종료</b>가 자동으로 1시간 뒤로 채워집니다. 종료를 직접 바꾸면 그 값이 유지됩니다.</li>
           <li>종료가 시작보다 빠르면 자동으로 1시간 뒤로 보정하고, 자정을 넘기면 <b>23:59</b>로 맞춥니다.</li>
         </ul>
@@ -4282,7 +4304,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
         <ul>
           <li>달력의 <b>칩을 클릭</b>하면 오른쪽 패널에서 해당 항목이 강조되어 펼쳐집니다(미리보기).</li>
           <li><b>편집</b>: 일정 상세의 <b>수정</b> 버튼(또는 할 일 텍스트)을 누르면 편집 폼이 열립니다.</li>
-          <li><b>이동</b>: 칩을 <b>다른 날짜로 드래그</b>합니다. 기간 일정/할 일은 기간 전체가 함께 이동합니다.</li>
+          <li><b>이동</b>: 칩이나 기간 막대를 <b>다른 날짜로 드래그</b>합니다. 기간 막대는 잡은 날을 기준으로 옮겨집니다(10/9 를 잡아 10/11 에 놓으면 이틀 뒤로, 길이는 그대로). 반복 일정은 끌 수 없습니다.</li>
           <li><b>삭제</b>: 일정 상세의 <b>삭제</b>(또는 편집 폼의 삭제). 삭제 후 <b>실행취소</b> 토스트가 잠시 표시됩니다.</li>
         </ul>
       </section>
@@ -4788,8 +4810,8 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
         <label class="pcf-f">종료일<input type="date" id="pcfEnd"></label>
         <label class="pcf-f pcf-full">과제<select id="pcfProj" aria-describedby="pcfProjHint"></select></label>
         <div class="qa-hint pcf-full" id="pcfProjHint"></div>
-        <label class="pcf-f">시작 시각(선택)<input type="time" id="pcfST" step="600"></label>
-        <label class="pcf-f">종료 시각(선택)<input type="time" id="pcfET" step="600"></label>
+        <label class="pcf-f">시작 시각(선택)<input type="time" id="pcfST" step="300"></label>
+        <label class="pcf-f">종료 시각(선택)<input type="time" id="pcfET" step="300"></label>
         <div class="qa-hint pcf-full" id="pcfTimeHint" aria-live="polite"></div>
         <div class="pcf-f pcf-full"><label for="pcfLoc">장소</label>
           <div class="loc-combo" data-pfx="pcf"><input type="text" class="loc-in" id="pcfLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pcfLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="고르거나 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="pcfLocPop" role="listbox" aria-label="장소 추천"></div></div>
@@ -11046,14 +11068,17 @@ function renderGrid(){
   //    ★ 같은 그리기 함수를 달력마다 한 번씩 부른다 — 칸·칩·레인·「+N」 규칙이 두 달력에서 갈라질 수 없게(코드가 하나다).
   //    ★ 겹쳐 보기(기본)는 예전과 같은 호출 하나(pick 없음 · 할 일 · roving)라 #grid 출력이 바이트 단위로 같다(S11).
   const side = peerSide();
-  renderMonthGrid($('#grid'), dens, side ? (e => !e._mine) : null, { todos: true, roving: true, sideOvl: side });
+  //  내 창은 주 단위 기간 막대(renderMonthBars, docs/PERSONAL-IMPROVE-PLAN.md 결정 1~4). 열람 창(PEER)은 칸별 칩 그대로다(계획 §3):
+  //  겹쳐 보기와 나란히 보기가 칸 안 칩 순서(내 묶음, 구분줄)에 기대고 있어 막대로 바꾸려면 따로 설계해야 한다.
+  if(PEER) renderMonthGrid($('#grid'), dens, side ? (e => !e._mine) : null, { todos: true, roving: true, sideOvl: side });
+  else renderMonthBars($('#grid'), dens);
   const gm = document.getElementById('gridMine');
   if(gm){
     if(side) renderMonthGrid(gm, dens, e => !!e._mine, { todos: false, roving: false, sideOvl: true });
     else if(gm.firstChild) gm.innerHTML = '';   // 겹쳐 보기로 돌아오면 오른쪽 달력은 비운다(감춰진 채 남은 칩이 없게)
   }
   peerSyncRows();                      // S4 — 같은 주 줄 높이 맞춤(나란히 보기 · 좌우일 때만, 아니면 인라인 높이를 걷는다)
-  if(dens !== 'expand') fitChips();   // 펼침은 전부 표시(캡 없음) → fitChips 생략
+  if(dens !== 'expand' || !PEER) fitChips();   // 펼침은 전부 표시(캡 없음) → fitChips 생략. 막대 달력은 펼침에서도 그리기 한도 밖 기록의 +N 을 단다(fitBars)
 }
 //  달력 하나를 g 에 그린다. pick(e) = 이 달력에 실을 일정(없으면 전부) · opts.todos = 할 일 칩 · opts.roving = 키보드 roving tabindex(왼쪽 달력만, S11)
 //  · opts.sideOvl = 시간 겹침 점을 **두 달력의 기록을 합쳐** 판정한다(나란히 보기 S8 — 한 달력에는 한 사람 것뿐이라 칸 안 목록으로는 못 센다).
@@ -11217,6 +11242,223 @@ function renderMonthGrid(g, dens, pick, opts){
   g.classList.toggle('dense', dens === 'dense');
   g.classList.toggle('expand', dens === 'expand');
 }
+
+/* ---------- 개인 월간 기간 막대(내 창, docs/PERSONAL-IMPROVE-PLAN.md 결정 1~4) ----------
+   과제 탭(pcLayoutWeek, pcMonthCap, pcEvHtml, pcRenderMonth)과 같은 짜임이다: 주마다 한 줄 격자, 칸은 줄 전체를 덮고,
+   기록은 차선 행에 놓여 여러 날이면 칸을 가로지른다. 다른 점은 셋이다.
+     1) 하루 기록도 차선에 든다(예전 칸별 칩의 backfill 과 같다). 여러 날 막대를 먼저 놓고, 하루 기록은 그 칸의 빈 차선을 위부터 채운다.
+     2) 보이는 차선 수를 칸마다 정한다(pmFitWeek). 다 들어가는 칸은 다 보이고, 넘치는 칸만 +N 자리를 남긴다.
+       막대는 덮는 칸 모두에서 보일 때만 보인다(한 칸에서 숨으면 그 막대는 덮는 칸 모두의 +N 에 든다).
+     3) 높이를 잴 수 없으면(그리기 전, jsdom) 전부 보인다(예전 fitChips 와 같다).
+   pcMonthCap 은 인자 둘(높이, 차선 수) 계약이 시험으로 묶여 있어(메모 표시와 무관) 치수가 다른 같은 꼴 pmMonthCap 을 따로 둔다. */
+const PM_LANE = 21, PM_HEAD = 27, PM_MORE = 18, PM_PADB = 4;   // 차선(19 + 사이 2), 머리(칸 위 여백 5 + 날짜 22), +N 줄(16 + 사이 2), 아래 여백
+function pmMonthCap(weekH, lanes){
+  const all = Math.floor((weekH - PM_HEAD - PM_PADB) / PM_LANE);
+  if(lanes <= Math.max(1, all)) return lanes;
+  return Math.max(1, Math.floor((weekH - PM_HEAD - PM_MORE - PM_PADB) / PM_LANE));
+}
+//  한 주(from 부터 7일)의 차선 배치(순수 함수). items: {s, e, key, ...}(s~e 는 그 기록이 차지하는 날짜). cmp: 하루 기록끼리의 순서.
+//  출력은 과제 탭 pcLayoutWeek 와 같은 조각(x, c0~c1 칸, 잘림 cl/cr, 차선 lane)에 multi(여러 날)와 차선 수.
+function pmLayoutWeek(items, from, cmp){
+  const to = addDays(from, 6);
+  const its = (items || []).filter(x => x.s <= to && x.e >= from).map(x => ({ x,
+    c0: x.s < from ? 0 : diffDays(from, x.s), c1: x.e > to ? 6 : diffDays(from, x.e),
+    cl: x.s < from, cr: x.e > to, multi: x.s !== x.e, lane: 0 }));
+  const multi = its.filter(i => i.multi).sort((a, b) => (a.x.s < b.x.s ? -1 : a.x.s > b.x.s ? 1 : 0)
+    || (a.x.e > b.x.e ? -1 : a.x.e < b.x.e ? 1 : 0) || (a.x.key < b.x.key ? -1 : a.x.key > b.x.key ? 1 : 0));
+  const single = its.filter(i => !i.multi).sort((a, b) => (a.c0 - b.c0) || (cmp ? cmp(a.x, b.x) : 0));
+  const occ = [];   // occ[차선][칸] = 차지됨
+  const place = it => {
+    let l = 0;
+    while(occ[l] && occ[l].slice(it.c0, it.c1 + 1).some(Boolean)) l++;
+    if(!occ[l]) occ[l] = [false, false, false, false, false, false, false];
+    for(let c = it.c0; c <= it.c1; c++) occ[l][c] = true;
+    it.lane = l;
+  };
+  multi.forEach(place); single.forEach(place);
+  return { items: multi.concat(single), lanes: occ.length };
+}
+//  한 주 줄에서 무엇을 보일지(순수 함수). items: {c0, c1, lane}, weekH: 줄 높이(0 이면 모름), extra: 칸별 그리지 않은 기록 수.
+//  출력: vis(항목별 보임), cap(칸별 보이는 차선 수, 높이를 모르면 null), hiddenBy(칸별 +N).
+function pmFitWeek(items, weekH, extra){
+  const ex = [0, 1, 2, 3, 4, 5, 6].map(c => Number((extra || [])[c]) || 0);
+  const vis = (items || []).map(() => true);
+  if(!(weekH > 0)) return { vis, cap: null, hiddenBy: ex };
+  const top = [0, 0, 0, 0, 0, 0, 0];
+  for(const it of items) for(let c = it.c0; c <= it.c1; c++) top[c] = Math.max(top[c], it.lane + 1);
+  const capMore = pmMonthCap(weekH, Infinity);
+  const cap = top.map((t, c) => ex[c] ? Math.min(pmMonthCap(weekH, t), capMore) : pmMonthCap(weekH, t));
+  let hiddenBy = ex;
+  for(let guard = 0; guard < 16; guard++){
+    items.forEach((it, i) => { let m = Infinity; for(let c = it.c0; c <= it.c1; c++) m = Math.min(m, cap[c]); vis[i] = it.lane < m; });
+    hiddenBy = ex.slice();
+    items.forEach((it, i) => { if(!vis[i]) for(let c = it.c0; c <= it.c1; c++) hiddenBy[c]++; });
+    let changed = false;
+    for(let c = 0; c < 7; c++) if(hiddenBy[c] > 0 && cap[c] > capMore){ cap[c] = capMore; changed = true; }
+    if(!changed) break;
+  }
+  return { vis, cap, hiddenBy };
+}
+//  이 달 화면(startDs~endDs)에 그릴 기록: 일정 발생(반복 펼침)과 기한 있는 할 일. 거르는 규칙은 renderMonthGrid 와 같다.
+function pmMonthItems(startDs, endDs){
+  const out = [];
+  for(const e of state.entries){
+    if(!passFilter(e)) continue;
+    if(e.source === 'git' && filterSource !== 'git') continue;   // 작업일지는 칸에 그리지 않는다(오른쪽 작업일지 탭)
+    for(const occ of expandOccurrences(e, startDs, endDs)) out.push({ occ, s: occ._occStart, e: occ._occEnd, key: 'e:' + e.id + '|' + occ._occStart });
+  }
+  if(filterSource !== 'git'){
+    for(const t of (state.todos || [])){
+      if(!t.due) continue;
+      if(filterCatId && t.categoryId !== filterCatId) continue;
+      const tEnd = (t.endDate && t.endDate > t.due) ? t.endDate : t.due;
+      if(tEnd < startDs || t.due > endDs) continue;
+      out.push({ todo: t, s: t.due, e: tEnd, key: 't:' + t.id });
+    }
+  }
+  return out;
+}
+//  막대 하나(일정 발생 또는 할 일). 칩 모양(색 띠, 시간 점, 할 일 테두리와 동그라미, 완료, 중요 별, 반복 표시)은 예전 chipHtml, todoChipHtml 그대로이고,
+//  여러 날이면 제목을 조각마다 한 번 쓰고 사흘 이상이면 오른쪽에 기간 글자, 주 경계에서 잘린 쪽은 ◂ ▸(좁은 폭에서는 CSS 가 숨긴다).
+function barChipHtml(it, pos){
+  const x = it.x;
+  const aL = it.cl ? '<span class="chip-arrow" aria-hidden="true">◂</span>' : '';
+  const spanTxt = (it.multi && it.c1 - it.c0 >= 2) ? `<span class="chip-span">${esc(fmtShort(x.s) + ' ~ ' + fmtShort(x.e))}</span>` : '';
+  const aR = it.cr ? `<span class="chip-arrow" aria-hidden="true"${spanTxt ? '' : ' style="margin-left:auto"'}>▸</span>` : '';
+  const geo = ` data-c0="${it.c0}" data-c1="${it.c1}" data-lane="${it.lane}" style="${pos}"`;
+  const edge = (it.multi ? ' range' : '') + (it.cl ? ' cl' : '') + (it.cr ? ' cr' : '');
+  if(x.todo){
+    const t = x.todo, c = catById(t.categoryId), col = validColor(c && c.color);
+    const star = (t.prio === 'high' && !t.done) ? ICON.starFill : '';
+    const ring = it.cl ? '' : `<span class="todo-ring" style="border-color:${col}${t.done ? `;background:${col}` : ''}"></span>`;
+    const span = it.multi ? `, ${t.due}~${x.e}` : '';
+    return `<div class="chip chip-todo chip-bar${t.done ? ' done' : ''}${edge}" draggable="true"
+    data-todo="${esc(t.id)}" data-occ="${esc(t.due)}" data-kind="todo"${geo}
+    aria-label="할 일${t.done ? ' 완료' : ''}: ${esc(t.text)}"
+    title="할 일${t.done ? ' (완료)' : ''}: ${esc(t.text)}${c ? ', ' + esc(c.name) : ''}${span}">${aL}${ring}<span class="txt">${star}${esc(t.text)}</span>${spanTxt}${aR}</div>`;
+  }
+  const e = x.occ, c = catById(e.categoryId), col = validColor(c && c.color);
+  const git = e.source === 'git';
+  const kind = e.recur ? 'recur' : ((e.endDate && e.endDate > e.date) ? 'range' : 'simple');
+  const time = chipTime(e);
+  const timed = (!git && !!time && !it.multi);   // 하루 시간 일정 = 색 점 + 시각 + 제목(지금과 같은 모양)
+  const label = `${git ? ICON.wrench : ''}${e.recur ? ICON.repeat : ''}${esc(e.title)}`;
+  const span = (e.endDate && e.endDate > e.date) ? `, ${e.date}~${e.endDate}` : '';
+  const inner = timed
+    ? `<span class="cdot" style="background:${col}"></span><span class="chip-t">${esc(chipTimeShort(e))}</span><span class="ctitle">${label}</span>`
+    : `${aL}${time ? `<span class="chip-t">${esc(time)}</span>` : ''}<span class="ctitle">${label}</span>${spanTxt}${aR}`;
+  //  _mine(열람 창의 내 겹)은 내 창에 올 수 없다(passFilter). 그래도 붙여 두면 그 계약이 깨졌을 때 시험(peer-overlay 변이⑥)이 내 창에서 겹을 센다.
+  return `<div class="chip chip-bar${git ? ' chip-git' : ''}${timed ? ' chip-timed' : ''}${e._mine ? ' chip-mine' : ''}${edge}" draggable="${kind === 'recur' ? 'false' : 'true'}"
+    data-id="${esc(e.id)}" data-occ="${esc(e._occStart)}" data-kind="${kind}"${geo.replace('style="', `style="border-left-color:${col};background:${tint(col, it.multi ? 0.2 : undefined)};`)}
+    title="${git ? '🔧 작업일지, ' : ''}${time ? esc(time) + ' ' : ''}${esc(e.title)}${c ? ', ' + esc(c.name) : ''}${span}${e.recur ? ', ' + esc(recurLabel(e)) : ''}">${inner}</div>`;
+}
+function renderMonthBars(g, dens){
+  const first = new Date(view.y, view.m, 1);
+  const startDs = ymd(new Date(view.y, view.m, 1 - first.getDay()));
+  const weeks = Math.ceil((first.getDay() + new Date(view.y, view.m + 1, 0).getDate()) / 7);
+  const endDs = addDays(startDs, weeks * 7 - 1);
+  const tY = todayYmd();
+  const all = pmMonthItems(startDs, endDs);
+  let tabDs = focusDs || selectedDate;   // 키보드 포커스(roving tabindex) 대상 칸, renderMonthGrid 와 같은 규칙
+  if(tabDs < startDs || tabDs > endDs) tabDs = (tY >= startDs && tY <= endDs) ? tY : startDs;
+  focusDs = tabDs;
+  const RCAP = dens === 'expand' ? 60 : 12;   // 그리는 차선 한도(성능). 넘는 기록은 그 칸의 +N 에 든다
+  const DOW_K = ['일','월','화','수','목','금','토'];
+  const cmp = (a, b) => entrySort(a.occ || a.todo, b.occ || b.todo);
+  let html = '';
+  for(let w = 0; w < weeks; w++){
+    const from = addDays(startDs, w * 7);
+    const L = pmLayoutWeek(all, from, cmp);
+    const cnt = [0, 0, 0, 0, 0, 0, 0], extra = [0, 0, 0, 0, 0, 0, 0];
+    for(const it of L.items) for(let c = it.c0; c <= it.c1; c++){ cnt[c]++; if(it.lane >= RCAP) extra[c]++; }
+    const nL = Math.min(L.lanes, RCAP);
+    html += `<div class="gridrow" role="row" data-from="${from}" data-lanes="${nL}" data-extra="${extra.join(',')}" style="grid-template-rows:${PM_HEAD}px${nL ? ` repeat(${nL}, 19px)` : ''} minmax(0,1fr)">`;
+    for(let i = 0; i < 7; i++){
+      const ds = addDays(from, i), d = parseYmd(ds);
+      const inMonth = d.getMonth() === view.m, dow = d.getDay(), hol = holidayOn(ds);
+      let cls = 'cell';
+      if(!inMonth) cls += ' dim';
+      if(ds === tY) cls += ' today';
+      if(ds === selectedDate) cls += ' sel';
+      if(dow === 0) cls += ' wknd-sun'; else if(dow === 6) cls += ' wknd-sat';
+      let numCls = 'num';
+      if(dow === 0 || hol) numCls += ' sun'; else if(dow === 6) numCls += ' sat';
+      const aria = `${d.getMonth()+1}월 ${d.getDate()}일 ${DOW_K[dow]}요일` + (hol ? `, ${hol}` : '') + (ds === tY ? ', 오늘' : '')
+        + (cnt[i] ? `, 기록 ${cnt[i]}건` : ', 기록 없음');
+      html += `<div class="${cls}" data-date="${ds}" role="gridcell" tabindex="${ds === tabDs ? 0 : -1}" aria-selected="${ds === selectedDate}" aria-label="${esc(aria)}" style="grid-column:${i + 1};grid-row:1 / -1">
+      <div class="cell-top"><span class="${numCls}">${d.getDate()}</span>${hol ? `<span class="hol">${esc(hol)}</span>` : ''}</div></div>`;
+    }
+    for(const it of L.items) if(it.lane < RCAP) html += barChipHtml(it, `grid-column:${it.c0 + 1} / ${it.c1 + 2};grid-row:${it.lane + 2}`);
+    html += '</div>';
+  }
+  g.innerHTML = html;
+  g.classList.add('bars');
+  g.classList.toggle('dense', dens === 'dense');
+  g.classList.toggle('expand', dens === 'expand');
+}
+//  막대 달력의 +N: 줄 높이를 재서 칸마다 보이는 차선 수를 정하고(pmFitWeek) 넘친 기록을 숨긴 뒤, 그 칸의 다음 차선 자리에 +N 단추를 단다.
+//  펼침은 높이로 접지 않는다(그리기 한도 밖 기록만 +N). 누르면 그 날짜를 고른다(예전 칸 안 +N 과 같다, 오른쪽 패널에 그날 전부).
+function fitBars(g){
+  const expand = g.classList.contains('expand');
+  g.querySelectorAll('.gridrow[data-from]').forEach(wk => {
+    wk.querySelectorAll('.more').forEach(b => b.remove());
+    const bars = [...wk.querySelectorAll('.chip-bar')];
+    bars.forEach(b => { b.style.display = ''; });
+    const lay = bars.map(b => ({ c0: Number(b.dataset.c0), c1: Number(b.dataset.c1), lane: Number(b.dataset.lane) }));
+    const R = pmFitWeek(lay, expand ? 0 : wk.clientHeight, String(wk.dataset.extra || '').split(','));
+    bars.forEach((b, i) => { if(!R.vis[i]) b.style.display = 'none'; });
+    const lanes = Number(wk.dataset.lanes) || 0;
+    R.hiddenBy.forEach((n, c) => {
+      if(!(n > 0)) return;
+      const ds = addDays(wk.dataset.from, c);
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'more'; btn.dataset.more = ds;
+      btn.title = '이 날짜의 전체 기록을 옆 패널에 표시';
+      btn.style.gridColumn = String(c + 1);
+      btn.style.gridRow = String((R.cap ? R.cap[c] : lanes) + 2);
+      btn.textContent = `+${n}`;
+      const sfx = document.createElement('span'); sfx.className = 'more-x'; sfx.textContent = '개 더보기';
+      btn.appendChild(sfx);
+      btn.setAttribute('aria-label', `+${n}개 더보기`);
+      wk.appendChild(btn);
+    });
+  });
+}
+//  막대 달력에서 누르거나 잡은 자리의 날짜: 칸 안 칩(열람 창)은 그 칸, 막대는 손가락 아래 칸(막대가 덮은 칸 안으로 자른다).
+//  좌표가 없으면(키보드, 합성 이벤트) 그 주 조각의 첫 칸. 막대가 아닌 곳(칸 밖 칩)은 '' 를 돌려 data-occ 로 대체하게 한다(B4).
+function chipCellDate(chip, ev){
+  const cell = chip.closest('.cell');
+  if(cell) return cell.dataset.date;
+  const wk = chip.closest('.gridrow[data-from]');
+  if(!wk) return '';
+  const c0 = Number(chip.dataset.c0), c1 = Number(chip.dataset.c1);
+  if(!(c0 >= 0 && c1 >= c0)) return '';
+  let col = c0;
+  if(ev && typeof ev.clientX === 'number' && (ev.clientX || ev.clientY)){
+    const r = wk.getBoundingClientRect();
+    if(r.width > 0) col = Math.floor((ev.clientX - r.left) / (r.width / 7));
+  }
+  col = Math.max(c0, Math.min(c1, col));
+  return addDays(wk.dataset.from, col);
+}
+//  끌어 놓을 칸: 손가락 아래 칸. 막대가 칸 위를 덮고 있어도 그 줄의 가로 위치로 칸을 찾는다(계획 §4).
+function dropCellAt(ev){
+  const t = ev.target && ev.target.closest ? ev.target : null;
+  if(!t) return null;
+  const cell = t.closest('.cell');
+  if(cell) return cell;
+  const wk = t.closest('.gridrow[data-from]');
+  if(!wk) return null;
+  const r = wk.getBoundingClientRect();
+  if(!(r.width > 0) || typeof ev.clientX !== 'number') return null;
+  const col = Math.max(0, Math.min(6, Math.floor((ev.clientX - r.left) / (r.width / 7))));
+  return wk.querySelector('.cell[data-date="' + addDays(wk.dataset.from, col) + '"]');
+}
+//  잡은 자리 기준 이동(결정 3, 순수 함수): 시작일과 종료일을 (놓은 날 - 잡은 날)만큼 함께 옮긴다(길이 유지). end 가 없으면 ''.
+function shiftByGrab(start, end, grab, target){
+  const delta = diffDays(grab || start, target);
+  return { delta, start: addDays(start, delta), end: end ? addDays(end, delta) : '' };
+}
 //  S8 — 나란히 보기의 시간 겹침 날짜(Set). 판정은 겹쳐 보기와 같은 peerTimeOverlaps(그 사람 ↔ 나 · 종일·여러 날·커밋 제외)이고,
 //    입력만 「두 달력의 기록을 합친 그날 목록」 이다. passFilter 를 지나므로 과제 필터는 그 사람 쪽에만 걸린다(S11).
 function peerOverlapDays(startDs, endDs){
@@ -11240,6 +11482,7 @@ function peerOverlapDays(startDs, endDs){
 let _fitRaf = 0;
 function fitChips(){
   const grid = document.getElementById('grid'); if(!grid) return;
+  if(grid.classList.contains('bars')){ fitBars(grid); return; }   // 내 창 막대 달력은 줄 단위로 접는다(칸 안 .chips 가 없다)
   //  나란히 보기의 오른쪽 달력(#gridMine)도 같은 규칙으로 접는다 — 평소엔 비어 있어 아무것도 안 돈다.
   document.querySelectorAll('#grid .cell, #gridMine .cell').forEach(cell => {
     const box = cell.querySelector('.chips'); if(!box) return;
@@ -12251,7 +12494,6 @@ function openEntryModal(mode, ref){
   //  서버 연결 잠금(§4) — 새 기록만 막는다. 있는 기록을 여는 것(edit)은 읽기라 그대로 둔다(저장에서 막는다).
   if(mode !== 'edit' && guardEdit()) return;
   fillCatSelect($('#fCat'));
-  fillTimeSelects($('#fStartH'), $('#fStartM')); fillTimeSelects($('#fEndH'), $('#fEndM'));
   $('#fTimeHint').textContent = '';
   if(mode === 'edit'){
     const e = entryById(ref); if(!e) return;
@@ -12261,7 +12503,7 @@ function openEntryModal(mode, ref){
     setCatSelectValue($('#fCat'), e.categoryId || '');   // db-* 등 미표시 과제도 값 보존(오프라인 수정 시 유실 방지), 과제가 빈 옛 기록은 기타
     $('#fDate').value = e.date;
     $('#fAllDay').checked = e.allDay;
-    writeTimeSel($('#fStartH'), $('#fStartM'), e.startTime); writeTimeSel($('#fEndH'), $('#fEndM'), e.endTime);
+    writeTimeIn($('#fStart'), e.startTime); writeTimeIn($('#fEnd'), e.endTime);
     fEndDirty = !!e.endTime;
     remSetUi('f', e.remind);
     locSet('f', e.location || '');
@@ -12274,7 +12516,7 @@ function openEntryModal(mode, ref){
     setCatSelectValue($('#fCat'), filterCatId || '');   // 새 기록 = 필터로 고른 과제, 없으면 기타(DEFAULT-TASKS §4.2)
     $('#fDate').value = ref || selectedDate;
     $('#fAllDay').checked = false;
-    writeTimeSel($('#fStartH'), $('#fStartM'), ''); writeTimeSel($('#fEndH'), $('#fEndM'), '');
+    writeTimeIn($('#fStart'), ''); writeTimeIn($('#fEnd'), '');
     fEndDirty = false;
     remSetUi('f', null);   // 새 기록 = 놓침 방지(기본 사다리)
     locSet('f', '');
@@ -12314,10 +12556,10 @@ function saveEntryFromForm(){
   const date = $('#fDate').value;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ toast('날짜를 선택하세요', 'warn'); $('#fDate').focus(); return; }
   const allDay = $('#fAllDay').checked;
-  const startTime = allDay ? '' : readTimeSel($('#fStartH'), $('#fStartM'));
-  const endTime   = allDay ? '' : readTimeSel($('#fEndH'), $('#fEndM'));
+  const startTime = allDay ? '' : readTimeIn($('#fStart'));
+  const endTime   = allDay ? '' : readTimeIn($('#fEnd'));
   if(startTime && endTime && endTime < startTime){
-    toast('종료 시간이 시작 시간보다 빠릅니다', 'warn'); $('#fEndH').focus(); return;
+    toast('종료 시간이 시작 시간보다 빠릅니다', 'warn'); $('#fEnd').focus(); return;
   }
   // 기간(범위)
   let endDate = '';
@@ -18511,182 +18753,187 @@ function renderTodoListTab(){
   return h + body;
 }
 
-/* ---------- 빠른 등록(quick-create) — 일정/할일 한 줄 캡처, 상세는 옵션 더보기 ---------- */
+/* ---------- 일정과 할 일 입력: 한 화면 폼(#quickAdd, docs/PERSONAL-IMPROVE-PLAN.md 결정 6~10) ----------
+   모든 칸이 처음부터 보인다(옵션 더보기 없음). 일정: 제목, 시작일과 종료일, 과제, 종일 또는 시작과 종료 시각, 미리알림, 반복, 장소, 메모.
+   할 일: 제목, 기한과 종료일(선택), 과제, 중요, 설명. 저장 경로와 저장 형식은 예전 빠른 등록과 같다(addEntry, updateEntry, addTodo). */
 let qaType = 'event';   // 'event' | 'todo'
-let qaEditId = null;    // 편집 중인 일정 id(생성=null) — 생성/수정 단일 편집기 통일
-// 일정 편집 라우팅: 단순 일정은 quick-add(생성과 동일 편집기), git 작업일지·반복 일정은 전체 entryModal로
+let qaEditId = null;    // 편집 중인 일정 id(생성=null). 생성과 수정이 같은 폼
+//  수정하는 일정의 원래 반복(결정 8). 폼은 반복 종류(안 함, 매주, 매월)만 고르고, 간격과 끝(날짜, 횟수)은 여기 보존했다가
+//  같은 종류로 저장하면 그대로 되돌려 넣는다. 건너뛴 날짜(recurExcept)는 종류와 간격이 같을 때만 보존한다(기록 창과 같은 규칙).
+let qaRecurOrig = null, qaRecurExcept = [];
+let qaPrevStart = '';   // 시작일을 바꾸면 종료일을 같은 만큼 옮긴다(기간 길이 유지)
+let qaSyncNote = () => {};   // 설명 라벨 맞춤(qaBindForm 이 채운다)
+// 일정 편집 라우팅: 작업일지(git) 기록만 기록 창(#entryModal)으로 간다. 커밋 불러오기와 커밋 목록은 그 창에만 있다(결정 10).
+//  반복 일정도 한 화면 폼에서 고친다(예전엔 기록 창으로 갔다). 반복 세부 값은 qaRecurOrig 로 보존된다.
 function editEntry(id){
   const e = entryById(id);
-  if(e && e.source !== 'git' && !(e.recur && e.recur.freq)) openQuickAdd(null, 'event', id);
+  if(e && e.source !== 'git') openQuickAdd(null, 'event', id);
   else openEntryModal('edit', id);
 }
-/* ---------- 시·분 분리 시각 select (네이티브 time 대체 — 분 고르기 쉽게) ---------- */
-function fillTimeSelects(hSel, mSel){
-  if(!hSel || !mSel) return;
-  if(!hSel.options.length){ let o = '<option value="">--</option>'; for(let h=0;h<24;h++){ const v=String(h).padStart(2,'0'); o += `<option value="${v}">${v}</option>`; } hSel.innerHTML = o; }
-  if(!mSel.options.length){ let o = '<option value="">--</option>'; for(let m=0;m<60;m+=5){ const v=String(m).padStart(2,'0'); o += `<option value="${v}">${v}</option>`; } mSel.innerHTML = o; }
-}
-function readTimeSel(hSel, mSel){ if(!hSel || !mSel) return ''; const h=hSel.value, m=mSel.value; return (h && m) ? `${h}:${m}` : ''; }
-function writeTimeSel(hSel, mSel, hhmm){
-  if(!hSel || !mSel) return;
-  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(hhmm||'')){ hSel.value=''; mSel.value=''; return; }
-  const [h,m] = hhmm.split(':');
-  if(![...mSel.options].some(o => o.value === m)){ const o=document.createElement('option'); o.value=m; o.textContent=m; mSel.appendChild(o); }   // 비-5분(구버전) 값 보존
-  hSel.value = h; mSel.value = m;
-}
+/* ---------- 시각 칸(결정 7): <input type="time" step="300"> 한 칸에서 시와 분을 같이 고른다. 분 목록은 5분 단위다.
+   한 화면 폼, 기록 창(작업일지), 과제 등록 폼이 같은 칸을 쓴다. 5분 단위가 아닌 예전 값(11:38)은 그대로 보이고 그대로 저장된다:
+   값은 .value 로만 읽고 이 앱은 checkValidity, reportValidity 를 부르지 않으므로 step 어긋남(stepMismatch)이 저장을 막지 않는다. */
+const HM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+function readTimeIn(el){ const v = el ? String(el.value || '') : ''; return HM_RE.test(v) ? v : ''; }
+function writeTimeIn(el, hhmm){ if(el) el.value = HM_RE.test(hhmm || '') ? hhmm : ''; }
 function plusOneHM(hhmm){ const [h,m]=hhmm.split(':').map(Number); let t=h*60+m+60; if(t>=1440) t=1439; return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`; }
 let qaEndDirty = false, _qaAutoEndWriting = false;
-const qaTimeEls = () => ({ sh:$('#qaStartH'), sm:$('#qaStartM'), eh:$('#qaEndH'), em:$('#qaEndM') });
-function qaSyncTimeRow(){ const ad=$('#qaAllDay'); const row=$('#qaTimeRow'); if(row) row.style.display = (ad && ad.checked) ? 'none' : 'flex';
-  // 미리알림은 일정(할 일 아님) + 종일 아님이면 활성. 시작 시각 미입력은 조건으로 걸지 않는다
-  // (폼 순서상 미리알림이 시각보다 위 — 시각을 먼저 넣어야만 열리면 고장으로 보인다).
+const qaTimeEls = () => ({ s:$('#qaStart'), e:$('#qaEnd') });
+function qaSyncTimeRow(){ const ad=$('#qaAllDay'); const row=$('#qaTimeRow'); if(row) row.style.display = (ad && ad.checked) ? 'none' : '';
+  // 미리알림은 일정(할 일 아님) + 종일 아님이면 활성. 시작 시각 미입력은 조건으로 걸지 않는다(시각을 먼저 넣어야만 열리면 고장으로 보인다).
   // 미리알림 행은 상시 표시(#qaWhen 안 → 할 일 모드에선 통째 숨김). qaRemResync가 활성/흐림 반영.
-  qaRemResync(); }
+  qaRemResync(); qaSyncRange(); }
 function qaAutoEnd(){   // 시작 변경 시 종료 자동 +1h (사용자가 종료 건드리면 보존)
   if(qaEndDirty) return;
-  const t=qaTimeEls(); const s=readTimeSel(t.sh,t.sm); if(!s) return;
-  _qaAutoEndWriting=true; writeTimeSel(t.eh,t.em, plusOneHM(s)); _qaAutoEndWriting=false;
+  const t=qaTimeEls(); const s=readTimeIn(t.s); if(!s) return;
+  _qaAutoEndWriting=true; writeTimeIn(t.e, plusOneHM(s)); _qaAutoEndWriting=false;
   const hint=$('#qaTimeHint'); if(hint) hint.textContent='종료 자동 1시간 뒤 (직접 바꿀 수 있어요)';
 }
 function qaEndChanged(){   // 사용자가 종료를 직접 바꿈 → dirty + 종료<시작 자동보정
   if(_qaAutoEndWriting) return;
-  qaEndDirty=true; const t=qaTimeEls(); const s=readTimeSel(t.sh,t.sm), en=readTimeSel(t.eh,t.em);
-  if(s && en && en < s){ _qaAutoEndWriting=true; writeTimeSel(t.eh,t.em, plusOneHM(s)); _qaAutoEndWriting=false; const hint=$('#qaTimeHint'); if(hint) hint.textContent='종료가 시작보다 빨라 1시간 뒤로 맞췄어요'; }
+  qaEndDirty=true; const t=qaTimeEls(); const s=readTimeIn(t.s), en=readTimeIn(t.e);
+  if(s && en && en < s){ _qaAutoEndWriting=true; writeTimeIn(t.e, plusOneHM(s)); _qaAutoEndWriting=false; const hint=$('#qaTimeHint'); if(hint) hint.textContent='종료가 시작보다 빨라 1시간 뒤로 맞췄어요'; }
 }
-// entryModal(자세히 편집) 시각 — quick-add와 동일 동작(공유 헬퍼)
+// entryModal(작업일지 기록 창) 시각: 한 화면 폼과 같은 동작(공유 헬퍼)
 let fEndDirty = false, _fAutoEndWriting = false;
-const fTimeEls = () => ({ sh:$('#fStartH'), sm:$('#fStartM'), eh:$('#fEndH'), em:$('#fEndM') });
+const fTimeEls = () => ({ s:$('#fStart'), e:$('#fEnd') });
 function fAutoEnd(){
   if(fEndDirty) return;
-  const t=fTimeEls(); const s=readTimeSel(t.sh,t.sm); if(!s) return;
-  _fAutoEndWriting=true; writeTimeSel(t.eh,t.em, plusOneHM(s)); _fAutoEndWriting=false;
+  const t=fTimeEls(); const s=readTimeIn(t.s); if(!s) return;
+  _fAutoEndWriting=true; writeTimeIn(t.e, plusOneHM(s)); _fAutoEndWriting=false;
   const h=$('#fTimeHint'); if(h) h.textContent='종료 자동 1시간 뒤 (직접 바꿀 수 있어요)';
 }
 function fEndChanged(){
   if(_fAutoEndWriting) return;
-  fEndDirty=true; const t=fTimeEls(); const s=readTimeSel(t.sh,t.sm), en=readTimeSel(t.eh,t.em);
-  if(s && en && en < s){ _fAutoEndWriting=true; writeTimeSel(t.eh,t.em, plusOneHM(s)); _fAutoEndWriting=false; const h=$('#fTimeHint'); if(h) h.textContent='종료가 시작보다 빨라 1시간 뒤로 맞췄어요'; }
+  fEndDirty=true; const t=fTimeEls(); const s=readTimeIn(t.s), en=readTimeIn(t.e);
+  if(s && en && en < s){ _fAutoEndWriting=true; writeTimeIn(t.e, plusOneHM(s)); _fAutoEndWriting=false; const h=$('#fTimeHint'); if(h) h.textContent='종료가 시작보다 빨라 1시간 뒤로 맞췄어요'; }
 }
 function openQuickAdd(date, type, entryId){
   //  ★ 열람 창에서는 열지 않는다. 빈 칸 **더블클릭**으로 여기 닿는다(grid 의 dblclick 핸들러) —
   //    ＋추가 버튼을 감춰도 그 길은 남아 있었다. openEntryModal 과 같은 이유·같은 방식이다.
   if(PEER){ try{ toast('읽기 전용 보기라 여기서는 기록을 만들 수 없습니다', 'info'); }catch(_){} return; }
-  if(!entryId && guardEdit()) return;   // 연결 잠금(§4) — 편집 열기(entryId)는 읽기라 그대로
+  if(!entryId && guardEdit()) return;   // 연결 잠금(§4). 편집 열기(entryId)는 읽기라 그대로
   qaEditId = entryId || null;
   const e = qaEditId ? entryById(qaEditId) : null;
-  qaType = e ? 'event' : ((type === 'todo') ? 'todo' : 'event');   // 편집은 일정만(할일은 패널 인라인 편집)
+  qaType = e ? 'event' : ((type === 'todo') ? 'todo' : 'event');   // 편집은 일정만(할 일은 패널 인라인 편집)
   fillCatSelect($('#qaCat'));   // 빈 선택지 없음(DEFAULT-TASKS §4.2)
-  fillTimeSelects($('#qaStartH'), $('#qaStartM')); fillTimeSelects($('#qaEndH'), $('#qaEndM'));
+  locBind('qa');                // 장소 칸(직접 입력 + 공용 회의실 추천). 칸이 고정이라 한 번만 걸린다
   const _qaHint = $('#qaTimeHint'); if(_qaHint) _qaHint.textContent = '';
-  // 편집 모드: 일정/할일 토글 숨기고 '일정 수정' 타이틀 + '자세히 편집' 노출
+  // 편집 모드: 일정/할일 토글 숨기고 '일정 수정' 타이틀
   $('#quickAdd .qa-tg').classList.toggle('hidden', !!e);
   $('#qaEditTitle').classList.toggle('hidden', !e);
-  $('#qaAdvanced').classList.toggle('hidden', !e);
-  $('#qaSave').textContent = e ? '저장' : '추가';
-  $('#qaDetail').innerHTML = ''; $('#qaDetail').classList.add('hidden');
+  qaRecurOrig = (e && e.recur && e.recur.freq) ? normRecur(e.recur) : null;
+  qaRecurExcept = (e && Array.isArray(e.recurExcept)) ? e.recurExcept.slice() : [];
+  const t = qaTimeEls();
   if(e){
     $('#qaTitle').value = e.title;
     $('#qaDate').value = e.date;
+    $('#qaEndDate').value = (e.endDate && e.endDate > e.date) ? e.endDate : e.date;
     setCatSelectValue($('#qaCat'), e.categoryId || '');   // 목록에 없는 과제는 보존 옵션으로 보여 준다(#fCat 과 같다)
+    $('#qaAllDay').checked = !!e.allDay;
+    writeTimeIn(t.s, e.startTime); writeTimeIn(t.e, e.endTime);
+    qaEndDirty = !!e.endTime;
+    $('#qaRecur').value = qaRecurOrig ? qaRecurOrig.freq : '';
+    locSet('qa', e.location || '');
+    $('#qaMemo').value = e.memo || '';
   } else {
     setCatSelectValue($('#qaCat'), filterCatId || noteFilterCat || '');   // 필터로 고른 과제, 없으면 기타
+    const d0 = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : selectedDate;
     $('#qaTitle').value = '';
-    $('#qaDate').value = (/^\d{4}-\d{2}-\d{2}$/.test(date) ? date : selectedDate);
+    $('#qaDate').value = d0;
+    $('#qaEndDate').value = (qaType === 'todo') ? '' : d0;   // 일정은 시작일과 같게(하루 일정), 할 일은 비움(선택)
     $('#qaAllDay').checked = false;   // 신규 일정: 종일 기본 OFF(시간 입력 첫 화면 노출)
-    { const t = qaTimeEls(); writeTimeSel(t.sh, t.sm, ''); writeTimeSel(t.eh, t.em, ''); }
+    writeTimeIn(t.s, ''); writeTimeIn(t.e, '');
     qaEndDirty = false;
+    $('#qaRecur').value = '';
+    locSet('qa', '');
+    $('#qaMemo').value = '';
+    $('#qaPrio').checked = false;
   }
-  remSetUi('qa', e ? e.remind : null);   // 미리알림 행은 상시 표시 → 편집=저장값 역환산, 신규=놓침 방지(기본). 이후 qaSyncTimeRow가 렌더.
-  qaSyncTimeRow();
-  qaSyncType();   // 상세는 아직 숨김 → qaMoreLabel만(프리필 덮어쓰기 방지)
-  if(e){          // 편집: 상세를 펼치고 기존 값 프리필
-    qaRenderDetail(); $('#qaDetail').classList.remove('hidden'); $('#qaMore').textContent = '옵션 접기 ▴';
-    $('#qaAllDay').checked = !!e.allDay;
-    { const t = qaTimeEls(); writeTimeSel(t.sh, t.sm, e.startTime); writeTimeSel(t.eh, t.em, e.endTime); }
-    qaEndDirty = !!e.endTime;
-    const rc = $('#qaRecur'); if(rc) rc.value = (e.recur && e.recur.freq) ? e.recur.freq : '';
-    const ed = $('#qaEndDate'); if(ed) ed.value = e.endDate || '';
-    locSet('qa', e.location || '');
-    const mm = $('#qaMemo'); if(mm){ mm.value = e.memo || ''; autoGrowArea(mm); }   // 메모(rows=1 자동확장) — 프리필 후 높이 맞춤
-    qaSyncTimeRow();   // 종일 상태에 맞춰 시간 행 표시(미리알림 행도 함께 재동기화)
-  }
+  qaPrevStart = $('#qaDate').value;
+  remSetUi('qa', e ? e.remind : null);   // 편집=저장값 역환산, 신규=놓침 방지(기본)
+  qaSyncType();
   openModal('#quickAdd');
   var _qa=$('#quickAdd'); _qa.__openSnap = formSnapshot(_qa);   // dirty-check 기준(폼 채운 뒤)
   setTimeout(() => $('#qaTitle').focus(), 30);
 }
+//  유형에 맞는 칸만 보이고 라벨과 안내를 맞춘다(값은 건드리지 않는다).
 function qaSyncType(){
   $$('#quickAdd [data-qatype]').forEach(b => { const on = b.dataset.qatype === qaType; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   const isTodo = qaType === 'todo';
   $('#qaTitle').placeholder = isTodo ? '할 일 (짧게)' : '일정 제목';
-  $('#qaDate').title = isTodo ? '기한(비우면 기한없음)' : '날짜';
-  const w = $('#qaWhen'); if(w) w.classList.toggle('hidden', qaType !== 'event');   // 시간 영역은 일정에만
-  const more = $('#qaMore'), det = $('#qaDetail');
-  if(isTodo){
-    // 할 일: 설명(서술형)+중요를 기본 노출 — '옵션 더보기' 불필요
-    qaRenderDetail();
-    if(det) det.classList.remove('hidden');
-    if(more) more.classList.add('hidden');
-  } else {
-    // 일정: 옵션은 접힌 상태로 시작(편집 모드는 openQuickAdd가 이후 다시 펼침)
-    if(more) more.classList.remove('hidden');
-    qaSyncTimeRow();
-    if(det) det.classList.add('hidden');
-    qaMoreLabel();
+  $('#qaDateLb').textContent = isTodo ? '기한' : '시작일';
+  $('#qaEndLb').textContent = isTodo ? '종료일 (선택)' : '종료일';
+  $('#qaDate').title = isTodo ? '기한(비우면 기한없음)' : '시작일';
+  ['#qaWhen', '#qaRecurWrap', '#qaLocWrap'].forEach(s => { const el = $(s); if(el) el.classList.toggle('hidden', isTodo); });   // 시각, 미리알림, 반복, 장소는 일정에만
+  const pw = document.getElementById('qaPrioWrap'); if(pw) pw.classList.toggle('hidden', !isTodo);   // 중요는 할 일에만
+  qaSyncTimeRow(); qaSyncRecur(); qaSyncNote();
+}
+//  시작일과 종료일 안내 한 줄과 오류 줄. 안내 글은 늘 한 줄을 채워 칸 높이가 흔들리지 않는다.
+function qaSyncRange(){
+  const h = $('#qaRangeHint'), err = $('#qaErr'); if(!h) return;
+  const ok = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+  const s = $('#qaDate').value, e = $('#qaEndDate').value, todo = qaType === 'todo';
+  const bad = ok(s) && ok(e) && e < s;
+  if(err) err.textContent = bad ? (todo ? '종료일이 기한보다 빠를 수 없습니다' : '종료일이 시작일보다 빠를 수 없습니다') : '';
+  if(todo) h.textContent = !ok(s) ? '기한을 비우면 기한 없는 할 일입니다' : (ok(e) && e > s) ? `${fmtShort(s)} ~ ${fmtShort(e)}, 여러 날 할 일` : '종료일을 넣으면 여러 날 할 일이 됩니다';
+  else {
+    const ad = $('#qaAllDay');
+    h.textContent = (ok(s) && ok(e) && e > s) ? `${fmtShort(s)} ~ ${fmtShort(e)}, ${diffDays(s, e) + 1}일 기간 일정${(ad && !ad.checked) ? '. 시각은 매일 같게 적용됩니다' : ''}` : '시작일과 종료일이 같으면 하루 일정입니다';
   }
 }
-function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '장소, 반복, 기간, 메모 ▾' : '옵션 더보기 (중요·메모) ▾'; }
-// textarea 자동 높이(rows=1 시작 → 내용만큼 확장). scrollHeight 기준으로 재계산.
-function autoGrowArea(ta){ if(!ta) return; ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
-function qaRenderDetail(){
-  $('#qaDetail').innerHTML = (qaType === 'event')
-    ? `<div class="row2">
-         <div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0" for="qaLoc">장소</label></div>
-         <div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0" for="qaRecur">반복</label></div>
-         <div class="loc-combo" data-pfx="qa"><input type="text" class="loc-in" id="qaLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="qaLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="고르거나 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="qaLocPop" role="listbox" aria-label="장소 추천"></div></div>
-         <select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
-       </div>
-       <div class="qa-hint hidden" id="qaRecurHint"></div>
-       <label class="qa-lb">기간 종료일 (선택, 여러 날에 걸침)</label><input type="date" id="qaEndDate">
-       <label class="qa-lb">메모</label><textarea id="qaMemo" rows="1"></textarea>`
-    : `<div id="qaTodoNoteWrap"><label class="qa-lb" id="qaMemoLb" for="qaMemo">설명</label><textarea id="qaMemo" rows="3" placeholder="서술형으로 자유롭게 (선택)"></textarea></div>
-       <label class="qa-lb">기간 종료일 (선택, 여러 날 할 일)</label><input type="date" id="qaEndDate">
-       <label class="qa-chk" style="margin-top:8px"><input type="checkbox" id="qaPrio"> <svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="color:var(--star)"><path d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/></svg> 중요</label>`;
-  if(qaType === 'event'){
-    // 미리알림은 상세(옵션 더보기) 밖 상시 표시 행으로 이전 — 여기선 렌더하지 않음(openQuickAdd·qaSyncTimeRow가 관리).
-    locBind('qa');   // 장소 칸(직접 입력 + 공용 회의실 추천). 상세를 다시 그리면 새 칸이라 다시 건다
-    const mm = $('#qaMemo'); if(mm) mm.addEventListener('input', () => autoGrowArea(mm));   // 메모 rows=1 자동확장
-    const rc = $('#qaRecur'), rh = $('#qaRecurHint');   // 반복 선택 시 간격·횟수 세부는 자세히 편집 안내
-    // 문구는 켜짐·꺼짐 모두 넣는다 — #qaRecurHint.hidden 이 visibility 만 끄므로(자리 유지) 글이 있어야 높이가 같다(2026-09-23 §3.4-A).
-    const rsync = () => { const on = !!rc.value; rh.classList.toggle('hidden', !on);
-      rh.textContent = `격주·횟수 등 세부 반복은 ${qaEditId ? '' : '저장 후 '}‘자세히 편집’에서 설정`; };
-    rc.addEventListener('change', rsync); rsync();
-  } else {
-    // 할 일: 기간(종료일) 지정 시 설명은 날짜별 dayNote 로 관리되고, 이 칸의 값은 저장 시 시작일 dayNote 로 들어간다(addTodo isPeriod 분기).
-    // 예전엔 칸을 통째로 숨기고 안내문으로 바꿔 모달이 95px 줄었다(측정) — 칸은 그대로 두고 라벨·placeholder 로 "시작일 설명"임을 말한다(2026-09-23 §3.4-A).
-    const ed = $('#qaEndDate'), lb = $('#qaMemoLb'), ta = $('#qaMemo');
-    const syncNote = () => { const period = !!(ed && ed.value);
-      if(lb) lb.textContent = period ? '시작일 설명 (나머지는 추가 후 날짜별로)' : '설명';
-      if(ta) ta.placeholder = period ? '시작일에 적힙니다. 다른 날짜의 설명은 추가 후 각 날짜에서 (선택)' : '서술형으로 자유롭게 (선택)'; };
-    if(ed){ ed.addEventListener('input', syncNote); ed.addEventListener('change', syncNote); }
-    syncNote();
+//  폼의 반복 = 고른 종류 + (원래 같은 종류였으면) 보존한 간격과 끝(결정 8). 다른 종류로 바꾸면 간격 1, 끝 없음.
+function qaRecurValue(){
+  const f = $('#qaRecur') ? $('#qaRecur').value : '';
+  if(f !== 'weekly' && f !== 'monthly') return null;
+  if(qaRecurOrig && qaRecurOrig.freq === f) return { freq:f, interval:qaRecurOrig.interval, until:qaRecurOrig.until, count:qaRecurOrig.count };
+  return { freq:f, interval:1, until:'', count:0 };
+}
+function qaRecurHasDetail(r){ return !!r && (r.interval > 1 || !!r.until || r.count > 0); }
+//  반복 한 줄 요약(예: 2주마다 화요일, 총 10회). 반복이 없으면 글만 숨기고 자리는 남긴다(#qaRecurHint.hidden, 높이 고정).
+function qaSyncRecur(){
+  const rh = $('#qaRecurHint'); if(!rh) return;
+  const r = qaRecurValue(), date = $('#qaDate').value;
+  const on = !!r && /^\d{4}-\d{2}-\d{2}$/.test(date);
+  rh.classList.toggle('hidden', !on);
+  rh.textContent = on ? recurLabel({ date, recur: r }) + (qaRecurHasDetail(r) ? '. 예전에 정한 간격과 끝을 그대로 둡니다' : '') : '반복 없음';
+}
+//  한 번만 거는 배선(bind 에서 부른다). 칸이 고정이라 다시 그릴 때마다 걸 필요가 없다.
+function qaBindForm(){
+  // 할 일: 기간(종료일) 지정 시 설명은 날짜별 dayNote 로 관리되고, 이 칸의 값은 저장 시 시작일 dayNote 로 들어간다(addTodo isPeriod 분기).
+  // 칸을 통째로 숨기지 않고 라벨·placeholder 로 "시작일 설명"임을 말한다(2026-09-23 §3.4-A, 숨기면 모달이 95px 줄었다).
+  const ed = $('#qaEndDate'), lb = $('#qaMemoLb'), ta = $('#qaMemo'), sd = $('#qaDate');
+  const syncNote = () => { const todo = qaType === 'todo', period = todo && !!(ed && ed.value) && !!(sd && sd.value) && ed.value > sd.value;
+    if(lb) lb.textContent = !todo ? '메모' : (period ? '시작일 설명 (나머지는 추가 후 날짜별로)' : '설명');
+    if(ta) ta.placeholder = !todo ? '상세 내용, 진행 상황, 참고 사항' : (period ? '시작일에 적힙니다. 다른 날짜의 설명은 추가 후 각 날짜에서 (선택)' : '서술형으로 자유롭게 (선택)'); };
+  qaSyncNote = syncNote;
+  if(ed){ ed.addEventListener('input', () => { syncNote(); qaSyncRange(); }); ed.addEventListener('change', () => { syncNote(); qaSyncRange(); }); }
+  if(sd){
+    sd.addEventListener('input', () => { syncNote(); qaSyncRange(); qaSyncRecur(); });
+    sd.addEventListener('change', () => {   // 시작일을 옮기면 종료일도 같은 만큼(기간 길이 유지). 일정의 빈 종료일은 시작일로
+      const ok = v => /^\d{4}-\d{2}-\d{2}$/.test(v || ''), s = sd.value;
+      if(ok(s) && ok(qaPrevStart) && ok(ed.value)) ed.value = addDays(ed.value, diffDays(qaPrevStart, s));
+      else if(qaType === 'event' && ok(s) && !ed.value) ed.value = s;
+      qaPrevStart = s; syncNote(); qaSyncRange(); qaSyncRecur();
+    });
   }
+  const rc = $('#qaRecur'); if(rc) rc.addEventListener('change', qaSyncRecur);
 }
-function qaToggleDetail(){
-  const d = $('#qaDetail');
-  if(d.classList.contains('hidden')){ qaRenderDetail(); d.classList.remove('hidden'); $('#qaMore').textContent = '옵션 접기 ▴'; }
-  else { d.classList.add('hidden'); qaMoreLabel(); }
-}
-// 현재 quick-add(일정) 폼값 → entry data (검증·토스트 없음 — qaSave/에스컬레이션 공유, 값 이월용)
+// 현재 폼(일정) 값 → entry data (검증·토스트 없음). 저장 형식은 예전과 같다. 반복은 고른 종류 + 보존한 세부 값.
 function qaEventFormData(){
   const adEl = $('#qaAllDay'); const allDay = adEl ? adEl.checked : false;
   const t = qaTimeEls();
-  const st = allDay ? '' : readTimeSel(t.sh, t.sm);
-  const en = allDay ? '' : readTimeSel(t.eh, t.em);
-  const rf = $('#qaRecur') ? $('#qaRecur').value : '';
-  const recur = (rf === 'weekly' || rf === 'monthly') ? {freq:rf, interval:1, until:'', count:0} : null;
+  const st = allDay ? '' : readTimeIn(t.s);
+  const en = allDay ? '' : readTimeIn(t.e);
+  const recur = qaRecurValue();
+  const date = $('#qaDate').value;
   const edEl = $('#qaEndDate'); const memoEl = $('#qaMemo'); const lcEl = $('#qaLoc');
-  const d = {date:$('#qaDate').value, title:$('#qaTitle').value.trim(), categoryId:$('#qaCat').value || null,
-    allDay, startTime:st, endTime:en, location:lcEl ? String(lcEl.value || '').trim() : '', memo:memoEl ? memoEl.value.trim() : '', recur, endDate:edEl ? edEl.value : ''};
+  const ed = edEl ? edEl.value : '';
+  const d = {date, title:$('#qaTitle').value.trim(), categoryId:$('#qaCat').value || null,
+    allDay, startTime:st, endTime:en, location:lcEl ? String(lcEl.value || '').trim() : '', memo:memoEl ? memoEl.value.trim() : '', recur,
+    endDate:(/^\d{4}-\d{2}-\d{2}$/.test(ed) && ed > date) ? ed : ''};
+  // 건너뛴 날짜: 반복 유지 + 종류와 간격이 같을 때만 보존(기록 창 saveEntryFromForm 과 같은 규칙). 아니면 날짜가 뜻을 잃어 비운다.
+  if(recur && qaRecurOrig && qaRecurOrig.freq === recur.freq && qaRecurOrig.interval === recur.interval) d.recurExcept = qaRecurExcept.slice();
   // 미리알림 행은 상시 표시 → 일정 폼값엔 항상 포함(remReadValue가 모드·숫자·단위를 저장값으로 환산). 할 일은 이 함수를 타지 않음.
   d.remind = remReadValue('qa');
   return d;
@@ -18698,19 +18945,24 @@ function qaSave(){
   const date = $('#qaDate').value;
   const cat = $('#qaCat').value || null;
   const memoEl = $('#qaMemo'); const memo = memoEl ? memoEl.value.trim() : '';
+  const edEl = $('#qaEndDate'); const endRaw = edEl ? edEl.value : '';
+  const ymdOk = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
   if(qaType === 'event'){
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ toast('날짜를 선택하세요', 'warn'); $('#qaDate').focus(); return; }
+    if(!ymdOk(date)){ toast('날짜를 선택하세요', 'warn'); $('#qaDate').focus(); return; }
+    if(endRaw && !ymdOk(endRaw)){ toast('종료일을 확인하세요', 'warn'); edEl.focus(); return; }
+    if(endRaw && endRaw < date){ toast('종료일이 시작일보다 빠릅니다', 'warn'); edEl.focus(); return; }
+    if(endRaw && endRaw > date && diffDays(date, endRaw) > 366){ toast('기간이 너무 깁니다(366일 초과)', 'warn'); edEl.focus(); return; }
     const data = qaEventFormData();
     if(data.startTime && data.endTime && data.endTime < data.startTime){ toast('종료 시간이 시작보다 빠릅니다', 'warn'); return; }
-    if(qaEditId){ updateEntry(qaEditId, data); }   // 단순 일정 수정(git·복잡반복은 '자세히 편집'→entryModal)
+    if(qaEditId){ updateEntry(qaEditId, data); }
     else { addEntry(data); }
     selectedDate = date; noteTab = 'detail';
     closeModal('#quickAdd'); renderAll(); toast(qaEditId ? '일정을 수정했습니다' : '일정을 추가했습니다', 'success');
   } else {
-    const due = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
-    const edEl = $('#qaEndDate'); const endDate = edEl ? edEl.value : '';
+    const due = ymdOk(date) ? date : '';
+    const endDate = endRaw;
     if(endDate && !due){ toast('기간 종료일을 쓰려면 시작 기한을 먼저 선택하세요', 'warn'); $('#qaDate').focus(); return; }
-    if(endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)){ toast('종료일을 확인하세요', 'warn'); edEl.focus(); return; }
+    if(endDate && !ymdOk(endDate)){ toast('종료일을 확인하세요', 'warn'); edEl.focus(); return; }
     if(endDate && endDate < due){ toast('종료일이 시작일보다 빠릅니다', 'warn'); edEl.focus(); return; }
     const prioEl = $('#qaPrio');
     addTodo(title, {categoryId:cat, due, endDate, prio:(prioEl && prioEl.checked) ? 'high' : 'normal', note:memo});
@@ -18857,7 +19109,7 @@ function openHelp(){
   const body = $('#helpModal .help-body');
   if(body) body.innerHTML = `<div class="help-grid">`
     + card(ICON.plus, '빠른 시작', '＋ 새 기록 또는 날짜 더블클릭으로 추가. 기록을 드래그해 다른 날짜로 이동.')
-    + card(ICON.calendar, '일정과 할 일', '일정은 시간/종일, 반복, 기간. 할 일은 체크, 중요(★), 기한. ‘옵션 더보기’에서 세부 설정.')
+    + card(ICON.calendar, '일정과 할 일', '일정은 시간/종일, 반복, 기간. 할 일은 체크, 중요(★), 기한. 입력 창 한 화면에 모든 칸이 있습니다.')
     + card(ICON.git, '커밋 내역', '과제에 Git 저장소 경로를 지정하면(내 과제), 그 날 내 커밋을 자동 수집합니다.')
     + card(ICON.doc, '보고서', '기간을 고르면 과제별 [제목] : 시간으로 자동 정리. 하루 보고서에서 시간 수정, 복사해 붙여넣기.')
     + card(ICON.tag, '내 과제', '헤더의 내 과제 버튼에서 과제 추가, 이름, 색상, 버전관리(Git/SVN) 경로를 설정합니다. 줄 오른쪽 ▲▼ 로 순서를 한 칸씩 바꾸면 보고서·필터가 그 순서를 따릅니다.')
@@ -18935,7 +19187,7 @@ function guideShot(kind, step){
     + call(1, '내 과제', 'right:118px;top:10px') + call(2, '이름·색상', 'left:148px;top:80px') + call(3, 'Git/SVN 선택', 'left:128px;bottom:42px'));
   if(kind === 'add') return base('새 기록',
     `<span class="shot-btn">검색</span><span class="shot-btn">내 과제</span><span class="shot-btn primary">＋ 새 기록</span>`,
-    `<div class="shot-modal"><div class="shot-row"><span class="shot-tab on">일정</span><span class="shot-tab">할 일</span></div><div class="shot-field"></div><div class="shot-row"><div class="shot-field" style="flex:1"></div><div class="shot-field" style="flex:1"></div></div><div class="shot-field"></div><div class="shot-row" style="justify-content:flex-end"><span class="shot-btn">옵션 더보기</span><span class="shot-btn primary">저장</span></div></div>`
+    `<div class="shot-modal"><div class="shot-row"><span class="shot-tab on">일정</span><span class="shot-tab">할 일</span></div><div class="shot-field"></div><div class="shot-row"><div class="shot-field" style="flex:1"></div><div class="shot-field" style="flex:1"></div></div><div class="shot-field"></div><div class="shot-row" style="justify-content:flex-end"><span class="shot-btn">취소</span><span class="shot-btn primary">저장</span></div></div>`
     + call(1, '새 기록', 'right:12px;top:10px') + call(2, '일정/할 일', 'left:140px;top:64px') + call(3, '저장', 'right:84px;bottom:52px'));
   if(kind === 'detail') return base('날짜 상세',
     `<span class="shot-btn">검색</span><span class="shot-btn">내 과제</span><span class="shot-btn primary">＋ 새 기록</span>`,
@@ -18988,10 +19240,10 @@ function renderVisualGuide(){
       ['category_2','새 과제 이름을 입력하고 구분할 색상을 선택합니다.'],
       ['category_3','필요하면 Git/SVN 저장소 경로와 내 작성자를 연결합니다.']
     ],'과제명은 보고서의 묶음 제목으로도 쓰이므로 실제 보고 단위와 맞추는 편이 좋습니다.'],
-    ['event','일정 등록','새 기록 창에서 일정 제목, 날짜, 과제를 입력하고 필요 시 장소와 옵션을 확장합니다.',[
+    ['event','일정 등록','새 기록 창 한 화면에서 일정 제목, 날짜, 과제, 시각, 반복, 장소, 메모를 입력합니다.',[
       ['event_1','상단 + 새 기록을 눌러 빠른 등록 창을 엽니다.'],
       ['event_2','일정 탭에서 제목, 날짜, 과제를 입력합니다.'],
-      ['event_3','옵션 더보기를 열어 장소, 반복, 메모를 추가한 뒤 저장합니다.']
+      ['event_3','같은 화면 아래쪽의 장소, 반복, 메모를 채운 뒤 저장합니다.']
     ],'달력 날짜를 더블클릭해도 같은 새 기록 창이 열립니다.'],
     ['todo','할 일 등록','할 일은 새 기록 창에서 유형만 바꿔 같은 흐름으로 등록합니다.',[
       ['todo_1','새 기록 창에서 할 일 탭을 선택합니다.'],
@@ -19052,28 +19304,26 @@ function bind(){
   $('#btnNext').addEventListener('click', () => moveMonth(1));
   $('#btnToday').addEventListener('click', goToday);
   $('#btnNew').addEventListener('click', () => openQuickAdd(selectedDate));
-  /* 빠른 등록(quick-create) */
-  $('#quickAdd .qa-tg').addEventListener('click', ev => { const b = ev.target.closest('[data-qatype]'); if(b){ qaType = b.dataset.qatype; qaSyncType(); } });
-  $('#qaMore').addEventListener('click', qaToggleDetail);
+  /* 일정과 할 일 입력(한 화면 폼) */
+  $('#quickAdd .qa-tg').addEventListener('click', ev => { const b = ev.target.closest('[data-qatype]'); if(!b) return;
+    const prev = qaType; qaType = b.dataset.qatype;
+    const ov = $('#quickAdd'), clean = !!ov.__openSnap && ov.__openSnap === formSnapshot(ov);   // 아직 아무것도 안 적었나
+    //  새 기록에서 유형을 바꾸면 종료일 기본값도 바꾼다: 일정은 시작일과 같게(하루 일정), 할 일은 비움(선택). 사용자가 넣은 기간은 그대로.
+    if(prev !== qaType && !qaEditId){ const s = $('#qaDate').value, ed = $('#qaEndDate'); if(qaType === 'todo' && ed.value === s) ed.value = ''; else if(qaType === 'event' && !ed.value) ed.value = s; }
+    qaSyncType();
+    if(clean) ov.__openSnap = formSnapshot(ov);   // 기본값만 바뀐 것은 '고친 것' 이 아니다(닫을 때 버릴지 묻지 않게)
+  });
+  qaBindForm();
   // 시각 영역(정적): 종일 토글·시작→종료 자동+1h·종료 보정 1회 배선
   $('#qaAllDay').addEventListener('change', qaSyncTimeRow);
   // 시작 시각이 생기고/사라지면 알림 활성 조건도 바뀜 → 자동+1h와 함께 재동기화
-  $('#qaStartH').addEventListener('change', () => { qaAutoEnd(); qaSyncTimeRow(); });
-  $('#qaStartM').addEventListener('change', () => { qaAutoEnd(); qaSyncTimeRow(); });
-  $('#qaEndH').addEventListener('change', qaEndChanged);
-  $('#qaEndM').addEventListener('change', qaEndChanged);
+  $('#qaStart').addEventListener('change', () => { qaAutoEnd(); qaSyncTimeRow(); });
+  $('#qaEnd').addEventListener('change', qaEndChanged);
   // 미리알림 행(상시 표시) — 모드 세그·단위 세그·숫자 → 상태 갱신 후 qaRemResync
   $('#qaRemSeg').addEventListener('click', ev => { const b = ev.target.closest('[data-remmode]'); if(!b || b.disabled) return; _remState.qa.mode = b.dataset.remmode; qaRemResync(); });
   $('#qaRemUnit').addEventListener('change', ev => { _remState.qa.unit = Number(ev.target.value) || 1; qaRemResync(); });
   $('#qaRemNum').addEventListener('input', qaRemResync);
-  $('#qaAdvanced').addEventListener('click', () => {   // 단순 편집기 → 전체 편집기. 현재 폼 변경분을 먼저 반영(값 이월)
-    const id = qaEditId; if(!id) return;
-    const d = qaEventFormData();
-    if(!d.title){ toast('제목을 입력하세요', 'warn'); $('#qaTitle').focus(); return; }   // 무음 유실 방지 — 공란이면 진행 막음
-    if(guardEdit()) return;
-    if(/^\d{4}-\d{2}-\d{2}$/.test(d.date)) updateEntry(id, d);
-    closeModal('#quickAdd'); openEntryModal('edit', id);
-  });
+  //  예전 '자세히 편집'(#qaAdvanced, 빠른 편집 → 기록 창)은 없앴다. 한 화면 폼이 모든 칸을 가진다(결정 10). 기록 창은 작업일지 기록에만 열린다(editEntry).
   $('#qaSave').addEventListener('click', qaSave);
   $('#qaTitle').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter') qaSave(); });
   $('#btnCatsTop').addEventListener('click', openCatModal);   // 헤더 직접 노출(⋯ 메뉴에서 제거됨)
@@ -19513,8 +19763,10 @@ function bind(){
       //  ★ 선택 날짜 = **누른 칸의 날짜**(docs/BUG-RANGE-CHIP-CLICK.md B1). data-occ 는 그 발생의 **시작일**이라,
       //    9/29~10/2 막대를 10월 달력의 10/1 칸에서 누르면 9/29 가 골라져 9월로 넘어갔다(달이 번갈아 바뀌는 버그).
       //    상세 탭(entriesOn)·할 일 탭(covers)은 그날에 걸친 기간 항목을 모두 보이므로 누른 날짜에서도 카드·행이 보인다(B2).
-      //    칸 밖에 그려진 칩만 data-occ 로 대체(B4). 끌어 옮기기는 계속 data-occ(시작일) 기준이다(B5).
-      const cellDs = (chip.closest('.cell') || {}).dataset?.date;
+      //    칸 밖에 그려진 칩만 data-occ 로 대체(B4).
+      //  ★ 내 창의 막대(.chip-bar)는 칸 밖(주 줄)에 놓이므로 누른 자리의 칸을 가로 위치로 찾는다(chipCellDate, 결정 2).
+      //    열람 창의 칸 안 칩은 예전처럼 chip.closest('.cell') 이다(같은 함수, 갈래 없음).
+      const cellDs = chipCellDate(chip, ev);
       const chipDs = cellDs || chip.dataset.occ || selectedDate;
       if(chip.dataset.todo){            // 할 일 칩 → 그 날짜 + 할 일 탭 + 행 강조(접힌 섹션 자동 펼침)
         selectDate(chipDs);
@@ -19532,6 +19784,8 @@ function bind(){
       renderPanel(); openSheetIfNarrow();
       return;
     }
+    const more = ev.target.closest('.more[data-more]');   // 막대 달력의 +N(칸 밖): 그 날짜를 고른다(칸 안 +N 은 아래 칸 클릭이 맡는다)
+    if(more){ selectDate(more.dataset.more); return; }
     const cell = ev.target.closest('.cell');
     if(cell) selectDate(cell.dataset.date);
   });
@@ -19565,11 +19819,14 @@ function bind(){
     const chip = ev.target.closest('.chip');
     if(!chip || chip.dataset.kind === 'recur'){ ev.preventDefault(); return; }   // 반복은 드래그 금지(모달에서 수정)
     const dragId = chip.dataset.kind === 'todo' ? chip.dataset.todo : chip.dataset.id;   // 할 일 칩은 data-todo
-    ev.dataTransfer.setData('text/plain', JSON.stringify({id:dragId, occ:chip.dataset.occ, kind:chip.dataset.kind||'simple'}));
+    //  잡은 자리 기준(결정 3): 막대의 어느 날을 잡았는지(grab)를 싣는다. 놓을 때 (놓은 날 - 잡은 날)만큼 시작과 종료를 함께 옮긴다.
+    //  좌표가 없으면 grab 은 그 주 조각의 첫 칸이고, 막대가 아니면 '' 라 예전처럼 data-occ(시작일) 기준이다.
+    const grab = chipCellDate(chip, ev);
+    ev.dataTransfer.setData('text/plain', JSON.stringify({id:dragId, occ:chip.dataset.occ, grab, kind:chip.dataset.kind||'simple'}));
     ev.dataTransfer.effectAllowed = 'move';
   });
   grid.addEventListener('dragover', ev => {
-    const cell = ev.target.closest('.cell');
+    const cell = dropCellAt(ev);   // 막대 위에서도 손가락 아래 칸
     if(!cell) return;
     ev.preventDefault();
     ev.dataTransfer.dropEffect = 'move';
@@ -19578,7 +19835,7 @@ function bind(){
   });
   grid.addEventListener('dragleave', ev => {
     const cell = ev.target.closest('.cell');
-    if(cell && !cell.contains(ev.relatedTarget)) cell.classList.remove('drop');
+    if(cell && !cell.contains(ev.relatedTarget) && !(ev.relatedTarget && ev.relatedTarget.closest && ev.relatedTarget.closest('.chip-bar'))) cell.classList.remove('drop');   // 칸에서 그 위 막대로 들어갈 때는 끄지 않는다(dragover 가 다시 켠다)
   });
   grid.addEventListener('dragend', () => $$('.cell.drop').forEach(c => c.classList.remove('drop'))); // 취소/외부 드롭 시 잔상 제거
   grid.addEventListener('drop', ev => {
@@ -19586,28 +19843,28 @@ function bind(){
     $$('.cell.drop').forEach(c => c.classList.remove('drop'));
     if(PEER) return;          // 열람 창 — 옮기지 않는다
     if(guardEdit()) return;   // 연결 잠금(§4) — 옮기지 않는다(칩은 제자리)
-    const cell = ev.target.closest('.cell');
+    const cell = dropCellAt(ev);   // 막대가 덮은 칸도 손가락 아래 칸으로 찾는다
     let p; try{ p = JSON.parse(ev.dataTransfer.getData('text/plain')); }
     catch(_){ p = {id:ev.dataTransfer.getData('text/plain'), kind:'simple'}; }   // 옛 형식 호환
     if(!cell) return;
     const target = cell.dataset.date;
-    if(p.kind === 'todo'){                          // 할 일 드래그 = 기한(due) 변경(기간 할 일은 종료일도 같은 만큼 이동)
+    if(p.kind === 'todo'){                          // 할 일 드래그 = 기한(due) 변경(기간 할 일은 종료일도 같은 만큼 이동, 잡은 자리 기준)
       const t = todoById(p.id); if(!t || !t.due) return;
-      const delta = diffDays(t.due, target);
-      if(delta === 0) return;
-      if(t.endDate && t.endDate > t.due) t.endDate = addDays(t.endDate, delta);
-      t.due = target; t.updatedAt = nowIso(); save();
+      const mv = shiftByGrab(t.due, (t.endDate && t.endDate > t.due) ? t.endDate : '', p.grab || t.due, target);
+      if(mv.delta === 0) return;
+      if(mv.end) t.endDate = mv.end;
+      t.due = mv.start; t.updatedAt = nowIso(); save();
       selectDate(target); renderGrid();
-      toast(`할 일을 ${fmtDateK(target)}로 옮겼습니다`);
+      toast(`할 일을 ${fmtDateK(mv.start)}로 옮겼습니다`);
       return;
     }
     const e = entryById(p.id);
     if(!e) return;
-    if(p.kind === 'range'){                         // 기간 일정: 시작·종료를 같은 만큼 이동(길이 보존)
-      const delta = diffDays(p.occ || e.date, target);
-      if(delta === 0) return;
-      e.date = addDays(e.date, delta);
-      e.endDate = e.endDate ? addDays(e.endDate, delta) : '';
+    if(p.kind === 'range'){                         // 기간 일정: 시작·종료를 같은 만큼 이동(길이 보존). 잡은 날에서 놓은 날까지의 차이만큼(결정 3)
+      const mv = shiftByGrab(e.date, e.endDate, p.grab || p.occ || e.date, target);
+      if(mv.delta === 0) return;
+      e.date = mv.start;
+      e.endDate = mv.end;
     } else {
       if(e.date === target) return;
       e.date = target;
@@ -19690,9 +19947,8 @@ function bind(){
   /* 기록 모달 */
   $('#fAllDay').addEventListener('change', () => { toggleTimeRow(); toggleRangeRow(); });
   // 시작 시각이 생기고/사라지면 알림 활성 조건도 바뀜 → toggleTimeRow로 재동기화
-  $('#fStartH').addEventListener('change', () => { fAutoEnd(); toggleTimeRow(); });
-  $('#fStartM').addEventListener('change', () => { fAutoEnd(); toggleTimeRow(); });
-  $('#fEndH').addEventListener('change', fEndChanged); $('#fEndM').addEventListener('change', fEndChanged);
+  $('#fStart').addEventListener('change', () => { fAutoEnd(); toggleTimeRow(); });
+  $('#fEnd').addEventListener('change', fEndChanged);
   // 미리알림 행(모드 세그·단위 세그·숫자) — 상태 갱신 후 재동기화(fRemResync가 활성/힌트/표시 반영)
   $('#fRemSeg').addEventListener('click', ev => { const b = ev.target.closest('[data-remmode]'); if(!b || b.disabled) return; _remState.f.mode = b.dataset.remmode; fRemResync(); });
   $('#fRemUnit').addEventListener('change', ev => { _remState.f.unit = Number(ev.target.value) || 1; fRemResync(); });

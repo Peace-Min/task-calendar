@@ -6,7 +6,11 @@
 //   ② 드러내기는 그대로(B2) — 일정 칩 → 「일정 상세」 탭 + 그 카드 강조, 할 일 칩 → 「할 일」 탭 + 그 행 강조.
 //      고른 날짜(시작일이 아닌 날)에서도 그 카드·행이 **실제로 목록에 있다**.
 //   ③ 흐린 칸(다른 달)은 누른 칸 기준으로 그 달로 넘어간다(B3) · 칸 밖 칩은 data-occ 로 대체(B4).
-//   ④ 끌어 옮기기는 계속 data-occ(시작일) 기준이다(B5·K6).
+//   ④ 끌어 옮기기는 잡은 자리 기준이다(docs/PERSONAL-IMPROVE-PLAN.md 결정 3, 2026-10-23, K6). 예전 B5(시작일 기준)를 바꿨다.
+//
+// 2026-10-23 개인 월간 기간 막대(PERSONAL-IMPROVE-PLAN 결정 1~4)로 내 창의 기록은 칸 안 칩이 아니라 주 줄(.gridrow)의
+//   막대(.chip-bar)다. 그래서 '누른 칸' 은 chip.closest('.cell') 이 아니라 막대 위 가로 위치로 찾는다(chipCellDate).
+//   시험도 그에 맞게 막대를 그 날짜 칸 가운데 좌표로 누른다(pressAt: 주 줄의 크기를 700px 로 두고 clientX 를 준다).
 //
 // 검사 함수를 테스트와 변이 시험이 공유한다 — 검사가 정말 잡는지 같은 함수를 변이된 소스에 다시 돌려 증명한다.
 import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
@@ -66,8 +70,12 @@ const statics = {
   //  클릭 처리: 누른 칸(chip.closest('.cell'))의 날짜를 data-occ 보다 먼저 쓴다 · 두 갈래(할 일·일정) 모두 그 값을 쓴다
   clickUsesCell(app) {
     const b = slice(app, CLICK_FROM, CLICK_TO);
-    const ic = b.indexOf("chip.closest('.cell')");
-    assert.ok(ic > 0, "칩 클릭이 누른 칸(chip.closest('.cell'))을 찾지 않는다(B1)");
+    const ic = b.indexOf('const cellDs = chipCellDate(chip, ev);');
+    assert.ok(ic > 0, '칩 클릭이 누른 칸(chipCellDate)을 찾지 않는다(B1)');
+    //  누른 칸: 칸 안 칩(열람 창)은 그 칸, 막대는 가로 위치 → 막대가 덮은 칸 안으로 자른다. 좌표가 없으면 조각 첫 칸, 막대가 아니면 ''(B4).
+    const cd = stripJs(extractFunction(app, 'chipCellDate'));
+    assert.ok(cd.indexOf("chip.closest('.cell')") > 0 && cd.indexOf("chip.closest('.cell')") < cd.indexOf('getBoundingClientRect'), 'chipCellDate 가 칸 안 칩을 먼저 보지 않는다');
+    assert.ok(/Math\.max\(c0, Math\.min\(c1, col\)\)/.test(cd), 'chipCellDate 가 누른 칸을 막대가 덮은 칸 안으로 자르지 않는다');
     const m = /const chipDs = ([^;]+);/.exec(b);
     assert.ok(m, '칩 클릭의 선택 날짜(chipDs)를 한 곳에서 정하지 않는다');
     const parts = m[1].split('||').map((x) => x.trim());
@@ -80,13 +88,13 @@ const statics = {
     assert.ok(/noteTab = 'todo';\s*flashTodoId = chip\.dataset\.todo;/.test(b), '할 일 칩의 드러내기(할 일 탭 + 행 강조)가 사라졌다(B2)');
     assert.ok(/noteTab = 'detail';\s*flashTargetId = chip\.dataset\.id;/.test(b), '일정 칩의 드러내기(상세 탭 + 카드 강조)가 사라졌다(B2)');
   },
-  //  끌어 옮기기는 data-occ 그대로(B5)
+  //  끌어 옮기기는 잡은 자리 기준(결정 3): 끌기 시작이 잡은 날(grab)과 data-occ 를 싣고, 놓기는 (놓은 날 - 잡은 날)만큼 옮긴다
   dragUsesOcc(app) {
     const ds = slice(app, "grid.addEventListener('dragstart', ev => {", "grid.addEventListener('dragover'");
-    assert.ok(ds.includes('occ:chip.dataset.occ'), '끌기 시작이 data-occ(시작일)를 싣지 않는다(B5)');
-    assert.ok(!ds.includes(".closest('.cell')"), '끌기 시작이 누른 칸을 본다 — 시작일 기준 이동이 깨진다(B5)');
+    assert.ok(ds.includes('occ:chip.dataset.occ') && ds.includes('const grab = chipCellDate(chip, ev);') && /occ:chip\.dataset\.occ, grab,/.test(ds), '끌기 시작이 잡은 날(grab)과 data-occ 를 싣지 않는다(결정 3)');
     const dr = slice(app, "grid.addEventListener('drop', ev => {", '/* 날짜 패널 */');
-    assert.ok(dr.includes('diffDays(p.occ || e.date, target)'), '기간 일정 드롭이 data-occ(시작일) 기준 이동이 아니다(B5)');
+    assert.ok(dr.includes('shiftByGrab(e.date, e.endDate, p.grab || p.occ || e.date, target)'), '기간 일정 드롭이 잡은 자리 기준 이동이 아니다(결정 3)');
+    assert.ok(dr.includes('const cell = dropCellAt(ev);'), '놓을 칸을 손가락 아래 칸(dropCellAt)으로 찾지 않는다(막대가 칸을 덮는다)');
   },
   //  패널 의미 — 상세 탭은 그날에 걸친 발생을, 할 일 탭은 그날을 덮는 할 일을 보인다(시작일만 보이지 않는다 · B2 의 전제)
   panelsCoverRange(app) {
@@ -98,7 +106,7 @@ const statics = {
 };
 
 test('정적①: 칩 클릭은 누른 칸의 날짜 → data-occ → 현재 선택 순으로 고르고, 드러내기는 그대로(B1·B2·B4)', () => statics.clickUsesCell(src));
-test('정적②: 끌어 옮기기는 계속 data-occ(시작일) 기준(B5)', () => statics.dragUsesOcc(src));
+test('정적②: 끌어 옮기기는 잡은 자리 기준(결정 3), 놓을 칸은 손가락 아래 칸', () => statics.dragUsesOcc(src));
 test('정적③: 상세 탭·할 일 탭은 그날에 걸친 기간 항목을 보인다(B2 의 전제)', () => statics.panelsCoverRange(src));
 test('변이①s: data-occ 를 먼저 쓰면 정적① 이 실패한다', () => {
   assert.throws(() => statics.clickUsesCell(MUT.occFirst(src)), /우선순위|먼저 본다/);
@@ -178,8 +186,9 @@ if (!JSDOM) {
       sel: () => w.eval('selectedDate'),
       tab: () => w.eval('noteTab'),
       title: () => doc.getElementById('btnTitle').textContent,
-      evChip: (date, id) => doc.querySelector(`#grid .cell[data-date="${date}"] .chip[data-id="${id}"]`),
-      todoChip: (date, id) => doc.querySelector(`#grid .cell[data-date="${date}"] .chip[data-todo="${id}"]`),
+      //  그 날짜를 덮는 막대(내 창, .gridrow 의 .chip-bar). 누를 자리(__at = 그 날짜)를 실어 돌려준다 → press 가 그 칸 가운데를 누른다.
+      evChip: (date, id) => barAt(doc, date, `[data-id="${id}"]`),
+      todoChip: (date, id) => barAt(doc, date, `[data-todo="${id}"]`),
       card: (id) => doc.querySelector(`#dpBody .card[data-id="${id}"]`),
       todoRow: (id) => doc.querySelector(`#dpBody .todo-row[data-id="${id}"]`),
       selCells: () => [...doc.querySelectorAll('#grid .cell.sel')].map((c) => c.dataset.date),
@@ -194,10 +203,28 @@ if (!JSDOM) {
       return await fn(W);
     } finally { W.close(); }
   }
-  //  누른다 = 칩 안쪽 글자를 클릭(사람이 막대를 누를 때처럼 이벤트가 칩 → 칸 → 그리드로 올라간다).
+  //  date 를 덮는 막대 찾기: 주 줄(data-from)에서 c0 <= 그 날 칸 <= c1 인 막대.
+  function barAt(doc, date, sel) {
+    for (const wk of doc.querySelectorAll('#grid .gridrow[data-from]')) {
+      const from = wk.dataset.from;
+      const col = Math.round((Date.parse(date + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86400000);
+      if (col < 0 || col > 6) continue;
+      const b = [...wk.querySelectorAll('.chip-bar' + sel)].find((x) => Number(x.dataset.c0) <= col && Number(x.dataset.c1) >= col);
+      if (b) { b.__at = date; b.__col = col; return b; }
+    }
+    return null;
+  }
+  //  누른다 = 막대의 그 날짜 칸 가운데를 클릭(주 줄 폭을 700px 로 두면 칸 하나가 100px). 칸(.cell)은 좌표 없이 누른다.
   function press(el, what) {
     assert.ok(el, `${what} 이(가) 그리드에 없다(시드·렌더 문제)`);
-    el.dispatchEvent(new el.ownerDocument.defaultView.MouseEvent('click', { bubbles: true, cancelable: true }));
+    const win = el.ownerDocument.defaultView;
+    const wk = el.closest && el.closest('.gridrow[data-from]');
+    if (wk && el.__col != null && !el.classList.contains('cell')) {
+      wk.getBoundingClientRect = () => ({ left: 0, top: 0, right: 700, bottom: 100, width: 700, height: 100, x: 0, y: 0 });
+      el.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1, clientX: el.__col * 100 + 50, clientY: 40 }));
+      return;
+    }
+    el.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
   }
   const V = (y, m) => ({ y, m });
 
@@ -235,7 +262,7 @@ if (!JSDOM) {
       await withBoot(source, async (W) => {
         W.show(2026, 8, '2026-09-15');
         const chip = W.evChip('2026-10-01', 'e-r');
-        assert.ok(chip && chip.closest('.cell').classList.contains('dim'), '9월 달력의 10/1 칸이 흐린 칸이 아니다(시드 문제)');
+        assert.ok(chip && W.doc.querySelector('#grid .cell[data-date="2026-10-01"]').classList.contains('dim'), '9월 달력의 10/1 칸이 흐린 칸이 아니다(시드 문제)');
         press(chip, '9월 달력 흐린 10/1 칸의 기간 막대');
         assert.deepStrictEqual(W.view(), V(2026, 9), '흐린 10/1 칸 막대를 눌렀는데 10월로 넘어가지 않았다(B3)');
         assert.strictEqual(W.sel(), '2026-10-01', '선택 날짜가 누른 칸(10/1)이 아니다(B3)');
@@ -307,7 +334,8 @@ if (!JSDOM) {
         assert.ok(W.card('e-r') && W.card('e-r').classList.contains('flash'), '칸 밖 칩: 카드가 강조되지 않았다');
       });
     },
-    //  K6 — 끌어 옮기기는 시작일(data-occ) 기준: 10/1 칸 막대를 10/3 칸에 놓으면 +4일(9/29→10/3), 길이 보존
+    //  K6: 끌어 옮기기는 잡은 자리 기준(결정 3): 10/1 칸에서 잡아 10/3 칸에 놓으면 +2일(9/29~10/2 → 10/1~10/4), 길이 보존.
+    //       좌표 없이 잡으면(합성 이벤트) 그 주 조각의 첫 칸(9/29)을 잡은 것이라 예전과 같은 +4일이다.
     async k6(source) {
       await withBoot(source, async (W) => {
         W.show(2026, 9, '2026-10-15');
@@ -318,11 +346,17 @@ if (!JSDOM) {
           Object.defineProperty(e, 'dataTransfer', { value: dt });
           el.dispatchEvent(e);
         };
-        fire(W.evChip('2026-10-01', 'e-r'), 'dragstart');
-        assert.strictEqual(JSON.parse(store['text/plain']).occ, '2026-09-29', '끌기 시작이 data-occ(시작일)를 싣지 않았다(B5)');
+        const bar = W.evChip('2026-10-01', 'e-r');
+        bar.closest('.gridrow').getBoundingClientRect = () => ({ left: 0, top: 0, right: 700, bottom: 100, width: 700, height: 100, x: 0, y: 0 });
+        const ds = new W.w.Event('dragstart', { bubbles: true, cancelable: true });
+        Object.defineProperty(ds, 'dataTransfer', { value: dt }); Object.defineProperty(ds, 'clientX', { value: bar.__col * 100 + 50 }); Object.defineProperty(ds, 'clientY', { value: 40 });
+        bar.dispatchEvent(ds);
+        const pl = JSON.parse(store['text/plain']);
+        assert.strictEqual(pl.occ, '2026-09-29', '끌기 시작이 data-occ(시작일)를 싣지 않았다');
+        assert.strictEqual(pl.grab, '2026-10-01', '끌기 시작이 잡은 날(10/1)을 싣지 않았다(결정 3)');
         fire(W.doc.querySelector('#grid .cell[data-date="2026-10-03"]'), 'drop');
         const e = W.evJSON("(function(){ var e = entryById('e-r'); return { date: e.date, endDate: e.endDate }; })()");
-        assert.deepStrictEqual(e, { date: '2026-10-03', endDate: '2026-10-06' }, '기간 일정 드롭이 시작일 기준 이동이 아니다(B5·K6): ' + JSON.stringify(e));
+        assert.deepStrictEqual(e, { date: '2026-10-01', endDate: '2026-10-04' }, '기간 일정 드롭이 잡은 자리 기준 이동이 아니다(결정 3·K6): ' + JSON.stringify(e));
       });
     },
   };
@@ -333,7 +367,7 @@ if (!JSDOM) {
   test('K4: 기간 할 일 막대 10/1 클릭 → 달 그대로 · 할 일 탭 + 행 강조 · 접힌 「이 날」도 편다', () => checks.k4(src));
   test('K5: 단일일·주간 반복 칩은 누른 칸(= 그 발생일)을 고른다', () => checks.k5(src));
   test('B4: 칸 밖 칩은 data-occ 로 대체한다', () => checks.b4(src));
-  test('K6: 끌어 옮기기는 시작일(data-occ) 기준 — 10/1 칸에서 끌어 10/3 에 놓으면 9/29~10/2 → 10/3~10/6', () => checks.k6(src));
+  test('K6: 끌어 옮기기는 잡은 자리 기준. 10/1 칸에서 잡아 10/3 에 놓으면 9/29~10/2 → 10/1~10/4', () => checks.k6(src));
 
   test('변이①: data-occ 를 누른 칸보다 먼저 쓰면 K1 이 실패한다', async () => {
     await assert.rejects(() => checks.k1(MUT.occFirst(src)), /달이 바뀌었다/);

@@ -10,7 +10,8 @@
 - [보고서 글 편집](보고서-글-편집): 일간, 주간보고에 상세 줄 쓰기, 이 보고서에서 빼기(×), 임시 저장, 보고서와 캘린더는 따로
 - [월간 보고](월간-보고): 보고서 창의 네 번째 탭, 회사 월간보고 양식 .docx 저장, 자동으로 채우는 칸(수행 실적, 기타)과 직접 쓰는 칸, 개발 일정 그림, 저장 위치, Word 와 한컴
 - [다른 사람 일정 보기](다른-사람-일정-보기): 툴바의 '👥 다른 사람 일정', 사람/조직도 탭, 즐겨찾기와 최근 본 사람, 사람 바꾸기, 보이는 것과 안 보이는 것, 밀도, 겹쳐 보기와 나란히 보기, 시간 겹침
-- [날짜 누르기와 기간 일정](날짜-누르기와-기간-일정): 무엇을 누르면 어느 날짜가 선택되는지, 기간 막대 클릭 수정(2026-10-01)
+- [날짜 누르기와 기간 일정](날짜-누르기와-기간-일정): 여러 날 일정과 할 일의 막대 모양, 무엇을 누르면 어느 날짜가 선택되는지, 잡은 날 기준으로 끌어 옮기기
+- [일정 입력 창](일정-입력-창): 모든 칸이 보이는 한 화면 입력 창, 5분 단위 시각 칸, 반복(안 함, 매주, 매월)과 예전 세부 값 보존, 좁은 창의 아래 시트
 - [과제 순서 바꾸기](과제-순서-바꾸기): '🏷️ 내 과제'의 ▲▼ 로 순서를 정하면 보고서 순서가 따라갑니다
 - [장소 입력과 회의실](장소-입력과-회의실): 장소 칸에서 회사 공용 회의실을 고르거나 직접 적습니다. 목록은 관리자가 관리합니다
 - [기본 과제 휴가와 기타](기본-과제-휴가와-기타): 늘 있는 휴가, 기타 과제, 과제 삭제 시 데이터 삭제, 다른 과제로 옮기기
@@ -37,6 +38,7 @@
 - 보고서 글 편집 기획서: [`docs/REPORT-EDIT.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/REPORT-EDIT.md), 실 위젯 루프 `tests/loop-report-edit.mjs`
 - 주간 글 편집 기획서: [`docs/WEEKLY-EDIT.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/WEEKLY-EDIT.md), 실 위젯 루프 `tests/loop-weekly-edit.mjs`
 - 버전 관문 기획서: [`docs/VERSION-GATE.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/VERSION-GATE.md), 운영 정본 [`docs/DB-RELEASE-OPS.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/DB-RELEASE-OPS.md), 실 위젯 루프 `tests/loop-schema-gate.mjs`
+- 개인 탭 개선 기획서: [`docs/PERSONAL-IMPROVE-PLAN.md`](https://github.com/Peace-Min/task-calendar/blob/feat/personal-improve/docs/PERSONAL-IMPROVE-PLAN.md), 화면 시험 `tests/personal-improve.test.mjs`, 실 위젯 루프 `tests/loop-personal-improve.mjs`
 - 과제 공용 캘린더 기획서: [`docs/PROJECT-CALENDAR-PLAN.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/PROJECT-CALENDAR-PLAN.md), 실 위젯 루프 `tests/loop-project-calendar.mjs`, DB 계약 `tests/db-project-calendar.mjs`
 - 월간보고 기획서: [`docs/MONTHLY-REPORT-PLAN.md`](https://github.com/Peace-Min/task-calendar/blob/feat/monthly-report-plan/docs/MONTHLY-REPORT-PLAN.md), 화면 시험 `tests/monthly-report.test.mjs`, 실 위젯 루프 `tests/loop-monthly-report.mjs`
 - 화면 혼란 3건 기획서: [`docs/UI-CLARITY-2026-10-01.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/UI-CLARITY-2026-10-01.md)

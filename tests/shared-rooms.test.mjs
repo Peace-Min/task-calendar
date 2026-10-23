@@ -382,12 +382,16 @@ if (!JSDOM) {
     await settle(200);
   });
 
-  test('(R) 빠른 추가: 장소, 반복 두 칸 나란히, 같은 콤보박스, 직접 입력 저장', async () => {
-    B.ev("openQuickAdd('2026-10-23', 'event'); qaToggleDetail();");
+  //  2026-10-23 한 화면 폼(docs/PERSONAL-IMPROVE-PLAN.md 결정 6): 옵션 더보기(qaToggleDetail, #qaDetail)가 없어지고 장소와 반복이 처음부터 보인다.
+  //  예전 '장소 옆(row2)에 반복' 배치 대신 한 화면 폼 칸 순서(반복 다음 장소, 각각 한 줄)를 본다.
+  test('(R) 빠른 추가(한 화면 폼): 장소와 반복이 처음부터 보이고, 같은 콤보박스, 직접 입력 저장', async () => {
+    B.ev("openQuickAdd('2026-10-23', 'event');");
     await settle(40);
     const inp = $(B, '#qaLoc');
     assert.ok(inp && inp.getAttribute('role') === 'combobox', '빠른 추가 장소 칸이 콤보박스가 아니다');
-    assert.ok($(B, '#qaDetail .row2 #qaRecur'), '반복 칸이 장소 옆(row2)에 없다');
+    assert.ok($(B, '#qaRecurWrap #qaRecur') && !$(B, '#qaRecurWrap').classList.contains('hidden'), '반복 칸이 처음부터 보이지 않는다');
+    assert.ok(!$(B, '#qaLocWrap').classList.contains('hidden') && $(B, '#qaLocWrap').contains(inp), '장소 칸이 처음부터 보이지 않는다');
+    assert.ok(!$(B, '#qaMore') && !$(B, '#qaDetail'), '옵션 더보기가 남아 있다');
     assert.ok(!$(B, '#qaRoomMgr'), '빠른 추가에 회의실 관리 링크가 남았다');
     inp.dispatchEvent(new B.w.Event('focus'));
     type(B, inp, '세미');

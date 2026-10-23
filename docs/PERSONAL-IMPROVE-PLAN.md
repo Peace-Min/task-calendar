@@ -1,6 +1,6 @@
 # 개인 탭 개선 기획 (기간 막대, 한 화면 입력 폼)
 
-작성 2026-10-23. 상태: 기획 확정, 개발 전. 브랜치 `feat/personal-improve`. 시안: [prototypes/personal-improve.html](prototypes/personal-improve.html).
+작성 2026-10-23. 상태: 개발 끝(실제 앱 QA 전). 구현 메모는 §6. 브랜치 `feat/personal-improve`. 시안: [prototypes/personal-improve.html](prototypes/personal-improve.html).
 
 ## 1. 목표
 
@@ -45,3 +45,51 @@
 2. 개발: 월간 막대, 끌기, 한 화면 폼(일정, 할 일), 시각 5분 단위(개인과 과제), 반복 단순화와 세부 값 보존, 좁은 창 시트.
 3. QA: strict 게이트, 실제 앱 루프(기존 개인 루프 + 새 루프), 넓은 창과 400px 캡처를 시안과 나란히 비교.
 4. 위키: 개인 탭 사용법 갱신.
+
+## 6. 구현 메모 (2026-10-23 개발)
+
+바꾼 곳은 `task-calendar-prototype.html` 하나다(위젯 C#, DB, 저장 형식 변경 없음).
+
+### 월간 막대(결정 1~4)
+
+- 내 창의 `#grid` 는 `.bars` 이고 주마다 한 줄 격자(`.gridrow`)다. 칸(`.cell`)은 그 줄의 모든 행을 덮고(`grid-row:1 / -1`), 기록(`.chip.chip-bar`)은 차선 행에 놓인다. 과제 탭 `.pc-week` 와 같은 짜임이다. 칸의 class, `data-date`, roving tabindex, 접근성 이름은 예전 그대로라 키보드 이동과 선택 표시(`selectDate`, `focusGridDate`)는 손대지 않았다.
+- 그리기: `renderMonthBars`, 막대 하나: `barChipHtml`(예전 `chipHtml`, `todoChipHtml` 의 모양을 그대로 옮겼다. 색 띠, 시간 점, 할 일 테두리와 동그라미, 완료, 중요 별, 반복 표시, 작업일지 렌치).
+- 차선: `pmLayoutWeek`(순수). 과제 탭 `pcLayoutWeek` 와 출력 모양(c0, c1, cl, cr, lane)은 같지만 하루 기록도 차선에 넣어야 해서(예전 칸별 칩의 backfill) 끝 날짜 비교 대신 칸 점유표로 배치한다. 여러 날 먼저(시작일, 긴 것, key), 하루 기록은 그 칸의 빈 차선을 위부터. 하루 기록끼리의 순서는 예전 `entrySort` 그대로다.
+- 보이는 차선과 +N: `pmFitWeek`(순수), `fitBars`. 과제 탭은 주 전체에 한 상한을 걸지만, 개인 탭은 예전처럼 **칸마다** 정한다(다 들어가는 칸은 다 보이고 넘치는 칸만 +N 자리를 남긴다). 막대는 덮는 칸 모두에서 보일 때만 보이고, 한 칸에서 숨으면 덮는 칸 모두의 +N 에 든다. 높이를 잴 수 없으면(jsdom, 그리기 전) 전부 보인다. 그리기 한도(고정, 촘촘히 12 차선, 펼침 60 차선)는 예전 RENDER_CAP 그대로다.
+- `pcMonthCap` 은 재사용하지 않았다. 인자 둘(높이, 차선 수) 계약이 과제 탭 시험에 묶여 있어 치수를 받을 수 없다. 같은 꼴의 `pmMonthCap` 을 두고 치수만 다르다(머리 27px, 차선 19px + 사이 2px, +N 줄 16px). 예전 칩 높이(19~20px)와 보이는 개수를 맞추려는 값이다.
+- 밀도: 고정은 주 줄이 격자 높이를 나눠 갖고, 촘촘히는 줄 176px, 펼침은 줄이 내용만큼 늘고(최소 74px) 높이로 접지 않는다.
+- 좁은 폭: 760px 이하 기간 글자, 560px 이하 ◂ ▸ 를 숨긴다(과제 탭 규칙과 같은 경계).
+- 열람 창(PEER)은 `renderMonthGrid` 그대로다. `barChipHtml` 은 `_mine` 이면 `chip-mine` 을 붙이는데, 내 창에는 `_mine` 이 올 수 없으므로(passFilter) 보통은 닿지 않는다. 그 계약이 깨졌을 때 peer-overlay 변이⑥ 이 내 창에서 겹을 셀 수 있게 남겼다.
+
+### 누르기와 끌기(결정 2, 3)
+
+- 누른 날짜: `chipCellDate`. 칸 안 칩(열람 창)은 그 칸, 막대는 주 줄의 가로 위치로 칸을 찾아 막대가 덮은 칸 안으로 자른다. 좌표가 없으면(키보드, 합성 클릭) 그 주 조각의 첫 칸이다(시작일 달로 튀지 않는다). 막대가 아니면 '' 이라 예전처럼 data-occ 로 대체(B4).
+- +N 은 칸 밖에 놓이므로 그리드 클릭에 `.more[data-more]` 갈래를 넣었다(그 날짜를 고른다).
+- 끌기: `dragstart` 가 잡은 날(`grab`, chipCellDate)을 싣고, 놓을 칸은 `dropCellAt`(막대 위에 놓아도 손가락 아래 칸), 이동은 `shiftByGrab`(순수, 놓은 날 - 잡은 날). 기간 일정과 기간 할 일 모두 같은 규칙이고, 하루 일정은 예전과 같다(잡은 날 = 그 날). 저장(`save`), 연결 잠금(`guardEdit`), 반복 금지, 안내 문구는 그대로다. 예전에도 끌기에는 실행 취소가 없었고 지금도 없다.
+
+### 한 화면 폼(결정 6, 8, 9, 10)
+
+- `#quickAdd` 마크업을 한 화면 폼으로 다시 썼다. id 는 예전 것을 그대로 쓴다(qaTitle, qaDate, qaEndDate, qaCat, qaAllDay, qaRemBlock, qaRecur, qaRecurHint, qaLoc, qaMemo, qaMemoLb, qaPrio, qaSave). 칸 모양은 과제 등록 폼(`.pcf-grid`, `.pcf-f`)이다.
+- 걷은 것: 옵션 더보기(`#qaMore`, `#qaDetail`, `qaRenderDetail`, `qaToggleDetail`, `qaMoreLabel`), 자세히 편집(`#qaAdvanced` 와 그 배선), 메모 자동 높이(`autoGrowArea`, 이제 3줄 칸), 시/분 고르기(`fillTimeSelects`, `readTimeSel`, `writeTimeSel`)와 그 CSS(`.qa-detail`, `.qa-more`, `.qa-advanced`, `.qa-title`, `.qa-ctx`, `.qa-when`, `.qa-trow`, `.qa-tcell`, `.qa-tlbl`, `.qa-tarrow`, `.timepick`).
+- 새 일정의 종료일 기본값은 시작일(하루 일정), 할 일은 비움. 새 기록에서 유형을 바꾸면 이 기본값을 따라 바꾸고, 시작일을 바꾸면 종료일을 같은 만큼 옮긴다(기간 길이 유지). 종료일이 시작일보다 빠르면 폼 안 오류 줄(`#qaErr`)과 저장 거절.
+- 반복(결정 8): 고르기는 안 함, 매주, 매월. 수정하는 일정의 원래 반복(`qaRecurOrig`)을 보존해 **같은 종류로 저장하면** 간격, 끝 날짜, 횟수를 그대로 되돌려 넣는다. 종류를 바꾸면 간격 1, 끝 없음. 건너뛴 날짜(recurExcept)는 종류와 간격이 같을 때만 보존한다(기록 창 `saveEntryFromForm` 과 같은 규칙). 한 줄 요약은 `recurLabel`(예: 2주마다 화요일, 총 10회)에 세부 값이 있으면 "예전에 정한 간격과 끝을 그대로 둡니다" 를 붙인다. 요약 줄은 반복이 없을 때도 자리를 남긴다(`#qaRecurHint.hidden` 규칙, 높이 고정).
+- 좁은 창(결정 9): 새로 만든 것은 없다. 앱의 440px 이하 규칙이 `.qa-modal` 을 아래 시트(88vh)로 만들고 `.qa-body` 만 스크롤, `.qa-foot` 고정이다. 폼 칸은 440px 이하에서 한 줄에 하나(시각 두 칸만 나란히).
+- 기록 창(`#entryModal`, 결정 10): 일정과 할 일 편집에서는 쓰지 않는다. `editEntry` 는 작업일지(source git) 기록만 기록 창으로 보내고, 반복 일정도 한 화면 폼으로 간다. 기록 창에 남긴 이유: **커밋 불러오기(`#btnGitFetch`)와 커밋 목록 보존(`__entryCommits`)은 그 창에만 있고**, 커밋 내역에서 새 작업일지 기록을 만드는 길(`applyCommits` 가 `openEntryModal('new')`)도 그 창을 쓴다. 그 창의 시각 칸도 결정 7 에 맞춰 바꿨다. 반복과 기간 칸은 작업일지 기록에서는 예전처럼 숨는다.
+- 할 일 고치기는 예전처럼 오른쪽 패널의 인라인 편집이다(계획 §3, 오른쪽 패널 구조는 그대로).
+- 앱 안 도움말과 사용설명서의 '옵션 더보기', '자세히 편집', '시와 분 드롭다운' 문구를 고쳤다. 패치노트의 옛 항목은 이력이라 그대로 뒀다.
+
+### 시각 칸(결정 7)
+
+- 개인 폼(qaStart, qaEnd), 기록 창(fStart, fEnd), 과제 폼(pcfST, pcfET, 예전 step 600) 모두 `<input type="time" step="300">` 이다. 값은 `.value` 로만 읽고(`readTimeIn` 은 형식만 본다) 앱은 `checkValidity`, `reportValidity` 를 부르지 않아 11:38 같은 값이 step 어긋남으로 막히지 않는다. 과제 폼 검증(`pcValidate`)도 분 단위를 보지 않는다.
+- ★ WebView2 의 시각 고르기 목록이 실제로 5분 간격으로 나오는지는 실제 앱에서 눈으로 확인해야 한다(헤드리스 Edge 로는 드롭다운 목록을 찍을 수 없다). 한국어 창에서는 '오전 10:00' 처럼 12시간 표기로 보인다(시안 장면 4 의 지적, 결정 7 이 받아들임). 5분 간격이 아니면 계획 §4 대로 시와 분 고르기를 직접 만들어 대신한다.
+
+### 시험
+
+- 새 시험: `tests/personal-improve.test.mjs`(순수 3, 정적 5, jsdom 8, 변이 묶음 2 + 6).
+- 고친 시험(의도와 함께 파일 안에 적었다):
+  - `range-chip-click.test.mjs`: 칩이 칸 안이 아니라 주 줄의 막대라 칩 찾기(`barAt`)와 누르기(그 날 칸 가운데 좌표)를 바꿨다. 정적①은 `chipCellDate` 를 보고, 정적②와 K6 은 예전 B5(시작일 기준)를 결정 3(잡은 자리 기준)으로 바꿨다. K6 기대값 10/3~10/6 → 10/1~10/4.
+  - `layout-stability.test.mjs`: 반복 안내 대입 문구가 '자세히 편집에서 설정' 에서 반복 요약으로 바뀌었다. 켜짐과 꺼짐 모두 글을 넣는 계약은 그대로 본다.
+  - `offline-web.test.mjs`: '빠른 편집 → 자세히 편집' 관문 항목을 뺐다(진입점이 사라짐). 제목의 진입점 수를 목록 길이에서 읽게 했다.
+  - `shared-rooms.test.mjs`: 옵션 더보기(`qaToggleDetail`) 없이 장소와 반복이 처음부터 보이는지 본다.
+  - `loop-range-chip.mjs`: 막대를 그 날 칸 가운데 좌표로 누른다. `loop-ui-visual.mjs`: 주 줄의 칸과 막대 겹침(V4)은 짜임이라 예외에 넣었다(과제 탭 `.pc-week` 도 같이).
+- 새 실 위젯 루프 `tests/loop-personal-improve.mjs`(PM 이 돌린다). 이 루프와 고친 `loop-range-chip.mjs` 는 개발 중 헤드리스 Edge 에 가짜 호스트(저장 보관, 다시 읽기)를 붙여 한 번씩 돌려 봤다(실제 위젯, DB 아님).

@@ -63,7 +63,9 @@ test('변이: 설명칸 계약은 공허하지 않다(라벨 id 제거·style.di
 test('반복 안내 문구는 꺼져 있어도 채워 둔다(높이 동일)', () => {
   assert.ok(!src.includes('if(on) rh.textContent'),
     'rh.textContent 가 다시 켜질 때만 채워진다 — 빈 요소는 0px 이라 visibility 규칙이 있어도 반복을 고를 때 높이가 튄다');
-  assert.ok(src.includes('rh.textContent = `격주·횟수 등 세부 반복은'), '반복 안내 문구 대입을 찾지 못함');
+  //  2026-10-23 한 화면 폼(docs/PERSONAL-IMPROVE-PLAN.md 결정 8): 안내는 '자세히 편집에서 설정' 이 아니라 반복 한 줄 요약이다.
+  //  켜짐(요약)과 꺼짐('반복 없음', 보이지 않음) 모두 글을 넣는 한 줄 대입이어야 높이가 같다.
+  assert.ok(src.includes("rh.textContent = on ? recurLabel({ date, recur: r })") && src.includes(": '반복 없음';"), '반복 안내 문구 대입(켜짐 요약, 꺼짐 자리 글)을 찾지 못함');
 });
 
 test('미리보기 프레임·스켈레톤 하한은 뷰포트 비례(min(420px,60vh))', () => {
