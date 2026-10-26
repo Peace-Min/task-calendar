@@ -161,3 +161,24 @@ test('변이G6: 권한 파일에 cal_entry_commit GRANT 가 되살아나거나 �
   assert.throws(() => checks.tools({ ...src, grants: src.grants + "\nGRANT SELECT, INSERT, DELETE ON taskmgr.cal_entry_commit TO 'taskmgr_app'@'%';\n" }), /cal_entry_commit 에 권한/);
   assert.throws(() => checks.tools({ ...src, seed: src.seed + "\nconst cols = ['uses_repo'];\n" }), /uses_repo/);
 });
+
+//  ⑦ 과제 데이터 내보내기의 회신 스레드(2026-10-26 QA 실측: 무한 로딩).
+//    파일 쓰기는 Task.Run 안에서 한다. 그 안에서 GitReply 를 바로 부르면 웹뷰 접근이 스레드 오류로 묻혀(로그 'GitReply 오류')
+//    웹이 120초 동안 '내보내는 중' 에 머문다. 백그라운드 회신은 ReplyOnUi(UI 스레드로 넘김)여야 한다.
+const exportBody = (code) => {
+  const m = /private void RunResearchExport\([\s\S]*?\n {8}\}/.exec(code);
+  assert.ok(m, 'RunResearchExport 를 찾지 못했다');
+  const i = m[0].indexOf('Task.Run(');
+  assert.ok(i >= 0, 'RunResearchExport 에 Task.Run 이 없다(파일 쓰기가 UI 스레드로 왔다면 이 검사를 다시 볼 것)');
+  return m[0].slice(i);
+};
+const checkExportReply = (code) => {
+  const bg = exportBody(stripCsComments(code));
+  assert.ok(!/\bGitReply\(/.test(bg), 'RunResearchExport 의 백그라운드 구간에서 GitReply 를 바로 부른다(회신이 사라져 무한 로딩)');
+  assert.ok((bg.match(/\bReplyOnUi\(/g) || []).length >= 2, 'RunResearchExport 의 백그라운드 구간이 성공과 실패 모두 ReplyOnUi 로 회신하지 않는다');
+};
+test('Git 삭제⑦: 과제 데이터 내보내기는 백그라운드에서 ReplyOnUi 로 회신한다(무한 로딩 방지)', () => checkExportReply(src.main));
+test('변이G7: 내보내기 성공 회신을 GitReply 로 되돌리면 ⑦ 이 실패한다', () => {
+  const bad = swap(src.main, 'ReplyOnUi(reqId, new { ok = true, outPath = outDir, calendar = true });', 'GitReply(reqId, new { ok = true, outPath = outDir, calendar = true });');
+  assert.throws(() => checkExportReply(bad), /GitReply 를 바로 부른다/);
+});

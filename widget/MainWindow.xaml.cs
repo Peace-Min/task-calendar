@@ -1137,9 +1137,10 @@ namespace TaskCalendarWidget
                     // 편의: 결과 폴더 열기(실패해도 무시, 필수 아님)
                     try { Process.Start(new ProcessStartInfo { FileName = outDir, UseShellExecute = true }); } catch { }
 
-                    GitReply(reqId, new { ok = true, outPath = outDir, calendar = true });
+                    //  백그라운드 스레드라 UI 스레드로 넘겨 회신한다(GitReply 를 여기서 부르면 웹뷰 접근이 스레드 오류로 묻혀 웹이 끝없이 기다렸다)
+                    ReplyOnUi(reqId, new { ok = true, outPath = outDir, calendar = true });
                 }
-                catch (Exception ex) { GitReply(reqId, new { ok = false, error = ex.Message }); }
+                catch (Exception ex) { ReplyOnUi(reqId, new { ok = false, error = ex.Message }); }
             });
         }
 
