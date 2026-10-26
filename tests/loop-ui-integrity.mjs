@@ -1048,12 +1048,16 @@ async function invUiMatchesDb(snap, { codeOpen, custOpen, kind }) {
 
 const CODE_BOX = '#codeList', CUST_BOX = '#custList';
 
+/* 넘겨받은 모달을 그대로 보고 닫는다. 닫혔으면(원래 닫혀 있었으면) true.
+ *  ★ 2026-10-26 까지는 #codeModal 이 아니면 전부 발주처 창(custOpen)을 봤다. 그래서 구성원 편집, 직원 폼,
+ *    구성원 보기는 닫히지 않고 남았고, 다음 실행이 지난 실행의 명부와 켜진 퇴사자 보기로 U3, U4 를 냈다.
+ *    모든 모달은 하단에 [data-close] 버튼이 있다(닫기 또는 취소). */
 async function closeIfOpen(modalSel) {
-  const s = await state();
-  const open = modalSel === '#codeModal' ? s.codeOpen : s.custOpen;
-  if (!open) return;
+  const isOpen = () => ev(`__lt.isOpen(${jstr(modalSel)})`);
+  if (!(await isOpen())) return true;
   await ev(`__lt.click(${jstr(modalSel + ' .modal-foot [data-close]')})`);
-  await waitFor((x) => !(modalSel === '#codeModal' ? x.codeOpen : x.custOpen), { timeout: 4000 });
+  for (const t0 = Date.now(); Date.now() - t0 < 4000; await sleep(120)) if (!(await isOpen())) return true;
+  return false;
 }
 
 /** 구분·상태 관리 모달 진입 — 공식 과제 화면 **하단 줄**의 「구분·상태 관리」(#offCodeMgr)를 실제 클릭.
@@ -1973,9 +1977,14 @@ const tmpUser = () => `zzU${OPT.seed}_${++tempSeq}`;   // login_id 형식 ^[A-Za
 
 // 「구성원 편집」 열기 — 진입 버튼 자체가 관리자에게만 생기므로, 없으면 그 사실을 그대로 돌려준다.
 //   ★ 버튼을 만드는 것은 「사용자 정보」의 권한 조회다(loadUserPerm). 그래서 #btnUser 를 먼저 누른다.
+//   ★ 이미 열려 있으면 닫고 다시 연다. 열린 창은 그때의 명부와 「퇴사자 보기」 상태를 들고 있어서
+//     (지난 실행이 남긴 창이면 지운 임시 계정까지 든다) 그대로 쓰면 U3, U4 가 화면이 아닌 낡은 상태를 판정한다.
 async function openUserAdminModal() {
   const s0 = await state();
-  if (s0.uaOpen) return s0;
+  if (s0.uaOpen) {
+    await closeIfOpen('#userEditModal');
+    if (!(await closeIfOpen('#userAdminModal'))) return await state();   // 못 닫았다: 호출부가 판정 못 함으로 다룬다
+  }
   const s1 = await state();
   if (s1.entryBtn !== true) return s1;   // 구버전 페이지(함수 없음) — 호출한 쪽이 건너뛴다
   await ev(`(openUserAdmin(), 1)`);   // J5 — 사용자 정보 입구 대신 같은 함수(관리자 판정은 회신 uaAdmin)
@@ -2403,6 +2412,10 @@ async function main() {
     const leak = await state();
     if (leak && (leak.trOpen || leak.ctOpen)) {
       violate('FIN', `종료 시 모달이 열린 채로 남았다(휴지통=${leak.trOpen} · 이름대조 확인창=${leak.ctOpen})`);
+    }
+    //  직원 관리 창도 본다. 남으면 다음 실행의 직원 관리 구간이 낡은 명부로 시작한다(2026-10-26 U3, U4 의 원인).
+    if (leak && (leak.uaOpen || leak.ueOpen || leak.mbOpen)) {
+      violate('FIN', `종료 시 직원 관리 창이 열린 채로 남았다(구성원 편집=${leak.uaOpen}, 직원 폼=${leak.ueOpen}, 구성원 보기=${leak.mbOpen})`);
     }
   } catch (_) { }
 
