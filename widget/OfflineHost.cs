@@ -87,7 +87,7 @@ namespace TaskCalendarWidget
             string? loginId = CurrentLoginId();
             if (string.IsNullOrEmpty(loginId)) return false;
             CalendarSnapshot? fresh;
-            try { fresh = await new CalendarDb(Log).LoadSnapshotAsync(loginId, RepoPaths.Load(_dataDir, Log).Map); }
+            try { fresh = await new CalendarDb(Log).LoadSnapshotAsync(loginId); }
             catch (Exception ex) { Log("S9: 다시 읽지 못했다 — 충돌 그대로 둔다: " + DbErrors.Sanitize(ex.Message)); return false; }
             if (fresh == null || fresh.UserId != snap.UserId) { Log("S9: 서버 스냅샷을 받지 못했다 — 충돌 그대로 둔다"); return false; }
             if (!CalendarWriteDb.DiffIsEmpty(stateJson, fresh.StateJson))

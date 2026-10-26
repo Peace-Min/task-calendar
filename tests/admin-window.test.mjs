@@ -49,7 +49,7 @@ const ADMIN_CMDS = ['adminWinReady', 'userInfoGet', 'gateRecheck',
 const NEVER = ['ready', 'reloadState', 'saveState', 'replaceAllState', 'unsavedState', 'userLogin', 'userLogout', 'userSessionGet',
   'peerOpen', 'adminOpen', 'peerSchedule', 'peerMine', 'peerWinReady', 'netcusSubmit', 'netcusWeekSubmit', 'reminderSync',
   'updateApply', 'updateCheck', 'updateSetSource', 'close', 'hide', 'menu', 'pin', 'focus', 'winMinimize', 'winMaximizeToggle',
-  'dragbegin', 'resizebegin', 'pickfolder', 'pickImportXml', 'exportResearch', 'openLogFolder', '__dbFault', 'dbPing'];
+  'dragbegin', 'resizebegin', 'pickImportXml', 'exportResearch', 'openLogFolder', '__dbFault', 'dbPing'];   // pickfolder 는 2026-10-26 Git, SVN 삭제로 명령째 없앴다
 const PEER_CMDS = ['gateRecheck', 'membersGet', 'peerMine', 'peerSchedule', 'peerWinReady'];
 
 function hostSet(cs, name) {

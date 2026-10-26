@@ -23,6 +23,13 @@
 //   ALTER TABLE project ADD COLUMN ... AFTER ..., ALGORITHM=INSTANT 와 ADD CONSTRAINT ... CHECK(이미 있으면 MySQL 처럼 오류로 멈춘다),
 //   information_schema.COLUMNS(이름, 형과 NULL 허용, 바로 앞 칸 자리)와 TABLE_CONSTRAINTS(CHECK 이름) 하위 질의,
 //   그리고 새 표 project_schedule_image 의 모양(defs, MEDIUMBLOB 열 포함).
+//   Git, SVN 삭제(v18 조각 migrations/v18-remove-git.sql): 일정 표 셋의 행(cal_entry 의 user_id, entry_no, source,
+//   cal_entry_except, cal_entry_commit), 지울 칸과 CHECK 의 목록과 cal_user_pref 표 설명(vcs 옵션, 기본은 17 까지의 모양).
+//   DELETE FROM cal_entry WHERE user_id > 0 AND source = 'git'(FK CASCADE 로 자식 행도 지운다, 트랜잭션 안),
+//   SELECT COUNT(*) INTO @x FROM cal_entry WHERE source = 'git', DROP TABLE cal_entry_commit,
+//   ALTER TABLE ... DROP CHECK(없으면 3821), ALTER TABLE ... DROP COLUMN ..., ALGORITHM=INSTANT(없으면 1091, 그 칸을 쓰는
+//   CHECK 가 남아 있으면 MySQL 처럼 3959), ALTER TABLE cal_user_pref COMMENT, 그리고 information_schema.COLUMNS 와
+//   TABLE_CONSTRAINTS 의 이름 하나 또는 IN 목록 하위 질의. 지울 칸이 없는데 그 칸을 읽거나 지우면 1054 로 멈춘다.
 //
 // ★ *.test.mjs 가 아니다(러너가 수집하지 않는다. ps-guard-lib.mjs 머리말과 같은 이유).
 
@@ -213,16 +220,38 @@ export function defOf(createSql) {
   return { cols: body.split('\n').filter((l) => COL_LINE.test(l)).length, fks: (body.match(/\bFOREIGN KEY\b/g) || []).length };
 }
 
+// ── Git, SVN 삭제(v18): 지울 칸과 CHECK, 그리고 CHECK 가 쓰는 칸 ──────────────────
+//  이름은 '표.칸', '표.CHECK' 다. 정본 schema-calendar.sql 17 의 모양이다(18 에서는 모두 없다).
+export const VCS_COLS = ['cal_entry.source', 'cal_category.uses_repo', 'cal_user_pref.git_author', 'cal_user_pref.svn_author', 'cal_user_pref.git_commit_body'];
+export const VCS_CHECKS = ['cal_entry.chk_cal_entry_source', 'cal_entry.chk_cal_entry_git', 'cal_category.chk_cal_category_usesrepo01', 'cal_user_pref.chk_cal_user_pref_commit_body'];
+const VCS_CHECK_USES = {
+  chk_cal_entry_source: ['source'], chk_cal_entry_git: ['source', 'end_date', 'recur_freq'],
+  chk_cal_category_usesrepo01: ['uses_repo'], chk_cal_user_pref_commit_body: ['git_commit_body'],
+};
+const VCS_TABLES = ['cal_entry', 'cal_category', 'cal_user_pref'];
+export const PREF_COMMENT_V17 = '사용자당 1행 설정 — 커밋 수집 작성자(git/svn) + 보고서 서식. PK=(user_id). 삭제 경로 없음.';
+export const PREF_COMMENT_V18 = '사용자당 1행 설정(보고서 서식). PK=(user_id). 삭제 경로 없음.';
+export const VCS_V17 = () => ({ cols: [...VCS_COLS], checks: [...VCS_CHECKS], prefComment: PREF_COMMENT_V17 });
+export const VCS_V18 = () => ({ cols: [], checks: [], prefComment: PREF_COMMENT_V18 });
+const listNames = (one, list) => (one !== undefined ? [one] : [...list.matchAll(/'(\w+)'/g)].map((x) => x[1]));
+//  일정 표 셋의 행을 한 줄 글자로(상태 비교용). cal_entry 의 source 는 칸이 있을 때만 행에 있다.
+const ROW_KEY = {
+  cal_entry: (r) => `${r.user_id}:${r.entry_no}` + ('source' in r ? `:${r.source}` : ''),
+  cal_entry_except: (r) => `${r.user_id}:${r.entry_no}:${r.d}`,
+  cal_entry_commit: (r) => `${r.user_id}:${r.entry_no}:${r.seq}`,
+};
+
 // ── 흉내 DB ────────────────────────────────────────────────────────────
 //  meta: { 키: 값 } (cal_schema_meta). 실행 기록(writes)과 updated_at 흉내(시각 카운터)를 남긴다.
 //  tables: { cal_room: [{ user_id, name }], room_code: [{ name, sort_order }] } 처럼 있는 표만 준다(없는 키 = 없는 표).
 //  표 바꾸기도 writes 에 'table:<이름>' 으로 남긴다(다시 돌렸을 때 바뀐 것이 없는지 보려고).
 export class FakeDb {
-  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {}, project = PROJECT_V16() } = {}) {
+  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {}, project = PROJECT_V16(), vcs = VCS_V17() } = {}) {
     this.rows = new Map(Object.entries(meta).map(([k, v]) => [k, { v, at: 0 }]));
     this.tables = Object.fromEntries(Object.entries(tables).map(([n, rs]) => [n, rs.map((r) => ({ ...r }))]));
     this.defs = Object.fromEntries(Object.entries(defs).map(([n, d]) => [n, { ...d }]));   // 표 이름 → { cols, fks }(v16 검증용)
     this.project = { cols: [...project.cols], checks: [...project.checks] };                  // project 표 모양(v17 검증용)
+    this.vcs = { cols: [...vcs.cols], checks: [...vcs.checks], prefComment: vcs.prefComment };  // 지울 칸, CHECK, 표 설명(v18 검증용)
     this.tableExists = tableExists;
     this.schema = schema;
     this.comment = '';
@@ -237,17 +266,19 @@ export class FakeDb {
   snap() { if (!this.tx) this.visible.push(this.state()); }
   meta() { return Object.fromEntries([...this.rows].map(([k, r]) => [k, r.v])); }
   //  meta 에 회의실 표 모양('#tables')을 붙인 것. 앱에 보인 상태 비교와 실패 뒤 재실행 결과 비교에 쓴다.
-  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()), '#project': JSON.stringify(this.project) }; }
+  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()), '#project': JSON.stringify(this.project), '#vcs': JSON.stringify(this.vcs) }; }
   tableShape() {
     const out = {};
     for (const n of Object.keys(this.tables).sort()) {
       out[n] = n === 'room_code'
         ? this.tables[n].map((r) => [r.name, r.sort_order]).sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1))
+        : ROW_KEY[n] ? this.tables[n].map(ROW_KEY[n]).sort()
         : this.defs[n] ? [`cols=${this.defs[n].cols}`, `fks=${this.defs[n].fks}`]
           : this.tables[n].map((r) => `${r.user_id}:${r.name}`).sort();
     }
     return out;
   }
+  hasCol(t, c) { return this.vcs.cols.includes(`${t}.${c}`); }
   hasTable(n) { return n === 'cal_schema_meta' ? this.tableExists : Object.prototype.hasOwnProperty.call(this.tables, n); }
   need(n) { if (!this.hasTable(n)) throw new SqlStop(`${n}(없음)`); return this.tables[n]; }
   //  cal_room 의 이름을 앞뒤 공백을 지우고 ai_ci 로 묶는다. nm 은 묶음의 MIN(cal_room.name 은 _bin 이라 코드 단위 순서).
@@ -278,6 +309,19 @@ export class FakeDb {
       const d = this.defs[m[2]];
       if (!d) throw new Error(`모양을 모르는 표를 센다(defs 에 ${m[2]} 가 없다)`);
       return m[1].toUpperCase() === 'COLUMNS' ? d.cols : d.fks;
+    }
+    //  v18: 일정, 과제, 설정 표의 지울 칸(이름 하나 또는 IN 목록)과 CHECK 이름. 지울 칸 목록에 없는 이름을 물으면 모르는 질의다.
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_entry|cal_category|cal_user_pref)' AND COLUMN_NAME (?:= '(\w+)'|IN \(([^)]*)\))$/.exec(s);
+    if (m) {
+      const names = listNames(m[2], m[3]);
+      for (const c of names) if (!VCS_COLS.includes(`${m[1]}.${c}`)) throw new Error(`모르는 칸을 센다: ${m[1]}.${c}`);
+      return this.schema ? names.filter((c) => this.hasCol(m[1], c)).length : 0;
+    }
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_entry|cal_category|cal_user_pref)' AND CONSTRAINT_NAME (?:= '(\w+)'|IN \(([^)]*)\)) AND CONSTRAINT_TYPE = 'CHECK'$/.exec(s);
+    if (m) {
+      const names = listNames(m[2], m[3]);
+      for (const c of names) if (!VCS_CHECKS.includes(`${m[1]}.${c}`)) throw new Error(`모르는 CHECK 를 센다: ${m[1]}.${c}`);
+      return this.schema ? names.filter((c) => this.vcs.checks.includes(`${m[1]}.${c}`)).length : 0;
     }
     //  v17: project 의 칸(이름만, 또는 형과 NULL 허용까지), 바로 앞 칸 자리, CHECK 이름
     m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = 'project' AND COLUMN_NAME = '(\w+)'(?: AND DATA_TYPE = '(\w+)' AND IS_NULLABLE = '(YES|NO)')?$/.exec(s);
@@ -331,6 +375,12 @@ export class FakeDb {
     if (/^DO 0$/.test(s)) return;
     if ((m = /^SELECT 1 FROM `([^`]+)`$/.exec(s))) throw new SqlStop(m[1]);
     const q = s.replace(/\s+/g, ' ');
+    if ((m = /^SELECT COUNT\(\*\) INTO (@\w+) FROM cal_entry WHERE source = 'git'$/.exec(q))) {   // v18: 남은 커밋 기록
+      const rows = this.need('cal_entry');
+      if (!this.hasCol('cal_entry', 'source')) throw new SqlStop('1054 칸 cal_entry.source 가 없다');
+      this.vars.set(m[1], rows.filter((r) => r.source === 'git').length);
+      return;
+    }
     if ((m = /^SELECT COUNT\(\*\) INTO (@\w+) FROM ([\s\S]+)$/.exec(q))) {
       const f = ROOM_COUNTS[m[2]];
       if (!f) throw new Error(`모르는 문장: ${q.slice(0, 160)}`);
@@ -389,6 +439,48 @@ export class FakeDb {
       const names = this.project.cols.map((c) => colOf(c).name);
       for (const c of ['dev_start_date', 'dev_end_date', 'start_date', 'end_date']) if (!names.includes(c)) throw new SqlStop(`1054 칸 ${c} 이 없다`);
       this.rowCount = 0;
+      return;
+    }
+    //  v18: 커밋 기록 지우기. FK CASCADE 로 예외일과 커밋 목록(표가 남아 있으면)도 함께 지운다.
+    if (q === "DELETE FROM cal_entry WHERE user_id > 0 AND source = 'git'") {
+      this.mutating(s, opts);
+      const rows = this.need('cal_entry');
+      if (!this.hasCol('cal_entry', 'source')) throw new SqlStop('1054 칸 cal_entry.source 가 없다');
+      const gone = rows.filter((r) => r.user_id > 0 && r.source === 'git');
+      const isGone = (x) => gone.some((r) => r.user_id === x.user_id && r.entry_no === x.entry_no);
+      this.tables.cal_entry = rows.filter((r) => !gone.includes(r));
+      for (const child of ['cal_entry_except', 'cal_entry_commit'])
+        if (this.hasTable(child)) this.tables[child] = this.tables[child].filter((x) => !isGone(x));
+      this.rowCount = gone.length;
+      if (gone.length) this.writes.push({ k: 'table:cal_entry', v: `-${gone.length}` });
+      return;
+    }
+    if ((m = /^ALTER TABLE (\w+) DROP CHECK (\w+)$/.exec(q))) {
+      if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
+      if (!VCS_TABLES.includes(m[1])) throw new Error(`모르는 문장: ${q.slice(0, 120)}`);
+      this.mutating(s, opts);
+      const key = `${m[1]}.${m[2]}`;
+      if (!this.vcs.checks.includes(key)) throw new SqlStop(`3821 CHECK ${m[2]} 이 없다`);
+      this.vcs.checks = this.vcs.checks.filter((x) => x !== key);
+      this.writes.push({ k: `check:${m[2]}`, v: 'drop' });
+      return;
+    }
+    if ((m = /^ALTER TABLE (\w+) DROP COLUMN (\w+), ALGORITHM=INSTANT$/.exec(q))) {
+      if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
+      if (!VCS_TABLES.includes(m[1])) throw new Error(`모르는 문장: ${q.slice(0, 120)}`);
+      this.mutating(s, opts);
+      if (!this.hasCol(m[1], m[2])) throw new SqlStop(`1091 칸 ${m[1]}.${m[2]} 이 없다`);
+      const user = this.vcs.checks.find((x) => x.startsWith(`${m[1]}.`) && VCS_CHECK_USES[x.slice(m[1].length + 1)].includes(m[2]));
+      if (user) throw new SqlStop(`3959 CHECK ${user} 가 칸 ${m[2]} 을 쓴다`);
+      this.vcs.cols = this.vcs.cols.filter((x) => x !== `${m[1]}.${m[2]}`);
+      if (m[1] === 'cal_entry' && this.hasTable('cal_entry')) for (const r of this.tables.cal_entry) delete r[m[2]];
+      this.writes.push({ k: `col:${m[1]}.${m[2]}`, v: 'drop' });
+      return;
+    }
+    if ((m = /^ALTER TABLE cal_user_pref COMMENT = '((?:[^']|'')*)'$/.exec(s))) {
+      if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
+      this.mutating(s, opts);
+      this.vcs.prefComment = m[1].replace(/''/g, "'");
       return;
     }
     if (q === ROOM_INSERT) {

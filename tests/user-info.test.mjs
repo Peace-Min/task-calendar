@@ -1431,10 +1431,11 @@ test('변이㉟-e: 조회가 권한 재판정을 빼면 ㉟c 가 실패한다', 
 //  ★ 2026-10-01 — 옛 변이(메모를 읽으면 실패)는 계약이 뒤집혀(P2: 메모를 준다) 뜻을 잃었다.
 //    같은 자리를 지금도 유효한 금지(P3: 알림 설정)로 바꿔 둔다 — 열람 일정 SELECT 에 e.remind 를 끼운다.
 test('변이㉟-f: 조회가 알림 설정(e.remind)을 함께 읽으면 ㉟c 가 실패한다(P3)', () => {
-  const at = caldb.indexOf('"e.title, e.memo, e.source, e.location, " +\n                        "e.recur_freq,');
+  //  (e.source 는 2026-10-26 Git, SVN 삭제로 구조 18 에서 칸째 없어져 앵커에서 뺐다.)
+  const at = caldb.indexOf('"e.title, e.memo, e.location, " +\n                        "e.recur_freq,');
   assert.ok(at >= 0, '변이 앵커(열람 조회의 일정 컬럼 줄)를 찾지 못했다');
-  const bad = caldb.slice(0, at) + '"e.title, e.memo, e.source, e.location, e.remind, " +\n                        "e.recur_freq,'
-    + caldb.slice(at + '"e.title, e.memo, e.source, e.location, " +\n                        "e.recur_freq,'.length);
+  const bad = caldb.slice(0, at) + '"e.title, e.memo, e.location, e.remind, " +\n                        "e.recur_freq,'
+    + caldb.slice(at + '"e.title, e.memo, e.location, " +\n                        "e.recur_freq,'.length);
   assert.notStrictEqual(bad, caldb, '변이가 원본을 바꾸지 못했다');
   assert.throws(() => checks.peerHostReauthorizes(main, bad, pdb), /e\.remind 을\(를\) 읽는다/);
 });

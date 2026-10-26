@@ -106,7 +106,7 @@ class R {
     string login = e.GetProperty("loginId").GetString() ?? "";
     var logs = new List<string>();
     Action<string> log = m => logs.Add(m);
-    var snap = await new CalendarDb(log).LoadSnapshotAsync(login, null);
+    var snap = await new CalendarDb(log).LoadSnapshotAsync(login);
     if (snap == null) { Console.Out.Write(JsonSerializer.Serialize(new { ok=false, err="snapshot null", logs })); return 0; }
     if (op == "read") { Console.Out.Write(JsonSerializer.Serialize(new { ok=true, state=snap.StateJson, rev=snap.Rev, logs })); return 0; }
     var res = await new CalendarWriteDb(log).SaveAsync(snap, e.GetProperty("stateJson").GetString() ?? "");
@@ -126,7 +126,6 @@ const PROJ = root => `<Project Sdk="Microsoft.NET.Sdk">
     <!-- ★ C4(2026-09-03)부터 CalendarDb 가 ProjectDb.CanViewScheduleAsync 를 쓴다 —
          인가 판정을 한 벌로 두려고 거기 뒀다. 이 러너도 그 사슬을 링크해야 한다. -->
     <Compile Include="${root}/widget/ProjectDb.cs" />
-    <Compile Include="${root}/widget/RepoPaths.cs" />
     <Compile Include="${root}/widget/UserSession.cs" />
     <Compile Include="${root}/widget/DeployConfig.cs" /> <Compile Include="${root}/widget/DbErrors.cs" /> <Compile Include="${root}/widget/DbFault.cs" /> <Compile Include="${root}/widget/DbGate.cs" /></ItemGroup>
   <ItemGroup><PackageReference Include="MySqlConnector" Version="2.3.7" /></ItemGroup>
@@ -157,7 +156,7 @@ function makeUser() {
   return Number(u);
 }
 function dropUser(u) {
-  for (const t of ['cal_entry_commit','cal_entry_except','cal_todo_day_note','cal_task_hours','cal_attendance',
+  for (const t of ['cal_entry_except','cal_todo_day_note','cal_task_hours','cal_attendance',
                    'cal_entry','cal_todo','cal_category','cal_user_pref','cal_user_rev'])
     sql(`DELETE FROM ${t} WHERE user_id=${u}`, { readOnly: false, what: `정리(${t})` });
   sql(`DELETE FROM app_user WHERE user_id=${u}`, { readOnly: false, what: '사용자 삭제' });
@@ -166,10 +165,10 @@ function dropUser(u) {
 /* ── 4. 대조 ───────────────────────────────────────────────────────────── */
 //  대조에서 빼는 키. **빼는 것과 잃는 것은 다르다** — 여기 있는 키 중 XML 에 값이 있는 것은
 //  아래 [6] 이 "이관 도구가 따로 처리해야 할 일" 로 반드시 보고한다. 조용히 빼면 안 된다.
-const DROP_CAT   = ['usesRepo', 'createdAt',
-                    'gitRepo', 'svnRepo'];                // §4 — 경로는 DB 에 없다(로컬 repo-paths.json 전용)
+//  (gitRepo, svnRepo, usesRepo, commits 는 2026-10-26 Git, SVN 삭제(구조 18)로 양쪽 모두에 없다. 빼지 않는다:
+//   어느 한쪽에 되살아나면 그대로 차이로 드러나야 한다)
+const DROP_CAT   = ['createdAt'];
 const DROP_ENTRY = ['createdAt', 'updatedAt',
-                    'commits',                            // 지연 로드라 쓰기 계층이 안 건드린다(의도된 제외)
                     'hours'];                             // G-6 — 컬럼 폐지(공수는 cal_task_hours 로 간다)
 const DROP_TODO  = ['createdAt', 'updatedAt'];
 const strip = (o, keys) => { const c = { ...o }; for (const k of keys) delete c[k]; return c; };
@@ -198,10 +197,11 @@ try {
   const s0 = await stateFromXml(xmlText);
   console.log(`  과제 ${s0.categories.length} · 일정 ${s0.entries.length} · 할 일 ${s0.todos.length}` +
               ` · 근태 ${Object.keys(s0.attendance || {}).length}일 · 공수 ${Object.keys(s0.taskHours || {}).length}일`);
-  const srcCommits = s0.entries.reduce((n, e) => n + ((e.commits || []).length), 0);
   const srcExcept  = s0.entries.reduce((n, e) => n + ((e.recurExcept || []).length), 0);
   const srcNotes   = s0.todos.reduce((n, t) => n + Object.keys(t.dayNotes || {}).length, 0);
-  console.log(`  커밋 ${srcCommits} · 예외일 ${srcExcept} · 날짜메모 ${srcNotes}`);
+  //  옛 커밋 기록(source="git")은 fromXML 이 버린다(2026-10-26 Git, SVN 삭제). XML 원문에서 몇 건이었는지만 센다.
+  const xmlGit = (xmlText.match(/<entry [^>]*\bsource="git"/g) || []).length;
+  console.log(`  예외일 ${srcExcept} · 날짜메모 ${srcNotes} · (XML 의 옛 커밋 기록 ${xmlGit}건은 옮기지 않는다)`);
 
   buildRunner();
   U = makeUser();
@@ -223,11 +223,14 @@ try {
   const dt = diffList('할 일', s0.todos, s1.todos, DROP_TODO);
   ok(`할 일 ${s0.todos.length}건이 그대로`, dt.length === 0, dt.slice(0, 2).join('\n      '));
 
-  for (const k of ['attendance', 'taskHours', 'gitAuthor', 'svnAuthor',
-                   'reportMarker', 'reportMarkerCustom', 'reportIndent', 'gitCommitBody',
+  for (const k of ['attendance', 'taskHours',
+                   'reportMarker', 'reportMarkerCustom', 'reportIndent',
                    'reportFormatPrefs', 'reportFont'])
     ok(`${k} 가 그대로`, JSON.stringify(s0[k]) === JSON.stringify(s1[k]),
        `원본=${JSON.stringify(s0[k])} 읽기=${JSON.stringify(s1[k])}`);
+  for (const k of ['gitAuthor', 'svnAuthor', 'gitCommitBody'])
+    ok(`없앤 키 ${k} 가 원본(fromXML)에도 읽기에도 없다(구조 18)`, !(k in s0) && !(k in s1));
+  ok('옛 커밋 기록이 일정에 남지 않았다(구조 18)', !s1.entries.some((e) => 'source' in e || 'commits' in e));
 
   console.log('\n[4] 배열 순서 — 이관의 핵심(§5.3 sort_order)');
   ok('과제 순서 보존', s0.categories.map(c => c.id).join(',') === s1.categories.map(c => c.id).join(','));
@@ -249,16 +252,8 @@ try {
 
   console.log('\n[6] ★ 이관 도구가 따로 해야 할 일 — 이 XML 에서 실제로 드러난 것');
   const todo = [];
-  const gotCommits = s1.entries.reduce((n, e) => n + ((e.commits || []).length), 0);
-  if (srcCommits > 0)
-    todo.push(`커밋 ${srcCommits}건 — 이관은 앱 상태(save)를 거치지 않는다 — 쓰기 계층이 커밋을 다루게 된 뒤에도(G-7 개정) 그렇다.\n` +
-              `      → 이관 도구가 **직접** INSERT 해야 한다. 안 하면 커밋 ${srcCommits}건이 사라진다(읽기 ${gotCommits}건 확인).`);
-
-  const repoCats = s0.categories.filter(c => (c.gitRepo || '') || (c.svnRepo || ''));
-  if (repoCats.length)
-    todo.push(`저장소 경로 ${repoCats.length}건 — DB 에는 '쓰는가' 비트(uses_repo)만 있고 경로는 없다(§4).\n` +
-              `      → 이관 도구가 %APPDATA%\\TaskCalendar\\repo-paths.json 으로 옮기고 uses_repo 를 세워야 한다.\n` +
-              `      → 대상: ${repoCats.map(c => c.id).join(', ')}`);
+  if (xmlGit > 0)
+    todo.push(`옛 커밋 기록 ${xmlGit}건 — 2026-10-26 Git, SVN 삭제(구조 18)로 옮기지 않는다(결정된 손실). 이관 전에 사용자에게 알릴 것.`);
 
   const hourEntries = s0.entries.filter(e => e.hours != null);
   if (hourEntries.length)
@@ -268,7 +263,6 @@ try {
   if (todo.length) todo.forEach(t => note('★ ' + t));
   else note('이 XML 에는 따로 처리할 것이 없다.');
 
-  if (srcCommits === 0) note('커밋 0건 — 이 XML 로는 커밋 이관을 검증할 수 없다(합성 픽스처 필요).');
   if (srcExcept === 0) note('예외일 0건 — 이 XML 로는 검증되지 않는다(loop-calendar-write 의 합성 데이터가 덮는다).');
   if (srcNotes === 0) note('날짜메모 0건 — 위와 같다.');
 

@@ -9,8 +9,8 @@
 //      (막대 위에 놓아도). 주 경계, 달 경계를 넘어도 같다. 반복 일정은 끌 수 없다. 저장은 예전 save() 그대로.
 //   ④ 열람 창(PEER)은 예전 칸별 칩 그대로다(계획 §3).
 //   ⑤ 한 화면 폼(결정 6, 8, 9, 10): 옵션 더보기 없음, 모든 칸이 처음부터 보인다. 반복은 안 함, 매주, 매월. 예전 세부 값(간격, 끝)은
-//      지우지 않고 보존하며 한 줄 요약을 보인다. 좁은 창은 아래 시트(본문 스크롤, 저장 줄 고정). 작업일지 기록만 기록 창으로 간다.
-//   ⑥ 시각 칸(결정 7): 개인 폼과 과제 폼의 시각 칸 여섯이 모두 앱이 만든 시와 분 고르기(timeField)다. 위젯(WebView2)의
+//      지우지 않고 보존하며 한 줄 요약을 보인다. 좁은 창은 아래 시트(본문 스크롤, 저장 줄 고정). 모든 일정 수정이 한 화면 폼이다(예전 기록 창은 2026-10-26 Git 기능과 함께 없앴다).
+//   ⑥ 시각 칸(결정 7): 개인 폼과 과제 폼의 시각 칸 넷이 모두 앱이 만든 시와 분 고르기(timeField)다. 위젯(WebView2)의
 //      input type=time 은 step=300 을 무시하고 분을 1분 단위로 다 보였다(2026-10-23 실제 앱 확인). 분 목록은 정확히 12개(5분 단위),
 //      고르면 'HH:MM' 과 input, change, 직접 치기는 칸을 떠날 때 맞춤(9:3 = 09:30), 못 읽는 값은 되돌림, Esc 는 목록만 닫는다.
 //      5분 단위가 아닌 값(11:38)은 그대로 보이고 그대로 저장된다(목록은 시 11 만 골라진 표시).
@@ -103,7 +103,7 @@ test('변이P: 하루 기록이 빈 차선을 채우지 않거나, 숨은 막대
 });
 
 /* ── (S) 정적 계약 ───────────────────────────────────────────────────── */
-const TIME_IDS = ['qaStart', 'qaEnd', 'fStart', 'fEnd', 'pcfST', 'pcfET'];
+const TIME_IDS = ['qaStart', 'qaEnd', 'pcfST', 'pcfET'];   // (기록 창의 fStart, fEnd 는 2026-10-26 기록 창과 함께 없앴다)
 const statics = {
   //  결정 7: 시각 칸은 모두 앱이 만든 고르기(data-time-field, bind 의 timeFieldAll). 브라우저 시각 칸(type=time)은 없다(WebView2 가 step 을 무시).
   //  분 간격은 5. 예전 시/분 고르기(select)는 없다. 앱은 폼 검증을 부르지 않는다.
@@ -144,10 +144,11 @@ const statics = {
     assert.ok(/flex:1 1 auto;min-height:0;overflow-y:auto/.test(rule(app, '\n.qa-body{')), '폼 본문이 스크롤 상자가 아니다');
     assert.ok(/flex:none/.test(rule(app, '\n.qa-foot{')), '저장 줄이 고정(flex:none)이 아니다');
   },
-  //  결정 10: 작업일지(git) 기록만 기록 창. 반복 일정도 한 화면 폼.
+  //  결정 10: 모든 일정(반복 포함)이 한 화면 폼으로 간다. 예전 기록 창(작업일지 전용)은 2026-10-26 Git 기능과 함께 없앴다.
   editRouting(app) {
     const b = extractFunction(app, 'editEntry');
-    assert.ok(/if\(e && e\.source !== 'git'\) openQuickAdd\(null, 'event', id\);/.test(b), '작업일지가 아닌 일정이 한 화면 폼으로 가지 않는다');
+    assert.ok(/if\(e\) openQuickAdd\(null, 'event', id\);/.test(b), '일정이 한 화면 폼으로 가지 않는다');
+    assert.ok(!/openEntryModal|source/.test(b), '없앤 기록 창이나 작업일지 갈래가 되살아났다');
     assert.ok(!/recur/.test(b), '반복 일정을 기록 창으로 보내는 갈래가 남아 있다');
   },
   //  결정 1~4 와 계획 §3: 내 창은 막대, 열람 창은 예전 칩. 할 일 막대 점선, 좁은 폭 숨김 규칙.
@@ -161,12 +162,12 @@ const statics = {
     assert.ok(/flex:1 0 auto;min-height:74px/.test(rule(app, '.grid.bars.expand > .gridrow{')), '펼침 밀도가 막대 달력에 닿지 않는다');
   },
 };
-test('정적①: 시각 칸(개인 폼, 기록 창, 과제 폼) 여섯이 모두 앱 시각 칸(5분 단위)이고 type=time 이 없으며 폼 검증을 부르지 않는다(결정 7)', () => statics.timeStep(src));
+test('정적①: 시각 칸(개인 폼, 과제 폼) 넷이 모두 앱 시각 칸(5분 단위)이고 type=time 이 없으며 폼 검증을 부르지 않는다(결정 7)', () => statics.timeStep(src));
 test('정적②: 한 화면 폼에 옵션 더보기와 자세히 편집이 없고 모든 칸이 있으며 반복은 셋뿐이다(결정 6, 8)', () => statics.oneScreenForm(src));
 test('정적③: 좁은 창(440px 이하)은 아래 시트, 본문 스크롤, 저장 줄 고정(결정 9)', () => statics.narrowSheet(src));
-test('정적④: 작업일지 기록만 기록 창으로, 반복 일정도 한 화면 폼으로(결정 10)', () => statics.editRouting(src));
+test('정적④: 모든 일정이 한 화면 폼으로, 반복 일정도 한 화면 폼으로(결정 10)', () => statics.editRouting(src));
 test('정적⑤: 내 창은 막대, 열람 창은 칩. 할 일 점선, 좁은 폭 숨김, 밀도 규칙(결정 1~4)', () => statics.barsWiring(src));
-test('변이S: type=time 부활, 앱 시각 칸 표시 빠짐, bind 배선 빠짐, 분 간격 1, 옵션 더보기 부활, 반복 세부 칸 부활, 시트 규칙 삭제, 반복을 기록 창으로, PEER 갈래 삭제를 잡는다', () => {
+test('변이S: type=time 부활, 앱 시각 칸 표시 빠짐, bind 배선 빠짐, 분 간격 1, 옵션 더보기 부활, 반복 세부 칸 부활, 시트 규칙 삭제, 반복을 다른 갈래로, PEER 갈래 삭제를 잡는다', () => {
   assert.throws(() => statics.timeStep(mutate('<input type="text" id="qaStart" data-time-field>', '<input type="time" id="qaStart" step="300">')), /type=time/);
   assert.throws(() => statics.timeStep(mutate('<input type="text" id="pcfET" data-time-field>', '<input type="text" id="pcfET">')), /data-time-field/);
   assert.throws(() => statics.timeStep(mutate('\n  timeFieldAll();   //', '\n  //')), /timeFieldAll/);
@@ -175,7 +176,7 @@ test('변이S: type=time 부활, 앱 시각 칸 표시 빠짐, bind 배선 빠�
   assert.throws(() => statics.oneScreenForm(mutate('    <div class="qa-foot">\n      <button type="button" class="btn" data-close>취소</button>', '    <div class="qa-foot">\n      <button type="button" class="qa-more" id="qaMore">옵션 더보기 ▾</button>\n      <button type="button" class="btn" data-close>취소</button>')), /qaMore|옵션 더보기/);
   assert.throws(() => statics.oneScreenForm(mutate('<span class="qa-hint hidden" id="qaRecurHint" aria-live="polite"></span>', '<input type="number" id="qaRecurInterval"><span class="qa-hint hidden" id="qaRecurHint" aria-live="polite"></span>')), /세부 칸/);
   assert.throws(() => statics.narrowSheet(mutate('  .modal,.modal.wide,.qa-modal{width:100%;max-width:100%;max-height:88vh;border-radius:14px 14px 0 0}', '  .modal,.modal.wide{width:100%;max-width:100%;max-height:88vh;border-radius:14px 14px 0 0}')), /아래 시트/);
-  assert.throws(() => statics.editRouting(mutate("  if(e && e.source !== 'git') openQuickAdd(null, 'event', id);", "  if(e && e.source !== 'git' && !(e.recur && e.recur.freq)) openQuickAdd(null, 'event', id);")), /한 화면 폼|기록 창/);
+  assert.throws(() => statics.editRouting(mutate("  if(e) openQuickAdd(null, 'event', id);", "  if(e && !(e.recur && e.recur.freq)) openQuickAdd(null, 'event', id);")), /한 화면 폼|기록 창/);
   assert.throws(() => statics.barsWiring(mutate("  if(PEER) renderMonthGrid($('#grid'), dens,", "  if(false) renderMonthGrid($('#grid'), dens,")), /열람 창/);
 });
 
@@ -192,13 +193,13 @@ if (!JSDOM) {
   const META = { schemaVersion: '12', expectedSchema: '12', schemaMismatch: false, rev: 1, canWrite: true, userId: 7 };
   const CA = '2026-09-01T00:00:00Z';
   const ENT = (id, date, extra) => Object.assign({ id, date, title: '(예시) 일정 ' + id, categoryId: 'c-a', allDay: true, startTime: '', endTime: '',
-    memo: '', location: '', source: '', commits: [], createdAt: CA, updatedAt: CA }, extra || {});
+    memo: '', location: '', createdAt: CA, updatedAt: CA }, extra || {});
   const TODO = (id, due, extra) => Object.assign({ id, text: '(예시) 할 일 ' + id, done: false, categoryId: 'c-a', due, endDate: '',
     prio: 'normal', createdAt: CA }, extra || {});
   //  2026년 10월: 1일이 목요일. 달력 주 = 9/27, 10/4, 10/11, 10/18, 10/25 (일요일 시작).
   const DATA = {
-    categories: [{ id: 'c-a', name: '(예시) 알파', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-                 { id: 'c-b', name: '(예시) 베타', color: '#1f9d6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
+    categories: [{ id: 'c-a', name: '(예시) 알파', color: '#3e5be0', desc: '', createdAt: CA },
+                 { id: 'c-b', name: '(예시) 베타', color: '#1f9d6b', desc: '', createdAt: CA }],
     entries: [
       ENT('e-long', '2026-10-05', { endDate: '2026-10-13', title: '(예시) 시제품 조립' }),          // 10/5(월)~10/13(화): 두 주에 걸침
       ENT('e-two', '2026-10-07', { endDate: '2026-10-08', title: '(예시) 출장', categoryId: 'c-b' }), // 이틀(기간 글자 없음)
@@ -329,7 +330,7 @@ if (!JSDOM) {
         const wk = W.$$('#grid .chip-bar[data-id="e-wk"]');
         assert.deepStrictEqual(wk.map((x) => x.dataset.occ), ['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26'], '반복 발생이 다르다');
         assert.ok(wk.every((x) => x.dataset.kind === 'recur' && x.getAttribute('draggable') === 'false'), '반복 발생을 끌 수 있다');
-        //  작업일지는 칸에 그리지 않는다(예전과 같다), 휴일 글자
+        //  옛 작업일지 기록은 읽지 않으므로 칸에 없다(2026-10-26 Git 삭제), 휴일 글자
         assert.ok(!W.$('#grid .chip-bar[data-id="e-git"]'), '작업일지가 달력에 그려졌다');
         assert.ok(/개천절/.test(W.$('#grid .cell[data-date="2026-10-03"] .hol').textContent), '휴일 이름이 없다');
         //  칸 접근성 이름에 그날 기록 수(막대 포함)
@@ -493,11 +494,11 @@ if (!JSDOM) {
         assert.deepStrictEqual(e.recur, { freq: 'monthly', interval: 1, until: '', count: 0 }, '새 반복 일정의 반복 값이 기본값이 아니다');
       });
     },
-    //  반복 세부 값 보존과 요약(결정 8), 작업일지만 기록 창(결정 10)
+    //  반복 세부 값 보존과 요약(결정 8), 옛 작업일지 기록은 읽지 않는다(2026-10-26 Git 삭제)
     async recur(source) {
       await withBoot(source, async (W) => {
         W.ev("editEntry('e-rc')");
-        assert.ok(W.ev("isOverlayOpen(document.getElementById('quickAdd'))") && !W.ev("isOverlayOpen(document.getElementById('entryModal'))"), '반복 일정 수정이 한 화면 폼으로 열리지 않았다');
+        assert.ok(W.ev("isOverlayOpen(document.getElementById('quickAdd'))"), '반복 일정 수정이 한 화면 폼으로 열리지 않았다');
         assert.strictEqual(W.$('#qaRecur').value, 'weekly');
         const hint = W.$('#qaRecurHint');
         assert.ok(!hint.classList.contains('hidden') && /2주마다/.test(hint.textContent) && /10회/.test(hint.textContent), '반복 세부 값 요약이 없다: ' + hint.textContent);
@@ -514,9 +515,8 @@ if (!JSDOM) {
         W.ev('qaSave()');
         const e2 = W.entry('e-rc');
         assert.deepStrictEqual([e2.recur, e2.recurExcept], [{ freq: 'monthly', interval: 1, until: '', count: 0 }, []], '종류를 바꾼 반복 값이 다르다');
-        //  작업일지는 기록 창
-        W.ev("closeOverlay(document.getElementById('quickAdd')); editEntry('e-git')");
-        assert.ok(W.ev("isOverlayOpen(document.getElementById('entryModal'))"), '작업일지 기록이 기록 창으로 열리지 않았다(커밋 불러오기는 그 창에만 있다)');
+        //  옛 작업일지 기록(source git)은 부팅 때 버려져 state 에 없다(2026-10-26 Git 삭제)
+        assert.strictEqual(W.ev("entryById('e-git')"), null, '옛 작업일지 기록이 state 에 남았다');
       });
     },
     //  시각 칸(결정 7): 5분 단위가 아닌 값은 그대로 보이고 그대로 저장된다
@@ -530,9 +530,7 @@ if (!JSDOM) {
         const x = W.entry('e-odd');
         assert.deepStrictEqual([x.startTime, x.endTime], ['11:38', '12:07'], '5분 단위가 아닌 값이 저장에서 바뀌었다');
         assert.ok(!W.ev("isOverlayOpen(document.getElementById('quickAdd'))") || W.$('#quickAdd').classList.contains('closing'), '저장이 막혀 창이 닫히지 않았다');
-        //  기록 창(작업일지)과 과제 폼의 시각 칸도 같은 값을 그대로 둔다
-        W.ev("openEntryModal('edit', 'e-git'); writeTimeIn($('#fStart'), '08:13');");
-        assert.strictEqual(W.$('#fStart').value, '08:13'); assert.strictEqual(W.ev("readTimeIn($('#fStart'))"), '08:13');
+        //  과제 폼의 시각 칸도 같은 값을 그대로 둔다
         const pv = W.evJSON("pcValidate({ projectUid: 'p1', title: '(예시)', startDate: '2026-10-21', endDate: '2026-10-21', startTime: '11:38', endTime: '12:07', location: '', memo: '' }, PCAL_LIMITS)");
         assert.strictEqual(pv.ok, true, '과제 폼 검증이 5분 단위가 아닌 시각을 막는다: ' + JSON.stringify(pv));
       });
@@ -551,7 +549,7 @@ if (!JSDOM) {
         const sel = (el, c) => opts(el, c).filter((o) => o.getAttribute('aria-selected') === 'true').map((o) => o.textContent);
         const act = (el) => { const a = el.getAttribute('aria-activedescendant'); return a ? w.document.getElementById(a).textContent : null; };
         const MIN12 = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'));
-        //  여섯 칸 모두 같은 부품: 읽기 전용 combobox, 시계 단추, 창(.overlay)에 붙은 목록, 시 24개, 분 정확히 12개(5분 단위)
+        //  네 칸 모두 같은 부품: 읽기 전용 combobox, 시계 단추, 창(.overlay)에 붙은 목록, 시 24개, 분 정확히 12개(5분 단위)
         for (const id of TIME_IDS) {
           const el = W.$('#' + id);
           assert.ok(el && el.__tf && el.type === 'text' && el.readOnly && el.getAttribute('role') === 'combobox' && el.getAttribute('aria-haspopup') === 'listbox', `#${id} 가 읽기 전용 앱 시각 칸(combobox)이 아니다`);
@@ -653,9 +651,9 @@ if (!JSDOM) {
   test('R④: 끌어 옮기기는 잡은 자리 기준(주와 달을 넘어도 길이 유지), 막대 위에 놓아도 아래 칸, 반복은 못 끈다, 저장', () => R.drag(src));
   test('R⑤: 열람 창(PEER)은 예전 칸별 칩 그대로', () => R.peer(src));
   test('R⑥: 한 화면 폼(일정과 할 일 칸, 옵션 더보기 없음, 저장 형식 그대로)', () => R.form(src));
-  test('R⑦: 반복 세부 값 보존과 한 줄 요약, 종류를 바꾸면 기본값, 작업일지만 기록 창', () => R.recur(src));
-  test('R⑧: 5분 단위가 아닌 시각(11:38)이 그대로 보이고 저장된다(개인 폼, 기록 창, 과제 폼 검증)', () => R.oddTime(src));
-  test('R⑨: 앱 시각 고르기(여섯 칸 같은 부품, 분 12개, 고르면 HH:MM 과 input change, 11:38 표시, Esc 는 목록만, 키보드, 지우기, 과제 폼 규칙)', () => R.picker(src));
+  test('R⑦: 반복 세부 값 보존과 한 줄 요약, 종류를 바꾸면 기본값, 옛 작업일지 기록은 읽지 않는다', () => R.recur(src));
+  test('R⑧: 5분 단위가 아닌 시각(11:38)이 그대로 보이고 저장된다(개인 폼, 과제 폼 검증)', () => R.oddTime(src));
+  test('R⑨: 앱 시각 고르기(네 칸 같은 부품, 분 12개, 고르면 HH:MM 과 input change, 11:38 표시, Esc 는 목록만, 키보드, 지우기, 과제 폼 규칙)', () => R.picker(src));
 
   test('변이R①: 할 일 막대에서 점선 표시(range)를 빼면 R① 이 잡는다', async () => {
     await assert.rejects(() => R.bars(mutate("  const edge = (it.multi ? ' range' : '') + (it.cl ? ' cl' : '') + (it.cr ? ' cr' : '');", "  const edge = (it.cl ? ' cl' : '') + (it.cr ? ' cr' : '');")), /점선/);

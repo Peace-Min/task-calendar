@@ -182,8 +182,10 @@ if($Port -lt 1 -or $Port -gt 65535){ Die "-Port 범위가 아닙니다: $Port" }
 #  ※ 2026-10-22 과제 캘린더(구조 번호 16)로 cal_project_ 둘이 늘어 15 → 17 이 됐다(docs/PROJECT-CALENDAR-PLAN.md §4).
 #  ※ 2026-10-22 월간보고(구조 번호 17)로 project_schedule_image 하나가 늘어 17 → 18 이 됐다(docs/MONTHLY-REPORT-PLAN.md §6).
 #    이름이 cal_ 로 시작하지 않는 이 파일의 유일한 표다. 아래 $OWN_NON_CAL 에도 적는다.
+#  ※ 2026-10-26 Git, SVN 삭제(구조 번호 18)로 cal_entry_commit 이 빠져 18 → 17 이 됐다(docs/GIT-SVN-REMOVAL.md §2).
+#    옛 DB 의 실물은 schema-calendar.sql 의 DROP 목록이 지운다(재생성하지 않는다).
 $DESIGN_TABLES = @(
-  'cal_category','cal_entry','cal_entry_except','cal_entry_commit',
+  'cal_category','cal_entry','cal_entry_except',
   'cal_todo','cal_todo_day_note','cal_task_hours',
   'cal_attendance','cal_report_daily','cal_report_hours','cal_report_weekly',
   'cal_user_pref','cal_user_rev','cal_migration_log','cal_schema_meta',

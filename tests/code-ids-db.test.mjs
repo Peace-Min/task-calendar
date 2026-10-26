@@ -257,10 +257,10 @@ export const checks = {
     assert.ok(post, '사후 검증의 중단 조건이 (고아, 행 수, 이름 복원, 불변, 구조, AUTO_INCREMENT, 판번호, 보호 행) 전부가 아니다');
     assert.ok(/information_schema_stats_expiry = 0/.test(code), 'AUTO_INCREMENT 를 낡은 캐시(stats_expiry)로 읽는다');
     // 판번호: 이 파일이 만든 13 에서 다음 판(이관 조각 migrations/v14-version-gate.sql, 13 에서 14)이 출발한다.
-    //   2026-10-21 부터 정본은 키가 db_structure_version 이다. 값은 회의실 공용화(v15 조각)로 15, 2026-10-22 과제 캘린더(v16 조각)로 16, 월간보고(v17 조각)로 17 이다. 체인 전체는 schema-guards ⑥ 이 본다.
+    //   2026-10-21 부터 정본은 키가 db_structure_version 이다. 값은 회의실 공용화(v15 조각)로 15, 2026-10-22 과제 캘린더(v16 조각)로 16, 월간보고(v17 조각)로 17, 2026-10-26 Git, SVN 삭제(v18 조각)로 18 이다. 체인 전체는 schema-guards ⑥ 이 본다.
     const nextMig = readText(R('db/deploy/migrations/v14-version-gate.sql'));
     assert.ok(/^-- @migration from=13 to=14\r?\n/.test(nextMig), '다음 판(version-gate 조각)이 13 에서 출발하지 않는다');
-    assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '17', 'schema-calendar.sql 이 db_structure_version 17 을 시딩하지 않는다');
+    assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '18', 'schema-calendar.sql 이 db_structure_version 18 을 시딩하지 않는다');
     // 머리말: 실행법(백업 -DbName taskcalendar, utf8mb4, --force 금지)
     assert.ok(mig.includes('backup-taskmgr.cmd -DbName taskcalendar'), '머리말에 백업 명령(-DbName taskcalendar)이 없다');
     assert.ok(/mysql -u root -p --default-character-set=utf8mb4 taskcalendar < db\\deploy\\migrate-2026-10-15-code-ids\.sql/.test(mig), '머리말에 실행 명령(utf8mb4, taskcalendar)이 없다');
@@ -425,7 +425,12 @@ export const checks = {
   unusedGrants(grants, writeDb, mig) {
     //  cal_room 은 2026-10-21 회의실 공용화로 표째 없앴다(SHARED-ROOMS). 그 GRANT 도 없어야 한다(없는 표에 GRANT 는 1146).
     assert.ok(!/ON\s+taskmgr\.cal_room\b/.test(grants), 'grants-calendar.sql 에 없앤 표 cal_room 의 GRANT 가 남았다');
-    for (const t of ['cal_entry_commit', 'cal_todo_day_note']) {
+    //  cal_entry_commit 도 2026-10-26 Git, SVN 삭제(구조 18)로 표째 없앴다. GRANT 가 없어야 하고, 지난 이관(code-ids)이
+    //  그 표의 UPDATE 를 거둔 기록은 그대로 남는다(지난 이관 파일은 손대지 않는다).
+    assert.ok(!/^GRANT[^;]*\bON\s+taskmgr\.cal_entry_commit\b/m.test(grants), 'grants-calendar.sql 에 없앤 표 cal_entry_commit 의 GRANT 가 남았다');
+    assert.ok(new RegExp("REVOKE UPDATE ON `', DATABASE\\(\\), '`\\.cal_entry_commit FROM").test(mig), `${MIG_NAME} 의 cal_entry_commit UPDATE 회수 기록이 사라졌다(지난 이관은 기록이다)`);
+    assert.ok(!/cal_entry_commit/.test(writeDb.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')), '실물: widget/CalendarWriteDb.cs 코드가 없앤 표 cal_entry_commit 을 아직 건드린다');
+    for (const t of ['cal_todo_day_note']) {
       const m = new RegExp('^GRANT\\s+([A-Z, ]+?)\\s+ON\\s+taskmgr\\.' + t + '\\s+TO', 'm').exec(grants);
       assert.ok(m, `grants-calendar.sql 에 ${t} 의 GRANT 가 없다`);
       assert.deepStrictEqual(m[1].split(',').map((s) => s.trim()).sort(), ['DELETE', 'INSERT', 'SELECT'],
@@ -491,7 +496,7 @@ test('번호 키③-c: 이관 SQL 은 보호 번호(구분 2, 상태 2)가 없�
 test('번호 키③-b: 이관 경로와 재구축 경로의 제약, 인덱스, 열, 표 COMMENT 가 글자까지 같다', () => checks.pathsAgree(STRUCT, USERS01, MIG));
 test('번호 키④: 운영 스크립트 기본 DB 는 taskcalendar(setup 원본만 taskmgr), 백업 계정 권한도 taskcalendar', () => checks.opsDefaults(OPS, SETUP, BACKUP_USER, APPLY));
 test('번호 키⑤: 낡은 진입점과 지난 이관 파일이 없고, 스크립트와 시험이 읽지 않는다', () => checks.legacyGone());
-test('번호 키⑥: cal_entry_commit, cal_todo_day_note 에 UPDATE 권한이 없다, 이관이 거둔다(cal_room 은 표째 없다)', () => checks.unusedGrants(GRANTS, WRITE_DB, MIG));
+test('번호 키⑥: cal_todo_day_note 에 UPDATE 권한이 없다, 이관이 거둔다(cal_room, cal_entry_commit 은 표째 없다)', () => checks.unusedGrants(GRANTS, WRITE_DB, MIG));
 test('번호 키⑦: 회사 저장소 02, 03, apply.ps1 이 직급 번호 키를 전제한다', () => checks.companyRepo(SEED02, SEED03, APPLY));
 test('번호 키⑧: load-template, seed-dummy 가 번호 키를 따르고 db/README.md 에 비밀번호가 없다', () => checks.followers(LOAD, SEED_DUMMY, DB_README));
 test('번호 키⑧-b: 두 저장소의 추적 글 파일 어디에도 관리자 비밀번호 글자가 없다(§8-5)', () =>

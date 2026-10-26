@@ -296,10 +296,8 @@ async function main() {
   const before = await J('JSON.stringify([state.entries, state.todos, state.categories])');
   let m = await mark();
   const qa = await J(`(function(){ openQuickAdd(${JSON.stringify(DATE)}); return document.getElementById('quickAdd').classList.contains('hidden'); })()`);
-  const em = await J(`(function(){ openEntryModal('new', ${JSON.stringify(DATE)}); return document.getElementById('entryModal').classList.contains('hidden'); })()`);
   let L = await since(m);
   ok('O1 빠른 등록(openQuickAdd 새 기록)이 열리지 않는다', qa === true);
-  ok('O1 새 기록 창(openEntryModal new)이 열리지 않는다', em === true);
   ok(`O1 잠금 토스트 「${LOCK_MSG}」`, toasts(L).includes(LOCK_MSG), JSON.stringify(toasts(L)));
   ok('O1 메모리 변화 0(기록·할 일·과제)', (await J('JSON.stringify([state.entries, state.todos, state.categories])')) === before);
   ok('O1 저장 요청 0건', reqs(L, 'saveState').length === 0);
@@ -370,7 +368,7 @@ async function main() {
   //  진입점 관문을 지나지 않는 경로를 흉내 낸다(계약 시험 잠금④ 와 같은 방식) — state 를 직접 바꾸고 save().
   const t0Title = ZZ + '0';
   await cdp.ev(`(function(){ state.entries.push({ id: uid('e'), date: ${JSON.stringify(DATE)}, title: ${JSON.stringify(t0Title)},
-    categoryId: null, allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [],
+    categoryId: null, allDay: true, startTime: '', endTime: '', location: '', memo: '', 
     createdAt: nowIso(), updatedAt: nowIso() }); save(); return 1; })()`);
   await sleep(400);
   L = await since(m);
@@ -417,9 +415,10 @@ async function main() {
   const n3 = (await snapConn()).entries;
   const qa3 = await J(`(function(){ openQuickAdd(${JSON.stringify(DATE)}); return document.getElementById('quickAdd').classList.contains('hidden'); })()`);
   await sleep(1700);   // 잠금 토스트는 1.5초에 한 번 — 두 번째 진입점의 토스트도 보이게
-  const em3 = await J(`(function(){ openEntryModal('new', ${JSON.stringify(DATE)}); return document.getElementById('entryModal').classList.contains('hidden'); })()`);
+  //  (예전 둘째 진입점 기록 창은 2026-10-26 Git 기능과 함께 없앴다. 할 일 새 기록으로 두 번째 시도를 한다.)
+  const em3 = await J(`(function(){ openQuickAdd(${JSON.stringify(DATE)}, 'todo'); return document.getElementById('quickAdd').classList.contains('hidden'); })()`);
   L = await since(m);
-  ok('O3 두 번째 편집 시도(빠른 등록·새 기록)가 guardEdit 로 막힌다', qa3 === true && em3 === true && toasts(L).filter((x) => x === LOCK_MSG).length >= 2,
+  ok('O3 두 번째 편집 시도(빠른 등록 일정·할 일)가 guardEdit 로 막힌다', qa3 === true && em3 === true && toasts(L).filter((x) => x === LOCK_MSG).length >= 2,
     JSON.stringify({ qa3, em3, toasts: toasts(L) }));
   ok('O3 막힌 시도는 메모리를 바꾸지 않고 저장도 보내지 않는다', (await snapConn()).entries === n3 && reqs(L, 'saveState').length === 0);
   ok('O3 __dbFault{off} → ok', (await fault('off'))?.ok === true);

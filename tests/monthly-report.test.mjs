@@ -297,7 +297,7 @@ if (!JSDOM) {
       cat(P4, '(예시) 기록 없는 과제', 'db'), cat('c-ed', '(예시) 교육')],
     entries: [
       E({ id: 'e1', date: '2026-09-03', title: '화면 응답 속도 개선', categoryId: P1, memo: '목록 갱신 횟수 줄임\n• 첫 화면 읽기 순서 정리' }),
-      E({ id: 'g1', date: '2026-09-08', title: '작업일지', categoryId: P1, source: 'git', commits: [{ hash: 'h1', short: 'h1', time: '09:00', subject: '알람 기준값 화면 추가', body: '본문 첫 줄\n  - 들여쓴 본문' }] }),
+      E({ id: 'g1', date: '2026-09-08', title: '알람 기준값 화면 추가', categoryId: P1, memo: '본문 첫 줄\n  - 들여쓴 본문' }),
       E({ id: 'e2', date: '2026-09-15', title: '중간 점검 회의 (09.15, 고객사)', categoryId: P1 }),
       E({ id: 'e3', date: '2026-09-10', title: '관측 자료 수신 모듈 정리', categoryId: P2 }),
       E({ id: 'e4', date: '2026-10-14', title: '점검 항목 화면 착수', categoryId: P3 }),   // 계획 기간에만 기록
@@ -309,7 +309,7 @@ if (!JSDOM) {
               dayNotes: { '2026-09-14': '월 메모', '2026-09-16': '수 메모' }, createdAt: CA, updatedAt: CA }],
     rooms: [], attendance: {},
     taskHours: { '2026-09-03': { [P1]: 2 }, '2026-09-10': { [P2]: 1.5 } },
-    gitCommitBody: true, reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
+    reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
     reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } },
   });
   const META = { schemaVersion: '17', expectedSchema: '17', schemaMismatch: false, rev: 1, canWrite: true, userId: 7 };
@@ -441,7 +441,7 @@ if (!JSDOM) {
       try {
         for (const [mk, cu, ind, desc, body] of FMTS) {
           const tag = `${mk}/${cu}/${ind} desc=${desc} body=${body}`;
-          W.ev(`state.reportFormatPrefs.weekly = { marker: ${JSON.stringify(mk)}, markerCustom: ${JSON.stringify(cu)}, indent: ${ind} }; state.gitCommitBody = ${body};`);
+          W.ev(`state.reportFormatPrefs.weekly = { marker: ${JSON.stringify(mk)}, markerCustom: ${JSON.stringify(cu)}, indent: ${ind} };`);
           W.ev(`setReportMode('custom'); $('#rptWithDesc').checked = ${desc}; buildReport();`);
           const copy = customCopy(W);
           assert.ok(copy.includes('화면 응답 속도 개선') && copy.includes('관측 자료 수신 모듈 정리'), '전제: 기간 취합 글이 비었다 ' + tag);
@@ -455,7 +455,7 @@ if (!JSDOM) {
           assert.deepStrictEqual(pv, W.evJSON('rptMLines(' + JSON.stringify(a1) + ')').map((l) => l.text), '미리 보기 실적이 모은 글과 다르다: ' + tag);
         }
       } finally {
-        W.ev("PCAL.events = []; state.reportFormatPrefs.weekly = { marker: '-', markerCustom: '', indent: 2 }; state.gitCommitBody = true; setReportMode('custom'); $('#rptWithDesc').checked = true; buildReport();");
+        W.ev("PCAL.events = []; state.reportFormatPrefs.weekly = { marker: '-', markerCustom: '', indent: 2 }; setReportMode('custom'); $('#rptWithDesc').checked = true; buildReport();");
         await fresh();
       }
     });
@@ -961,7 +961,8 @@ if (!JSDOM) {
       await fresh();
       const cs = (el) => W.w.getComputedStyle(el);
       const pickLb = row(W, P1).querySelector('label.check'), chipLb = W.doc.querySelector('#rptmEtc label.rpt-chip');
-      const other = [...W.doc.querySelectorAll('.modal label')].find((l) => !l.closest('#rptMonthlyPane') && !l.matches('.check, .rpt-chip') && !l.closest('.pcf-f'));
+      //  대조군은 과제 창의 설명 라벨이다(예전 첫 모달 라벨이던 기록 창은 2026-10-26 Git 기능과 함께 없앴다)
+      const other = W.doc.querySelector('#categoryModal label[for="cDesc"]');
       assert.ok(other, '전제: 대조군(월간 탭 밖 모달 라벨)이 없다');
       const o = cs(other);
       //  jsdom 은 var() 가 든 margin 줄임말을 계산하지 못해 여백은 정적 검사(MS10)가 보고, 여기서는 굵기와 display 로 대조한다

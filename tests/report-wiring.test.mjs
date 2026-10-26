@@ -438,8 +438,9 @@ test('배선⑩: collectReportData 에서 skipEmpty 는 과제 행 필터 한 �
 });
 
 test('변이⑫: 항목 단위 skipEmpty continue 를 되살리면 배선⑩ 이 실패한다(제목 있는 일정과 공수가 사라진 옛 버그)', () => {
-  const bad = mutate('const entryDetails = isGit ? [] : memoBullets(e.memo);',
-    'const entryDetails = isGit ? [] : memoBullets(e.memo);\n    if(!isGit && skipEmpty && entryDetails.length === 0) continue;', src);
+  //  (앵커의 isGit 갈래는 2026-10-26 Git 기능과 함께 없앴다.)
+  const bad = mutate('const entryDetails = memoBullets(e.memo);',
+    'const entryDetails = memoBullets(e.memo);\n    if(skipEmpty && entryDetails.length === 0) continue;', src);
   assert.throws(() => skipEmptyRowFilterOnly(bad), /항목 단위 continue|다른 곳에서도 쓰인다/);
   assert.doesNotThrow(() => skipEmptyRowFilterOnly(src), '대조군: 현재 소스는 그대로 통과해야 한다');
 });

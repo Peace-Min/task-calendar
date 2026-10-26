@@ -204,7 +204,7 @@ async function openReportAt(date) {
   await cdp.ev(`(function(){ const b = document.getElementById('btnReportTop'); if (b && b.offsetParent) b.click(); else openReport(); return 1; })()`);
   const opened = await waitFor(isOpen('#reportModal'), 3000, 100);
   //  포함 항목을 셋 다, 빈 항목 제외는 끈다(행 = 모든 과제). buildReport 가 이 선택을 tc_rptSources 에 저장하므로 원래 값은 O0 에서 받아 두고 끝에 되돌린다.
-  await cdp.ev(`(function(){ ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false; return 1; })()`);
+  await cdp.ev(`(function(){ ['#rptSrcEvent','#rptSrcTodo','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false; return 1; })()`);
   await setDate(date);
   return opened;
 }

@@ -100,7 +100,6 @@ const PROJ = (root) => `<Project Sdk="Microsoft.NET.Sdk">
     <Compile Include="${root}/widget/CalendarDb.cs" />
     <Compile Include="${root}/widget/CalendarWriteDb.cs" />
     <Compile Include="${root}/widget/ProjectDb.cs" />
-    <Compile Include="${root}/widget/RepoPaths.cs" />
     <Compile Include="${root}/widget/DeployConfig.cs" /> <Compile Include="${root}/widget/DbErrors.cs" /> <Compile Include="${root}/widget/DbFault.cs" /> <Compile Include="${root}/widget/DbGate.cs" />
     <Compile Include="${root}/widget/UserSession.cs" />
   </ItemGroup>
@@ -166,18 +165,17 @@ function setup() {
       `VALUES (${t},1,'c-pv-1','local','열람시험과제','#3e5be0',0,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`,
       { readOnly: false, what: '대상 과제' });
   //  ★ remind=45 · location 을 심는다 — 장소는 와야 하고(P2) 알림 설정은 안 와야 한다(P3).
-  sql(`INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,start_time,end_time,title,memo,source,location,remind,sort_order,created_at,updated_at) ` +
-      `VALUES (${t},1,'e-pv-1',1,'2026-09-10',0,'09:00','10:00','열람시험 단발','비밀메모','','3층 열람회의실',45,0,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`,
+  sql(`INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,start_time,end_time,title,memo,location,remind,sort_order,created_at,updated_at) ` +
+      `VALUES (${t},1,'e-pv-1',1,'2026-09-10',0,'09:00','10:00','열람시험 단발','비밀메모','3층 열람회의실',45,0,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`,
       { readOnly: false, what: '대상 일정1' });
-  sql(`INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,title,memo,source,location,recur_freq,recur_interval,recur_count,sort_order,created_at,updated_at) ` +
-      `VALUES (${t},2,'e-pv-2',1,'2026-09-01',1,'열람시험 반복','','','','weekly',1,0,1,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`,
+  sql(`INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,title,memo,location,recur_freq,recur_interval,recur_count,sort_order,created_at,updated_at) ` +
+      `VALUES (${t},2,'e-pv-2',1,'2026-09-01',1,'열람시험 반복','','','weekly',1,0,1,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`,
       { readOnly: false, what: '대상 일정2' });
   sql(`INSERT INTO cal_entry_except (user_id,entry_no,except_date) VALUES (${t},2,'2026-09-08')`,
       { readOnly: false, what: '대상 예외일' });
-  //  ★ 2026-10-01(docs/PEER-VIEW-FULL.md P2) — 커밋·할 일은 이제 **와야 하는** 것이다(내 화면이 그린다).
+  //  ★ 2026-10-01(docs/PEER-VIEW-FULL.md P2) — 할 일은 이제 **와야 하는** 것이다(내 화면이 그린다).
+  //    (커밋은 2026-10-26 Git, SVN 삭제로 표째 없어졌다. 구조 18)
   //    '안 준다'를 증명할 것(P3: 과제별 시간·근태·회의실)은 아래에 따로 심는다.
-  sql(`INSERT INTO cal_entry_commit (user_id,entry_no,seq,hash,short_hash,subject,body) ` +
-      `VALUES (${t},1,0,'deadbeef','deadbee','비밀 커밋 제목','비밀 본문')`, { readOnly: false, what: '대상 커밋' });
   sql(`INSERT INTO cal_todo (user_id,todo_no,uid,todo_text,note,done,prio,sort_order,created_at,updated_at) ` +
       `VALUES (${t},1,'t-pv-1','비밀 할일','비밀 비고',0,'normal',0,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`,
       { readOnly: false, what: '대상 할일' });
@@ -192,7 +190,7 @@ function cleanup() {
   for (const u of ALL_USERS) {
     const id = userId(u);
     if (!id) continue;
-    for (const t of ['cal_entry_commit', 'cal_entry_except', 'cal_todo_day_note', 'cal_task_hours',
+    for (const t of ['cal_entry_except', 'cal_todo_day_note', 'cal_task_hours',
                      'cal_attendance', 'cal_entry', 'cal_todo', 'cal_category', 'cal_user_pref'])
       sql(`DELETE FROM ${t} WHERE user_id=${id}`, { readOnly: false, what: `정리(${t})` });
     sql(`DELETE FROM cal_user_rev WHERE user_id=${id}`, { readOnly: false, what: 'rev 정리' });
@@ -239,10 +237,8 @@ try {
   const e1 = (a.entries || []).find((e) => e.id === 'e-pv-1') || {};
   ok('일정 메모가 온다', e1.memo === '비밀메모', JSON.stringify(e1.memo));
   ok('일정 장소가 온다', e1.location === '3층 열람회의실', JSON.stringify(e1.location));
-  ok('일정에 커밋이 붙어 온다(제목·본문)',
-     Array.isArray(e1.commits) && e1.commits.length === 1 && e1.commits[0].subject === '비밀 커밋 제목' && e1.commits[0].body === '비밀 본문',
-     JSON.stringify(e1.commits));
-  ok('모든 일정의 commits 는 배열이다(G-7)', (a.entries || []).every((e) => Array.isArray(e.commits)));
+  ok('일정에 commits, source 키가 없다(2026-10-26 Git, SVN 삭제, 구조 18)',
+     (a.entries || []).every((e) => !('commits' in e) && !('source' in e)), JSON.stringify(e1));
   const td = (a.todos || [])[0] || {};
   ok('할 일이 온다(본문·비고)', (a.todos || []).length === 1 && td.text === '비밀 할일' && td.note === '비밀 비고',
      JSON.stringify(a.todos));

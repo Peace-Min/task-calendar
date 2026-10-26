@@ -126,7 +126,7 @@ test('extractCsMember(실물): ProjectSaved 슬라이스에 옆 멤버(SaveProje
 //      뒤를 보는 계약이 "이 멤버는 그 호출을 안 한다"고 읽는다 — 조용한 거짓말이라 더 나쁘다.
 //    ★ 축자 문자열은 규칙이 다르다: 백슬래시가 평범한 글자이고 따옴표는 "" 로 겹쳐 적는다.
 //      @"C:\dir\" 의 마지막 \" 를 이스케이프로 읽으면 문자열이 끝난 줄 모르고 **뒤 코드를 삼킨다**
-//      (호스트의 경로 상수가 실제로 그 모양이다: Svn.cs · MainWindow.xaml.cs 의 RunKeyPath).
+//      (호스트의 경로 상수가 실제로 그 모양이다: MainWindow.xaml.cs 의 RunKeyPath. 예전 Svn.cs 도 그랬다).
 const CS_VERBATIM_PROBE = [
   'public class Q {',
   '    private void Push(string msg) =>',
@@ -494,7 +494,7 @@ test('census①: filesWithNoTests 가 0건 파일만 골라낸다(정렬·방어
 });
 
 test('census②: 러너가 파일별 등록 수를 실제로 세고 두 계약을 건다(배선)', () => {
-  //  ★ 순수 함수만 잠그면 '맞게 만들어 두고 안 쓰는' 상태를 못 본다 — commit-merge.test.mjs 가
+  //  ★ 순수 함수만 잠그면 '맞게 만들어 두고 안 쓰는' 상태를 못 본다 — 예전 commit-merge.test.mjs(2026-10-26 Git 삭제로 지움) 가
   //    호출부 2곳을 지워도 전 스위트가 초록이던 사고로 배운 것이다. 배선까지 본다.
   assert.ok(/queuedCount\(\)/.test(runnerSrc), '러너가 queuedCount() 로 큐 증가분을 세지 않는다');
   assert.ok(/counts\[f\]\s*=\s*queuedCount\(\)\s*-\s*before/.test(runnerSrc),

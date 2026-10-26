@@ -185,7 +185,7 @@ const zzLeft = () => J(`(function(){ const z = ${JSON.stringify(ZZ_ALL)};
            todos: (state.todos || []).filter(function(t){ return String(t.text || '').indexOf(z) === 0; }).length }; })()`);
 
 async function closeAll() {
-  await cdp.ev(`(function(){ ['#confirmModal','#catMoveModal','#quickAdd','#entryModal','#reportModal','#categoryModal'].forEach(function(s){
+  await cdp.ev(`(function(){ ['#confirmModal','#catMoveModal','#quickAdd','#reportModal','#categoryModal'].forEach(function(s){
     try { const m = document.querySelector(s); if (m && !m.classList.contains('hidden')) closeModal(s); } catch (_) {} }); return 1; })()`);
   await sleep(400);
 }

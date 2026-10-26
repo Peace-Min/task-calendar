@@ -19,7 +19,7 @@
  *    C4        collectReportData(이번 달, rptSources()) 행 = 목록 순서 그대로 + 보고서 미리보기 카드 순서
  *              ★ 2026-10-07 기본 과제(docs/DEFAULT-TASKS.md §4.3) — 「기타」 맨 뒤 규칙과 미분류 합성 행(__uncat__)을 지웠다.
  *                기타도 목록의 한 과제라 제 자리에 선다. 이 루프는 그 둘이 되살아나면 실패한다.
- *    C5        필터 막대 칩 · 새 기록 #fCat · 빠른 추가 #qaCat 옵션 순서 = state.categories
+ *    C5        필터 막대 칩 · 빠른 추가 #qaCat 옵션 순서 = state.categories (예전 기록 창 #fCat 은 2026-10-26 Git 기능과 함께 없앴다)
  *    C6        __dbFault{network} → 끊김 → ▼ → 순서·화면 변화 0 · saveState 0 · 잠금 토스트 → 해제 → 복구
  *    정리      장애 off · 원래 순서로 되돌린다(진짜 ▲ 로) · zz 과제 삭제 · reloadState → 원래 순서 확인 · 모달 닫기
  *
@@ -187,7 +187,7 @@ const isOpen = (sel) => `(function(){ const m = document.querySelector(${JSON.st
 const zzCats = () => J(`state.categories.filter(function(c){ return String(c.name || '').indexOf(${JSON.stringify(ZZ_ALL)}) === 0; }).map(function(c){ return { id: c.id, name: c.name }; })`);
 
 async function closeAll() {
-  await cdp.ev(`(function(){ ['#confirmModal','#quickAdd','#entryModal','#reportModal','#categoryModal'].forEach(function(s){
+  await cdp.ev(`(function(){ ['#confirmModal','#quickAdd','#reportModal','#categoryModal'].forEach(function(s){
     try { const m = document.querySelector(s); if (m && !m.classList.contains('hidden')) closeModal(s); } catch (_) {} }); return 1; })()`);
   await sleep(400);
 }
@@ -513,19 +513,13 @@ async function main() {
   }
 
   /* ── C5 필터 막대 · 과제 선택 ── */
-  head('C5 필터 막대 · 새 기록 #fCat · 빠른 추가 #qaCat = state.categories 순서');
+  head('C5 필터 막대 · 빠른 추가 #qaCat = state.categories 순서');
   {
     const cs = await cats();
     const ids = cs.map((c) => c.id), pick = cs.filter((c) => c.pick).map((c) => c.id);
     const chips = await J("[].map.call(document.querySelectorAll('#filterbar [data-cat]'), function(b){ return b.dataset.cat; }).filter(Boolean)");
     ok('C5 필터 막대 칩 순서 = state.categories', same(chips, ids), JSON.stringify({ chips, ids }));
     const DATE = todayIso();
-    await cdp.ev(`openEntryModal('new', ${JSON.stringify(DATE)}); 1`);
-    const fOpen = await waitFor(isOpen('#entryModal'), 3000, 100);
-    const fCat = await J("[].map.call(document.querySelectorAll('#fCat option'), function(o){ return o.value; }).filter(Boolean)");
-    ok('C5 새 기록 창이 열린다', fOpen);
-    ok('C5 새 기록 #fCat 옵션 순서 = state.categories(선택 가능한 것)', same(fCat, pick), JSON.stringify({ fCat, pick }));
-    await closeAll();
     await cdp.ev(`openQuickAdd(${JSON.stringify(DATE)}); 1`);
     const qOpen = await waitFor(isOpen('#quickAdd'), 3000, 100);
     const qaCat = await J("[].map.call(document.querySelectorAll('#qaCat option'), function(o){ return o.value; }).filter(Boolean)");

@@ -35,7 +35,7 @@ test('디자인 토큰: 참조된 --fs-/--sp-/--r-/--lh- 스케일 토큰은 전
 // 그래서 '토큰 정의처(:root / :root[data-theme] / html.dark) 밖의 hex 색 선언 수'에 상한을 건다.
 // 상한 = 현재 값 → 새 하드코딩은 즉시 실패, 정리하면 상한을 내려 되돌아오지 못하게 못박는 일방향 래칫.
 // (html.dark .foo{} 같은 '테마 스코프 개별 오버라이드'는 정의처가 아니라 사용처이므로 셈에 포함한다.)
-const HEX_DECL_CEILING = 45;   // 49→45: .s-date 바탕(#f5f7fd)→--dim-bg · mark(#ffe27a)→--mark-bg/--mark-ink 토큰 + html.dark mark 재정의 삭제(2026-09-23 §3.4-A) · 56→51: .git-badge.off / .cell.dim .num 하드코딩(+다크 개별 오버라이드 2종)을 토큰으로 대체 · 51→50: .btn.danger 테두리(#efc7c9)를 --danger-line 토큰으로(2026-09-10 — 다크에서 형광 분홍선이던 자리) · 50→49: .swatch.on 의 흰 인셋 링(#fff)을 var(--panel) 로(2026-09-18 — 다크·contrast 에서 흰 테가 떠 보였다)
+const HEX_DECL_CEILING = 30;   // 45→30: Git, SVN 기능 삭제로 .git-card, .git-badge, .commit-* 등 하드코딩 색이 함께 사라졌다(2026-10-26) · 49→45: .s-date 바탕(#f5f7fd)→--dim-bg · mark(#ffe27a)→--mark-bg/--mark-ink 토큰 + html.dark mark 재정의 삭제(2026-09-23 §3.4-A) · 56→51: .git-badge.off / .cell.dim .num 하드코딩(+다크 개별 오버라이드 2종)을 토큰으로 대체 · 51→50: .btn.danger 테두리(#efc7c9)를 --danger-line 토큰으로(2026-09-10 — 다크에서 형광 분홍선이던 자리) · 50→49: .swatch.on 의 흰 인셋 링(#fff)을 var(--panel) 로(2026-09-18 — 다크·contrast 에서 흰 테가 떠 보였다)
 test(`디자인 토큰: 토큰 블록 밖 hex 색 선언은 ${HEX_DECL_CEILING}개 이하여야 한다(래칫 — 늘리지 말고 줄일 것)`, () => {
   const src = loadAppSource();
   const s = src.indexOf('<style>'), e = src.indexOf('</style>', s);
@@ -242,35 +242,30 @@ if (!JSDOM) {
     });
 
     // ── toXML/fromXML ROUND-TRIP (데이터 안전 — 최고 가치) ────────────────
-    // ≥2 과제(하나는 svn) + 다양한 엔트리(일정/공수/커밋/반복+예외/기간/장소/메모) + todos/rooms/authors
+    // ≥2 과제 + 다양한 엔트리(일정/공수/반복+예외/기간/장소/메모) + todos/rooms
     const roundtripState = {
-      gitAuthor: 'hong@corp.com',
-      svnAuthor: 'phmin',
       categories: [
-        { id: 'c-1', name: '보고서 작성', color: '#3e5be0', desc: '주간/월간 보고', gitRepo: '/repo/a', svnRepo: '', createdAt: CA },
-        { id: 'c-2', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '/git/b', svnRepo: 'C:/wc/b', createdAt: CA },   // Git·SVN 둘 다 보유(독립) — 왕복 보존 검증
+        { id: 'c-1', name: '보고서 작성', color: '#3e5be0', desc: '주간/월간 보고', createdAt: CA },
+        { id: 'c-2', name: '시스템 점검', color: '#2e9e6b', desc: '', createdAt: CA },
       ],
       entries: [
         // 일반 일정(공수+장소+메모+시간)
         { id: 'e-1', date: '2026-07-08', title: '요구사항 정리', categoryId: 'c-1', allDay: false,
           startTime: '10:00', endTime: '11:30', location: '201호', memo: '명세 작성\n검색 포함',
-          source: '', commits: [], hours: 150, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-        // git 엔트리(구조화 커밋)
-        { id: 'e-2', date: '2026-07-08', title: '작업일지', categoryId: 'c-2', allDay: false,
-          startTime: '', endTime: '', location: '', memo: '',
-          source: 'git', commits: [
-            { hash: 'aaaaaaa111', short: 'aaaaaa1', time: '09:15', subject: '첫 커밋', body: '본문 첫 줄\n- 둘째 줄(줄바꿈 보존)' },   // body 포함 → XML round-trip이 본문·줄바꿈 영속을 요구(재시작 후 소실 회귀 방지)
-            { hash: 'bbbbbbb222', short: 'bbbbbb2', time: '14:30', subject: '둘째 커밋' },   // body 없음(빈 문자열로 round-trip)
-          ], hours: 120, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          hours: 150, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        // 종일 일정(메모 줄바꿈 보존)
+        { id: 'e-2', date: '2026-07-08', title: '점검 회의', categoryId: 'c-2', allDay: true,
+          startTime: '', endTime: '', location: '', memo: '본문 첫 줄\n- 둘째 줄(줄바꿈 보존)',
+          hours: 120, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
         // 반복(weekly, count) + 예외
         { id: 'e-3', date: '2026-07-06', title: '주간 회의', categoryId: 'c-1', allDay: true,
           startTime: '', endTime: '', location: '', memo: '',
-          source: '', commits: [], hours: null,
+          hours: null,
           endDate: '', recur: { freq: 'weekly', interval: 1, until: '', count: 5 }, recurExcept: ['2026-07-13'], createdAt: CA, updatedAt: CA },
         // 기간(endDate) 엔트리(미분류 categoryId=null)
         { id: 'e-4', date: '2026-07-20', title: '출장', categoryId: null, allDay: true,
           startTime: '', endTime: '', location: '부산', memo: '',
-          source: '', commits: [], hours: null, endDate: '2026-07-24', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          hours: null, endDate: '2026-07-24', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
       ],
       todos: [
         { id: 't-1', text: 'API 명세 검토', done: false, categoryId: 'c-1', due: '2026-07-08', endDate: '', prio: 'high', completedAt: '', note: '세부 노트', createdAt: CA, updatedAt: CA },
@@ -287,20 +282,16 @@ if (!JSDOM) {
       assert.strictEqual(r.entries, 4);
     });
 
-    test('roundtrip: 독립 필드 검증 — 과제/엔트리/커밋/반복/기간/공수/장소', () => {
+    test('roundtrip: 독립 필드 검증 — 과제/엔트리/반복/기간/공수/장소', () => {
       seed(roundtripState);
       const p = evJSON('fromXML(toXML())');
       // 과제
       assert.strictEqual(p.categories.length, 2);
       assert.deepStrictEqual(p.categories.map(c => c.name), ['보고서 작성', '시스템 점검']);
-      assert.strictEqual(p.categories[0].gitRepo, '/repo/a');   // git 전용 과제
-      assert.strictEqual(p.categories[0].svnRepo, '');
-      assert.strictEqual(p.categories[1].gitRepo, '/git/b');     // git·svn 둘 다 독립 보존
-      assert.strictEqual(p.categories[1].svnRepo, 'C:/wc/b');
-      assert.ok(!('vcs' in p.categories[0]) && !('vcs' in p.categories[1]), 'vcs 필드 폐기(결과에 없음)');
-      // authors
-      assert.strictEqual(p.gitAuthor, 'hong@corp.com');
-      assert.strictEqual(p.svnAuthor, 'phmin');
+      assert.strictEqual(p.categories[0].desc, '주간/월간 보고');
+      // Git, SVN 기능 삭제(2026-10-26): 저장소 경로, 작성자 키는 결과에 없다
+      for (const c of p.categories) for (const k of ['gitRepo', 'svnRepo', 'vcs']) assert.ok(!(k in c), `과제에 ${k} 가 남았다`);
+      for (const k of ['gitAuthor', 'svnAuthor', 'gitCommitBody']) assert.ok(!(k in p), `결과에 ${k} 가 남았다`);
       // 엔트리 수
       assert.strictEqual(p.entries.length, 4);
       const byId = Object.fromEntries(p.entries.map(e => [e.id, e]));
@@ -311,15 +302,11 @@ if (!JSDOM) {
       assert.strictEqual(byId['e-1'].endTime, '11:30');
       assert.strictEqual(byId['e-1'].memo, '명세 작성\n검색 포함');
       assert.strictEqual(byId['e-1'].createdAt, CA);       // 타임스탬프도 왕복
-      // e-2: git + 커밋 2건(hash/short/time/subject)
-      assert.strictEqual(byId['e-2'].source, 'git');
-      assert.strictEqual(byId['e-2'].commits.length, 2);
-      assert.deepStrictEqual(byId['e-2'].commits.map(c => c.hash), ['aaaaaaa111', 'bbbbbbb222']);
-      assert.deepStrictEqual(byId['e-2'].commits.map(c => c.subject), ['첫 커밋', '둘째 커밋']);
-      assert.strictEqual(byId['e-2'].commits[0].time, '09:15');
-      assert.strictEqual(byId['e-2'].commits[1].short, 'bbbbbb2');
-      assert.strictEqual(byId['e-2'].commits[0].body, '본문 첫 줄\n- 둘째 줄(줄바꿈 보존)');   // 본문 XML 왕복(줄바꿈 보존) — 재시작 후 본문 소실 회귀 방지
-      assert.strictEqual(byId['e-2'].commits[1].body, '');   // body 없는 커밋 → 빈 문자열로 왕복(하위호환)
+      // e-2: 종일 + 공수 + 여러 줄 메모(줄바꿈 보존). 기록에 source, commits 키가 없다
+      assert.strictEqual(byId['e-2'].allDay, true);
+      assert.strictEqual(byId['e-2'].hours, 120);
+      assert.strictEqual(byId['e-2'].memo, '본문 첫 줄\n- 둘째 줄(줄바꿈 보존)');
+      for (const e of p.entries) assert.ok(!('source' in e) && !('commits' in e), `기록 ${e.id} 에 source/commits 가 남았다`);
       // e-3: 반복 + 예외
       assert.strictEqual(byId['e-3'].recur.freq, 'weekly');
       assert.strictEqual(byId['e-3'].recur.count, 5);
@@ -360,7 +347,7 @@ if (!JSDOM) {
       assert.ok(!('foo' in p.categories[0]), '결과 category에 foo 키 없어야 함');
     });
 
-    test('backward-compat: 구버전 XML(hours/location/vcs/rooms/svnAuthor 부재) — 안전 기본값', () => {
+    test('backward-compat: 구버전 XML(hours/location/rooms 부재, 옛 gitAuthor 속성) — 안전 기본값', () => {
       const oldXml =
         '<?xml version="1.0" encoding="UTF-8"?>\n' +
         '<taskCalendar version="1" generator="old" seenVersion="0.3" gitAuthor="old@corp.com">' +
@@ -375,161 +362,24 @@ if (!JSDOM) {
         '</taskCalendar>';
       let p;
       assert.doesNotThrow(() => { p = evJSON('fromXML(' + JSON.stringify(oldXml) + ')'); });
-      // 과제: gitRepo/svnRepo/vcs 미기재 → 둘 다 '' + vcs 필드 없음, 이름 보존, foo 무시
+      // 과제: 저장소 경로 키는 없다(Git 기능 삭제), 이름 보존, foo 무시
       assert.strictEqual(p.categories.length, 1);
-      assert.strictEqual(p.categories[0].gitRepo, '');
-      assert.strictEqual(p.categories[0].svnRepo, '');
-      assert.ok(!('vcs' in p.categories[0]), 'vcs 필드 폐기');
+      assert.ok(!('gitRepo' in p.categories[0]) && !('svnRepo' in p.categories[0]) && !('vcs' in p.categories[0]), '저장소 키가 남았다');
       assert.strictEqual(p.categories[0].name, '구버전 과제');
       assert.ok(!('foo' in p.categories[0]));
       // 엔트리: hours 없음 → null, location 없음 → '', 기간/반복 없음
       assert.strictEqual(p.entries.length, 1);
       assert.strictEqual(p.entries[0].hours, null);
       assert.strictEqual(p.entries[0].location, '');
-      assert.strictEqual(p.entries[0].source, '');
+      assert.ok(!('source' in p.entries[0]), 'source 키가 남았다');
       assert.strictEqual(p.entries[0].endDate, '');
       assert.strictEqual(p.entries[0].recur, null);
       assert.deepStrictEqual(p.entries[0].recurExcept, []);
       // todos 없음 → [], rooms 는 2026-10-21 부터 읽지 않는다(결과에 키가 없다)
       assert.deepStrictEqual(p.todos, []);
       assert.ok(!('rooms' in p), 'rooms 키가 남았다(회의실 공용화)');
-      // svnAuthor 속성 부재 → gitAuthor 복사(1회 마이그레이션)
-      assert.strictEqual(p.gitAuthor, 'old@corp.com');
-      assert.strictEqual(p.svnAuthor, 'old@corp.com');
-    });
-
-    // ── Git·SVN 독립 보유(신규): 과제가 두 VCS를 각각 따로 가짐 + 구버전 vcs 마이그레이션 ──────────
-    test('git/svn 독립: 한 과제가 gitRepo·svnRepo 둘 다 보유 → XML 왕복에 둘 다 보존', () => {
-      seed({
-        gitAuthor: 'me@corp.com', svnAuthor: 'mysvn',
-        categories: [{ id: 'cboth', name: '둘다과제', color: '#3e5be0', desc: '', gitRepo: 'C:/git/repo', svnRepo: 'C:/svn/wc', createdAt: CA }],
-        entries: [], todos: [], rooms: [],
-      });
-      const p = evJSON('fromXML(toXML())');
-      assert.strictEqual(p.categories[0].gitRepo, 'C:/git/repo', 'gitRepo 보존');
-      assert.strictEqual(p.categories[0].svnRepo, 'C:/svn/wc', 'svnRepo 보존(덮이지 않음)');
-      assert.ok(!('vcs' in p.categories[0]), 'vcs 필드 없음');
-    });
-
-    test('git/svn 마이그레이션: 구버전 vcs="svn"+gitRepo → svnRepo로 이관·gitRepo 비움·vcs 제거(하위호환)', () => {
-      const oldSvnXml =
-        '<?xml version="1.0" encoding="UTF-8"?>\n' +
-        '<taskCalendar version="1" generator="old" gitAuthor="">' +
-        '<categories>' +
-        '<category id="c-svn" color="#2e9e6b" vcs="svn" gitRepo="C:/wc/old" createdAt="2026-01-01T00:00:00.000Z">' +
-        '<name>구 SVN 과제</name><description></description></category>' +
-        '<category id="c-git" color="#3e5be0" vcs="git" gitRepo="C:/git/old" createdAt="2026-01-01T00:00:00.000Z">' +
-        '<name>구 Git 과제</name><description></description></category>' +
-        '</categories><entries></entries></taskCalendar>';
-      const p = evJSON('fromXML(' + JSON.stringify(oldSvnXml) + ')');
-      const svn = p.categories.find(c => c.id === 'c-svn'), git = p.categories.find(c => c.id === 'c-git');
-      // 구 vcs='svn': 그 gitRepo는 실제 SVN 경로였음 → svnRepo로 이관, gitRepo 비움
-      assert.strictEqual(svn.svnRepo, 'C:/wc/old', '구 svn 경로가 svnRepo로 이관');
-      assert.strictEqual(svn.gitRepo, '', '구 svn 과제의 gitRepo는 비워짐');
-      assert.ok(!('vcs' in svn), 'vcs 제거');
-      // 구 vcs='git'/부재: gitRepo 그대로, svnRepo ''
-      assert.strictEqual(git.gitRepo, 'C:/git/old', '구 git 경로는 gitRepo 유지');
-      assert.strictEqual(git.svnRepo, '', '구 git 과제의 svnRepo는 빈 값');
-      assert.ok(!('vcs' in git));
-    });
-
-    test('gitEnabledCats: gitRepo만·svnRepo만·둘 다인 과제 포함, 아무것도 없으면 제외', () => {
-      seed({
-        gitAuthor: '', svnAuthor: '',
-        categories: [
-          { id: 'cg', name: '깃만', color: '#3e5be0', desc: '', gitRepo: 'C:/g', svnRepo: '', createdAt: CA },
-          { id: 'cs', name: 'svn만', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: 'C:/s', createdAt: CA },
-          { id: 'cb', name: '둘다', color: '#c43a3f', desc: '', gitRepo: 'C:/g2', svnRepo: 'C:/s2', createdAt: CA },
-          { id: 'cn', name: '없음', color: '#4b62a0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-        ],
-        entries: [], todos: [], rooms: [],
-      });
-      const ids = evJSON('gitEnabledCats().map(function(c){return c.id;})');
-      assert.deepStrictEqual(ids.sort(), ['cb', 'cg', 'cs'], 'svn만 있는 과제도 포함, 미연결은 제외');
-    });
-
-    // ── mergeGitSvnCommits (순수 함수): hash dedup + 시각(date) 오름차순 병합 ──────────
-    test('mergeGitSvnCommits: git+svn 병합 — hash dedup + date 정렬, 레거시(hash 없음)는 각자 유지', () => {
-      const gitC = [
-        { hash: 'g2', short: 'g2', date: '2026-07-08T14:00:00', subject: 'git 오후' },
-        { hash: 'g1', short: 'g1', date: '2026-07-08T09:00:00', subject: 'git 오전' },
-        { hash: 'dup', short: 'dup', date: '2026-07-08T11:00:00', subject: 'git 중복본' },
-      ];
-      const svnC = [
-        { hash: 's1', short: 's1', date: '2026-07-08T10:00:00', subject: 'svn r1' },
-        { hash: 'dup', short: 'dup', date: '2026-07-08T11:00:00', subject: 'svn 중복본(제거대상)' },
-        { hash: '', short: '', date: '2026-07-08T08:00:00', subject: '레거시(해시없음)' },
-      ];
-      const merged = evJSON('mergeGitSvnCommits(' + JSON.stringify(gitC) + ',' + JSON.stringify(svnC) + ')');
-      // dup은 첫 등장(git)만 유지 → 총 5건
-      assert.strictEqual(merged.length, 5, 'hash dedup: dup 1건만');
-      assert.strictEqual(merged.filter(c => c.hash === 'dup').length, 1);
-      assert.strictEqual(merged.find(c => c.hash === 'dup').subject, 'git 중복본', '먼저 나온 git 쪽 유지');
-      // date 오름차순 정렬
-      assert.deepStrictEqual(merged.map(c => c.subject),
-        ['레거시(해시없음)', 'git 오전', 'svn r1', 'git 중복본', 'git 오후']);
-    });
-    test('mergeGitSvnCommits: 한쪽이 빈 배열/비배열이어도 안전', () => {
-      assert.deepStrictEqual(evJSON('mergeGitSvnCommits([], [])'), []);
-      assert.strictEqual(evJSON('mergeGitSvnCommits([{hash:"a",date:"1",subject:"x"}], null).length'), 1);
-      assert.strictEqual(evJSON('mergeGitSvnCommits(undefined, [{hash:"b",date:"1",subject:"y"}]).length'), 1);
-    });
-
-    // ── fetchCommitsForCat: 전역 hostRequest를 목킹해 git+svn 병합·부분실패 검증 ──────────
-    // (fetchCommitsForCat은 함수 선언·전역 hostRequest 참조 → 전역 재할당으로 목킹 가능. 각 테스트는 원본 복원.)
-    test('fetchCommitsForCat: gitRepo·svnRepo 둘 다 → 양쪽 호출·병합·정렬, ok=true', async () => {
-      seed({ gitAuthor: 'g@x', svnAuthor: 'sv', categories: [], entries: [], todos: [], rooms: [] });
-      ev('globalThis.__origHR = hostRequest;');
-      try {
-        ev(`
-          globalThis.__calls = [];
-          hostRequest = function(cmd, params){
-            globalThis.__calls.push({cmd:cmd, repo:params.repo, vcs:params.vcs, author:params.author});
-            if(params.vcs === 'git') return Promise.resolve({ok:true, commits:[{hash:'g1', short:'g1', date:'2026-07-08T13:00:00', subject:'git 커밋'}]});
-            return Promise.resolve({ok:true, commits:[{hash:'s1', short:'s1', date:'2026-07-08T09:00:00', subject:'svn 커밋'}]});
-          };
-        `);
-        const res = await evAsyncJSON('fetchCommitsForCat({gitRepo:"C:/g", svnRepo:"C:/s"}, "2026-07-08", "2026-07-08")');
-        assert.strictEqual(res.ok, true);
-        assert.strictEqual(res.errors.length, 0);
-        assert.deepStrictEqual(res.commits.map(c => c.subject), ['svn 커밋', 'git 커밋'], 'date 정렬(svn 09시 먼저)');
-        const calls = evJSON('globalThis.__calls');
-        assert.strictEqual(calls.length, 2, 'git·svn 각 1회 호출');
-        const g = calls.find(c => c.vcs === 'git'), s = calls.find(c => c.vcs === 'svn');
-        assert.strictEqual(g.repo, 'C:/g'); assert.strictEqual(g.author, 'g@x', 'git은 git 작성자');
-        assert.strictEqual(s.repo, 'C:/s'); assert.strictEqual(s.author, 'sv', 'svn은 svn 작성자');
-      } finally { ev('hostRequest = globalThis.__origHR;'); }
-    });
-    test('fetchCommitsForCat: 한쪽(svn) 실패해도 다른 쪽(git) 커밋은 살림 + errors 기록', async () => {
-      seed({ gitAuthor: 'g@x', svnAuthor: 'sv', categories: [], entries: [], todos: [], rooms: [] });
-      ev('globalThis.__origHR = hostRequest;');
-      try {
-        ev(`
-          hostRequest = function(cmd, params){
-            if(params.vcs === 'git') return Promise.resolve({ok:true, commits:[{hash:'g1', date:'2026-07-08T10:00:00', subject:'git ok'}]});
-            return Promise.resolve({ok:false, error:'svn 서버 없음'});
-          };
-        `);
-        const res = await evAsyncJSON('fetchCommitsForCat({gitRepo:"C:/g", svnRepo:"C:/s"}, "2026-07-08", "2026-07-08")');
-        assert.strictEqual(res.ok, true, '한쪽 성공이면 ok=true');
-        assert.deepStrictEqual(res.commits.map(c => c.subject), ['git ok']);
-        assert.strictEqual(res.errors.length, 1);
-        assert.ok(/SVN:.*svn 서버 없음/.test(res.errors[0]), 'svn 실패가 errors에 기록');
-      } finally { ev('hostRequest = globalThis.__origHR;'); }
-    });
-    test('fetchCommitsForCat: gitRepo만 있으면 svn 호출 안 함(불필요 왕복 없음)', async () => {
-      seed({ gitAuthor: 'g@x', svnAuthor: 'sv', categories: [], entries: [], todos: [], rooms: [] });
-      ev('globalThis.__origHR = hostRequest;');
-      try {
-        ev(`
-          globalThis.__n = 0;
-          hostRequest = function(cmd, params){ globalThis.__n++; return Promise.resolve({ok:true, commits:[]}); };
-        `);
-        const res = await evAsyncJSON('fetchCommitsForCat({gitRepo:"C:/g", svnRepo:""}, "2026-07-08", "2026-07-08")');
-        assert.strictEqual(evJSON('globalThis.__n'), 1, 'gitRepo만 → 1회만 호출');
-        assert.strictEqual(res.ok, true);
-        assert.deepStrictEqual(res.commits, []);
-      } finally { ev('hostRequest = globalThis.__origHR;'); }
+      // 옛 gitAuthor 속성은 읽지 않는다(Git 기능 삭제)
+      assert.ok(!('gitAuthor' in p) && !('svnAuthor' in p), '작성자 키가 남았다');
     });
 
     test('todo dayNotes: 기간 안 날짜별 설명만 저장 + 기간→단일 전환 시 시작일 dayNote를 note로 복귀(무손실)', () => {
@@ -575,8 +425,7 @@ if (!JSDOM) {
     // ── 기간 할일 dayNotes → 보고서 병합/편집 + 이중 설명 모델 전환 이관 (신규) ────────────
     // 주(2026): 월07-13 화07-14 수07-15 목07-16 금07-17 토07-18 일07-19 (weekRange 규약과 일치)
     const dnState = () => ({
-      gitAuthor: '', svnAuthor: '',
-      categories: [{ id: 'cp', name: '기획', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
+      categories: [{ id: 'cp', name: '기획', color: '#3e5be0', desc: '', createdAt: CA }],
       entries: [],
       todos: [
         // 기간 할일: 월~금, dayNotes는 월/수/금만(화·목 비어 있음)
@@ -590,12 +439,12 @@ if (!JSDOM) {
     });
     const collectDN = (from, to, src) => evJSON('collectReportData(' + JSON.stringify(from) + ',' + JSON.stringify(to) + ',' + JSON.stringify(src) + ')');
     const rowCp = r => r.rows.find(x => x.name === '기획');
-    const setWeekly = (f, t) => ev("reportMode='weekly'; $('#rptFrom').value='" + f + "'; $('#rptTo').value='" + t + "'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; editingDayNoteKey=null;");
-    const setCustom = (f, t) => ev("reportMode='custom'; $('#rptFrom').value='" + f + "'; $('#rptTo').value='" + t + "'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; editingDayNoteKey=null;");   // WEEKLY-EDIT: 날짜 줄 ✎ 는 기간 취합에만 남는다
+    const setWeekly = (f, t) => ev("reportMode='weekly'; $('#rptFrom').value='" + f + "'; $('#rptTo').value='" + t + "'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; editingDayNoteKey=null;");
+    const setCustom = (f, t) => ev("reportMode='custom'; $('#rptFrom').value='" + f + "'; $('#rptTo').value='" + t + "'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; editingDayNoteKey=null;");   // WEEKLY-EDIT: 날짜 줄 ✎ 는 기간 취합에만 남는다
 
     test('기간 할일 dayNotes → 주간 보고: details=본문만(복사·전송), dayDetails=날짜 보존(미리보기)', () => {
       seed(dnState());
-      const r = collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty: false });
+      const r = collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, desc: true, skipEmpty: false });
       const row = rowCp(r);
       const mp = row.titleMeta[row.titles.indexOf('보고서 준비')];
       assert.deepStrictEqual(mp.details, ['초안 작성', '검토', '마무리'], 'details(복사·전송 텍스트)는 날짜 접두 없이 본문만');
@@ -608,7 +457,7 @@ if (!JSDOM) {
 
     test('일간 보고: 그날 dayNote만(요일 접두 없음)', () => {
       seed(dnState());
-      const r = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, git: true, desc: true, skipEmpty: false });
+      const r = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, desc: true, skipEmpty: false });
       const mp = rowCp(r).titleMeta[rowCp(r).titles.indexOf('보고서 준비')];
       assert.deepStrictEqual(mp.details, ['검토'], '일간(from==to)은 그날 dayNote 원문만(접두 없음)');
     });
@@ -618,23 +467,22 @@ if (!JSDOM) {
     test('skipEmpty ON: 기간 할일은 dayNote 가 없어도 남는다(제목 자체가 내용)', () => {
       seed(dnState());
       for (const skipEmpty of [true, false]) {
-        const row = rowCp(collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty }));
+        const row = rowCp(collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, desc: true, skipEmpty }));
         assert.ok(row.titles.includes('보고서 준비'), 'dayNote 있는 기간할일 유지 (skipEmpty=' + skipEmpty + ')');
         assert.ok(row.titles.includes('빈 기간할일'), 'dayNote 0개 기간할일도 제목이 있으면 유지 (skipEmpty=' + skipEmpty + ')');
         assert.ok(row.titles.includes('단일 검토'), '단일 할일 유지 (skipEmpty=' + skipEmpty + ')');
       }
       // 설명은 그대로 details 에 붙고, 없는 항목은 빈 배열일 뿐 제거 사유가 아니다.
-      const row = rowCp(collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty: true }));
+      const row = rowCp(collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, desc: true, skipEmpty: true }));
       assert.deepStrictEqual(row.titleMeta[row.titles.indexOf('빈 기간할일')].details, [], '설명 없는 항목의 details 는 빈 배열');
       assert.deepStrictEqual(row.titleMeta[row.titles.indexOf('보고서 준비')].details, ['초안 작성', '검토', '마무리'], '설명은 그대로 붙는다');
     });
 
     test('skipEmpty ON: 내용 없는 과제 행도 제외(빈 과제명 미표시)', () => {
       seed({
-        gitAuthor: '', svnAuthor: '',
         categories: [
-          { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-          { id: 'c-empty', name: '빈과제', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+          { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', createdAt: CA },
+          { id: 'c-empty', name: '빈과제', color: '#2e9e6b', desc: '', createdAt: CA },
         ],
         entries: [],
         todos: [
@@ -642,7 +490,7 @@ if (!JSDOM) {
         ],
         rooms: [],
       });
-      const names = (skip) => collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, git: true, desc: true, skipEmpty: skip }).rows.map(r => r.name);
+      const names = (skip) => collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, desc: true, skipEmpty: skip }).rows.map(r => r.name);
       const off = names(false);
       assert.ok(off.includes('내용과제') && off.includes('빈과제'), 'skipEmpty OFF면 빈 과제 행도 표시(기존 동작 보존)');
       const on = names(true);
@@ -654,11 +502,10 @@ if (!JSDOM) {
     // 제목이 하나도 없어도 (날짜×과제) 공수가 있으면 그 과제는 skipEmpty ON 에서도 남아야 한다.
     test('skipEmpty ON: 제목이 없어도 (날짜×과제) 공수가 있으면 과제 행 유지', () => {
       seed({
-        gitAuthor: '', svnAuthor: '',
         categories: [
-          { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-          { id: 'c-empty', name: '빈과제', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-          { id: 'c-hours', name: '공수만과제', color: '#c2703a', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+          { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', createdAt: CA },
+          { id: 'c-empty', name: '빈과제', color: '#2e9e6b', desc: '', createdAt: CA },
+          { id: 'c-hours', name: '공수만과제', color: '#c2703a', desc: '', createdAt: CA },
         ],
         entries: [],
         todos: [
@@ -669,17 +516,17 @@ if (!JSDOM) {
         taskHours: { '2026-07-15': { 'c-hours': 3.5 } },
       });
       assert.strictEqual(evJSON("getTaskHours('2026-07-15','c-hours')"), 3.5, '사전조건: 시드한 (날짜×과제) 공수가 읽힌다');
-      const on = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, git: true, desc: true, skipEmpty: true }).rows;
+      const on = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, desc: true, skipEmpty: true }).rows;
       const names = on.map(r => r.name);
       assert.ok(names.includes('공수만과제'), '공수만 있는 과제 행은 유지(보고할 공수가 있다)');
       assert.ok(!names.includes('빈과제'), '항목도 공수도 없는 과제만 제외');
       assert.deepStrictEqual(on.find(r => r.name === '공수만과제').titles, [], '공수만 있는 행의 제목은 비어 있다');
       // 기간 보고에서도 같다 — 범위 안 어느 하루라도 공수가 있으면 남는다.
-      const wk = collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty: true }).rows.map(r => r.name);
+      const wk = collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, desc: true, skipEmpty: true }).rows.map(r => r.name);
       assert.ok(wk.includes('공수만과제'), '주간 범위에서도 범위 내 공수가 있으면 유지');
       assert.ok(!wk.includes('빈과제'), '주간 범위에서도 빈 과제는 제외');
       // 범위 밖(공수 없는 주)이면 다시 빠진다 — 범위 합산이 실제로 from..to 만 본다는 뜻.
-      const other = collectDN('2026-07-20', '2026-07-26', { event: true, todo: true, git: true, desc: true, skipEmpty: true }).rows.map(r => r.name);
+      const other = collectDN('2026-07-20', '2026-07-26', { event: true, todo: true, desc: true, skipEmpty: true }).rows.map(r => r.name);
       assert.ok(!other.includes('공수만과제'), '범위 밖 공수는 세지 않는다');
     });
 
@@ -693,25 +540,25 @@ if (!JSDOM) {
 
     test('포함 항목: 일간/주간 모드별 캐싱 + 구 포맷(단일) 하위호환', () => {
       // 구 포맷(단일 객체) → 일간·주간 양쪽 이관
+      //  옛 저장값의 git 키(커밋 내역 출처, 2026-10-26 Git 기능 삭제)는 읽지 않고 버린다
       ev("localStorage.setItem('tc_rptSources', JSON.stringify({event:false, todo:true, git:true, desc:true, skipEmpty:true}));");
       let p = evJSON("loadRptSourcePrefs()");
       assert.strictEqual(p.daily.event, false); assert.strictEqual(p.weekly.event, false);
       assert.strictEqual(p.daily.skipEmpty, true); assert.strictEqual(p.weekly.skipEmpty, true);
-      // 모드별 저장 — 일간=커밋 OFF, 주간=커밋 ON (서로 독립)
-      ev("localStorage.removeItem('tc_rptSources'); reportMode='daily'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=false; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; saveRptSourcePrefs();");
-      ev("reportMode='weekly'; $('#rptSrcGit').checked=true; $('#rptSrcEvent').checked=false; saveRptSourcePrefs();");
+      assert.ok(!('git' in p.daily) && !('git' in p.weekly), '옛 git 키가 남았다');
+      // 모드별 저장 — 일간=일정 ON, 주간=일정 OFF (서로 독립)
+      ev("localStorage.removeItem('tc_rptSources'); reportMode='daily'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; saveRptSourcePrefs();");
+      ev("reportMode='weekly'; $('#rptSrcEvent').checked=false; saveRptSourcePrefs();");
       p = evJSON("loadRptSourcePrefs()");
-      assert.strictEqual(p.daily.git, false, '일간 커밋 OFF 저장');
-      assert.strictEqual(p.weekly.git, true, '주간 커밋 ON 저장');
-      assert.strictEqual(p.daily.event, true); assert.strictEqual(p.weekly.event, false);
+      assert.strictEqual(p.daily.event, true, '일간 일정 ON 저장'); assert.strictEqual(p.weekly.event, false, '주간 일정 OFF 저장');
       // applyRptSourcePrefs가 현재 모드값을 체크박스에 복원
       ev("reportMode='daily'; applyRptSourcePrefs();");
-      assert.strictEqual(evJSON("$('#rptSrcGit').checked"), false, '일간 복원 → 커밋 OFF');
+      assert.strictEqual(evJSON("$('#rptSrcEvent').checked"), true, '일간 복원 → 일정 ON');
       ev("reportMode='weekly'; applyRptSourcePrefs();");
-      assert.strictEqual(evJSON("$('#rptSrcGit').checked"), true, '주간 복원 → 커밋 ON');
+      assert.strictEqual(evJSON("$('#rptSrcEvent').checked"), false, '주간 복원 → 일정 OFF');
       ev("reportMode='custom'; applyRptSourcePrefs();");
-      assert.strictEqual(evJSON("$('#rptSrcGit').checked"), true, 'custom=weekly 키 재사용');
-      ev("localStorage.removeItem('tc_rptSources'); reportMode='daily';");
+      assert.strictEqual(evJSON("$('#rptSrcEvent').checked"), false, 'custom=weekly 키 재사용');
+      ev("localStorage.removeItem('tc_rptSources'); reportMode='daily'; $('#rptSrcEvent').checked=true;");
     });
 
     //  WEEKLY-EDIT §3.2(2026-10-08): 주간 작성 카드는 읽기 전용(날짜 줄 ✎ 없음, X 있음). 날짜 줄 ✎ 와 저장 왕복은 기간 취합(custom)에 남는다.
@@ -800,26 +647,24 @@ if (!JSDOM) {
 
     // ── collectReportData (보고서 정확성 — 최고 가치) ─────────────────────
     const reportState = {
-      gitAuthor: '', svnAuthor: '',
       categories: [
-        { id: 'c-1', name: '보고서 작성', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-        { id: 'c-2', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'c-1', name: '보고서 작성', color: '#3e5be0', desc: '', createdAt: CA },
+        { id: 'c-2', name: '시스템 점검', color: '#2e9e6b', desc: '', createdAt: CA },
       ],
       entries: [
-        // git 엔트리(커밋 2건, 공수 120) — c-2
-        { id: 'g1', date: '2026-07-08', title: '깃엔트리제목', categoryId: 'c-2', allDay: true, startTime: '', endTime: '',
-          location: '', memo: '', source: 'git',
-          commits: [{ hash: 'h1', short: 'h1', time: '09:00', subject: '커밋 A' }, { hash: 'h2', short: 'h2', time: '10:00', subject: '커밋 B' }],
+        // 일정(공수 120) — c-2
+        { id: 'g1', date: '2026-07-08', title: '점검 일정', categoryId: 'c-2', allDay: true, startTime: '', endTime: '',
+          location: '', memo: '',
           hours: 120, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-        // 일정(비-git, 제목/공수 150) — c-1
+        // 일정(제목/공수 150) — c-1
         { id: 'v1', date: '2026-07-09', title: '요구사항 정리', categoryId: 'c-1', allDay: true, startTime: '', endTime: '',
-          location: '', memo: '', source: '', commits: [], hours: 150, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          location: '', memo: '', hours: 150, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
         // 중복 제목 일정(공수 60) — dedup 확인 + 동명 공수 유실 방지
         { id: 'v2', date: '2026-07-10', title: '요구사항 정리', categoryId: 'c-1', allDay: true, startTime: '', endTime: '',
-          location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          location: '', memo: '', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
         // 범위 밖 일정 — 제외 확인
         { id: 'v3', date: '2026-08-15', title: '범위밖', categoryId: 'c-1', allDay: true, startTime: '', endTime: '',
-          location: '', memo: '', source: '', commits: [], hours: 90, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          location: '', memo: '', hours: 90, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
       ],
       todos: [
         { id: 't1', text: '할일 인범위', done: false, categoryId: 'c-1', due: '2026-07-15', endDate: '', prio: 'normal', completedAt: '', note: '', createdAt: CA, updatedAt: CA },
@@ -833,7 +678,7 @@ if (!JSDOM) {
 
     test('collectReportData: 전체 소스 — 제목/dedup(공수 합계는 2026-09-23 제거)', () => {
       seed(reportState);
-      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
+      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true });
       assert.strictEqual(r.rows.length, 2);   // 미분류 없음
       const c1 = rowOf(r, '보고서 작성'), c2 = rowOf(r, '시스템 점검');
       // c-1: 제목 dedup('요구사항 정리' 1회) + 할일 제목
@@ -841,9 +686,8 @@ if (!JSDOM) {
       assert.ok(c1.titles.includes('할일 인범위'));
       assert.strictEqual(c1.titles.filter(t => t === '요구사항 정리').length, 1, 'dedup: 동일 제목 1회');
       assert.strictEqual(c1.titles.length, 2);
-      // c-2: git 커밋 제목 전부(엔트리 제목 아님)
-      assert.deepStrictEqual(c2.titles, ['커밋 A', '커밋 B']);
-      assert.ok(!c2.titles.includes('깃엔트리제목'), 'git은 엔트리 제목이 아니라 커밋 제목을 편입');
+      // c-2: 일정 제목
+      assert.deepStrictEqual(c2.titles, ['점검 일정']);
       // 범위 밖/기한없음 제외
       const all = r.rows.flatMap(x => x.titles);
       assert.ok(!all.includes('범위밖'));
@@ -851,39 +695,33 @@ if (!JSDOM) {
       assert.ok(!all.includes('기한없음'));
     });
 
-    test('collectReportData: 소스 토글 — git:false / event:false / todo:false', () => {
+    test('collectReportData: 소스 토글 — event:false / todo:false', () => {
       seed(reportState);
-      // git:false → c-2 git 커밋 빠짐(빈), c-1 유지
-      let r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: false });
-      const c2 = rowOf(r, '시스템 점검');
-      assert.deepStrictEqual(c2.titles, []);
-      assert.ok(!r.rows.flatMap(x => x.titles).includes('커밋 A'));
-      // event:false → 비-git 일정 빠짐(제목), 할일은 유지, git 유지
-      r = collect('2026-07-01', '2026-07-31', { event: false, todo: true, git: true });
+      // event:false → 일정 빠짐(제목), 할일은 유지
+      let r = collect('2026-07-01', '2026-07-31', { event: false, todo: true });
       const c1 = rowOf(r, '보고서 작성');
       assert.ok(!c1.titles.includes('요구사항 정리'), 'event:false면 일정 제목 제외');
       assert.ok(c1.titles.includes('할일 인범위'), 'todo:true면 할일은 유지');
-      assert.deepStrictEqual(rowOf(r, '시스템 점검').titles, ['커밋 A', '커밋 B']);
-      // todo:false → 할일 제외, 일정/git 유지
-      r = collect('2026-07-01', '2026-07-31', { event: true, todo: false, git: true });
+      assert.deepStrictEqual(rowOf(r, '시스템 점검').titles, []);
+      // todo:false → 할일 제외, 일정 유지
+      r = collect('2026-07-01', '2026-07-31', { event: true, todo: false });
       assert.ok(!r.rows.flatMap(x => x.titles).includes('할일 인범위'), 'todo:false면 할일 제외');
       assert.ok(rowOf(r, '보고서 작성').titles.includes('요구사항 정리'));
     });
 
     test('collectReportData: 설명 포함과 내용 없는 항목 제외 옵션', () => {
       const st = {
-        gitAuthor: '', svnAuthor: '',
         categories: [
-          { id: 'cx', name: 'Alpha', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-          { id: 'cy', name: 'Empty', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },      // 항목도 공수도 없는 과제
-          { id: 'cz', name: 'HoursOnly', color: '#c2703a', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },   // 제목 없는 일정의 공수만 있는 과제
+          { id: 'cx', name: 'Alpha', color: '#3e5be0', desc: '', createdAt: CA },
+          { id: 'cy', name: 'Empty', color: '#2e9e6b', desc: '', createdAt: CA },      // 항목도 공수도 없는 과제
+          { id: 'cz', name: 'HoursOnly', color: '#c2703a', desc: '', createdAt: CA },   // 제목 없는 일정의 공수만 있는 과제
         ],
         entries: [
-          { id: 'e-desc', date: '2026-07-09', title: 'Event with memo', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: 'memo one\n• memo two', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-          { id: 'e-empty', date: '2026-07-09', title: 'Event without memo', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-          { id: 'g-desc', date: '2026-07-09', title: 'Git entry', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git', commits: [{ hash: 'g1', short: 'g1', time: '10:00', subject: 'Git subject' }], hours: 30, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'e-desc', date: '2026-07-09', title: 'Event with memo', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: 'memo one\n• memo two', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'e-empty', date: '2026-07-09', title: 'Event without memo', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'g-desc', date: '2026-07-09', title: 'Plain subject', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: 30, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
           // 제목이 빈 문자열 → pushTitle 이 무시한다(titles 0개). 일정 공수 45 는 공수표가 아니라 보고에 실리지 않는다.
-          { id: 'z-hours', date: '2026-07-09', title: '', categoryId: 'cz', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 45, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'z-hours', date: '2026-07-09', title: '', categoryId: 'cz', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: 45, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
         ],
         todos: [
           { id: 'td-desc', text: 'Todo with note', done: false, categoryId: 'cx', due: '2026-07-09', endDate: '', prio: 'normal', completedAt: '', note: 'todo detail', createdAt: CA, updatedAt: CA },
@@ -892,10 +730,10 @@ if (!JSDOM) {
         rooms: [],
       };
       seed(st);
-      const TITLES = ['Event with memo', 'Event without memo', 'Git subject', 'Todo with note', 'Todo without note'];
+      const TITLES = ['Event with memo', 'Event without memo', 'Plain subject', 'Todo with note', 'Todo without note'];
       // 두 모드가 '완전히 같아야' 하는 것들 — 제목·엔트리 버킷. skipEmpty 는 여기에 손대지 않는다.
       for (const skipEmpty of [false, true]) {
-        const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: true, skipEmpty });
+        const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, desc: true, skipEmpty });
         const row = rowOf(r, 'Alpha');
         for (const t of TITLES) assert.ok(row.titles.includes(t), t + ' 유지 (skipEmpty=' + skipEmpty + ')');
         assert.deepStrictEqual(row.entries.map(e => e.id).sort(), ['e-desc', 'e-empty', 'g-desc'],
@@ -907,7 +745,7 @@ if (!JSDOM) {
         assert.deepStrictEqual(row.titleMeta[row.titles.indexOf('Todo without note')].details, []);
       }
       // 설명 포함 OFF + 내용 없는 항목 제외 ON — 설명만 사라지고 항목은 하나도 사라지지 않는다.
-      let r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: false, skipEmpty: true });
+      let r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, desc: false, skipEmpty: true });
       let row = rowOf(r, 'Alpha');
       for (const t of TITLES) assert.ok(row.titles.includes(t), 'desc:false 여도 ' + t + ' 유지');
       assert.deepStrictEqual(row.titleMeta.map(m => m.details || []), row.titleMeta.map(() => []), 'desc:false 면 details 는 전부 비어 있다');
@@ -915,7 +753,7 @@ if (!JSDOM) {
       // 행 단위 판정(2026-09-18 재정의) — 보고서에 나가는 시간은 (날짜×과제) 공수표뿐이다.
       //   일정의 hours(e.hours)는 보고서 어디에도 실리지 않으므로, 그것만 있는 과제(HoursOnly)는
       //   화면에 '빈 과제명' 한 줄일 뿐이라 skipEmpty ON 에서 빠진다.
-      const namesOf = (skipEmpty) => collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: true, skipEmpty }).rows.map(x => x.name);
+      const namesOf = (skipEmpty) => collect('2026-07-01', '2026-07-31', { event: true, todo: true, desc: true, skipEmpty }).rows.map(x => x.name);
       const off = namesOf(false);
       assert.ok(off.includes('Empty') && off.includes('HoursOnly'), 'skipEmpty OFF 면 빈 과제도 표시');
       const on = namesOf(true);
@@ -927,14 +765,14 @@ if (!JSDOM) {
       assert.ok(namesOf(true).includes('HoursOnly'), '공수표에 값이 있으면 유지');
       ev("setTaskHours('2026-07-09','cz',0);");
       assert.ok(!namesOf(true).includes('HoursOnly'), '공수표를 비우면 다시 빠진다');
-      r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: true, skipEmpty: false });
+      r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, desc: true, skipEmpty: false });
       row = rowOf(r, 'HoursOnly');
       assert.deepStrictEqual(row.titles, [], '제목이 빈 문자열인 일정은 제목 목록에 안 들어간다(pushTitle 계약)');
     });
 
     test('collectReportData: 기간 필터 — 좁은 범위는 전부 제외(빈 결과)', () => {
       seed(reportState);
-      const r = collect('2026-07-01', '2026-07-05', { event: true, todo: true, git: true });
+      const r = collect('2026-07-01', '2026-07-05', { event: true, todo: true });
       for (const row of r.rows) {
         assert.deepStrictEqual(row.titles, []);
       }
@@ -944,9 +782,9 @@ if (!JSDOM) {
     //  기타도 내 과제 목록의 한 과제라 목록 순서 그대로다(순서는 ▲▼ 로 사용자가 정한다).
     test('collectReportData: 기타 과제도 목록 순서 그대로(맨 뒤로 보내는 규칙 없음)', () => {
       const withEtcFirst = JSON.parse(JSON.stringify(reportState));
-      withEtcFirst.categories.unshift({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA });
+      withEtcFirst.categories.unshift({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', createdAt: CA });
       seed(withEtcFirst);
-      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
+      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true });
       assert.deepStrictEqual(r.rows.map(row => row.name), ['기타', '보고서 작성', '시스템 점검'],
         "'기타' 가 목록 순서를 벗어났다 — '기타는 맨 뒤' 규칙이 되살아났다");
     });
@@ -955,158 +793,48 @@ if (!JSDOM) {
     //  내 데이터에는 생기지 않지만(새 기록은 기타, 가져오기는 기타로 붙인다) 개발 DB 더미에는 남아 있다(§5).
     test('collectReportData: 과제 없는 기록은 합성 행(__uncat__)을 만들지 않고 실재하는 기타 과제로 병합되지도 않는다', () => {
       const st = JSON.parse(JSON.stringify(reportState));
-      st.categories.push({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA });
+      st.categories.push({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', createdAt: CA });
       st.entries.push({ id: 'nul', date: '2026-07-09', title: '과제 없는 옛 일정', categoryId: null, allDay: true, startTime: '', endTime: '',
-        location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA });
+        location: '', memo: '', hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA });
       st.entries.push({ id: 'dng', date: '2026-07-09', title: '사라진 과제의 일정', categoryId: 'c-gone', allDay: true, startTime: '', endTime: '',
-        location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA });
+        location: '', memo: '', hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA });
       seed(st);
-      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
+      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true });
       assert.deepStrictEqual(r.rows.map(row => row.key), ['c-1', 'c-2', 'c-etc'], '행이 목록 과제 그대로가 아니다(합성 행이 생겼다)');
       assert.ok(!r.rows.some(row => row.key === '__uncat__'), '미분류 합성 행(__uncat__)이 되살아났다');
       assert.deepStrictEqual(rowOf(r, '기타').titles, [], "과제 없는 기록이 실재하는 '기타' 과제로 병합됐다(gitaCat 병합이 되살아났다)");
     });
 
-    // ── PART A: setCommitMessage / deleteCommitRow (커밋 데이터 단일 변경 경로 · 결정6) ──
-    // 커밋 쓰기(메시지 고치기, 삭제)는 커밋 내역 탭의 이 두 API만 통과한다. 호출 시 notifyDataChanged가 패널/그리드를
-    // 재렌더하므로 부팅된 jsdom 컨텍스트에서 실행(렌더 안전성도 함께 검증). state는 seed로 격리.
-    // (2026-10-07 REPORT-EDIT §5: 일간 보고서 줄 ✎ 전용이던 setCommitSubject 는 ✎ 와 함께 없앴다. 아래 시험이 '없어졌다'를 잠근다.)
-    const mutState = () => ({
-      gitAuthor: '', svnAuthor: '',
-      categories: [{ id: 'c-1', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
-      entries: [
-        { id: 'g1', date: '2026-07-08', title: '작업일지', categoryId: 'c-1', allDay: true, startTime: '', endTime: '',
-          location: '', memo: '', source: 'git',
-          commits: [{ hash: 'h1', short: 'h1', time: '09:00', subject: '첫 커밋' }, { hash: 'h2', short: 'h2', time: '10:00', subject: '둘째 커밋' }],
-          hours: 120, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-        // hash 없는(레거시) 커밋 — cidx로만 해석. 커밋 1개(삭제 시 엔트리 제거 확인용).
-        { id: 'g2', date: '2026-07-08', title: '무해시', categoryId: 'c-1', allDay: true, startTime: '', endTime: '',
-          location: '', memo: '', source: 'git',
-          commits: [{ hash: '', short: '', time: '', subject: '해시없음' }],
-          hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-      ],
-      todos: [], rooms: [],
-    });
-    const commitSubjectOf = (eid, i) => evJSON(`entryById(${JSON.stringify(eid)}).commits[${i}].subject`);
-
     //  보고서와 캘린더는 따로 관리한다(REPORT-EDIT §1, §5). 보고서 줄에서 캘린더 기록을 고치던 함수와 그 편집 상태가
-    //  되살아나면 보고서를 고치려다 일정, 할 일, 커밋 제목이 바뀐다. 커밋 내역 탭의 단일 경로(setCommitMessage, deleteCommitRow)는 그대로다.
+    //  되살아나면 보고서를 고치려다 일정, 할 일 제목이 바뀐다. 커밋 내역 탭의 커밋 고치기와 지우기는 2026-10-26 Git 기능과 함께 없앴다.
     test('REPORT-EDIT §5: 보고서 줄편집 전용 함수(setCommitSubject, setEntryTitle, setTodoText, commitReportEdit)와 편집 키가 없다', () => {
-      for (const fn of ['setCommitSubject', 'setEntryTitle', 'setTodoText', 'commitReportEdit']) {
-        assert.strictEqual(ev('typeof ' + fn), 'undefined', fn + ' 가 되살아났다: 보고서에서 캘린더 기록을 고치는 길이 다시 열린다');
+      for (const fn of ['setCommitSubject', 'setEntryTitle', 'setTodoText', 'commitReportEdit', 'setCommitMessage', 'deleteCommitRow']) {
+        assert.strictEqual(ev('typeof ' + fn), 'undefined', fn + ' 가 되살아났다: 보고서나 커밋 탭에서 캘린더 기록을 고치는 길이 다시 열린다');
         assert.ok(!new RegExp('\\b' + fn + '\\s*\\(').test(loadAppSource()), fn + '( 호출이나 정의가 소스에 남아 있다');
       }
       assert.strictEqual(ev('typeof editingReportKey'), 'undefined', '일간 보고서 줄편집 키(editingReportKey)가 되살아났다');
-      for (const fn of ['setCommitMessage', 'deleteCommitRow', 'commitDayNoteEdit']) {
-        assert.strictEqual(ev('typeof ' + fn), 'function', '대조군: ' + fn + ' 는 그대로 있어야 한다(커밋 내역 탭, 기간 취합 날짜 줄 ✎)');
-      }
-    });
-    test('REPORT-EDIT §5: 커밋 제목은 커밋 내역 탭(setCommitMessage)으로만 바뀐다(대조군: 그 길은 살아 있다)', () => {
-      seed(mutState());
-      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"  고친   메시지  ")'), true);
-      assert.strictEqual(commitSubjectOf('g1', 0), '고친 메시지');
-      assert.strictEqual(commitSubjectOf('g1', 1), '둘째 커밋');
+      assert.strictEqual(ev('typeof commitDayNoteEdit'), 'function', '대조군: commitDayNoteEdit 는 그대로 있어야 한다(기간 취합 날짜 줄 ✎)');
     });
 
-    // ── setCommitMessage (커밋 내역 탭 전체메시지 편집 — 첫 줄=제목·나머지=본문 재분리) ──
-    const commitBodyOf = (eid, i) => evJSON(`(entryById(${JSON.stringify(eid)}).commits[${i}].body||"")`);
-    test('setCommitMessage: 제목+본문 → 첫 줄=제목(정규화)·나머지=본문(내부 줄바꿈 보존)', () => {
-      seed(mutState());
-      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"고친  제목\\n본문 첫째\\n- 본문 둘째")'), true);
-      assert.strictEqual(commitSubjectOf('g1', 0), '고친 제목');            // 제목만 \s+ 접기+트림
-      assert.strictEqual(commitBodyOf('g1', 0), '본문 첫째\n- 본문 둘째');   // 본문 줄바꿈 보존
-      assert.notStrictEqual(evJSON('entryById("g1").updatedAt'), CA);       // updatedAt 갱신
-      assert.strictEqual(commitSubjectOf('g1', 1), '둘째 커밋');            // 다른 커밋 불변
-    });
-    test('setCommitMessage: 선두 빈 줄 무시 → 첫 비어있지 않은 줄이 제목', () => {
-      seed(mutState());
-      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"\\n\\n  진짜 제목\\n본문")'), true);
-      assert.strictEqual(commitSubjectOf('g1', 0), '진짜 제목');
-      assert.strictEqual(commitBodyOf('g1', 0), '본문');
-    });
-    test('setCommitMessage: 제목만(본문 없음) → body 빈 문자열', () => {
-      seed(mutState());
-      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"제목만 있음")'), true);
-      assert.strictEqual(commitSubjectOf('g1', 0), '제목만 있음');
-      assert.strictEqual(commitBodyOf('g1', 0), '');
-    });
-    test('setCommitMessage: 전부 공백/빈 입력 → false(제목 없음, 원본 유지)', () => {
-      seed(mutState());
-      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"   \\n  \\n ")'), false);   // 모든 줄 공백 → 제목 없음
-      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"")'), false);
-      assert.strictEqual(commitSubjectOf('g1', 0), '첫 커밋');
-    });
-    test('setCommitMessage: 제목 줄이 공백이고 아래 본문 있으면 → 첫 비어있지 않은 줄(본문 첫 줄)이 제목으로 승격', () => {
-      seed(mutState());
-      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"   \\n본문만")'), true);   // git 관례: 첫 비어있지 않은 줄=제목
-      assert.strictEqual(commitSubjectOf('g1', 0), '본문만');
-      assert.strictEqual(commitBodyOf('g1', 0), '');
-    });
-    test('setCommitMessage: 무변경(제목 동일·본문 동일) → false', () => {
-      seed(mutState());
-      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"첫 커밋")'), false);   // 기존 subject='첫 커밋', body 없음(='')
-      assert.strictEqual(commitSubjectOf('g1', 0), '첫 커밋');
-    });
-    test('setCommitMessage: 없는 엔트리/커밋 → false', () => {
-      seed(mutState());
-      assert.strictEqual(ev('setCommitMessage("nope","h1",0,"x")'), false);
-      assert.strictEqual(ev('setCommitMessage("g1","zzz",5,"x")'), false);
-    });
-
-    test('deleteCommitRow: 커밋 제거(남은 커밋 유지)', () => {
-      seed(mutState());
-      ev('deleteCommitRow("g1","h1",0)');
-      assert.deepStrictEqual(evJSON('entryById("g1").commits.map(function(c){return c.hash;})'), ['h2']);
-    });
-    test('deleteCommitRow: 마지막 커밋 삭제 → 엔트리 자체 제거(entryById null)', () => {
-      seed(mutState());
-      ev('deleteCommitRow("g2","",0)');   // 커밋 1개 → 삭제 시 git 기록(엔트리) 제거
-      assert.strictEqual(ev('entryById("g2")'), null);
-      assert.strictEqual(evJSON('state.entries.some(function(e){return e.id==="g2";})'), false);
-    });
-
-    // 회귀: 커밋 전체 본문(body)이 gitFeed 행·renderGitTab(커밋 내역 탭)에 실려 표시돼야 함.
-    // (버그: 피드/렌더가 body를 누락 → 옵션 ON 저장분도 커밋 내역 탭엔 제목만 보여 '안 불러온 듯' 오인. 보고서엔 정상이었음.)
-    test('regression(커밋내역 본문): git body가 gitFeed 행·renderGitTab에 렌더됨', () => {
-      seed({
-        gitAuthor: '', svnAuthor: '',
-        categories: [{ id: 'c-b', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
-        entries: [
-          { id: 'gb', date: '2026-07-08', title: '작업일지', categoryId: 'c-b', allDay: true, startTime: '', endTime: '',
-            location: '', memo: '', source: 'git',
-            commits: [{ hash: 'hb', short: 'hb', time: '14:38', subject: '제목 한 줄', body: '본문 첫째 줄\n- 둘째 줄' }],
-            hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-        ],
-        todos: [], rooms: [],
-      });
-      ev('selectedDate = "2026-07-08"'); ev('noteFilterCat = null');
-      assert.strictEqual(evJSON('gitFeed().find(function(r){return r.hash==="hb";}).body'), '본문 첫째 줄\n- 둘째 줄');   // 피드에 body 실림
-      assert.strictEqual(ev('renderGitTab().indexOf("nd-commit-body") >= 0'), true);   // 본문 컨테이너 렌더
-      assert.strictEqual(ev('renderGitTab().indexOf("둘째 줄") >= 0'), true);           // 본문 텍스트 렌더
-    });
-
-    // ── PART C: collectReportData titleMeta(라인별 편집 가능 여부) ─────────────
-    // titles(문자열 배열·dedup)는 불변, titleMeta가 1:1로 병렬 추가. editable=true는 '단일 git 커밋' 출처만.
+    // ── PART C: collectReportData titleMeta(라인별 출처) ─────────────
+    // titles(문자열 배열·dedup)는 불변, titleMeta가 1:1로 병렬 추가. 같은 제목이 두 출처에서 오면 editable=false 로 강등.
     const metaState = {
-      gitAuthor: '', svnAuthor: '',
       categories: [
-        { id: 'cg', name: '깃과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-        { id: 'cm', name: '혼합과제', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'cg', name: '단일과제', color: '#3e5be0', desc: '', createdAt: CA },
+        { id: 'cm', name: '혼합과제', color: '#2e9e6b', desc: '', createdAt: CA },
       ],
       entries: [
-        // (a) 단일 유니크 git 커밋 → 편집 가능
-        { id: 'gu', date: '2026-07-08', title: '무시제목', categoryId: 'cg', allDay: true, startTime: '', endTime: '',
-          location: '', memo: '', source: 'git',
-          commits: [{ hash: 'hu', short: 'hu', time: '09:00', subject: '유니크 커밋' }],
-          hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-        // (b) 동일 subject 커밋 2건(같은 과제) → 병합 → 편집 불가
-        { id: 'gd', date: '2026-07-08', title: '무시', categoryId: 'cm', allDay: true, startTime: '', endTime: '',
-          location: '', memo: '', source: 'git',
-          commits: [{ hash: 'd1', short: 'd1', time: '09:00', subject: '중복 커밋' }, { hash: 'd2', short: 'd2', time: '10:00', subject: '중복 커밋' }],
-          hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-        // (c) 비-git 일정 제목(cm) → 편집 불가
+        // (a) 단일 유니크 일정 → 출처 하나
+        { id: 'gu', date: '2026-07-08', title: '유니크 일정', categoryId: 'cg', allDay: true, startTime: '', endTime: '',
+          location: '', memo: '', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        // (b) 동일 제목 일정 2건(같은 과제) → 병합 → 출처 둘
+        { id: 'gd1', date: '2026-07-08', title: '중복 일정', categoryId: 'cm', allDay: true, startTime: '', endTime: '',
+          location: '', memo: '', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        { id: 'gd2', date: '2026-07-09', title: '중복 일정', categoryId: 'cm', allDay: true, startTime: '', endTime: '',
+          location: '', memo: '', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        // (c) 일정 제목(cm)
         { id: 'ev1', date: '2026-07-08', title: '일정제목', categoryId: 'cm', allDay: true, startTime: '', endTime: '',
-          location: '', memo: '', source: '', commits: [], hours: 30, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          location: '', memo: '', hours: 30, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
       ],
       todos: [
         { id: 'td1', text: '할일제목', done: false, categoryId: 'cm', due: '2026-07-08', endDate: '', prio: 'normal', completedAt: '', note: '', createdAt: CA, updatedAt: CA },
@@ -1115,59 +843,42 @@ if (!JSDOM) {
     };
     const rowByName = (r, name) => r.rows.find(x => x.name === name);
 
-    test('titleMeta: 단일 git 커밋 → editable true + entryId/hash/cidx, titles 불변', () => {
+    test('titleMeta: 단일 일정 → editable true + entryId, titles 불변', () => {
       seed(metaState);
-      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
-      const cg = rowByName(r, '깃과제');
-      assert.deepStrictEqual(cg.titles, ['유니크 커밋']);              // 문자열 배열 shape 불변(엔트리 제목 아님)
+      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true });
+      const cg = rowByName(r, '단일과제');
+      assert.deepStrictEqual(cg.titles, ['유니크 일정']);
       assert.strictEqual(cg.titleMeta.length, cg.titles.length);       // 1:1 정렬
       assert.strictEqual(cg.titleMeta[0].editable, true);
+      assert.strictEqual(cg.titleMeta[0].kind, 'event');
       assert.strictEqual(cg.titleMeta[0].entryId, 'gu');
-      assert.strictEqual(cg.titleMeta[0].hash, 'hu');
-      assert.strictEqual(cg.titleMeta[0].cidx, 0);
-      assert.strictEqual(cg.titleMeta[0].text, '유니크 커밋');
+      assert.strictEqual(cg.titleMeta[0].text, '유니크 일정');
+      assert.ok(!('hash' in cg.titleMeta[0]) && !('cidx' in cg.titleMeta[0]), '커밋 식별자(hash, cidx)가 메타에 남았다');
     });
-    test('titleMeta: 동일 subject 2건 → 병합(dedup) → editable false, entryId null', () => {
+    test('titleMeta: 동일 제목 2건 → 병합(dedup) → editable false, entryId null', () => {
       seed(metaState);
-      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
+      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true });
       const cm = rowByName(r, '혼합과제');
-      assert.strictEqual(cm.titles.filter(t => t === '중복 커밋').length, 1);   // dedup 1회(문자열 불변)
-      const dup = cm.titleMeta.find(m => m.text === '중복 커밋');
-      assert.strictEqual(dup.editable, false);   // 2개 출처 → 단일 아님 → 편집 불가
+      assert.strictEqual(cm.titles.filter(t => t === '중복 일정').length, 1);   // dedup 1회(문자열 불변)
+      const dup = cm.titleMeta.find(m => m.text === '중복 일정');
+      assert.strictEqual(dup.editable, false);   // 2개 출처 → 단일 아님
       assert.strictEqual(dup.entryId, null);
-      assert.strictEqual(dup.hash, null);
     });
-    // 2026-09-23 §3.4-C-4 — 강등이 details 만 합치고 body·dayDetails 를 버리던 자리.
-    const dupBodyState = (bodyA, bodyB) => ({
-      gitAuthor: '', svnAuthor: '', gitCommitBody: true,
-      categories: [{ id: 'cb', name: '본문과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
-      entries: [
-        { id: 'gb1', date: '2026-07-10', title: '작업일지', categoryId: 'cb', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git',
-          commits: [{ hash: 'b1', short: 'b1', time: '09:00', subject: '중복 커밋', body: bodyA }], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-        { id: 'gb2', date: '2026-07-11', title: '작업일지', categoryId: 'cb', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git',
-          commits: [{ hash: 'b2', short: 'b2', time: '10:00', subject: '중복 커밋', body: bodyB }], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-      ],
+    // 2026-09-23 §3.4-C-4 — 강등이 details 만 합치고 dayDetails 를 버리던 자리.
+    const dupDayState = () => ({
+      categories: [{ id: 'cb', name: '본문과제', color: '#3e5be0', desc: '', createdAt: CA }],
+      entries: [],
       todos: [
         { id: 'tpa', text: '기간 작업', done: false, categoryId: 'cb', due: '2026-07-13', endDate: '2026-07-15', prio: 'normal', completedAt: '', note: '', dayNotes: { '2026-07-14': 'A 설명' }, createdAt: CA, updatedAt: CA },
         { id: 'tpb', text: '기간 작업', done: false, categoryId: 'cb', due: '2026-07-13', endDate: '2026-07-15', prio: 'normal', completedAt: '', note: '', dayNotes: { '2026-07-13': 'B 설명' }, createdAt: CA, updatedAt: CA },
       ],
       rooms: [],
     });
-    test('titleMeta: 동일 subject 2건 → body 병합 보존(제목이 같아도 본문은 버리지 않는다)', () => {
-      const SRC = { event: true, todo: true, git: true, desc: true };
-      seed(dupBodyState('본문 A', '본문 B'));
-      let row = rowByName(collect('2026-07-01', '2026-07-31', SRC), '본문과제');
-      let dup = row.titleMeta.find(m => m.text === '중복 커밋');
-      assert.strictEqual(row.titles.filter(t => t === '중복 커밋').length, 1, '제목은 여전히 한 번만');
-      assert.strictEqual(dup.editable, false, '두 출처라 편집 불가로 강등');
-      assert.strictEqual(dup.body, '본문 A\n본문 B',
-        '제목이 같은 커밋 두 건의 본문이 사라졌다 — 「설명 포함」을 켜도 미리보기·복사·주간 전송에서 본문이 빠진다');
-      // 같은 본문이면 한 번만(중복 반복 금지)
-      seed(dupBodyState('본문 A', '본문 A'));
-      dup = rowByName(collect('2026-07-01', '2026-07-31', SRC), '본문과제').titleMeta.find(m => m.text === '중복 커밋');
-      assert.strictEqual(dup.body, '본문 A', '같은 본문이 두 번 찍힌다 — 보고서에 같은 줄이 반복된다');
+    test('titleMeta: 동일 제목 기간 할일 2건 → 날짜별 설명 병합 보존(제목이 같아도 설명은 버리지 않는다)', () => {
+      const SRC = { event: true, todo: true, desc: true };
+      seed(dupDayState());
       // 기간 할일 두 건(같은 제목) — 날짜별 설명이 날짜순으로 합쳐지고 details 에도 둘 다 남는다
-      row = rowByName(collect('2026-07-13', '2026-07-15', SRC), '본문과제');
+      const row = rowByName(collect('2026-07-13', '2026-07-15', SRC), '본문과제');
       const td = row.titleMeta.find(m => m.text === '기간 작업');
       assert.strictEqual(td.editable, false);
       assert.deepStrictEqual(td.dayDetails, [{ date: '2026-07-13', text: 'B 설명' }, { date: '2026-07-14', text: 'A 설명' }],
@@ -1181,17 +892,17 @@ if (!JSDOM) {
     });
     test('titleMeta: 일정 제목·할일 제목 → editable true(출처 라우팅), titles/titleMeta 1:1 유지', () => {
       seed(metaState);
-      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
+      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true });
       const cm = rowByName(r, '혼합과제');
       const em = cm.titleMeta.find(m => m.text === '일정제목');
-      assert.strictEqual(em.editable, true);          // 비-git 일정(titleMeta 는 다른 데서도 쓰여 그대로 둔다, REPORT-EDIT §5)
+      assert.strictEqual(em.editable, true);          // 일정(titleMeta 는 다른 데서도 쓰여 그대로 둔다, REPORT-EDIT §5)
       assert.strictEqual(em.kind, 'event');
       assert.strictEqual(em.entryId, 'ev1');
       const tm = cm.titleMeta.find(m => m.text === '할일제목');
       assert.strictEqual(tm.editable, true);          // 할 일(titleMeta 그대로)
       assert.strictEqual(tm.kind, 'todo');
       assert.strictEqual(tm.todoId, 'td1');
-      // titles(문자열) shape 불변: [중복 커밋(dedup), 일정제목, 할일제목]
+      // titles(문자열) shape 불변: [중복 일정(dedup), 일정제목, 할일제목]
       assert.strictEqual(cm.titles.length, 3);
       assert.ok(cm.titles.every(t => typeof t === 'string'));
       assert.strictEqual(cm.titleMeta.length, cm.titles.length);
@@ -1248,22 +959,21 @@ if (!JSDOM) {
 
     // ── 보고서 서식(머리기호/들여쓰기) — prefs 영속 + buildReportText/buildReport WYSIWYG(결정6: 데이터 불변) ──
     const fmtState = (marker, custom, indent) => ({
-      gitAuthor: '', svnAuthor: '',
       categories: [
-        { id: 'ca', name: '에이', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-        { id: 'cb', name: '비이', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'ca', name: '에이', color: '#3e5be0', desc: '', createdAt: CA },
+        { id: 'cb', name: '비이', color: '#2e9e6b', desc: '', createdAt: CA },
       ],
       entries: [
-        { id: 'a1', date: '2026-07-02', title: '알파', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-        { id: 'a2', date: '2026-07-03', title: '브라보', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-        { id: 'a3', date: '2026-07-04', title: '찰리', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-        { id: 'b1', date: '2026-07-05', title: '델타', categoryId: 'cb', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-        { id: 'b2', date: '2026-07-06', title: '에코', categoryId: 'cb', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        { id: 'a1', date: '2026-07-02', title: '알파', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        { id: 'a2', date: '2026-07-03', title: '브라보', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        { id: 'a3', date: '2026-07-04', title: '찰리', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        { id: 'b1', date: '2026-07-05', title: '델타', categoryId: 'cb', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        { id: 'b2', date: '2026-07-06', title: '에코', categoryId: 'cb', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
       ],
       todos: [], rooms: [],
       reportMarker: marker, reportMarkerCustom: custom, reportIndent: indent,
     });
-    const setRptRange = (f, t) => ev(`$('#rptFrom').value=${JSON.stringify(f)}; $('#rptTo').value=${JSON.stringify(t)}; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true;`);
+    const setRptRange = (f, t) => ev(`$('#rptFrom').value=${JSON.stringify(f)}; $('#rptTo').value=${JSON.stringify(t)}; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;`);
 
     // F2 — 라인 텍스트 빌더(카드×마커×들여쓰기): (indent*2 스페이스)+prefix+제목, 번호 카드별 리셋
     test('buildReportText(복사): 숫자 마커+들여쓰기2 — (indent*2)U+00A0+prefix+제목, 카드별 번호 리셋', () => {
@@ -1324,7 +1034,7 @@ if (!JSDOM) {
     test('buildReportText/buildWeeklyFields: 설명 포함 시 제목 아래 설명 라인 출력', () => {
       const st = fmtState('-', '', 1);
       st.entries = [
-        { id: 'd1', date: '2026-07-02', title: 'Alpha item', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: 'detail one\n• detail two', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        { id: 'd1', date: '2026-07-02', title: 'Alpha item', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: 'detail one\n• detail two', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
       ];
       seed(st);
       setRptRange('2026-07-01', '2026-07-31');
@@ -1339,50 +1049,6 @@ if (!JSDOM) {
       assert.ok(ewLines.includes('- Alpha item'));
       assert.ok(ewLines.includes('detail one'));
       assert.ok(ewLines.includes('detail two'));
-    });
-
-    // 항목1 — 커밋 전체 본문(gitCommitBody) 통합: OFF=본문 미포함(기존과 동일), ON=제목 아래 더 깊은 들여쓰기 라인들
-    const bodyState = (on) => ({
-      gitAuthor: '', svnAuthor: '',
-      categories: [{ id: 'cg', name: '깃', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
-      entries: [
-        { id: 'g1', date: '2026-07-09', title: '', categoryId: 'cg', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git',
-          commits: [{ hash: 'h1', short: 'h1', time: '09:00', subject: '기능 추가', body: '본문 상세1\n본문 상세2' }],
-          hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
-      todos: [], rooms: [],
-      reportMarker: 'none', reportMarkerCustom: '', reportIndent: 2, gitCommitBody: on,
-    });
-    const bodyRange = "reportMode='daily'; $('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true;";
-    const P4 = ' '.repeat(4), P6 = ' '.repeat(6);   // 제목=indent2*2, 본문=한 단계 더(+2)
-
-    test('항목1(buildReportText): ON — 제목 아래 본문 라인들이 더 깊게 들여쓰기됨', () => {
-      seed(bodyState(true));
-      ev(bodyRange);
-      const lines = ev('buildReportText()').split('\n');
-      assert.ok(lines.includes(P4 + '기능 추가'), '제목 라인');
-      assert.ok(lines.includes(P6 + '본문 상세1'), '본문 1행(더 깊은 들여쓰기)');
-      assert.ok(lines.includes(P6 + '본문 상세2'), '본문 2행');
-    });
-    test('항목1(buildReportText): OFF(기본) — 본문 완전 미포함(기존과 동일)', () => {
-      seed(bodyState(false));
-      ev(bodyRange);
-      const text = ev('buildReportText()');
-      assert.ok(text.split('\n').includes(P4 + '기능 추가'), '제목은 그대로');
-      assert.ok(!text.includes('본문 상세1'), 'OFF면 본문 미포함');
-      assert.ok(!text.includes('본문 상세2'));
-    });
-    test('항목1(buildReport): ON→.rtask-body 렌더 / OFF→미렌더', () => {
-      seed(bodyState(true));
-      ev(bodyRange + ' buildReport();');
-      const htmlOn = ev("$('#rptOut').innerHTML");
-      assert.ok(htmlOn.includes('rtask-body'), 'ON: 본문 div 존재');
-      assert.ok(htmlOn.includes('본문 상세1'), 'ON: 본문 텍스트 존재');
-      seed(bodyState(false));
-      ev(bodyRange + ' buildReport();');
-      const htmlOff = ev("$('#rptOut').innerHTML");
-      assert.ok(!htmlOff.includes('rtask-body'), 'OFF: 본문 div 없음');
-      assert.ok(!htmlOff.includes('본문 상세1'), 'OFF: 본문 텍스트 없음');
-      ev("reportMode='daily'");   // 상태 원복(다른 테스트 보호)
     });
 
     // F2c — buildWeeklyFields.endwork(netcus 자동전송 콘텐츠)도 복사와 동일 서식(머리기호+들여쓰기)
@@ -1540,7 +1206,7 @@ if (!JSDOM) {
       const st = fmtState('-', '', 2);
       st.entries = st.entries.concat([{
         id: 'x1', date: '2026-07-07', title: '<b>중요</b> & "인용"', categoryId: 'ca', allDay: true,
-        startTime: '', endTime: '', location: '', memo: '', source: '', commits: [],
+        startTime: '', endTime: '', location: '', memo: '', 
         hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA,
       }]);
       seed(st);
@@ -1630,7 +1296,7 @@ if (!JSDOM) {
       const st = fmtState('-', '', 2);
       st.entries = st.entries.concat([{
         id: 'x2', date: '2026-07-07', title: '폰트 무관 확인', categoryId: 'ca', allDay: true,
-        startTime: '', endTime: '', location: '', memo: '메모', source: '', commits: [],
+        startTime: '', endTime: '', location: '', memo: '메모', 
         hours: 90, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA,
       }]);
       seed(st);
@@ -1661,8 +1327,8 @@ if (!JSDOM) {
       ev("state.reportFont={family:'',size:0}; reportMode='daily'");   // 상태 원복
     });
 
-    test('prefs 부재 XML → 기본값(-,"",2) + entries/todos/commits 무손실(가산적)', () => {
-      seed(roundtripState);   // 4 엔트리(커밋 2건 포함)+2 todos
+    test('prefs 부재 XML → 기본값(-,"",2) + entries/todos 무손실(가산적)', () => {
+      seed(roundtripState);   // 4 엔트리 + 2 todos
       let xml = ev('toXML()');
       xml = xml.replace(/<prefs\b[^>]*\/>/, '');
       assert.ok(!/<prefs/.test(xml), 'prefs 요소 제거됨');
@@ -1673,8 +1339,7 @@ if (!JSDOM) {
       // 데이터 무손실
       assert.strictEqual(p.entries.length, 4);
       const byId = Object.fromEntries(p.entries.map(e => [e.id, e]));
-      assert.strictEqual(byId['e-2'].commits.length, 2);
-      assert.deepStrictEqual(byId['e-2'].commits.map(c => c.subject), ['첫 커밋', '둘째 커밋']);
+      assert.strictEqual(byId['e-2'].memo, '본문 첫 줄\n- 둘째 줄(줄바꿈 보존)');
       assert.strictEqual(p.todos.length, 2);
     });
     test('prefs 범위/길이 방어: reportIndent clamp 0..6, 9자 custom 무시', () => {
@@ -1688,35 +1353,34 @@ if (!JSDOM) {
 
     // F4 — 회귀: buildReport 일간 출력은 읽기 전용(REPORT-EDIT §2.2) + rtask-t는 마커 없는 원문만
     const gitDailyState = (marker, indent) => ({
-      gitAuthor: '', svnAuthor: '',
-      categories: [{ id: 'cg', name: '깃과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
-      entries: [{ id: 'gu', date: '2026-07-08', title: '무시제목', categoryId: 'cg', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git', commits: [{ hash: 'hu', short: 'hu', time: '09:00', subject: '유니크 커밋' }], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
+      categories: [{ id: 'cg', name: '단일과제', color: '#3e5be0', desc: '', createdAt: CA }],
+      entries: [{ id: 'gu', date: '2026-07-08', title: '유니크 일정', categoryId: 'cg', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
       todos: [], rooms: [],
       reportMarker: marker, reportMarkerCustom: '', reportIndent: indent,
     });
     const renderDaily = (marker, indent) => {
       seed(gitDailyState(marker, indent));
       ev("reportMode='daily';");
-      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true;");
+      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
       ev('buildReport()');
       return ev("$('#rptOut').innerHTML");
     };
     test('regression: 일간 buildReport — 줄은 읽기 전용(✎, ✕, data-ract, 원본 앵커 없음), rtask-t=마커없는 원문', () => {
       const html = renderDaily('1.', 3);
-      //  REPORT-EDIT §5: 일간 줄 ✎/✕ 는 캘린더 기록(커밋 제목, 일정, 할 일)을 고치거나 지웠다. 보고서와 캘린더는 따로라 없앴다.
+      //  REPORT-EDIT §5: 일간 줄 ✎/✕ 는 캘린더 기록(일정, 할 일)을 고치거나 지웠다. 보고서와 캘린더는 따로라 없앴다.
       assert.ok(!/rtask-edit-btn|rtask-del-btn|data-ract=/.test(html), '일간 줄에 ✎/✕ 가 되살아났다');
       assert.ok(!/data-reid=|data-rhash=|data-rcidx=|data-rkind=/.test(html), '일간 줄에 캘린더 원본을 가리키는 앵커가 남아 있다');
       assert.ok(/class="rtask rtask-ro"/.test(html), '일간 줄은 읽기 전용(.rtask-ro)이다');
       const m = /<span class="rtask-t">([^<]*)<\/span>/.exec(html);
       assert.ok(m, 'rtask-t span 존재');
-      assert.strictEqual(m[1], '유니크 커밋', 'rtask-t는 마커 없는 원문만');
+      assert.strictEqual(m[1], '유니크 일정', 'rtask-t는 마커 없는 원문만');
       assert.ok(/<span class="rtask-mk">1\. <\/span>/.test(html), '마커는 rtask-mk 별도 span');
       assert.ok(/padding-left:55px/.test(html), '들여쓰기 13+3*14=55px');
     });
     test('regression: 무번호(none) — rtask-mk 생략, rtask-t 원문 유지, indent0=base 13px', () => {
       const html = renderDaily('none', 0);
       assert.ok(!/rtask-mk/.test(html), '무번호는 마커 span 없음');
-      assert.ok(/<span class="rtask-t">유니크 커밋<\/span>/.test(html), 'rtask-t 원문 유지');
+      assert.ok(/<span class="rtask-t">유니크 일정<\/span>/.test(html), 'rtask-t 원문 유지');
       assert.ok(!/rtask-edit-btn/.test(html), '편집 버튼(✎)이 되살아났다(REPORT-EDIT §5)');
       assert.ok(/padding-left:13px/.test(html), 'indent0 → base 13px');
     });
@@ -1726,14 +1390,13 @@ if (!JSDOM) {
     //   (카드마다 붙던 '오늘치는 여기서 바로 수정' 힌트는 줄 ✎ 와 함께 없앴다. 요약줄이 글 편집을 안내한다, REPORT-EDIT §2.1)
     test('regression(항목3): 할일-only 카드 — rcard-empty 미부여 + 요약줄이 글 편집을 안내(카드 힌트 없음)', () => {
       seed({
-        gitAuthor: '', svnAuthor: '',
-        categories: [{ id: 'ct', name: '할일과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
+        categories: [{ id: 'ct', name: '할일과제', color: '#3e5be0', desc: '', createdAt: CA }],
         entries: [],   // 일정 0 (할일만)
         todos: [{ id: 'td', text: '할일 항목', done: false, categoryId: 'ct', due: '2026-07-08', endDate: '', prio: 'normal', note: '', createdAt: CA, updatedAt: CA }],
         rooms: [], reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
       });
       ev("reportMode='daily';");
-      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true;");
+      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
       ev('buildReport()');
       const html = ev("$('#rptOut').innerHTML");
       assert.ok(html.includes('할일 항목'), '할일 항목이 카드에 렌더됨');
@@ -1748,7 +1411,7 @@ if (!JSDOM) {
     // ── Item1 — 일간 과제별 시간 입력(tc_taskHours) → buildReportText 헤더 "[과제] : n" ──
     test('Item1(일간): setTaskHours → buildReportText "[과제] : 6.5" / 미입력이면 과제명만', () => {
       seed(reportState);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true;");
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
       // 미입력 — 헤더에 시간 없음
       ev("setTaskHours('2026-07-09','c-1',0); setTaskHours('2026-07-09','c-2',0);");
       let lines = ev('buildReportText()').split('\n');
@@ -1772,7 +1435,7 @@ if (!JSDOM) {
     });
     test('Item1: 일간 buildReport rcard 헤더에 시간 입력칸(.rcard-h-in) 렌더 / 주간엔 없음', () => {
       seed(reportState);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
       assert.ok(/class="rcard-h-in"/.test(ev("$('#rptOut').innerHTML")), '일간 rcard 헤더에 시간 입력칸');
       assert.ok(/data-hcat="c-1"/.test(ev("$('#rptOut').innerHTML")), 'catId 앵커(data-hcat)');
       ev("reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptTo').disabled=true; buildReport();");
@@ -1782,16 +1445,15 @@ if (!JSDOM) {
 
     // ── Item2/재작업 → REPORT-EDIT §5(2026-10-07): 일간 줄의 삭제(✕, 원본 삭제)와 편집(✎)은 커밋·일정·할일 모두 없앴다 ──
     //  보고서에서 빼고 싶으면 카드 X(이 보고서에서 빼기)를 쓴다. 캘린더 기록은 그대로 남는다.
-    test('Item2(일간): 줄 ✕/✎ 는 커밋·일정 라인 어디에도 없다(원본을 지우는 길이 보고서에 없다)', () => {
+    test('Item2(일간): 줄 ✕/✎ 는 일정 라인 어디에도 없다(원본을 지우는 길이 보고서에 없다)', () => {
       seed(reportState);
-      // git 커밋 라인(2026-07-08, g1) → 삭제 버튼 + git 라벨
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
-      const gitHtml = ev("$('#rptOut').innerHTML");
-      assert.ok(/class="rtask rtask-ro"/.test(gitHtml), '전제: 일간 카드 줄이 그려졌다');
-      assert.ok(!/rtask-del-btn/.test(gitHtml), 'git 커밋 라인에 삭제 버튼이 되살아났다');
-      assert.ok(!/data-ract=/.test(gitHtml), '삭제/편집 액션 앵커(data-ract)가 되살아났다');
-      assert.ok(!/이 커밋 삭제/.test(gitHtml), 'git 삭제 라벨이 남아 있다');
-      assert.ok(/class="rcard-x"/.test(gitHtml), '대조군: 보고서에서 빼는 길은 카드 X 다');
+      // 첫 일정 라인(2026-07-08, g1)
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
+      const firstHtml = ev("$('#rptOut').innerHTML");
+      assert.ok(/class="rtask rtask-ro"/.test(firstHtml), '전제: 일간 카드 줄이 그려졌다');
+      assert.ok(!/rtask-del-btn/.test(firstHtml), '일정 라인에 삭제 버튼이 되살아났다');
+      assert.ok(!/data-ract=/.test(firstHtml), '삭제/편집 액션 앵커(data-ract)가 되살아났다');
+      assert.ok(/class="rcard-x"/.test(firstHtml), '대조군: 보고서에서 빼는 길은 카드 X 다');
       // 일정 라인(2026-07-09, v1) → 편집 + 삭제(원본 제거로 확장)
       ev("$('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; buildReport();");
       const evHtml = ev("$('#rptOut').innerHTML");
@@ -1801,16 +1463,6 @@ if (!JSDOM) {
       assert.ok(!/이 일정 삭제/.test(evHtml), '일정 삭제 라벨이 남아 있다');
       ev("reportMode='daily'");
     });
-    test('Item2: deleteCommitRow — 커밋 제거 후 commits 반영(마지막이면 엔트리 제거)', () => {
-      seed(reportState);   // g1: 커밋 2건(h1,h2)
-      ev("deleteCommitRow('g1','h1',0)");   // h1 제거 → 1건 남음
-      let e = evJSON("entryById('g1')");
-      assert.ok(e && Array.isArray(e.commits) && e.commits.length === 1, '커밋 1건 남음');
-      assert.strictEqual(e.commits[0].hash, 'h2', '남은 커밋은 h2');
-      ev("deleteCommitRow('g1','h2',0)");   // 마지막 제거 → 엔트리 자체 제거
-      assert.strictEqual(evJSON("entryById('g1')||null"), null, '커밋 0개 git 엔트리는 제거');
-    });
-
     // ── 보고서 모달 재구성(레일+미리보기 / 근태 레일 슬롯 / ⚙옵션 / 내용 출처) ─────────
     // 데이터 로직 불변, 구조/노출만 변경. 근태는 미리보기(#rptOut) 밖 좌측 레일 #rptAttendRail(일간만).
     test('report UI: 내용 출처 행 — 일간 숨김 / 주간·커스텀 표시', () => {
@@ -1826,7 +1478,7 @@ if (!JSDOM) {
 
     test('report UI: 일간 buildReport — 근태(.rpt-attend)는 좌측 레일 #rptAttendRail, #rptOut엔 없음', () => {
       seed(reportState);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
       assert.ok(/rpt-attend/.test(ev("$('#rptAttendRail').innerHTML")), '근태 바가 레일 슬롯에 렌더');
       assert.ok(/id="raStatus"/.test(ev("$('#rptAttendRail').innerHTML")), 'raStatus/raOT 존재');
       assert.ok(!/rpt-attend/.test(ev("$('#rptOut').innerHTML")), '#rptOut엔 근태 없음(미리보기=순수 카드)');
@@ -1841,13 +1493,13 @@ if (!JSDOM) {
       ev("reportMode='daily'");
     });
 
-    test('report UI: #rptOptSum — 포함 항목 체크 수 반영(하나 해제 → 2/3)', () => {
+    test('report UI: #rptOptSum — 포함 항목 체크 수 반영(하나 해제 → 1/2)', () => {
       seed(reportState);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
-      assert.ok(/포함 3\/3/.test(ev("$('#rptOptSum').textContent")), '3개 체크 → 3/3');
-      ev("$('#rptSrcGit').checked=false; buildReport();");
-      assert.ok(/포함 2\/3/.test(ev("$('#rptOptSum').textContent")), '하나 해제 → 2/3');
-      ev("$('#rptSrcGit').checked=true; buildReport();");   // 원복(포함 항목은 localStorage 로 새는 상태다)
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
+      assert.ok(/포함 2\/2/.test(ev("$('#rptOptSum').textContent")), '2개 체크 → 2/2');
+      ev("$('#rptSrcTodo').checked=false; buildReport();");
+      assert.ok(/포함 1\/2/.test(ev("$('#rptOptSum').textContent")), '하나 해제 → 1/2');
+      ev("$('#rptSrcTodo').checked=true; buildReport();");   // 원복(포함 항목은 localStorage 로 새는 상태다)
     });
 
     // ══ 2026-09-18 4축 리뷰 반영 계약 ═══════════════════════════════════
@@ -1855,14 +1507,14 @@ if (!JSDOM) {
     //      렌더는 저장값을 읽기만 한다. 미리보기·복사·전송(일간·주간)은 같은 rows/flags 에서 나온다(WYSIWYG).
     test('report UI: 기간이 잘못돼도 포함 항목은 저장되고 ⚙요약은 갱신된다(가드 앞 첫머리 계약)', () => {
       seed(reportState);
-      ev("setReportMode('daily'); $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
-      assert.ok(/포함 3\/3/.test(ev("$('#rptOptSum').textContent")), '사전조건: 정상 기간에서 3/3');
-      ev("$('#rptFrom').value=''; $('#rptTo').value=''; $('#rptSrcGit').checked=false; buildReport();");
+      ev("setReportMode('daily'); $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
+      assert.ok(/포함 2\/2/.test(ev("$('#rptOptSum').textContent")), '사전조건: 정상 기간에서 2/2');
+      ev("$('#rptSrcTodo').checked=false; $('#rptFrom').value=''; $('#rptTo').value=''; buildReport();");
       assert.ok(/기간을 선택하세요/.test(ev("$('#rptSummary').textContent")), '전제: 날짜 가드가 켜져 있다');
-      assert.ok(/포함 2\/3/.test(ev("$('#rptOptSum').textContent")), '가드 화면에서도 ⚙요약이 지금 선택을 말한다');
-      assert.strictEqual(evJSON("loadRptSourcePrefs().daily.git"), false, '가드 화면에서도 선택이 저장된다');
-      ev("$('#rptSrcGit').checked=true; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; buildReport();");
-      assert.strictEqual(evJSON("loadRptSourcePrefs().daily.git"), true, '원복 확인(다음 테스트로 새지 않게)');
+      assert.ok(/포함 1\/2/.test(ev("$('#rptOptSum').textContent")), '가드 화면에서도 ⚙요약이 지금 선택을 말한다');
+      assert.strictEqual(evJSON("loadRptSourcePrefs().daily.todo"), false, '가드 화면에서도 선택이 저장된다');
+      ev("$('#rptSrcTodo').checked=true; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; buildReport();");
+      assert.strictEqual(evJSON("loadRptSourcePrefs().daily.todo"), true, '원복 확인(다음 테스트로 새지 않게)');
       ev("setReportMode('daily')");
     });
 
@@ -1891,57 +1543,24 @@ if (!JSDOM) {
       ev("setNetcusLocked(false); state.reportSource='cal'; setReportMode('daily');");
     });
 
-    // ── 커밋 본문(gitCommitBody) — 「설명 포함」이 함께 좌우하고, 복사와 주간 전송이 같은 함수를 쓴다 ──
-    const cmtBodyState = () => ({
-      gitAuthor: '', svnAuthor: '',
-      categories: [{ id: 'cg', name: '깃과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
-      entries: [{ id: 'ge', date: '2026-07-08', title: '작업일지', categoryId: 'cg', allDay: true, startTime: '', endTime: '', location: '', memo: '',
-        source: 'git', commits: [{ hash: 'hb', short: 'hb', time: '10:00', subject: '커밋 제목', body: '본문 한 줄' }],
-        hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
-      todos: [], rooms: [], gitCommitBody: true, reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
-    });
-
-    test('커밋 본문: 「설명 포함」 OFF 면 본문도 함께 빠진다(메모·노트와 같은 스위치)', () => {
-      seed(cmtBodyState());
-      const bodyOf = (desc) => collect('2026-07-08', '2026-07-08', { event: true, todo: true, git: true, desc, skipEmpty: false })
-        .rows.find(r => r.name === '깃과제').titleMeta[0].body;
-      assert.strictEqual(bodyOf(true), '본문 한 줄', '대조군: 설명 포함 ON → 본문 유지');
-      assert.strictEqual(bodyOf(false), '', '설명 포함 OFF → 본문도 빠진다');
-    });
-
-    test('커밋 본문: 복사(buildReportText)와 주간 전송(buildWeeklyFields)이 같은 본문을 싣는다(WYSIWYG)', () => {
-      seed(cmtBodyState());
-      ev("reportMode='weekly'; state.reportSource='cal'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12';"
-        + "$('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false;");
-      const SRC_ON = '{event:true,todo:true,git:true,desc:true,skipEmpty:false}';
-      const SRC_OFF = '{event:true,todo:true,git:true,desc:false,skipEmpty:false}';
-      const wf = evJSON("buildWeeklyFields('2026-07-06','2026-07-12'," + SRC_ON + ")");
-      assert.ok(wf.endwork.includes('본문 한 줄'), '주간 전송 endwork 에 커밋 본문이 실린다(전에는 복사에만 있었다)');
-      assert.ok(ev('buildReportText()').includes('본문 한 줄'), '대조군: 복사 텍스트에도 실린다');
-      const wfOff = evJSON("buildWeeklyFields('2026-07-06','2026-07-12'," + SRC_OFF + ")");
-      assert.ok(!wfOff.endwork.includes('본문 한 줄'), '설명 포함 OFF → 주간 전송에서도 빠진다');
-      ev("reportMode='daily'");
-    });
-
     // 2026-10-07 기본 과제(DEFAULT-TASKS §4.3) — 휴가, 기타는 진짜 과제라 카드마다 시간 입력칸이 있고, 그 시간이
     //  일간 본문 '[기타] : n', 주간 과제투입시간 줄, 합계에 들어간다. 예전 미분류 '기타' 행 전용 안내(.rcard-hnote)는 지웠다.
     test('report UI: 휴가, 기타 카드에도 시간 입력칸이 있고 그 시간이 일간 본문, 주간 과제투입시간, 합계에 들어간다', () => {
-      const E = (id, date, title, cat) => ({ id, date, title, categoryId: cat, allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA });
+      const E = (id, date, title, cat) => ({ id, date, title, categoryId: cat, allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA });
       seed({
-        gitAuthor: '', svnAuthor: '',
-        categories: [{ id: 'ca', name: '정상과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-          { id: 'cv', name: '휴가', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-          { id: 'cg', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
+        categories: [{ id: 'ca', name: '정상과제', color: '#3e5be0', desc: '', createdAt: CA },
+          { id: 'cv', name: '휴가', color: '#2e9e6b', desc: '', createdAt: CA },
+          { id: 'cg', name: '기타', color: '#5b6b7d', desc: '', createdAt: CA }],
         entries: [E('n1', '2026-07-08', '정상 일정', 'ca'), E('g1', '2026-07-08', '사내 교육', 'cg')],
         todos: [], rooms: [], taskHours: { '2026-07-08': { ca: 4, cg: 2.5, cv: 1 } }, attendance: {},
       });
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptSkipEmpty').checked=false; buildReport();");
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSkipEmpty').checked=false; buildReport();");
       const html = ev("$('#rptOut').innerHTML");
       for (const k of ['ca', 'cv', 'cg']) assert.ok(new RegExp('data-hcat="' + k + '"').test(html), `과제 ${k} 카드에 시간 입력칸이 없다`);
       assert.ok(!/rcard-hnote/.test(html) && !/__uncat__/.test(html), '미분류 전용 안내(.rcard-hnote)나 __uncat__ 이 되살아났다');
       const daily = ev('buildReportText()');
       assert.ok(daily.includes('[기타] : 2.5') && daily.includes('[휴가] : 1') && daily.includes('[정상과제] : 4'), '일간 본문에 기본 과제 시간이 없다: ' + daily);
-      const wf = evJSON("buildWeeklyFields('2026-07-06','2026-07-12',{event:true,todo:true,git:true,desc:true,skipEmpty:false})");
+      const wf = evJSON("buildWeeklyFields('2026-07-06','2026-07-12',{event:true,todo:true,desc:true,skipEmpty:false})");
       assert.ok(wf.content.includes('[기타] : 2.5') && wf.content.includes('[휴가] : 1'), '주간 과제투입시간에 기본 과제 시간이 없다: ' + wf.content);
       assert.ok(/합계 : 7\.5/.test(wf.content), '주간 합계에 기본 과제 시간이 빠졌다(4 + 2.5 + 1 = 7.5): ' + wf.content);
       //  입력칸으로 적은 값도 그 과제 키로 저장된다(setTaskHours 경로 · 예전 미분류 행은 저장할 곳이 없었다)
@@ -1971,16 +1590,16 @@ if (!JSDOM) {
     // 2026-09-18 사용자 지적: 포함 항목을 전부 끄면 근태·초과시간이 사라졌다 — 근태 슬롯이 본문 가드 뒤에 그려지던 연동(지시한 적 없음).
     test('report UI: 근태·초과시간은 포함 항목 0개·과제 0행 가드와 무관하게 일간이면 항상 그린다', () => {
       seed(reportState);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=false; $('#rptSrcTodo').checked=false; $('#rptSrcGit').checked=false; $('#rptSkipEmpty').checked=false; buildReport();");
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=false; $('#rptSrcTodo').checked=false; $('#rptSkipEmpty').checked=false; buildReport();");
       assert.ok(/포함할 항목을 한 개 이상/.test(ev("$('#rptSummary').textContent")), '전제: 포함 항목 0개 가드가 켜져 있다');
       assert.ok(ev("!!document.getElementById('raStatus') && !!document.getElementById('raOT')"), '가드 화면에서도 근태·초과시간 셀렉트는 남아야 한다');
       // 과제 0행(전부 끄고 빈 과제 제외까지) — 역시 남는다
-      ev("$('#rptSrcGit').checked=true; $('#rptSkipEmpty').checked=true; state.categories=[]; state.entries=[]; state.todos=[]; buildReport();");   // 엔트리가 남으면 미분류 「기타」 행이 생겨 가드가 안 뜬다
+      ev("$('#rptSrcEvent').checked=true; $('#rptSkipEmpty').checked=true; state.categories=[]; state.entries=[]; state.todos=[]; buildReport();");   // 엔트리가 남으면 미분류 「기타」 행이 생겨 가드가 안 뜬다
       assert.ok(/등록된 과제가 없습니다/.test(ev("$('#rptSummary').textContent")), '전제: 과제 0행 가드');
       assert.ok(ev("!!document.getElementById('raStatus')"), '과제 0행 가드에서도 근태는 남는다');
       // 주간에서는 없다(일간 전용 계약 그대로)
       seed(reportState);
-      ev("reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptSkipEmpty').checked=false; buildReport();");
+      ev("reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSkipEmpty').checked=false; buildReport();");
       assert.ok(!ev("!!document.getElementById('raStatus')"), '주간에는 근태 슬롯이 없다');
       ev("reportMode='daily'");
     });
@@ -1988,16 +1607,16 @@ if (!JSDOM) {
     // 2026-09-18 사용자 지적: 포함 항목 0개면 들여쓰기 ± 가 표시에 안 먹고, 다시 켜면 값이 튀었다 — 컨트롤 동기화가 본문 가드 뒤에 있던 결함.
     test('report UI: 서식 컨트롤(들여쓰기·머리기호)은 포함 항목 0개 가드에서도 저장값을 즉시 반영한다', () => {
       seed(reportState);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; updateCurrentReportFormatPref({ indent: 2, marker: '-', markerCustom: '' }); buildReport();");
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; updateCurrentReportFormatPref({ indent: 2, marker: '-', markerCustom: '' }); buildReport();");
       assert.strictEqual(ev("$('#rptIndVal').textContent"), '2단', '전제');
-      ev("$('#rptSrcEvent').checked=false; $('#rptSrcTodo').checked=false; $('#rptSrcGit').checked=false; buildReport();");
+      ev("$('#rptSrcEvent').checked=false; $('#rptSrcTodo').checked=false; buildReport();");
       assert.ok(/포함할 항목을 한 개 이상/.test(ev("$('#rptSummary').textContent")), '전제: 가드 화면');
       ev("$('#rptIndPlus').click()");
       assert.strictEqual(ev("$('#rptIndVal').textContent"), '3단', '가드 화면에서 + 를 누르면 표시가 바로 3단이어야 한다');
       assert.strictEqual(evJSON('currentReportFormatPref()').indent, 3, '저장값도 3');
       ev("$('#rptMarker').value='1.'; $('#rptMarker').dispatchEvent(new Event('change',{bubbles:true}));");
       assert.strictEqual(evJSON('currentReportFormatPref()').marker, '1.');
-      ev("$('#rptSrcGit').checked=true; buildReport();");
+      ev("$('#rptSrcEvent').checked=true; buildReport();");
       assert.strictEqual(ev("$('#rptIndVal').textContent"), '3단', '다시 켜도 값이 튀지 않는다(표시 = 저장값)');
       assert.strictEqual(ev("$('#rptMarker').value"), '1.');
       ev("updateCurrentReportFormatPref({ indent: 2, marker: '-', markerCustom: '' }); $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
@@ -2065,21 +1684,20 @@ if (!JSDOM) {
       assert.ok(sendText.includes('[보고서 작성]'), '과제 블록 포함');
     });
 
-    // ── buildCalendarExportMd (연구노트 데이터 내보내기 — 순수 직렬화) ─────────────
+    // ── buildCalendarExportMd (과제 데이터 내보내기 — 순수 직렬화) ─────────────
     // 선택 과제 1개의 캘린더 기록을 날짜별 md로. cat은 catById로 조회해 넘긴다. ev는 원시 문자열을 그대로 반환.
     const buildMd = (catId, from, to) =>
       ev('buildCalendarExportMd(catById(' + JSON.stringify(catId) + '),' + JSON.stringify(from) + ',' + JSON.stringify(to) + ')');
-    const catOnly = (name, extra) => ({ id: (extra && extra.id) || 'c-1', name, color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA, ...(extra || {}) });
+    const catOnly = (name, extra) => ({ id: (extra && extra.id) || 'c-1', name, color: '#3e5be0', desc: '', createdAt: CA, ...(extra || {}) });
 
     test('buildCalendarExportMd: 단일 일정+메모 → 헤더·날짜·### 일정·제목(공수)·메모 불릿', () => {
       seed({
-        gitAuthor: '', svnAuthor: '',
         categories: [catOnly('연구과제')],
-        entries: [{ id: 'e1', date: '2026-07-08', title: '실험 설계', categoryId: 'c-1', allDay: true, startTime: '', endTime: '', location: '', memo: '가설 수립\n장비 점검', source: '', commits: [], hours: 90, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
+        entries: [{ id: 'e1', date: '2026-07-08', title: '실험 설계', categoryId: 'c-1', allDay: true, startTime: '', endTime: '', location: '', memo: '가설 수립\n장비 점검', hours: 90, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
         todos: [], rooms: [],
       });
       const md = buildMd('c-1', '2026-07-08', '2026-07-08');
-      assert.ok(md.includes('# 연구노트 데이터 — 연구과제'), '문서 제목');
+      assert.ok(md.includes('# 과제 데이터: 연구과제'), '문서 제목');
       assert.ok(md.includes('## 2026-07-08 (수)'), '날짜 헤더 + 한글 요일');
       assert.ok(md.includes('### 일정'), '일정 섹션');
       assert.ok(md.includes('- 실험 설계 · 1시간 30분'), '제목 + 공수(90분→1시간 30분)');
@@ -2089,7 +1707,6 @@ if (!JSDOM) {
 
     test('buildCalendarExportMd: 기간 할일 dayNotes — 해당일은 — 설명, dayNote 없는 in-range일은 상세 없음', () => {
       seed({
-        gitAuthor: '', svnAuthor: '',
         categories: [catOnly('연구과제')],
         entries: [],
         todos: [{ id: 'tp', text: '논문 초안', done: false, categoryId: 'c-1', due: '2026-07-13', endDate: '2026-07-15', prio: 'normal', completedAt: '', note: '', dayNotes: { '2026-07-14': '서론 작성' }, createdAt: CA, updatedAt: CA }],
@@ -2100,43 +1717,24 @@ if (!JSDOM) {
       assert.ok(lines.includes('- [ ] 논문 초안'), '07-13/07-15: dayNote 없음 → 제목만(— 없음)');
     });
 
-    test('buildCalendarExportMd: git 작업일지 → ### 작업일지(커밋)에 - subject (short)', () => {
+    test('buildCalendarExportMd: 커밋 섹션이 없다(2026-10-26 Git 기능 삭제) — 일정과 할 일만', () => {
       seed({
-        gitAuthor: '', svnAuthor: '',
         categories: [catOnly('연구과제')],
-        entries: [{ id: 'g1', date: '2026-07-09', title: '작업일지', categoryId: 'c-1', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git', commits: [{ hash: 'abc123def', short: 'r1195', time: '09:00', subject: '데이터 파이프라인 추가' }], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
-        todos: [], rooms: [],
+        entries: [{ id: 'e1', date: '2026-07-09', title: '데이터 파이프라인 회의', categoryId: 'c-1', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
+        todos: [{ id: 't1', text: '정리', done: false, categoryId: 'c-1', due: '2026-07-09', endDate: '', prio: 'normal', completedAt: '', note: '', createdAt: CA, updatedAt: CA }],
+        rooms: [],
       });
       const md = buildMd('c-1', '2026-07-09', '2026-07-09');
-      assert.ok(md.includes('### 작업일지(커밋)'), '커밋 섹션');
-      assert.ok(md.includes('- 데이터 파이프라인 추가 (r1195)'), 'subject (short)');
-    });
-
-    test('buildCalendarExportMd: 커밋 본문은 불릿 아래 2칸 들여쓰기 줄로 남는다(빈 줄 제외) — 2026-09-23 §3.4-C-9', () => {
-      seed({
-        gitAuthor: '', svnAuthor: '',
-        categories: [catOnly('연구과제')],
-        entries: [{ id: 'g1', date: '2026-07-09', title: '작업일지', categoryId: 'c-1', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git',
-          commits: [{ hash: 'abc', short: 'r1', time: '09:00', subject: '제목', body: '왜 바꿨는지\n\n무엇을 바꿨는지' },
-                    { hash: 'def', short: 'r2', time: '10:00', subject: '본문 없음' }],
-          hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
-        todos: [], rooms: [],
-      });
-      const lines = buildMd('c-1', '2026-07-09', '2026-07-09').split('\n');
-      const i = lines.indexOf('- 제목 (r1)');
-      assert.ok(i >= 0, '커밋 불릿을 찾지 못했다');
-      assert.deepStrictEqual(lines.slice(i + 1, i + 3), ['  왜 바꿨는지', '  무엇을 바꿨는지'],
-        '커밋 본문이 내보내기에 없다 — 앱에서 고친 본문·수기 커밋 본문은 patch 에도 없어 연구노트 재료에서 통째로 빠진다');
-      assert.strictEqual(lines[i + 3], '- 본문 없음 (r2)', '본문 없는 커밋은 추가 줄 없이 바로 다음 불릿(빈 본문 줄 금지)');
+      assert.ok(md.includes('### 일정') && md.includes('### 할 일'), '전제: 일정과 할 일 섹션');
+      assert.ok(!/작업일지|커밋|patch/i.test(md), '내보내기 글에 커밋 흔적이 남았다: ' + md);
     });
 
     test('buildCalendarExportMd: 과제 격리 — 다른 과제 항목은 포함되지 않음', () => {
       seed({
-        gitAuthor: '', svnAuthor: '',
         categories: [catOnly('내과제', { id: 'c-1' }), catOnly('남의과제', { id: 'c-2', color: '#2e9e6b' })],
         entries: [
-          { id: 'e1', date: '2026-07-08', title: '내 일정', categoryId: 'c-1', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-          { id: 'e2', date: '2026-07-08', title: '남의 일정', categoryId: 'c-2', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'e1', date: '2026-07-08', title: '내 일정', categoryId: 'c-1', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'e2', date: '2026-07-08', title: '남의 일정', categoryId: 'c-2', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
         ],
         todos: [], rooms: [],
       });
@@ -2147,9 +1745,8 @@ if (!JSDOM) {
 
     test('buildCalendarExportMd: 항목 없는 날짜는 헤더(## ) 미출력 + cat 없으면 빈 문자열', () => {
       seed({
-        gitAuthor: '', svnAuthor: '',
         categories: [catOnly('연구과제')],
-        entries: [{ id: 'e1', date: '2026-07-10', title: '중간 일정', categoryId: 'c-1', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
+        entries: [{ id: 'e1', date: '2026-07-10', title: '중간 일정', categoryId: 'c-1', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
         todos: [], rooms: [],
       });
       const md = buildMd('c-1', '2026-07-08', '2026-07-12');
@@ -2203,7 +1800,7 @@ if (!JSDOM) {
     });
 
     test('remind 저장: addEntry는 정규화 저장, updateEntry는 미제공 시 기존값 보존(hours와 동일 규약)', () => {
-      seed({ gitAuthor: '', svnAuthor: '', categories: [], entries: [], todos: [], rooms: [] });
+      seed({ categories: [], entries: [], todos: [], rooms: [] });
       const id = ev("addEntry({date:'2026-07-08', title:'회의', allDay:false, startTime:'14:00', remind:30}).id");
       assert.strictEqual(evJSON('entryById(' + JSON.stringify(id) + ').remind'), 30);
       ev('updateEntry(' + JSON.stringify(id) + ", {date:'2026-07-08', title:'회의(수정)', allDay:false, startTime:'14:00'})");
@@ -2216,12 +1813,11 @@ if (!JSDOM) {
 
     test('remind XML: 기본(null)은 속성 미기록(기존 파일과 byte 동일), 0/분은 왕복 보존', () => {
       seed({
-        gitAuthor: '', svnAuthor: '',
         categories: [],
         entries: [
-          { id: 'r-def', date: '2026-07-08', title: '기본', categoryId: null, allDay: false, startTime: '10:00', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, remind: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-          { id: 'r-off', date: '2026-07-08', title: '없음', categoryId: null, allDay: false, startTime: '11:00', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, remind: 0, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-          { id: 'r-30', date: '2026-07-08', title: '30분', categoryId: null, allDay: false, startTime: '12:00', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, remind: 30, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'r-def', date: '2026-07-08', title: '기본', categoryId: null, allDay: false, startTime: '10:00', endTime: '', location: '', memo: '', hours: null, remind: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'r-off', date: '2026-07-08', title: '없음', categoryId: null, allDay: false, startTime: '11:00', endTime: '', location: '', memo: '', hours: null, remind: 0, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'r-30', date: '2026-07-08', title: '30분', categoryId: null, allDay: false, startTime: '12:00', endTime: '', location: '', memo: '', hours: null, remind: 30, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
         ],
         todos: [], rooms: [],
       });
@@ -2283,52 +1879,52 @@ if (!JSDOM) {
       }
     });
 
-    // ── 미리알림 행 UI(entryModal·quick-add 공용 세그) — jsdom 폼 상호작용 ──────────────
-    const uiSeed = () => seed({ gitAuthor: '', svnAuthor: '', categories: [{ id: 'c-1', name: '과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }], entries: [], todos: [], rooms: [] });
+    // ── 미리알림 행 UI(한 화면 폼 quick-add 세그) — jsdom 폼 상호작용 ──────────────
+    const uiSeed = () => seed({ categories: [{ id: 'c-1', name: '과제', color: '#3e5be0', desc: '', createdAt: CA }], entries: [], todos: [], rooms: [] });
 
     // 단위(분|시간|일)는 세그 3버튼 → <select>로 강등됐다(모드 3버튼과 나란히 서서 '모드'와 '파라미터'가
     // 구분되지 않던 문제 + 380px 빠른등록 모달에서 행이 줄바꿈되던 문제). 계약: #{pfx}RemUnit.value = 분 배율 문자열.
     // 고스트(공간 예약)는 행이 한 줄에 들어가면서 불필요해져 .hidden으로 대체.
-    test('미리알림 UI(entryModal): 새 기록 기본 = 놓침 방지(def), 직접영역 숨김', () => {
+    test('미리알림 UI(한 화면 폼): 새 기록 기본 = 놓침 방지(def), 직접영역 숨김', () => {
       uiSeed();
-      ev("openEntryModal('new', '2026-07-08')");
-      assert.strictEqual(ev("$('#fRemSeg [data-remmode=\"def\"]').classList.contains('active')"), true, '기본 놓침 방지 active');
-      assert.strictEqual(ev("$('#fRemCust').classList.contains('hidden')"), true, '직접영역 숨김');
-      assert.strictEqual(ev("$('#fRemHint').textContent"), '확인할 때까지 60, 30, 10, 5분 전 재알림', 'def 힌트');
-      assert.strictEqual(evJSON("remReadValue('f')"), null, '읽으면 null(=기본)');
+      ev("openQuickAdd('2026-07-08', 'event')");
+      assert.strictEqual(ev("$('#qaRemSeg [data-remmode=\"def\"]').classList.contains('active')"), true, '기본 놓침 방지 active');
+      assert.strictEqual(ev("$('#qaRemCust').classList.contains('hidden')"), true, '직접영역 숨김');
+      assert.strictEqual(ev("$('#qaRemHint').textContent"), '확인할 때까지 60, 30, 10, 5분 전 재알림', 'def 힌트');
+      assert.strictEqual(evJSON("remReadValue('qa')"), null, '읽으면 null(=기본)');
     });
 
-    test('미리알림 UI(entryModal): 편집 {remind:120} → 직접·2·시간 프리필 + 왕복', () => {
+    test('미리알림 UI(한 화면 폼): 편집 {remind:120} → 직접·2·시간 프리필 + 왕복', () => {
       uiSeed();
       ev("addEntry({date:'2026-07-08', title:'회의', allDay:false, startTime:'14:00', remind:120})");
       const id = ev('state.entries[0].id');
-      ev("openEntryModal('edit', " + JSON.stringify(id) + ')');
-      assert.strictEqual(ev("$('#fRemSeg [data-remmode=\"cust\"]').classList.contains('active')"), true, '직접 active');
-      assert.strictEqual(ev("$('#fRemUnit').tagName"), 'SELECT', '단위는 select로 강등');
-      assert.strictEqual(ev("$('#fRemUnit').value"), '60', '시간 단위 선택');
-      assert.strictEqual(ev("$('#fRemNum').value"), '2', '숫자 2');
-      assert.strictEqual(ev("$('#fRemCust').classList.contains('hidden')"), false, '직접영역 표시');
-      assert.strictEqual(ev("$('#fRemHint').textContent"), '시작 2시간 전 1회 알림', 'cust 힌트');
-      assert.strictEqual(evJSON("remReadValue('f')"), 120, '읽으면 120 왕복');
+      ev("openQuickAdd(null, 'event', " + JSON.stringify(id) + ')');
+      assert.strictEqual(ev("$('#qaRemSeg [data-remmode=\"cust\"]').classList.contains('active')"), true, '직접 active');
+      assert.strictEqual(ev("$('#qaRemUnit').tagName"), 'SELECT', '단위는 select로 강등');
+      assert.strictEqual(ev("$('#qaRemUnit').value"), '60', '시간 단위 선택');
+      assert.strictEqual(ev("$('#qaRemNum').value"), '2', '숫자 2');
+      assert.strictEqual(ev("$('#qaRemCust').classList.contains('hidden')"), false, '직접영역 표시');
+      assert.strictEqual(ev("$('#qaRemHint').textContent"), '시작 2시간 전 1회 알림', 'cust 힌트');
+      assert.strictEqual(evJSON("remReadValue('qa')"), 120, '읽으면 120 왕복');
     });
 
     test('미리알림 단위 select: 변경 시 상태·상한(max)·힌트가 함께 갱신', () => {
       uiSeed();
-      ev("openEntryModal('new', '2026-07-08')");
-      ev("_remState.f.mode='cust'; fRemResync();");
-      assert.strictEqual(ev("$('#fRemNum').max"), '10080', '분 단위 상한 = REMIND_MAX');
-      ev("$('#fRemUnit').value='1440'; $('#fRemUnit').dispatchEvent(new window.Event('change'));");
-      assert.strictEqual(evJSON('_remState.f.unit'), 1440, 'change → 상태 반영');
-      assert.strictEqual(ev("$('#fRemNum').max"), '7', '일 단위 상한 = 7일');
+      ev("openQuickAdd('2026-07-08', 'event')");
+      ev("_remState.qa.mode='cust'; qaRemResync();");
+      assert.strictEqual(ev("$('#qaRemNum').max"), '10080', '분 단위 상한 = REMIND_MAX');
+      ev("$('#qaRemUnit').value='1440'; $('#qaRemUnit').dispatchEvent(new window.Event('change'));");
+      assert.strictEqual(evJSON('_remState.qa.unit'), 1440, 'change → 상태 반영');
+      assert.strictEqual(ev("$('#qaRemNum').max"), '7', '일 단위 상한 = 7일');
     });
 
     // 무언의 클램프 방지 — 힌트는 반드시 normRemind 통과 후의 '저장될 값'을 말해야 한다.
     test('미리알림 힌트: 상한 초과 입력은 클램프된 실제 저장값으로 표시(999일 → 7일)', () => {
       uiSeed();
-      ev("openEntryModal('new', '2026-07-08')");
-      ev("_remState.f.mode='cust'; _remState.f.unit=1440; $('#fRemNum').value='999'; fRemResync();");
-      assert.strictEqual(evJSON("remReadValue('f')"), 10080, '저장값은 7일로 클램프');
-      assert.strictEqual(ev("$('#fRemHint').textContent"), '시작 7일 전 1회 알림', '힌트도 클램프된 값');
+      ev("openQuickAdd('2026-07-08', 'event')");
+      ev("_remState.qa.mode='cust'; _remState.qa.unit=1440; $('#qaRemNum').value='999'; qaRemResync();");
+      assert.strictEqual(evJSON("remReadValue('qa')"), 10080, '저장값은 7일로 클램프');
+      assert.strictEqual(ev("$('#qaRemHint').textContent"), '시작 7일 전 1회 알림', '힌트도 클램프된 값');
     });
 
     // 전역 '시작 알림' 스위치가 폐지되면서(2026-07-30) 무음 실패의 원인 자체가 사라졌다 —
@@ -2336,24 +1932,24 @@ if (!JSDOM) {
     // (부재 회귀는 global-toggles-removal.test.mjs가 지킨다.)
     test('미리알림 힌트: 어떤 모드에서도 전역 경고를 덧대지 않는다', () => {
       uiSeed();
-      ev("openEntryModal('new', '2026-07-08')");
-      assert.strictEqual(ev("$('#fRemHint').textContent"), '확인할 때까지 60, 30, 10, 5분 전 재알림', 'def 힌트 그대로');
-      assert.strictEqual(ev("!!$('#fRemHint [data-remenable]')"), false, '켜기 액션 없음');
-      assert.strictEqual(ev("$('#fRemHint').querySelectorAll('*').length"), 0, '힌트는 순수 텍스트(경고 마크업 없음)');
+      ev("openQuickAdd('2026-07-08', 'event')");
+      assert.strictEqual(ev("$('#qaRemHint').textContent"), '확인할 때까지 60, 30, 10, 5분 전 재알림', 'def 힌트 그대로');
+      assert.strictEqual(ev("!!$('#qaRemHint [data-remenable]')"), false, '켜기 액션 없음');
+      assert.strictEqual(ev("$('#qaRemHint').querySelectorAll('*').length"), 0, '힌트는 순수 텍스트(경고 마크업 없음)');
     });
 
     // 힌트가 '왜 꺼졌는지' 설명하는 자리인데 블록 전체 opacity에 삼켜지면 안 된다(부모 opacity는 자식에 곱해짐).
     test('미리알림 흐림(.rem-off): 힌트는 흐림 대상 밖 — 조상 opacity 곱이 1', () => {
       uiSeed();
-      ev("openEntryModal('new', '2026-07-08')");
-      ev("$('#fAllDay').checked = true; toggleTimeRow();");
-      assert.strictEqual(ev("$('#fRemBlock').classList.contains('rem-off')"), true, 'rem-off 적용');
+      ev("openQuickAdd('2026-07-08', 'event')");
+      ev("$('#qaAllDay').checked = true; qaSyncTimeRow();");
+      assert.strictEqual(ev("$('#qaRemBlock').classList.contains('rem-off')"), true, 'rem-off 적용');
       const eff = ev(
-        "(function(){var o=1,el=$('#fRemHint');while(el&&el.nodeType===1){" +
+        "(function(){var o=1,el=$('#qaRemHint');while(el&&el.nodeType===1){" +
         "var v=window.getComputedStyle(el).opacity;if(v!==''&&v!=null)o*=parseFloat(v)||(parseFloat(v)===0?0:1);" +
         "el=el.parentElement;}return o;})()");
       assert.strictEqual(eff, 1, '힌트의 합성 불투명도 = 1(가독)');
-      assert.strictEqual(ev("window.getComputedStyle($('#fRemBlock .rem-row')).opacity"), '0.45', '흐림은 컨트롤(.rem-row)로 이동 — 사라진 게 아님');
+      assert.strictEqual(ev("window.getComputedStyle($('#qaRemBlock .rem-row')).opacity"), '0.45', '흐림은 컨트롤(.rem-row)로 이동 — 사라진 게 아님');
     });
 
     // jsdom에는 레이아웃 엔진이 없다(offsetHeight === 0) → 실제 행 높이는 여기서 잴 수 없다.
@@ -2363,13 +1959,13 @@ if (!JSDOM) {
     //       아래 내용이 밀렸다("직접 클릭시 동적으로 화면 바뀌는게 부자연스럽다").
     test('미리알림 행: 세 컨트롤이 한 높이 변수에 묶임 — 모드 전환에 행 높이 불변', () => {
       uiSeed();
-      ev("openEntryModal('new', '2026-07-08'); _remState.f.mode='cust'; fRemResync();");
+      ev("openQuickAdd('2026-07-08', 'event'); _remState.qa.mode='cust'; qaRemResync();");
       const cs = (s, p) => ev("window.getComputedStyle($('" + s + "'))." + p);
-      for (const s of ['#fRemSeg', '#fRemNum', '#fRemUnit']) {
+      for (const s of ['#qaRemSeg', '#qaRemNum', '#qaRemUnit']) {
         assert.strictEqual(cs(s, 'height'), 'var(--rem-ctl-h)', s + ' 높이는 공용 변수');
         assert.strictEqual(cs(s, 'boxSizing'), 'border-box', s + ' border-box(테두리 포함 높이)');
       }
-      assert.strictEqual(ev("$('#fRemSeg').offsetHeight"), 0, 'jsdom은 레이아웃 미구현 — 픽셀 측정은 브라우저 담당');
+      assert.strictEqual(ev("$('#qaRemSeg').offsetHeight"), 0, 'jsdom은 레이아웃 미구현 — 픽셀 측정은 브라우저 담당');
     });
 
     // 라벨이 잘리면 '할 ...'처럼 깨져 보인다. flex basis 0은 내용폭을 무시하고 균등분배하므로 금지.
@@ -2382,13 +1978,13 @@ if (!JSDOM) {
       }
     });
 
-    test('미리알림 UI(entryModal): 종일 → 행 흐림+비활성+종일 힌트', () => {
+    test('미리알림 UI(한 화면 폼): 종일 → 행 흐림+비활성+종일 힌트', () => {
       uiSeed();
-      ev("openEntryModal('new', '2026-07-08')");
-      ev("$('#fAllDay').checked = true; toggleTimeRow();");
-      assert.strictEqual(ev("$('#fRemBlock').classList.contains('rem-off')"), true, 'rem-off(흐림)');
-      assert.strictEqual(ev("$('#fRemSeg [data-remmode=\"def\"]').disabled"), true, '컨트롤 비활성');
-      assert.strictEqual(ev("$('#fRemHint').textContent"), '종일 일정에는 미리알림이 적용되지 않습니다', '종일 힌트');
+      ev("openQuickAdd('2026-07-08', 'event')");
+      ev("$('#qaAllDay').checked = true; qaSyncTimeRow();");
+      assert.strictEqual(ev("$('#qaRemBlock').classList.contains('rem-off')"), true, 'rem-off(흐림)');
+      assert.strictEqual(ev("$('#qaRemSeg [data-remmode=\"def\"]').disabled"), true, '컨트롤 비활성');
+      assert.strictEqual(ev("$('#qaRemHint').textContent"), '종일 일정에는 미리알림이 적용되지 않습니다', '종일 힌트');
     });
 
     test('미리알림 UI(quick-add): 행은 #qaWhen 내부(일정 표시·할 일 숨김), 신규 기본=놓침 방지', () => {
@@ -2416,10 +2012,9 @@ if (!JSDOM) {
     // 배경: 두 저장소는 localStorage(WebView2 LevelDB)에만 있었고, 비정상 종료로 WAL이 손상돼
     //       최신 기록이 통째로 유실된 사고가 있었다. 원자 저장(data.xml)으로 승격해 같은 내구성을 얻는다.
     const THS = (extra) => Object.assign({
-      gitAuthor: '', svnAuthor: '',
       categories: [
-        { id: 'ca', name: '과제가', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-        { id: 'cb', name: '과제나', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'ca', name: '과제가', color: '#3e5be0', desc: '', createdAt: CA },
+        { id: 'cb', name: '과제나', color: '#2e9e6b', desc: '', createdAt: CA },
       ],
       entries: [], todos: [], rooms: [],
       taskHours: {}, attendance: {},
@@ -2518,7 +2113,7 @@ if (!JSDOM) {
     // 보고서 근태 드롭다운 — (미기록) 옵션 + 선택/삭제 왕복(실사용 경로 그대로 클릭)
     test('근태 UI: 미기록 날짜는 (미기록) 옵션이 selected — 회사 근태를 덮지 않는다는 신호', () => {
       seed(Object.assign({}, reportState, { taskHours: {}, attendance: {} }));
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
       const html = ev("$('#rptAttendRail').innerHTML");
       assert.ok(/<option value=""[^>]*>\(미기록\)<\/option>/.test(html), '(미기록) 옵션이 렌더돼야 함');
       assert.strictEqual(ev("$('#raStatus').value"), '', '미기록 날짜 → (미기록)이 선택됨');
@@ -2527,7 +2122,7 @@ if (!JSDOM) {
 
     test('근태 UI: 휴가 선택 → setAttendance 저장, 다시 (미기록) 선택 → 기록 삭제', () => {
       seed(Object.assign({}, reportState, { taskHours: {}, attendance: {} }));
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
       // 휴가(6) 선택 → change 이벤트로 실제 핸들러(setAttendance) 발화
       ev("var _s=$('#raStatus'); _s.value='6'; _s.dispatchEvent(new window.Event('change'));");
       assert.deepStrictEqual(evJSON('state.attendance'), { '2026-07-08': { status: '6', overtime: 0 } }, '휴가 저장');
@@ -2544,7 +2139,7 @@ if (!JSDOM) {
     // 전송 버튼 실클릭 → 어댑터가 받는 페이로드에 status:null이 그대로 실리는지(폴백이 끼면 실패)
     test('근태 미기록: 일간 전송 페이로드가 status:null을 그대로 싣는다(어댑터 캡처)', () => {
       seed(Object.assign({}, reportState, { taskHours: {}, attendance: {} }));
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport(); $('#btnRptSend').dataset.mode='daily';");
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport(); $('#btnRptSend').dataset.mode='daily';");
       ev('globalThis.__origSD = Platform.report.submitDaily; globalThis.__cap = null;');
       try {
         ev('Platform.report.submitDaily = function(p){ globalThis.__cap = p; };');
@@ -2562,7 +2157,7 @@ if (!JSDOM) {
     // 2026-09-23 §3.4-C-2 — payload.hours 는 본문 헤더와 같은 rows·같은 함수(reportDailyHours)에서 나온다.
     const sendDailyCapture = (st) => {
       seed(st);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport(); $('#btnRptSend').dataset.mode='daily';");
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport(); $('#btnRptSend').dataset.mode='daily';");
       ev('globalThis.__origSD = Platform.report.submitDaily; globalThis.__cap = null;');
       try {
         ev('Platform.report.submitDaily = function(p){ globalThis.__cap = p; };');
@@ -2584,7 +2179,7 @@ if (!JSDOM) {
     //  2026-10-07 기본 과제(DEFAULT-TASKS §4.3) — '기타는 맨 뒤' 규칙이 없어졌다. payload.hours 와 본문은 **같은 rows**(목록 순서)를 따른다.
     test("일간 전송: '기타'를 먼저 등록하면 payload.hours 와 본문 모두 '기타'가 먼저다(목록 순서 = rows 순서)", () => {
       const st = JSON.parse(JSON.stringify(reportState));
-      st.categories.unshift({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA });
+      st.categories.unshift({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', createdAt: CA });
       st.taskHours = { '2026-07-08': { 'c-etc': 3, 'c-1': 2 } }; st.attendance = {};
       const cap = sendDailyCapture(st);
       assert.ok(cap, '전송 페이로드가 어댑터에 전달되지 않았다');
@@ -2658,7 +2253,7 @@ if (!JSDOM) {
     //  현재 쪽(과제 ca·cb, 시간 ca:8, 근태 '6')과 파일 쪽(과제 cz, 다른 시간·근태)이 겹치게 둔다.
     //  병합이면 현재 값이 살아남고, 교체면 state 가 파일 내용과 같다.
     const IMPORT_FILE = {
-      categories: [{ id: 'cz', name: '파일과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
+      categories: [{ id: 'cz', name: '파일과제', color: '#3e5be0', desc: '', createdAt: CA }],
       entries: [{ id: 'ez', date: '2026-07-14', categoryId: 'cz', title: '파일 기록', allDay: true }],
       todos: [], rooms: [],
       taskHours: { '2026-07-13': { cz: 6.5 } },
@@ -2782,7 +2377,7 @@ if (!JSDOM) {
     test('캐시 제거: 오프라인이어도 편입분을 "삭제됨(dbGone)"으로 오표시하지 않는다', () => {
       // 카탈로그를 못 읽은 것과 DB에서 삭제된 것은 다른 사실이다. 못 읽었다고 피커에서 사라지면 안 된다.
       seed(THS({ categories: [{ id: 'db-u1', name: '통상u1', color: '#3e5be0', source: 'db', dbGone: false,
-                                desc: '', gitRepo: '', svnRepo: '', createdAt: CA }] }));
+                                desc: '', createdAt: CA }] }));
       ev("__applyProjects('')");
       assert.strictEqual(evJSON("state.categories.find(function(c){return c.id==='db-u1';}).dbGone"), false,
         '오프라인인데 삭제됨으로 표시하면 피커에서 사라진다');
@@ -2899,8 +2494,8 @@ if (!JSDOM) {
     // 개인 과제 2개 + 재연결 시드(p1이 일정 2건 사용). 동명 공식 2건(계약명만 다름)으로 식별을 시험.
     const seedRelink = () => {
       seed(THS({
-        categories: [{ id: 'p1', name: '레이더 작업', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-                     { id: 'p2', name: '위성 작업', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
+        categories: [{ id: 'p1', name: '레이더 작업', color: '#3e5be0', desc: '', createdAt: CA },
+                     { id: 'p2', name: '위성 작업', color: '#2e9e6b', desc: '', createdAt: CA }],
         entries: [{ id: 'e1', title: 'a', date: '2026-07-20', categoryId: 'p1' },
                   { id: 'e2', title: 'b', date: '2026-07-21', categoryId: 'p1' }],
       }));
@@ -2975,26 +2570,28 @@ if (!JSDOM) {
       assert.strictEqual(ev("state.categories.some(function(c){return c.id==='db-u2'&&c.source==='db';})"), true, '대상 공식 과제가 편입되지 않았다');
     });
 
-    test('재연결: 개인 과제의 설명·Git·SVN·색상이 그대로 따라간다(DB는 이름만 준다)', () => {
-      // 왜: DB가 소유하는 건 과제명뿐이고, 설명·저장소 경로·색상은 어느 쪽에 있든 사용자가 직접 정의한 값이다.
+    test('재연결: 개인 과제의 설명·색상이 그대로 따라간다(DB는 이름만 준다)', () => {
+      // 왜: DB가 소유하는 건 과제명뿐이고, 설명·색상은 어느 쪽에 있든 사용자가 직접 정의한 값이다.
+      //  (저장소 경로는 2026-10-26 Git, SVN 기능과 함께 없앴다.)
       // 그래서 재연결 = '이 개인 과제가 이제부터 공식 이름을 쓴다' → 나머지 정의는 개인 과제 것이 따라간다(덮어씀).
       // 단 한 실행에서 개인 과제 여럿이 같은 공식 과제로 갈 때 밀리는 값은 '다른 개인 과제의 정의'라 먼저 온 것을 지킨다.
       const src = loadAppSource();
       const i = src.indexOf('function runRelink(');
       assert.ok(i > 0, 'runRelink를 찾지 못했다');
       const body = src.slice(i, src.indexOf('function tablistRoving', i));
-      assert.ok(/\['desc', *'gitRepo', *'svnRepo', *'color'\]/.test(body), '이관 대상 필드 4종(색상 포함)이 없다');
+      assert.ok(/\['desc', *'color'\]/.test(body), '이관 대상 필드 2종(설명, 색상)이 없다');
+      assert.ok(!/gitRepo|svnRepo/.test(body), '이관 대상에 저장소 경로가 남았다');
       assert.ok(/to\[k\] = from\[k\]/.test(body), '개인 과제 값을 대입하는 코드가 없다');
       assert.ok(!/if\(String\(to\[k\] \|\| ''\)\.trim\(\)\)/.test(body),
         '대상에 값이 있으면 건너뛴다 — DB가 주지도 않는 값을 권위처럼 취급하는 옛 정책이다');
       assert.ok(/filledNow/.test(body), '한 실행 내 중복 대상 보호(먼저 온 값 유지)가 없다');
       assert.ok(/k === 'color' && !\/\^#\[0-9a-fA-F\]\{6\}\$\/\.test\(v\)/.test(body), '깨진 헥사 색을 걸러내지 않는다');
-      assert.ok(/설명, 저장소, 색상/.test(body) && /먼저 옮긴 값을 유지/.test(body), '이관/유지 결과를 사용자에게 알리지 않는다');
+      assert.ok(/설명과 색상/.test(body) && /먼저 옮긴 값을 유지/.test(body), '이관/유지 결과를 사용자에게 알리지 않는다');
       // 계약 재현 — 대상에 값이 있어도 개인 과제 값이 이긴다 / 같은 대상 두 번째는 먼저 온 것 유지
       const run = (froms, toCat) => {
         const to = { ...toCat }; const done = new Set();
         for (const from of froms) {
-          for (const k of ['desc', 'gitRepo', 'svnRepo', 'color']) {
+          for (const k of ['desc', 'color']) {
             const v = String(from[k] || '').trim();
             if (!v) continue;
             if (k === 'color' && !/^#[0-9a-fA-F]{6}$/.test(v)) continue;
@@ -3004,16 +2601,14 @@ if (!JSDOM) {
         }
         return to;
       };
-      const over = run([{ desc: '개인설명', gitRepo: 'C:/new', color: '#112233' }], { desc: '대상에있던값', gitRepo: 'C:/old', svnRepo: '', color: '#3e5be0' });
+      const over = run([{ desc: '개인설명', color: '#112233' }], { desc: '대상에있던값', color: '#3e5be0' });
       assert.strictEqual(over.desc, '개인설명', '개인 과제 설명이 대상 값을 덮지 못했다');
-      assert.strictEqual(over.gitRepo, 'C:/new', '개인 과제 Git 경로가 대상 값을 덮지 못했다');
       assert.strictEqual(over.color, '#112233', '개인 과제 색이 대상 색을 덮지 못했다');
-      const merged = run([{ desc: '첫째', gitRepo: 'C:/first', color: '#111111' }, { desc: '둘째', gitRepo: 'C:/second', color: '#222222' }], { desc: '', gitRepo: '', svnRepo: '', color: '#3e5be0' });
+      const merged = run([{ desc: '첫째', color: '#111111' }, { desc: '둘째', color: '#222222' }], { desc: '', color: '#3e5be0' });
       assert.strictEqual(merged.desc, '첫째', '합칠 때 뒤엣것이 앞엣것을 덮었다');
-      assert.strictEqual(merged.gitRepo, 'C:/first', '합칠 때 뒤엣 Git 경로가 앞엣것을 덮었다');
       assert.strictEqual(merged.color, '#111111', '합칠 때 뒤엣 색이 앞엣것을 덮었다');
       // 깨진 색은 전파되지 않는다(대상 색 유지)
-      const bad = run([{ color: 'red' }], { desc: '', gitRepo: '', svnRepo: '', color: '#3e5be0' });
+      const bad = run([{ color: 'red' }], { desc: '', color: '#3e5be0' });
       assert.strictEqual(bad.color, '#3e5be0', '깨진 색값이 공식 과제로 전파됐다');
     });
 
@@ -3038,7 +2633,7 @@ if (!JSDOM) {
       assert.strictEqual(to.desc, '내 설명', '설명 이관이 회귀했다');
       assert.strictEqual(to.name, '레이더 성능개량', '이관이 공식 과제명을 덮었다(보고서 집계가 깨진다)');
       assert.ok(/색상/.test(msg), '토스트가 실제 이관 대상(색상)과 어긋난다: ' + msg);
-      assert.ok(/설명, 저장소, 색상/.test(msg), '이관 문구가 갱신되지 않았다: ' + msg);
+      assert.ok(/설명과 색상/.test(msg), '이관 문구가 갱신되지 않았다: ' + msg);
     });
 
     test('재연결(실행): 여럿을 한 공식 과제로 합치면 먼저 온 색이 이기고 kept가 오른다', async () => {
@@ -3146,25 +2741,23 @@ if (!JSDOM) {
     //       색상도 같은 이유로 풀렸다(2026-07-30): taskmgr DB 어느 테이블에도 색 컬럼이 없고,
     //       색은 sectionColor()가 뽑는 '앱의 초기 표시 관례'일 뿐이며 보고서에 나가지도 않는다.
     // ══════════════════════════════════════════════════════════════════
-    // 편입 + 로컬 필드가 채워진 상태를 만든다(개인 행과 같은 desc/gitRepo/svnRepo).
+    // 편입 + 로컬 필드가 채워진 상태를 만든다(개인 행과 같은 desc).
     const seedOfficialLocal = () => {
       seed(THS({ categories: [] }));
       applyRows([DBROW('u1')]);
       ev("subscribeDbCat(dbCatalogById('db-u1'));");
       ev("(function(){var c=state.categories.find(function(x){return x.id==='db-u1';});" +
-         "c.desc='레이더 담당분'; c.gitRepo='C:\\\\work\\\\radar'; c.svnRepo='C:\\\\work\\\\radar-wc';})()");
+         "c.desc='레이더 담당분';})()");
     };
 
-    test('소유권 분리: 공식 과제 행이 설명·Git·SVN을 표시하고 [수정] 버튼을 준다', () => {
+    test('소유권 분리: 공식 과제 행이 설명을 표시하고 [수정] 버튼을 준다', () => {
       seedOfficialLocal();
       const row = ev("catRowHtml(state.categories.find(function(c){return c.id==='db-u1';}))");
       assert.ok(row.includes('data-act="edit"'), '공식 행에 [수정] 진입점이 없다 — 로컬 필드를 고칠 방법이 사라진다');
       assert.ok(row.includes('data-act="unsub"'), '제거(구독 해제) 버튼이 사라졌다');
       assert.ok(row.includes('cat-badge db'), 'DB 배지가 사라졌다(출처 표시)');
       assert.ok(row.includes('레이더 담당분'), '설명이 표시되지 않는다');
-      assert.ok(row.includes('C:\\work\\radar'), 'Git 경로가 표시되지 않는다');
-      assert.ok(row.includes('C:\\work\\radar-wc'), 'SVN 경로가 표시되지 않는다');
-      assert.ok(row.includes('cat-git'), '렌치 아이콘(버전관리 연동 표시)이 없다 — 개인 행과 규약이 어긋난다');
+      assert.ok(!row.includes('cat-git') && !/Git:|SVN:/.test(row), '저장소 경로 표시가 남았다(Git 기능 삭제)');
     });
 
     test('소유권 분리: 공식 행 [수정]으로 편집에 진입하면 과제명만 잠기고 안내가 뜬다', () => {
@@ -3179,9 +2772,10 @@ if (!JSDOM) {
       assert.strictEqual(ev("document.getElementById('cLockNote').classList.contains('hidden')"), false, '잠금 사유 안내가 안 보인다');
       const note = ev("document.getElementById('cLockNote').textContent");
       assert.ok(/회사 DB/.test(note) && /보고서/.test(note), '왜 잠겼는지(보고서 집계) 설명이 없다: ' + note);
-      assert.ok(/설명/.test(note) && /Git/.test(note), '무엇은 열려 있는지 안내가 없다: ' + note);
+      assert.ok(/설명/.test(note), '무엇은 열려 있는지 안내가 없다: ' + note);
+      assert.ok(!/Git|SVN/.test(note), '안내가 없어진 Git, SVN 경로를 말한다: ' + note);
       assert.ok(/색상/.test(note) && !/과제명·색상/.test(note), '안내가 색상까지 DB 소유라고 말한다(사실 아님): ' + note);
-      // 설명·Git·SVN 입력은 정상(잠금 대상 아님)
+      // 설명 입력은 정상(잠금 대상 아님)
       assert.strictEqual(ev("document.getElementById('cDesc').readOnly"), false, '설명까지 잠겼다(연동 불가 회귀)');
       assert.strictEqual(ev("document.getElementById('cDesc').value"), '레이더 담당분', '설명이 폼에 프리필되지 않는다');
       // 폼 제목·버튼 문구가 '새 과제 추가'와 섞이지 않는다
@@ -3194,28 +2788,25 @@ if (!JSDOM) {
       assert.strictEqual(ev("document.getElementById('cLockNote').classList.contains('hidden')"), true, '안내가 남아 새 과제 추가를 오해시킨다');
     });
 
-    test('소유권 분리(계약): 공식 과제 저장은 name만 지키고 color/desc/git/svn을 반영한다', () => {
+    test('소유권 분리(계약): 공식 과제 저장은 name만 지키고 color/desc를 반영한다', () => {
       seedOfficialLocal();
       ev('openCatModal();');
       ev("document.querySelector('#catList .cat-row[data-id=\"db-u1\"] [data-act=\"edit\"]').click();");
       // 폼을 일부러 오염시킨다 — 잠금이 UI 장식이 아니라 '저장 경로 계약'인지 본다(DOM은 언제든 조작 가능).
       ev("document.getElementById('cName').readOnly=false; document.getElementById('cName').value='조작된 이름';");
       ev("selColor='#ff0000';");
-      ev("document.getElementById('cDesc').value='내 PC 메모'; catFormRepo='D:\\\\repo\\\\g'; catFormSvnRepo='D:\\\\repo\\\\s';");
+      ev("document.getElementById('cDesc').value='내 PC 메모';");
       ev('saveCatFromForm();');
       const c = evJSON("state.categories.find(function(x){return x.id==='db-u1';})");
       assert.strictEqual(c.name, '통상u1', '공식 과제의 이름이 로컬 편집으로 바뀌었다 — 보고서 집계(사업부 과제명 일치)가 깨진다');
       assert.strictEqual(c.color, '#ff0000', '공식 과제의 색이 저장되지 않는다 — 색은 로컬 소유다');
       assert.strictEqual(c.desc, '내 PC 메모', '설명이 저장되지 않는다');
-      assert.strictEqual(c.gitRepo, 'D:\\repo\\g', 'Git 경로가 저장되지 않는다(연동 불가)');
-      assert.strictEqual(c.svnRepo, 'D:\\repo\\s', 'SVN 경로가 저장되지 않는다');
+      assert.ok(!('gitRepo' in c) && !('svnRepo' in c), '저장소 경로 키가 생겼다(Git 기능 삭제)');
       assert.strictEqual(c.source, 'db', '출처가 유실됐다');
-      // XML 영속(공통 경로)에도 로컬 필드가 실린다 — 재부팅해도 연동이 유지된다
+      // XML 영속(공통 경로)에도 로컬 필드가 실린다
       const p = evJSON('fromXML(toXML())');
       const back = p.categories.find(x => x.id === 'db-u1');
       assert.strictEqual(back.desc, '내 PC 메모');
-      assert.strictEqual(back.gitRepo, 'D:\\repo\\g');
-      assert.strictEqual(back.svnRepo, 'D:\\repo\\s');
       assert.strictEqual(back.name, '통상u1');
     });
 
@@ -3225,8 +2816,6 @@ if (!JSDOM) {
       const c = evJSON("state.categories.find(function(x){return x.id==='db-u1';})");
       assert.strictEqual(c.name, '이름바뀜', 'DB 이름 변경이 반영되지 않는다(DB 소유 필드)');
       assert.strictEqual(c.desc, '레이더 담당분', '재조회가 로컬 설명을 날렸다');
-      assert.strictEqual(c.gitRepo, 'C:\\work\\radar', '재조회가 로컬 Git 경로를 날렸다');
-      assert.strictEqual(c.svnRepo, 'C:\\work\\radar-wc', '재조회가 로컬 SVN 경로를 날렸다');
     });
 
     // ── 색상 = 로컬 소유 (2026-07-30) ──────────────────────────────────
@@ -3249,7 +2838,7 @@ if (!JSDOM) {
       seed(THS({ categories: [] }));
       applyRows([DBROW('u1')]);
       ev("subscribeDbCat(dbCatalogById('db-u1'));");
-      ev("updateOfficialLocalFields('db-u1', '', '', '', '#ff00aa');");
+      ev("updateOfficialLocalFields('db-u1', '', '#ff00aa');");
       // 같은 과제를 다시 편입(카탈로그 화면 재구독·마이그레이션·재연결 모두 이 경로를 탄다)
       applyRows([DBROW('u1', { common_name: '이름바뀜' })]);
       const ret = evJSON("subscribeDbCat(dbCatalogById('db-u1'))");
@@ -3263,7 +2852,7 @@ if (!JSDOM) {
       seed(THS({ categories: [] }));
       applyRows([DBROW('u1'), DBROW('u2')]);
       ev("subscribeDbCat(dbCatalogById('db-u1')); subscribeDbCat(dbCatalogById('db-u2'));");
-      ev("updateOfficialLocalFields('db-u1', '', '', '', '#0abc12'); updateOfficialLocalFields('db-u2', '', '', '', '#abcdef');");
+      ev("updateOfficialLocalFields('db-u1', '', '#0abc12'); updateOfficialLocalFields('db-u2', '', '#abcdef');");
       // u1은 이름이 바뀌고, u2는 카탈로그에서 사라졌다(삭제/숨김)
       applyRows([DBROW('u1', { common_name: '새이름' })]);
       const c1 = evJSON("state.categories.find(function(c){return c.id==='db-u1';})");
@@ -3286,14 +2875,14 @@ if (!JSDOM) {
       const col = () => ev("state.categories.find(function(c){return c.id==='db-u1';}).color");
       const base = col();
       for (const bad of ['', 'red', '#fff', '#12345', '#1234567', 'ff00aa', '#gg0011', 'null'])
-        assert.strictEqual(ev("updateOfficialLocalFields('db-u1','','','', " + JSON.stringify(bad === 'null' ? null : bad) + ") && 1"), 1);
+        assert.strictEqual(ev("updateOfficialLocalFields('db-u1','', " + JSON.stringify(bad === 'null' ? null : bad) + ") && 1"), 1);
       assert.strictEqual(col(), base, '잘못된 색 형식이 저장됐다(깨진 값 영속)');
-      assert.strictEqual(ev("updateOfficialLocalFields('db-u1','','','','#AbC123')"), true);
+      assert.strictEqual(ev("updateOfficialLocalFields('db-u1','','#AbC123')"), true);
       assert.strictEqual(col(), '#AbC123', '유효 헥사(대문자 포함)가 반영되지 않는다');
       // 개인 과제엔 이 출입구가 열리지 않는다(공식 전용 계약 유지)
-      ev("addCategory('개인', '#123456', '', '', '');");
+      ev("addCategory('개인', '#123456', '');");
       const pid = ev("state.categories.filter(function(c){return c.source!=='db';}).slice(-1)[0].id");
-      assert.strictEqual(ev("updateOfficialLocalFields(" + JSON.stringify(pid) + ",'','','','#ffffff')"), false, '개인 과제에 공식 전용 출입구가 열렸다');
+      assert.strictEqual(ev("updateOfficialLocalFields(" + JSON.stringify(pid) + ",'','#ffffff')"), false, '개인 과제에 공식 전용 출입구가 열렸다');
     });
 
     test('색 소유권: 공식 과제 편집에서 팔레트/색 입력이 실제로 반영된다(UI 잠금 해제 회귀 방지)', () => {
@@ -3551,12 +3140,12 @@ if (!JSDOM) {
 
     // ── 변이③ toXML 이 remind 를 안 쓴다 → 일정별 알림 시점이 저장 안 돼 재시작하면 기본으로 리셋 ──
     const remindXmlState = {
-      gitAuthor: '', svnAuthor: '', categories: [],
+      categories: [],
       entries: [
         { id: 'r-30', date: '2026-07-08', title: '30분', categoryId: null, allDay: false, startTime: '12:00', endTime: '', location: '', memo: '',
-          source: '', commits: [], hours: null, remind: 30, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          hours: null, remind: 30, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
         { id: 'r-off', date: '2026-07-08', title: '없음', categoryId: null, allDay: false, startTime: '11:00', endTime: '', location: '', memo: '',
-          source: '', commits: [], hours: null, remind: 0, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          hours: null, remind: 0, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
       ],
       todos: [], rooms: [],
     };
@@ -3628,10 +3217,9 @@ if (!JSDOM) {
     // ── 변이⑥ collectReportData 의 skipEmpty 무력화 → 항목도 공수도 없는 과제 행이 보고서에 빈 줄로 실린다 ──
     // (2026-09-18 재정의) 옵션이 지우는 건 '항목도 공수도 없는 과제 행' 하나뿐이므로, 변이 관측점도 그 행이다.
     const skipEmptyRowState = () => ({
-      gitAuthor: '', svnAuthor: '',
       categories: [
-        { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-        { id: 'c-empty', name: '빈과제', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', createdAt: CA },
+        { id: 'c-empty', name: '빈과제', color: '#2e9e6b', desc: '', createdAt: CA },
       ],
       entries: [],
       todos: [
@@ -3641,7 +3229,7 @@ if (!JSDOM) {
     });
     test('변이⑥: collectReportData 가 skipEmpty 를 무시하면 빈 과제 행 제외 계약이 깨진다', () => {
       seed(skipEmptyRowState());
-      const okNames = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, git: true, desc: true, skipEmpty: true }).rows.map(x => x.name);
+      const okNames = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, desc: true, skipEmpty: true }).rows.map(x => x.name);
       assert.ok(!okNames.includes('빈과제'), '사전조건: 정상 앱은 skipEmpty ON 에서 항목도 공수도 없는 과제를 뺀다');
       assert.ok(okNames.includes('내용과제'), '사전조건: 내용 있는 과제는 남는다');
 
@@ -3651,7 +3239,7 @@ if (!JSDOM) {
         (m) => {
           m.seed(skipEmptyRowState());
           const r = m.evJSON('collectReportData("2026-07-15","2026-07-15",' +
-            JSON.stringify({ event: true, todo: true, git: true, desc: true, skipEmpty: true }) + ')');
+            JSON.stringify({ event: true, todo: true, desc: true, skipEmpty: true }) + ')');
           const names = r.rows.map(x => x.name);
           assert.ok(names.includes('내용과제'), '변이 앱에서 내용과제 행을 찾지 못했다(보고서 골격이 달라졌다)');
           assert.ok(names.includes('빈과제'),
@@ -3661,10 +3249,9 @@ if (!JSDOM) {
 
     // ── 변이⑥-b skipEmpty 가 공수를 내용으로 세지 않으면(옛 '제목만' 필터로 퇴행) 공수만 있는 과제가 사라진다 ──
     const hoursOnlyState = () => ({
-      gitAuthor: '', svnAuthor: '',
       categories: [
-        { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-        { id: 'c-hours', name: '공수만과제', color: '#c2703a', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', createdAt: CA },
+        { id: 'c-hours', name: '공수만과제', color: '#c2703a', desc: '', createdAt: CA },
       ],
       entries: [],
       todos: [
@@ -3675,7 +3262,7 @@ if (!JSDOM) {
     });
     test('변이⑥-b: skipEmpty 필터가 공수를 안 보면 공수만 있는 과제가 보고서에서 사라진다', () => {
       seed(hoursOnlyState());
-      const okNames = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, git: true, desc: true, skipEmpty: true }).rows.map(x => x.name);
+      const okNames = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, desc: true, skipEmpty: true }).rows.map(x => x.name);
       assert.ok(okNames.includes('공수만과제'), '사전조건: 정상 앱은 공수만 있는 과제를 남긴다');
 
       withMutatedApp(
@@ -3684,7 +3271,7 @@ if (!JSDOM) {
         (m) => {
           m.seed(hoursOnlyState());
           const r = m.evJSON('collectReportData("2026-07-15","2026-07-15",' +
-            JSON.stringify({ event: true, todo: true, git: true, desc: true, skipEmpty: true }) + ')');
+            JSON.stringify({ event: true, todo: true, desc: true, skipEmpty: true }) + ')');
           const names = r.rows.map(x => x.name);
           assert.ok(names.includes('내용과제'), '변이 앱에서 내용과제 행을 찾지 못했다(보고서 골격이 달라졌다)');
           assert.ok(!names.includes('공수만과제'),
@@ -3694,15 +3281,14 @@ if (!JSDOM) {
 
     // ── 변이⑥-c skipEmpty 가 '보고에 안 나가는' 일정 공수를 다시 보면 '빈 과제명' 행이 되살아난다 ──
     const eventHoursOnlyState = () => ({
-      gitAuthor: '', svnAuthor: '',
       categories: [
-        { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-        { id: 'c-evh', name: '일정공수과제', color: '#c2703a', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', createdAt: CA },
+        { id: 'c-evh', name: '일정공수과제', color: '#c2703a', desc: '', createdAt: CA },
       ],
       // 제목이 빈 문자열 → titles 0개. hours(45)는 보고서 본문·헤더에 한 글자도 안 나간다(공수표가 아니다).
       entries: [
         { id: 'eh', date: '2026-07-15', title: '', categoryId: 'c-evh', allDay: true, startTime: '', endTime: '', location: '', memo: '',
-          source: '', commits: [], hours: 45, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          hours: 45, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
       ],
       todos: [
         { id: 't1', text: '작업', done: false, categoryId: 'c-full', due: '2026-07-15', endDate: '', prio: 'normal', completedAt: '', note: '', dayNotes: {}, createdAt: CA, updatedAt: CA },
@@ -3711,7 +3297,7 @@ if (!JSDOM) {
     });
     test("변이⑥-c: skipEmpty 가 일정 공수(e.hours)를 내용으로 세면 '빈 과제명' 행이 보고서에 되살아난다", () => {
       seed(eventHoursOnlyState());
-      const okNames = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, git: true, desc: true, skipEmpty: true }).rows.map(x => x.name);
+      const okNames = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, desc: true, skipEmpty: true }).rows.map(x => x.name);
       assert.ok(!okNames.includes('일정공수과제'), '사전조건: 정상 앱은 보고에 안 나가는 일정 공수만 있는 행을 뺀다');
       assert.ok(okNames.includes('내용과제'), '사전조건: 내용 있는 과제는 남는다');
 
@@ -3721,7 +3307,7 @@ if (!JSDOM) {
         (m) => {
           m.seed(eventHoursOnlyState());
           const names = m.evJSON('collectReportData("2026-07-15","2026-07-15",' +
-            JSON.stringify({ event: true, todo: true, git: true, desc: true, skipEmpty: true }) + ')').rows.map(x => x.name);
+            JSON.stringify({ event: true, todo: true, desc: true, skipEmpty: true }) + ')').rows.map(x => x.name);
           assert.ok(names.includes('내용과제'), '변이 앱에서 내용과제 행을 찾지 못했다(보고서 골격이 달라졌다)');
           assert.ok(names.includes('일정공수과제'),
             '변이했는데도 그 행이 빠진다 — 계약이 「어떤 공수를 세는가」를 확인하지 못한다');

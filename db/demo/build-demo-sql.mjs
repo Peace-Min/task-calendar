@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import * as D from './demo-data.mjs';
 
-export const SCHEMA_VERSION = '17';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
+export const SCHEMA_VERSION = '18';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
 export const LOGIN_RE = /^[A-Za-z0-9._@-]{1,50}$/;
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -35,7 +35,7 @@ export const WIPE_TABLES = [
   'cal_project_change', 'cal_project_event',
   'cal_report_hours', 'cal_report_daily', 'cal_report_weekly',
   'cal_task_hours', 'cal_todo_day_note', 'cal_todo',
-  'cal_entry_commit', 'cal_entry_except', 'cal_entry', 'cal_category',
+  'cal_entry_except', 'cal_entry', 'cal_category',
   'cal_attendance', 'cal_user_pref', 'cal_migration_log',
 ];
 // 가드가 있는지 보는 표 전부.
@@ -407,10 +407,10 @@ export function buildDemoSql({ myLogin, baseDate }) {
     const u = uvar(person.who);
     const no = cal.catNo;
     push('', `-- ${person.who}`);
-    push('INSERT INTO cal_category (user_id, cat_no, uid, source, name, color, description, project_uid, uses_repo, sort_order, created_at, updated_at) VALUES',
-      cal.cats.map((c) => `  (${u}, ${c.no}, ${sqlStr(c.uid)}, '${c.source}', ${sqlStr(c.name)}, ${sqlStr(c.color)}, ${sqlStr(c.desc)}, ${lit(c.projectUid)}, 0, ${c.sort}, @now, @now)`).join(',\n') + ';');
-    push('INSERT INTO cal_entry (user_id, entry_no, uid, cat_no, entry_date, end_date, all_day, start_time, end_time, title, memo, source, location, remind, recur_freq, recur_interval, recur_until, recur_count, sort_order, created_at, updated_at) VALUES',
-      cal.entries.map((e) => `  (${u}, ${e.no}, ${sqlStr(e.uid)}, ${no(e.cat)}, ${sqlStr(e.date)}, ${lit(e.endDate)}, ${e.allDay}, ${lit(e.start)}, ${lit(e.end)}, ${sqlStr(e.title)}, ${sqlStr(e.memo)}, '', ${sqlStr(e.location)}, 0, `
+    push('INSERT INTO cal_category (user_id, cat_no, uid, source, name, color, description, project_uid, sort_order, created_at, updated_at) VALUES',
+      cal.cats.map((c) => `  (${u}, ${c.no}, ${sqlStr(c.uid)}, '${c.source}', ${sqlStr(c.name)}, ${sqlStr(c.color)}, ${sqlStr(c.desc)}, ${lit(c.projectUid)}, ${c.sort}, @now, @now)`).join(',\n') + ';');
+    push('INSERT INTO cal_entry (user_id, entry_no, uid, cat_no, entry_date, end_date, all_day, start_time, end_time, title, memo, location, remind, recur_freq, recur_interval, recur_until, recur_count, sort_order, created_at, updated_at) VALUES',
+      cal.entries.map((e) => `  (${u}, ${e.no}, ${sqlStr(e.uid)}, ${no(e.cat)}, ${sqlStr(e.date)}, ${lit(e.endDate)}, ${e.allDay}, ${lit(e.start)}, ${lit(e.end)}, ${sqlStr(e.title)}, ${sqlStr(e.memo)}, ${sqlStr(e.location)}, 0, `
         + (e.recur ? `'${e.recur.freq}', ${e.recur.interval}, NULL, ${e.recur.count}` : 'NULL, NULL, NULL, NULL')
         + `, ${e.sort}, @now, @now)`).join(',\n') + ';');
     push('INSERT INTO cal_todo (user_id, todo_no, uid, cat_no, todo_text, note, due, end_date, done, prio, completed_at, sort_order, created_at, updated_at) VALUES',

@@ -18,7 +18,11 @@
 //     XML 은 PC 단위인데 이관은 사람 단위다. 두 번째 PC 에서 또 돌리면 삭제한 일정이 되살아난다.
 //
 //   ★ 조용히 버리지 않는다. 버린 것은 전부 리포트에 건수로 보고한다
-//     (entry@hours, 무효 근태 day, 중복 예외일, 없는 과제의 공수).
+//     (entry@hours, 무효 근태 day, 중복 예외일, 없는 과제의 공수, 커밋 기록).
+//
+//   ★ 2026-10-26 Git, SVN 삭제(구조 18, docs/GIT-SVN-REMOVAL.md): 커밋 기록(entry@source="git")과 커밋 목록,
+//     저장소 경로(category@gitRepo/@svnRepo), 작성자(root@gitAuthor/@svnAuthor), prefs@gitCommitBody 는 읽지 않는다.
+//     커밋 기록은 넣지 않고 건수만 보고한다(앱의 XML 가져오기와 같은 규칙). repo-paths.json 도 만들지 않는다.
 //
 //   ★ 과제 참조는 앱의 「XML 가져오기」(importNormalizeCats)와 **같은 규칙**으로 정리한다(docs/DEFAULT-TASKS.md §4.7).
 //     ① 목록에 없는 공식 과제('db-'+36자)를 가리키는 일정, 할 일, 공수 → 그 공식 과제를 편입한다(앱의 dbGone 자리표시와 같다).
@@ -96,15 +100,12 @@ static class P
     {
         string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         string xmlPath = Path.Combine(appData, "TaskCalendar", "data.xml");
-        //  ★ 저장소 경로 파일은 **PC 단위**라 대상 사용자와 무관하게 이 PC 의 것을 쓴다.
-        //    그래서 시험이 실 파일을 덮을 수 있다 — 시험은 반드시 --repo-paths-out 으로 딴 데를 준다.
-        string repoOut = Path.Combine(appData, "TaskCalendar", "repo-paths.json");
         string loginId = ""; bool dry = false;
         foreach (var a in argv)
         {
             if (a.StartsWith("--xml=")) xmlPath = a.Substring(6);
             else if (a.StartsWith("--login-id=")) loginId = a.Substring(11);
-            else if (a.StartsWith("--repo-paths-out=")) repoOut = a.Substring(17);
+            else if (a.StartsWith("--repo-paths-out=")) { }   // 옛 인자(저장소 경로 파일). Git, SVN 삭제로 쓰지 않는다. 옛 호출이 깨지지 않게 받고 버린다
             else if (a == "--dry-run") dry = true;
             else if (a.StartsWith("--db-pw=")) DbPass = a.Substring(8);
             else { Console.Error.WriteLine("알 수 없는 인자: " + a); return 2; }
@@ -126,7 +127,10 @@ static class P
         Console.WriteLine("\n[1] XML 읽기(앱 파서를 쓰지 않는다)");
 
         var cats = (root.Element("categories")?.Elements("category") ?? Enumerable.Empty<XElement>()).ToList();
-        var ents = (root.Element("entries")?.Elements("entry") ?? Enumerable.Empty<XElement>()).ToList();
+        var entsAll = (root.Element("entries")?.Elements("entry") ?? Enumerable.Empty<XElement>()).ToList();
+        //  커밋 기록(source="git")은 옮기지 않는다(2026-10-26 Git, SVN 삭제). 몇 건이었는지만 알린다.
+        var ents = entsAll.Where(e => A(e, "source") != "git").ToList();
+        int gitDropped = entsAll.Count - ents.Count;
         var tods = (root.Element("todos")?.Elements("todo") ?? Enumerable.Empty<XElement>()).ToList();
         //  <rooms> 는 읽지 않는다(2026-10-21 회의실 공용화, docs/SHARED-ROOMS.md). 사람마다 두던 회의실 표(cal_room)가 없어졌고,
         //  공용 목록(room_code)은 관리자가 관리 화면에서 고친다. 있으면 몇 개였는지만 알린다.
@@ -137,6 +141,7 @@ static class P
         Console.WriteLine($"  과제 {cats.Count} · 일정 {ents.Count} · 할 일 {tods.Count}" +
                           $" · 공수 {thDays.Count}일 · 근태 {atDays.Count}일");
         if (roomsIgnored > 0) Console.WriteLine($"  (회의실 {roomsIgnored}개는 옮기지 않는다. 회의실은 회사 공용 목록이다)");
+        if (gitDropped > 0) Console.WriteLine($"  (커밋 기록 {gitDropped}건은 옮기지 않는다. Git, SVN 기능은 2026-10-26 에 지웠다)");
 
         // ── 2. 중단 조건 — 도구가 고칠 수 없는 것은 사람에게 넘긴다 ──────────
         Console.WriteLine("\n[2] 사전 검사");
@@ -245,7 +250,6 @@ static class P
         Console.WriteLine($"\n[4] 이관{(dry ? "(예행)" : "")}");
         string now = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
         var catNo = new Dictionary<string, uint>(StringComparer.Ordinal);
-        var repoPaths = new Dictionary<string, object>(StringComparer.Ordinal);
         int droppedHours = 0, droppedDays = 0, dedupExcept = 0, droppedTh = 0;
 
         await using var tx = await conn.BeginTransactionAsync();
@@ -258,24 +262,22 @@ static class P
                 string id = A(c, "id");
                 string created = IsoToDb(A(c, "createdAt")) ?? now;
                 bool isDb = A(c, "source") == "db";
-                string git = A(c, "gitRepo"), svn = A(c, "svnRepo");
-                if (git.Length > 0 || svn.Length > 0) repoPaths[id] = new { git, svn };
                 await Ex(conn, tx,
-                    "INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,sort_order,created_at,updated_at) " +
-                    "VALUES (@u,@n,@id,@src,@nm,@col,@desc,@pu,@ur,@so,@ca,@ca)",
+                    "INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,sort_order,created_at,updated_at) " +
+                    "VALUES (@u,@n,@id,@src,@nm,@col,@desc,@pu,@so,@ca,@ca)",
                     ("@u", uid), ("@n", ++no), ("@id", id), ("@src", isDb ? "db" : "local"),
                     ("@nm", normalizeName.TryGetValue(id, out var fixedName) ? fixedName : T(c.Element("name"))),
                     ("@col", A(c, "color")), ("@desc", T(c.Element("description"))),
                     ("@pu", isDb ? id.Substring(3) : (object?)null),
-                    ("@ur", (git.Length > 0 || svn.Length > 0) ? 1 : 0), ("@so", (int)no - 1), ("@ca", created));
+                    ("@so", (int)no - 1), ("@ca", created));
                 catNo[id] = no;
             }
             //  3b 에서 정한 과제: 편입한 공식 과제, 새로 만든 기본 과제. 목록 **맨 뒤**에 붙는다(앱과 같다).
             foreach (var x in extraCats)
             {
                 await Ex(conn, tx,
-                    "INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,sort_order,created_at,updated_at) " +
-                    "VALUES (@u,@n,@id,@src,@nm,@col,'',@pu,0,@so,@ca,@ca)",
+                    "INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,sort_order,created_at,updated_at) " +
+                    "VALUES (@u,@n,@id,@src,@nm,@col,'',@pu,@so,@ca,@ca)",
                     ("@u", uid), ("@n", ++no), ("@id", x.Id), ("@src", x.IsDb ? "db" : "local"),
                     ("@nm", x.Name), ("@col", x.Color), ("@pu", x.IsDb ? x.Id.Substring(3) : (object?)null),
                     ("@so", (int)no - 1), ("@ca", now));
@@ -284,7 +286,7 @@ static class P
             Console.WriteLine($"  과제 {catNo.Count}건(파일 {cats.Count} + 정리 {extraCats.Count})");
 
             // 4-2 일정 + 자식
-            uint eno = 0; int nExcept = 0, nCommit = 0;
+            uint eno = 0; int nExcept = 0;
             foreach (var e in ents)
             {
                 string id = A(e, "id");
@@ -295,14 +297,14 @@ static class P
                 string rf = rec == null ? "" : A(rec, "freq");
                 await Ex(conn, tx,
                     "INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,end_date,all_day,start_time,end_time," +
-                    "title,memo,source,location,remind,recur_freq,recur_interval,recur_until,recur_count,sort_order,created_at,updated_at) " +
-                    "VALUES (@u,@n,@id,@c,@dt,@ed,@ad,@st,@et,@ti,@mo,@sr,@lo,@rm,@rf,@ri,@ru,@rc,@so,@ca,@ua)",
+                    "title,memo,location,remind,recur_freq,recur_interval,recur_until,recur_count,sort_order,created_at,updated_at) " +
+                    "VALUES (@u,@n,@id,@c,@dt,@ed,@ad,@st,@et,@ti,@mo,@lo,@rm,@rf,@ri,@ru,@rc,@so,@ca,@ua)",
                     ("@u", uid), ("@n", ++eno), ("@id", id), ("@c", cno),
                     ("@dt", DateOrNull(A(e, "date"))), ("@ed", DateOrNull(A(e, "endDate"))),
                     ("@ad", A(e, "allDay") == "true" ? 1 : 0),
                     ("@st", TimeOrNull(A(e, "startTime"))), ("@et", TimeOrNull(A(e, "endTime"))),
                     ("@ti", T(e.Element("title"))), ("@mo", T(e.Element("memo"))),
-                    ("@sr", A(e, "source")), ("@lo", A(e, "location")),
+                    ("@lo", A(e, "location")),
                     ("@rm", IntOrNull(A(e, "remind")) is int r0 ? r0 : (object?)null),
                     ("@rf", rf.Length > 0 ? rf : (object?)null),
                     ("@ri", rf.Length > 0 ? (IntOrNull(A(rec!, "interval")) ?? 1) : (object?)null),
@@ -325,26 +327,9 @@ static class P
                         nExcept++;
                     }
                 }
-                //  ★ 커밋 — 쓰기 계층(CalendarWriteDb)은 이 표를 건드리지 않는다(지연 로드라 지우면 안 되므로).
-                //    그러므로 **이관 도구가 직접 넣어야 한다.** 안 넣으면 커밋이 통째로 사라진다.
-                var cse = e.Element("commits");
-                if (cse != null)
-                {
-                    uint seq = 0;
-                    foreach (var cm in cse.Elements("commit"))
-                    {
-                        await Ex(conn, tx,
-                            "INSERT INTO cal_entry_commit (user_id,entry_no,seq,hash,short_hash,commit_time,subject,body) " +
-                            "VALUES (@u,@n,@s,@h,@sh,@t,@sj,@b)",
-                            ("@u", uid), ("@n", eno), ("@s", seq++),
-                            ("@h", A(cm, "hash")), ("@sh", A(cm, "short")),
-                            ("@t", TimeOrNull(A(cm, "time"))),      // '' → NULL(A 부류 ① 무음 오염)
-                            ("@sj", A(cm, "subject")), ("@b", T(cm)));
-                        nCommit++;
-                    }
-                }
+                //  (커밋 목록 <commits> 은 읽지 않는다. cal_entry_commit 은 구조 18 에서 없어졌다)
             }
-            Console.WriteLine($"  일정 {eno}건 · 예외일 {nExcept} · 커밋 {nCommit}");
+            Console.WriteLine($"  일정 {eno}건 · 예외일 {nExcept}");
 
             // 4-3 할 일 + 날짜메모
             uint tno = 0; int nNote = 0;
@@ -421,13 +406,12 @@ static class P
             int fSize = prefs != null ? (IntOrNull(A(prefs, "fontSize")) ?? 0) : 0;
             if (fSize != 0 && (fSize < 10 || fSize > 16)) fSize = 0;
             await Ex(conn, tx,
-                "INSERT INTO cal_user_pref (user_id,git_author,svn_author,report_marker,report_marker_custom,report_indent," +
-                "git_commit_body,report_marker_daily,report_marker_custom_daily,report_indent_daily," +
+                "INSERT INTO cal_user_pref (user_id,report_marker,report_marker_custom,report_indent," +
+                "report_marker_daily,report_marker_custom_daily,report_indent_daily," +
                 "report_marker_weekly,report_marker_custom_weekly,report_indent_weekly,report_font_family,report_font_size,updated_at) " +
-                "VALUES (@u,@ga,@sa,@m,@mc,@i,@gcb,@dm,@dmc,@di,@wm,@wmc,@wi,@ff,@fs,@n)",
-                ("@u", uid), ("@ga", A(root, "gitAuthor")), ("@sa", A(root, "svnAuthor")),
+                "VALUES (@u,@m,@mc,@i,@dm,@dmc,@di,@wm,@wmc,@wi,@ff,@fs,@n)",
+                ("@u", uid),
                 ("@m", gMk), ("@mc", Trunc(gMkc, 8)), ("@i", gInd),
-                ("@gcb", A(prefs ?? root, "gitCommitBody") == "1" ? 1 : 0),
                 ("@dm", Mk("daily")), ("@dmc", Trunc(Mkc("daily"), 8)), ("@di", Ind("daily")),
                 ("@wm", Mk("weekly")), ("@wmc", Trunc(Mkc("weekly"), 8)), ("@wi", Ind("weekly")),
                 ("@ff", prefs != null ? A(prefs, "fontFamily") : ""), ("@fs", fSize), ("@n", now));
@@ -453,39 +437,15 @@ static class P
         if (droppedDays > 0)  Warn($"근태 {droppedDays}일 — status 가 유효 코드가 아니라 행을 만들지 않았다(미기록으로 남는다).");
         if (dedupExcept > 0)  Note($"중복 예외일 {dedupExcept}건 — 같은 날짜가 두 번 있어 하나만 넣었다.");
         if (droppedTh > 0)    Warn($"없는 과제의 공수 {droppedTh}건을 버렸다(앱의 XML 가져오기와 같은 규칙). 값은 XML 에 남아 있다.");
-        if (droppedHours + droppedDays + dedupExcept + droppedTh == 0) Console.WriteLine("  버린 것 없음");
+        if (gitDropped > 0)   Note($"커밋 기록 {gitDropped}건: Git, SVN 기능을 지워(2026-10-26) 옮기지 않았다. 값은 XML 에 남아 있다.");
+        if (droppedHours + droppedDays + dedupExcept + droppedTh + gitDropped == 0) Console.WriteLine("  버린 것 없음");
         //  버린 것이 아니라 **옮긴** 것: 경고가 아니라 알림이다(앱 가져오기도 말없이 같은 일을 한다).
         if (toGita > 0)       Note($"과제가 없거나 없는 과제를 가리키는 일정, 할 일 {toGita}건을 기본 과제 '기타'에 붙였다.");
         if (createdDefaults.Count > 0) Note($"기본 과제 {string.Join(", ", createdDefaults)}을(를) 새로 만들었다(목록 맨 뒤).");
         if (normalizeName.Count > 0)   Note($"기본 과제 이름의 앞뒤 공백을 지웠다 {normalizeName.Count}건.");
         if (dbRefs.Count > 0) Note($"목록에 없던 공식 과제 {dbRefs.Count}건을 편입했다(그 과제를 가리키는 일정, 할 일, 공수가 있었다).");
 
-        // ── 6. 저장소 경로 — DB 가 아니라 로컬 파일로 간다(§4) ───────────────
-        Console.WriteLine("\n[6] 저장소 경로");
-        if (repoPaths.Count == 0) Console.WriteLine("  경로를 쓰는 과제 없음");
-        else
-        {
-            string dst = repoOut;
-            string dir = Path.GetDirectoryName(dst) ?? ".";
-            //  ★ 반드시 { version, paths } 로 감싼다 — 앱(RepoPaths.Load)이 최상위 "paths" 를 요구한다.
-            //    맵을 최상위에 쓰면 앱이 손상 으로 보고 **빈 맵으로 시작**하고 원본을 .bak 로 밀어낸다.
-            //    그러면 이관 직후부터 저장소 경로가 통째로 사라지고, uses_repo=true 인 과제는
-            //    영원히 \"이 PC 에는 저장소 경로가 설정되지 않았습니다\" 를 띄운다(§4).
-            //    2026-09-01 실측으로 겪었다 — 위젯 로그의 \"저장소 경로 맵 손상\" 이 그것이다.
-            var wrapped = new Dictionary<string, object> { ["version"] = 1, ["paths"] = repoPaths };
-            string json = JsonSerializer.Serialize(wrapped, new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
-            if (dry) Console.WriteLine($"  [예행] {repoPaths.Count}건을 쓸 예정: {dst}\n{Indent(json)}");
-            else
-            {
-                Directory.CreateDirectory(dir);
-                if (File.Exists(dst)) File.Copy(dst, dst + ".bak", true);   // 있으면 덮기 전에 보존
-                string tmp = dst + ".tmp";
-                File.WriteAllText(tmp, json, new UTF8Encoding(false));
-                File.Move(tmp, dst, true);
-                Console.WriteLine($"  {repoPaths.Count}건 저장: {dst}");
-            }
-            foreach (var kv in repoPaths) Console.WriteLine("    " + kv.Key);
-        }
+        // ── 6. (없앤 단계) 저장소 경로 파일 repo-paths.json 쓰기. 2026-10-26 Git, SVN 삭제로 만들지 않는다 ──
 
         // ── 7. 왕복 대조 — uid 를 키로, DB 가 발급한 번호는 넣지 않는다(§8) ──
         Console.WriteLine("\n[7] 왕복 대조");
@@ -525,8 +485,6 @@ static class P
         await Cmp("과제 없는 일정, 할 일", $"SELECT (SELECT COUNT(*) FROM cal_entry WHERE user_id={uid} AND cat_no IS NULL)" +
                   $"+(SELECT COUNT(*) FROM cal_todo WHERE user_id={uid} AND cat_no IS NULL)", 0);
         await Cmp("할 일", $"SELECT COUNT(*) FROM cal_todo WHERE user_id={uid}", tods.Count);
-        await Cmp("커밋", $"SELECT COUNT(*) FROM cal_entry_commit WHERE user_id={uid}",
-            ents.Sum(e => e.Element("commits")?.Elements("commit").Count() ?? 0));
         await Cmp("날짜메모", $"SELECT COUNT(*) FROM cal_todo_day_note WHERE user_id={uid}",
             tods.Sum(t => t.Element("dayNotes")?.Elements("dayNote").Count(d => (d.Value ?? "").Trim().Length > 0) ?? 0));
 

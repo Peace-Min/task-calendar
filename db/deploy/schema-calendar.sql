@@ -96,14 +96,14 @@
 --       베끼지 않는다. 제약·GRANT 는 전부 이름으로 가리킨다.
 --
 --  ── A. '' → NULL ─────────────────────────────────────────────────────
---     앱은 '값 없음'을 JS 빈 문자열로 들고 있고 XML 에도 그대로 나간다. 아래 8개 컬럼이 그 대상이다.
+--     앱은 '값 없음'을 JS 빈 문자열로 들고 있고 XML 에도 그대로 나간다. 아래 7개 컬럼이 그 대상이다.
 --
---     ① 무음 오염 3건 (TIME). 가장 위험하다. 에러도 경고도 없이 값이 바뀐다.
+--     ① 무음 오염 2건 (TIME). 가장 위험하다. 에러도 경고도 없이 값이 바뀐다.
 --        실측(8.4.9, 같은 세션에서 SHOW WARNINGS 확인): '' 삽입 → 경고 0건, 저장값 00:00:00.
 --        즉 '시각 없음'이 '자정'으로 조용히 바뀌고, 사후에 구분할 수단이 없다.
 --          cal_entry.start_time        ← addEntry() `d.startTime||''`, fromXML() 의 validTime() 이 ''를 낸다
 --          cal_entry.end_time          ← 같은 곳. toXML() 은 entry 의 startTime/endTime 을 빈 값도 속성으로 항상 기록한다
---          cal_entry_commit.commit_time← normCommits() `time: … : ''`
+--          (세 번째였던 cal_entry_commit.commit_time 은 2026-10-26 Git, SVN 삭제(구조 18)로 표째 없어졌다)
 --
 --     ② 시끄러운 실패 5건. 이관이 그 자리에서 멈춘다(전체 롤백). 위험도는 낮지만 이관을 못 끝낸다.
 --          cal_entry.end_date    DATE      ERROR 1292  ← rangeFields() `endDate:''`
@@ -197,25 +197,20 @@
 --     전수 목록: toXML() 에서 `if(...)` 로 감싼 setAttribute / 조건부 자식 요소 전부.
 --     대응 컬럼이 있는 것만 적는다. 대응 컬럼이 없는 것은 두 부류로 갈라 아래 ★ 두 절에 따로 적었다:
 --       - 버린다(값이 사라져도 된다): entry@hours, lsMigrated, 루트 @version/@generator/@exportedAt, dbGone
---       - DB 에 안 올리고 로컬에 남긴다(값은 살아 있어야 한다): category@gitRepo / @svnRepo
+--       - 버린다(구조 18, Git, SVN 삭제): category@gitRepo / @svnRepo, entry@source 와 <commits>, root@gitAuthor / @svnAuthor,
+--         prefs@gitCommitBody. 아래 '(없앤 절) 로컬에 남기던 값' 참조
 --       XML(부재 시)                    → 컬럼                          → 넣을 값(파서 기본값)
 --       ------------------------------------------------------------------------------------
 --       recur@interval                    cal_entry.recur_interval        1        ← ★ NOT NULL 아님에도 CHECK 가 요구
 --       recur@count                       cal_entry.recur_count           0        ← ★ 같은 CHECK
 --       recur@until                       cal_entry.recur_until           NULL     (A 와 동일 처리)
 --       <recur> 요소 자체 부재            recur_freq/interval/until/count 전부 NULL (= 반복 없음)
---       entry@source                      cal_entry.source                ''       ← NOT NULL. NULL 이면 ERROR 1048
 --       entry@location                    cal_entry.location              ''       ← NOT NULL. NULL 이면 ERROR 1048
 --       entry@categoryId                  cal_entry.cat_no                NULL     ★ 컬럼 이름·타입이 바뀌었다(H 절)
 --       entry@remind                      cal_entry.remind                NULL     (normRemind() 가 null)
 --       entry@endDate                     cal_entry.end_date              NULL
 --       entry 의 <title> 부재/빈값        cal_entry.title                 '(제목 없음)'  ← NOT NULL
 --       entry 의 <memo> 부재              cal_entry.memo                  ''       ← NOT NULL
---       commit@hash                       cal_entry_commit.hash           ''       ← NOT NULL
---       commit@short                      cal_entry_commit.short_hash     ''       ← NOT NULL
---       commit@time                       cal_entry_commit.commit_time    NULL     (A 와 동일 처리)
---       commit@subject 부재(구 포맷)      cal_entry_commit.subject        요소 textContent ← NOT NULL. 구 XML 은 제목이 본문 자리에 있다
---       commit textContent 없음           cal_entry_commit.body           ''       ← NOT NULL
 --       todo@prio                         cal_todo.prio                   'normal' ← NOT NULL. NULL 이면 ERROR 1048
 --       todo@due / todo@endDate           cal_todo.due / .end_date        NULL
 --       todo@completedAt                  cal_todo.completed_at           NULL
@@ -224,19 +219,16 @@
 --       category@source                   cal_category.source             'local'  ← NOT NULL. NULL 이면 ERROR 1048
 --       category 의 <name> 부재/빈값      cal_category.name               '(이름 없음)' ← NOT NULL
 --       category 의 <description> 부재    cal_category.description        ''       ← NOT NULL
---       root@gitAuthor                    cal_user_pref.git_author        ''       ← NOT NULL
---       root@svnAuthor                    cal_user_pref.svn_author        gitAuthor 값을 복사 ← ★ ''가 아니다(구버전 1회 마이그레이션)
 --       entry/todo 의 @createdAt·@updatedAt 부재  각 표의 created_at·updated_at  이관 시각(UTC), 파서도 nowIso() 로 채운다
 --         ※ cal_category.updated_at 은 예외다. XML 에 그 속성이 아예 없으므로 '부재'가 아니라
 --           '원본 없음'이고, created_at 을 복사한다(아래 1. cal_category 의 이관 규칙이 정본).
 --       <taskHours> 요소 부재             cal_task_hours                  행 없음
 --       <attendance> 요소 부재            cal_attendance                  행 없음
 --       ─ 보고서 서식(<prefs>): 요소 자체가 없는 구버전 XML 이 흔하다. 전부 아래 기본값 ────────
---       <prefs> 요소 자체 부재            cal_user_pref 의 서식 12컬럼    전부 아래 각 줄의 기본값
+--       <prefs> 요소 자체 부재            cal_user_pref 의 서식 11컬럼    전부 아래 각 줄의 기본값
 --       prefs@reportMarker                cal_user_pref.report_marker          '-'   ← NOT NULL
 --       prefs@reportMarkerCustom          cal_user_pref.report_marker_custom   ''    ← NOT NULL
 --       prefs@reportIndent                cal_user_pref.report_indent          2     ← NOT NULL
---       prefs@gitCommitBody               cal_user_pref.git_commit_body        0     ← ★ 아래 D 참조('1'만 쓴다)
 --       prefs@reportMarker_daily          cal_user_pref.report_marker_daily    ★ '-' 가 아니다. 아래 ※ 참조
 --       prefs@reportMarkerCustom_daily    …_marker_custom_daily                ''
 --       prefs@reportIndent_daily          …_indent_daily                       ★ 아래 ※ 참조
@@ -258,9 +250,9 @@
 --       존치 이유는 하나뿐이다: 종류별 속성이 없는 구파일의 폴백 원본이라 버리면 위 ※ 가 성립하지 않는다.
 --
 --     ※ 실측(8.4.9, STRICT): 위 'NOT NULL' 표시 컬럼에 NULL 을 넣으면 전부 ERROR 1048
---       (cal_entry.memo/source/location, cal_entry_commit.hash, cal_todo.prio, cal_category.source 로 확인).
---       즉 이 부류는 대체로 '시끄럽게' 실패한다. 조용히 틀리는 것은 recur 두 컬럼(3819 로 전체 롤백)과
---       svn_author(''로 채우면 구버전 사용자의 SVN 수집 대상이 조용히 '전체'로 바뀐다) 쪽이다.
+--       (cal_entry.memo/location, cal_todo.prio, cal_category.source 로 확인. 구조 18 전에는 cal_entry.source,
+--        cal_entry_commit.hash 로도 확인했다). 즉 이 부류는 대체로 '시끄럽게' 실패한다. 조용히 틀리는 것은
+--       recur 두 컬럼(3819 로 전체 롤백) 쪽이다.
 --
 --     ★★ 이 표에 sort_order 가 없는 것은 빠뜨린 게 아니다. **C 가 아니라 E 다.** 여기가 가장 헷갈리는
 --       자리라 못박아 둔다. C 의 규칙은 '속성이 없다 = 파서 기본값' 인데, sort_order 에는 대응 XML
@@ -286,24 +278,12 @@
 --       않는다(코드 전역에 'local' 문자열 0건). DB 표기를 정본으로 삼되, DB→XML 재생성 시 'local' 이면
 --       속성을 쓰지 않아 byte 동일성을 지킨다.
 --
---  ── ★ DB 에 안 올리고 '로컬에 남기는' 값: category@gitRepo / @svnRepo ─────────────
---     ★ 이것은 아래 '버리는' 부류와 **다르다.** 값은 계속 살아 있어야 하고, 저장 위치만 로컬이다.
---     왜 안 올리나: 두 값은 그 PC 의 작업복사본 경로다(#cGitRepo/#cSvnRepo 로 폴더를 직접 고른다).
---       - 자리마다 경로가 달라야 하는데 DB 에 올리면 A자리 경로가 B자리에 그대로 따라가 깨진다.
---       - 더 나쁜 경우는 '경로는 존재하는데 다른 저장소'다. 그때는 오류 없이 **남의 커밋이
---         자기 보고서에 실린다.** 깨진 경로보다 이쪽이 위험하다(조용하다).
---       - 브라우저 지원에는 로컬 파일 경로라는 개념 자체가 없다.
---     ★ 어댑터 계약: cal_category 에 대응 컬럼을 만들지 않는다. 대신 **로컬 저장소(data.xml /
---       설정 파일)에 그대로 남기고, 과제 편집·커밋 수집이 계속 그 값을 읽는다.**
---       버리면 collectCommits 계열이 `cat.gitRepo || ''` 로 빈 경로를 받아 커밋 수집이
---       오류 없이 조용히 0건이 된다(직접 확인: 커밋 요청 페이로드가 `gitRepo: cat.gitRepo || ''`).
---       '대응 컬럼이 없다'만 보고 아래 '버린다' 부류와 같이 취급하는 것이 이 계약의 유일한 사고다.
---     ★ 로컬 쪽 키도 함께 볼 것. 로컬 파일은 과제를 **앱의 문자열 id** 로 가리킨다(uid). DB 의
---       cat_no 로 가리키지 말 것. cat_no 는 이 DB 안에서만 뜻이 있는 번호이고, 로컬 파일을 다른
---       PC·다른 DB 로 옮기면 엉뚱한 과제를 가리킨다.
---     ※ 되살릴 조건: 경로를 PC 별로 분리 저장할 자리(예: cal_category_local(user_id,cat_no,host,...))가
---       생기면 그때 올릴 것. 지금 구조에는 'PC' 라는 축이 없어서 올릴 수가 없다.
---
+--  ── (없앤 절) '로컬에 남기던' 값: category@gitRepo / @svnRepo ─────────────────────
+--     그 PC 의 Git 저장소, SVN 작업복사본 경로였다(DB 에 올리지 않고 %APPDATA%\TaskCalendar\repo-paths.json 에 두었다).
+--     2026-10-26 Git, SVN 기능을 지우면서(구조 18, docs/GIT-SVN-REMOVAL.md) 앱도 이관도 이 값을 읽지 않는다.
+--     사용자 PC 의 repo-paths.json 은 그대로 둔다(읽는 곳이 없어 무해하다). 같은 때 함께 버리는 것:
+--     entry@source 와 <commits>(커밋 기록은 가져오지 않는다), root@gitAuthor / @svnAuthor, prefs@gitCommitBody.
+
 --  ── ★ 이관이 버리는 XML 속성: entry@hours 외 (대응 컬럼 없음. 오류가 아니다) ──────
 --     data.xml 에는 지금도 <entry hours="120"> 이 들어 있다(toXML 이 여전히 쓴다). 그런데 DB 에는
 --     그 값을 받을 컬럼이 없다. 2026-08-11 결정으로 cal_entry.hours_min 을 폐지했기 때문이다.
@@ -332,11 +312,8 @@
 --     전수 확인: 'true'/'false' 표기를 쓰는 XML 속성은 정확히 이 둘뿐이다.
 --       cal_entry.all_day ← entry@allDay      cal_todo.done ← todo@done
 --
---     ★ 세 번째 불리언 컬럼 cal_user_pref.git_commit_body 는 표기가 다르다. 이 변환을 적용하지 말 것.
---       toXML() 은 `if(state.gitCommitBody) prefs.setAttribute('gitCommitBody','1')` 이라
---       **켜졌을 때만 '1' 을 쓰고, 꺼졌으면 속성 자체가 없다.** fromXML() 도 `=== '1'` 로만 읽는다.
---       즉 이 값의 규칙은 D 가 아니라 C(속성 부재 → 기본값 0)다. '1'→1 / 부재→0 이고 'false' 는 나오지 않는다.
---       (dbGone·lsMigrated 도 같은 '1' 표기지만 대응 컬럼이 없다. 위 두 ★ 절 참조)
+--     ※ 옛 세 번째 불리언 cal_user_pref.git_commit_body('1' 만 쓰는 C 부류)는 구조 18 에서 지웠다.
+--       dbGone·lsMigrated 도 같은 '1' 표기지만 대응 컬럼이 없다(위 두 ★ 절 참조).
 --     ※ 그래서 'TINYINT 컬럼 = D 부류' 로 세지 말 것. TINYINT 계열에는 불리언이 아닌 것이 섞여 있다
 --       (report_indent, report_indent_daily, report_indent_weekly, report_font_size, attendance.overtime).
 --       D 부류는 위 둘뿐이고, 나머지는 전부 C(속성 부재 → 기본값)로 처리한다.
@@ -368,7 +345,6 @@
 --       cal_category.sort_order      <category> 문서 순서    ★ 조용히 전 행 0 → 표시 순서 영구 소실
 --       cal_entry.sort_order         <entry> 문서 순서       ★ 조용히 전 행 0 → 일정 배열 순서 영구 소실
 --       cal_todo.sort_order          <todo> 문서 순서        ★ 조용히 전 행 0 → 할 일 배열 순서 영구 소실
---       cal_entry_commit.seq         commits 배열 인덱스     ERROR 1364 (시끄럽게 실패)
 --       cal_category.cat_no          없음(대리키)            ERROR 1364 (아래 ★ 참조)
 --       cal_entry.entry_no           없음(대리키)            ERROR 1364
 --       cal_todo.todo_no             없음(대리키)            ERROR 1364
@@ -393,12 +369,10 @@
 --       ※ '문서 순서' 의 정본은 XML 텍스트가 아니라 **fromXML() 이 돌려준 배열의 인덱스**다.
 --         파서가 버리는 항목이 있어서(계약 F: 빈 <todo>·범위 밖 dayNote) 두 순서가
 --         어긋날 수 있다. 계약 F 의 '파서를 통과한 결과만 넣는다' 와 짝을 이루는 줄이다.
---     ※ seq 는 다르다. NOT NULL 이면서 **DEFAULT 가 없어** STRICT 에서 그 자리에 1364 로 멈춘다
---       (실측: seq 를 뺀 커밋 2건 INSERT → ERROR 1364 "Field 'seq' doesn't have a default value").
---       PK 충돌(1062)로 2건째에 걸리는 게 아니라 1건째부터 못 들어간다. 시끄러워서 안전한 쪽이다.
---       ※ 이 차이를 DEFAULT 로 메우려 하지 말 것. sort_order 에서 DEFAULT 0 을 빼면 '순서 없음'을
---         표현하던 기존 행과 ALTER 백필이 전부 깨진다(설계 §5.5 의 '추가 컬럼은 DEFAULT 필수' 규칙).
---         조용한 쪽은 DB 가 아니라 계약과 §8 서명으로 막는다.
+--     ※ sort_order 의 조용함을 DEFAULT 를 빼서 메우려 하지 말 것. DEFAULT 0 을 빼면 '순서 없음'을
+--       표현하던 기존 행과 ALTER 백필이 전부 깨진다(설계 §5.5 의 '추가 컬럼은 DEFAULT 필수' 규칙).
+--       조용한 쪽은 DB 가 아니라 계약과 §8 서명으로 막는다. (DEFAULT 없이 1364 로 시끄럽게 멈추던 대비 예였던
+--       cal_entry_commit.seq 는 구조 18 에서 표째 없어졌다)
 --       설계 §5.3 이 이 컬럼을 둔 이유가 그거다. 화면 순서는 배열 순서인데 created_at 이 대부분
 --       같은 밀리초라(실측 37개 중 33개) 대체할 수단이 없다. 안 채우면 이관 순간 순서가 사라지고,
 --       사용자는 '순서가 뒤죽박죽'으로만 느낀다. 원본이 없으니 사후 복구도 안 된다.
@@ -415,7 +389,6 @@
 --       게다가 번호는 MAX()+1 이라 **재사용된다**(H-1). 마지막 행을 지우고 새로 만들면 그 항목이
 --       배열 끝이 아니라 옛 자리로 돌아간다.
 --     ※ 규칙: 문서에 나타난 순서대로 0,1,2… (건너뛰지 말 것. 앱은 값의 크기가 아니라 정렬 결과만 본다).
---       seq 도 0-base 로 commits 배열 인덱스 그대로.
 --     ※ 이 부류는 §8 의 이관 왕복 서명에 반드시 포함시킬 것. 서명에서 빠지면 순서가 통째로
 --       뒤집혀도 게이트가 초록불을 낸다(설계 §8 이 카테고리 서명에 sort_order 를 넣은 이유).
 --       ★ 단 cat_no, entry_no, todo_no 는 서명에 **넣지 말 것.** 그 번호는 이 DB 안에서만 뜻이 있고
@@ -481,34 +454,20 @@
 --
 --     최상위 반환 객체(fromXML() 의 return 과 키가 정확히 같아야 한다):
 --       { categories, entries, todos, taskHours, attendance,
---         gitAuthor, svnAuthor,
---         reportMarker, reportMarkerCustom, reportIndent, gitCommitBody,
---         reportFormatPrefs, reportFont, lsMigrated }
---     ★ 최상위 15키는 **늘지도 줄지도 않는다.** 늘려야 할 것 같으면 그건 대개 원소의 키다.
---       (그 뒤 두 번 줄었다: 2026-09-01 lsMigrated, 2026-10-21 rooms(회의실 공용화). 지금은 13키다.)
+--         reportMarker, reportMarkerCustom, reportIndent,
+--         reportFormatPrefs, reportFont }
+--     ★ 최상위 키는 **늘지 않는다.** 늘려야 할 것 같으면 그건 대개 원소의 키다.
+--       (15키에서 세 번 줄었다: 2026-09-01 lsMigrated, 2026-10-21 rooms(회의실 공용화),
+--        2026-10-26 gitAuthor, svnAuthor, gitCommitBody(Git, SVN 삭제, 구조 18). 지금은 10키다.)
 --
---     ★★ 2026-08-27 에 원소의 키 집합이 한 번 늘었다. 계약이므로 여기 명시한다:
---        **categories 원소에 `usesRepo`(boolean)가 항상 붙는다**(G-6). fromXML() 은 그 키를 만들지
---        않으므로 '똑같은 모양' 이라는 이 절의 목표에 **의도된 예외**가 하나 생긴 것이다.
---        - 왜 예외를 두는가: 그 값은 XML 에 표현이 없고(§4: 경로만 있고 '쓴다/안 쓴다' 는 없다)
---          DB 에만 있다. 앱이 §4 의 안내를 띄우려면 그 한 비트를 받아야 한다.
---        - 대조 게이트(tests/calendar-adapter.mjs)는 이 차이를 **덮지 말고 계산해서 맞춰야 한다**.
---          G-6 의 '없는 것 채우기'(hours=null, commits=[], lsMigrated=true)와 같은 부류로,
---          기준(fromXML) 쪽을 정규화해 대조한다. 정규화 규칙은 I-1 과 같다:
---            expected.usesRepo = (XML 의 gitRepo 또는 svnRepo 가 비어 있지 않다)
---          ※ 그 규칙은 이관 도구가 세우는 규칙과 **같은 규칙**이므로, 이 대조가 증명하는 것은
---            '이관 규칙이 옳다' 가 아니라 **'어댑터가 DB 의 그 비트를 손실 없이 앱까지 나른다'** 다.
---            게이트가 자기 요약에 그 사실을 찍어야 한다(무엇을 증명 못 했는지도 결과의 일부다).
---        - 이 예외를 **늘리지 말 것.** 다음에 또 '앱에는 없지만 DB 에만 있는 값'을 얹고 싶어지면,
---          먼저 그것이 §4 처럼 *"DB 에 있어야만 앱이 두 상태를 구분할 수 있다"* 를 만족하는지 보여라.
---          만족하지 못하면 그건 파생값이고, 파생값은 얹지 않는다(ADR-18).
---
+--     ※ (없앤 예외) 2026-08-27 에 categories 원소에 usesRepo(boolean)를 붙였던 의도된 예외는
+--       2026-10-26 Git, SVN 삭제(구조 18)로 없앴다. 원소의 키 집합은 다시 fromXML() 과 같다
+--       (source·dbGone 의 '있을 때만 키' 규칙은 G-6).
+
 --  ── G-1. 이름이 다르다 ────────────────────────────────────────────────
 --     DB 는 snake_case, 앱은 camelCase 인데 단순 변환으로 안 되는 것들이 있다.
 --       cal_category.description      → category.desc        ★ description 아님
 --       cal_todo.todo_text            → todo.text            ★ todoText 아님
---       cal_entry_commit.short_hash   → commit.short         ★ shortHash 아님
---       cal_entry_commit.commit_time  → commit.time
 --       cal_entry.entry_date          → entry.date           ★ entryDate 아님
 --       cal_entry.all_day             → entry.allDay
 --       cal_attendance.work_date      → attendance 맵의 키
@@ -526,9 +485,9 @@
 --       그려지고, 오류는 하나도 안 난다. 색, 필터, 과제별 보고서가 통째로 비는데 원인은 안 보인다.
 --     ★ 반대로 uid 만 있고 번호를 안 들고 있으면 **쓰기를 못 한다**(H-2). 어댑터는 둘 다 들고 있어야 한다.
 --       state 에는 uid 만, 별도 맵에는 uid↔_no 를 둔다.
---       cal_entry_except.entry_no / cal_entry_commit.entry_no / cal_todo_day_note.todo_no
+--       cal_entry_except.entry_no / cal_todo_day_note.todo_no
 --         → 앱 객체에 대응이 **없다.** 부모 객체 안으로 접히는 값이라 state 에 나타나지 않는다
---           (G-5 의 접는 규칙 참조). 이 셋을 state 에 흘리지 말 것.
+--           (G-5 의 접는 규칙 참조). 이 둘을 state 에 흘리지 말 것.
 --       cal_*.user_id → 앱 객체에 대응이 **없다.** state 는 항상 '나 한 사람'이라 소유자 축이 없다.
 --         조회 결과에서 걷어낼 것. 넣으면 toXML() 이 모르는 키를 만나고, §8 왕복 서명도 어긋난다.
 --     나머지는 snake→camel 로 기계 변환이 되지만, 위 표에 있는 것은 표를 보고 쓸 것.
@@ -536,7 +495,7 @@
 --  ── G-2. NULL → '' (A 의 역방향) ──────────────────────────────────────
 --     앱은 '값 없음'을 빈 문자열로 들고 있다. NULL 을 그대로 넘기면 `if(e.startTime)` 류 검사가
 --     통과하는 것까지는 같지만, 문자열 메서드(.slice·.localeCompare)에서 터진다.
---       start_time, end_time, commit_time, end_date(entry·todo), due, recur_until
+--       start_time, end_time, end_date(entry·todo), due, recur_until
 --       - completed_at
 --     ※ 반대로 NULL 을 유지해야 하는 것도 있다. cat_no(앱의 categoryId 는 `|| null` 로 다룬다.
 --       NULL 인 cat_no 는 '' 가 아니라 **null** 로 되돌린다),
@@ -551,7 +510,7 @@
 --       **DB 가 준 원문 문자열**이다. state 에 넣지 말고 어댑터가 따로 보관할 것(G-6).
 --
 --  ── G-4. TINYINT → boolean (D 의 역방향) ──────────────────────────────
---     all_day → entry.allDay(true/false), done → todo.done, git_commit_body → state.gitCommitBody
+--     all_day → entry.allDay(true/false), done → todo.done
 --     ※ 0/1 을 그대로 넘기지 말 것. 앱은 `e.allDay ? …` 로 쓰므로 당장은 같게 동작하지만,
 --       toXML() 이 `e.allDay ? 'true' : 'false'` 로 쓰기 때문에 내보내기에서만 값이 달라진다.
 --
@@ -560,7 +519,6 @@
 --       cal_category    ORDER BY sort_order, uid → categories 배열. sort_order·cat_no 는 state 에 넣지 않는다
 --       cal_entry       ORDER BY sort_order, uid → entries 배열. sort_order·entry_no 는 state 에 넣지 않는다
 --       cal_todo        ORDER BY sort_order, uid → todos 배열. sort_order·todo_no 는 state 에 넣지 않는다
---       cal_entry_commit ORDER BY seq       → entry.commits 배열. seq 는 state 에 넣지 않는다
 --       cal_entry_except ORDER BY except_date → entry.recurExcept 문자열 배열
 --       cal_todo_day_note → todo.dayNotes = { 'YYYY-MM-DD': '설명' }   (배열 아님)
 --       cal_task_hours    → taskHours   = { 'YYYY-MM-DD': { 과제uid: 시간 } }  (2단 중첩)
@@ -606,72 +564,9 @@
 --                              컬럼을 폐지했다(위 '이관이 버리는 XML 속성' 참조). undefined 로 두면
 --                              `e.hours != null` 이 우연히 같게 동작하지만 명시가 낫다.
 --
---       category.gitRepo     → **로컬 저장소에서 읽어 채운다.** DB 에 없는 것은 의도이고(§4),
---       category.svnRepo       값이 없어도 되는 것은 아니다. 빈 문자열로 채우면 '연동' 섹션이
---                              통째로 사라져 사용자는 '커밋이 없는 것'과 구분하지 못한다.
---                              ★ 이 PC 에 경로가 없으면 그 사실을 화면이 말해야 한다(§4).
---                              ★ 로컬 쪽 키는 uid 다. cat_no 로 찾지 말 것(위 ★ 절).
---
---                              ★★ 그 '로컬 저장소'가 무엇인지 여기서 못박는다(2026-08-27 신설).
---                                 이 자리가 "로컬 저장소" 라고만 적혀 있어 구현자가 두 번 헤맸다.
---                                 - 파일 : %APPDATA%\TaskCalendar\repo-paths.json
---                                 - 코드 : widget/RepoPaths.cs  (형식·손상 처리·고아 키 규칙의 단일 소스)
---                                 - 소유 : **웹 계층**(과제 목록과 함께 늘었다 줄었다 하는 키 맵).
---                                          widget.settings.json 이 아니다. 그쪽은 창 위치·자동시작
---                                          같은 호스트(WPF) 소유의 평평한 DTO 라 수명도 소유자도 다르다.
---                                          data.xml 도 아니다. DB 전환 뒤 그 파일은 보존만 되므로
---                                          거기 남기면 로컬 유지가 아니라 **동결**이다(§4).
---                                 - 형식 : { "version": 1,
---                                            "paths": { "<category uid>": { "git": "…", "svn": "…" } } }
---                                          키가 과제 **uid** 다(c-<uuid> / db-<project.uid>).
---                                          맵을 최상위에 두지 않는 이유는 "version" 이라는 이름의 과제
---                                          키와 부딪히지 않게 하려는 것이다.
---                                 - 배선 : 부팅 때 한 번 읽어 세션이 끝날 때까지 들고 있는다.
---                                            _repoPaths = RepoPaths.Load(_dataDir, Log);
---                                            await _calDb.LoadSnapshotAsync(loginId, _repoPaths.Map);
---                                          `.Map` 이 repoPaths 인자와 **정확히 같은 형**이라 변환이 없다.
---                                          ★ CalendarDb 에 `(string?, RepoPaths)` 편의 오버로드를 만들지
---                                            말 것. 어댑터 게이트가 부팅 조회를 **이름 점수**로 고르는데
---                                            오버로드는 이름도 인자 개수도 같아 어느 쪽이 뽑힐지가 우연이
---                                            된다. RepoPaths 쪽이 뽑히면 게이트가 null 을 넣어
---                                            gitRepo·svnRepo 가 전부 '' 가 되고, 게이트는 그것을 '' 로만
---                                            대조하고 통과시킨다 = **G-6 의 값 대조가 조용히 사라진다.**
---                                 - 파일이 없거나 깨져도 **예외를 던지지 않는다**(빈 맵 + 원본은 .bak).
---                                   이 파일 하나 때문에 위젯이 안 뜨면 사용자는 고칠 화면조차 없다.
---                                 ※ 경로 **문자열**은 여전히 DB 로 올리지 않는다. DB 로 가는 것은
---                                   "저장소를 쓰는 과제인가" 하는 **비트 하나**뿐이다(§4). 그 비트가
---                                   없으면 앱은 '경로가 없다'와 '저장소를 안 쓰는 과제다'를 구분하지
---                                   못해 위 안내가 모든 과제에 뜨거나 아무 데도 안 뜬다.
---
---       category.usesRepo    → ★★ cal_category.uses_repo(0/1) → **boolean**. 위 두 줄의 짝이다.
---                              (2026-08-27 신설, schema_version 5)
---                              - **fromXML() 은 이 키를 만들지 않는다.** XML 에 대응 속성이 없다.
---                                XML 에는 gitRepo·svnRepo 경로 **문자열**만 있고, 그건 그 파일을 만든
---                                PC 의 사실이지 과제의 사실이 아니다. 그래서 이 키는 이 절('DB 에
---                                없는 것을 채운다')의 **거울**이다. DB 에만 있는 것을 앱에 얹는다.
---                              - 왜 필요한가: gitRepo=''·svnRepo='' 만으로는 *"이 PC 에 경로가 없다"* 와
---                                *"저장소를 안 쓰는 과제다"* 가 **같은 모양**이다. 앱은 그 둘을 갈라야
---                                '연동' 섹션을 숨길지, *"이 PC 에는 이 과제의 저장소 경로가 설정되지
---                                않았습니다"* 를 띄울지 정할 수 있다(§4). 화면 규칙은 이 셋의 조합이다:
---                                   usesRepo=false                      → '연동' 섹션을 숨긴다(지금과 같다)
---                                   usesRepo=true, 경로 있음            → 커밋 줄을 그린다(지금과 같다)
---                                   usesRepo=true, 경로 없음            → ★ 숨기지 말고 안내를 띄운다
---                              - **키를 항상 만든다**(true/false 둘 다). 'false 면 키를 만들지 않는' 식으로
---                                아끼지 말 것. source·dbGone 과 다른 판정이다. 저 둘은 '공식 과제인가'
---                                라는 **분류**라 부재가 곧 'local' 이라는 뜻이지만, usesRepo 는 위 3분기의
---                                **조건**이고 undefined 는 false 와 같은 자리에 떨어져 세 번째 분기가
---                                통째로 사라진다(터지지 않고 조용히 사라진다. 이 절이 경고하는 그것).
---                              - 값을 로컬 경로 유무에서 **파생하지 말 것**(usesRepo = !!gitRepo 금지).
---                                그러면 정의상 3분기가 2분기로 접혀 이 컬럼을 만든 이유가 사라진다.
---                                근거는 언제나 DB 컬럼이다.
---                              - 이 값은 state 에 실리지만 toXML() 은 쓰지 않는다(직렬화 목록에 없다:
---                                id, color, gitRepo, svnRepo, createdAt, source, dbGone 뿐). 즉 **내보내기 →
---                                가져오기 왕복에서 이 비트는 살아남지 못한다.** 그건 손실이 아니라
---                                설계다. XML 은 '한 PC 의 파일'이고 이 비트의 원본은 DB 한 곳이다.
---                                ※ 그래서 §8 의 왕복 서명에도 넣지 않는다(서명은 XML↔DB 대응이 있는
---                                  값만 센다). 대신 이관 도구가 무엇을 근거로 이 비트를 세우는지는
---                                  아래 I-1 이 못박는다.
---
+--       (category.gitRepo, category.svnRepo, category.usesRepo 는 2026-10-26 Git, SVN 삭제(구조 18)로 없앴다.
+--        로컬 repo-paths.json 과 cal_category.uses_repo 를 읽던 절이었다. 이제 채우지도 싣지도 않는다)
+
 --       category.dbGone      → source='db' 인 행만, LEFT JOIN project 로 파생한다(§6).
 --                              컬럼으로 저장하지 않는다. 파생값 캐시라 ADR-18 과 충돌한다.
 --
@@ -703,17 +598,11 @@
 --                              ※ cal_category·cal_user_pref 는 state 에 updatedAt 키가 아예
 --                                없으므로(fromXML 확인) 이 맵이 유일한 보관처다.
 --
---  ── G-7. 커밋은 부팅 조회에 넣지 않는다 ───────────────────────────────
---     §2: 무게의 대부분이 커밋이고 캘린더를 그리는 데 쓰이지 않는다.
---     부팅 조회 대상에서 cal_entry_commit 을 빼고, entry.commits 는 **빈 배열**로 채운다.
---     ★ undefined 로 두지 말 것. 렌더·보고서 경로는 `(e.commits||[])`·Array.isArray 로 방어하지만
---       **커밋 편집 경로는 가드가 없다**(직접 확인: 커밋 찾기·삭제 함수가 entry.commits.find(…)
---       와 entry.commits.length 를 바로 읽는다). 사용자가 커밋 내역에서 한 줄 지우려는 순간
---       TypeError 가 난다. 조회는 멀쩡한데 편집만 죽는 형태라 원인을 찾기 어렵다.
---     커밋 화면·보고서를 열 때 그 entry 의 커밋만 지연 조회해 채운다.
---     ★ 지연 조회의 조건절은 (user_id, entry_no) 다. state 에는 entry_no 가 없으므로(G-1)
---       H-2 의 uid→_no 맵을 반드시 거쳐야 한다. 이 한 줄을 빠뜨리면 커밋 화면만 안 열린다.
---
+--  ── G-7. (없앤 절) 커밋 ────────────────────────────────────────────────
+--     커밋 목록(cal_entry_commit → entry.commits)을 어떻게 읽을지 정하던 절이었다(2026-09-01 에 부팅 전량 읽기로 개정).
+--     2026-10-26 Git, SVN 삭제(구조 18)로 표도 키도 없어졌다. 부팅 조회와 타인 열람은 커밋을 읽지 않고,
+--     entry 에는 commits 와 source 키가 없다.
+
 --  ══ H. 대리키 해석: 앱의 문자열 id ↔ DB 의 번호 (2026-08-24 신설, 양방향) ═══
 --     앱은 과제, 일정, 할일을 **문자열 id** 로만 가리킨다(c-<uuid>, e-<uuid>, t-<uuid>, db-<project.uid>).
 --     DB 는 2026-08-24 부터 그것들을 **번호**로 가리킨다(cat_no, entry_no, todo_no).
@@ -767,7 +656,7 @@
 --         1062 이거나 **번호 재사용**이 된다. MAX()+1 은 데이터 자신이 근거라 어긋날 수가 없다.
 --     ★ 번호는 **재사용된다**(MAX 기준이므로 마지막 행을 지우면 그 번호가 다음에 다시 나온다).
 --       안전한 이유: 앱은 번호를 보지 않고(uid 로 본다), 자식 표는 부모 삭제 시 ON DELETE CASCADE 로
---       함께 사라지며(except, commit, day_note), 유일하게 CASCADE 가 아닌 참조인 cal_task_hours 는
+--       함께 사라지며(except, day_note), 유일하게 CASCADE 가 아닌 참조인 cal_task_hours 는
 --       RESTRICT 라 과제가 남아 있는 동안에만 존재한다. 즉 '지워진 번호를 가리키는 행'이 남을 수 없다.
 --       ★ 다만 어댑터의 uid→_no 맵은 예외다. 삭제한 행의 항목을 **반드시 즉시 지울 것.**
 --         남겨 두면 나중에 같은 번호를 받은 **다른** 행을 가리키게 되고, 그 오염은 조용하다.
@@ -836,62 +725,14 @@
 --       A 에게는 3, B 에게는 11 일 수 있다. **cat_no 로 '같은 과제인지'를 판정하지 말 것**.
 --       그 판정의 근거는 uid(또는 project_uid)다.
 --
---  ══ I. cal_category.uses_repo: 누가 세우고 누가 지우나 (2026-08-27 신설) ══
---     쓰기 계층이 아직 없다. 그래서 **코드가 아니라 계약으로** 먼저 못박는다. 이 절이 정본이다.
---     컬럼의 의미·왜 경로가 아니라 비트인지는 cal_category 의 컬럼 주석과 설계 §4 에 있다.
---
---  ── I-1. 이관(XML → DB)이 세우는 값 ───────────────────────────────────
---     uses_repo = (그 <category> 에 gitRepo 또는 svnRepo 가 있고 빈 문자열이 아니면 1, 아니면 0).
---     ★ 그것이 **이관 시점에 존재하는 유일한 증거**다. 다른 근거는 없다. 이관은 한 PC 의
---       data.xml 한 개를 보고 있고, 그 PC 에 경로가 있었다는 사실이 곧 '이 과제는 저장소를 쓴다' 다.
---     ★ 같은 이관이 **repo-paths.json 도 함께 만든다.** 경로 문자열은 DB 로 가지 않으므로(§4),
---       이관이 그것을 로컬로 옮기지 않으면 그 PC 는 이관 직후 **자기가 갖고 있던 경로를 잃는다**.
---       그러면 uses_repo=1 만 남아 §4 의 안내가 방금 이관한 그 PC 에서 곧바로 뜬다. 우스운 상태다.
---       두 쓰기는 한 도구의 같은 단계에서 함께 일어나야 한다.
---     ★ 0 으로 백필하지 말고 **행마다 계산**할 것. 전 행 0 이면 안내가 아무 데도 안 뜨고,
---       전 행 1 이면 모든 과제에 뜬다(§5.5 가 DEFAULT 를 0 으로 정한 이유는 '계산 실패 시 조용한
---       쪽으로 넘어지게' 하려는 것이지, 계산을 생략해도 된다는 뜻이 아니다).
---
---  ── I-2. 런타임이 세우는 시점: 경로를 **처음 지정할 때** ─────────────
---     앱이 [과제 관리]에서 그 과제의 gitRepo·svnRepo 중 하나라도 **비어 있지 않은 값으로** 저장하면,
---     그 자리에서 uses_repo=1 로 올린다. 그 UPDATE 는 §3.1 의 rev 락 안에서, 그 과제의
---     낙관적 잠금(@prev)과 함께 나간다. 다른 컬럼의 UPDATE 와 같은 규약이다.
---     ★ 이미 1 이면 다시 쓰지 않는다(무의미한 updated_at 갱신 = 남의 세션에 충돌 오탐을 만든다).
---     ※ 경로 **문자열**은 이 UPDATE 에 실리지 않는다. 그건 repo-paths.json 으로만 간다(§4).
---       한 사용자 동작이 두 저장소에 나뉘어 쓰이는 유일한 자리이므로, 로컬 쓰기가 실패하면
---       DB 쓰기도 하지 않는다(순서: 로컬 먼저 → 성공하면 DB). 반대로 하면 경로 없이 비트만 서서
---       방금 경로를 지정한 사람에게 "경로가 설정되지 않았습니다" 가 뜬다.
---
---  ── I-3. 지우는 조건: ★ **자동으로는 지우지 않는다** ─────────────────
---     이 PC 에서 경로를 지웠다는 사실은 **그 과제가 저장소를 그만 쓴다는 뜻이 아니다.** 다른 자리에
---     아직 경로가 있을 수 있고, DB 는 그것을 알 방법이 **없다**. 경로도, 'PC 마다의 유무'도
---     올리지 않기 때문이다(§4. 올리면 그게 바로 §4 가 막으려던 그것이다).
---     그래서 '마지막 PC 에서 지워졌는가' 는 **판정 불가**다. 판정할 수 없는 것으로 상태를 바꾸지 않는다.
---
---     ★ 그러면 어느 쪽으로 틀리는 것이 나은가. 두 오류의 값이 다르다:
---       - 잘못 켜 둔 채로 두면(거짓 양성) 저장소를 그만 쓴 과제의 '연동' 자리에
---         *"이 PC 에는 경로가 설정되지 않았습니다"* 한 줄이 남는다. **보이고, 설명되고,
---         사용자가 직접 끌 수 있다**(I-4).
---       - 잘못 꺼 버리면(거짓 음성) '연동' 섹션이 **다시 통째로 사라진다**. 그게 바로 §4 가
---         없애려던 상태다. 아무 말도 없이 커밋 줄만 없고, 원인을 알 방법이 없다.
---       비대칭이다. 그래서 **한 번 켜지면 끄지 않는다**를 택한다.
---
---  ── I-4. 그래도 끄는 유일한 경로: 사람이 명시적으로 ──────────────────
---     [과제 관리]에 *"이 과제는 저장소를 쓰지 않습니다"* 를 두고, 그것을 누를 때만 0 으로 내린다.
---     ★ '이 PC 의 경로를 비웠다' 를 그 신호로 **삼지 말 것.** 그건 PC 의 사실이고 이 비트는 과제의
---       성질이다(컬럼 주석 ③). 사람이 과제에 대해 한 진술만이 과제의 성질을 바꾼다.
---     ※ 그 UI 는 아직 없다. 없어도 무해하다. 켜진 채 남은 과제는 안내 한 줄을 띄울 뿐이고,
---       그 안내는 틀린 말도 아니다("이 PC 에는 경로가 없다"는 사실 그대로다).
---
---  ── I-5. 과제가 지워지면 ──────────────────────────────────────────────
---     cal_category 행이 사라지므로 이 비트도 함께 사라진다. 따로 정리할 것이 없다.
---     로컬 repo-paths.json 의 그 키는 **고아로 남아도 무해하다**(참조하는 과제가 없으면 안 읽힌다).
---     지울 수 있으면 지우되, 지우려고 DB 를 뒤지지는 말 것(§4).
---
+--  ══ I. (없앤 절) cal_category.uses_repo ══════════════════════════════
+--     '저장소를 쓰는 과제인가' 한 비트를 누가 세우고 지우는지 정하던 절이었다(2026-08-27 신설).
+--     2026-10-26 Git, SVN 삭제(구조 18, 이관 조각 db/deploy/migrations/v18-remove-git.sql)로 칸과 CHECK 를 지웠다.
+
 --  값 집합이 고정된 문자열 컬럼은 COLLATE utf8mb4_bin 이다(테이블 기본 utf8mb4_0900_ai_ci 상속 금지).
 --     실측: ai_ci 는 대소문자뿐 아니라 전각/반각까지 같게 본다. 'DB', 'Db', 전각 'ｄｂ' 가 CHECK 를
 --     전부 통과하고 입력 그대로 저장됐다. 앱은 `source === 'db'` 로 정확 비교하므로 그런 행은
---     조용히 개인 과제로 취급된다. 대상: cal_category.source, cal_entry.source, cal_entry.recur_freq,
+--     조용히 개인 과제로 취급된다. 대상: cal_category.source, cal_entry.recur_freq,
 --     cal_todo.prio, cal_schema_meta.k/v, cal_attendance.status, cal_user_pref.report_font_family.
 --     ★ uid 3개(cal_category, cal_entry, cal_todo)도 같은 이유로 _bin 이다. 앱 id 는 대소문자를 구분하고
 --       (safeId 가 [A-Za-z0-9_-] 를 그대로 통과시킨다), ai_ci 면 'c-AB…' 와 'c-ab…' 가 UNIQUE 충돌로
@@ -907,8 +748,8 @@
 --       바꿔 끼우는 것으로는 해결되지 않는다. ai_ci(NO PAD)는 뒤공백을 막는 대신 전각을 통과시킨다.
 --       → 새로 만드는 값집합 CHECK 에는 `AND <컬럼> NOT LIKE '% '` 를 함께 적는다(LIKE 는 PAD 접기를
 --         하지 않는다). cal_attendance.status 와 cal_user_pref.report_font_family 가 그렇게 되어 있다.
---       ※ 먼저 만든 네 컬럼(cal_category.source, cal_entry.source, cal_entry.recur_freq,
---         cal_todo.prio)에는 아직 그 한 줄이 없다. 이 파일은 '최초 1회 구축' 전용이라 여기서 고치면
+--       ※ 먼저 만든 세 컬럼(cal_category.source, cal_entry.recur_freq, cal_todo.prio)에는 아직 그 한 줄이
+--         없다(넷째였던 cal_entry.source 는 구조 18 에서 지웠다). 이 파일은 '최초 1회 구축' 전용이라 여기서 고치면
 --         이미 배포된 DB 와 어긋나므로, 보완은 migrate-*.sql 로 할 것(아직 안 함. 미해결로 적어 둔다).
 --       ※ uid 는 이 부류가 아니다. 값 집합이 고정이 아니라 '앱이 만든 원문 보존'이 목적이라
 --         뒤공백도 원문의 일부다. 대신 chk_*_uid 가 '' 만 막는다(_bin PAD SPACE 라 공백만인 값도 함께
@@ -1034,7 +875,7 @@ DROP TABLE IF EXISTS cal_attendance;
 DROP TABLE IF EXISTS cal_task_hours;         -- cal_category 를 참조(2026-08-24 신설 FK)
 DROP TABLE IF EXISTS cal_todo_day_note;      -- cal_todo 를 참조
 DROP TABLE IF EXISTS cal_todo;
-DROP TABLE IF EXISTS cal_entry_commit;       -- cal_entry 를 참조
+DROP TABLE IF EXISTS cal_entry_commit;       -- 폐지(구조 18, Git, SVN 삭제). 옛 배포분 정리용. cal_entry 를 참조해 그보다 먼저. 재생성하지 않는다
 DROP TABLE IF EXISTS cal_entry_except;       -- cal_entry 를 참조
 DROP TABLE IF EXISTS cal_entry;              -- cal_category 를 참조
 DROP TABLE IF EXISTS cal_category;
@@ -1043,7 +884,7 @@ DROP TABLE IF EXISTS cal_category;
 --  1. cal_category: 과제(카테고리)
 -- =====================================================================
 -- 개인 과제와 공식(DB project 유래) 과제를 source 로 갈라 한 테이블에 담는다(§6).
--- gitRepo/svnRepo 는 §4 로 제외, db_gone 은 조회 시 LEFT JOIN project 로 파생하므로 컬럼이 없다.
+-- db_gone 은 조회 시 LEFT JOIN project 로 파생하므로 컬럼이 없다. (저장소 칸 uses_repo 는 구조 18 에서 지웠다)
 --
 -- ★ 2026-08-24 키 전환: PK 가 (login_id, id) → (user_id, cat_no) 로 바뀌었고, 옛 id 는
 --   uid 컬럼 + uq_cal_category_uid(user_id, uid) 로 내려왔다. 앱이 보는 신원은 여전히 uid 다(G-1).
@@ -1072,32 +913,6 @@ CREATE TABLE cal_category (
   --   그 과제에 달린 일정·공수까지 함께 이관이 막힌다. 사람이 원본 XML 을 보고 정해야 하는 문제다.
   --   ※ cat_no 로는 이 파생을 할 수 없다. 번호에는 접두가 없다. 근거는 언제나 uid 다.
   project_uid  CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL, -- 공식 과제가 가리키는 project.uid. FK 걸지 않음(§5.2). 콜레이션은 project.uid 와 일치해야 조인 가능
-  -- ★★ '저장소를 쓰는 과제' 플래그 (설계 §4, 2026-08-27 신설, schema_version 5) ★★
-  --   1 = 이 과제는 git/svn 저장소를 쓴다. 0 = 안 쓴다.
-  --
-  --   ① **경로 문자열은 올리지 않는다.** 올리는 것은 이 비트 하나뿐이다(§4).
-  --      gitRepo·svnRepo 는 DB 로 가지 않는 **유일한 항목**이다. PC 마다 달라야 하는 값이고
-  --      브라우저에는 개념 자체가 없다. 올리면 A자리의 'D:\repos\report' 가 B자리까지 따라와
-  --      커밋 수집이 조용히 실패하고, 더 나쁜 경우 **경로는 유효한데 다른 저장소**라
-  --      실패조차 안 하고 **남의 커밋이 내 보고서에 실린다.**
-  --      → 경로의 보관처는 %APPDATA%\TaskCalendar\repo-paths.json (과제 uid 를 키로 하는 맵, §4).
-  --        이 컬럼에 경로를 넣거나, 경로를 담을 컬럼을 옆에 새로 만들지 말 것.
-  --
-  --   ② **이 비트가 없으면 앱은 두 상태를 구분하지 못한다**: *"이 PC 에 경로가 없다"* 와
-  --      *"저장소를 안 쓰는 과제다"*. 지금 기록 모달은 저장소가 없으면 '연동' 섹션을 통째로
-  --      숨긴다(updateGitRow() 의 sect.classList.toggle('hidden', !show)). 일정이 DB 로 올라가면
-  --      "A자리에서 보이던 커밋이 B자리에서 사라지는" 것이 일상이 되는데, 화면은 아무 말도 안 한다.
-  --      그 자리에 *"이 PC 에는 이 과제의 저장소 경로가 설정되지 않았습니다. [과제 관리]에서
-  --      경로를 지정하세요"* 를 띄우려면 조건이 필요하다. 이 비트가 그 조건이다.
-  --      비트가 없으면 그 안내는 **모든 과제에 뜨거나 아무 데도 안 뜬다**. 둘 다 안내가 아니다.
-  --
-  --   ③ **이 값은 과제의 성질이지 PC 의 성질이 아니다.** 그래서 DB 에 둔다.
-  --      '이 PC 에 경로가 있나' 는 PC 의 성질이고 그건 repo-paths.json 이 답한다. 두 물음을
-  --      한 저장소에 섞지 말 것. 섞는 순간 ①의 사고가 그대로 돌아온다.
-  --
-  --   ④ DEFAULT 는 **0('안 쓴다')** 이다. 1 로 백필하면 ②의 안내가 모든 과제에 뜬다(설계 §5.5).
-  --   ⑤ 누가 세우고 누가 지우나: 쓰기 계층 계약은 아래 헤더 **I 부류**가 정본이다.
-  uses_repo    TINYINT(1)   NOT NULL DEFAULT 0,                                         -- 저장소를 쓰는 과제인가. 1=쓴다/0=안 쓴다. ★ 경로 문자열이 아니다(위 ①). 앱으로는 category.usesRepo(boolean) 로 나간다(G-6)
   sort_order   INT          NOT NULL DEFAULT 0,                                         -- 화면 표시 순서. XML 문서 순서를 박제한 유일한 근거. ★ cat_no 와 다른 값이다(계약 E 의 ★)
   created_at   DATETIME(3)  NOT NULL,                                                   -- 생성 시각(UTC). 앱이 계산해 보낸다
   -- ★ 이관 규칙: updated_at = created_at 을 그대로 복사한다(원본이 없다).
@@ -1121,9 +936,6 @@ CREATE TABLE cal_category (
   CONSTRAINT chk_cal_category_color   CHECK (color REGEXP '^#[0-9a-fA-F]{6}$'),
   -- uid 는 NOT NULL 이므로 이 식은 NULL 을 낳지 않는다. _bin(PAD SPACE)이라 공백만인 값도 함께 막힌다.
   CONSTRAINT chk_cal_category_uid     CHECK (uid <> ''),
-  -- 불리언 컬럼은 값 집합을 CHECK 로 못박는다(cal_entry.all_day·cal_todo.done 과 같은 관례).
-  -- NOT NULL 이 함께 있어야 실제 방벽이 된다. MySQL 의 CHECK 는 식이 NULL 이면 통과시킨다(§5.1 ★).
-  CONSTRAINT chk_cal_category_usesrepo01 CHECK (uses_repo IN (0,1)),
   -- 공식 과제인데 project_uid 가 없으면 §6 의 LEFT JOIN 이 항상 db_gone 을 뱉는다. 반대로 개인 과제에
   -- project_uid 가 붙으면 남의 과제명을 끌어다 쓰게 된다. 두 방향을 다 막는다.
   --
@@ -1163,7 +975,7 @@ CREATE TABLE cal_category (
 --  2. cal_entry: 일정
 -- =====================================================================
 -- XML <entry> 대응(반복 규칙은 recur_* 컬럼으로 평탄화).
--- §3.3 낙관적 잠금의 기준 행이자 except/commit 자식의 잠금 단위.
+-- §3.3 낙관적 잠금의 기준 행이자 except 자식의 잠금 단위.
 CREATE TABLE cal_entry (
   user_id        SMALLINT UNSIGNED NOT NULL,  -- 소유자(app_user.user_id)
   entry_no       INT UNSIGNED      NOT NULL,  -- 사용자 안에서 유일한 일정 번호. 할당 규칙은 계약 H-1
@@ -1178,21 +990,15 @@ CREATE TABLE cal_entry (
   start_time     TIME         NULL DEFAULT NULL,           -- 시작 시각 HH:mm. 앱의 '' 는 반드시 NULL 로 변환. ''를 그대로 보내면 00:00:00 으로 무음 오염
   end_time       TIME         NULL DEFAULT NULL,           -- 종료 시각 HH:mm. '' ↔ NULL 매핑 규칙 동일
   -- 폭 재판정(§5.3 '실측 최대가 아니라 코드가 허용하는 상한 이상'): VARCHAR(2000) → MEDIUMTEXT.
-  -- 근거: 폼 #fTitle/#qaTitle 은 maxlength=200 이지만 그건 사람 입력만 막는다. git 수집 경로는
-  --   커밋 1건짜리 엔트리의 제목에 커밋 subject 를 그대로 넣고(setBulkRange()), normCommits()는
-  --   공백 축약·trim 만 할 뿐 절단이 없다(저장소 전체에 slice(0,2000) 0건). 즉 코드상 상한이 없다.
-  -- ★ TEXT 가 아니라 MEDIUMTEXT 인 이유(memo/note/body 와 같은 판정을 받는 이유):
-  --   이 컬럼은 cal_entry_commit.subject 를 그대로 받는다(커밋 1건짜리 엔트리). 두 컬럼의 상한이 다르면
-  --   같은 문자열이 한쪽만 통과하는 상태가 되고, 그건 근거 없이 갈린 것이다. 네 컬럼(title·subject·
-  --   memo·body) 모두 '코드상 상한 0' 이라는 같은 근거를 가지므로 같은 타입이어야 한다.
-  -- 왜 지금 고치는가: 이관은 단일 트랜잭션이라 긴 제목 한 건이 그 사용자의 이관 전체를 롤백시키고(1406),
-  --   이관 후에도 그 사용자는 커밋 수집을 할 때마다 저장이 실패한다. 근본 해법은 앱에 slice(0,2000)를
-  --   넣는 것이지만 그건 이 파일 범위 밖이다. 앱이 상한을 갖게 되면 그때 네 컬럼을 함께 되돌릴 것.
-  title          MEDIUMTEXT   NOT NULL,                    -- 일정 제목. git 단일 커밋 엔트리는 커밋 제목(subject)이 그대로 들어온다
+  -- 근거: 폼 #fTitle/#qaTitle 은 maxlength=200 이지만 그건 사람 입력만 막는다. 예전 git 수집 경로는 커밋 제목을
+  --   절단 없이 넣었고(2026-10-26 Git, SVN 삭제로 그 경로는 없어졌다) 손으로 고친 XML 도 같다. 코드상 상한이 없다.
+  -- ★ TEXT 가 아니라 MEDIUMTEXT 인 이유: memo, note 와 같은 판정이다('코드상 상한 0'). 구조 18 에서도 그대로 둔다
+  --   (형을 줄이면 표를 다시 만들어야 하고 얻는 것이 없다).
+  -- 왜 그때 고쳤나: 이관은 단일 트랜잭션이라 긴 제목 한 건이 그 사용자의 이관 전체를 롤백시킨다(1406).
+  title          MEDIUMTEXT   NOT NULL,                    -- 일정 제목
   -- 폭 재판정: TEXT(65,535바이트 ≈ 한글 21,845자) → MEDIUMTEXT. 메모 textarea(#fMemo / #qaMemo)에
   --   maxlength 가 없어 로그 붙여넣기로 실제 도달 가능한 경계다. '앱에 상한이 없어 TEXT' 는 근거가 거꾸로였다.
   memo           MEDIUMTEXT   NOT NULL DEFAULT (''),       -- 메모(여러 줄). 앱에 길이 상한이 없다
-  source         VARCHAR(8)   CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '',   -- 엔트리 출처. git=커밋에서 자동 생성, ''=사용자 일정. _bin 인 이유는 헤더 참조('GIT'·전각 'ｇｉｔ' 차단)
   -- ※ 일정 단위 공수(옛 hours_min)는 컬럼이 없다. 2026-08-11 결정: 공수는 cal_task_hours 하나로
   --   단일화했다. XML 의 entry@hours 는 버린다(헤더 '★ 이관이 버리는 XML 속성' 참조).
   location       VARCHAR(200) NOT NULL DEFAULT '',         -- 장소(회의실 등). 앱이 200자로 절단
@@ -1239,7 +1045,6 @@ CREATE TABLE cal_entry (
   CONSTRAINT fk_cal_entry_category FOREIGN KEY (user_id, cat_no) REFERENCES cal_category(user_id, cat_no)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
   CONSTRAINT chk_cal_entry_uid      CHECK (uid <> ''),
-  CONSTRAINT chk_cal_entry_source   CHECK (source IN ('','git')),
   CONSTRAINT chk_cal_entry_allday01 CHECK (all_day IN (0,1)),
   -- 아래 3개의 NULL 통과는 전부 '의도'다(NULL 이 곧 정상 상태를 뜻한다). 식이 NULL 을 낳지 않도록
   -- 나머지 항은 NOT NULL 컬럼이거나 IS NULL 판정이라, chk_cal_entry_recur 가 겪은 무음 통과가 없다.
@@ -1265,11 +1070,8 @@ CREATE TABLE cal_entry (
   -- NULL 통과는 의도다. recur_until NULL = '종료일 없는 반복'. 반복 자체가 없는데 until 만 있는 조합은
   -- 위 chk_cal_entry_recur 의 '전부 NULL' 분기가 막는다(둘이 한 쌍으로만 성립한다).
   -- 전각 숫자('２０２６-…')는 REGEXP 가 이미 막는다(실측 3819). ai_ci 라도 REGEXP 는 폭을 접지 않는다.
-  CONSTRAINT chk_cal_entry_until    CHECK (recur_until IS NULL OR recur_until REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'),
-  -- git 수집 엔트리는 특정 날짜의 커밋 묶음이라 기간·반복이라는 개념 자체가 없다. 재수집이 [from,to]
-  -- 범위를 통째로 지우고 다시 넣기 때문에, 기간/반복이 섞이면 무엇을 지울지가 정의되지 않는다.
-  -- source 는 NOT NULL 이고 나머지 두 항은 IS NULL 판정이라 이 식은 NULL 을 낳지 않는다(항상 TRUE/FALSE).
-  CONSTRAINT chk_cal_entry_git      CHECK (source <> 'git' OR (end_date IS NULL AND recur_freq IS NULL))
+  CONSTRAINT chk_cal_entry_until    CHECK (recur_until IS NULL OR recur_until REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+  -- (출처 칸 source 와 CHECK chk_cal_entry_source, chk_cal_entry_git 은 2026-10-26 Git, SVN 삭제(구조 18)로 지웠다)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='일정. PK=(user_id,entry_no), 앱 id 는 uid. 반복은 recur_* 로 평탄화. updated_at=낙관적 잠금 토큰.';
 
@@ -1316,31 +1118,15 @@ CREATE TABLE cal_entry_except (
   COMMENT='반복 일정의 예외일. PK=(user_id,entry_no,except_date). 부모 삭제 시 CASCADE. UPDATE 없음.';
 
 -- =====================================================================
---  4. cal_entry_commit: git/svn 커밋 목록
+--  4. (cal_entry_commit: 폐지. 2026-10-26 Git, SVN 삭제, 구조 번호 18. 번호를 주지 않는다)
 -- =====================================================================
--- XML <commits><commit> 대응. 부팅 조회에서 제외하고 커밋 화면·보고서를 열 때만 지연 조회한다(§2).
--- ★ 이 표도 자기 번호(_no)·uid 를 갖지 않는다. 부모 안의 배열이고 신원은 (부모, seq) 다.
-CREATE TABLE cal_entry_commit (
-  user_id     SMALLINT UNSIGNED NOT NULL,   -- 소유자 (부모에서 전파)
-  entry_no    INT UNSIGNED      NOT NULL,   -- 부모 일정 번호
-  seq         SMALLINT UNSIGNED NOT NULL,                                             -- 부모 commits 배열 인덱스(0부터). 표시 순서의 유일한 근거
-  hash        VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '',  -- git 전체 해시(40자) 또는 svn 리비전 숫자. 중복 제거·편집 보존 키
-  short_hash  VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '',  -- 표시용 짧은 해시. git=%h, svn='r'+리비전
-  commit_time TIME NULL DEFAULT NULL,                                                 -- 커밋 시각 HH:mm(날짜는 부모 entry_date). '' 는 NULL 로 변환
-  -- 폭 재판정: VARCHAR(2000) → MEDIUMTEXT. '편집기 상한 2000' 은 근거가 아니었다. maxlength=2000 은 수동 편집
-  --   textarea(renderGitTab() 의 .nd-cedit) 한 곳뿐이고 그마저 제목+본문 합산이다. VCS 수집 경로(normCommits())에는
-  --   절단이 전혀 없다. 스쿼시 머지 제목 한 건이 이관 트랜잭션 전체를 1406 으로 롤백시킨다.
-  -- ★ TEXT 가 아니라 MEDIUMTEXT 인 이유: 이 값은 커밋 1건짜리 엔트리에서 cal_entry.title 로 그대로 흘러든다.
-  --   두 컬럼의 상한이 다르면 같은 문자열이 한쪽만 통과한다. 근거가 같으면 타입도 같아야 한다(cal_entry.title 참조).
-  subject     MEDIUMTEXT NOT NULL DEFAULT (''),                                       -- 커밋 제목 한 줄(공백 축약·trim 됨)
-  -- 폭 재판정: TEXT → MEDIUMTEXT. body 는 git 에서 그대로 받는 값이라 코드상 상한이 0 이다(memo 와 같은 이유).
-  body        MEDIUMTEXT NOT NULL DEFAULT (''),                                       -- 커밋 본문(여러 줄). 길이 상한 없음. 이관 왕복 대조에 반드시 포함할 것
-  PRIMARY KEY (user_id, entry_no, seq),
-  KEY ix_cal_entry_commit_hash (user_id, hash),   -- 재수집 시 이미 있는 커밋인지 판정
-  CONSTRAINT fk_cal_entry_commit_entry FOREIGN KEY (user_id, entry_no) REFERENCES cal_entry(user_id, entry_no)
-    ON UPDATE RESTRICT ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='일정에 붙은 커밋 목록. PK=(user_id,entry_no,seq). 부팅 조회 제외(지연 로드). seq=배열 인덱스 0-base.';
+-- 일정에 붙은 git/svn 커밋 목록(XML <commits><commit>)이었다. Git, SVN 기능을 전부 지우면서(docs/GIT-SVN-REMOVAL.md)
+-- 이 표도 없앴다. 여기에 '왜 없는지'를 남기는 이유는 옛 설계 문서를 읽은 사람이 다시 만드는 것을 막기 위해서다.
+--   지운 방법: 이관 조각 db/deploy/migrations/v18-remove-git.sql 이 커밋 기록(cal_entry.source = 'git')을 지우고
+--     (예외일과 커밋 목록은 FK CASCADE), 이 표를 지우고, cal_entry.source, cal_category.uses_repo,
+--     cal_user_pref 의 작성자와 커밋 본문 칸과 그 CHECK 를 지웠다. 커밋 기록은 일반 기록으로 바꾸지 않았다(사용자 결정).
+--   부팅 조회(CalendarDb)와 저장(CalendarWriteDb)은 커밋을 다루지 않는다.
+--   되살리지 말 것: 2026-10-26 사용자 결정으로 없앴다.
 
 -- =====================================================================
 --  5. cal_todo: 할 일
@@ -1742,9 +1528,9 @@ CREATE TABLE cal_report_weekly (
 
 
 -- =====================================================================
---  10. cal_user_pref: 사용자당 1행 설정(커밋 수집 작성자 + 보고서 서식)
+--  10. cal_user_pref: 사용자당 1행 설정(보고서 서식)
 -- =====================================================================
--- XML 루트 gitAuthor/svnAuthor + <prefs> 대응. 사용자당 정확히 1행이고 삭제 경로가 없다.
+-- XML <prefs> 대응(루트 gitAuthor/svnAuthor 와 prefs@gitCommitBody 는 구조 18 에서 칸째 지웠다). 사용자당 정확히 1행이고 삭제 경로가 없다.
 -- ★ 사용자당 1행이므로 PK 는 (user_id) 다. 대리키를 따로 두지 않는다(번호를 붙일 대상이 없다).
 --
 -- ★ 왜 서식을 여기에 넣는가(설계 §4 의 '보류' 판정을 2026-08-21 뒤집었다):
@@ -1758,16 +1544,11 @@ CREATE TABLE cal_report_weekly (
 --   어차피 배포가 따라간다(설계 §5.5 의 '추가 컬럼은 DEFAULT 필수' 규칙을 지킬 것).
 CREATE TABLE cal_user_pref (
   user_id    SMALLINT UNSIGNED NOT NULL,   -- 소유자(app_user.user_id). 사용자당 1행
-  -- 폭 120 의 근거: 폼 #cGitAuthor/#cSvnAuthor maxlength=120. fromXML()은 루트 속성을 그대로 읽어
-  -- 절단이 없으므로, 손으로 고친 XML 만 초과할 수 있다(1406 → 이관 도구 사전 스캔 대상). name 과 같은 판정.
-  git_author VARCHAR(120) NOT NULL DEFAULT '',   -- Git 커밋 수집 작성자. ''=전체 커밋 대상. 형식 검증 없음(이메일 아니어도 됨)
-  svn_author VARCHAR(120) NOT NULL DEFAULT '',   -- SVN 커밋 수집 작성자. git 과 독립. '속성 부재→gitAuthor 복사' 구버전 마이그레이션은 파서가 이미 해소한 뒤 들어온다
-  -- ★ 이관 규칙: 여기만 '이관 시각'을 쓴다. cal_category 와 달리 복사할 원본이 아예 없다.
-  --   toXML 은 gitAuthor/svnAuthor 를 XML '루트 속성'으로 쓸 뿐 시각을 함께 적지 않고,
-  --   앱 state 에도 이 두 값의 수정 시각이라는 개념이 없다(setGitAuthor() 은 save() 만 한다).
+  -- ★ 이관 규칙(updated_at): 여기만 '이관 시각'을 쓴다. cal_category 와 달리 복사할 원본이 아예 없다
+  --   (XML 은 서식에 시각을 적지 않고 앱 state 에도 그 개념이 없다).
   --   사용자당 1행이고 부팅 직후 이 행을 고치는 흐름이 드물어 충돌 오탐 위험이 cal_category 만큼 크지 않다.
   -- ── 보고서 서식(XML <prefs>) ──────────────────────────────────────────────────────
-  -- 전부 '표시+복사 서식' 이다. 캘린더·커밋 데이터를 바꾸지 않는다. 기본값은 파서(fromXML/
+  -- 전부 '표시+복사 서식' 이다. 캘린더 데이터를 바꾸지 않는다. 기본값은 파서(fromXML/
   -- normalizeReportFormatPref/normalizeReportFont)가 쓰는 값과 **같은 값**을 적었다(어댑터 계약 C).
   --
   -- (1) 전역 3값. ★ 종류별과 독립인 설정이 아니라 '마지막으로 본 모드의 거울' 이다.
@@ -1781,8 +1562,6 @@ CREATE TABLE cal_user_pref (
   report_marker              VARCHAR(8) NOT NULL DEFAULT '-',   -- 머리기호. 프리셋 키 또는 임의 문자열(8자 이하). ''는 불가(파서가 '-'로 흡수한다)
   report_marker_custom       VARCHAR(8) NOT NULL DEFAULT '',    -- 직접 입력 머리기호. ''=사용 안 함(정상값. NULL 로 바꾸지 말 것)
   report_indent              TINYINT    NOT NULL DEFAULT 2,     -- 들여쓰기 단수 0..6 (파서가 clamp 하는 범위와 동일)
-  -- ★ D 부류가 아니다. toXML 은 켜졌을 때만 '1' 을 쓰고 꺼졌으면 속성을 아예 안 쓴다(헤더 D 의 ★ 참조).
-  git_commit_body            TINYINT(1) NOT NULL DEFAULT 0,     -- 보고서에 커밋 본문 포함 여부. 1=포함. XML 속성 부재=0
   -- (2) 종류별(daily/weekly). custom 모드는 'weekly' 키를 함께 쓴다(reportFormatKeyForMode: daily 외 전부 weekly).
   --     그래서 키가 둘뿐이고 컬럼도 둘씩이다. 셋째 모드를 만들려면 컬럼을 늘리기 전에 그 키 규칙부터 볼 것.
   report_marker_daily        VARCHAR(8) NOT NULL DEFAULT '-',   -- 일간 보고서 머리기호
@@ -1814,7 +1593,6 @@ CREATE TABLE cal_user_pref (
   CONSTRAINT chk_cal_user_pref_indent CHECK (report_indent        BETWEEN 0 AND 6
                                          AND report_indent_daily  BETWEEN 0 AND 6
                                          AND report_indent_weekly BETWEEN 0 AND 6),
-  CONSTRAINT chk_cal_user_pref_commit_body CHECK (git_commit_body IN (0,1)),
   -- NOT LIKE '% ' 의 근거는 chk_cal_attendance_status 에 적어 두었다(utf8mb4_bin PAD SPACE 로
   -- 'Gulim ' 이 IN 을 통과하는데, REPORT_FONT_FAMILY_SET.has('Gulim ') 는 false 라 앱은 기본 글꼴로 읽는다).
   -- 'Malgun Gothic' 의 가운데 공백은 이 검사에 걸리지 않는다. 막는 것은 '끝의' 공백뿐이다.
@@ -1822,7 +1600,7 @@ CREATE TABLE cal_user_pref (
                                               AND report_font_family NOT LIKE '% '),
   CONSTRAINT chk_cal_user_pref_font_size   CHECK (report_font_size = 0 OR report_font_size BETWEEN 10 AND 16)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='사용자당 1행 설정 — 커밋 수집 작성자(git/svn) + 보고서 서식. PK=(user_id). 삭제 경로 없음.';
+  COMMENT='사용자당 1행 설정(보고서 서식). PK=(user_id). 삭제 경로 없음.';
 
 -- =====================================================================
 --  11. cal_user_rev: 동시성·동기화 단일 감시점(§3.1)
@@ -1972,9 +1750,13 @@ CREATE TABLE cal_schema_meta (
 --   - 17 (2026-10-22): 월간보고(이관 조각 db/deploy/migrations/v17-monthly-report.sql, docs/MONTHLY-REPORT-PLAN.md §6).
 --       과제별 개발 일정 그림 표 project_schedule_image(아래 16)와 project.dev_start_date(정본 schema-structure.sql)를 더한다.
 --       앱 상수는 DbGate.AppStructureVersion(17).
+--   - 18 (2026-10-26): Git, SVN 삭제(이관 조각 db/deploy/migrations/v18-remove-git.sql, docs/GIT-SVN-REMOVAL.md).
+--       커밋 기록(cal_entry.source = 'git')과 cal_entry_commit 을 지우고, cal_entry.source, cal_category.uses_repo,
+--       cal_user_pref.git_author, svn_author, git_commit_body 와 그 CHECK 넷을 지운다(위 4. 참조). 표 수가 하나 준다.
+--       앱 상수는 DbGate.AppStructureVersion(18).
 --   ★ app_ 세 키는 빈 값으로 시딩한다(새 버전 없음). 배포 때 release-v<버전>.sql 이 채운다(DB-RELEASE-OPS §4).
 --   ★ 첫 줄(db_structure_version)의 모양을 바꾸지 말 것. setup-taskcalendar.ps1 과 시험이 이 줄에서 기대값을 읽는다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '17', UTC_TIMESTAMP(3)),
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '18', UTC_TIMESTAMP(3)),
   ('db_updating', '0', UTC_TIMESTAMP(3)),
   ('app_latest_version', '', UTC_TIMESTAMP(3)),
   ('app_installer_file', '', UTC_TIMESTAMP(3)),

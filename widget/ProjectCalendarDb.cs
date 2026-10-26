@@ -722,7 +722,6 @@ namespace TaskCalendarWidget
                     ["endTime"] = src.F.EndTime ?? "",
                     ["title"] = src.F.Title,
                     ["memo"] = src.F.Memo,
-                    ["source"] = "",
                     ["location"] = src.F.Location,
                     ["remind"] = null,   // 새 기록과 같은 기본 미리알림(놓침 방지 사다리). 사본은 보통 개인 일정이다(2026-10-23)
                     ["createdAt"] = "",

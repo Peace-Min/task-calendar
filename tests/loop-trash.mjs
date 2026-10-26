@@ -543,7 +543,7 @@ function sweepZz(reason) {
 
   const ids = sql(`SELECT user_id FROM app_user WHERE login_id LIKE 'zzU%'`, { what: 'zz 사용자 id' }).map((r) => r[0]);
   const IN = ids.length ? ids.join(',') : '-1';
-  const kids = ['cal_entry_commit', 'cal_entry_except', 'cal_todo_day_note', 'cal_report_hours',
+  const kids = ['cal_entry_except', 'cal_todo_day_note', 'cal_report_hours',
     'cal_task_hours', 'cal_attendance', 'cal_report_daily', 'cal_report_weekly', 'cal_migration_log',
     'cal_todo', 'cal_entry', 'cal_category', 'cal_user_pref', 'cal_user_rev'];
   const stmts = kids.map((t) => `DELETE FROM ${t} WHERE user_id IN (${IN})`);

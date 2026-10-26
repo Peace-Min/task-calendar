@@ -118,7 +118,6 @@ try {
   const base = {
     cat: num(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`),
     ent: num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U}`),
-    cmt: num(`SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${U}`),
     todo: num(`SELECT COUNT(*) FROM cal_todo WHERE user_id=${U}`),
     th: num(`SELECT COUNT(*) FROM cal_task_hours WHERE user_id=${U}`),
     att: num(`SELECT COUNT(*) FROM cal_attendance WHERE user_id=${U}`),
@@ -131,8 +130,9 @@ try {
   console.log('\n[1] 내보내기 — 지금 상태를 XML 로');
   const xml = await cdp.ev('toXML()');
   ok('toXML() 이 XML 을 만든다', typeof xml === 'string' && xml.startsWith('<?xml'), `${(xml || '').length}자`);
-  const xmlCommits = (xml.match(/<commit\b/g) || []).length;
-  ok('내보낸 XML 에 커밋이 들어 있다', xmlCommits === base.cmt, `XML ${xmlCommits} · DB ${base.cmt}`);
+  //  커밋 목록과 작성자는 2026-10-26 Git, SVN 삭제(구조 18)로 내보내지 않는다(cal_entry_commit 도 없다).
+  const xmlCommits = (xml.match(/<commits?\b/g) || []).length;
+  ok('내보낸 XML 에 커밋 목록이 없다(구조 18)', xmlCommits === 0, `XML <commit> ${xmlCommits}개`);
 
   /* ── 2. 미리보기 — 호스트 파일창 뒤에 오는 바로 그 함수 ─────────── */
   console.log('\n[2] 미리보기 모달');
@@ -156,13 +156,12 @@ try {
   const after = {
     cat: num(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`),
     ent: num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U}`),
-    cmt: num(`SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${U}`),
     todo: num(`SELECT COUNT(*) FROM cal_todo WHERE user_id=${U}`),
     th: num(`SELECT COUNT(*) FROM cal_task_hours WHERE user_id=${U}`),
     att: num(`SELECT COUNT(*) FROM cal_attendance WHERE user_id=${U}`),
     rev: num(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`),
   };
-  for (const k of ['cat', 'ent', 'cmt', 'todo', 'room', 'th', 'att'])
+  for (const k of ['cat', 'ent', 'todo', 'th', 'att'])
     ok(`교체 뒤 ${k} 행수가 같다(왕복 무손실)`, after[k] === base[k], `전 ${base[k]} → 후 ${after[k]}`);
   ok('rev 가 올랐다', after.rev > base.rev, `${base.rev} → ${after.rev}`);
   //  ★ 번호가 1 부터 다시 붙었는가 = 차분이 아니라 **전량 교체**가 돌았다는 증거.
@@ -171,22 +170,18 @@ try {
      `교체 전 최소 cat_no=${catNoBefore}`);
   ok('이관 마커가 살아 있다(전량 교체가 안 지운다)',
      num(`SELECT COUNT(*) FROM cal_migration_log WHERE user_id=${U}`) >= 0);
-  ok('커밋 고아 0',
-     num(`SELECT COUNT(*) FROM cal_entry_commit c LEFT JOIN cal_entry e ON e.user_id=c.user_id AND e.entry_no=c.entry_no WHERE c.user_id=${U} AND e.entry_no IS NULL`) === 0);
-  ok('커밋 seq 가 0 부터 빈틈없다',
-     num(`SELECT COUNT(*) FROM (SELECT entry_no, MAX(seq)+1 mx, COUNT(*) c FROM cal_entry_commit WHERE user_id=${U} GROUP BY entry_no HAVING mx <> c) z`) === 0);
 
   /* ── 4. 화면이 갈리지 않았는가 ──────────────────────────────────── */
   console.log('\n[4] 화면 상태');
   const scr = JSON.parse(await cdp.ev(`JSON.stringify({
     cats: state.categories.length, ents: state.entries.length,
-    cmts: state.entries.reduce((a,e)=>a+((e.commits||[]).length),0),
+    noGit: state.entries.every(e => !('commits' in e) && !('source' in e)),
     conflict: !!document.getElementById('dbConflict'),
     hint: !!document.getElementById('emptyHint')
   })`));
   ok('화면 state 가 DB 와 같다', scr.cats === after.cat && scr.ents === after.ent,
      `화면 과제 ${scr.cats}·기록 ${scr.ents}`);
-  ok('화면 커밋 수가 DB 와 같다', scr.cmts === after.cmt, `화면 ${scr.cmts} · DB ${after.cmt}`);
+  ok('화면 일정에 commits, source 키가 없다(구조 18)', scr.noGit === true);
   ok('충돌 배너가 없다(저장이 거부되지 않았다)', !scr.conflict);
   ok('빈 캘린더 안내가 없다(데이터가 있으므로)', !scr.hint);
 
@@ -214,13 +209,12 @@ try {
   const m = {
     cat: num(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`),
     ent: num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U}`),
-    cmt: num(`SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${U}`),
     todo: num(`SELECT COUNT(*) FROM cal_todo WHERE user_id=${U}`),
   };
 
   /* ── 6. 원상 확인 ───────────────────────────────────────────────── */
   console.log('\n[6] 원상');
-  for (const k of ['cat', 'ent', 'cmt', 'todo'])
+  for (const k of ['cat', 'ent', 'todo'])
     ok(`${k} 가 시작할 때와 같다`, m[k] === base[k], `시작 ${base[k]} · 지금 ${m[k]}`);
 
 } catch (e) {

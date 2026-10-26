@@ -167,48 +167,15 @@ namespace TaskCalendarWidget
         // ================================================================================
         //  공개 API 2 — 부팅 조회 (설계 §3.5)
         // ================================================================================
-        //   9개 표를 **한 연결·한 트랜잭션**에서 읽어 계약 G 의 state 를 만든다.
-        //     cal_category · cal_entry · cal_entry_except · cal_entry_commit · cal_todo ·
+        //   8개 표를 **한 연결·한 트랜잭션**에서 읽어 계약 G 의 state 를 만든다.
+        //     cal_category · cal_entry · cal_entry_except · cal_todo ·
         //     cal_todo_day_note · cal_task_hours · cal_attendance · cal_user_pref
-        //   (2026-10-21 회의실 공용화로 cal_room 이 빠져 열에서 아홉이 됐다. 공용 회의실은 loadCodes 로 간다)
-        //
-        //   ★★ 계약 G-7 개정(2026-09-01) — 커밋을 **부팅에서 전량 읽는다.**
-        //     원안은 지연 조회였다: "무게의 대부분인데 캘린더를 그리는 데 안 쓴다". 전제가 틀렸다.
-        //       · 앱은 커밋을 **전역으로 훑는다** — 검색(:7434)·통계(:8630)·보고서(:7664/:7740).
-        //         일정 하나씩 늦게 읽어서는 이것들이 전부 틀린다. 실제로 틀리고 있었다.
-        //       · 무게가 없다 — 실측 커밋 164건이 42,286자(≈42KB)다. 부팅 state 가 19,534B 였으니
-        //         합쳐도 62KB 남짓이고 쿼리는 한 개 는다.
-        //       · 지연 조회는 **배선된 적이 없었다.** LoadEntryCommitsJsonAsync 가 있었지만 호스트
-        //         브리지에도 웹에도 호출부가 0 이었다 — 그래서 DB 모드에서는 커밋이 영영 빈 배열이고,
-        //         커밋 기반 일간·주간 보고가 통째로 비었다. 이 앱의 주 용도가 그것이다.
-        //       · 쓰기 쪽 부작용도 이것이 원인이었다 — 부팅이 [] 로 두니 차분 저장이 "164→0" 으로
-        //         오판해서, CalendarWriteDb 가 cal_entry_commit 을 통째로 제외해야 했다.
-        //         부팅이 제대로 읽으면 그 제외 사유가 사라진다.
-        //     entry.commits 는 **항상 배열**이다(undefined 로 두면 커밋 편집 경로가 TypeError 로 죽는다).
-        //
-        //   repoPaths: 과제 uid → (gitRepo, svnRepo). 계약 G-6 — 이 값은 **DB 에 없다**(§4: PC 마다
-        //     달라야 하는 유일한 항목). 로컬 저장소를 읽는 것은 이 클래스의 일이 아니라 호출자의
-        //     일이다 — 어댑터는 변환만 한다(§3.8.5).
-        //     ★ 그 '로컬 저장소'의 실체는 **`%APPDATA%\TaskCalendar\repo-paths.json`** 이고,
-        //       그 파일을 다루는 코드는 **`widget/RepoPaths.cs`** 다(형식·소유자·손상 처리는 그 파일의
-        //       머리 주석). 이 인자에 넘길 값은 `RepoPaths.Map` 이 그대로 만들어 준다:
-        //
-        //           _repoPaths = RepoPaths.Load(_dataDir, Log);                 // 부팅 때 1회
-        //           var snap   = await _calDb.LoadSnapshotAsync(loginId, _repoPaths.Map);
-        //
-        //       `.Map` 은 이 인자와 **정확히 같은 형**이라 변환이 필요 없다. 편의 오버로드를
-        //       만들지 않은 이유는 이 메서드 바로 아래 ★★ 절에 있다(게이트가 눈을 감는다).
-        //
-        //     ★ repoPaths 를 **안 주면**(생략 또는 null) 모든 과제의 gitRepo·svnRepo 가 '' 가 된다.
-        //       그러면 기록 모달의 「연동」 섹션이 통째로 사라져(`updateGitRow()` 의
-        //       `sect.classList.toggle('hidden', !show)`) 사용자는 '커밋이 없는 것'과 구분하지
-        //       못한다(G-6 의 경고). **배선(1c)할 때 반드시 채울 것.**
+        //   (2026-10-21 회의실 공용화로 cal_room 이 빠지고, 2026-10-26 Git, SVN 삭제(구조 18)로 cal_entry_commit 이 빠졌다.
+        //    공용 회의실은 loadCodes 로 간다. 커밋 목록, 일정 출처(source), 저장소 경로와 uses_repo, 작성자 설정은 state 에 없다)
         //
         //   반환: 스냅샷 / 연결·질의 실패는 null(오프라인 — 캐시 폴백 없음, ADR-18)
         //   예외: CalendarUserNotFoundException — login_id 가 app_user 에 없다(오프라인과 다른 사실)
-        public async Task<CalendarSnapshot?> LoadSnapshotAsync(
-            string? loginId,
-            IReadOnlyDictionary<string, (string git, string svn)>? repoPaths = null)
+        public async Task<CalendarSnapshot?> LoadSnapshotAsync(string? loginId)
         {
             try
             {
@@ -235,7 +202,7 @@ namespace TaskCalendarWidget
                 CalendarSnapshot snap;
                 try
                 {
-                    snap = await ReadInsideSnapshotAsync(conn, userId, schemaVersion, repoPaths, ct);
+                    snap = await ReadInsideSnapshotAsync(conn, userId, schemaVersion, ct);
                     await ExecAsync(conn, "COMMIT", ct);
                 }
                 catch
@@ -264,18 +231,6 @@ namespace TaskCalendarWidget
             }
         }
 
-        // ★★ 여기에 `LoadSnapshotAsync(string?, RepoPaths)` 같은 **편의 오버로드를 두지 말 것.**
-        //    한 번 넣었다가 뺐다(2026-08-27). 이유는 컴파일 문제가 아니라 **게이트가 눈을 감는다**는
-        //    것이다 — `tests/calendar-adapter.mjs` 는 부팅 조회 메서드를 **이름 점수**로 고르고
-        //    (같은 이름이면 동점), 동점이면 인자 개수로만 가른다. 오버로드는 이름도 인자 개수도
-        //    같으므로 **어느 쪽이 뽑힐지는 리플렉션 순서에 달린 우연**이 된다.
-        //    RepoPaths 쪽이 뽑히면 그 인자는 딕셔너리가 아니라서 게이트가 `null` 을 넣고,
-        //    조회는 성공하지만 gitRepo·svnRepo 가 전부 '' 가 된다. 그러면 게이트는 그 두 값을
-        //    **'' 로만 대조하고 통과**시킨다 — 즉 G-6 의 값 대조가 조용히 사라진다. 실패가 아니라
-        //    검사가 없어지는 형태라 아무도 눈치채지 못한다.
-        //    편의가 필요하면 **CalendarDb 밖에** 두어라(게이트는 이 타입의 메서드만 훑는다).
-        //    배선은 `.Map` 한 단어면 끝난다 — 위 주석의 두 줄이 그것이다.
-
         // ================================================================================
         //  공개 API 3 — 타인 일정 조회 (C4 · 읽기 전용)
         // ================================================================================
@@ -289,16 +244,17 @@ namespace TaskCalendarWidget
         //       늘었을 뿐**이다(docs/PEER-VIEW-FULL.md P7).
         //
         //   ★ 무엇을 주고 무엇을 안 주나 — **내 메인 화면이 그리는 것은 다 준다**(PEER-VIEW-FULL P2, 2026-10-01).
-        //     예전엔 「최소 payload」(일정의 날짜·시간·제목·반복만)였다. 그 결과 열람 창이 「할 일」·「커밋 내역」
+        //     예전엔 「최소 payload」(일정의 날짜·시간·제목·반복만)였다. 그 결과 열람 창이 「할 일」
         //     탭을 감추고 일정 카드에서도 장소·메모가 빠져, "그 사람이 무엇을 하는가" 를 보려고 연 창이
         //     정작 그 답의 절반을 못 보여 줬다(사용자 요구 2). 그래서 범위를 '화면'에 맞춘다:
-        //       주는 것: 과제(이름·색·출처) · 일정 전 필드(장소·메모·출처·반복·예외일·**커밋**) ·
+        //       주는 것: 과제(이름·색·출처) · 일정 전 필드(장소·메모·반복·예외일) ·
         //                **할 일**(마감·기간·완료·중요·메모·날짜별 메모).
-        //       안 주는 것(P3): **과제별 시간 · 근태 · 보고서 서식 · 회의실 목록 · 알림 설정 · 저장소 경로**
+        //       안 주는 것(P3): **과제별 시간 · 근태 · 보고서 서식 · 회의실 목록 · 알림 설정**
         //                — 내 화면에서도 보고서·알림 안에서만 쓰는 값이고, 캘린더를 그리는 데는 안 쓴다.
-        //                과제의 설명·uses_repo 도 같은 이유로 안 준다(설정 화면의 값이다).
+        //                과제의 설명도 같은 이유로 안 준다(설정 화면의 값이다).
+        //       (2026-10-26 Git, SVN 삭제로 커밋 목록과 「커밋 내역」 탭은 없어졌다. 주인 화면에도 없다)
         //
-        //   ★ 행 → state 변환은 부팅 조회와 **같은 함수**를 쓴다(EntryRowToState · TodoRowToState · CommitRow ·
+        //   ★ 행 → state 변환은 부팅 조회와 **같은 함수**를 쓴다(EntryRowToState · TodoRowToState ·
         //     AddDbSourceFlags). 따로 조립하면 키 이름·NULL 규약(G-1/G-2)이 한쪽만 고쳐져 조용히 갈라지고,
         //     열람 창은 주인 화면과 다른 모양을 받는다 — 같은 앱(iframe)이 그리므로 그 차이가 곧 화면 차이다.
         //     ★ 다른 점은 단 하나 — 일정의 remind(알림 설정)를 **읽지도 싣지도 않는다**(withRemind:false).
@@ -307,9 +263,9 @@ namespace TaskCalendarWidget
         //     범위로 거를 수 없다(2020년 시작이 2026년에도 떠야 한다). 전개는 웹의
         //     expandOccurrences 하나가 단일 진실이므로 그쪽에 맡긴다 — 내 일정과 같은 규칙이 된다.
         //
-        //   ★ 표가 여섯으로 늘어서 **한 스냅샷**에서 읽는다(부팅 §3.5 와 같은 문장). 커밋·예외일·날짜별 메모는
+        //   ★ 표가 다섯이라 **한 스냅샷**에서 읽는다(부팅 §3.5 와 같은 문장). 예외일·날짜별 메모는
         //     부모를 entry_no/todo_no 로 접는데, 그 번호는 재사용된다(G-5 ★) — 문장마다 다른 read view 면
-        //     그 사이 지워지고 다시 쓰인 번호에 남의 커밋이 붙을 수 있다.
+        //     그 사이 지워지고 다시 쓰인 번호에 남의 예외일이 붙을 수 있다.
         //
         //   반환: {"allowed":true,"categories":[…],"entries":[…],"todos":[…]} / 권한 없음 {"allowed":false}
         //         / 실패는 null(호출측이 화면에 알린다)
@@ -348,7 +304,7 @@ namespace TaskCalendarWidget
                 try
                 {
                     //  과제 — 이름·색 + 출처(source·dbGone). 출처는 화면이 그린다(공식 과제 표시·사라진 과제 표시).
-                    //  ★ description · uses_repo · 저장소 경로는 싣지 않는다(P3) — 설정 화면의 값이다.
+                    //  ★ description 은 싣지 않는다(P3) — 설정 화면의 값이다.
                     //  ★ 정렬은 부팅(1/10)과 같다 — sort_order, 동률은 uid.
                     await using (var cmd = new MySqlCommand(
                         "SELECT c.uid, c.name, c.color, c.source, " +
@@ -378,14 +334,13 @@ namespace TaskCalendarWidget
                     //    열람자가 보는 것이 어긋난다. 2026-09-03 더미 데이터를 넣다가 드러났다.
                     //  ★ 컬럼 목록은 부팅과 같고 **e.remind 만 없다**(P3 알림 설정) — 매퍼도 withRemind:false 로 읽는다.
                     var exceptByNo = new Dictionary<uint, List<object?>>();
-                    var commitsByNo = new Dictionary<uint, List<object?>>();
                     await using (var cmd = new MySqlCommand(
                         "SELECT e.entry_no, e.uid, cc.uid AS cat_uid, " +
                         "DATE_FORMAT(e.entry_date,'%Y-%m-%d') AS entry_date, " +
                         "DATE_FORMAT(e.end_date,'%Y-%m-%d')   AS end_date, " +
                         "e.all_day, DATE_FORMAT(e.start_time,'%H:%i') AS start_time, " +
                         "DATE_FORMAT(e.end_time,'%H:%i') AS end_time, " +
-                        "e.title, e.memo, e.source, e.location, " +
+                        "e.title, e.memo, e.location, " +
                         "e.recur_freq, e.recur_interval, e.recur_until, e.recur_count, " +
                         "CAST(e.created_at AS CHAR) AS created_at, CAST(e.updated_at AS CHAR) AS updated_at " +
                         "FROM cal_entry e LEFT JOIN cal_category cc ON cc.user_id = e.user_id AND cc.cat_no = e.cat_no " +
@@ -398,7 +353,6 @@ namespace TaskCalendarWidget
                             uint no = UInt(rd, "entry_no");
                             var e = EntryRowToState(rd, Iso, withRemind: false);
                             entries.Add(e);
-                            commitsByNo[no] = (List<object?>)e["commits"]!;
                             if (e["recur"] != null) exceptByNo[no] = (List<object?>)e["recurExcept"]!;
                         }
                     }
@@ -412,17 +366,6 @@ namespace TaskCalendarWidget
                         await using var rd = await cmd.ExecuteReaderAsync(ct);
                         while (await rd.ReadAsync(ct))
                             if (exceptByNo.TryGetValue(UInt(rd, "entry_no"), out var lst)) lst.Add(Str(rd, "d"));
-                    }
-
-                    //  커밋 — 「커밋 내역」 탭과 일정 카드의 커밋 목록(P2). 부팅 4/10 과 같은 순서·같은 변환(CommitRow).
-                    await using (var cmd = new MySqlCommand(
-                        "SELECT entry_no, hash, short_hash, DATE_FORMAT(commit_time,'%H:%i') AS commit_time, subject, body " +
-                        "FROM cal_entry_commit WHERE user_id=@u ORDER BY entry_no, seq", conn))
-                    {
-                        cmd.Parameters.AddWithValue("@u", uid);
-                        await using var rd = await cmd.ExecuteReaderAsync(ct);
-                        while (await rd.ReadAsync(ct))
-                            if (commitsByNo.TryGetValue(UInt(rd, "entry_no"), out var lst)) lst.Add(CommitRow(rd));
                     }
 
                     //  할 일 — 「할 일」 탭과 격자의 할 일 칩(P2). 부팅 5/10 과 같은 순서·같은 변환(TodoRowToState).
@@ -479,15 +422,6 @@ namespace TaskCalendarWidget
         }
 
         // ================================================================================
-        //  (없앤 것) 공개 API 3 — 커밋 지연 조회
-        // ================================================================================
-        //   LoadEntryCommitsJsonAsync 가 여기 있었다. 계약 G-7 이 개정되면서(부팅 전량 로드)
-        //   존재 이유가 사라졌고, 애초에 **호출부가 0 이었다** — 호스트 브리지에도 웹에도 없었다.
-        //   지우는 대신 남겨 두면 "지연 조회가 있으니 부팅은 안 읽어도 된다"는 잘못된 근거가
-        //   코드 안에 계속 서 있게 된다. 그 오해가 이 결함의 원인이었으므로 지운다.
-
-
-        // ================================================================================
         //  내부 — 연결·프리앰블
         // ================================================================================
 
@@ -524,8 +458,7 @@ namespace TaskCalendarWidget
         //  내부 — 스냅샷 안에서 읽는 전부
         // ================================================================================
         private async Task<CalendarSnapshot> ReadInsideSnapshotAsync(
-            MySqlConnection conn, int userId, string schemaVersion,
-            IReadOnlyDictionary<string, (string git, string svn)>? repoPaths, CancellationToken ct)
+            MySqlConnection conn, int userId, string schemaVersion, CancellationToken ct)
         {
             var tokens = new Dictionary<string, string>(StringComparer.Ordinal);
             var catNoByUid = new Dictionary<string, uint>(StringComparer.Ordinal);
@@ -538,7 +471,7 @@ namespace TaskCalendarWidget
             string Iso(string raw) => IsoFromDb(raw, ref badTimeFmt);   // 변환 규칙은 IsoFromDb 한 곳(타인 열람과 공유)
 
             // ── 0. rev — 이 스냅샷의 판본 ──────────────────────────────────────────
-            //   ★ §3.5 의 '대상 9' 에는 cal_user_rev 가 없다. 그 목록은 **state 를 이루는 표**를 센
+            //   ★ §3.5 의 '대상' 목록에는 cal_user_rev 가 없다. 그 목록은 **state 를 이루는 표**를 센
             //     것이고, rev 는 state 가 아니라 그 state 의 판본 도장이다.
             //   ★ 그런데 왜 트랜잭션 **안**인가 — 밖이면 양쪽 다 새기 때문이다:
             //       · 스냅샷 앞에서 읽으면 그 사이에 커밋된 변경이 데이터에는 들어오고 rev 에는
@@ -554,18 +487,16 @@ namespace TaskCalendarWidget
                 if (v != null && v is not DBNull) rev = Convert.ToInt64(v, CultureInfo.InvariantCulture);
             }
 
-            // ── 1/9. cal_category ─────────────────────────────────────────────────
+            // ── 1/8. cal_category ─────────────────────────────────────────────────
             //   ORDER BY sort_order — XML 문서 순서를 박제한 유일한 근거(G-5).
             //   동률의 뒷순서는 uid 로 고정한다. ★ cat_no 를 쓰지 않는다 — 번호는 '만들어진 순서'일
             //   뿐이고 삭제 후 재사용되므로 표시 순서의 근거가 되지 못한다(G-5 ★).
             //   db_gone 은 컬럼이 아니라 조회 시 파생이다(§6, ADR-18 과 충돌하는 캐시를 만들지 않는다).
             //   is_active 를 ON 절이 아니라 파생식 안에 두는 것도 §6 그대로 — ON 에 넣으면 이름까지 NULL 이 된다.
+            //   ★ uses_repo 와 저장소 경로(gitRepo, svnRepo, usesRepo)는 2026-10-26 Git, SVN 삭제(구조 18)로 없앴다.
             var categories = new List<Dictionary<string, object?>>();
-            //   uses_repo 는 '저장소를 쓰는 과제인가' 한 비트다(§4, schema_version 5). 경로가 아니다 —
-            //   경로 문자열은 DB 에 없고 repoPaths(로컬)가 준다. 이 둘을 함께 실어야 화면이
-            //   '경로가 없다' 와 '저장소를 안 쓰는 과제다' 를 가른다(G-6 의 usesRepo 절).
             const string catSql =
-                "SELECT c.cat_no, c.uid, c.source, c.name, c.color, c.description, c.uses_repo, " +
+                "SELECT c.cat_no, c.uid, c.source, c.name, c.color, c.description, " +
                 "CAST(c.created_at AS CHAR) AS created_at, CAST(c.updated_at AS CHAR) AS updated_at, " +
                 "(c.source='db' AND (p.uid IS NULL OR p.is_active=0)) AS db_gone " +
                 "FROM cal_category c LEFT JOIN project p ON p.uid = c.project_uid " +
@@ -581,28 +512,14 @@ namespace TaskCalendarWidget
                     catNoByUid[uid] = catNo;
                     tokens["category:" + catNo.ToString(CultureInfo.InvariantCulture)] = Str(rd, "updated_at");
 
-                    (string git, string svn) repo = ("", "");
-                    if (repoPaths != null && repoPaths.TryGetValue(uid, out var rp)) repo = rp;
-
-                    // 키 순서·집합은 fromXML() 의 category 객체 + usesRepo. 8개는 항상 있고,
+                    // 키 순서·집합은 fromXML() 의 category 객체. 5개는 항상 있고,
                     // source='db' 일 때만 source·dbGone 두 개가 뒤에 붙는다(개인 과제는 키 자체가 없다 — G-6).
-                    // ★ usesRepo 만은 fromXML() 에 대응이 **없는** 키다 — 계약 G-0 이 명시한 유일한
-                    //   의도된 예외다. XML 에는 경로 문자열만 있고 '쓴다/안 쓴다'는 없다(§4).
                     var c = new Dictionary<string, object?>
                     {
                         ["id"]        = uid,                       // G-1: uid → 앱의 id. 번호(_no)가 아니다
                         ["name"]      = Str(rd, "name"),
                         ["color"]     = Str(rd, "color"),
                         ["desc"]      = Str(rd, "description"),    // G-1 ★ description 아님
-                        ["gitRepo"]   = repo.git,                  // G-6 — DB 에 없다. 로컬에서 온다
-                        ["svnRepo"]   = repo.svn,
-                        // G-6 — DB 에만 있다(위 둘의 거울). 이 비트가 없으면 화면은 '이 PC 에 경로가 없다'와
-                        //   '저장소를 안 쓰는 과제다'를 구분하지 못해, §4 의 안내가 모든 과제에 뜨거나
-                        //   아무 데도 안 뜬다. ★ repo.git/svn 에서 파생하지 않는다 — 파생하면 3분기가
-                        //   2분기로 접혀 이 컬럼을 만든 이유가 사라진다. 근거는 언제나 DB 컬럼이다.
-                        // ★ true/false 둘 다 키를 만든다(source·dbGone 과 다르다) — undefined 는 false 와
-                        //   같은 자리에 떨어져 '경로 없음 안내' 분기가 조용히 사라진다.
-                        ["usesRepo"]  = (IntOrNull(rd, "uses_repo") ?? 0) != 0,   // G-4 — 0/1 을 그대로 넘기지 않는다
                         ["createdAt"] = Iso(Str(rd, "created_at")), // G-3
                     };
                     AddDbSourceFlags(c, rd);   // source='db' 일 때만 source·dbGone(타인 열람과 같은 함수)
@@ -612,7 +529,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 2/9. cal_entry ────────────────────────────────────────────────────
+            // ── 2/8. cal_entry ────────────────────────────────────────────────────
             //   ORDER BY sort_order, uid (G-5). ★ entry_date 도 created_at 도 정렬키가 아니다.
             //   ★ 2026-08-27 에 두 번 바뀐 자리다. 원래 `entry_date, created_at, uid` 였다.
             //     ① created_at 을 뺀 이유 — 실 data.xml 의 일정 23건 중 22건이 같은 밀리초라
@@ -636,14 +553,13 @@ namespace TaskCalendarWidget
             //   앱의 `e.categoryId === c.id` 가 어디서도 안 맞아 전 일정이 '미분류'가 되고 오류는 0건이다.
             var entries = new List<Dictionary<string, object?>>();
             var recurExceptByNo = new Dictionary<uint, List<object?>>();
-            var commitsByNo     = new Dictionary<uint, List<object?>>();   // G-7 개정: 4/10 이 여기에 접는다
             const string entrySql =
                 "SELECT e.entry_no, e.uid, cc.uid AS cat_uid, " +
                 "DATE_FORMAT(e.entry_date,'%Y-%m-%d') AS entry_date, " +
                 "DATE_FORMAT(e.end_date,'%Y-%m-%d')   AS end_date, " +
                 "e.all_day, DATE_FORMAT(e.start_time,'%H:%i') AS start_time, " +
                 "DATE_FORMAT(e.end_time,'%H:%i') AS end_time, " +
-                "e.title, e.memo, e.source, e.location, e.remind, " +
+                "e.title, e.memo, e.location, e.remind, " +
                 "e.recur_freq, e.recur_interval, e.recur_until, e.recur_count, " +
                 "CAST(e.created_at AS CHAR) AS created_at, CAST(e.updated_at AS CHAR) AS updated_at " +
                 "FROM cal_entry e " +
@@ -663,12 +579,11 @@ namespace TaskCalendarWidget
                     //  행 → entry 는 EntryRowToState 한 곳이다(타인 열람과 공유 · 키 순서·NULL 규약이 거기 있다).
                     var e = EntryRowToState(rd, Iso, withRemind: true);
                     entries.Add(e);
-                    commitsByNo[entryNo] = (List<object?>)e["commits"]!;
                     if (e["recur"] != null) recurExceptByNo[entryNo] = (List<object?>)e["recurExcept"]!;
                 }
             }
 
-            // ── 3/9. cal_entry_except ─────────────────────────────────────────────
+            // ── 3/8. cal_entry_except ─────────────────────────────────────────────
             //   ORDER BY except_date(G-5). ★ ORDER BY 에 entry_no 를 쓰지 않는다 — 부모별로 접으므로
             //   행이 어떻게 섞여 오든 각 배열 안의 순서는 날짜순으로 확정된다.
             //   entry_no 는 접는 데만 쓰고 state 에는 남기지 않는다(G-1d).
@@ -692,31 +607,7 @@ namespace TaskCalendarWidget
             }
             if (orphanExcept > 0) _log("반복 없는 일정에 붙은 예외일 " + orphanExcept + "건 — state 에 넣지 않았다(앱이 만들 수 없는 모양)");
 
-            // ── 4/9. cal_entry_commit ────────────────────────────────────────────
-            //   ORDER BY entry_no, seq — seq 가 부모 commits 배열의 인덱스이자 표시 순서의
-            //   유일한 근거다(G-5). entry_no 를 앞에 두는 것은 순서와 무관하고(부모별로 접으므로)
-            //   같은 부모의 행이 붙어 오게 해 접기를 싸게 만들 뿐이다.
-            //   ★ entry_no 는 접는 데만 쓰고 state 에는 남기지 않는다(G-1d) — 3/10 과 같은 규약.
-            //   ★ 고아 행(부모 없는 커밋)은 FK 가 막지만, 막혔다고 믿고 조용히 버리지 않는다.
-            //     세어서 알린다 — 3/10 이 예외일에 하는 것과 같다.
-            int orphanCommit = 0;
-            const string commitSql =
-                "SELECT entry_no, hash, short_hash, DATE_FORMAT(commit_time,'%H:%i') AS commit_time, subject, body " +
-                "FROM cal_entry_commit WHERE user_id=@u ORDER BY entry_no, seq";
-            await using (var cmd = new MySqlCommand(commitSql, conn))
-            {
-                cmd.Parameters.AddWithValue("@u", userId);
-                await using var rd = await cmd.ExecuteReaderAsync(ct);
-                while (await rd.ReadAsync(ct))
-                {
-                    uint entryNo = UInt(rd, "entry_no");
-                    if (commitsByNo.TryGetValue(entryNo, out var list)) list.Add(CommitRow(rd));
-                    else orphanCommit++;
-                }
-            }
-            if (orphanCommit > 0) _log("부모 없는 커밋 " + orphanCommit + "건 — state 에 넣지 않았다");
-
-            // ── 5/9. cal_todo ─────────────────────────────────────────────────────
+            // ── 4/8. cal_todo ─────────────────────────────────────────────────────
             //   ORDER BY sort_order, uid (G-5 — 2026-08-27 에 확정값으로 못박혔다).
             //   ★ 여기가 원래 created_at → uid 였고, 그 근거는 '앱이 push 하므로 배열 순서 = 생성 순서'
             //     였다. 전제는 맞지만 created_at 이 그 순서를 **표현하지 못한다** — 실 data.xml 의
@@ -755,7 +646,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 6/9. cal_todo_day_note ────────────────────────────────────────────
+            // ── 5/8. cal_todo_day_note ────────────────────────────────────────────
             //   { 'YYYY-MM-DD': '설명' } 로 접는다(G-5). todo_no 는 접는 데만 쓰고 state 에는 없다(G-1d).
             //   ORDER BY note_date — 맵이라 의미는 없지만 JSON 키 순서를 재현 가능하게 만든다.
             const string dayNoteSql =
@@ -776,7 +667,7 @@ namespace TaskCalendarWidget
             //   회의실은 사람마다 두지 않고 회사 공용 목록(room_code) 하나다(docs/SHARED-ROOMS.md). 부팅 state 에는
             //   rooms 가 없다. 공용 목록은 발주처, 구분, 상태와 같은 읽기 경로(loadCodes → __applyCodes)로 간다.
 
-            // ── 7/9. cal_task_hours ───────────────────────────────────────────────
+            // ── 6/8. cal_task_hours ───────────────────────────────────────────────
             //   { 'YYYY-MM-DD': { 과제uid: 시간 } } 2단 중첩(G-5).
             //   ★ 안쪽 키는 cat_no 가 아니라 그 과제의 uid 다 — JOIN 으로 되돌린다(G-5 ★).
             //     INNER JOIN 인 이유: cat_no 가 NOT NULL 이고 FK 가 있어 같은 스냅샷 안에서 반드시 해석된다
@@ -807,7 +698,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 8/9. cal_attendance ───────────────────────────────────────────────
+            // ── 7/8. cal_attendance ───────────────────────────────────────────────
             //   { 'YYYY-MM-DD': { status, overtime } }(G-5).
             //   ★ 행이 없는 날짜의 키를 만들지 않는다 — 그게 '미기록'이다. 빈 객체나 status:'' 를
             //     넣으면 getAttendance() 가 null 을 못 돌려주고, netcus 일간보고가 사용자가 사이트에
@@ -835,8 +726,8 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 9/9. cal_user_pref ────────────────────────────────────────────────
-            //   사용자당 1행. 최상위의 12개 값이 전부 여기서 온다.
+            // ── 8/8. cal_user_pref ────────────────────────────────────────────────
+            //   사용자당 1행. 최상위의 서식 값(reportMarker 등 다섯 키)이 전부 여기서 온다.
             //   ★ 행이 없을 때(= 아직 이관 전인 사용자)는 fromXML() 이 <prefs> 없는 XML 에 주는 값과
             //     똑같이 채운다. 그것이 이 앱이 '설정을 한 번도 만진 적 없는 사람'에게 주던 값이고,
             //     여기서 다른 값을 지어내면 이관 직후 서식이 이유 없이 바뀐다.
@@ -844,16 +735,14 @@ namespace TaskCalendarWidget
             //     그 셋은 '마지막으로 본 모드의 거울'이다(계약 C 의 ※).
             //   ★ DB 6컬럼이 전부 NOT NULL DEFAULT 라 fromXML 의 null 폴백 경로는 발화하지 않는다.
             //     컬럼값을 그대로 접는다.
-            string gitAuthor = "", svnAuthor = "";
             string reportMarker = "-", reportMarkerCustom = "";
             int reportIndent = 2;
-            bool gitCommitBody = false;
             string mkDaily = "-", mkcDaily = "", mkWeekly = "-", mkcWeekly = "";
             int inDaily = 2, inWeekly = 2;
             string fontFamily = "";
             int fontSize = 0;
             const string prefSql =
-                "SELECT git_author, svn_author, report_marker, report_marker_custom, report_indent, git_commit_body, " +
+                "SELECT report_marker, report_marker_custom, report_indent, " +
                 "report_marker_daily, report_marker_custom_daily, report_indent_daily, " +
                 "report_marker_weekly, report_marker_custom_weekly, report_indent_weekly, " +
                 "report_font_family, report_font_size, CAST(updated_at AS CHAR) AS updated_at " +
@@ -864,12 +753,9 @@ namespace TaskCalendarWidget
                 await using var rd = await cmd.ExecuteReaderAsync(ct);
                 if (await rd.ReadAsync(ct))
                 {
-                    gitAuthor          = Str(rd, "git_author");
-                    svnAuthor          = Str(rd, "svn_author");
                     reportMarker       = Str(rd, "report_marker");
                     reportMarkerCustom = Str(rd, "report_marker_custom");
                     reportIndent       = IntOrNull(rd, "report_indent") ?? 2;
-                    gitCommitBody      = (IntOrNull(rd, "git_commit_body") ?? 0) != 0;   // G-4
                     mkDaily            = Str(rd, "report_marker_daily");
                     mkcDaily           = Str(rd, "report_marker_custom_daily");
                     inDaily            = IntOrNull(rd, "report_indent_daily") ?? 2;
@@ -886,23 +772,21 @@ namespace TaskCalendarWidget
             if (badTimeFmt > 0)
                 _log("DATETIME 문자열이 'yyyy-MM-dd HH:mm:ss.fff' 가 아닌 행 " + badTimeFmt + "건 — 낙관적 잠금 토큰이 어긋날 수 있다");
 
-            // ── 계약 G-0: 최상위 반환 객체 — 키 13개, fromXML() 의 return 과 정확히 동일 ──────
+            // ── 계약 G-0: 최상위 반환 객체 — 키 10개, fromXML() 의 return 과 정확히 동일 ──────
             //   ★ lsMigrated 는 **없앴다**(2026-09-01). 여기 하드코딩 true 가 있었고, 그 이유는
             //     "false/undefined 면 migrateLocalStores() 가 localStorage 좀비를 DB 로 밀어 넣는다"
             //     였다. 즉 이 줄은 **다른 계층의 자동이관을 막으려고** 여기 서 있던 방어 부채였다.
             //     그 자동이관을 걷어내면서 함께 사라진다. 키가 하나 줄어 최상위 키는 14 였다.
-            //   ★ rooms 도 없앴다(2026-10-21 회의실 공용화). 최상위 키는 13 이다.
+            //   ★ rooms 도 없앴다(2026-10-21 회의실 공용화). 최상위 키는 13 이었다.
+            //   ★ gitAuthor, svnAuthor, gitCommitBody 도 없앴다(2026-10-26 Git, SVN 삭제, 구조 18). 최상위 키는 10 이다.
             var state = new Dictionary<string, object?>
             {
                 ["categories"]         = categories,
                 ["entries"]            = entries,
-                ["gitAuthor"]          = gitAuthor,
-                ["svnAuthor"]          = svnAuthor,
                 ["todos"]              = todos,
                 ["reportMarker"]       = reportMarker,
                 ["reportMarkerCustom"] = reportMarkerCustom,
                 ["reportIndent"]       = reportIndent,
-                ["gitCommitBody"]      = gitCommitBody,
                 ["reportFormatPrefs"]  = new Dictionary<string, object?>
                 {
                     ["daily"]  = new Dictionary<string, object?> { ["marker"] = mkDaily,  ["markerCustom"] = mkcDaily,  ["indent"] = inDaily },
@@ -946,8 +830,8 @@ namespace TaskCalendarWidget
             }
         }
 
-        // 일정 한 행 → 앱의 entry 객체. commits·recurExcept 는 **빈 배열**로 만들어 두고 호출자가 채운다
-        //   (G-7: commits 는 항상 배열 — undefined 면 커밋 편집 경로가 TypeError 로 죽는다).
+        // 일정 한 행 → 앱의 entry 객체. recurExcept 는 **빈 배열**로 만들어 두고 호출자가 채운다.
+        //   (source 와 commits 키는 2026-10-26 Git, SVN 삭제로 없앴다. 구조 18 에는 그 칸과 표가 없다)
         //   withRemind:false — 타인 열람(P3 알림 설정 제외). 그때는 remind 컬럼을 **읽지 않고** 키도 없다.
         //   ★ 키를 빼는 방식이 Remove 인 이유: 부팅의 키 순서(remind 가 location 과 memo 사이)를 그대로 두려면
         //     초기화식이 하나여야 한다. Remove 뒤에는 키를 더하지 않으므로 나머지 순서는 그대로다.
@@ -982,8 +866,6 @@ namespace TaskCalendarWidget
                 ["location"]   = Str(rd, "location"),
                 ["remind"]     = withRemind ? IntOrNull(rd, "remind") : null,   // G-2 ★ NULL 유지. null=기본 사다리 / 0=알림 없음
                 ["memo"]       = Str(rd, "memo"),
-                ["source"]     = Str(rd, "source"),          // '' 또는 'git' 두 값뿐(CHECK)
-                ["commits"]    = new List<object?>(),        // G-7: 항상 배열. 호출자가 커밋 행으로 채운다
                 ["endDate"]    = Str(rd, "end_date"),        // G-2: NULL → ''
                 ["recur"]      = recur,
                 ["recurExcept"] = new List<object?>(),       // 호출자가 예외일 행으로 채운다
@@ -1010,17 +892,6 @@ namespace TaskCalendarWidget
                 ["dayNotes"]    = dayNotes,                  // 배열이 아니라 맵(G-5). 없으면 {}
                 ["createdAt"]   = iso(Str(rd, "created_at")),
                 ["updatedAt"]   = iso(Str(rd, "updated_at")),
-            };
-
-        // 커밋 한 행 → 앱의 commit 객체(계약 G-1·G-2). 키 5개가 전부다. 부팅·타인 열람 공용.
-        private static Dictionary<string, object?> CommitRow(DbDataReader rd) =>
-            new Dictionary<string, object?>
-            {
-                ["hash"]    = Str(rd, "hash"),
-                ["short"]   = Str(rd, "short_hash"),   // G-1 ★ shortHash 아님
-                ["time"]    = Str(rd, "commit_time"),  // G-1(commit_time→time) + G-2(NULL → '')
-                ["subject"] = Str(rd, "subject"),
-                ["body"]    = Str(rd, "body"),
             };
 
         // ================================================================================

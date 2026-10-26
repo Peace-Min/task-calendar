@@ -53,13 +53,10 @@ namespace TaskCalendarWidget
     //    3. UPDATE/DELETE 는 전부 `AND updated_at=@prev`. 영향 행 0 = 충돌(§3.3).
     //    4. 자식 표를 건드리면 **같은 트랜잭션에서 부모 updated_at 을 올린다**(§3.4).
     //
-    //  【cal_entry_commit — 제외했다가 되돌렸다(2026-09-01)】
-    //    ★ 제외했던 이유: 부팅 조회가 commits 를 [] 로 두고 지연 로드했으므로(G-7 원안),
-    //      state 를 그대로 쓰면 **읽지도 않은 커밋이 전부 삭제된다.**
-    //    ★ 그 이유가 사라졌다 — G-7 개정으로 부팅이 커밋을 전량 싣는다(CalendarDb 4/10).
-    //      state 에 실제 커밋이 들어 있으니 차분이 오판하지 않는다.
-    //    ★★ 순서를 기억할 것: **읽기를 고치지 않고 여기만 붙이면 데이터가 지워진다.**
-    //      두 계약은 한 몸이다. 부팅이 커밋을 안 싣는 상태로 되돌아가면 이 코드는 즉시 파괴적이 된다.
+    //  【Git, SVN 삭제(2026-10-26, 구조 18)】
+    //    cal_entry_commit 표, cal_entry.source, cal_category.uses_repo, cal_user_pref 의 작성자와 커밋 본문 칸은 없다.
+    //    저장은 그 표와 칸을 **건드리지 않는다**(같은 배포에서 표가 지워진다). 옛 웹이 commits, source, usesRepo,
+    //    gitAuthor, svnAuthor, gitCommitBody 를 보내도 읽지 않고 버린다.
     // ================================================================================
     internal sealed class CalendarWriteDb
     {
@@ -208,7 +205,7 @@ namespace TaskCalendarWidget
                         //  ★ project_uid 는 SET 목록에 없다 — uid 에서 파생되는 불변값이라
                         //    바뀔 일이 없고, state 에 대응 키도 없다(있지도 않은 값을 덮어쓰지 않는다).
                         await Upd(conn, tx, "cal_category",
-                            "SET name=@n, color=@col, description=@d, uses_repo=@ur, sort_order=@so, updated_at=@now " +
+                            "SET name=@n, color=@col, description=@d, sort_order=@so, updated_at=@now " +
                             $"WHERE user_id={u} AND cat_no={no}", tokens, "category:" + no, p, now, ct);
                         upd++;
                     }
@@ -219,8 +216,8 @@ namespace TaskCalendarWidget
                         p.Add(("@src", isDb ? "db" : "local"));
                         p.Add(("@pu", isDb && uid.Length > 3 ? uid.Substring(3) : (object?)null));
                         await Exec(conn, tx,
-                            "INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,sort_order,created_at,updated_at) " +
-                            $"VALUES ({u},{nn},@u2,@src,@n,@col,@d,@pu,@ur,@so,@now,@now)", ct, p, now);
+                            "INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,sort_order,created_at,updated_at) " +
+                            $"VALUES ({u},{nn},@u2,@src,@n,@col,@d,@pu,@so,@now,@now)", ct, p, now);
                         catNo[uid] = nn;
                         no = nn;
                         ins++;
@@ -249,7 +246,7 @@ namespace TaskCalendarWidget
                     {
                         await Upd(conn, tx, "cal_entry",
                             "SET cat_no=@c, entry_date=@dt, end_date=@ed, all_day=@ad, start_time=@stt, end_time=@ett, " +
-                            "title=@t, memo=@m, source=@src, location=@loc, remind=@rm, " +
+                            "title=@t, memo=@m, location=@loc, remind=@rm, " +
                             "recur_freq=@rf, recur_interval=@ri, recur_until=@ru, recur_count=@rc, " +
                             "sort_order=@so, updated_at=@now " +
                             $"WHERE user_id={u} AND entry_no={no}", tokens, "entry:" + no, p, now, ct);
@@ -275,41 +272,6 @@ namespace TaskCalendarWidget
                         await Exec(conn, tx,
                             $"INSERT IGNORE INTO cal_entry_except (user_id,entry_no,except_date) VALUES ({u},{no},@d)",
                             ct, new List<(string, object?)> { ("@d", d) }, now);
-                    }
-
-                    //  자식: 커밋. 예외일과 같은 **전량 교체**다(§3.4).
-                    //  ★ seq 는 state 배열의 인덱스다 — 표시 순서의 유일한 근거(G-5)이고,
-                    //    읽기(4/10)가 ORDER BY entry_no, seq 로 그 순서를 되살린다.
-                    //    그래서 여기서 i 를 건너뛰거나 재정렬하면 화면 순서가 조용히 바뀐다.
-                    //  ★ 부분 갱신(해시로 대조해 바뀐 것만)을 하지 않는 이유: 커밋은 제목·본문이
-                    //    사용자 편집 대상이고(deleteCommitRow·✎), 같은 해시가 두 번 올 수도 있다.
-                    //    전량 교체면 그 모든 경우가 한 규칙으로 끝난다 — 예외일과 같은 판단이다.
-                    await Exec(conn, tx, $"DELETE FROM cal_entry_commit WHERE user_id={u} AND entry_no={no}", ct);
-                    int cseq = 0;
-                    foreach (var c in Arr(e, "commits"))
-                    {
-                        if (c.ValueKind != JsonValueKind.Object) continue;
-                        //  ★ 해시가 없어도 **버리지 않는다.** 처음엔 "빈 해시는 앱이 만들지 않는다" 고
-                        //    보고 걸러 냈는데, 실 data.xml 3종을 돌려 보니 hash 속성이 아예 없는 커밋이
-                        //    있었다(2026-09-02 실측: 9K 파일 5건 중 3건 · demobak 74건 중 8건).
-                        //    손으로 적어 넣은 작업일지 줄이 그렇게 된다. 버리면 **조용히 사라진다.**
-                        //    hash 는 이 표의 신원이 아니다 — PK 는 (user_id, entry_no, seq) 다.
-                        //    빈 해시로 저장해도 삭제·수정 UI 는 인덱스(cidx)로 찾으므로 동작한다(:9017).
-                        string hash = S(c, "hash");
-                        //  commit_time 은 TIME NULL 이고 읽기가 NULL → '' 로 준다(G-2). 되돌려 보낸다.
-                        string tm = S(c, "time");
-                        var cp = new List<(string, object?)>
-                        {
-                            ("@h",  hash),
-                            ("@sh", S(c, "short")),
-                            ("@ct", tm.Length == 0 ? null : (object)tm),
-                            ("@sj", S(c, "subject")),
-                            ("@bd", S(c, "body")),
-                        };
-                        await Exec(conn, tx,
-                            "INSERT INTO cal_entry_commit (user_id,entry_no,seq,hash,short_hash,commit_time,subject,body) " +
-                            $"VALUES ({u},{no},{cseq},@h,@sh,@ct,@sj,@bd)", ct, cp, now);
-                        cseq++;
                     }
 
                     i++;
@@ -428,13 +390,13 @@ namespace TaskCalendarWidget
                 // ── 9. 설정(사용자당 1행) ─────────────────────────────────────────────
                 var pp = PrefParams(st);
                 await Exec(conn, tx,
-                    "INSERT INTO cal_user_pref (user_id,git_author,svn_author,report_marker,report_marker_custom,report_indent," +
-                    "git_commit_body,report_marker_daily,report_marker_custom_daily,report_indent_daily," +
+                    "INSERT INTO cal_user_pref (user_id,report_marker,report_marker_custom,report_indent," +
+                    "report_marker_daily,report_marker_custom_daily,report_indent_daily," +
                     "report_marker_weekly,report_marker_custom_weekly,report_indent_weekly,report_font_family,report_font_size,updated_at) " +
-                    $"VALUES ({u},@ga,@sa,@rm,@rmc,@ri,@gcb,@dm,@dmc,@di,@wm,@wmc,@wi,@ff,@fs,@now) " +
-                    "ON DUPLICATE KEY UPDATE git_author=VALUES(git_author), svn_author=VALUES(svn_author), " +
+                    $"VALUES ({u},@rm,@rmc,@ri,@dm,@dmc,@di,@wm,@wmc,@wi,@ff,@fs,@now) " +
+                    "ON DUPLICATE KEY UPDATE " +
                     "report_marker=VALUES(report_marker), report_marker_custom=VALUES(report_marker_custom), " +
-                    "report_indent=VALUES(report_indent), git_commit_body=VALUES(git_commit_body), " +
+                    "report_indent=VALUES(report_indent), " +
                     "report_marker_daily=VALUES(report_marker_daily), report_marker_custom_daily=VALUES(report_marker_custom_daily), " +
                     "report_indent_daily=VALUES(report_indent_daily), report_marker_weekly=VALUES(report_marker_weekly), " +
                     "report_marker_custom_weekly=VALUES(report_marker_custom_weekly), report_indent_weekly=VALUES(report_indent_weekly), " +
@@ -525,8 +487,8 @@ namespace TaskCalendarWidget
         //  일정 한 건 INSERT 문(4번과 아래 InsertEntryInTxAsync 가 같은 글자를 쓴다). 값은 EntryParams + @u2(uid), @ca(생성 시각).
         private static string EntryInsertSql(int u, uint no) =>
             "INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,end_date,all_day,start_time,end_time," +
-            "title,memo,source,location,remind,recur_freq,recur_interval,recur_until,recur_count,sort_order,created_at,updated_at) " +
-            $"VALUES ({u},{no},@u2,@c,@dt,@ed,@ad,@stt,@ett,@t,@m,@src,@loc,@rm,@rf,@ri,@ru,@rc,@so,@ca,@now)";
+            "title,memo,location,remind,recur_freq,recur_interval,recur_until,recur_count,sort_order,created_at,updated_at) " +
+            $"VALUES ({u},{no},@u2,@c,@dt,@ed,@ad,@stt,@ett,@t,@m,@loc,@rm,@rf,@ri,@ru,@rc,@so,@ca,@now)";
 
         // ================================================================================
         //  이미 열린 트랜잭션 안의 개인 일정 한 건(과제 캘린더 개인 복사, ProjectCalendarDb.CopyAsync, PROJECT-CALENDAR-PLAN §5.5)
@@ -568,7 +530,6 @@ namespace TaskCalendarWidget
             ("@n",  S(c, "name")),
             ("@col", S(c, "color")),
             ("@d",  S(c, "desc")),
-            ("@ur", B(c, "usesRepo") ? 1 : 0),
             ("@so", i),
         };
 
@@ -585,7 +546,6 @@ namespace TaskCalendarWidget
                 ("@ett", TimeOrNull(S(e, "endTime"))),
                 ("@t",  S(e, "title")),
                 ("@m",  S(e, "memo")),
-                ("@src", S(e, "source")),
                 ("@loc", S(e, "location")),
                 ("@rm", IntOrNull(e, "remind")),
                 ("@rf", rec == null ? null : S(rec.Value, "freq")),
@@ -624,10 +584,8 @@ namespace TaskCalendarWidget
             string wMarker = wky == null ? "" : S(wky.Value, "marker"); if (wMarker.Length == 0) wMarker = topMarker;
             return new List<(string, object?)>
             {
-                ("@ga", S(st, "gitAuthor")), ("@sa", S(st, "svnAuthor")),
                 ("@rm", topMarker), ("@rmc", S(st, "reportMarkerCustom")),
                 ("@ri", IntOrNull(st, "reportIndent") ?? 2),
-                ("@gcb", B(st, "gitCommitBody") ? 1 : 0),
                 ("@dm", dMarker), ("@dmc", dly == null ? "" : S(dly.Value, "markerCustom")),
                 ("@di", dly == null ? 2 : (IntOrNull(dly.Value, "indent") ?? 2)),
                 ("@wm", wMarker), ("@wmc", wky == null ? "" : S(wky.Value, "markerCustom")),
@@ -644,7 +602,7 @@ namespace TaskCalendarWidget
         //  양쪽을 위 행 투영(저장 경로와 같은 함수)으로 DB 모양으로 바꿔 대조한다. 같으면 앞선 저장의 COMMIT 이
         //  이미 들어갔다는 뜻이고, 그 충돌은 가짜다 — 호스트가 새 스냅샷을 채택하고 성공으로 돌려준다.
         //  ★ 다르면(또는 읽지 못하면) false — 호출자는 지금처럼 충돌 상자로 간다. 판정이 애매하면 늘 이쪽이다.
-        //  ★ 넣을 때만 쓰는 값(createdAt·source·project_uid)과 DB 에 없는 값(gitRepo·svnRepo·updatedAt·hours)은
+        //  ★ 넣을 때만 쓰는 값(createdAt·source·project_uid)과 DB 에 없는 값(updatedAt·hours)은
         //    대조하지 않는다 — 기존 행에서는 SaveAsync 도 그 값을 쓰지 않는다.
         internal static bool DiffIsEmpty(string clientStateJson, string serverStateJson)
         {
@@ -685,7 +643,7 @@ namespace TaskCalendarWidget
                 return cu != null && catUids.Contains(cu) ? cu : null;   // 저장은 모르는 과제를 NULL 로 쓴다
             }
 
-            //  일정 + 예외일(반복일 때만 읽기가 돌려준다 · 날짜순 · 중복 제거) + 커밋(순서 그대로)
+            //  일정 + 예외일(반복일 때만 읽기가 돌려준다 · 날짜순 · 중복 제거)
             i = 0;
             foreach (var e in Arr(st, "entries"))
             {
@@ -698,14 +656,7 @@ namespace TaskCalendarWidget
                         string d = x.ValueKind == JsonValueKind.String ? (x.GetString() ?? "") : "";
                         if (DateOrNull(d) != null) ex.Add(d);
                     }
-                var commits = new List<object?>();
-                foreach (var c in Arr(e, "commits"))
-                {
-                    if (c.ValueKind != JsonValueKind.Object) continue;
-                    string tm = S(c, "time");
-                    commits.Add(new object?[] { S(c, "hash"), S(c, "short"), tm.Length == 0 ? null : tm, S(c, "subject"), S(c, "body") });
-                }
-                rows.Add(new object?[] { "entry", uid, Vals(EntryParams(e, i, CatRef(e))), new List<string>(ex), commits });
+                rows.Add(new object?[] { "entry", uid, Vals(EntryParams(e, i, CatRef(e))), new List<string>(ex) });
                 i++;
             }
 

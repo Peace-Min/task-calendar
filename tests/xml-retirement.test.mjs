@@ -22,8 +22,8 @@ const app = loadAppSource();
 // ── 호스트 소스 = widget/ 의 .cs **전부**(파일 목록이 아니라 디렉터리 열거) ──────────
 //  ★ 2026-09-07 — 예전에는 MainWindow.xaml.cs 한 파일만 봤다. 그건 blocklist 였다:
 //    잔재가 다른 .cs 로 옮겨 앉기만 하면 게이트가 **조용히 통과**한다. 빈 걱정이 아니다 —
-//    RepoPaths.cs 는 "data.xml 에 남기지 않는다" 를 주석으로 못 박아 둘 만큼 그 유혹이
-//    실재했던 자리다. 디렉터리를 열거하면 **앞으로 새로 생길 .cs 도 자동으로 덮인다**.
+//    옛 RepoPaths.cs(2026-10-26 Git, SVN 삭제로 지웠다)는 "data.xml 에 남기지 않는다" 를 주석으로 못 박아 둘 만큼
+//    그 유혹이 실재했던 자리다. 디렉터리를 열거하면 **앞으로 새로 생길 .cs 도 자동으로 덮인다**.
 //    (같은 이유로 감추기 CSS 를 allowlist 로 바꾼 적이 있다 — 이 저장소의 반복 교훈이다.)
 const WIDGET_DIR = new URL('../widget/', import.meta.url);
 const hostFiles = readdirSync(WIDGET_DIR).filter(f => f.endsWith('.cs')).sort();
@@ -181,7 +181,7 @@ test('폐기⑤: 호스트 훑기가 widget/*.cs 를 전부 덮는다(한 파일
   //    "잔재 0" 으로 **통과**해 버린다. 판정 불가를 통과로 만들지 않기 위한 하한선이다.
   assert.ok(hostFiles.length >= 12,
     'widget/*.cs 를 ' + hostFiles.length + '개만 찾았다 — 열거가 빗나가면 폐기②는 아무것도 안 보고 통과한다');
-  for (const must of ['widget/MainWindow.xaml.cs', 'widget/DeployConfig.cs', 'widget/CalendarDb.cs', 'widget/RepoPaths.cs']) {
+  for (const must of ['widget/MainWindow.xaml.cs', 'widget/DeployConfig.cs', 'widget/CalendarDb.cs', 'widget/CalendarWriteDb.cs']) {
     assert.ok(hosts.some(h => h.name === must), must + ' 가 훑기 대상에서 빠졌다');
   }
   assert.ok(hosts.every(h => typeof h.src === 'string' && h.src.length > 0),

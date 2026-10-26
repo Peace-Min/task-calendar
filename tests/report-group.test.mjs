@@ -250,23 +250,22 @@ if (!JSDOM) {
   const headHours = (txt) => heads(txt).map(h => { const mm = /^\[(.+?)\](?: : (.+))?$/.exec(h); return mm ? (mm[2] != null ? { name: mm[1], hours: Number(mm[2]) } : null) : 'bad:' + h; }).filter(Boolean);
 
   const CA = '2026-07-01T00:00:00.000Z';
-  const E = (o) => Object.assign({ allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null,
+  const E = (o) => Object.assign({ allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: null,
     endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }, o);
 
   // ───────────────────────── 일간 ─────────────────────────
-  //  알파: 일정(메모 2줄) + 커밋(본문) + 기간 할 일(그날 메모), 베타: 일정, 감마: 시간만, 델타: 아무것도 없음, 기타: 기본 과제(빈 과제)
+  //  알파: 일정(메모 2줄) + 일정(메모, 들여쓴 메모 줄) + 기간 할 일(그날 메모), 베타: 일정, 감마: 시간만, 델타: 아무것도 없음, 기타: 기본 과제(빈 과제)
   const dayState = (T, Y, N) => ({
-    gitAuthor: '', svnAuthor: '',
     categories: [
-      { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-      { id: 'c-b', name: '베타', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-      { id: 'c-c', name: '감마', color: '#d97706', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-      { id: 'c-d', name: '델타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-      { id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+      { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', createdAt: CA },
+      { id: 'c-b', name: '베타', color: '#2e9e6b', desc: '', createdAt: CA },
+      { id: 'c-c', name: '감마', color: '#d97706', desc: '', createdAt: CA },
+      { id: 'c-d', name: '델타', color: '#5b6b7d', desc: '', createdAt: CA },
+      { id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', createdAt: CA },
     ],
     entries: [
       E({ id: 'e-a1', date: T, title: '로그인 화면 리뷰', categoryId: 'c-a', memo: 'UI 확인\n• 암호화 모듈 확인' }),
-      E({ id: 'g-a', date: T, title: '작업일지', categoryId: 'c-a', source: 'git', commits: [{ hash: 'h1', short: 'h1', time: '09:00', subject: '기능 추가', body: '본문 첫 줄\n  - 들여쓴 본문' }] }),
+      E({ id: 'g-a', date: T, title: '기능 추가', categoryId: 'c-a', memo: '본문 첫 줄\n  - 들여쓴 본문' }),
       E({ id: 'e-b1', date: T, title: '고객 회신', categoryId: 'c-b' }),
       E({ id: 'e-y1', date: Y, title: '어제 업무', categoryId: 'c-b' }),
     ],
@@ -274,7 +273,7 @@ if (!JSDOM) {
               dayNotes: { [T]: '오늘 메모' }, createdAt: CA, updatedAt: CA }],
     rooms: [], attendance: {},
     taskHours: { [T]: { 'c-a': 2, 'c-b': 1.5, 'c-c': 1 } },
-    gitCommitBody: true, reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
+    reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
     reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } },
   });
   //  예전 buildReportText(4b4a018) 의 캘린더 경로 그대로: "묶음이 없으면 바이트까지 같다"(§3)의 기준. 앱 전역을 쓴다.
@@ -297,14 +296,14 @@ if (!JSDOM) {
         const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
         const m = (r.titleMeta && r.titleMeta[i]) || null;
         const _sub = _pad + reportSubIndent(_prefix, indentUnit);
-        return '\n' + _pad + _prefix + t + reportTextDetails(m, _sub) + reportTextBody(m, _sub);
+        return '\n' + _pad + _prefix + t + reportTextDetails(m, _sub);
       }).join('');
     });
     return blocks.join('\n\n') + '\n';
   }
   //  예전 payload.hours(묶음 없음): 과제 순서대로 시간이 있는 것만.
   const REF_HOURS = "collectReportData($('#rptFrom').value, $('#rptFrom').value, rptSources()).rows.map(function(r){ return { name: r.name, hours: getTaskHours($('#rptFrom').value, r.key) }; }).filter(function(x){ return x.hours != null; })";
-  const openDaily = (m, date) => m.ev(`openReport(); ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
+  const openDaily = (m, date) => m.ev(`openReport(); ['#rptSrcEvent','#rptSrcTodo','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
     + ` $('#rptFrom').value = ${JSON.stringify(date)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
   const setDate = (m, date) => m.ev(`$('#rptFrom').value = ${JSON.stringify(date)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
   const dcard = (m, cat) => m.ev(`[].find.call(document.querySelectorAll('#rptOut .rcard'), function(c){ return c.dataset.rcat === ${JSON.stringify(cat)}; })`);
@@ -1018,17 +1017,16 @@ if (!JSDOM) {
     const MON = '2026-07-13', SUN = '2026-07-19', MON2 = '2026-07-20', SUN2 = '2026-07-26';
     //  weekly-edit 과 같은 상태: 알파(3.5), 베타(1), 감마(0.5), 델타(없음), '알 파'(동명, 키 알파#c-a2)
     const weekState = () => ({
-      gitAuthor: '', svnAuthor: '',
       categories: [
-        { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-        { id: 'c-b', name: '베타', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-        { id: 'c-c', name: '감마', color: '#d97706', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-        { id: 'c-d', name: '델타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-        { id: 'c-a2', name: '알 파', color: '#888888', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', createdAt: CA },
+        { id: 'c-b', name: '베타', color: '#2e9e6b', desc: '', createdAt: CA },
+        { id: 'c-c', name: '감마', color: '#d97706', desc: '', createdAt: CA },
+        { id: 'c-d', name: '델타', color: '#5b6b7d', desc: '', createdAt: CA },
+        { id: 'c-a2', name: '알 파', color: '#888888', desc: '', createdAt: CA },
       ],
       entries: [
         E({ id: 'e-a1', date: MON, title: '로그인 화면 리뷰', categoryId: 'c-a', memo: 'UI 확인\n• 암호화 모듈 확인' }),
-        E({ id: 'g-a', date: '2026-07-14', title: '작업일지', categoryId: 'c-a', source: 'git', commits: [{ hash: 'h1', short: 'h1', time: '09:00', subject: '기능 추가', body: '본문 첫 줄\n  - 들여쓴 본문' }] }),
+        E({ id: 'g-a', date: '2026-07-14', title: '기능 추가', categoryId: 'c-a', memo: '본문 첫 줄\n  - 들여쓴 본문' }),
         E({ id: 'e-b1', date: '2026-07-15', title: '고객 회신', categoryId: 'c-b' }),
         E({ id: 'e-a2x', date: '2026-07-16', title: '동명 과제 일', categoryId: 'c-a2' }),
         E({ id: 'e-n1', date: '2026-07-21', title: '다음 주 일', categoryId: 'c-b' }),
@@ -1036,7 +1034,7 @@ if (!JSDOM) {
       todos: [],
       rooms: [], attendance: {},
       taskHours: { [MON]: { 'c-a': 2, 'c-b': 1 }, '2026-07-14': { 'c-a': 1.5, 'c-c': 0.5 }, '2026-07-21': { 'c-b': 3 } },
-      gitCommitBody: true, reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
+      reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
       reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } },
     });
     //  예전 buildReportText(028409e) 의 캘린더 경로: 주간 복사의 기준(앱 전역을 쓴다).
@@ -1053,10 +1051,10 @@ if (!JSDOM) {
         const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
         const m = (r.titleMeta && r.titleMeta[i]) || null;
         const _sub = _pad + reportSubIndent(_prefix, indentUnit);
-        return '\n' + _pad + _prefix + t + reportTextDetails(m, _sub) + reportTextBody(m, _sub);
+        return '\n' + _pad + _prefix + t + reportTextDetails(m, _sub);
       }).join('')).join('\n\n') + '\n';
     }
-    const openWeekly = (m, mon) => m.ev(`openReport(); setReportMode('weekly'); ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
+    const openWeekly = (m, mon) => m.ev(`openReport(); setReportMode('weekly'); ['#rptSrcEvent','#rptSrcTodo','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
       + ` $('#rptFrom').value = ${JSON.stringify(mon)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
     const setWeek = (m, mon) => m.ev(`$('#rptFrom').value = ${JSON.stringify(mon)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
     const wcard = (m, k) => m.ev(`[].find.call(document.querySelectorAll('#rptOut .rcard'), function(c){ return c.dataset.wk === ${JSON.stringify(k)}; })`);
@@ -1292,10 +1290,10 @@ if (!JSDOM) {
   async function widgetNet(src) {
     const M = bootWidget(src);
     clearDrafts(M);
-    const st = { gitAuthor: '', svnAuthor: '', categories: [
-      { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-      { id: 'c-b', name: '베타', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
-      entries: [], todos: [], rooms: [], attendance: {}, taskHours: {}, gitCommitBody: true, reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
+    const st = { categories: [
+      { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', createdAt: CA },
+      { id: 'c-b', name: '베타', color: '#2e9e6b', desc: '', createdAt: CA }],
+      entries: [], todos: [], rooms: [], attendance: {}, taskHours: {}, reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
       reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } } };
     M.ev('__applyState(' + JSON.stringify(JSON.stringify(st)) + ',' + JSON.stringify(META) + ')');
     await tick();
@@ -1367,7 +1365,7 @@ if (!JSDOM) {
     P.ev("window.__acc = []; (function(){ var Pr = Storage.prototype; ['getItem','setItem','removeItem'].forEach(function(n){ var o = Pr[n]; Pr[n] = function(k){ if(String(k).indexOf('tc_rptDraft')===0) window.__acc.push(n+' '+k); return o.apply(this, arguments); }; }); var ok = Pr.key; Pr.key = function(){ window.__acc.push('key'); return ok.apply(this, arguments); }; })();");
     P.w.__applyState(JSON.stringify(dayState(T, Y, N)), { peerName: '홍길동', canWrite: false });
     await tick();
-    P.ev(`reportMode = 'daily'; $('#rptFrom').value = todayYmd(); $('#rptTo').value = todayYmd(); ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit'].forEach(function(s){ $(s).checked = true; }); buildReport();`);
+    P.ev(`reportMode = 'daily'; $('#rptFrom').value = todayYmd(); $('#rptTo').value = todayYmd(); ['#rptSrcEvent','#rptSrcTodo'].forEach(function(s){ $(s).checked = true; }); buildReport();`);
     assert.ok(P.ev("document.querySelectorAll('#rptOut .rcard').length") > 0, '전제: 열람 창에서 카드가 그려졌다');
     assert.ok(P.doc.getElementById('rptGroupRow').classList.contains('hidden'), '열람 창에 "보고서 묶음" 줄이 보인다');
     assert.ok(!P.ev("document.querySelector('#rptOut .rcard-subs')") && P.ev('buildReportText()').includes('[베타]'), '열람 창이 부모의 묶음을 읽어 적용했다');

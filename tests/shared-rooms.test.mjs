@@ -4,7 +4,8 @@
 //   (S) 정적
 //     - 일반 사용자 화면에 회의실 관리 진입점이 없다(⋯ 메뉴 #btnRooms, 일정 입력 창 #fRoomMgr, 빠른 추가 #qaRoomMgr,
 //       창 #roomModal). 개인 회의실 상태(state.rooms, DEFAULT_ROOMS, normRooms)와 '(미등록)' 보존 옵션도 없다.
-//     - 장소 칸 두 곳(#fLoc, #qaLoc)은 글자 입력 콤보박스(role=combobox + role=listbox)다.
+//     - 장소 칸 두 곳(#qaLoc 한 화면 폼, #pcfLoc 과제 일정 폼)은 글자 입력 콤보박스(role=combobox + role=listbox)다.
+//       (예전 기록 창의 #fLoc 은 2026-10-26 Git 기능과 함께 기록 창째 없앴다.)
 //     - loadCodes 가 공용 회의실을 세 번째 목록으로 싣는다(호스트 LoadCodesToWebAsync → __applyCodes(…, rooms)).
 //     - 관리 화면: 묶음 '일정' 의 '회의실' 항목이 #roomAdminModal 을 도킹하고, 조작이 다섯 명령(roomsFull, roomAdd,
 //       roomRename, roomDelete, roomReorder)으로 간다. 호스트의 회의실 쓰기 넷은 OpenAdminAsync 만 지난다.
@@ -65,7 +66,7 @@ const checks = {
   },
   //  장소 칸 두 곳은 콤보박스(글자 입력 + 펼침 목록)다
   locCombo(src) {
-    for (const pfx of ['f', 'qa']) {
+    for (const pfx of ['qa', 'pcf']) {
       const re = new RegExp(`<input type="text" class="loc-in" id="${pfx}Loc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${pfx}LocPop" maxlength="200"`);
       assert.ok(re.test(src), `#${pfx}Loc 가 글자 입력 콤보박스가 아니다(role=combobox, aria-controls)`);
       assert.ok(new RegExp(`<div class="loc-pop hidden" id="${pfx}LocPop" role="listbox" aria-label="장소 추천"></div>`).test(src), `#${pfx}LocPop 목록(role=listbox)이 없다`);
@@ -77,7 +78,6 @@ const checks = {
     assert.ok(/ev\.stopPropagation\(\); locClose\(pfx\)/.test(bind), 'Esc 가 목록만 닫지 않는다(창까지 닫힐 수 있다)');
     assert.ok(/<mark>/.test(extractFunction(src, 'locHl')), '맞는 부분 강조(mark)가 없다');
     //  저장은 적은 그대로(앞뒤 공백만)
-    assert.ok(/location: locRead\('f'\)/.test(extractFunction(src, 'saveEntryFromForm')), '일정 입력 창 저장이 장소 칸 글자를 그대로 쓰지 않는다');
     assert.ok(/location:lcEl \? String\(lcEl\.value \|\| ''\)\.trim\(\) : ''/.test(extractFunction(src, 'qaEventFormData')), '빠른 추가 저장이 장소 칸 글자를 그대로 쓰지 않는다');
   },
   //  loadCodes 의 세 번째 목록 = 공용 회의실
@@ -213,7 +213,7 @@ checks.fragment = (text, st) => {
 };
 
 test('일반 화면: 회의실 관리 진입점 넷과 개인 회의실 상태, (미등록) 옵션이 없다', () => checks.noUserEntry(app));
-test('장소 칸: #fLoc, #qaLoc 는 글자 입력 콤보박스(↑↓ Enter Esc Tab, 강조), 저장은 적은 그대로', () => checks.locCombo(app));
+test('장소 칸: #qaLoc, #pcfLoc 는 글자 입력 콤보박스(↑↓ Enter Esc Tab, 강조), 저장은 적은 그대로', () => checks.locCombo(app));
 test('loadCodes: 공용 회의실을 세 번째 목록으로 싣는다(호스트와 웹)', () => checks.codesCarryRooms(app, mainWindow));
 test('관리 화면: 일정 › 회의실이 #roomAdminModal 을 도킹하고 다섯 명령으로 조작한다', () => checks.adminPanel(app, mainWindow));
 test('호스트: 회의실 쓰기 넷은 관리자 관문만, 추가는 끝에, 순서는 전체 집합 대조', () => checks.hostWrites(projectDb));
@@ -228,8 +228,8 @@ test('변이R1: ⋯ 메뉴의 회의실 관리를 되살리면 진입점 검사�
   assert.throws(() => checks.noUserEntry(bad), /#btnRooms/);
 });
 test('변이R2: 장소 칸을 select 로 되돌리면 콤보박스 검사가 잡는다', () => {
-  const bad = mutate(app, '<input type="text" class="loc-in" id="fLoc"', '<select id="fLoc"></select><input type="text" class="loc-in" id="fLocX"');
-  assert.throws(() => checks.locCombo(bad), /#fLoc 가 글자 입력 콤보박스가 아니다/);
+  const bad = mutate(app, '<input type="text" class="loc-in" id="qaLoc"', '<select id="qaLoc"></select><input type="text" class="loc-in" id="qaLocX"');
+  assert.throws(() => checks.locCombo(bad), /#qaLoc 가 글자 입력 콤보박스가 아니다/);
 });
 test('변이R3: 회의실 추가를 쓰기 관문으로 내리면 호스트 검사가 잡는다', () => {
   const bad = mutate(projectDb,
@@ -331,54 +331,54 @@ if (!JSDOM) {
     assert.strictEqual(B.ev('sharedRooms.length'), 3, '회의실 목록 실패 회신이 지금 목록을 지웠다');
   });
 
-  test('(R) 일정 입력 창: 칸을 누르면 목록, 글자로 걸러지고 강조, ↓ Enter 로 넣기, Esc 는 목록만 닫는다', async () => {
-    B.ev("openEntryModal('new', '2026-10-22')");
+  test('(R) 일정 입력 창(한 화면 폼): 칸을 누르면 목록, 글자로 걸러지고 강조, ↓ Enter 로 넣기, Esc 는 목록만 닫는다', async () => {
+    B.ev("openQuickAdd('2026-10-22', 'event')");
     await settle(40);
-    const inp = $(B, '#fLoc');
+    const inp = $(B, '#qaLoc');
     assert.strictEqual(inp.getAttribute('role'), 'combobox');
     inp.dispatchEvent(new B.w.Event('focus'));
     await settle();
-    assert.ok(popOpen(B, 'f'), '칸에 들어가도 목록이 펼쳐지지 않는다');
+    assert.ok(popOpen(B, 'qa'), '칸에 들어가도 목록이 펼쳐지지 않는다');
     assert.strictEqual(inp.getAttribute('aria-expanded'), 'true');
-    assert.deepStrictEqual(opts(B, 'f'), ['대회의실', '소회의실 A', '3층 세미나실']);
+    assert.deepStrictEqual(opts(B, 'qa'), ['대회의실', '소회의실 A', '3층 세미나실']);
     type(B, inp, '회의');
-    assert.deepStrictEqual(opts(B, 'f'), ['대회의실', '소회의실 A'], '친 글자로 걸러지지 않는다');
-    assert.ok(/<mark>회의<\/mark>/.test($(B, '#fLocPop').innerHTML), '맞는 부분이 강조되지 않는다');
+    assert.deepStrictEqual(opts(B, 'qa'), ['대회의실', '소회의실 A'], '친 글자로 걸러지지 않는다');
+    assert.ok(/<mark>회의<\/mark>/.test($(B, '#qaLocPop').innerHTML), '맞는 부분이 강조되지 않는다');
     key(B, inp, 'ArrowDown'); key(B, inp, 'ArrowDown');
-    assert.strictEqual(inp.getAttribute('aria-activedescendant'), 'fLocOpt1', '↓ 가 두 번째 줄을 가리키지 않는다');
+    assert.strictEqual(inp.getAttribute('aria-activedescendant'), 'qaLocOpt1', '↓ 가 두 번째 줄을 가리키지 않는다');
     key(B, inp, 'ArrowUp');
-    assert.strictEqual(inp.getAttribute('aria-activedescendant'), 'fLocOpt0');
+    assert.strictEqual(inp.getAttribute('aria-activedescendant'), 'qaLocOpt0');
     key(B, inp, 'ArrowDown'); key(B, inp, 'Enter');
     assert.strictEqual(inp.value, '소회의실 A', 'Enter 가 고른 회의실을 넣지 않는다');
-    assert.ok(!popOpen(B, 'f'), '고른 뒤 목록이 닫히지 않는다');
+    assert.ok(!popOpen(B, 'qa'), '고른 뒤 목록이 닫히지 않는다');
     key(B, inp, 'ArrowDown');
-    assert.ok(popOpen(B, 'f'), '닫힌 칸에서 ↓ 가 목록을 열지 않는다');
+    assert.ok(popOpen(B, 'qa'), '닫힌 칸에서 ↓ 가 목록을 열지 않는다');
     key(B, inp, 'Escape');
-    assert.ok(!popOpen(B, 'f'), 'Esc 가 목록을 닫지 않는다');
-    assert.ok(!$(B, '#entryModal').classList.contains('hidden'), 'Esc 가 일정 입력 창까지 닫았다');
+    assert.ok(!popOpen(B, 'qa'), 'Esc 가 목록을 닫지 않는다');
+    assert.ok(!$(B, '#quickAdd').classList.contains('hidden'), 'Esc 가 일정 입력 창까지 닫았다');
   });
 
   test('(R) 직접 입력: 목록에 없는 장소는 적은 그대로 저장되고 안내가 뜬다', async () => {
-    const inp = $(B, '#fLoc');
+    const inp = $(B, '#qaLoc');
     type(B, inp, '고객사 3층 회의실');
-    assert.deepStrictEqual(opts(B, 'f'), []);
-    assert.ok(/목록에 없는 장소입니다\. 적은 그대로 저장됩니다\./.test($(B, '#fLocPop').textContent), '직접 입력 안내가 없다');
-    B.ev("$('#fTitle').value = '고객 협의'; saveEntryFromForm();");
+    assert.deepStrictEqual(opts(B, 'qa'), []);
+    assert.ok(/목록에 없는 장소입니다\. 적은 그대로 저장됩니다\./.test($(B, '#qaLocPop').textContent), '직접 입력 안내가 없다');
+    B.ev("$('#qaTitle').value = '고객 협의'; qaSave();");
     await settle(40);
     const saved = B.evJSON("state.entries.filter(function(e){ return e.title === '고객 협의'; }).map(function(e){ return e.location; })");
     assert.deepStrictEqual(saved, ['고객사 3층 회의실'], '직접 적은 장소가 그대로 저장되지 않았다');
   });
 
   test('(R) 옛 일정: 목록에 없는 장소도 그대로 열리고 (미등록) 꼬리가 없다', async () => {
-    B.ev("openEntryModal('edit', 'e-old')");
+    B.ev("openQuickAdd(null, 'event', 'e-old')");
     await settle(40);
-    assert.strictEqual($(B, '#fLoc').value, '없어진 회의실 B');
-    assert.ok(!/미등록/.test($(B, '#entryModal').textContent), "'(미등록)' 표시가 남았다");
-    const clr = $(B, '#entryModal .loc-clr');
+    assert.strictEqual($(B, '#qaLoc').value, '없어진 회의실 B');
+    assert.ok(!/미등록/.test($(B, '#quickAdd').textContent), "'(미등록)' 표시가 남았다");
+    const clr = $(B, '#qaLocWrap .loc-clr');
     assert.ok(!clr.classList.contains('hidden'), '값이 있는데 지우기 × 가 숨어 있다');
     clr.click();
-    assert.strictEqual($(B, '#fLoc').value, '', '× 가 장소를 지우지 않는다');
-    B.ev("closeOverlay(document.getElementById('entryModal'))");
+    assert.strictEqual($(B, '#qaLoc').value, '', '× 가 장소를 지우지 않는다');
+    B.ev("closeOverlay(document.getElementById('quickAdd'))");
     await settle(200);
   });
 

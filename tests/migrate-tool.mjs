@@ -57,9 +57,8 @@ let pass = 0, fail = 0; const F = [];
 const ok = (n, c, d = '') => { if (c) { pass++; console.log(`  ✓ ${n}${d ? ' — ' + d : ''}`); }
                                else { fail++; F.push(n + (d ? ' — ' + d : '')); console.log(`  ✗ ${n}${d ? ' — ' + d : ''}`); } };
 
-//  ★ 저장소 경로 파일은 PC 단위라 대상 사용자와 무관하게 %APPDATA% 를 덮는다.
-//    시험이 사용자의 실 파일을 건드리면 안 되므로 **반드시** 임시 경로로 돌린다.
-//    (2026-09-01 실측: 이 옵션이 없어서 시험이 실 repo-paths.json 을 만들었다.)
+//  ★ 옛 인자 --repo-paths-out 을 일부러 임시 경로로 넘긴다. 2026-10-26 Git, SVN 삭제(구조 18)로 도구는 저장소 경로 파일을
+//    만들지 않는다. 옛 호출이 깨지지 않고(인자를 받고 버린다) 그 자리에 파일이 생기지 않는지를 [⑦b] 가 본다.
 function tool(args) {
   if (!args.some(a => a.startsWith('--repo-paths-out='))) args = [...args, `--repo-paths-out=${join(WORK, 'repo-paths.json')}`];
   const r = spawnSync('dotnet', ['run', '--no-build', '-v', 'q', '--', ...args],
@@ -74,7 +73,7 @@ function makeUser() {
   return Number(one(`SELECT user_id FROM app_user WHERE login_id='${LOGIN}'`));
 }
 function wipe(u) {
-  for (const t of ['cal_entry_commit','cal_entry_except','cal_todo_day_note','cal_task_hours','cal_attendance',
+  for (const t of ['cal_entry_except','cal_todo_day_note','cal_task_hours','cal_attendance',
                    'cal_entry','cal_todo','cal_category','cal_user_pref','cal_migration_log','cal_user_rev'])
     sql(`DELETE FROM ${t} WHERE user_id=${u}`, { readOnly: false, what: `정리(${t})` });
 }
@@ -93,7 +92,7 @@ function synthXml({ badStatus = false, dupExcept = false, badDbId = false } = {}
     : `<attendance><day date="2026-02-03" status="12" overtime="3"/></attendance>`;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <taskCalendar version="1" gitAuthor="합성" svnAuthor="합성" lsMigrated="1"><categories>${cat}</categories><entries><entry id="eA" date="2026-03-01" categoryId="${badDbId ? 'db-TOOSHORT' : 'cA'}" allDay="false" startTime="" endTime="" createdAt="2026-01-01T00:00:00.000Z" updatedAt="2026-01-01T00:00:00.000Z"><title>합성 일정</title><memo/>${exc}<commits><commit hash="abc123" short="abc" time="09:30" subject="합성 커밋">본문 줄1
-본문 줄2</commit></commits></entry></entries><todos><todo id="tA" done="false" categoryId="${badDbId ? 'db-TOOSHORT' : 'cA'}" createdAt="2026-01-01T00:00:00.000Z" updatedAt="2026-01-01T00:00:00.000Z"><text>합성 할 일</text><dayNotes><dayNote date="2026-03-05">그날</dayNote></dayNotes></todo></todos><rooms><room>합성실</room></rooms><prefs reportMarker="•" reportIndent="4"/>${att}</taskCalendar>`;
+본문 줄2</commit></commits></entry><entry id="eG" date="2026-03-02" categoryId="${badDbId ? 'db-TOOSHORT' : 'cA'}" source="git" allDay="true" createdAt="2026-01-01T00:00:00.000Z" updatedAt="2026-01-01T00:00:00.000Z"><title>옛 커밋 기록</title><memo/><commits><commit hash="def456" short="def" subject="옛 커밋"/></commits></entry></entries><todos><todo id="tA" done="false" categoryId="${badDbId ? 'db-TOOSHORT' : 'cA'}" createdAt="2026-01-01T00:00:00.000Z" updatedAt="2026-01-01T00:00:00.000Z"><text>합성 할 일</text><dayNotes><dayNote date="2026-03-05">그날</dayNote></dayNotes></todo></todos><rooms><room>합성실</room></rooms><prefs reportMarker="•" reportIndent="4"/>${att}</taskCalendar>`;
 }
 
 //  ⑧ 과제 참조 정리 픽스처 — 파일에 ' 기타'(앞뒤 공백) 개인 과제가 있고 휴가는 없다.
@@ -145,18 +144,20 @@ try {
 
   const xml = readFileSync(OPT.xml, 'utf8');
   const nCat = (xml.match(/<category /g) || []).length, nEnt = (xml.match(/<entry /g) || []).length;
-  const nTodo = (xml.match(/<todo /g) || []).length, nCommit = (xml.match(/<commit /g) || []).length;
+  const nTodo = (xml.match(/<todo /g) || []).length;
+  //  커밋 기록(source="git" 일정)은 옮기지 않는다(2026-10-26 Git, SVN 삭제, 구조 18). 일정 건수에서 뺀다.
+  const nGit = (xml.match(/<entry [^>]*\bsource="git"/g) || []).length;
   //  과제 = 파일 과제 + 정리가 붙인 과제(편입한 공식 과제, 새로 만든 기본 과제). 붙인 수는 도구가 [3b] 줄에 찍는다.
   const m3b = /공식 과제 편입 (\d+)건, 기본 과제 새로 만듦 (\d+)건/.exec(r1.out);
   const extra = m3b ? Number(m3b[1]) + Number(m3b[2]) : NaN;
   ok('과제 건수(파일 + 정리가 붙인 과제)', Number(one(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`)) === nCat + extra,
      `DB=${one(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`)} XML=${nCat} 정리=${extra}`);
   catInvariants('실 data.xml');
-  ok('일정 건수', Number(one(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U}`)) === nEnt);
+  ok('일정 건수(커밋 기록 제외)', Number(one(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U}`)) === nEnt - nGit,
+     `DB=${one(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U}`)} XML=${nEnt} 커밋 기록=${nGit}`);
   ok('할 일 건수', Number(one(`SELECT COUNT(*) FROM cal_todo WHERE user_id=${U}`)) === nTodo);
-  ok('★ 커밋이 옮겨졌다(쓰기 계층은 못 하는 것)',
-     Number(one(`SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${U}`)) === nCommit,
-     `DB=${one(`SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${U}`)} XML=${nCommit}`);
+  ok('커밋 기록을 옮기지 않고 건수를 보고했다(구조 18)', nGit === 0 || new RegExp(`커밋 기록 ${nGit}건`).test(r1.out),
+     (r1.out.match(/커밋 기록 \d+건[^\n]*/) || ['(보고 없음)'])[0]);
   //  §8 — category.updated_at 은 created_at 복사다(이관 시각이 아니다). 아니면 첫 편집이 전부 충돌 오탐.
   ok('과제 updated_at = created_at (이관 시각 아님)',
      Number(one(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U} AND updated_at<>created_at`)) === 0);
@@ -170,7 +171,7 @@ try {
   const r2 = tool([`--login-id=${LOGIN}`, `--xml=${OPT.xml}`]);
   ok('두 번째 실행이 거부된다', r2.code !== 0 && /이미 이관된 사용자/.test(r2.out),
      r2.out.split('\n').filter(l => l.includes('중단')).join(' '));
-  ok('거부돼도 데이터가 안 늘었다', Number(one(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U}`)) === nEnt);
+  ok('거부돼도 데이터가 안 늘었다', Number(one(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U}`)) === nEnt - nGit);
 
   /* ③ 기존 데이터가 있으면 거부 */
   console.log('\n[③] 기존 데이터가 있으면 거부');
@@ -200,9 +201,11 @@ try {
   ok('예외일 2건(중복 제거)', Number(one(`SELECT COUNT(*) FROM cal_entry_except WHERE user_id=${U}`)) === 2,
      `DB=${one(`SELECT COUNT(*) FROM cal_entry_except WHERE user_id=${U}`)}`);
   ok('제거 건수를 보고했다', /중복 예외일 1건/.test(r6.out));
-  ok('커밋 본문(줄바꿈 포함)이 옮겨졌다',
-     (one(`SELECT body FROM cal_entry_commit WHERE user_id=${U} LIMIT 1`) || '').includes('본문 줄1'),
-     one(`SELECT REPLACE(body,'\n','⏎') FROM cal_entry_commit WHERE user_id=${U} LIMIT 1`) || '(없음)');
+  //  2026-10-26 Git, SVN 삭제(구조 18): 옛 커밋 기록(eG, source="git")은 옮기지 않고 건수를 알린다. 일반 일정(eA)의 <commits> 는 읽지 않는다.
+  ok('옛 커밋 기록은 옮기지 않았다(일반 일정만 남는다)',
+     Number(one(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U} AND uid='eG'`)) === 0 &&
+     Number(one(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U} AND uid='eA'`)) === 1);
+  ok('커밋 기록 건수를 보고했다', /커밋 기록 1건/.test(r6.out), (r6.out.match(/커밋 기록 \d+건[^\n]*/) || ['(보고 없음)'])[0]);
   //  §8 — 종류별 속성이 없으면 전역으로 메운다. '-'/'2' 로 채우면 사용자 서식이 조용히 바뀐다.
   const pf = sql(`SELECT report_marker, report_marker_daily, report_indent_daily FROM cal_user_pref WHERE user_id=${U}`)[0] || [];
   ok('서식 폴백: 종류별 속성이 없으면 전역값을 쓴다', pf[0] === '•' && pf[1] === '•' && Number(pf[2]) === 4,
@@ -217,28 +220,12 @@ try {
      (r5.out.match(/\[중단\][^\n]*/) || [''])[0]);
   ok('중단했으면 아무것도 안 들어갔다', Number(one(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`)) === 0);
 
-  /* ⑦b 저장소 경로 파일 — **앱이 읽을 수 있는 모양**이어야 한다 */
-  //  ★ 2026-09-01 실측: 도구가 맵을 최상위에 썼고 앱(RepoPaths.Load)은 "paths" 아래를 요구했다.
-  //    앱은 그 파일을 '손상' 으로 보고 **빈 맵으로 시작**한 뒤 원본을 .bak 로 밀어냈다 —
-  //    이관 직후부터 저장소 경로가 통째로 사라지는데 아무도 모른다(uses_repo=true 인 과제가
-  //    영원히 '이 PC 에는 저장소 경로가 설정되지 않았습니다' 를 띄운다).
-  console.log('\n[⑦b] 저장소 경로 파일 모양');
-  {
-    const rp = join(WORK, 'repo-paths.json');
-    if (!existsSync(rp)) {
-      ok('저장소 경로 파일이 생성됐다', false, '파일 없음 — 픽스처에 gitRepo/svnRepo 가 있는지 확인');
-    } else {
-      const j = JSON.parse(readFileSync(rp, 'utf8'));
-      ok('최상위에 version 이 있다', j.version === 1, JSON.stringify(Object.keys(j)));
-      ok('경로 맵이 paths 아래에 있다',
-         !!j.paths && typeof j.paths === 'object' && !Array.isArray(j.paths),
-         '최상위에 맵을 쓰면 앱이 손상으로 보고 빈 맵으로 시작한다');
-      const keys = Object.keys(j.paths || {});
-      ok('키가 과제 uid 다(번호가 아니다)',
-         keys.length > 0 && keys.every((k) => /^(c-|db-)/.test(k)),
-         keys.join(','));
-    }
-  }
+  /* ⑦b 저장소 경로 파일 — 2026-10-26 Git, SVN 삭제(구조 18)로 **만들지 않는다** */
+  //  예전에는 도구가 %APPDATA%\TaskCalendar\repo-paths.json 을 { version, paths } 모양으로 썼다(앱의 옛 RepoPaths.Load 가 읽었다).
+  //  지금은 읽는 곳이 없다. 옛 인자(--repo-paths-out)를 넘겨도 받고 버리며 파일을 만들지 않아야 한다.
+  console.log('\n[⑦b] 저장소 경로 파일을 만들지 않는다');
+  ok('저장소 경로 파일이 생기지 않았다', !existsSync(join(WORK, 'repo-paths.json')), join(WORK, 'repo-paths.json'));
+  ok('도구 출력에 저장소 경로 저장 줄이 없다', !/\[6\] 저장소 경로|건 저장: /.test(r1.out + r6.out));
 
   /* ⑧ 과제 참조 정리 — 앱의 XML 가져오기와 같은 규칙 */
   console.log('\n[⑧] 과제 참조 정리(기본 과제, 기타로 붙이기, 공식 과제 편입, 없는 과제의 공수)');

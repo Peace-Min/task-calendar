@@ -48,14 +48,11 @@ const ALLOW_JS = [
   ['추출 · 전체 ${n}건 중', ' 추출 · 전체 ', 'xlsx 내보내기 부제(파일 데이터 형식)'],
   ['추출 · 전체 ${n}건 중', '건 · ', 'xlsx 내보내기 부제(파일 데이터 형식)'],
   ['추출 · 전체 ${n}건 중', ' · ', 'xlsx 내보내기 부제(파일 데이터 형식)'],
-  ["out.push('# 연구노트 데이터 — '", "'# 연구노트 데이터 — '", '연구노트 .md 내보내기 본문 형식'],
   ["out.push('- ' + e.title + (hh ?", "' · '", '연구노트 .md 내보내기 본문 형식'],
   ["(detail ? ' — ' + detail : '')", "' — '", '연구노트 .md 내보내기 본문 형식'],
   ["if(h > 0) head += ' — 투입 '", "' — 투입 '", 'netcus 주간보고 병합 본문(복사, 전송되는 출력 형식)'],
   ["parts.push('· ' + (bt && bp", "'· '", 'netcus 주간보고 병합 본문(복사, 전송되는 출력 형식)'],
   ['html += \'<div class="rncw-wk">· \'', '\'<div class="rncw-wk">· \'', '위 주간보고 본문을 그대로 보여 주는 미리보기'],
-  ["`${cat ? cat.name + ' · ' : ''}커밋", "' · '", '커밋으로 만든 기록 제목(저장 데이터, 같은 꼴을 정규식이 알아본다)'],
-  ['`${cat.name} · 커밋 ${mapped.length}건`', ' · 커밋 ', '커밋으로 만든 기록 제목(저장 데이터)'],
   ["esc('월간보고 (' + p.name", "') – '", '월간보고 문서 미리 보기 제목: DocxWriter 가 쓰는 양식 원본 구분 글자 그대로(문서 본문 형식, MONTHLY-REPORT-PLAN §2.2)'],
 ];
 const lineAt = (src, pos) => { const a = src.lastIndexOf('\n', pos) + 1; const b = src.indexOf('\n', pos); return src.slice(a, b < 0 ? src.length : b); };
@@ -310,7 +307,7 @@ if (!JSDOM) {
        `이 파일의 test( 호출 ${countTestsBelow(import.meta.url, 'if (!JSDOM) {')}곳이 등록되지 않았다(정적 계수)`);
 } else {
   const ME = { loginId: 'phmin', name: '박현민', title: '수석연구원', orgUnit: 'SW 3팀' };
-  const EMPTY = { categories: [{ id: 'c1', name: '시험 과제', color: '#3b82f6' }], entries: [], todos: [], rooms: [], taskHours: {}, attendance: {}, gitAuthor: '', svnAuthor: '' };
+  const EMPTY = { categories: [{ id: 'c1', name: '시험 과제', color: '#3b82f6' }], entries: [], todos: [], rooms: [], taskHours: {}, attendance: {} };
   const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
   const ORG = { found: true, admin: true,
     titles: [{ name: '수석', sort: 10, active: true, users: 1 }, { name: '선임', sort: 20, active: true, users: 0 }],
@@ -420,7 +417,7 @@ if (!JSDOM) {
     assert.ok(r.bad.length === 0, `창을 열어 보니 금지 기호가 ${r.bad.length}곳 있다:\n  ` + r.bad.slice(0, 40).join('\n  '));
   });
   test('변이(R): 도움말 카드 제목에 「 를 넣으면 (R)가 잡는다', async () => {
-    const m = mutate(app, "card(ICON.git, '커밋 내역',", "card(ICON.git, '「커밋 내역」',");
+    const m = mutate(app, "card(ICON.calendar, '일정과 할 일',", "card(ICON.calendar, '「일정과 할 일」',");
     const r = await sweep(m);
     assert.ok(r.bad.some((b) => /^도움말 글 \[낫표/.test(b)), '도움말 카드에 낫표를 넣었는데 (R)가 잡지 못했다: ' + r.bad.slice(0, 5).join(' | '));
   });

@@ -397,7 +397,7 @@ function seedTarget() {
 function wipeTarget() { wipeUser(TU); }
 function wipeUser(login) {
   const u = one(`SELECT user_id FROM app_user WHERE login_id='${login}'`); if (!u) return;
-  for (const t of ['cal_entry_commit', 'cal_entry_except', 'cal_todo_day_note', 'cal_task_hours',
+  for (const t of ['cal_entry_except', 'cal_todo_day_note', 'cal_task_hours',
                    'cal_attendance', 'cal_entry', 'cal_todo', 'cal_category', 'cal_user_pref'])
     sql(`DELETE FROM ${t} WHERE user_id=${u}`, `정리(${t})`);
   sql(`DELETE FROM cal_user_rev WHERE user_id=${u}`, 'rev 정리');
@@ -646,8 +646,9 @@ try {
     //  ★ 여기에 무언가를 더할 때는 "그게 읽기인가" 를 먼저 물을 것. 편집이면 CSS 에서 감춰야 한다.
     const ALLOW = new Set(["btnPrev","btnToday","btnNext","btnTitle","jumpMonth","btnSearch",
                            "fchip","dpSheetClose","dptab-detail",
-                           //  ★ 2026-10-01(PEER-VIEW-FULL P2) — 「할 일」·「커밋 내역」 탭을 연다(읽기). 탭 안의 편집 수단은 여전히 감춘다.
-                           "dptab-todo","dptab-git"]);
+                           //  ★ 2026-10-01(PEER-VIEW-FULL P2) — 「할 일」 탭을 연다(읽기). 탭 안의 편집 수단은 여전히 감춘다.
+                           //    (「커밋 내역」 탭은 2026-10-26 Git 기능과 함께 없앴다.)
+                           "dptab-todo"]);
     const extra = (vis.seen || []).filter((k) => !ALLOW.has(k));
     //  ★ 한계를 적어 둔다: 위젯 창이 화면에 안 그려지면 iframe 뷰포트가 0폭이 되고,
     //    그러면 **좁은 화면용 반응형 규칙**이 켜져 일부 버튼이 저절로 숨는다 — 이 검사가 그만큼 약해진다.
@@ -733,13 +734,13 @@ try {
        `aria-pressed=${onSt.pressed} data-peer-overlay=${onSt.attr} tc_peerOverlay=${onSt.ls}`);
 
     const on = await visible(cdp);
-    //  통제군 — 부모가 실제로 겹을 만들어 보냈는가. 부모의 비-git 일정 수와 맞아야 한다.
+    //  통제군 — 부모가 실제로 겹을 만들어 보냈는가. 부모의 일정 수와 맞아야 한다.
     //  (0 건이면 아래 "함께 보인다" 는 아무것도 증명하지 않는다.)
     //  ★ 2026-10-16 — 겹의 재료는 메인 창의 state 다(호스트가 peerMine 으로 물어 와 열람 창에 넘긴다).
-    const parentMine = Number(await main.ev(`state.entries.filter(e=>e && e.source!=='git').length`));
-    ok(`R${r} 메인 창이 보낸 겹의 수가 메인 창의 비-git 일정 수와 같다(겹이 실제로 만들어졌다)`,
+    const parentMine = Number(await main.ev(`state.entries.filter(e=>e).length`));
+    ok(`R${r} 메인 창이 보낸 겹의 수가 메인 창의 일정 수와 같다(겹이 실제로 만들어졌다)`,
        on.dataMine === parentMine && parentMine > 0,
-       `프레임 _mine ${on.dataMine}건 · 메인 비-git ${parentMine}건 — 0 이면 아래 검사들이 헛돈다`);
+       `프레임 _mine ${on.dataMine}건 · 메인 ${parentMine}건 — 0 이면 아래 검사들이 헛돈다`);
     ok(`R${r} 겹을 켜면 내 일정이 **함께** 보인다(대상 ${TITLES.length}건 + 내 ${on.dataMine}건)`,
        on.visTheirs === TITLES.length && on.visMine === on.dataMine && on.visMine > 0,
        `대상 ${on.visTheirs}건 · 내 겹 ${on.visMine}/${on.dataMine}건`);

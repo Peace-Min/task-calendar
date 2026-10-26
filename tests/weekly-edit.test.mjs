@@ -185,27 +185,26 @@ if (!JSDOM) {
       const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
       const m = (r.titleMeta && r.titleMeta[i]) || null;
       const _sub = _pad + reportSubIndent(_prefix, indentUnit);
-      return '\n' + _pad + _prefix + t + reportTextDetails(m, _sub) + reportTextBody(m, _sub);
+      return '\n' + _pad + _prefix + t + reportTextDetails(m, _sub);
     }).join(''));
     return blocks.join('\n\n') + '\n';
   }
   const CA = '2026-07-01T00:00:00.000Z';
-  const E = (o) => Object.assign({ allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null,
+  const E = (o) => Object.assign({ allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: null,
     endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }, o);
   const MON = '2026-07-13', SUN = '2026-07-19', MON2 = '2026-07-20', SUN2 = '2026-07-26';
-  //  알파: 일정(메모) + 커밋(본문) + 기간 할 일(날짜 메모) · 베타: 일정 · 감마: 시간만 · 델타: 아무것도 없음 · '알 파'(동명, 정규화 같음)
+  //  알파: 일정(메모) + 일정(메모, 들여쓴 메모 줄) + 기간 할 일(날짜 메모) · 베타: 일정 · 감마: 시간만 · 델타: 아무것도 없음 · '알 파'(동명, 정규화 같음)
   const stateFor = () => ({
-    gitAuthor: '', svnAuthor: '',
     categories: [
-      { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-      { id: 'c-b', name: '베타', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-      { id: 'c-c', name: '감마', color: '#d97706', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-      { id: 'c-d', name: '델타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-      { id: 'c-a2', name: '알 파', color: '#888888', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+      { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', createdAt: CA },
+      { id: 'c-b', name: '베타', color: '#2e9e6b', desc: '', createdAt: CA },
+      { id: 'c-c', name: '감마', color: '#d97706', desc: '', createdAt: CA },
+      { id: 'c-d', name: '델타', color: '#5b6b7d', desc: '', createdAt: CA },
+      { id: 'c-a2', name: '알 파', color: '#888888', desc: '', createdAt: CA },
     ],
     entries: [
       E({ id: 'e-a1', date: MON, title: '로그인 화면 리뷰', categoryId: 'c-a', memo: 'UI 확인\n• 암호화 모듈 확인' }),
-      E({ id: 'g-a', date: '2026-07-14', title: '작업일지', categoryId: 'c-a', source: 'git', commits: [{ hash: 'h1', short: 'h1', time: '09:00', subject: '기능 추가', body: '본문 첫 줄\n  - 들여쓴 본문' }] }),
+      E({ id: 'g-a', date: '2026-07-14', title: '기능 추가', categoryId: 'c-a', memo: '본문 첫 줄\n  - 들여쓴 본문' }),
       E({ id: 'e-b1', date: '2026-07-15', title: '고객 회신', categoryId: 'c-b' }),
       E({ id: 'e-a2x', date: '2026-07-16', title: '동명 과제 일', categoryId: 'c-a2' }),
       E({ id: 'e-n1', date: '2026-07-21', title: '다음 주 일', categoryId: 'c-b' }),
@@ -214,10 +213,10 @@ if (!JSDOM) {
               dayNotes: { [MON]: '월 메모', '2026-07-15': '수 메모' }, createdAt: CA, updatedAt: CA }],
     rooms: [], attendance: {},
     taskHours: { [MON]: { 'c-a': 2, 'c-b': 1 }, '2026-07-14': { 'c-a': 1.5, 'c-c': 0.5 }, '2026-07-21': { 'c-b': 3 } },
-    gitCommitBody: true, reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
+    reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
   });
   //  주간 작성을 그 주로 연다(포함 항목 셋, 설명 포함, 빈 항목 제외 끔).
-  const openWeekly = (m, mon) => m.ev(`openReport(); setReportMode('weekly'); ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
+  const openWeekly = (m, mon) => m.ev(`openReport(); setReportMode('weekly'); ['#rptSrcEvent','#rptSrcTodo','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
     + ` $('#rptFrom').value = ${JSON.stringify(mon)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
   const setWeek = (m, mon) => m.ev(`$('#rptFrom').value = ${JSON.stringify(mon)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
   const card = (m, k) => m.ev(`[].find.call(document.querySelectorAll('#rptOut .rcard'), function(c){ return c.dataset.wk === ${JSON.stringify(k)}; })`);
@@ -239,9 +238,9 @@ if (!JSDOM) {
   async function assertCalSame(m) {
     m.ev('window.__REF = ' + REF.toString());
     let n = 0;
-    for (const [mk, cu, ind] of FORMATS) for (const desc of [true, false]) for (const body of [true, false]) {
-      m.ev(`state.reportFormatPrefs = { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: ${JSON.stringify(mk)}, markerCustom: ${JSON.stringify(cu)}, indent: ${ind} } }; state.gitCommitBody = ${body}; $('#rptWithDesc').checked = ${desc}; buildReport();`);
-      const tag = `${mk}/${cu}/${ind} desc=${desc} body=${body}`;
+    for (const [mk, cu, ind] of FORMATS) for (const desc of [true, false]) {
+      m.ev(`state.reportFormatPrefs = { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: ${JSON.stringify(mk)}, markerCustom: ${JSON.stringify(cu)}, indent: ${ind} } }; $('#rptWithDesc').checked = ${desc}; buildReport();`);
+      const tag = `${mk}/${cu}/${ind} desc=${desc}`;
       const base = baseCal(m);
       assert.ok(base && base.endwork.includes('로그인 화면 리뷰'), '기준이 비었다: ' + tag);
       assert.deepStrictEqual(m.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)'), base, '고친 것 없는 네 칸이 buildWeeklyFields 와 다르다: ' + tag);
@@ -252,7 +251,7 @@ if (!JSDOM) {
       assert.strictEqual(cc, m.ev('__REF()'), '빈 초안 복사 조립(rptWCopyText)이 예전과 다르다: ' + tag);
       n++;
     }
-    m.ev(`state.reportFormatPrefs = { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } }; state.gitCommitBody = true; $('#rptWithDesc').checked = true; buildReport();`);
+    m.ev(`state.reportFormatPrefs = { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } }; $('#rptWithDesc').checked = true; buildReport();`);
     const cap = sendW(m);
     assert.ok(cap, '주간 전송 payload 를 붙잡지 못했다');
     const b = baseCal(m);
@@ -271,9 +270,9 @@ if (!JSDOM) {
     const done = () => { clearDrafts(B); B.ev("rptViewW = 'card'; rptView = 'card'; state.reportSource = 'cal'; reportMode = 'daily';"); };
     const KEY = () => B.ev(`rptWKey(${JSON.stringify(MON)}, ${JSON.stringify(SUN)})`);
 
-    test('WB1 (§4): 고친 것도 뺀 것도 없으면 네 칸(전송)과 주간 복사가 예전과 바이트 같다(cal, 서식 20벌)', async () => {
+    test('WB1 (§4): 고친 것도 뺀 것도 없으면 네 칸(전송)과 주간 복사가 예전과 바이트 같다(cal, 서식 10벌)', async () => {
       fresh();
-      try { assert.ok((await assertCalSame(B)) >= 20); } finally { done(); }
+      try { assert.ok((await assertCalSame(B)) >= 10); } finally { done(); }   // 서식 5벌 × 설명 포함 켜고 끔(커밋 본문 축은 2026-10-26 Git 삭제로 없앴다)
     });
 
     test('WB2 (§3.2·§3.3): 카드는 읽기 전용 + 이번 주 시간 + X · 글 편집은 회사 폼 모양, 머리 줄은 잠김(입력 아님)', () => {
@@ -462,8 +461,8 @@ if (!JSDOM) {
     //  정정 1: 동명 과제 키는 그린 행 자리가 아니라 거르지 않은 과제 목록 기준(첫 과제 = 이름 키, 나머지 = 이름키#과제id).
     //  공식 '기타'(빈 과제) + 개인 '기타'(기록 있음)에서 개인 것을 X 하고 고친 뒤 빈 항목 제외를 켜거나 ▲▼ 로 옮겨도 그 과제에 남아야 한다.
     const dupState = () => { const st = stateFor();
-      st.categories.splice(1, 0, { id: 'c-o', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA });
-      st.categories.push({ id: 'c-p', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA });
+      st.categories.splice(1, 0, { id: 'c-o', name: '기타', color: '#5b6b7d', desc: '', createdAt: CA });
+      st.categories.push({ id: 'c-p', name: '기타', color: '#5b6b7d', desc: '', createdAt: CA });
       st.entries.push(E({ id: 'e-p1', date: '2026-07-16', title: '개인 기타 일', categoryId: 'c-p' }));
       return st; };
     function checkDupStable(m) {
@@ -781,7 +780,7 @@ if (!JSDOM) {
       P.ev("window.__acc = []; (function(){ var Pr = Storage.prototype; ['getItem','setItem','removeItem'].forEach(function(n){ var o = Pr[n]; Pr[n] = function(k){ if(String(k).indexOf('tc_rptDraftW:')===0) window.__acc.push(n+' '+k); return o.apply(this, arguments); }; }); var ok = Pr.key; Pr.key = function(){ window.__acc.push('key'); return ok.apply(this, arguments); }; })();");
       P.w.__applyState(JSON.stringify(stateFor()), { peerName: '홍길동', canWrite: false });
       await tick();
-      P.ev(`reportMode = 'weekly'; $('#rptFrom').value = '${MON}'; $('#rptTo').value = '${SUN}'; ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit'].forEach(function(s){ $(s).checked = true; }); buildReport();`);
+      P.ev(`reportMode = 'weekly'; $('#rptFrom').value = '${MON}'; $('#rptTo').value = '${SUN}'; ['#rptSrcEvent','#rptSrcTodo'].forEach(function(s){ $(s).checked = true; }); buildReport();`);
       assert.ok(P.ev("document.querySelectorAll('#rptOut .rcard').length") > 0, '전제: 카드가 그려졌다');
       assert.strictEqual(P.ev("document.querySelectorAll('#rptOut .rcard-x').length"), 0, '열람 창에 X 가 있다');
       assert.ok(!P.ev('buildReportText()').includes('부모 글'), '열람 창 글에 부모의 주간 초안이 섞였다');

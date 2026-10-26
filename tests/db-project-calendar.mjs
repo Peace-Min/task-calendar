@@ -134,7 +134,7 @@ class R
                 //  개인 저장 경로(CalendarWriteDb.SaveAsync)로 개인 일정 한 건을 지운다. 앱 계정 권한 그대로다.
                 string login = s.GetProperty("loginId").GetString() ?? "";
                 string uid = s.GetProperty("entryUid").GetString() ?? "";
-                var snap = await new CalendarDb(log).LoadSnapshotAsync(login, null);
+                var snap = await new CalendarDb(log).LoadSnapshotAsync(login);
                 if (snap == null) return new { ok = false, msg = "snapshot null" };
                 var st = JsonNode.Parse(snap.StateJson)!.AsObject();
                 var arr = st["entries"]!.AsArray();
@@ -181,7 +181,7 @@ namespace TaskCalendarWidget
 }
 `;
 
-const WIDGET = ['ProjectCalendarDb.cs', 'CalendarWriteDb.cs', 'CalendarDb.cs', 'ProjectDb.cs', 'RepoPaths.cs', 'UserSession.cs', 'DbErrors.cs', 'DbFault.cs', 'DbGate.cs'];
+const WIDGET = ['ProjectCalendarDb.cs', 'CalendarWriteDb.cs', 'CalendarDb.cs', 'ProjectDb.cs', 'UserSession.cs', 'DbErrors.cs', 'DbFault.cs', 'DbGate.cs'];
 const PROJ = (root) => `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType><TargetFramework>net9.0</TargetFramework>

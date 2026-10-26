@@ -183,14 +183,15 @@ const statics = {
     assert.ok(/state\.categories\.filter\(isPickableCat\)\.map\(/.test(fs), '과제 선택 상자가 state.categories 순서로 한 줄이 아니다(R4)');
     assert.ok(!/optgroup|\.sort\(|\.concat\(/.test(fs), '과제 선택 상자가 공식/개인으로 묶거나 정렬한다 — 순서가 갈린다(R4)');
     const nf = fnBody(app, 'noteFilterBarHtml');
-    assert.ok(/for\(const c of state\.categories\)/.test(nf) && !/\.sort\(/.test(nf), '할 일·작업일지 과제 필터가 state.categories 순서가 아니다');
+    assert.ok(/for\(const c of state\.categories\)/.test(nf) && !/\.sort\(/.test(nf), '할 일 과제 필터가 state.categories 순서가 아니다');
     const te = fnBody(app, 'todoEditHtml');
     assert.ok(/state\.categories\.filter\(isPickableCat\)/.test(te) && !/categories[^;]*\.sort\(/.test(te), '할 일 편집의 과제 선택이 state.categories 순서가 아니다');
     const ex = fnBody(app, 'openExportModal');
     assert.ok(/for\(const c of state\.categories\)/.test(ex) && !/\.sort\(/.test(ex), '내보내기 과제 선택이 state.categories 순서가 아니다');
     //  새 기록·빠른 추가·검색은 모두 fillCatSelect 를 쓴다(따로 만들면 그쪽이 낡는다)
-    //  기록 폼 둘(#fCat, #qaCat)은 빈 선택지 없이 채운다(DEFAULT-TASKS §4.2). 검색 탭만 자리표시('과제를 선택하세요')를 쓴다.
-    for (const sel of ["fillCatSelect($('#fCat'))", "fillCatSelect($('#qaCat'))", "fillCatSelect($('#sCatSelect'), '과제를 선택하세요')"]) {
+    //  기록 폼(#qaCat)은 빈 선택지 없이 채운다(DEFAULT-TASKS §4.2). 검색 탭만 자리표시('과제를 선택하세요')를 쓴다.
+    //  (예전 기록 창의 #fCat 은 2026-10-26 Git 기능과 함께 없앴다.)
+    for (const sel of ["fillCatSelect($('#qaCat'))", "fillCatSelect($('#sCatSelect'), '과제를 선택하세요')"]) {
       assert.ok(app.includes(sel), `${sel} 이 사라졌다 — 그 선택 상자가 따로 순서를 만든다`);
     }
   },

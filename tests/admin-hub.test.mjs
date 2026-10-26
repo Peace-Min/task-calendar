@@ -131,7 +131,7 @@ const S = {
     assert.match(src, /<button class="btn icon has-label" id="btnCatsTop" title="내 과제: [^"]+" aria-label="내 과제">🏷️<\/button>/, '툴바 버튼(H10)');
     assert.match(src, /set\('btnCatsTop', label\(ICON\.tag, '내 과제'\)\);/, '툴바 라벨(applyIcons)');
     assert.match(src, /<button id="btnCatsFold">내 과제<\/button>/, '⋯ 접기 항목');
-    assert.match(src, /<h2>🏷️ 내 과제<\/h2><span class="cat-sub">내 캘린더에서 쓰는 과제\(색, 순서, 버전관리 연동\)<\/span>/, '모달 제목 + 부제');
+    assert.match(src, /<h2>🏷️ 내 과제<\/h2><span class="cat-sub">내 캘린더에서 쓰는 과제\(색, 순서\)<\/span>/, '모달 제목 + 부제');
     //  사용자에게 보이는 문자열에 옛 이름이 남지 않는다 — 패치노트(역사 기록)·주석은 제외.
     const ps = src.indexOf('<div class="overlay hidden" id="patchModal">'), pe = src.indexOf('<div class="overlay hidden" id="updNotesModal">');
     assert.ok(ps > 0 && pe > ps, '패치노트 경계');

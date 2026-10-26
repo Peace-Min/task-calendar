@@ -127,8 +127,11 @@ const checks = {
     assert.ok(!/START TRANSACTION/.test(code), '구조 변경 조각에 트랜잭션이 있다(DDL 은 자동 확정된다)');
   },
   versions(gate, canon) {
-    assert.ok(/public const int AppStructureVersion = 17;/.test(stripCsComments(gate)), 'DbGate.AppStructureVersion 이 17 이 아니다');
-    assert.ok(/VALUES \('db_structure_version', '17', UTC_TIMESTAMP\(3\)\)/.test(noLineComments(canon)), '정본 시드가 17 이 아니다');
+    //  그림 표는 구조 17 에서 생겼다. 2026-10-26 Git, SVN 삭제(v18)로 앱과 정본은 18 이 됐다. 그래서 '17 이상이고 서로 같다' 를 본다.
+    const a = /public const int AppStructureVersion = (\d+);/.exec(stripCsComments(gate));
+    const c = /VALUES \('db_structure_version', '(\d+)', UTC_TIMESTAMP\(3\)\)/.exec(noLineComments(canon));
+    assert.ok(a && Number(a[1]) >= 17, 'DbGate.AppStructureVersion 이 17 이상이 아니다');
+    assert.ok(c && c[1] === a[1], `정본 시드(${c && c[1]})가 앱 구조 번호(${a && a[1]})와 다르다`);
   },
 
   // ══ ② 권한과 배포 도구 ═════════════════════════════════════════════
@@ -291,7 +294,7 @@ test('그림표①a: project_schedule_image 정의가 정본(schema-calendar.sql
 test('그림표①b: 열 형, 주인 user_id, (user_id, project_id, seq) UNIQUE, 과제 CASCADE, 주인 RESTRICT, mime CHECK, 정본 DROP 목록', () => checks.tableRules(src.canon));
 test('그림표①c: project.dev_start_date 는 end_date 와 dev_end_date 사이 DATE NULL 이고 CHECK 식이 정본과 조각에서 같다', () => checks.devStartColumn(src.struct, src.frag));
 test('그림표①d: 조각은 16 에서 17 한 칸, 칸, CHECK, 표, 검증, 올리기 순서이고 GRANT 와 트랜잭션이 없다', () => checks.fragmentShape(src.frag));
-test('그림표①e: 앱 구조 번호와 정본 시드가 17 이다', () => checks.versions(src.gate, src.canon));
+test('그림표①e: 앱 구조 번호와 정본 시드가 17 이상이고 서로 같다', () => checks.versions(src.gate, src.canon));
 test('그림표②: 권한(SELECT, INSERT, UPDATE, DELETE), init 명부, setup 표 수, 데모, 사용자 기록 표(표.열)', () => checks.grantsAndTools(src));
 test('그림표③: 백업, 복원 전 안전 덤프, 데모 전 백업의 mysqldump 에 --hex-blob 이 있다', () => checks.hexBlob(src.backup, src.restore, src.demoPs));
 test('그림표④: 개발 시작일이 과제 읽기와 쓰기, 순서 검사, saveProject, 엑셀 열, dbCatalog, 편집 폼과 payload 에 이어지고 선진행 잠금에는 없다', () => checks.devStartWiring(src.pdb, src.main, src.html));

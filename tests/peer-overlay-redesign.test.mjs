@@ -4,7 +4,8 @@
 // "겹이 상용 캘린더처럼 읽히는가" 를 지킨다:
 //   (S) 정적 — 내 칩·카드 규칙에 점선이 없다 · 새 색은 전부 토큰이고 테마 5종에 다 정의돼 있다(대비 AA 계산) ·
 //       범례 마크업(칩 두 개 · 토글 버튼 aria-pressed) · 시간 겹침 판정이 순수 함수다.
-//   (P) 순수 — peerTimeOverlaps 의 판정표(겹침 / 맞닿기 / 종일 / 여러 날 / 끝 없음 / 같은 편끼리 / 커밋).
+//   (P) 순수 — peerTimeOverlaps 의 판정표(겹침 / 맞닿기 / 종일 / 여러 날 / 끝 없음 / 같은 편끼리).
+//       (커밋 기록 갈래는 2026-10-26 Git 기능과 함께 없앴다.)
 //   (R) jsdom — 범례 토글 ↔ 겹 · aria-pressed · body 속성 / 칸 안 순서(남 → 나) / 상세 두 묶음과 개수 /
 //       겹침 배지는 겹친 두 카드에만 · 종일은 없음 / 격자 겹침 점은 겹친 날에만 / setPeerOverlay 직접 호출도 토글과 맞는다(O6).
 //   (M) 변이 — 점선 복귀 · 순서 섞임 · 종일을 겹침으로 셈 · 토글 표시 어긋남 — 각각 잡힌다.
@@ -164,13 +165,12 @@ function overlapCases(fn) {
   r.same = fn([T('a', '10:00', '11:00'), T('c', '10:00', '11:00'), M('b', '13:00', '14:00'), M('d', '13:00', '14:00')]);
   r.multi = fn([T('a', '10:00', '11:00', { endDate: '2026-09-09' }), M('b', '10:00', '11:00')]);
   r.occ = fn([T('a', '10:00', '11:00', { _occStart: '2026-09-07', _occEnd: '2026-09-08' }), M('b', '10:00', '11:00')]);
-  r.git = fn([T('a', '10:00', '11:00', { source: 'git' }), M('b', '10:00', '11:00')]);
   r.noStart = fn([T('a', '', '11:00'), M('b', '10:00', '11:00')]);
   r.idClash = fn([T('7', '09:00', '10:00'), M('7', '09:30', '10:30')]);
   r.bad = [fn(null), fn(undefined), fn('x'), fn({})];
   return r;
 }
-test('(순수) O5: 상대 ↔ 나 시간 겹침만 · 맞닿기·종일·여러 날·커밋·시작 없음은 아님 · 끝 없음 = 30분', () => {
+test('(순수) O5: 상대 ↔ 나 시간 겹침만 · 맞닿기·종일·여러 날·시작 없음은 아님 · 끝 없음 = 30분', () => {
   const r = overlapCases(overlapFnFrom(app));
   assert.deepStrictEqual(Object.keys(r.basic).sort(), ['m:b', 'p:a']);
   assert.deepStrictEqual(r.basic['p:a'].map(o => [o.id, o.startTime, o.endTime, o.mine]), [['b', '10:30', '11:30', true]],
@@ -184,7 +184,6 @@ test('(순수) O5: 상대 ↔ 나 시간 겹침만 · 맞닿기·종일·여러 
   assert.deepStrictEqual(r.same, {}, '같은 편끼리(상대–상대 · 나–나)는 겹침으로 세지 않는다');
   assert.deepStrictEqual(r.multi, {}, '여러 날 일정은 종일 막대로 그린다 — 겹침 대상이 아니다');
   assert.deepStrictEqual(r.occ, {}, '여러 날 occurrence(_occStart≠_occEnd)도 대상이 아니다');
-  assert.deepStrictEqual(r.git, {}, '커밋 기록은 대상이 아니다');
   assert.deepStrictEqual(r.noStart, {}, '시작 시각이 없으면 대상이 아니다');
   assert.deepStrictEqual(Object.keys(r.idClash).sort(), ['m:7', 'p:7'], '두 DB 의 id 가 같아도 p:/m: 로 갈린다');
   for (const b of r.bad) assert.deepStrictEqual(b, {}, '비배열 입력은 {}');
@@ -198,7 +197,7 @@ test('(순수) O5: 입력 목록·항목을 변형하지 않는다', () => {
   assert.strictEqual(JSON.stringify(list), before, '판정이 입력을 건드렸다');
 });
 test('변이(종일을 겹침으로 셈): allDay 거르기를 빼면 판정표가 잡는다', () => {
-  const fn = overlapFnFrom(mutate(app, "    if(!e || e.allDay || e.source === 'git') continue;", "    if(!e || e.source === 'git') continue;"));
+  const fn = overlapFnFrom(mutate(app, "    if(!e || e.allDay) continue;\n    const os = e._occStart || e.date;", "    if(!e) continue;\n    const os = e._occStart || e.date;"));
   const r = overlapCases(fn);
   assert.notDeepStrictEqual(r.allDay, {}, '변이가 판정에 닿지 않았다(앵커 재검토)');
   assert.throws(() => assert.deepStrictEqual(r.allDay, {}), '종일 계약이 변이를 통과시킨다');
@@ -260,7 +259,7 @@ if (!JSDOM) {
     mine({ id: 'm-rng', date: '2026-09-16', title: '나: 출장', allDay: true, startTime: '', endTime: '', endDate: '2026-09-18' }),
     mine({ id: 'm-22', date: '2026-09-22', title: '나: 혼자 있는 날', allDay: false, startTime: '09:00', endTime: '10:00' }),
   ];
-  const DATA = { categories: CATS, entries: ENTRIES, todos: [], rooms: [], taskHours: {}, attendance: {}, gitAuthor: '', svnAuthor: '' };
+  const DATA = { categories: CATS, entries: ENTRIES, todos: [], rooms: [], taskHours: {}, attendance: {} };
   function inject(m, data = DATA) {
     m.ev('view = {y:2026, m:8}; selectedDate = "2026-09-08";');
     m.w.__applyState(JSON.stringify(data), { peerName: '홍길동', canWrite: false });

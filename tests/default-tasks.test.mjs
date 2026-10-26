@@ -6,14 +6,14 @@
 //   ② 기본 과제는 삭제 버튼이 없고 이름이 잠기며 deleteCategory 가 거부한다. 재연결 대상에 없다.
 //   ③ 기록 폼의 과제 선택 상자에 빈 선택지가 없고 새 기록 기본값이 기타다. 데이터 함수도 빈 값을 기타로 채운다.
 //   ④ 보고서에 __uncat__, gitaCat, '기타 맨 뒤' 가 없다(행동은 app-context, category-order 가 본다. 여기서는 흔적 0).
-//   ⑤ 과제 삭제가 그 과제의 일정(커밋 포함), 할 일, 시간을 지우고 참조를 하나도 남기지 않는다. 확인창 숫자가 맞다.
+//   ⑤ 과제 삭제가 그 과제의 일정, 할 일, 시간을 지우고 참조를 하나도 남기지 않는다. 확인창 숫자가 맞다.
 //   ⑥ 옮기기: 일정, 할 일, 시간이 옮겨지고 겹친 날짜의 시간은 더해지며 24 를 넘지 않는다. 출발 과제는 남는다.
 //   ⑦ XML 가져오기: 과제 없는 기록, 없는 과제를 가리키는 기록이 기타로 간다. 파일에 '기타' 가 있으면 그것을 쓴다.
 //      없는 과제의 시간은 버린다.
 //   ⑧ 빈 캘린더 판정: 기본 과제만 있으면 비어 있다.
 //   ⑨ 실행 취소로 되살린 기록의 과제가 그사이 지워졌으면 기타로 붙는다. 전체 초기화 뒤에도 기본 과제가 있다.
 //   ⑩ 정정 이력 2차(독립 리뷰): 가져오기의 목록에 없는 공식 과제는 기타가 아니라 편입 · 공식 과제 제거가 시간도 걷는다(FK) ·
-//      커밋 가져오기는 기다리는 사이 지워진 과제를 건너뛴다 · 다시 주입되면 보장 저장 플래그를 새로 정한다 ·
+//      다시 주입되면 보장 저장 플래그를 새로 정한다 ·
 //      이전 기록 가져오기는 진행 중인 저장을 기다린 뒤 교체한다 · 공백 붙은 ' 기타' 도 기본 과제다 ·
 //      이관 도구(xml-to-db)도 앱 가져오기와 같은 규칙을 따른다(정적).
 //
@@ -164,9 +164,9 @@ if (!JSDOM) {
   const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setImmediate(r)); };
   const META = { schemaVersion: '12', expectedSchema: '12', schemaMismatch: false, rev: 1, canWrite: true, userId: 7 };
   const CA = '2026-09-01T00:00:00Z';
-  const CAT = (id, name, extra) => Object.assign({ id, name, color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }, extra || {});
+  const CAT = (id, name, extra) => Object.assign({ id, name, color: '#3e5be0', desc: '', createdAt: CA }, extra || {});
   const ENT = (id, categoryId, extra) => Object.assign({ id, date: '2026-10-01', title: '업무 ' + id, categoryId, allDay: true, startTime: '', endTime: '',
-    memo: '', location: '', source: '', commits: [], recur: null, recurExcept: [], endDate: '', createdAt: CA, updatedAt: CA }, extra || {});
+    memo: '', location: '', recur: null, recurExcept: [], endDate: '', createdAt: CA, updatedAt: CA }, extra || {});
   const TODO = (id, categoryId) => ({ id, text: '할 일 ' + id, done: false, categoryId, due: '2026-10-02', endDate: '', prio: 'normal',
     completedAt: '', note: '', dayNotes: {}, createdAt: CA, updatedAt: CA });
   const EMPTY = { categories: [], entries: [], todos: [], rooms: ['201호'] };
@@ -353,17 +353,15 @@ if (!JSDOM) {
       await withBoot(source, WITH_DEFAULTS({ categories: [CAT('c-p', '프로젝트'), CAT('c-v', '휴가'), CAT('c-e', '기타')],
         entries: [ENT('e-x', 'c-gone')], todos: [TODO('t-n', null)] }), async (W) => {
         const optVals = (sel) => W.evJSON("[].map.call(document.querySelectorAll('" + sel + " option'), function(o){ return o.value; })");
-        W.ev("openEntryModal('new', '2026-10-05');");
-        assert.ok(!optVals('#fCat').includes(''), '#fCat 에 빈 선택지가 있다');
-        assert.strictEqual(W.ev("$('#fCat').value"), 'c-e', '새 기록의 기본 과제가 기타가 아니다');
-        W.ev("closeModal('#entryModal'); filterCatId = 'c-p'; openEntryModal('new', '2026-10-05');");
-        assert.strictEqual(W.ev("$('#fCat').value"), 'c-p', '필터로 고른 과제가 새 기록의 기본값이 아니다');
-        W.ev("closeModal('#entryModal'); filterCatId = null;");
+        //  (예전 기록 창 #fCat 은 2026-10-26 Git 기능과 함께 없앴다. 새 기록과 편집은 모두 한 화면 폼 #qaCat 이다.)
+        W.ev("filterCatId = 'c-p'; openQuickAdd('2026-10-05');");
+        assert.strictEqual(W.ev("$('#qaCat').value"), 'c-p', '필터로 고른 과제가 새 기록의 기본값이 아니다');
+        W.ev("closeModal('#quickAdd'); filterCatId = null;");
         //  편집: 목록에 없는 과제는 '(알 수 없는 과제)' 로 보존된다(조용히 첫 과제로 바뀌지 않는다)
-        W.ev("openEntryModal('edit', 'e-x');");
-        assert.strictEqual(W.ev("$('#fCat').value"), 'c-gone', '목록에 없는 과제를 가리키는 기록을 열자 값이 바뀌었다');
-        assert.strictEqual(W.ev("$('#fCat').selectedOptions[0].textContent"), '(알 수 없는 과제)');
-        W.ev("closeModal('#entryModal');");
+        W.ev("openQuickAdd(null, 'event', 'e-x');");
+        assert.strictEqual(W.ev("$('#qaCat').value"), 'c-gone', '목록에 없는 과제를 가리키는 기록을 열자 값이 바뀌었다');
+        assert.strictEqual(W.ev("$('#qaCat').selectedOptions[0].textContent"), '(알 수 없는 과제)');
+        W.ev("closeModal('#quickAdd');");
         W.ev("openQuickAdd('2026-10-05');");
         assert.ok(!optVals('#qaCat').includes(''), '#qaCat 에 빈 선택지(과제 없음)가 있다');
         assert.strictEqual(W.ev("$('#qaCat').value"), 'c-e', '빠른 추가의 기본 과제가 기타가 아니다');
@@ -386,7 +384,7 @@ if (!JSDOM) {
     async deleteRemovesData(source) {
       const data = WITH_DEFAULTS({
         categories: [CAT('c-x', '지울 과제'), CAT('c-k', '남길 과제'), CAT('c-v', '휴가'), CAT('c-e', '기타')],
-        entries: [ENT('e-1', 'c-x'), ENT('e-2', 'c-x', { source: 'git', commits: [{ hash: 'abc1234', short: 'abc1234', time: '', subject: '커밋', body: '' }] }), ENT('e-k', 'c-k')],
+        entries: [ENT('e-1', 'c-x'), ENT('e-2', 'c-x', { allDay: true }), ENT('e-k', 'c-k')],
         todos: [TODO('t-1', 'c-x'), TODO('t-k', 'c-k')],
         taskHours: { '2026-10-01': { 'c-x': 3, 'c-k': 2 }, '2026-10-02': { 'c-x': 1 } },
       });
@@ -399,7 +397,7 @@ if (!JSDOM) {
         assert.strictEqual(cf[0][1], "'지울 과제' 과제를 삭제할까요?\n이 과제의 일정 2개, 할 일 1개, 과제별 시간 2일이 함께 삭제되고 되돌릴 수 없습니다.\n남기려면 먼저 '옮기기'로 다른 과제에 옮기세요.",
           '확인창이 무엇이 몇 개 지워지는지 정확히 말하지 않는다: ' + cf[0][1]);
         assert.deepStrictEqual(W.cats().map((c) => c.id), ['c-k', 'c-v', 'c-e'], '과제가 지워지지 않았다');
-        assert.deepStrictEqual(W.evJSON('state.entries.map(function(e){ return e.id; })'), ['e-k'], '그 과제의 일정(커밋 기록 포함)이 남았다');
+        assert.deepStrictEqual(W.evJSON('state.entries.map(function(e){ return e.id; })'), ['e-k'], '그 과제의 일정이 남았다');
         assert.deepStrictEqual(W.evJSON('state.todos.map(function(t){ return t.id; })'), ['t-k'], '그 과제의 할 일이 남았다');
         assert.deepStrictEqual(W.evJSON('state.taskHours'), { '2026-10-01': { 'c-k': 2 } }, '그 과제의 시간이 남았거나 다른 과제 시간이 지워졌다');
         const saves = W.saves();
@@ -431,7 +429,7 @@ if (!JSDOM) {
     async moveSumsHours(source) {
       const data = WITH_DEFAULTS({
         categories: [CAT('c-a', '연차'), CAT('c-b', '프로젝트'), CAT('db-g', '사라진 공식', { source: 'db', dbGone: true }), CAT('c-v', '휴가'), CAT('c-e', '기타')],
-        entries: [ENT('e-a1', 'c-a'), ENT('e-a2', 'c-a', { source: 'git', commits: [{ hash: 'f00d', short: 'f00d', time: '', subject: '커밋', body: '' }] }), ENT('e-b', 'c-b')],
+        entries: [ENT('e-a1', 'c-a'), ENT('e-a2', 'c-a', { allDay: true }), ENT('e-b', 'c-b')],
         todos: [TODO('t-a', 'c-a'), TODO('t-b', 'c-b')],
         taskHours: { '2026-10-01': { 'c-a': 5, 'c-v': 3 }, '2026-10-02': { 'c-a': 20, 'c-v': 10 }, '2026-10-03': { 'c-a': 2.5 }, '2026-10-04': { 'c-b': 1 } },
       });
@@ -450,7 +448,7 @@ if (!JSDOM) {
         const cf = W.confirms();
         assert.strictEqual(cf.length, 1, '옮기기 확인창이 뜨지 않았다');
         assert.ok(cf[0][1].startsWith("'연차' 과제의 일정 2개, 할 일 1개, 과제별 시간 3일을 '휴가' 과제로 옮깁니다."), '확인창 숫자, 문구가 다르다: ' + cf[0][1]);
-        assert.deepStrictEqual(W.evJSON("state.entries.map(function(e){ return e.id + ':' + e.categoryId; })"), ['e-a1:c-v', 'e-a2:c-v', 'e-b:c-b'], '일정(커밋 기록 포함)이 옮겨지지 않았다');
+        assert.deepStrictEqual(W.evJSON("state.entries.map(function(e){ return e.id + ':' + e.categoryId; })"), ['e-a1:c-v', 'e-a2:c-v', 'e-b:c-b'], '일정이 옮겨지지 않았다');
         assert.deepStrictEqual(W.evJSON("state.todos.map(function(t){ return t.id + ':' + t.categoryId; })"), ['t-a:c-v', 't-b:c-b'], '할 일이 옮겨지지 않았다');
         assert.deepStrictEqual(W.evJSON('state.taskHours'), { '2026-10-01': { 'c-v': 8 }, '2026-10-02': { 'c-v': 24 }, '2026-10-03': { 'c-v': 2.5 }, '2026-10-04': { 'c-b': 1 } },
           '시간이 옮겨지지 않았거나, 겹친 날을 더하지 않았거나, 하루 24 상한을 넘겼다: ' + W.ev('JSON.stringify(state.taskHours)'));
@@ -568,17 +566,7 @@ if (!JSDOM) {
           '제거한 공식 과제의 시간이 저장 payload 에 남았다 — 호스트에서 과제 DELETE 가 FK(1451)로 실패하고 그 뒤 모든 저장이 실패한다');
       });
     },
-    //  ⑩-c 커밋 가져오기 — 기다리는 사이 과제가 지워지면 그 과제의 일정을 만들지 않는다
-    async gitImportSkipsDeleted(source) {
-      await withBoot(source, WITH_DEFAULTS({ categories: [CAT('c-g', '저장소 과제', { gitRepo: 'C:/repo' }), CAT('c-v', '휴가'), CAT('c-e', '기타')] }), async (W) => {
-        W.ev("fetchCommitsForCat = async function(cat){ state.categories = state.categories.filter(function(c){ return c.id !== cat.id; });" +
-             " return { ok: true, errors: [], commits: [{ date: '2026-10-01T09:00:00', hash: 'abc', short: 'abc', subject: '커밋' }] }; };");
-        W.ev("window.__gi = runGitImport('2026-10-01', '2026-10-01', '', '#gitHint', '#btnGitImport', false);");
-        await W.w.__gi; await settle();
-        assert.strictEqual(W.ev("state.entries.filter(function(e){ return e.categoryId === 'c-g'; }).length"), 0,
-          '기다리는 사이 지워진 과제를 가리키는 커밋 일정을 만들었다');
-      });
-    },
+    //  (⑩-c 커밋 가져오기 시험은 2026-10-26 Git, SVN 기능과 함께 없앴다.)
     //  ⑩-d 다시 주입되면 보장 저장 플래그를 새로 정한다 — 잠금으로 미뤄진 저장이 서버가 이미 기본 과제를 돌려준 뒤에 나가지 않는다
     async reapplyResetsDirty(source) {
       const W = boot(source);
@@ -638,7 +626,7 @@ if (!JSDOM) {
   test('행동④: 편집 잠금 중에는 부팅 보장 저장을 보내지 않는다(state 에는 있다)', () => checks.lockedNoBootSave(src));
   test('행동⑤: 기본 과제는 삭제 버튼이 없고 이름이 잠기며 deleteCategory 가 거부한다 · 재연결 대상이 아니다 · 같은 이름 새 과제를 막는다', () => checks.protectedDefaults(src));
   test('행동⑥: 선택 상자에 빈 선택지가 없고 새 기록 기본값은 기타(필터 과제 우선) · 데이터 함수도 빈 값을 기타로 채운다', () => checks.pickersDefaultToGita(src));
-  test('행동⑦: 과제 삭제가 그 과제의 일정(커밋 포함), 할 일, 시간을 지운다 · 확인창 숫자 · 저장 payload 에 참조 0 · 저장 한 번', () => checks.deleteRemovesData(src));
+  test('행동⑦: 과제 삭제가 그 과제의 일정, 할 일, 시간을 지운다 · 확인창 숫자 · 저장 payload 에 참조 0 · 저장 한 번', () => checks.deleteRemovesData(src));
   test('행동⑧: 데이터 없는 과제의 확인창 문구 · 취소하면 아무것도 바뀌지 않는다', () => checks.deleteEmptyAndCancel(src));
   test('행동⑨: 옮기기 — 일정, 할 일, 시간이 옮겨지고 겹친 날은 더해지며 24 를 넘지 않는다 · 출발 과제는 남는다 · 저장 한 번', () => checks.moveSumsHours(src));
   test('행동⑩: 옮기기는 잠금 중, 같은 과제, 없는 과제를 거부한다', () => checks.moveGuarded(src));
@@ -648,7 +636,6 @@ if (!JSDOM) {
 
   test('행동⑭: 가져오기 — 목록에 없는 공식 과제의 기록과 시간은 기타가 아니라 그 공식 과제로(카탈로그 이름 또는 dbGone 자리표시)', () => checks.importKeepsOfficialRefs(src));
   test('행동⑮: 공식 과제 제거가 그 과제의 시간도 같은 저장에서 걷는다(FK 1451 방지) · 확인창이 말한다', () => checks.unsubscribeDropsHours(src));
-  test('행동⑯: 커밋 가져오기는 기다리는 사이 지워진 과제의 일정을 만들지 않는다', () => checks.gitImportSkipsDeleted(src));
   test('행동⑰: 다시 주입되면 보장 저장 플래그를 새로 정한다(쓸데없는 전체 저장 없음)', () => checks.reapplyResetsDirty(src));
   test('행동⑱: 이전 기록 가져오기는 진행 중인 저장을 기다린 뒤 전량 교체로 보낸다', () => checks.legacyWaitsForSave(src));
   test("행동⑲: 앞뒤 공백이 붙은 ' 기타 ', '  휴가' 도 기본 과제로 보고 이름을 바로잡는다(부팅, 가져오기)", () => checks.trimmedNames(src));
@@ -665,7 +652,7 @@ if (!JSDOM) {
   test('변이③: 과제 삭제가 예전처럼 참조를 null 로 풀면 행동⑦ 이 실패한다', async () => {
     const bad = mutate("  state.entries = state.entries.filter(e => !e || e.categoryId !== id);\n  state.todos = (state.todos || []).filter(t => !t || t.categoryId !== id);",
       "  state.entries.forEach(e => { if(e.categoryId === id) e.categoryId = null; });\n  (state.todos || []).forEach(t => { if(t.categoryId === id) t.categoryId = null; });", src);
-    await assert.rejects(() => checks.deleteRemovesData(bad), /일정\(커밋 기록 포함\)이 남았다/);
+    await assert.rejects(() => checks.deleteRemovesData(bad), /그 과제의 일정이 남았다/);
   });
   test('변이④: 옮기기가 겹친 날의 시간을 더하지 않고 덮으면 행동⑨ 가 실패한다', async () => {
     const bad = mutate('const v = Math.round(Math.min(a + b, 24) * 100) / 100;', 'const v = Math.round(Math.min(a, 24) * 100) / 100;', src);
@@ -704,10 +691,6 @@ if (!JSDOM) {
     const bad = mutate('  dropCatHours(id);\n  state.categories = state.categories.filter(x => x.id !== id);\n  if(filterCatId === id) filterCatId = null;\n  if(noteFilterCat === id) noteFilterCat = null;\n  return true;',
       '  state.categories = state.categories.filter(x => x.id !== id);\n  if(filterCatId === id) filterCatId = null;\n  if(noteFilterCat === id) noteFilterCat = null;\n  return true;', src);
     await assert.rejects(() => checks.unsubscribeDropsHours(bad), /시간이 state 에 남았다/);
-  });
-  test('변이⑭: 커밋 가져오기가 지워진 과제를 건너뛰지 않으면 행동⑯ 이 실패한다', async () => {
-    const bad = mutate('      if(!state.categories.some(x => x.id === cat.id)) continue;\n', '', src);
-    await assert.rejects(() => checks.gitImportSkipsDeleted(bad), /지워진 과제를 가리키는/);
   });
   test('변이⑮: 다시 주입될 때 보장 플래그를 남기면(예전 판) 행동⑰ 이 실패한다', async () => {
     const bad = mutate('    if(!PEER) __bootDefaultsDirty = ensureDefaultTasks(state);', '    if(!PEER && ensureDefaultTasks(state)) __bootDefaultsDirty = true;', src);

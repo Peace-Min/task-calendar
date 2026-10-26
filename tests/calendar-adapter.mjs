@@ -64,17 +64,13 @@
  *        `string` / `Task<string>`                       → 그 문자열이 곧 state JSON
  *        `T` / `Task<T>` (T 에 string 프로퍼티 `StateJson`, 없으면 이름이 …Json 인 것)
  *                                                        → 그 프로퍼티가 state JSON
- *        어느 쪽이든 내용은 계약 G-0 의 **14키 객체**를 직렬화한 것이어야 한다.
+ *        어느 쪽이든 내용은 계약 G-0 의 **10키 객체**를 직렬화한 것이어야 한다.
  *    · 인자 — 순서와 이름에 기대지 않고 **형(型)으로** 맞춘다:
  *        첫 `string`                       ← loginId (필수. 없으면 후보에서 탈락)
  *        `CancellationToken`               ← None
- *        `I(ReadOnly)Dictionary<string,V>` ← 로컬 저장소 경로 맵(G-6). V 는
- *            `(string git, string svn)` · `Tuple<string,string>` ·
- *            `Dictionary<string,string>`{gitRepo,svnRepo} · `string`(git 만) 을 지원
- *        둘째 `string`                     ← 위 맵의 JSON 원문(딕셔너리 인자가 없을 때)
  *        그 밖의 참조형/기본값 인자        ← null / 기본값
- *      ★ 로컬 저장소 인자를 **받지 않는 어댑터도 통과할 수 있다.** 다만 그때는
- *        gitRepo·svnRepo 를 '' 로만 대조하고, 그 사실을 요약의 「계약상 차이」에 찍는다.
+ *      (2026-10-26 Git, SVN 삭제(구조 18)로 로컬 저장소 경로 맵 인자와 gitRepo·svnRepo·usesRepo 대조를 없앴다.
+ *       커밋(cal_entry_commit, entry.commits), 일정 출처(entry.source), 작성자 설정도 state 에 없다)
  *    · 인스턴스 타입이면 `(Action<string> log)` 생성자를 우선 쓴다(ProjectDb.cs 관례).
  *        어댑터가 그 로그로 남긴 줄은 실패했을 때 stderr 로 그대로 보여 준다.
  *    · 반환이 null 이면 **실패로 본다** — 어댑터가 그것을 '오프라인'으로 쓰기 때문이다.
@@ -82,7 +78,7 @@
  *
  *  후보를 못 찾으면 **그 사실을 그대로 보고하고 exit 2** 한다 — 통과로 치지 않는다.
  *  ※ 실측(2026-08-26): `CalendarDb.LoadSnapshotAsync(string?, IReadOnlyDictionary<string,(string,string)>?)`
- *    → `Task<CalendarSnapshot?>` 형태가 이 계약으로 그대로 잡혔다.
+ *    → `Task<CalendarSnapshot?>` 형태가 이 계약으로 그대로 잡혔다. 2026-10-26 부터는 `LoadSnapshotAsync(string?)` 이다.
  *
  *  ── 어댑터는 무엇으로 DB 에 붙나 ─────────────────────────────────────────
  *  프로브는 `widget/DeployConfig.cs` 를 **복제본을 가리키는 대체본**으로 갈아끼우고,
@@ -718,6 +714,9 @@ async function openOracle() {
  * real  : %APPDATA%/TaskCalendar/data.xml — **읽기만 한다. 고치지 않는다.**
  * synth : 실 데이터가 안 건드리는 계약면(반복·예외·dayNotes·taskHours·remind 3상태·
  *         공식과제 source/dbGone·완료시각·NULL 자리 전수)을 덮는 합성 XML.
+ *         2026-10-26 Git, SVN 삭제(구조 18) 뒤에도 옛 흔적(gitRepo/svnRepo, source="git" 일정과 <commits>,
+ *         루트 gitAuthor/svnAuthor, prefs@gitCommitBody)을 **일부러 남겨 둔다.** fromXML() 이 그것을 버려야 한다
+ *         (legacyDropped 가 본다). 적재기도 어댑터도 그 값을 다루지 않는다.
  *         ★ '이관 도구' 가 아니다 — 이 테스트가 쓰는 **시험용 픽스처**다. */
 
 const ATTEND_OK = new Set(['1', '2', '3', '4', '5', '6', '7', '9', '10', '11', '12']);
@@ -759,6 +758,7 @@ function synthFixtureXml(projectUid) {
     `<recur freq="weekly" interval="2" until="2026-07-31"><except date="2026-05-19"/><except date="2026-06-02"/></recur></entry>`);
   e.push(`<entry id="e-monthly" date="2026-05-15" categoryId="c-beta" allDay="true" createdAt="${CA}" updatedAt="${UA}"><title>월간 반복 + 횟수</title><memo/>` +
     `<recur freq="monthly" interval="1" count="6"/></entry>`);
+  // ★ 옛 커밋 기록(source="git"): fromXML() 이 통째로 버려야 한다(2026-10-26 Git, SVN 삭제). legacyDropped 가 본다.
   e.push(`<entry id="e-git" date="2026-05-11" categoryId="c-alpha" source="git" allDay="true" createdAt="${CA}" updatedAt="${UA}"><title>git 일정 · 커밋 3건</title><memo/><commits>` +
     `<commit hash="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" short="aaaaaaa" time="09:12" subject="첫 커밋 제목">본문 첫줄
 본문 둘째줄</commit>` +
@@ -862,15 +862,20 @@ function nosAreScrambled(nos) {
   return !asc && !desc;
 }
 
-/** ★ '저장소를 쓰는 과제인가' 를 XML 기준 객체에서 판정한다 — cal_category.uses_repo 의 근거.
- *  이 한 함수가 **두 자리에서 함께** 쓰인다. 갈라 놓으면 두 규칙이 생기고, 그 순간 이 게이트는
- *  자기가 넣은 값을 자기가 다시 계산해 맞춰 보는 시늉만 하게 된다:
- *    ① loadFixtureIntoDb()  — DB 에 넣을 값(= 이관 도구가 할 일. 계약 I-1)
- *    ② normalizeExpected()  — 기준(fromXML) 쪽에 얹을 값(= 계약 G-0 의 의도된 예외)
- *  ★ 그래서 이 대조가 증명하는 것은 **'어댑터가 DB 의 그 비트를 앱까지 손실 없이 나르는가'** 이지
- *    '이관 규칙이 옳은가' 가 아니다. 후자는 §8 왕복 대조의 몫도 아니다(toXML 이 이 키를 안 쓴다) —
- *    이관 도구의 자체 리포트가 세어서 사람에게 보고해야 한다. 요약에 그 사실을 찍는다. */
-const usesRepoOf = (c) => !!((c && c.gitRepo) || (c && c.svnRepo));
+/** ★ 옛 Git, SVN 흔적이 기준(fromXML)에서 버려졌는가(2026-10-26, 구조 18).
+ *  fromXML 이 그 값을 남기면 적재기와 어댑터는 그것을 다루지 않으므로 깊은 비교가 울겠지만, 원인은 여기서 먼저
+ *  이름으로 찍는다(source="git" 일정은 남아도 깊은 비교로는 안 보인다: 적재기가 그 일정을 일반 일정으로 넣기 때문이다). */
+function legacyDropped(exp, fixtureName) {
+  const bad = [];
+  for (const k of ['gitAuthor', 'svnAuthor', 'gitCommitBody']) if (Object.prototype.hasOwnProperty.call(exp, k)) bad.push(`최상위 ${k}`);
+  for (const c of exp.categories || []) for (const k of ['gitRepo', 'svnRepo', 'usesRepo']) if (Object.prototype.hasOwnProperty.call(c, k)) bad.push(`categories[${c.id}].${k}`);
+  for (const e of exp.entries || []) {
+    for (const k of ['source', 'commits']) if (Object.prototype.hasOwnProperty.call(e, k)) bad.push(`entries[${e.id}].${k}`);
+  }
+  if (fixtureName === 'synth' && (exp.entries || []).some((e) => e.id === 'e-git')) bad.push('entries[e-git](옛 커밋 기록이 남았다)');
+  if (bad.length) violate('G-18', `기준(fromXML)이 없앤 Git, SVN 값을 아직 만든다(2026-10-26 구조 18): ${bad.slice(0, 8).join(', ')}`);
+  else ok('G-18 기준(fromXML)에 Git, SVN 흔적이 없다(옛 파일의 값은 버려졌다)');
+}
 
 /** expected 객체를 복제 DB 에 적재하고, 적재에 쓴 부수 정보를 돌려준다. */
 function loadFixtureIntoDb(exp, userId) {
@@ -881,7 +886,7 @@ function loadFixtureIntoDb(exp, userId) {
   const U = String(userId);
 
   // ① 이 사용자의 cal_* 를 비운다(자식 먼저). 다른 사용자 행은 건드리지 않는다.
-  for (const tbl of ['cal_todo_day_note', 'cal_entry_commit', 'cal_entry_except', 'cal_task_hours',
+  for (const tbl of ['cal_todo_day_note', 'cal_entry_except', 'cal_task_hours',
     'cal_entry', 'cal_todo', 'cal_category', 'cal_attendance', 'cal_user_pref']) {
     S.push(`DELETE FROM ${tbl} WHERE user_id=${U};`);
   }
@@ -889,20 +894,14 @@ function loadFixtureIntoDb(exp, userId) {
   // ② 과제 — sort_order = 표시 순서, cat_no = 역순(어긋나게)
   const catNos = scrambledNos(exp.categories.length);
   const uidToNo = new Map();
-  const localRepos = {};   // G-6: gitRepo·svnRepo 는 DB 에 없다 — 로컬 저장소 몫이다
   exp.categories.forEach((c, i) => {
     const no = catNos[i];
     uidToNo.set(c.id, no);
     const src = (Object.prototype.hasOwnProperty.call(c, 'source') && c.source === 'db') ? 'db' : 'local';
     const projUid = src === 'db' ? String(c.id).slice(3) : null;
-    localRepos[c.id] = { gitRepo: c.gitRepo || '', svnRepo: c.svnRepo || '' };
-    // ★ uses_repo — '저장소를 쓰는 과제인가' 한 비트(§4 · schema_version 5). **경로가 아니다.**
-    //   여기서 채우는 규칙이 곧 이관 도구가 할 일이다(계약 I-1): XML 의 gitRepo·svnRepo 중
-    //   하나라도 비어 있지 않으면 1. 이관 시점에 존재하는 증거는 그것뿐이다(한 PC 의 data.xml 하나).
-    //   ※ DEFAULT 0 에 맡기면 전 행이 0 이 되어 §4 의 안내가 아무 데도 안 뜬다 — sort_order 와 같은 함정이다.
-    const usesRepo = usesRepoOf(c) ? 1 : 0;
-    S.push(`INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,sort_order,created_at,updated_at) VALUES (` +
-      `${U},${no},${q(c.id)},${q(src)},${q(c.name)},${q(c.color)},${q(c.desc)},${q(projUid)},${usesRepo},${i},` +
+    //  (uses_repo 와 저장소 경로는 2026-10-26 Git, SVN 삭제(구조 18)로 없앴다)
+    S.push(`INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,sort_order,created_at,updated_at) VALUES (` +
+      `${U},${no},${q(c.id)},${q(src)},${q(c.name)},${q(c.color)},${q(c.desc)},${q(projUid)},${i},` +
       `${q(isoToDt(c.createdAt, `category[${c.id}].createdAt`))},${q(isoToDt(c.createdAt, 'x'))});`);
   });
 
@@ -922,21 +921,16 @@ function loadFixtureIntoDb(exp, userId) {
     }
     const r = e.recur;
     S.push(`INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,end_date,all_day,start_time,end_time,` +
-      `title,memo,source,location,remind,recur_freq,recur_interval,recur_until,recur_count,sort_order,created_at,updated_at) VALUES (` +
+      `title,memo,location,remind,recur_freq,recur_interval,recur_until,recur_count,sort_order,created_at,updated_at) VALUES (` +
       `${U},${no},${q(e.id)},${catNo == null ? 'NULL' : catNo},${q(e.date)},${e.endDate ? q(e.endDate) : 'NULL'},` +
       `${e.allDay ? 1 : 0},${e.startTime ? q(e.startTime) : 'NULL'},${e.endTime ? q(e.endTime) : 'NULL'},` +
-      `${q(e.title)},${q(e.memo)},${q(e.source)},${q(e.location)},${e.remind == null ? 'NULL' : num(e.remind)},` +
+      `${q(e.title)},${q(e.memo)},${q(e.location)},${e.remind == null ? 'NULL' : num(e.remind)},` +
       `${r ? q(r.freq) : 'NULL'},${r ? num(r.interval) : 'NULL'},${r && r.until ? q(r.until) : 'NULL'},${r ? num(r.count) : 'NULL'},${i},` +
       `${q(isoToDt(e.createdAt, `entry[${e.id}].createdAt`))},${q(isoToDt(e.updatedAt, `entry[${e.id}].updatedAt`))});`);
     for (const d of (e.recurExcept || [])) {
       S.push(`INSERT INTO cal_entry_except (user_id,entry_no,except_date) VALUES (${U},${no},${q(d)});`);
     }
-    // ★ 커밋을 적재한다 — G-7 개정(2026-09-01) 뒤로는 **부팅이 이것을 실어 와야** 한다.
-    //   DB 에 있는 커밋이 state 에 그대로(순서까지) 오는지가 그 계약의 시험이다.
-    (e.commits || []).forEach((c, s) => {
-      S.push(`INSERT INTO cal_entry_commit (user_id,entry_no,seq,hash,short_hash,commit_time,subject,body) VALUES (` +
-        `${U},${no},${s},${q(c.hash)},${q(c.short)},${c.time ? q(c.time) : 'NULL'},${q(c.subject)},${q(c.body)});`);
-    });
+    //  (커밋 목록 cal_entry_commit 은 2026-10-26 Git, SVN 삭제(구조 18)로 표째 없어졌다)
   });
 
   // ④ 할 일 — sort_order = 문서 순서(배열 인덱스), todo_no = 역순. 위 ③ 의 ★ 와 같은 계약이다.
@@ -979,14 +973,14 @@ function loadFixtureIntoDb(exp, userId) {
     S.push(`INSERT INTO cal_attendance (user_id,work_date,status,overtime,updated_at) VALUES (${U},${q(date)},${q(a.status)},${num(a.overtime)},${q(NOW)});`);
   }
 
-  // ⑧ 사용자 설정 — 전역 3값 + daily/weekly 6값 + 폰트 2값 + 작성자 2값
+  // ⑧ 사용자 설정 — 전역 3값 + daily/weekly 6값 + 폰트 2값(작성자와 커밋 본문 칸은 구조 18 에서 없앴다)
   const rf = exp.reportFormatPrefs || { daily: {}, weekly: {} };
   const fo = exp.reportFont || { family: '', size: 0 };
-  S.push(`INSERT INTO cal_user_pref (user_id,git_author,svn_author,report_marker,report_marker_custom,report_indent,` +
-    `git_commit_body,report_marker_daily,report_marker_custom_daily,report_indent_daily,` +
+  S.push(`INSERT INTO cal_user_pref (user_id,report_marker,report_marker_custom,report_indent,` +
+    `report_marker_daily,report_marker_custom_daily,report_indent_daily,` +
     `report_marker_weekly,report_marker_custom_weekly,report_indent_weekly,report_font_family,report_font_size,updated_at) VALUES (` +
-    `${U},${q(exp.gitAuthor)},${q(exp.svnAuthor)},${q(exp.reportMarker)},${q(exp.reportMarkerCustom)},${num(exp.reportIndent)},` +
-    `${exp.gitCommitBody ? 1 : 0},${q(rf.daily.marker)},${q(rf.daily.markerCustom)},${num(rf.daily.indent)},` +
+    `${U},${q(exp.reportMarker)},${q(exp.reportMarkerCustom)},${num(exp.reportIndent)},` +
+    `${q(rf.daily.marker)},${q(rf.daily.markerCustom)},${num(rf.daily.indent)},` +
     `${q(rf.weekly.marker)},${q(rf.weekly.markerCustom)},${num(rf.weekly.indent)},${q(fo.family)},${num(fo.size)},${q(NOW)});`);
 
   const sql = S.join('\n');
@@ -996,7 +990,7 @@ function loadFixtureIntoDb(exp, userId) {
     envFail(`픽스처 적재 실패 errno=${r.errno} — 픽스처가 스키마 제약을 어겼다(테스트 자신의 결함이다)`,
       cleanErr(r.err) + ' | SQL 조각: ' + (sql.split('\n').find((x) => /INSERT/.test(x)) || '').slice(0, 200));
   }
-  return { uidToNo, entUidToNo, todoUidToNo, localRepos, sql };
+  return { uidToNo, entUidToNo, todoUidToNo, sql };
 }
 
 /** 적재 검산 — 넣은 것이 실제로 들어갔나. "에러가 안 났다"는 증거가 아니다. */
@@ -1006,7 +1000,6 @@ function verifyLoaded(exp, userId, maps) {
     { key: 'cat', sql: `SELECT COUNT(*) FROM cal_category WHERE user_id=${U}` },
     { key: 'ent', sql: `SELECT COUNT(*) FROM cal_entry WHERE user_id=${U}` },
     { key: 'exc', sql: `SELECT COUNT(*) FROM cal_entry_except WHERE user_id=${U}` },
-    { key: 'cmt', sql: `SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${U}` },
     { key: 'todo', sql: `SELECT COUNT(*) FROM cal_todo WHERE user_id=${U}` },
     { key: 'dn', sql: `SELECT COUNT(*) FROM cal_todo_day_note WHERE user_id=${U}` },
     { key: 'th', sql: `SELECT COUNT(*) FROM cal_task_hours WHERE user_id=${U}` },
@@ -1023,7 +1016,6 @@ function verifyLoaded(exp, userId, maps) {
     cat: exp.categories.length,
     ent: exp.entries.length,
     exc: exp.entries.reduce((a, e) => a + (e.recurExcept || []).length, 0),
-    cmt: exp.entries.reduce((a, e) => a + (e.commits || []).length, 0),
     todo: exp.todos.length,
     dn: exp.todos.reduce((a, t) => a + Object.keys(t.dayNotes || {}).length, 0),
     th: Object.values(exp.taskHours || {}).reduce((a, m) => a + Object.keys(m).length, 0),
@@ -1125,42 +1117,6 @@ internal static class TcProbeMain
         return s;
     }
 
-    static object BuildRepoDict(Type target, Dictionary<string, Dictionary<string, string>> src)
-    {
-        Type[] ga = null;
-        if (target.IsGenericType)
-        {
-            var gd = target.GetGenericTypeDefinition();
-            if (gd == typeof(IReadOnlyDictionary<,>) || gd == typeof(IDictionary<,>) || gd == typeof(Dictionary<,>))
-                ga = target.GetGenericArguments();
-        }
-        if (ga == null || ga[0] != typeof(string)) return null;
-        Type V = ga[1];
-        var dictType = typeof(Dictionary<,>).MakeGenericType(typeof(string), V);
-        var dict = Activator.CreateInstance(dictType);
-        var add = dictType.GetMethod("Add", new[] { typeof(string), V });
-        foreach (var kv in src)
-        {
-            string git = kv.Value != null && kv.Value.ContainsKey("gitRepo") ? (kv.Value["gitRepo"] ?? "") : "";
-            string svn = kv.Value != null && kv.Value.ContainsKey("svnRepo") ? (kv.Value["svnRepo"] ?? "") : "";
-            object val;
-            if (V == typeof(string)) val = git;
-            else if (V.IsGenericType && V.GetGenericTypeDefinition() == typeof(ValueTuple<,>))
-            {
-                val = Activator.CreateInstance(V);
-                V.GetField("Item1").SetValue(val, git);
-                V.GetField("Item2").SetValue(val, svn);
-            }
-            else if (V == typeof(Dictionary<string, string>) || V == typeof(IDictionary<string, string>) || V == typeof(IReadOnlyDictionary<string, string>))
-                val = new Dictionary<string, string> { { "gitRepo", git }, { "svnRepo", svn } };
-            else if (V.IsGenericType && V.GetGenericTypeDefinition() == typeof(Tuple<,>))
-                val = Activator.CreateInstance(V, git, svn);
-            else return null;
-            add.Invoke(dict, new object[] { kv.Key, val });
-        }
-        return dict;
-    }
-
     static int Fail(string msg, int code)
     {
         Console.Error.WriteLine("PROBE-FAIL: " + msg);
@@ -1176,11 +1132,7 @@ internal static class TcProbeMain
     {
         Console.OutputEncoding = new UTF8Encoding(false);
         string loginId = argv.Length > 0 ? argv[0] : "";
-        string repoJsonPath = argv.Length > 1 ? argv[1] : "";
-        string repoJson = (repoJsonPath.Length > 0 && File.Exists(repoJsonPath)) ? File.ReadAllText(repoJsonPath, Encoding.UTF8) : "{}";
-        Dictionary<string, Dictionary<string, string>> repos;
-        try { repos = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(repoJson) ?? new Dictionary<string, Dictionary<string, string>>(); }
-        catch { repos = new Dictionary<string, Dictionary<string, string>>(); }
+        //  (로컬 저장소 경로 맵 인자는 2026-10-26 Git, SVN 삭제로 없앴다)
 
         var asm = typeof(TcProbeMain).Assembly;
         Type[] types;
@@ -1234,15 +1186,12 @@ internal static class TcProbeMain
         {
             var ps = m.GetParameters();
             var args = new object[ps.Length];
-            bool okBind = true, tookRepos = false, sawLogin = false;
+            bool okBind = true, sawLogin = false;
             for (int i = 0; i < ps.Length; i++)
             {
                 var pt = ps[i].ParameterType;
                 if (pt == typeof(CancellationToken)) { args[i] = CancellationToken.None; continue; }
                 if (pt == typeof(string) && !sawLogin) { args[i] = loginId; sawLogin = true; continue; }
-                var d = BuildRepoDict(pt, repos);
-                if (d != null) { args[i] = d; tookRepos = true; continue; }
-                if (pt == typeof(string)) { args[i] = repoJson; tookRepos = true; continue; }
                 if (ps[i].HasDefaultValue) { args[i] = ps[i].DefaultValue; continue; }
                 if (!pt.IsValueType) { args[i] = null; continue; }
                 okBind = false; break;
@@ -1287,7 +1236,7 @@ internal static class TcProbeMain
             var meta = new Dictionary<string, object> {
                 ["type"] = t.FullName, ["method"] = m.Name,
                 ["params"] = string.Join(",", ps.Select(p => p.ParameterType.Name)),
-                ["returns"] = m.ReturnType.Name, ["localRepos"] = tookRepos, ["logs"] = Logs.Count };
+                ["returns"] = m.ReturnType.Name, ["logs"] = Logs.Count };
             Console.Out.WriteLine("__PROBE_META__" + JsonSerializer.Serialize(meta));
             foreach (var l in Logs) Console.Error.WriteLine("[어댑터 로그] " + l);
             Console.Out.WriteLine("__PROBE_BEGIN__");
@@ -1338,22 +1287,8 @@ namespace TaskCalendarWidget
         private static int? IN(MySqlDataReader r, string n) { int i = r.GetOrdinal(n); return r.IsDBNull(i) ? (int?)null : Convert.ToInt32(r.GetValue(i)); }
         private static bool B(MySqlDataReader r, string n) { int i = r.GetOrdinal(n); return !r.IsDBNull(i) && Convert.ToInt32(r.GetValue(i)) != 0; }
 
-        public async Task<string> LoadBootSnapshotJsonAsync(string loginId, string localRepoJson, CancellationToken ct)
+        public async Task<string> LoadBootSnapshotJsonAsync(string loginId, CancellationToken ct)
         {
-            var repos = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
-            if (!string.IsNullOrWhiteSpace(localRepoJson))
-            {
-                try { repos = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(localRepoJson)
-                             ?? new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal); }
-                catch { }
-            }
-            string Repo(string uid, string key)
-            {
-                Dictionary<string, string> d;
-                if (repos != null && repos.TryGetValue(uid, out d) && d != null && d.TryGetValue(key, out var v)) return v ?? "";
-                return "";
-            }
-
             await using var conn = new MySqlConnection(BuildConnString());
             await conn.OpenAsync(ct);
 
@@ -1386,13 +1321,13 @@ namespace TaskCalendarWidget
             var prefFmt = new Dictionary<string, object>();
             var font = new Dictionary<string, object>();
 
-            // ── 부팅 조회는 단일 트랜잭션 · 10개 표(§3.5). cal_entry_commit **포함**(G-7 개정 2026-09-01) ──
+            // ── 부팅 조회는 단일 트랜잭션 · 8개 표(§3.5). cal_entry_commit 은 2026-10-26 Git, SVN 삭제(구조 18)로 없다 ──
             await Exec(conn, "START TRANSACTION WITH CONSISTENT SNAPSHOT", ct);
             try
             {
                 // ① cal_category — ORDER BY sort_order(G-5). dbGone 은 LEFT JOIN project 파생(G-6)
                 using (var cmd = new MySqlCommand(
-                    "SELECT c.cat_no, c.uid, c.source, c.name, c.color, c.description, c.uses_repo, " + Iso("c.created_at") + " AS created_at, " +
+                    "SELECT c.cat_no, c.uid, c.source, c.name, c.color, c.description, " + Iso("c.created_at") + " AS created_at, " +
                     "(p.uid IS NULL) AS db_gone FROM cal_category c LEFT JOIN project p ON p.uid = c.project_uid " +
                     "WHERE c.user_id=@u ORDER BY c.sort_order", conn))
                 {
@@ -1407,9 +1342,6 @@ namespace TaskCalendarWidget
                         o["name"] = S(rd, "name");
                         o["color"] = S(rd, "color");
                         o["desc"] = S(rd, "description");                // G-1: description → desc
-                        o["gitRepo"] = Repo(uid, "gitRepo");             // G-6: 로컬 저장소에서 채운다
-                        o["svnRepo"] = Repo(uid, "svnRepo");
-                        o["usesRepo"] = B(rd, "uses_repo");              // G-6: DB 에만 있다(위 둘의 거울). 경로에서 파생하지 않는다
                         o["createdAt"] = S(rd, "created_at");            // G-3
                         if (S(rd, "source") == "db") { o["source"] = "db"; o["dbGone"] = B(rd, "db_gone"); }
                         // ★ 개인 과제에는 source·dbGone 키를 만들지 않는다(G-6)
@@ -1421,7 +1353,7 @@ namespace TaskCalendarWidget
                     "SELECT entry_no, uid, cat_no, DATE_FORMAT(entry_date,'%Y-%m-%d') AS entry_date, " +
                     "DATE_FORMAT(end_date,'%Y-%m-%d') AS end_date, all_day, " +
                     "TIME_FORMAT(start_time,'%H:%i') AS start_time, TIME_FORMAT(end_time,'%H:%i') AS end_time, " +
-                    "title, memo, source, location, remind, recur_freq, recur_interval, recur_until, recur_count, " +
+                    "title, memo, location, remind, recur_freq, recur_interval, recur_until, recur_count, " +
                     Iso("created_at") + " AS created_at, " + Iso("updated_at") + " AS updated_at " +
                     "FROM cal_entry WHERE user_id=@u ORDER BY sort_order, uid", conn))
                 {
@@ -1443,8 +1375,6 @@ namespace TaskCalendarWidget
                         o["location"] = S(rd, "location");
                         o["remind"] = IN(rd, "remind");                                    // G-2b: NULL 유지
                         o["memo"] = S(rd, "memo");
-                        o["source"] = S(rd, "source");
-                        o["commits"] = new List<object>();                                 // G-7(개정): 아래 ③b 에서 채운다
                         o["endDate"] = S(rd, "end_date");                                  // G-2
                         var f = SN(rd, "recur_freq");
                         o["recur"] = f == null ? null : (object)new Dictionary<string, object> {
@@ -1467,22 +1397,6 @@ namespace TaskCalendarWidget
                     {
                         Dictionary<string, object> p;
                         if (entryNoToObj.TryGetValue(I(rd, "entry_no"), out p)) ((List<object>)p["recurExcept"]).Add(S(rd, "d"));
-                    }
-                }
-                // ③b cal_entry_commit — G-7 개정. ORDER BY entry_no, seq(G-5)
-                using (var cmd = new MySqlCommand(
-                    "SELECT entry_no, hash, short_hash, DATE_FORMAT(commit_time,'%H:%i') AS ct, subject, body " +
-                    "FROM cal_entry_commit WHERE user_id=@u ORDER BY entry_no, seq", conn))
-                {
-                    cmd.Parameters.AddWithValue("@u", userId);
-                    using var rd = (MySqlDataReader)await cmd.ExecuteReaderAsync(ct);
-                    while (await rd.ReadAsync(ct))
-                    {
-                        Dictionary<string, object> p;
-                        if (!entryNoToObj.TryGetValue(I(rd, "entry_no"), out p)) continue;
-                        ((List<object>)p["commits"]).Add(new Dictionary<string, object> {
-                            ["hash"] = S(rd, "hash"), ["short"] = S(rd, "short_hash"),
-                            ["time"] = S(rd, "ct"), ["subject"] = S(rd, "subject"), ["body"] = S(rd, "body") });
                     }
                 }
                 // ④ cal_todo
@@ -1556,7 +1470,7 @@ namespace TaskCalendarWidget
                 }
                 // ⑨ cal_user_pref
                 using (var cmd = new MySqlCommand(
-                    "SELECT git_author, svn_author, report_marker, report_marker_custom, report_indent, git_commit_body, " +
+                    "SELECT report_marker, report_marker_custom, report_indent, " +
                     "report_marker_daily, report_marker_custom_daily, report_indent_daily, " +
                     "report_marker_weekly, report_marker_custom_weekly, report_indent_weekly, " +
                     "report_font_family, report_font_size FROM cal_user_pref WHERE user_id=@u", conn))
@@ -1566,9 +1480,8 @@ namespace TaskCalendarWidget
                     if (await rd.ReadAsync(ct))
                     {
                         pref = new Dictionary<string, object> {
-                            ["gitAuthor"] = S(rd, "git_author"), ["svnAuthor"] = S(rd, "svn_author"),
                             ["reportMarker"] = S(rd, "report_marker"), ["reportMarkerCustom"] = S(rd, "report_marker_custom"),
-                            ["reportIndent"] = I(rd, "report_indent"), ["gitCommitBody"] = B(rd, "git_commit_body") };
+                            ["reportIndent"] = I(rd, "report_indent") };
                         prefFmt["daily"] = new Dictionary<string, object> {
                             ["marker"] = S(rd, "report_marker_daily"), ["markerCustom"] = S(rd, "report_marker_custom_daily"),
                             ["indent"] = I(rd, "report_indent_daily") };
@@ -1585,17 +1498,14 @@ namespace TaskCalendarWidget
 
             if (pref == null) throw new Exception("cal_user_pref 행이 없습니다(user_id=" + userId + ")");
 
-            // ── 계약 G-0 — 최상위 14키. 그 이상도 이하도 아니다 ──
+            // ── 계약 G-0 — 최상위 10키. 그 이상도 이하도 아니다 ──
             var outObj = new Dictionary<string, object>();
             outObj["categories"] = cats;
             outObj["entries"] = entries;
-            outObj["gitAuthor"] = pref["gitAuthor"];
-            outObj["svnAuthor"] = pref["svnAuthor"];
             outObj["todos"] = todos;
             outObj["reportMarker"] = pref["reportMarker"];
             outObj["reportMarkerCustom"] = pref["reportMarkerCustom"];
             outObj["reportIndent"] = pref["reportIndent"];
-            outObj["gitCommitBody"] = pref["gitCommitBody"];
             outObj["reportFormatPrefs"] = prefFmt;
             outObj["taskHours"] = taskHours;
             outObj["attendance"] = attendance;
@@ -1685,15 +1595,13 @@ ${files.map((f) => `    <Compile Include=${JSON.stringify(f)} />`).join('\n')}
 
   /* CalendarDb.cs 가 위젯의 다른 파일을 참조할 수 있다 — 후보 조합을 **최소 집합부터** 순서대로 시도한다.
    * ★ 여기에 파일을 더할 때는 WPF·WebView2 에 의존하지 않는 것만 넣어라(프로브는 net9.0 콘솔이다).
-   *   실측 2026-08-27: CalendarDb 의 배선용 진입점이 `RepoPaths`(widget/RepoPaths.cs · G-6 로컬 저장소
-   *   경로 맵의 소유자)를 받게 되면서 최소 집합 빌드가 CS0246 으로 깨졌다. 조합에 더해 회복했다. */
+   *   (2026-08-27 에 더했던 widget/RepoPaths.cs 는 2026-10-26 Git, SVN 삭제로 파일째 없어져 조합에서 뺐다) */
   const base = [join(PROBE_DIR, 'Program.cs'), join(PROBE_DIR, 'DeployConfig.cs'), adapterSrc.path];
-  const REPO_PATHS_CS = join(WIDGET_DIR, 'RepoPaths.cs');
   const USER_SESSION_CS = join(WIDGET_DIR, 'UserSession.cs');
   /*   실측 2026-09-03: C4(타인 일정 열람)에서 CalendarDb 가 ProjectDb.CanViewScheduleAsync 를
    *   부르게 되면서 — 명부와 조회가 **같은 인가 규칙**을 쓰게 하려고 거기 뒀다 — 모든 조합이
    *   CS0103 으로 깨져 이 검사가 통째로 '판정 없음'(exit 2)이 됐다. 조합을 더해 회복했다.
-   *   ProjectDb 는 RepoPaths·UserSession 을 함께 요구하고, UserSession 은 Dpapi 를 요구한다
+   *   ProjectDb 는 UserSession 을 함께 요구하고, UserSession 은 Dpapi 를 요구한다
    *   (그 클래스는 NetcusService.cs 안에 있어 링크하면 WebView2 가 딸려온다 → Program.cs 의 대역). */
   const PROJECT_DB_CS = join(WIDGET_DIR, 'ProjectDb.cs');
   /*   실측 2026-10-06: 서버 연결 장애 대응(0847975)에서 CalendarDb, ProjectDb 가 DbErrors(원인 분류)와
@@ -1704,10 +1612,10 @@ ${files.map((f) => `    <Compile Include=${JSON.stringify(f)} />`).join('\n')}
   /*   2026-10-21 버전 관문(VERSION-GATE §2.1): CalendarDb, ProjectDb 가 연결을 DbGate.OpenAsync 로 열고
    *   DbErrors 가 DbGateException 을 분류한다. DbGate.cs 를 더한 조합을 마지막에 둔다. */
   const DB_GATE_CS = join(WIDGET_DIR, 'DbGate.cs');
-  const extraCandidates = [[], [REPO_PATHS_CS], [USER_SESSION_CS], [USER_SESSION_CS, REPO_PATHS_CS],
-                           [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS],
-                           [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS, DB_ERRORS_CS, DB_FAULT_CS],
-                           [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS, DB_ERRORS_CS, DB_FAULT_CS, DB_GATE_CS]];
+  const extraCandidates = [[], [USER_SESSION_CS],
+                           [PROJECT_DB_CS, USER_SESSION_CS],
+                           [PROJECT_DB_CS, USER_SESSION_CS, DB_ERRORS_CS, DB_FAULT_CS],
+                           [PROJECT_DB_CS, USER_SESSION_CS, DB_ERRORS_CS, DB_FAULT_CS, DB_GATE_CS]];
   let lastErr = '';
   for (const ex of extraCandidates) {
     const files = base.concat(ex.filter((f) => existsSync(f)));
@@ -1727,9 +1635,9 @@ ${files.map((f) => `    <Compile Include=${JSON.stringify(f)} />`).join('\n')}
   envFail('어댑터 프로브 빌드 실패 — CalendarDb.cs 를 컴파일하지 못했습니다.', '\n' + lastErr);
 }
 
-/** 프로브 실행 → 어댑터가 돌려준 14키 객체. 실패면 {error}. */
-function runProbe(loginId, localReposPath, { allowFail = false } = {}) {
-  const r = spawnSync(probeExe, [loginId, localReposPath || ''],
+/** 프로브 실행 → 어댑터가 돌려준 10키 객체. 실패면 {error}. */
+function runProbe(loginId, { allowFail = false } = {}) {
+  const r = spawnSync(probeExe, [loginId],
     { windowsHide: true, timeout: 120000, maxBuffer: 128 * 1024 * 1024 });
   const out = (r.stdout || Buffer.alloc(0)).toString('utf8');
   const err = (r.stderr || Buffer.alloc(0)).toString('utf8');
@@ -1973,60 +1881,24 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
 /* ── 계약상 차이표 — expected 를 DB 쪽 계약에 맞춰 정규화한다 ────────────────
  * 이 표에 **없는** 차이는 전부 위반이다. 표에 있는 것은 요약에 반드시 찍는다
  * (숨기면 '왜 같다고 하는지' 를 나중에 아무도 설명할 수 없다). */
-function normalizeExpected(exp, { localReposAccepted }) {
+function normalizeExpected(exp) {
   const e = clone(exp);
   const applied = [];
   let n = 0;
   for (const en of e.entries) { if (en.hours !== null) n++; en.hours = null; }
   if (n) applied.push(`G-6 entry.hours → null (컬럼 폐지) · ${n}건`);
-  //  ★ G-7 개정(2026-09-01) — 커밋을 기준에서 지우던 정규화를 **없앴다.**
-  //    예전에는 여기서 en.commits = [] 로 깎아 DB 쪽의 빈 배열과 억지로 맞췄다. 그 줄이
-  //    '계약상 차이' 로 정직하게 찍히긴 했지만, 실제로는 **DB 에서 커밋을 못 읽는 결함**을
-  //    계약으로 덮고 있었다. 이제 양쪽이 그냥 같아야 한다 — 그게 훨씬 강한 명제다.
-  //    (지우는 대신 이 주석을 남긴다. 다시 깎고 싶어지면 그것이 결함의 재발이다.)
   //  ★ lsMigrated 를 true 로 맞추던 정규화를 없앴다(2026-09-01) — 그 키 자체가 사라졌다.
-  //    그 줄이 있던 이유는 자동이관을 봉인하려고 어댑터가 하드코딩 true 를 내보냈기 때문이다.
-
-  /* ★ category.usesRepo — 계약 G-0 이 명시한 **유일한 의도된 예외**(2026-08-27, schema_version 5).
-   *   fromXML() 은 이 키를 만들지 않는다. XML 에는 경로 **문자열**만 있고 '쓴다/안 쓴다'는 없다(§4) —
-   *   경로는 그 파일을 만든 PC 의 사실이지 과제의 사실이 아니기 때문이다.
-   *   그래서 여기서 기준 쪽에 얹는다. **덮지 않고 계산해서 맞춘다** — hours=null·
-   *   hours=null 과 같은 부류다(G-6 '없는 것 채우기').
-   *   ★ 이 정규화를 gitRepo/svnRepo **정규화보다 먼저** 한다. 아래에서 두 값을 '' 로 지우고 나면
-   *     근거가 사라져 전부 false 가 되고, 그러면 이 검사는 조용히 무력해진다.
-   *   ※ 규칙은 loadFixtureIntoDb 가 DB 에 넣을 때 쓴 것과 **같은 함수**(usesRepoOf)다 —
-   *     그래서 이 대조가 증명하는 것은 '어댑터가 DB 의 비트를 앱까지 나르는가' 이지
-   *     '이관 규칙이 옳은가' 가 아니다. 그 사실을 요약에 남긴다. */
-  {
-    let t = 0;
-    for (const c of e.categories) { c.usesRepo = usesRepoOf(c); if (c.usesRepo) t++; }
-    const f = e.categories.length - t;
-    applied.push(`G-0/G-6 category.usesRepo 신설 키를 기준에 얹었다 — true ${t}건 · false ${f}건 ` +
-      `(XML 의 gitRepo/svnRepo 유무로 계산. 적재도 같은 규칙이라 여기서 증명되는 것은 ` +
-      `**어댑터가 DB 의 그 비트를 나르는가** 이지 이관 규칙의 옳음이 아니다)`);
-    // ★ 픽스처 적격성 — 전부 true 이거나 전부 false 면 'DB 를 안 읽고 상수를 넣은 어댑터'가 통과한다.
-    if (t === 0 || f === 0) {
-      note(`픽스처 조건 미달 — category.usesRepo 가 전부 ${t === 0 ? 'false' : 'true'} 다(${e.categories.length}건). ` +
-        `이 픽스처로는 '어댑터가 uses_repo 를 읽지 않고 상수를 넣는' 결함을 검출할 수 없다`);
-    }
-  }
-
-  if (!localReposAccepted) {
-    n = 0;
-    for (const c of e.categories) { if (c.gitRepo || c.svnRepo) n++; c.gitRepo = ''; c.svnRepo = ''; }
-    applied.push(`G-6 category.gitRepo/svnRepo → '' · ${n}건 ` +
-      `(어댑터에 로컬 저장소 주입 표면이 없다 — 빈 문자열로만 대조했다)`);
-  } else {
-    applied.push('G-6 category.gitRepo/svnRepo — 어댑터가 로컬 저장소 JSON 을 받았다. 값까지 대조한다');
-  }
+  //  ★ 2026-10-26 Git, SVN 삭제(구조 18): category.usesRepo 를 얹던 정규화와 gitRepo/svnRepo 를 '' 로 지우던
+  //    정규화를 없앴다. 기준(fromXML)도 어댑터도 그 키를 만들지 않는다(legacyDropped 와 contractChecks 의 G-18 이 본다).
   return { exp: e, applied };
 }
 
 /* ────────────────────────────── 10. 계약별 개별 검사 ────────────────────────────── */
 
-//  (이름은 옛 15키 그대로 둔다. 2026-09-01 lsMigrated, 2026-10-21 rooms 가 빠져 지금은 13키다)
-const TOP15 = ['categories', 'entries', 'todos', 'taskHours', 'attendance', 'gitAuthor', 'svnAuthor',
-  'reportMarker', 'reportMarkerCustom', 'reportIndent', 'gitCommitBody', 'reportFormatPrefs', 'reportFont'];
+//  (이름은 옛 15키 그대로 둔다. 2026-09-01 lsMigrated, 2026-10-21 rooms, 2026-10-26 gitAuthor, svnAuthor, gitCommitBody 가
+//   빠져 지금은 10키다)
+const TOP15 = ['categories', 'entries', 'todos', 'taskHours', 'attendance',
+  'reportMarker', 'reportMarkerCustom', 'reportIndent', 'reportFormatPrefs', 'reportFont'];
 const ISO_Z = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 // G-1d — state 에 흘리면 안 되는 이름(자식 표의 부모번호·소유자축·정렬 컬럼·DB 컬럼명 그대로)
 const FORBIDDEN_KEYS = new Set(['user_id', 'userId', 'cat_no', 'catNo', 'entry_no', 'entryNo', 'todo_no', 'todoNo',
@@ -2042,7 +1914,7 @@ function walkKeys(v, path, fn) {
 
 /** act 가 계약 G 를 지키는지 — 깊은 비교와 **별개로** 본다(비교가 통과해도 여기서 걸릴 수 있다). */
 function contractChecks(expNorm, act, expRaw, dbFacts) {
-  // ── G-0 최상위 14키 ─────────────────────────────────────────────────
+  // ── G-0 최상위 10키 ─────────────────────────────────────────────────
   const ka = Object.keys(act);
   const missing = TOP15.filter((k) => !Object.prototype.hasOwnProperty.call(act, k));
   const extra = ka.filter((k) => !TOP15.includes(k));
@@ -2114,13 +1986,9 @@ function contractChecks(expNorm, act, expRaw, dbFacts) {
   const g4 = [];
   for (const e of act.entries || []) if (typeof e.allDay !== 'boolean') g4.push(`entries[${e.id}].allDay=${TN(e.allDay)} ${short(e.allDay)}`);
   for (const t of act.todos || []) if (typeof t.done !== 'boolean') g4.push(`todos[${t.id}].done=${TN(t.done)} ${short(t.done)}`);
-  if (typeof act.gitCommitBody !== 'boolean') g4.push(`gitCommitBody=${TN(act.gitCommitBody)} ${short(act.gitCommitBody)}`);
   for (const c of act.categories || []) if (Object.prototype.hasOwnProperty.call(c, 'dbGone') && typeof c.dbGone !== 'boolean') g4.push(`categories[${c.id}].dbGone=${TN(c.dbGone)}`);
-  // usesRepo 도 TINYINT(1) → boolean 이다(uses_repo. G-6). 키 부재는 아래 G-6 이 따로 본다 —
-  // 여기서 함께 울리면 '자료형이 틀렸다'와 '아예 안 실었다'가 한 줄로 뭉개진다.
-  for (const c of act.categories || []) if (Object.prototype.hasOwnProperty.call(c, 'usesRepo') && typeof c.usesRepo !== 'boolean') g4.push(`categories[${c.id}].usesRepo=${TN(c.usesRepo)} ${short(c.usesRepo)}`);
   if (g4.length) violate('G-4', `0/1 을 그대로 넘겼다(화면은 같지만 내보내기에서만 값이 달라진다): ${g4.slice(0, 6).join(', ')}`);
-  else ok('G-4 allDay·done·gitCommitBody·dbGone·usesRepo 전부 boolean');
+  else ok('G-4 allDay·done·dbGone 전부 boolean');
 
   // ── G-5 순서 ────────────────────────────────────────────────────────
   // ★ 예전엔 순서 검사가 여기 두 줄뿐이었다 — 'entry_date 가 단조인가' 와 'todo_no 순서와 다른가'.
@@ -2189,36 +2057,14 @@ function contractChecks(expNorm, act, expRaw, dbFacts) {
   if (srcBad.length) violate('G-6', `공식/개인 과제의 키 유무 계약을 어겼다: ${srcBad.slice(0, 5).join(' · ')}`);
   else ok('G-6 source·dbGone 은 공식 과제(db)에만 — 개인 과제에는 키 자체가 없다');
 
-  // usesRepo 는 반대다 — **모든 과제에 항상** 있어야 한다(source·dbGone 과 판정이 다르다).
-  //   저 둘은 '공식 과제인가' 라는 분류라 부재가 곧 'local' 이라는 뜻이지만, usesRepo 는
-  //   '경로 없음 안내를 띄울까' 의 조건이고 undefined 는 false 와 같은 자리에 떨어진다 —
-  //   즉 키를 빼먹으면 §4 의 안내 분기가 **오류 없이 통째로 사라진다.**
-  const urMissing = (act.categories || []).filter((c) => !Object.prototype.hasOwnProperty.call(c, 'usesRepo'));
-  if (urMissing.length) {
-    violate('G-6', `category.usesRepo 키가 없다 — ${urMissing.length}건(예: ${short(urMissing[0].id)}). ` +
-      "undefined 는 false 와 같게 동작해 '이 PC 에는 경로가 설정되지 않았습니다' 안내가 오류 없이 사라진다");
-  } else if (act.categories && act.categories.length) {
-    const t = act.categories.filter((c) => c.usesRepo === true).length;
-    ok(`G-6 category.usesRepo 전 과제에 존재 (${act.categories.length}건 중 true ${t}건) — 경로 유무와 별개의 비트다`);
-  }
-
-  // ── G-7(개정) 커밋은 부팅 조회가 **실어 와야** 한다 ──────────────────
-  //   2026-09-01 이전에는 정반대였다("섞이면 위반"). 그 계약이 배선을 막고 있었고,
-   //  그 결과 DB 모드에서 커밋 기반 보고서가 통째로 비었다. 방향을 뒤집는다.
-  const cmNotArr = (act.entries || []).filter((e) => !Array.isArray(e.commits));
-  const cmLoaded = (act.entries || []).reduce((a, e) => a + (Array.isArray(e.commits) ? e.commits.length : 0), 0);
-  if (cmNotArr.length) {
-    violate('G-7', `entry.commits 가 배열이 아니다 — ${cmNotArr.length}건, 예: ${cmNotArr[0].id} → ${TN(cmNotArr[0].commits)} (undefined 면 커밋 편집 경로가 TypeError 로 죽는다)`);
-  } else if (dbFacts && dbFacts.commitRows > 0) {
-    if (cmLoaded !== dbFacts.commitRows) {
-      violate('G-7', `부팅 조회가 커밋을 다 싣지 않았다 — DB ${dbFacts.commitRows}행인데 state 에는 ${cmLoaded}개. ` +
-        '0 이면 지연 조회 시절로 되돌아간 것이다(그때 보고서가 통째로 비었다).');
-    } else {
-      ok(`G-7(개정) 커밋 ${cmLoaded}개를 부팅에서 실어 왔다 · DB 행수와 일치(검출 가능한 상태에서 통과)`);
-    }
-  } else {
-    note('G-7 검출력 없음 — 이 픽스처의 DB 에 커밋이 0행이라 "커밋을 실어 오는지" 를 이 실행으로는 증명할 수 없다');
-  }
+  // ── G-18 Git, SVN 삭제(2026-10-26, 구조 18): 없앤 키가 되살아나지 않는다 ──────────────────
+  //   예전 G-7 은 '커밋을 부팅에서 실어 와야 한다' 였다. 표가 없어졌으므로 방향이 바뀌었다: 일정에 commits, source,
+  //   과제에 gitRepo, svnRepo, usesRepo 가 **없어야** 한다(최상위 gitAuthor, svnAuthor, gitCommitBody 는 G-0 이 본다).
+  const g18 = [];
+  for (const c of act.categories || []) for (const k of ['gitRepo', 'svnRepo', 'usesRepo']) if (Object.prototype.hasOwnProperty.call(c, k)) g18.push(`categories[${c.id}].${k}`);
+  for (const e of act.entries || []) for (const k of ['source', 'commits']) if (Object.prototype.hasOwnProperty.call(e, k)) g18.push(`entries[${e.id}].${k}`);
+  if (g18.length) violate('G-18', `없앤 키가 state 에 있다(2026-10-26 Git, SVN 삭제): ${g18.slice(0, 6).join(', ')}`);
+  else ok('G-18 과제와 일정에 없앤 Git, SVN 키가 없다');
 }
 
 /* ── 깊은 비교 실행 ──────────────────────────────────────────────────── */
@@ -2285,9 +2131,9 @@ function reportDiffs(diffs, label) { return emitDiffs(diffs, label, { print: tru
 /* ────────────────────────────── 11. §3.5/§3.6 증거 검사 ──────────────────────────────
  * '어댑터가 정말 한 연결에서, 대상 표 전부를, 스냅샷 트랜잭션으로 읽었나' 를
  * performance_schema 의 문장 다이제스트로 **관측**한다(코드를 읽어 짐작하지 않는다). */
-//  부팅 조회가 읽어야 하는 표. cal_entry_commit 은 2026-09-01 G-7 개정으로 **들어왔다**
-//  (그전에는 이 목록 밖이었고, 오히려 나타나면 위반이었다).
-const NINE = ['cal_category', 'cal_entry', 'cal_entry_except', 'cal_entry_commit', 'cal_todo',
+//  부팅 조회가 읽어야 하는 표. cal_entry_commit 은 2026-09-01 G-7 개정으로 들어왔다가 2026-10-26 Git, SVN 삭제(구조 18)로
+//  표째 없어졌다(이름은 옛 NINE 그대로 둔다. 지금은 여덟이다).
+const NINE = ['cal_category', 'cal_entry', 'cal_entry_except', 'cal_todo',
   'cal_todo_day_note', 'cal_task_hours', 'cal_attendance', 'cal_user_pref'];
 
 function psAvailable() {
@@ -2339,8 +2185,8 @@ function checkBootQuery(connDelta) {
   const missed = NINE.filter((t) => !new RegExp(`\\b${t}\\b`, 'i').test(all));
   if (missed.length) violate('§3.5', `부팅 조회가 ${NINE.length}개 표를 다 읽지 않았다 — 빠진 표: ${missed.join(', ')}`);
   else ok(`§3.5 대상 ${NINE.length}개 표 전부 조회됨`);
-  if (!/\bcal_entry_commit\b/i.test(all)) violate('§2/G-7', '부팅 조회가 cal_entry_commit 을 읽지 않았다 — 커밋이 빈 배열로 남고 검색·통계·보고서가 전부 조용히 틀린다(G-7 개정 2026-09-01)');
-  else ok('§2/G-7 cal_entry_commit 이 부팅 조회에 있다');
+  if (/\bcal_entry_commit\b/i.test(all)) violate('§2/G-18', '부팅 조회가 없앤 표 cal_entry_commit 을 읽었다(2026-10-26 Git, SVN 삭제, 구조 18 에는 그 표가 없다)');
+  else ok('§2/G-18 부팅 조회가 없앤 표 cal_entry_commit 을 읽지 않는다');
   if (!has(/\bCOMMIT\b/i) && !has(/\bROLLBACK\b/i)) violate('§3.5', '부팅 조회 트랜잭션을 닫는 COMMIT/ROLLBACK 이 관측되지 않았다 — 열린 read view 가 undo purge 를 붙잡는다');
 
   if (connDelta >= 0) {
@@ -2434,12 +2280,11 @@ function mutationSuite(expNorm, act, expRaw, dbFacts) {
     a.lsMigrated = true; return 'lsMigrated 키를 되살림';
   }, () => true);
 
-  add('M9', 'G-7(개정) — 부팅 조회가 커밋을 빠뜨림', 'G-7', /커밋을 다 싣지 않았다/, (a) => {
-    //  지연 조회 시절로 되돌아간 상태를 그대로 만든다 — 그때 보고서가 통째로 비었다.
-    let n = 0;
-    for (const e of a.entries) { n += (e.commits || []).length; e.commits = []; }
-    return `commits 를 전부 [] 로 비움(${n}개 삭제)`;
-  }, (a) => a.entries.some((e) => (e.commits || []).length > 0));
+  //  M9 는 방향이 바뀌었다. 예전에는 '부팅 조회가 커밋을 빠뜨림' 이었다. 2026-10-26 Git, SVN 삭제로 표가 없어졌으므로
+  //  이제 시험할 것은 **없앤 키가 되살아나면 걸리는가** 다.
+  add('M9', 'G-18: 없앤 entry.commits 키가 되살아남', 'G-18', /없앤 키가 state 에 있다/, (a) => {
+    a.entries[0].commits = []; return `entries[${a.entries[0].id}].commits = [] 되살림`;
+  }, (a) => a.entries.length > 0);
 
   add('M10', 'G-1c — categoryId 에 cat_no(숫자)를 흘림', 'G-1c', /categoryId 가 숫자다/, (a) => {
     const e = a.entries.find((x) => x.categoryId != null); e.categoryId = 7; return `entries[${e.id}].categoryId = 7`;
@@ -2477,26 +2322,10 @@ function mutationSuite(expNorm, act, expRaw, dbFacts) {
     const t = a.todos.pop(); return `todos 마지막(${t.id}) 삭제`;
   }, (a) => (a.todos || []).length > 0);
 
-  /* ── usesRepo(§4 · schema_version 5) 전용 변이 ───────────────────────────
-   * 겨냥이 둘이다. 둘 다 **DB 는 멀쩡한데 화면만 조용히 틀리는** 형태라 눈으로는 안 보인다.
-   *   M18 — 어댑터가 uses_repo 를 안 읽고 값을 뒤집는다(또는 상수를 넣는다) →
-   *          '저장소를 쓰는 과제'인데 「연동」 섹션이 그대로 숨겨진다. §4 가 없애려던 그 상태다.
-   *   M19 — 키를 아예 안 만든다(undefined) → JS 에서 undefined 는 false 와 같은 자리에 떨어져
-   *          '경로 없음 안내' 분기가 통째로 사라진다. **오류는 하나도 안 난다.** */
-  add('M18', 'G-6 — usesRepo 값을 뒤집음(DB 의 비트를 안 나름)', 'DIFF', /값이 다르다/, (a) => {
-    const c = a.categories.find((x) => typeof x.usesRepo === 'boolean');
-    c.usesRepo = !c.usesRepo; return `categories[${c.id}].usesRepo → ${c.usesRepo}`;
-  }, (a) => (a.categories || []).some((x) => typeof x.usesRepo === 'boolean'));
-
-  add('M19', '키 유무 — 과제에서 usesRepo 키를 통째로 뺌(undefined)', 'DIFF', /키가 없다/, (a) => {
-    const c = a.categories.find((x) => Object.prototype.hasOwnProperty.call(x, 'usesRepo'));
-    delete c.usesRepo; return `categories[${c.id}].usesRepo 키 삭제`;
-  }, (a) => (a.categories || []).some((x) => Object.prototype.hasOwnProperty.call(x, 'usesRepo')));
-
-  add('M20', 'G-4 — usesRepo 를 boolean 이 아니라 0/1 로', 'DIFF', /자료형이 다르다/, (a) => {
-    const c = a.categories.find((x) => typeof x.usesRepo === 'boolean');
-    c.usesRepo = c.usesRepo ? 1 : 0; return `categories[${c.id}].usesRepo = ${c.usesRepo}`;
-  }, (a) => (a.categories || []).some((x) => typeof x.usesRepo === 'boolean'));
+  //  M18~M20(usesRepo 값, 키, 자료형)은 2026-10-26 Git, SVN 삭제로 대상이 없어졌다. 대신 M18 은 되살아나면 걸리는지 본다.
+  add('M18', 'G-18: 없앤 category.usesRepo 키가 되살아남', 'G-18', /없앤 키가 state 에 있다/, (a) => {
+    const c = a.categories[0]; c.usesRepo = false; return `categories[${c.id}].usesRepo = false 되살림`;
+  }, (a) => (a.categories || []).length > 0);
 
   /* ── 순서 전용 변이 ─────────────────────────────────────────────────────
    * 결함 A 가 있던 자리를 정면으로 겨눈다. 셋 다 **항목은 하나도 잃지 않고 자리만** 바꾼다 —
@@ -2769,7 +2598,8 @@ async function main() {
     const exp = await oracle.run(f.xml);
     if (!exp || typeof exp !== 'object') envFail(`기준 실행이 객체를 돌려주지 않았다(${f.name})`, short(exp));
     const kmiss = TOP15.filter((k) => !Object.prototype.hasOwnProperty.call(exp, k));
-    if (kmiss.length) envFail(`기준(fromXML) 결과에 15키가 없다 — 오라클이 이상하다: ${kmiss.join(', ')}`);
+    if (kmiss.length) envFail(`기준(fromXML) 결과에 ${TOP15.length}키가 없다 — 오라클이 이상하다: ${kmiss.join(', ')}`);
+    legacyDropped(exp, f.name);   // 옛 Git, SVN 흔적이 기준에서 버려졌나(2026-10-26 구조 18)
     log(`기준 산출 — 과제 ${exp.categories.length} · 일정 ${exp.entries.length} · 할일 ${exp.todos.length} · ` +
       `공수 ${Object.keys(exp.taskHours).length}일 · 근태 ${Object.keys(exp.attendance).length}일`);
 
@@ -2778,7 +2608,6 @@ async function main() {
 
     // DB 사실 — 검출 가능성의 근거
     const dbf = batch([
-      { key: 'cmt', sql: `SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${userId}` },
       { key: 'tno', sql: `SELECT uid FROM cal_todo WHERE user_id=${userId} ORDER BY todo_no` },
       { key: 'tdue', sql: `SELECT uid FROM cal_todo WHERE user_id=${userId} ORDER BY due` },
       { key: 'eno', sql: `SELECT uid FROM cal_entry WHERE user_id=${userId} ORDER BY entry_no` },
@@ -2786,7 +2615,6 @@ async function main() {
     const todoNoOrder = (dbf.get('tno') || []).map((x) => x[0]);
     const todoDueOrder = (dbf.get('tdue') || []).map((x) => x[0]);
     const dbFacts = {
-      commitRows: Number((dbf.get('cmt')[0] || ['0'])[0]),
       todoNoOrder,
       entryNoOrder: (dbf.get('eno') || []).map((x) => x[0]),
       todoOrderDistinguishable: todoNoOrder.join('|') !== todoDueOrder.join('|'),
@@ -2796,16 +2624,13 @@ async function main() {
     }
 
     // 어댑터 실행
-    let act, localReposAccepted = false;
+    let act;
     if (useAdapter) {
-      const reposPath = join(PROBE_DIR, `local-repos-${f.name}.json`);
-      writeFileSync(reposPath, JSON.stringify(maps.localRepos), 'utf8');
       let connBefore = -1;
       if (psOk) { psReset(); connBefore = connCount(); }
-      const pr = runProbe(OPT.loginId, reposPath);
+      const pr = runProbe(OPT.loginId);
       act = pr.value;
-      localReposAccepted = !!(probeMeta && probeMeta.localRepos);
-      if (probeMeta) log(`어댑터 호출 — ${probeMeta.type}.${probeMeta.method}(${probeMeta.params}) · 로컬저장소 주입=${localReposAccepted ? '받음' : '안 받음'}`);
+      if (probeMeta) log(`어댑터 호출 — ${probeMeta.type}.${probeMeta.method}(${probeMeta.params})`);
       // 계측은 프로브 **계정** 기준이라 우리 측정용 접속(관리자 계정)은 섞이지 않는다.
       if (psOk) checkBootQuery(connBefore >= 0 ? connCount() - connBefore : -1);
     } else {
@@ -2813,7 +2638,7 @@ async function main() {
       act = null;
     }
 
-    const { exp: expNorm, applied } = normalizeExpected(exp, { localReposAccepted });
+    const { exp: expNorm, applied } = normalizeExpected(exp);
     if (!RUN.declared.length) RUN.declared = applied;
     if (!useAdapter) act = clone(expNorm);
 
@@ -2823,7 +2648,7 @@ async function main() {
     RUN.fixtures.push({
       name: f.name,
       summary: `과제 ${exp.categories.length} · 일정 ${exp.entries.length} · 할일 ${exp.todos.length} · ` +
-        `커밋 ${dbFacts.commitRows}행(부팅에서 적재 확인) · 근태 ${Object.keys(exp.attendance).length}일`,
+        `근태 ${Object.keys(exp.attendance).length}일`,
     });
 
     if (OPT.selftest) RUN.mutations.push({ fixture: f.name, ...mutationSuite(expNorm, act, exp, dbFacts) });

@@ -207,7 +207,7 @@ namespace TaskCalendarWidget
 }
 `;
 
-const WIDGET = ['ScheduleImageDb.cs', 'ProjectCalendarDb.cs', 'CalendarWriteDb.cs', 'CalendarDb.cs', 'ProjectDb.cs', 'RepoPaths.cs', 'UserSession.cs', 'DbErrors.cs', 'DbFault.cs', 'DbGate.cs'];
+const WIDGET = ['ScheduleImageDb.cs', 'ProjectCalendarDb.cs', 'CalendarWriteDb.cs', 'CalendarDb.cs', 'ProjectDb.cs', 'UserSession.cs', 'DbErrors.cs', 'DbFault.cs', 'DbGate.cs'];
 const PROJ = (root) => `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType><TargetFramework>net9.0-windows</TargetFramework><UseWPF>true</UseWPF>
@@ -286,13 +286,14 @@ const count = (pid) => num(`SELECT COUNT(*) FROM project_schedule_image WHERE pr
 const countU = (pid, uid) => num(`SELECT COUNT(*) FROM project_schedule_image WHERE project_id=${pid} AND user_id=${uid}`);
 
 async function main() {
-  //  전제: 시험 DB 가 있고 구조 17, 그림 표, 개발 시작일 칸
+  //  전제: 시험 DB 가 있고 구조 번호가 앱(DbGate.AppStructureVersion)과 같으며, 그림 표와 개발 시작일 칸이 있다(17 에서 생겼다)
   let v;
   try { v = one("SELECT v FROM cal_schema_meta WHERE k='db_structure_version'"); } catch (e) { console.error('[중단] 시험 DB 에 붙지 못했다: ' + e.message); process.exit(2); }
   const nt = num(`SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='${OPT.db}' AND TABLE_NAME='project_schedule_image'`);
   const nc = num(`SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='${OPT.db}' AND TABLE_NAME='project' AND COLUMN_NAME='dev_start_date'`);
   const upd = one("SELECT v FROM cal_schema_meta WHERE k='db_updating'");
-  if (v !== '17' || nt !== 1 || nc !== 1 || upd !== '0') { console.error(`[중단] ${OPT.db} 가 구조 17(그림 표, 개발 시작일, 열림)이 아니다: v=${v} 표=${nt} 칸=${nc} db_updating=${upd}`); process.exit(2); }
+  const appv = /public const int AppStructureVersion = (\d+);/.exec(readFileSync(join(ROOT, 'widget', 'DbGate.cs'), 'utf8'))[1];
+  if (v !== appv || nt !== 1 || nc !== 1 || upd !== '0') { console.error(`[중단] ${OPT.db} 가 구조 ${appv}(앱과 같은 번호, 그림 표, 개발 시작일, 열림)이 아니다: v=${v} 표=${nt} 칸=${nc} db_updating=${upd}`); process.exit(2); }
   //  사람별 그림(2026-10-23) 정의인지: 주인 열 user_id 가 있고 옛 등록자 열 uploaded_by 가 없다. 옛 정의면 표를 새 정의로 다시 만든 뒤 돌린다.
   const own = sql(`SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='${OPT.db}' AND TABLE_NAME='project_schedule_image' AND COLUMN_NAME IN ('user_id','uploaded_by')`).map((x) => x[0]);
   if (own.length !== 1 || own[0] !== 'user_id') { console.error(`[중단] ${OPT.db}.project_schedule_image 가 사람별 정의(user_id 주인)가 아니다: ${own.join(',') || '없음'}. 정본 schema-calendar.sql 16 의 정의로 다시 만든다.`); process.exit(2); }

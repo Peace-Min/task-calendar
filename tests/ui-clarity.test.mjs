@@ -290,7 +290,7 @@ if (!JSDOM) {
     m.ev("try{ localStorage.setItem('tc_netcusMode', 'dry'); }catch(_){}");
     const today = seed(m);
     await tick();
-    m.ev("openReport(); ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit'].forEach(function(s){ var e=$(s); if(e) e.checked = true; }); buildReport(); updateRptSendVis();");
+    m.ev("openReport(); ['#rptSrcEvent','#rptSrcTodo'].forEach(function(s){ var e=$(s); if(e) e.checked = true; }); buildReport(); updateRptSendVis();");
     assert.strictEqual(m.ev("$('#btnRptSend').dataset.mode"), 'daily', '보고서가 일간으로 열리지 않았다');
     const before = submits(m).length;
     m.doc.getElementById('btnRptSend').click();

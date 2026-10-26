@@ -12,9 +12,9 @@
  *    · rev 는 저장마다 정확히 1 증가하는가(§3.1)
  *    · 낡은 토큰으로 저장하면 거부되고 **아무것도 바뀌지 않는가**(§3.3 — 부분 적용 금지)
  *    · 자식(예외일·날짜메모)이 부모와 함께 정리되는가(§3.4)
- *    · 커밋(cal_entry_commit)이 **왕복에서 보존되는가** — G-7 개정(2026-09-01) 전에는
- *      정반대 계약이었다("건드리지 않는가"). 부팅이 commits 를 [] 로 두던 시절의 방어였고,
- *      그 방어 때문에 커밋 편집·삭제가 DB 에 영영 반영되지 않았다. 이제 순서까지 대조한다
+ *    · 옛 웹이 보내는 Git, SVN 키(entry.commits, entry.source, category.gitRepo/svnRepo/usesRepo,
+ *      gitAuthor, svnAuthor, gitCommitBody)를 저장이 **읽지 않고 버리는가**(2026-10-26 Git, SVN 삭제, 구조 18).
+ *      홀수 라운드는 그 키를 섞어 보내고, 다시 읽은 state 에 그 키가 없어야 왕복이 같다고 본다
  *
  *  【그리고 진짜로 겹치는 저장을 친다 — op=parallel(2026-09-07 추가)】
  *    아래 [동시 편집](op=concurrent)은 **순차**다: A 가 끝난 뒤 B 가 같은 낡은 스냅샷으로 저장한다.
@@ -128,7 +128,7 @@ class R {
     var logs = new List<string>();
     Action<string> log = m => logs.Add(m);
 
-    var snap = await new CalendarDb(log).LoadSnapshotAsync(login, null);
+    var snap = await new CalendarDb(log).LoadSnapshotAsync(login);
     if (snap == null) { Console.Out.Write(JsonSerializer.Serialize(new { ok=false, err="snapshot null", logs })); return 0; }
 
     if (op == "read") {
@@ -269,7 +269,6 @@ const PROJ = root => `<Project Sdk="Microsoft.NET.Sdk">
          **한 벌**로 두려고 거기 뒀다). 그래서 이 러너도 그 사슬을 함께 링크해야 한다.
          빠뜨리면 CS0103 으로 빌드가 죽는데, 빌드 로그가 길어 통과로 오인하기 쉽다 — 실제로 그랬다. -->
     <Compile Include="${root}/widget/ProjectDb.cs" />
-    <Compile Include="${root}/widget/RepoPaths.cs" />
     <Compile Include="${root}/widget/UserSession.cs" />
     <Compile Include="${root}/widget/DeployConfig.cs" /> <Compile Include="${root}/widget/DbErrors.cs" /> <Compile Include="${root}/widget/DbFault.cs" /> <Compile Include="${root}/widget/DbGate.cs" />
   </ItemGroup>
@@ -318,7 +317,7 @@ function assertTestUser(u, what) {
 }
 function wipe(u) {
   assertTestUser(u, '정리(wipe)');
-  for (const t of ['cal_entry_commit','cal_entry_except','cal_todo_day_note','cal_task_hours',
+  for (const t of ['cal_entry_except','cal_todo_day_note','cal_task_hours',
                    'cal_attendance','cal_entry','cal_todo','cal_category','cal_user_pref'])
     sql(`DELETE FROM ${t} WHERE user_id=${u}`, { readOnly: false, what: `정리(${t})` });
 }
@@ -331,27 +330,17 @@ function dropUser(u) {
 
 /* ── 무작위 state 생성 ─────────────────────────────────────────────────── */
 const NAMES = ['표적기(ADD)', '울산급 Batch-IV', '휴가', '기타', '한글 과제 名'];
-//  git 일정과 그 커밋. 커밋은 **순서가 곧 표시 순서**(seq)라 왕복에서 자리까지 봐야 한다.
-//  시각 없는 커밋('' → TIME NULL)과 여러 줄 본문을 일부러 섞는다 — 둘 다 실제로 나온다.
-function gitBits(round, i) {
-  if (rnd() < 0.55) return { source: '', commits: [] };
-  const n = rint(1, 4);
-  const commits = [];
-  for (let k = 0; k < n; k++) {
-    const h = String(round).padStart(2, '0') + String(i) + String(k);
-    //  ★ 해시 없는 커밋을 일부러 섞는다 — 손으로 적어 넣은 작업일지 줄이 그렇다.
-    //    실 data.xml 3종에 실제로 있었고(9K 5건 중 3건 · demobak 74건 중 8건),
-    //    쓰기 계층이 그걸 조용히 버리고 있었다(2026-09-02). 픽스처에 없으면 다시 못 잡는다.
-    const noHash = rnd() < 0.3;
-    commits.push({
-      hash: noHash ? '' : (h + 'abcdef0123456789abcdef0123456789abcdef').slice(0, 40),
-      short: noHash ? '' : (h + 'abcdef').slice(0, 7),
-      time: rnd() < 0.3 ? '' : `${String(rint(0, 23)).padStart(2, '0')}:${String(rint(0, 59)).padStart(2, '0')}`,
-      subject: `커밋 제목 ${round}-${i}-${k} 한글`,
-      body: rnd() < 0.5 ? '' : `본문 첫 줄 ${k}\n둘째 줄`,
-    });
-  }
-  return { source: 'git', commits };
+//  옛 웹이 보내던 Git, SVN 키를 섞는다(2026-10-26 구조 18). 저장은 이 키를 읽지 않고 버려야 하고, 다시 읽은 state 에도 없어야 한다.
+//  ★ 보낸 state 의 깊은 사본에만 붙인다. 왕복 비교의 기준은 섞기 전 state 다.
+function withLegacy(state, round) {
+  const s = JSON.parse(JSON.stringify(state));
+  s.gitAuthor = '옛작성자'; s.svnAuthor = '옛svn'; s.gitCommitBody = true;
+  for (const c of s.categories) { c.gitRepo = 'D:\\repos\\x'; c.svnRepo = ''; c.usesRepo = true; }
+  s.entries.forEach((e, i) => {
+    e.source = i === 0 ? 'git' : '';
+    e.commits = i === 0 ? [{ hash: 'abc' + round, short: 'abc', time: '09:00', subject: '옛 커밋', body: '' }] : [];
+  });
+  return s;
 }
 
 function makeState(prev, round) {
@@ -359,22 +348,19 @@ function makeState(prev, round) {
   const nCat = rint(1, 3);
   for (let i = 0; i < nCat; i++)
     cats.push({ id: `c-${round}-${i}`, name: pick(NAMES) + i, color: '#3e5be0', desc: `설명 ${i}`,
-                gitRepo: '', svnRepo: '', usesRepo: rnd() < 0.5, createdAt: '2026-01-01T00:00:00.000Z' });
+                createdAt: '2026-01-01T00:00:00.000Z' });
   const entries = [];
   for (let i = 0; i < rint(0, 4); i++) {
     const allDay = rnd() < 0.4;
-    //  ★ git 일정은 기간·반복을 가질 수 없다 — chk_cal_entry_git.
-    //    "재수집이 [from,to] 범위를 통째로 지우고 다시 넣기 때문에, 기간/반복이 섞이면
-    //    무엇을 지울지가 정의되지 않는다"(schema-calendar.sql:1245). 그래서 git 이면 recur 를 막는다.
-    const git = gitBits(round, i);
-    const rec = (git.source !== 'git' && rnd() < 0.3)
+    //  (옛 git 일정과 커밋은 2026-10-26 Git, SVN 삭제로 없앴다. 출처 칸과 chk_cal_entry_git 도 없다)
+    const rec = (rnd() < 0.3)
       ? { freq: pick(['weekly','monthly']), interval: rint(1,3), until: '', count: 0 } : null;
     entries.push({
       id: `e-${round}-${i}`, date: `2026-0${rint(1,9)}-1${rint(0,9)}`, title: `일정 ${i} 한글`,
       categoryId: rnd() < 0.8 ? cats[rint(0, cats.length - 1)].id : null,
       allDay, startTime: allDay ? '' : '09:00', endTime: allDay ? '' : '18:00',
       hours: null, location: rnd() < 0.5 ? '회의실 A' : '', remind: rnd() < 0.3 ? rint(0, 60) : null,
-      memo: `메모 ${i}`, ...git, endDate: '',
+      memo: `메모 ${i}`, endDate: '',
       recur: rec, recurExcept: rec ? [`2026-03-0${rint(1,9)}`] : [],
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -393,8 +379,7 @@ function makeState(prev, round) {
 
   return {
     categories: cats, entries, todos,
-    gitAuthor: '작성자', svnAuthor: 'svn작성자',
-    reportMarker: '-', reportMarkerCustom: '', reportIndent: 2, gitCommitBody: rnd() < 0.5,
+    reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
     reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 },
                          weekly: { marker: '·', markerCustom: '', indent: 3 } },
     reportSource: 'cal', taskHours, attendance, lsMigrated: true,
@@ -405,8 +390,7 @@ function makeState(prev, round) {
 /* ── 왕복 비교 — 저장 후 다시 읽은 state 가 보낸 것과 같은가 ───────────── */
 const IGNORE_TOP = new Set(['reportSource', 'lsMigrated']);   // 읽기가 상수로 채우는 값
 function normEntry(e) {
-  //  ★ commits 를 빼지 않는다(G-7 개정) — 예전에는 여기서 통째로 빼서 왕복 비교가
-  //    커밋을 아예 안 봤다. 그래서 쓰기가 커밋을 지워도 이 테스트는 초록이었다.
+  //  ★ 아무 키도 빼지 않는다. 다시 읽은 일정에 없앤 commits, source 가 있으면 그대로 차이로 드러난다(구조 18).
   const { updatedAt, createdAt, ...rest } = e;                 // 시각만 서버가 정한다
   return rest;
 }
@@ -421,9 +405,12 @@ function compare(sent, got) {
   cmp('categories', sent.categories.map(normCat), (got.categories || []).map(normCat));
   cmp('entries', sent.entries.map(normEntry), (got.entries || []).map(normEntry));
   cmp('todos', sent.todos.map(normTodo), (got.todos || []).map(normTodo));
-  for (const k of ['gitAuthor','svnAuthor','reportMarker','reportMarkerCustom','reportIndent',
-                   'gitCommitBody','reportFormatPrefs','taskHours','attendance','reportFont'])
+  for (const k of ['reportMarker','reportMarkerCustom','reportIndent',
+                   'reportFormatPrefs','taskHours','attendance','reportFont'])
     if (!IGNORE_TOP.has(k)) cmp(k, sent[k], got[k]);
+  //  없앤 최상위 키(2026-10-26 Git, SVN 삭제)는 다시 읽은 state 에 없어야 한다
+  for (const k of ['gitAuthor', 'svnAuthor', 'gitCommitBody'])
+    if (Object.prototype.hasOwnProperty.call(got, k)) diffs.push(`${k}: 없앤 키가 다시 읽은 state 에 있다`);
   return diffs;
 }
 
@@ -442,10 +429,15 @@ try {
   console.log(`시험 사용자 user_id=${U}\n`);
 
   let prevRev = Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`));
+  ok('구조 18: cal_entry_commit 표가 없다', Number(one(
+     "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cal_entry_commit'")) === 0,
+     '복제 DB 가 구조 18 이 아니다(v18 조각을 먼저 돌릴 것)');
 
   for (let r = 1; r <= OPT.rounds; r++) {
     const want = makeState(null, r);
-    const res = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(want) });
+    //  홀수 라운드는 옛 웹처럼 Git, SVN 키를 섞어 보낸다. 저장은 그 키를 버려야 한다(기준은 섞기 전 want).
+    const sent = r % 2 === 1 ? withLegacy(want, r) : want;
+    const res = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(sent) });
     ok(`R${r} 저장 성공`, res.ok === true, res.msg || (res.logs || []).join(' / '));
     if (!res.ok) continue;
 
@@ -460,19 +452,6 @@ try {
     if (back.ok) {
       const diffs = compare(want, JSON.parse(back.state));
       ok(`R${r} 왕복이 동일하다(읽기→쓰기→읽기)`, diffs.length === 0, diffs.slice(0, 3).join(' | '));
-    }
-
-    // 커밋이 보존된다(G-7 개정). 왕복 비교가 내용·순서를 이미 보므로 여기서는 DB 사실을 본다.
-    {
-      const wantN = (want.entries || []).reduce((a, e) => a + (e.commits || []).length, 0);
-      const gotN = Number(one(`SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${U}`));
-      ok(`R${r} 커밋 행수가 보낸 것과 같다`, gotN === wantN, `보냄 ${wantN} · DB ${gotN}`);
-      //  seq 가 0..n-1 로 빈틈없이 붙어야 한다 — 표시 순서의 유일한 근거(G-5)다.
-      ok(`R${r} 커밋 seq 가 0 부터 빈틈없다`,
-         Number(one(`SELECT COUNT(*) FROM (SELECT entry_no, MAX(seq)+1 AS mx, COUNT(*) AS c ` +
-           `FROM cal_entry_commit WHERE user_id=${U} GROUP BY entry_no HAVING mx <> c) q`)) === 0);
-      ok(`R${r} 커밋 고아 0`,
-         Number(one(`SELECT COUNT(*) FROM cal_entry_commit c LEFT JOIN cal_entry e ON e.user_id=c.user_id AND e.entry_no=c.entry_no WHERE c.user_id=${U} AND e.entry_no IS NULL`)) === 0);
     }
 
     // 자식이 부모와 함께만 존재한다(고아 0)
@@ -494,7 +473,7 @@ try {
   if (s2.entries[0]) { s2.entries[0].title = '연속-수정'; s2.entries[0].memo = '2회차'; }
   if (s2.todos[0]) s2.todos[0].text = '연속-할일';
   s2.categories[0].name = '연속-과제';
-  s2.gitAuthor = '연속작성자';
+  s2.reportIndent = 4;                              //  설정 행도 UPDATE 로 지나가게 한다(옛 gitAuthor 자리)
   for (const d of Object.keys(s2.attendance)) s2.attendance[d].overtime = 7;
   for (const d of Object.keys(s2.taskHours)) for (const c of Object.keys(s2.taskHours[d])) s2.taskHours[d][c] = 3.25;
   const s3 = JSON.parse(JSON.stringify(s2));        // 2) 삭제까지(낡은 토큰이면 여기서 터진다)
@@ -561,7 +540,7 @@ try {
   // ── 전량 교체(가져오기) — 지우고 통째로 다시 넣는가 ─────────────────────
   console.log('\n[전량 교체] 「XML 가져오기」 — 지우고 통째로 다시 넣는다');
   {
-    //  ① 바탕: 커밋까지 있는 상태를 하나 만들어 둔다.
+    //  ① 바탕 상태를 하나 만들어 둔다.
     const base = makeState(null, 90);
     const r0 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(base) });
     ok('바탕 상태 저장', r0.ok === true, r0.msg || r0.error || '');
@@ -598,13 +577,6 @@ try {
        Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`)) > revBefore);
     ok('이관 마커가 살아 있다',
        Number(one(`SELECT COUNT(*) FROM cal_migration_log WHERE user_id=${U}`)) === 1);
-
-    //  ⑥ 커밋도 함께 갈렸다(고아 없이).
-    ok('교체 뒤 커밋 고아 0',
-       Number(one(`SELECT COUNT(*) FROM cal_entry_commit c LEFT JOIN cal_entry e ON e.user_id=c.user_id AND e.entry_no=c.entry_no WHERE c.user_id=${U} AND e.entry_no IS NULL`)) === 0);
-    ok('교체 뒤 커밋 행수가 보낸 것과 같다',
-       Number(one(`SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${U}`)) ===
-       (imported.entries || []).reduce((a, e) => a + (e.commits || []).length, 0));
 
     sql(`DELETE FROM cal_migration_log WHERE user_id=${U}`, { readOnly: false, what: '마커 정리' });
     wipe(U);

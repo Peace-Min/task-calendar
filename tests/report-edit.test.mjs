@@ -62,7 +62,7 @@ const S = {
   sharedBody(src) {
     const bt = extractFunction(src, 'buildReportText');
     assert.ok(bt.includes('reportRowBodyText(r, indentUnit, _mkSpec, _indent)'), 'buildReportText 가 reportRowBodyText 로 본문을 만들지 않는다');
-    assert.ok(!/reportTextDetails\(|reportTextBody\(/.test(bt), 'buildReportText 가 본문을 따로 조립한다 — 글 편집 초안과 갈린다');
+    assert.ok(!/reportTextDetails\(/.test(bt), 'buildReportText 가 본문을 따로 조립한다 — 글 편집 초안과 갈린다');
     assert.ok(/reportDailyHours\(rows, from\)/.test(bt), '머리 줄 시간이 reportDailyHours 에서 나오지 않는다');
     assert.ok(bt.includes('reportRowHead(r, _hmap)'), '머리 줄을 reportRowHead 로 만들지 않는다(글 편집의 잠긴 머리 줄과 갈린다)');
     const br = extractFunction(src, 'buildReport');
@@ -207,7 +207,7 @@ test('변이 SM2: 일간 날짜 줄 ✎ 를 되살리면(editable=true) S1 이 �
   assert.throws(() => S.noLineEdit(bad), /읽기 전용/);
 });
 test('변이 SM3: buildReportText 가 본문을 따로 조립하면 S2 가 잡는다', () => {
-  const bad = mutate(app, ': reportRowBodyText(r, indentUnit, _mkSpec, _indent);', ": r.titles.map(t => indentUnit + t + reportTextBody(null, '')).join('\\n');");
+  const bad = mutate(app, ': reportRowBodyText(r, indentUnit, _mkSpec, _indent);', ": r.titles.map(t => indentUnit + t + reportTextDetails(null, '')).join('\\n');");
   assert.throws(() => S.sharedBody(bad), /reportRowBodyText|따로 조립/);
 });
 test('변이 SM4: payload.hours 에서 X 거르기를 빼거나 대기 표지를 확인 앞으로 옮기면 S3 이 잡는다', () => {
@@ -323,27 +323,26 @@ if (!JSDOM) {
         const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
         const m = (r.titleMeta && r.titleMeta[i]) || null;
         const _sub = _pad + reportSubIndent(_prefix, indentUnit);
-        return '\n' + _pad + _prefix + t + reportTextDetails(m, _sub) + reportTextBody(m, _sub);
+        return '\n' + _pad + _prefix + t + reportTextDetails(m, _sub);
       }).join('');
     });
     return blocks.join('\n\n') + '\n';
   }
   const CA = '2026-07-01T00:00:00.000Z';
-  const E = (o) => Object.assign({ allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null,
+  const E = (o) => Object.assign({ allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: null,
     endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }, o);
-  //  알파: 일정(메모 2줄) + 커밋(본문, 들여쓴 본문 줄) + 기간 할 일(그날 메모) · 베타: 일정 · 감마: 제목 없음, 시간만 · 델타: 아무것도 없음
+  //  알파: 일정(메모 2줄) + 일정(메모, 들여쓴 메모 줄) + 기간 할 일(그날 메모) · 베타: 일정 · 감마: 제목 없음, 시간만 · 델타: 아무것도 없음
+  //  (예전 둘째 줄의 커밋 기록은 2026-10-26 Git 기능과 함께 없앴다. 들여쓴 상세 줄은 메모로 남긴다.)
   const stateFor = (T, Y, N) => ({
-    gitAuthor: '', svnAuthor: '',
     categories: [
-      { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-      { id: 'c-b', name: '베타', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-      { id: 'c-c', name: '감마', color: '#d97706', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
-      { id: 'c-d', name: '델타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+      { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', createdAt: CA },
+      { id: 'c-b', name: '베타', color: '#2e9e6b', desc: '', createdAt: CA },
+      { id: 'c-c', name: '감마', color: '#d97706', desc: '', createdAt: CA },
+      { id: 'c-d', name: '델타', color: '#5b6b7d', desc: '', createdAt: CA },
     ],
     entries: [
       E({ id: 'e-a1', date: T, title: '로그인 화면 리뷰', categoryId: 'c-a', memo: 'UI 확인\n• 암호화 모듈 확인' }),
-      E({ id: 'g-a', date: T, title: '작업일지', categoryId: 'c-a', source: 'git',
-          commits: [{ hash: 'h1', short: 'h1', time: '09:00', subject: '기능 추가', body: '본문 첫 줄\n  - 들여쓴 본문' }] }),
+      E({ id: 'g-a', date: T, title: '기능 추가', categoryId: 'c-a', memo: '본문 첫 줄\n  - 들여쓴 본문' }),
       E({ id: 'e-b1', date: T, title: '고객 회신', categoryId: 'c-b' }),
       E({ id: 'e-y1', date: Y, title: '어제 업무', categoryId: 'c-b' }),
     ],
@@ -351,10 +350,10 @@ if (!JSDOM) {
               dayNotes: { [T]: '오늘 메모' }, createdAt: CA, updatedAt: CA }],
     rooms: [], attendance: {},
     taskHours: { [T]: { 'c-a': 2, 'c-b': 1.5, 'c-c': 1 } },
-    gitCommitBody: true, reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
+    reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
   });
   //  보고서를 일간·그 날짜로 연다(포함 항목 셋 다, 설명 포함, 빈 항목 제외 끔).
-  const openDaily = (m, date) => m.ev(`openReport(); ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
+  const openDaily = (m, date) => m.ev(`openReport(); ['#rptSrcEvent','#rptSrcTodo','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
     + ` $('#rptFrom').value = ${JSON.stringify(date)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
   const setDate = (m, date) => m.ev(`$('#rptFrom').value = ${JSON.stringify(date)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
   const cardNames = (m) => m.evJSON("[].map.call(document.querySelectorAll('#rptOut .rcard .rcard-nm'), function(x){ return x.textContent; })");
@@ -376,10 +375,10 @@ if (!JSDOM) {
   async function assertSameAsRef(m, T) {
     m.ev('window.__REF = ' + REF.toString());
     let checked = 0;
-    for (const [mk, cu, ind] of FORMATS) for (const desc of [true, false]) for (const body of [true, false]) {
-      m.ev(`state.reportFormatPrefs = { daily: { marker: ${JSON.stringify(mk)}, markerCustom: ${JSON.stringify(cu)}, indent: ${ind} }, weekly: { marker: '1.', markerCustom: '', indent: 2 } }; state.gitCommitBody = ${body};`
+    for (const [mk, cu, ind] of FORMATS) for (const desc of [true, false]) {
+      m.ev(`state.reportFormatPrefs = { daily: { marker: ${JSON.stringify(mk)}, markerCustom: ${JSON.stringify(cu)}, indent: ${ind} }, weekly: { marker: '1.', markerCustom: '', indent: 2 } };`
         + ` $('#rptWithDesc').checked = ${desc}; reportMode = 'daily'; $('#rptFrom').value = ${JSON.stringify(T)}; $('#rptTo').value = ${JSON.stringify(T)}; buildReport();`);
-      const tag = `${mk}/${cu}/${ind} desc=${desc} body=${body}`;
+      const tag = `${mk}/${cu}/${ind} desc=${desc}`;
       const ref = m.ev('__REF()'), refNb = m.ev("__REF('&nbsp;')");
       assert.ok(ref.includes('[알파]') && ref.includes('로그인 화면 리뷰'), '기준 글이 비었다: ' + tag);
       assert.strictEqual(m.ev('buildReportText()'), ref, '복사 글(U+00A0)이 예전과 다르다: ' + tag);
@@ -387,7 +386,7 @@ if (!JSDOM) {
       checked++;
     }
     //  실제 복사(클립보드)와 실제 전송(payload)도 같은 글을 싣는다.
-    m.ev(`state.reportFormatPrefs = { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '1.', markerCustom: '', indent: 2 } }; state.gitCommitBody = true; $('#rptWithDesc').checked = true; buildReport();`);
+    m.ev(`state.reportFormatPrefs = { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '1.', markerCustom: '', indent: 2 } }; $('#rptWithDesc').checked = true; buildReport();`);
     assert.strictEqual(await copyText(m), m.ev('__REF()'), '복사 버튼이 싣는 글이 예전과 다르다');
     capSend(m); m.doc.getElementById('btnRptSend').click(); await tick();
     const cap = m.evJSON('window.__cap');
@@ -441,7 +440,7 @@ if (!JSDOM) {
       fresh();
       try {
         const n = await assertSameAsRef(B, T);
-        assert.ok(n >= 20, '비교한 서식 조합이 너무 적다: ' + n);
+        assert.ok(n >= 10, '비교한 서식 조합이 너무 적다: ' + n);   // 서식 5벌 × 설명 포함 켜고 끔(커밋 본문 축은 2026-10-26 Git 삭제로 없앴다)
         //  다른 날짜에 초안이 있어도 이 날짜 글은 그대로다(날짜 단위).
         B.ev(`rptDraftPut(${JSON.stringify(Y)}, { v:1, date:${JSON.stringify(Y)}, body:{ 'c-a':'남의 날 글' }, base:{ 'c-a':'' }, out:['c-b'], savedAt:'' }, true);`);
         assert.strictEqual(B.ev('buildReportText()'), B.ev('__REF()'), '다른 날짜의 초안이 이 날짜 글을 바꿨다');
@@ -630,7 +629,7 @@ if (!JSDOM) {
         setView(B, 'doc');
         typeIn(B, 'c-a', '내가 쓴 글');
         assert.strictEqual(ta(B, 'c-a').closest('.rdoc-sec').querySelector('.rdoc-stale').hidden, true, '막 고쳤는데 낡았다고 한다');
-        //  그새 커밋이 늘었다
+        //  그새 일정이 늘었다
         B.ev(`state.entries.push(${JSON.stringify(E({ id: 'e-a9', date: T, title: '새로 생긴 일', categoryId: 'c-a' }))}); notifyDataChanged();`);
         const sec = ta(B, 'c-a').closest('.rdoc-sec');
         assert.strictEqual(sec.querySelector('.rdoc-stale').hidden, false, '기준본과 초안이 다른데 안내가 없다');
@@ -719,8 +718,8 @@ if (!JSDOM) {
     });
 
     test('변이 BM1: 본문 함수를 바꾸면(줄 사이 빈 줄) B2 의 기준 비교가 잡는다', async () => {
-      const bad = mutate(app, "    return _pad + _prefix + t + reportTextDetails(m, _sub) + reportTextBody(m, _sub);   // 일정 메모/할일 노트(설명) + 커밋 전체 본문: 주간 전송과 같은 함수\n  }).join('\\n');",
-        "    return _pad + _prefix + t + reportTextDetails(m, _sub) + reportTextBody(m, _sub);\n  }).join('\\n\\n');");
+      const bad = mutate(app, "    return _pad + _prefix + t + reportTextDetails(m, _sub);   // 일정 메모/할일 노트(설명): 주간 전송과 같은 함수\n  }).join('\\n');",
+        "    return _pad + _prefix + t + reportTextDetails(m, _sub);\n  }).join('\\n\\n');");
       const X = bootBrowser(bad);
       try {
         X.ev('state = ' + JSON.stringify(stateFor(T, Y, N)) + ';'); openDaily(X, T);
@@ -869,7 +868,7 @@ if (!JSDOM) {
       P.ev("window.__acc = []; (function(){ var Pr = Storage.prototype; ['getItem','setItem','removeItem'].forEach(function(n){ var o = Pr[n]; Pr[n] = function(k){ if(String(k).indexOf('tc_rptDraft:')===0) window.__acc.push(n+' '+k); return o.apply(this, arguments); }; }); var ok = Pr.key; Pr.key = function(){ window.__acc.push('key'); return ok.apply(this, arguments); }; })();");
       P.w.__applyState(JSON.stringify(stateFor(T, Y, N)), { peerName: '홍길동', canWrite: false });
       await tick();
-      P.ev(`reportMode = 'daily'; $('#rptFrom').value = todayYmd(); $('#rptTo').value = todayYmd(); ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit'].forEach(function(s){ $(s).checked = true; }); buildReport();`);
+      P.ev(`reportMode = 'daily'; $('#rptFrom').value = todayYmd(); $('#rptTo').value = todayYmd(); ['#rptSrcEvent','#rptSrcTodo'].forEach(function(s){ $(s).checked = true; }); buildReport();`);
       assert.strictEqual(P.ev("document.querySelectorAll('#rptOut .rcard').length"), 4, '전제: 열람 창에서 카드가 그려졌다');
       assert.strictEqual(P.ev("document.querySelectorAll('#rptOut .rcard-x').length"), 0, '열람 창에 X 가 있다');
       assert.strictEqual(P.ev("$('#rptViewBar').classList.contains('hidden')"), true, '열람 창에 글 편집 전환이 보인다');

@@ -5,9 +5,10 @@
 //      빈틈과 겹침, 끝 = 앱 구조 번호. 어기면 정해진 종료코드로 실패한다(빌드 전에 publish-update.ps1 이 부른다).
 //   ② 만들어진 SQL 의 모양: 잠금 대기 상한, 확인이 닫기보다 먼저, 닫기가 첫 조각보다 먼저, 조각은 구조 번호 순서,
 //      끝 확인 뒤 마지막 한 트랜잭션에 네 키(app_ 셋과 db_updating 0), 그 뒤 결과 표. 멈춤은 모두 '없는 표 SELECT'.
-//   ③ 상태 전이(흉내 실행기 tests/release-sql-sim.mjs): 실제 사슬(13 에서 14, 14 에서 15, 15 에서 16, 16 에서 17) 그대로. 13 에서 처음(네 조각을 몰아서),
-//      14 에서 세 칸, 16 에서 한 칸, 앱만 바뀐 배포(닫지 않는다), 성공 뒤 재실행(바뀌는 것 없음), 마지막 조각 뒤에 멈춘 DB 마무리,
-//      새 DB, 낮은 DB, 이상한 값, v15 회의실 검증 멈춤, v16 과제 캘린더 표 모양 검증 멈춤, v17 월간보고(칸, CHECK, 그림 표) 검증 멈춤,
+//   ③ 상태 전이(흉내 실행기 tests/release-sql-sim.mjs): 실제 사슬(13 에서 14, 14 에서 15, 15 에서 16, 16 에서 17, 17 에서 18) 그대로.
+//      13 에서 처음(다섯 조각을 몰아서), 14 에서 네 칸, 16 에서 두 칸, 17 에서 한 칸, 앱만 바뀐 배포(닫지 않는다), 성공 뒤 재실행(바뀌는 것 없음),
+//      마지막 조각 뒤에 멈춘 DB 마무리, 새 DB, 낮은 DB, 이상한 값, v15 회의실 검증 멈춤, v16 과제 캘린더 표 모양 검증 멈춤,
+//      v17 월간보고(칸, CHECK, 그림 표) 검증 멈춤, v18 Git, SVN 삭제(커밋 기록, 커밋 목록 표, 칸과 CHECK) 결과와 검증 멈춤,
 //      실제 사슬 뒤에 시험 조각을 붙인 건너뛴 배포,
 //      그리고 바꾸는 문장마다 실패를 넣어 보고 같은 파일을 다시 돌리면 끝나는지, 그 사이 앱에 반쯤 바뀐 상태(meta 와 표)가 보이지 않는지.
 //   ④ 조각 폴더의 모든 파일이 조각 규칙(§5.2)을 따른다.
@@ -19,7 +20,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, assert, readText } from './harness.mjs';
 import { mutate, exitCodeTable, exitCodesInTable, maskPs } from './ps-guard-lib.mjs';
-import { FakeDb, splitStatements, defOf, PROJECT_V16, PROJECT_V17 } from './release-sql-sim.mjs';
+import { FakeDb, splitStatements, defOf, PROJECT_V16, PROJECT_V17, VCS_V17, VCS_V18, PREF_COMMENT_V18 } from './release-sql-sim.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const GEN = join(ROOT, 'installer', 'release-sql.ps1');
@@ -127,8 +128,22 @@ const SI_DEFS = (() => {
   assert.ok(i >= 0, `정본에 ${SI_TABLE} 가 없다`);
   return { [SI_TABLE]: defOf(CANON_CAL.slice(i, CANON_CAL.indexOf(';', CANON_CAL.indexOf(') ENGINE=', i)))) };
 })();
+//  18 부터는 Git, SVN 이 없다(v18 조각): 커밋 기록(cal_entry.source = 'git')과 그 자식 행, cal_entry_commit 표,
+//  cal_entry.source, cal_category.uses_repo, cal_user_pref 의 작성자와 커밋 본문 칸, 그 CHECK 넷. 17 까지의 DB 에는
+//  사람 둘의 일정이 있다: 커밋 기록 둘(1:1, 2:1), 일반 일정 둘(1:2 는 반복이라 예외일 하나, 2:5). 커밋 목록은 커밋 기록에도
+//  일반 일정(1:2)에도 붙어 있다. 18 에는 일반 일정 둘과 그 예외일만 남는다(source 칸 없음).
+const VCS_ROWS17 = () => ({
+  cal_entry: [{ user_id: 1, entry_no: 1, source: 'git' }, { user_id: 1, entry_no: 2, source: '' },
+    { user_id: 2, entry_no: 1, source: 'git' }, { user_id: 2, entry_no: 5, source: '' }],
+  cal_entry_except: [{ user_id: 1, entry_no: 2, d: '2026-10-07' }],
+  cal_entry_commit: [{ user_id: 1, entry_no: 1, seq: 0 }, { user_id: 1, entry_no: 1, seq: 1 }, { user_id: 1, entry_no: 2, seq: 0 }, { user_id: 2, entry_no: 1, seq: 0 }],
+});
+const VCS_ROWS18 = () => ({
+  cal_entry: [{ user_id: 1, entry_no: 2 }, { user_id: 2, entry_no: 5 }],
+  cal_entry_except: [{ user_id: 1, entry_no: 2, d: '2026-10-07' }],
+});
 const T = {
-  old: () => ({ cal_room: CAL_ROOMS }),
+  old: () => ({ cal_room: CAL_ROOMS, ...VCS_ROWS17() }),
   shared: () => ({ room_code: ROOM_CODES.map(([name, sort_order]) => ({ name, sort_order })) }),
   pc: () => Object.fromEntries(PC_TABLES.map((n) => [n, []])),
   si: () => ({ [SI_TABLE]: [] }),
@@ -140,18 +155,23 @@ const S = {
       db_structure_version: String(n), db_updating: upd,
       app_latest_version: app[0], app_installer_file: app[1], app_installer_sha256: app[2],
     },
-    tables: Number(n) >= 17 ? { ...T.shared(), ...T.pc(), ...T.si() } : Number(n) >= 16 ? { ...T.shared(), ...T.pc() } : Number(n) >= 15 ? T.shared() : T.old(),
+    tables: {
+      ...(Number(n) >= 17 ? { ...T.shared(), ...T.pc(), ...T.si() } : Number(n) >= 16 ? { ...T.shared(), ...T.pc() } : Number(n) >= 15 ? T.shared() : T.old()),
+      ...(Number(n) >= 18 ? VCS_ROWS18() : VCS_ROWS17()),
+    },
     defs: Number(n) >= 17 ? { ...PC_DEFS, ...SI_DEFS } : Number(n) >= 16 ? PC_DEFS : {},
     project: Number(n) >= 17 ? PROJECT_V17() : PROJECT_V16(),
+    vcs: Number(n) >= 18 ? VCS_V18() : VCS_V17(),
   }),
 };
-const open = (init, opts = {}) => new FakeDb(init.meta, { tables: init.tables || {}, defs: init.defs || {}, project: init.project || PROJECT_V16(), ...opts });
+const open = (init, opts = {}) => new FakeDb(init.meta, { tables: init.tables || {}, defs: init.defs || {}, project: init.project || PROJECT_V16(), vcs: init.vcs || VCS_V17(), ...opts });
 const stateOf = (init) => open(init).state();
 const finalMeta = (n) => ({ db_structure_version: String(n), db_updating: '0', app_latest_version: VER, app_installer_file: FILE, app_installer_sha256: SHA });
-//  끝 상태(meta 와 표): 공용 회의실 목록 하나, cal_room 없음, 과제 캘린더 표 둘과 그림 표(정본과 같은 모양), project 에 개발 시작일 칸과 CHECK
-const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si() }, defs: { ...PC_DEFS, ...SI_DEFS }, project: PROJECT_V17() }).state();
+//  끝 상태(meta 와 표): 공용 회의실 목록 하나, cal_room 없음, 과제 캘린더 표 둘과 그림 표(정본과 같은 모양), project 에 개발 시작일 칸과 CHECK,
+//  일반 일정과 예외일만(커밋 기록, cal_entry_commit, 지울 칸과 CHECK 없음, cal_user_pref 표 설명은 18)
+const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si(), ...VCS_ROWS18() }, defs: { ...PC_DEFS, ...SI_DEFS }, project: PROJECT_V17(), vcs: VCS_V18() }).state();
 const FINAL_TABLES = FINAL_DB['#tables'];
-const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES, '#project': FINAL_DB['#project'] });
+const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES, '#project': FINAL_DB['#project'], '#vcs': FINAL_DB['#vcs'] });
 const sortObj = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
 const same = (a, b) => JSON.stringify(sortObj(a)) === JSON.stringify(sortObj(b));
 
@@ -162,6 +182,16 @@ function assertNoHalfOpen(db, initial, final, label) {
     assert.ok(same(v, initial) || (final && same(v, final)), `${label}: 갱신 중이 아닌데 처음도 끝도 아닌 상태가 앱에 보였다: ${JSON.stringify(v)}`);
   }
 }
+
+//  v18 의 지우기 단계(검증이 잡아야 하는 것): 조건 앞부분 글자. 하나씩 IF(0 AND …) 로 꺼서 ③j3 과 변이에 쓴다.
+const V18_STEPS = [
+  ['cal_entry_commit', "SET @s := IF(@go AND @m_tbl = 1, 'DROP TABLE cal_entry_commit'"],
+  ['cal_entry.source', "SET @s := IF(@go AND @m_col = 1, 'ALTER TABLE cal_entry DROP COLUMN source"],
+  ['cal_category.uses_repo', "SET @s := IF(@go AND @m_col = 1, 'ALTER TABLE cal_category DROP COLUMN uses_repo"],
+  ['cal_user_pref.git_author', "SET @s := IF(@go AND @m_col = 1, 'ALTER TABLE cal_user_pref DROP COLUMN git_author"],
+  ['cal_user_pref.svn_author', "SET @s := IF(@go AND @m_col = 1, 'ALTER TABLE cal_user_pref DROP COLUMN svn_author"],
+  ['cal_user_pref.git_commit_body', "SET @s := IF(@go AND @m_col = 1, 'ALTER TABLE cal_user_pref DROP COLUMN git_commit_body"],
+];
 
 const checks = {
   // ══ ① 사슬 검사 ════════════════════════════════════════════════════
@@ -273,6 +303,10 @@ const checks = {
     assert.ok(iPc[0] > iRoom && iPc.every((x, k) => k === 0 || x > iPc[k - 1]), `v16 표 만들기가 v15 뒤에 FK 순서(event, change)로 돌지 않는다: ${iPc}`);
     const iMr = ['col:project.dev_start_date', 'check:chk_project_dev_dates', `table:${SI_TABLE}`].map((k) => db.writes.findIndex((w) => w.k === k));
     assert.ok(iMr[0] > iPc[iPc.length - 1] && iMr[1] > iMr[0] && iMr[2] > iMr[1], `v17(칸, CHECK, 그림 표)이 v16 뒤에 차례로 돌지 않는다: ${iMr}`);
+    //  v18: 커밋 기록 지우기, 커밋 목록 표 지우기, CHECK 다음 칸(source), 마지막 칸(git_commit_body) 순서이고 v17 뒤다
+    const iGit = ['table:cal_entry', 'table:cal_entry_commit', 'check:chk_cal_entry_git', 'col:cal_entry.source', 'col:cal_user_pref.git_commit_body']
+      .map((k) => db.writes.findIndex((w) => w.k === k));
+    assert.ok(iGit[0] > iMr[2] && iGit.every((x, k) => k === 0 || x > iGit[k - 1]), `v18(지우기, 표, CHECK, 칸)이 v17 뒤에 차례로 돌지 않는다: ${iGit}`);
     assertNoHalfOpen(db, stateOf(init), finalState(APP), '13 에서 처음');
     //  성공 뒤 다시 돌리면 바뀌는 것이 없다
     const n = db.writes.length, before = db.stamps(), shape = db.state();
@@ -415,6 +449,43 @@ const checks = {
     assert.ok(atNext.run(sql).ok && !atNext.writes.some((w) => w.k === 'db_updating' || w.k === NEXT_MARK || w.k.startsWith('table:')),
       `이미 ${NEXT} 인 DB 에서 닫거나 조각을 실행했다`);
   },
+  // v18 결과: 커밋 기록과 그 자식 행(커밋 목록)이 지워지고, 일반 일정과 그 예외일은 남고, 표와 칸과 CHECK 가 없어진다
+  gitRemoved(sql) {
+    const db = open(S.at(17));
+    const r = db.run(sql);
+    assert.ok(r.ok, `17 에서 18 로 올리는 배포가 끝나지 않는다: ${JSON.stringify(r)}`);
+    assert.ok(!db.hasTable('cal_entry_commit'), 'cal_entry_commit 이 남았다');
+    assert.deepStrictEqual(db.tableShape().cal_entry, ['1:2', '2:5'], `커밋 기록만 지우고 일반 일정은 남겨야 한다(source 칸 없음): ${db.tableShape().cal_entry}`);
+    assert.deepStrictEqual(db.tableShape().cal_entry_except, ['1:2:2026-10-07'], '일반 일정의 예외일이 사라졌다');
+    assert.deepStrictEqual(db.vcs.cols, [], `지울 칸이 남았다: ${db.vcs.cols}`);
+    assert.deepStrictEqual(db.vcs.checks, [], `지울 CHECK 가 남았다: ${db.vcs.checks}`);
+    assert.strictEqual(db.vcs.prefComment, PREF_COMMENT_V18, 'cal_user_pref 표 설명이 18 이 아니다');
+    assert.strictEqual(db.writes.find((w) => w.k === 'table:cal_entry')?.v, '-2', '커밋 기록 두 건을 지우지 않았다');
+    //  다시 돌려도 바뀌는 것이 없다(조각은 건너뛰고 열기는 같은 값이라 0행)
+    const n = db.writes.length, shape = db.state();
+    assert.ok(db.run(sql).ok, '17 에서 올린 뒤 다시 돌리면 끝나야 한다');
+    assert.strictEqual(db.writes.length, n, `다시 돌렸는데 ${db.writes.length - n}행을 바꿨다`);
+    assert.ok(same(db.state(), shape), '다시 돌렸는데 표나 칸이 바뀌었다');
+  },
+  // v18 검증: 어느 지우기든 빠지면(조각이 잘못 고쳐지면) 닫힌 채 멈추고 구조 번호를 올리지 않는다
+  gitVerify(sql, label) {
+    const db = open(S.at(17));
+    const r = db.run(sql);
+    assert.ok(!r.ok && /v18 조각 검증 실패/.test(r.stop || ''), `${label}: v18 검증에서 멈추지 않았다: ${JSON.stringify(r)}`);
+    assert.strictEqual(db.meta().db_updating, '1', `${label}: v18 검증에서 멈췄는데 닫힌 상태(db_updating 1)가 아니다`);
+    assert.strictEqual(db.meta().db_structure_version, '17', `${label}: v18 검증에서 멈췄는데 구조 번호가 올라갔다`);
+    assertNoHalfOpen(db, stateOf(S.at(17)), null, `v18 검증 멈춤(${label})`);
+  },
+  // v18 남은 커밋 기록: 지우기의 WHERE(user_id > 0, Workbench 안전 갱신 모드용)가 못 지운 git 행이 있으면 칸을 지우기 전에 멈춘다
+  gitLeft(sql) {
+    const mk = () => { const x = S.at(17); x.tables.cal_entry.push({ user_id: 0, entry_no: 9, source: 'git' }); return x; };
+    const db = open(mk());
+    const r = db.run(sql);
+    assert.ok(!r.ok && /커밋 기록이 남았다/.test(r.stop || ''), `user_id 0 의 커밋 기록이 남았는데 멈추지 않았다: ${JSON.stringify(r)}`);
+    assert.strictEqual(db.meta().db_updating, '1', '커밋 기록이 남아 멈췄는데 닫힌 상태가 아니다');
+    assert.ok(db.hasCol('cal_entry', 'source') && db.hasTable('cal_entry_commit'), '커밋 기록이 남았는데 칸이나 표를 지웠다');
+    assertNoHalfOpen(db, stateOf(mk()), null, 'v18 커밋 기록 남음');
+  },
 };
 
 // ══ ④ 조각 폴더 ═══════════════════════════════════════════════════════
@@ -472,6 +543,25 @@ test('배포SQL③g3: 16 에서 올리면 project 모양이 정본(v17)과 같�
   assert.ok(db.run(realSql()).ok, '16 에서 올리는 배포가 끝나지 않는다');
   assert.strictEqual(db.state()['#project'], JSON.stringify(PROJECT_V17()), `16 에서 올린 project 모양이 정본(v17)과 다르다: ${db.state()['#project']}`);
   checks.faults(realSql(), () => S.at(16), APP, '16 에서');
+});
+test('배포SQL③j: 17 에서 18 로 올리면 커밋 기록(자식 행 포함)과 cal_entry_commit, 출처, 저장소, 작성자 칸과 CHECK 가 지워지고 다시 돌려도 그대로다', () =>
+  checks.gitRemoved(realSql()));
+test('배포SQL③j2: 13 에서 18 까지 몰아 올려도 v18 이 마지막에 돌아 같은 끝 상태가 된다(실패 뒤 재실행은 ③e 가 본다)', () => {
+  const db = open(S.legacy13());
+  assert.ok(db.run(realSql()).ok, '13 에서 18 까지 올리는 배포가 끝나지 않는다');
+  assert.ok(same(db.state(), finalState(APP)), `13 에서 올린 결과가 18 끝 상태가 아니다: ${JSON.stringify(db.state())}`);
+  assert.ok(!db.hasTable('cal_entry_commit') && db.vcs.cols.length === 0, '13 에서 올렸는데 v18 이 돌지 않았다');
+});
+test('배포SQL③j3: v18 의 지우기(표 하나, 칸 다섯) 어느 것이 빠져도 검증이 닫힌 채 멈추고 구조 번호를 올리지 않는다', () => {
+  for (const [label, from] of V18_STEPS) checks.gitVerify(mutate(realSql(), from, from.replace('IF(@go AND', 'IF(0 AND')), label);
+});
+test('배포SQL③j4: v18 이 지운 뒤에도 git 기록이 남으면(user_id 0) 칸과 표를 지우기 전에 닫힌 채 멈춘다', () => checks.gitLeft(realSql()));
+test('배포SQL③j5: v18 의 cal_user_pref 표 설명은 정본 schema-calendar.sql 과 같은 글자다', () => {
+  const m = /CREATE TABLE cal_user_pref \([\s\S]*?\) ENGINE=InnoDB[^\n]*\n\s*COMMENT='((?:[^']|'')*)';/.exec(CANON_CAL);
+  assert.ok(m, '정본에서 cal_user_pref 표 설명을 찾지 못했다(판정 불가)');
+  assert.strictEqual(m[1].replace(/''/g, "'"), PREF_COMMENT_V18, '정본 cal_user_pref 표 설명이 v18 조각(흉내 실행기 PREF_COMMENT_V18)과 다르다');
+  const frag = readText(join(FRAG_DIR, 'v18-remove-git.sql'));
+  assert.ok(frag.includes(`ALTER TABLE cal_user_pref COMMENT = ''${PREF_COMMENT_V18}''`), 'v18 조각의 표 설명이 정본과 다르다');
 });
 test(`배포SQL③i: 건너뛴 배포(13, 14, ${APP} 에서 ${NEXT})는 조각을 차례로 돌리고, 어디서 실패해도 다시 돌리면 끝난다`, () => {
   checks.extended(extSql());
@@ -558,4 +648,37 @@ test('변이R6: 열기의 같은 값 건너뛰기(AND v <>)를 빼면 재실행�
   const bad = realSql().replace(/ AND v <> '[^']*';\n/g, ';\n');
   assert.notStrictEqual(bad, realSql());
   assert.throws(() => checks.fresh13(bad), /다시 돌렸는데/);
+});
+test('변이R15: v18 검증을 끄면(지우기 하나가 빠진 조각) ③j3 이 실패한다', () => {
+  const sql = realSql();
+  const i = sql.indexOf('SET @g := IF(NOT @go OR (@m_v1 = 0 ');
+  assert.ok(i >= 0, '변이 준비 실패: v18 검증을 찾지 못했다');
+  const off = sql.slice(0, i) + 'SET @g := IF(1 OR ' + sql.slice(i + 'SET @g := IF('.length);
+  const [label, from] = V18_STEPS[0];
+  assert.throws(() => checks.gitVerify(mutate(off, from, from.replace('IF(@go AND', 'IF(0 AND')), label), /멈추지 않았다/);
+});
+test('변이R16: v18 이 남은 커밋 기록을 확인하지 않으면 ③j4 가 실패한다', () => {
+  const bad = mutate(realSql(), 'SET @g := IF(NOT @go OR @m_left = 0, ', 'SET @g := IF(1, ');
+  assert.throws(() => checks.gitLeft(bad), /멈추지 않았다/);
+});
+test('변이R17: v18 이 표가 있는지 보지 않고 늘 지우면 중간 실패 뒤 재실행이 멈춘다(③g 실패)', () => {
+  const bad = mutate(realSql(), "SET @s := IF(@go AND @m_tbl = 1, 'DROP TABLE cal_entry_commit'", "SET @s := IF(@go, 'DROP TABLE cal_entry_commit'");
+  assert.throws(() => checks.faults(bad, () => S.at(17), APP, '17 에서'), /다시 돌려도 끝나지 않는다/);
+});
+test('변이R18: v18 이 칸이 있는지 보지 않고 늘 지우면 중간 실패 뒤 재실행이 멈춘다(③g 실패)', () => {
+  const bad = mutate(realSql(), "SET @s := IF(@go AND @m_col = 1, 'ALTER TABLE cal_category DROP COLUMN uses_repo", "SET @s := IF(@go, 'ALTER TABLE cal_category DROP COLUMN uses_repo");
+  assert.throws(() => checks.faults(bad, () => S.at(17), APP, '17 에서'), /다시 돌려도 끝나지 않는다/);
+});
+test('변이R19: v18 이 source 칸이 없어도 커밋 기록을 지우려 하면(칸 확인 빼기) 중간 실패 뒤 재실행이 멈춘다(③g 실패)', () => {
+  const bad = mutate(realSql(), "SET @s := IF(@go AND @m_src = 1,\n  'DELETE FROM cal_entry", "SET @s := IF(@go,\n  'DELETE FROM cal_entry");
+  assert.throws(() => checks.faults(bad, () => S.at(17), APP, '17 에서'), /다시 돌려도 끝나지 않는다/);
+});
+test('변이R20: v18 이 CHECK 보다 칸을 먼저 지우면 17 에서 올리는 배포가 멈춘다(③j 실패, MySQL 3959)', () => {
+  const sql = realSql();
+  const a = sql.indexOf('SET @m_chk := (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS\n                WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = \'cal_category\'');
+  const c = sql.indexOf("SET @m_col := (SELECT COUNT(*) FROM information_schema.COLUMNS\n                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cal_category'");
+  const e = sql.indexOf('-- 6) cal_user_pref');
+  assert.ok(a >= 0 && c > a && e > c, '변이 준비 실패: v18 의 cal_category 단계를 찾지 못했다');
+  const bad = sql.slice(0, a) + sql.slice(c, e) + sql.slice(a, c) + sql.slice(e);
+  assert.throws(() => checks.gitRemoved(bad), /끝나지 않는다/);
 });

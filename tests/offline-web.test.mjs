@@ -31,10 +31,11 @@ function mutate(from, to, base) {
 
 //  함수 단위 관문 — 본문에 guardEdit() 이 있고, 그것이 첫 쓰기보다 **앞**이다.
 const GATED_FUNCTIONS = [
-  'openEntryModal', 'openQuickAdd', 'saveEntryFromForm', 'qaSave', 'saveCatFromForm', 'deleteCommitRow',
+  'openQuickAdd', 'qaSave', 'saveCatFromForm',
   'startImport', 'showImportPreview', 'applyImport', 'clearAll',
-  'offSubscribeFromCatalog', 'offUnsubscribeFromCatalog', 'runGitImport',
-  'setCommitMessage', 'commitDayNoteEdit',
+  'offSubscribeFromCatalog', 'offUnsubscribeFromCatalog',
+  'commitDayNoteEdit',
+  //  (openEntryModal, saveEntryFromForm, deleteCommitRow, setCommitMessage, runGitImport 는 2026-10-26 Git, SVN 기능과 함께 없앴다.)
   //  (setCommitSubject, setEntryTitle, setTodoText 는 일간 보고서 줄 ✎ 와 함께 없앴다(REPORT-EDIT §5). '없어졌다'는 아래 REPORT_EDIT_GONE 이 잠근다.)
   'legacyPromptImport',   // 이전 기록 「가져오기」 = 바로 교체(2026-10-01) — 읽기 전에 막는다
   'moveCategory',         // 과제 순서 ▲▼(docs/CATEGORY-ORDER.md R7) — 맞바꾸기 전에 막는다
@@ -62,7 +63,6 @@ const GATED_HANDLERS = [
   ['들여쓰기', 'const _setRptInd = d => {', 'save()'],
   ['보고서 글꼴', "if(_ff) _ff.addEventListener('change'", 'save()'],
   ['보고서 글자 크기', "if(_fs) _fs.addEventListener('change'", 'save()'],
-  ['기록 모달 삭제 버튼', "$('#btnEntryDelete').addEventListener('click'", 'deleteEntry(e.id)'],
   //  2026-10-23 '빠른 편집 → 자세히 편집'(#qaAdvanced) 진입점은 없앴다(docs/PERSONAL-IMPROVE-PLAN.md 결정 10, 한 화면 폼이 모든 칸을 가진다).
   //  쓰는 길이 사라졌으므로 관문 목록에서도 뺀다. 되살아나지 않는지는 tests/personal-improve.test.mjs 가 본다. 한 화면 폼 저장은 qaSave(위 GATED_FUNCTIONS).
 ];
@@ -251,8 +251,6 @@ if (!JSDOM) {
         W.call('openQuickAdd', '2026-10-01');
         assert.ok(W.el('quickAdd').classList.contains('hidden'), '부팅 실패 중인데 빠른 등록이 열렸다 — 그 편집은 갈 곳이 없다');
         assert.ok(W.toasts().includes(LOCK), '막았는데 이유를 말하지 않는다');
-        W.call('openEntryModal', 'new', '2026-10-01');
-        assert.ok(W.el('entryModal').classList.contains('hidden'), '부팅 실패 중인데 새 기록 창이 열렸다');
         assert.strictEqual(W.ev('state.entries.length'), 0, '메모리가 바뀌었다');
       });
     },
@@ -397,9 +395,9 @@ if (!JSDOM) {
     W.applyState();
     W.ev("__dbConnLost({ kind:'network' })");
     W.clear();
-    W.call('openEntryModal', 'edit', 'e-1');
-    assert.ok(!W.el('entryModal').classList.contains('hidden'), '끊긴 상태에서 있는 기록을 열 수도 없다 — 읽기는 막지 않는다');
-    W.ev("$('#fTitle').value = '고친 제목'; saveEntryFromForm();");
+    W.call('openQuickAdd', null, 'event', 'e-1');
+    assert.ok(!W.el('quickAdd').classList.contains('hidden'), '끊긴 상태에서 있는 기록을 열 수도 없다 — 읽기는 막지 않는다');
+    W.ev("$('#qaTitle').value = '고친 제목'; qaSave();");
     await settle();
     assert.strictEqual(W.ev("entryById('e-1').title"), '기존 기록', '끊긴 상태에서 기록 수정이 메모리에 들어갔다');
     //  (보고서 줄편집 setEntryTitle 은 없앴다(REPORT-EDIT §5). 끊긴 상태의 보고서 글 편집은 캘린더 데이터가 아니라 막지 않는다.)

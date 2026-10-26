@@ -202,7 +202,7 @@ async function openWeeklyAt(mon) {
   const opened = await waitFor(isOpen('#reportModal'), 3000, 100);
   await cdp.ev(`(function(){ const t = document.querySelector('#reportModal [data-rmode="weekly"]'); if (t) t.click(); else setReportMode('weekly'); return 1; })()`);
   //  포함 항목 셋, 빈 항목 제외 끔(행 = 모든 과제). 사용자 저장값(tc_rptSources)은 O0 에서 받아 두고 끝에 되돌린다.
-  await cdp.ev(`(function(){ ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false; return 1; })()`);
+  await cdp.ev(`(function(){ ['#rptSrcEvent','#rptSrcTodo','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false; return 1; })()`);
   await setWeek(mon);
   return opened;
 }

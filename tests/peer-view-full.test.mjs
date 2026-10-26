@@ -1,13 +1,13 @@
 // 타인 일정 보기 개선(docs/PEER-VIEW-FULL.md P1–P7 · Q1–Q8) — 「열람 창에서도 내 메인 화면이 보이는 것은 다 보인다」.
 //
 // 이 파일이 지키는 것:
-//   (H) 호스트 — LoadPeerScheduleJsonAsync 의 **범위**. 할 일·커밋·메모·장소는 온다(P2),
+//   (H) 호스트 — LoadPeerScheduleJsonAsync 의 **범위**. 할 일·메모·장소는 온다(P2, 커밋 목록은 2026-10-26 Git 삭제로 없다),
 //       과제별 시간·근태·보고서 서식·회의실·알림 설정·저장소 경로는 **키조차** 없다(P3).
 //       행 → state 변환은 부팅 조회와 **같은 함수**다(모양이 갈라지면 같은 앱이 다른 화면을 그린다).
 //       권한 재판정·정렬·시간제한은 그대로다(P7).
-//   (W) 웹 — 「할 일」·「커밋 내역」 탭을 연다(P2) · 편집 수단은 여전히 없다(P3) · 밀도 기본 펼침 + 열람 창
+//   (W) 웹 — 「할 일」 탭을 연다(P2) · 편집 수단은 여전히 없다(P3) · 밀도 기본 펼침 + 열람 창
 //       전용 키(P4) · 모달 크게(P5) · 그리드 클릭이 PEER 전용 길을 안 탄다(P1) · 내 겹은 일정만(P6).
-//   (R) jsdom 실행 — 열람 창을 실제로 띄워 할 일·커밋이 그려지고, 「+N」 이 없고, 10/1 기간 칩을 눌러도
+//   (R) jsdom 실행 — 열람 창을 실제로 띄워 할 일이 그려지고, 「+N」 이 없고, 10/1 기간 칩을 눌러도
 //       10월이 유지되고, 편집 함수가 state 를 바꾸기 전에 끊기는지(save() 까지 가지 않는지) 본다.
 //   (M) 변이 — 할 일 탭 재숨김 · payload 에 taskHours · PEER 할 일 체크 무방비 · 밀도 키 공유를 각각 잡는다.
 //
@@ -46,11 +46,12 @@ const H = {
   //  P2 — 화면이 그리는 것은 온다: 표 여섯 · 컬럼 · 반환 키.
   sendsScreenScope(cs) {
     const b = extractCsMember(cs, PEER_SIG);
-    for (const t of ['FROM cal_category c', 'FROM cal_entry e', 'FROM cal_entry_except', 'FROM cal_entry_commit',
+    //  (커밋 목록 표 cal_entry_commit 과 cal_entry.source 는 2026-10-26 Git, SVN 삭제로 구조 18 에서 없어졌다.)
+    for (const t of ['FROM cal_category c', 'FROM cal_entry e', 'FROM cal_entry_except',
                      'FROM cal_todo t', 'FROM cal_todo_day_note']) {
       assert.ok(b.includes(t), `타인 일정 조회가 ${t} 를 읽지 않는다 — 열람 창의 그 화면(P2)이 비어 거짓말을 한다`);
     }
-    for (const col of ['e.memo', 'e.location', 'e.source', 'e.recur_freq', 'subject', 'body',
+    for (const col of ['e.memo', 'e.location', 'e.recur_freq',
                        't.todo_text', 't.note', 't.done', 't.prio', 't.due', 't.end_date', 'completed_at', 'note_text',
                        'c.source', 'db_gone']) {
       assert.ok(b.includes(col), `타인 일정 조회가 ${col} 을(를) 읽지 않는다 — 내 화면이 그리는 값이다(P2)`);
@@ -62,11 +63,11 @@ const H = {
   omitsReportValues(cs) {
     const b = extractCsMember(cs, PEER_SIG);
     for (const leak of ['cal_task_hours', 'cal_attendance', 'cal_user_pref', 'cal_room', 'e.remind',
-                        'description', 'uses_repo', 'repoPaths', 'git_author', 'report_']) {
+                        'description', 'uses_repo', 'repoPaths', 'git_author', 'report_', 'cal_entry_commit', 'e.source']) {
       assert.ok(!b.includes(leak), `타인 일정 조회가 ${leak} 을(를) 읽는다 — 과제별 시간·근태·서식·회의실·알림·저장소는 보내지 않는다(P3)`);
     }
     for (const key of ['taskHours', 'attendance', 'rooms', 'reportFormatPrefs', 'reportFont', 'reportMarker',
-                       'gitAuthor', 'svnAuthor', 'remind', 'gitRepo', 'svnRepo', 'usesRepo', 'desc']) {
+                       'gitAuthor', 'svnAuthor', 'remind', 'gitRepo', 'svnRepo', 'usesRepo', 'desc', 'commits', 'source']) {
       assert.ok(!new RegExp('\\["' + key + '"\\]').test(b),
         `타인 일정 조회가 "${key}" 키를 만든다 — 키조차 없어야 한다(P3)`);
     }
@@ -76,7 +77,7 @@ const H = {
   //  행 → state 변환은 부팅과 **같은 함수**다. 알림 설정만 빠진다(withRemind:false).
   sharesBootMapping(cs) {
     const peer = extractCsMember(cs, PEER_SIG), boot = extractCsMember(cs, BOOT_SIG);
-    for (const fn of ['EntryRowToState(', 'TodoRowToState(', 'CommitRow(', 'AddDbSourceFlags(']) {
+    for (const fn of ['EntryRowToState(', 'TodoRowToState(', 'AddDbSourceFlags(']) {
       assert.ok(peer.includes(fn), `타인 일정 조회가 ${fn} 를 쓰지 않는다 — 행 변환이 부팅과 갈라진다`);
       assert.ok(boot.includes(fn), `부팅 조회가 ${fn} 를 쓰지 않는다 — 공유 변환이 한쪽에만 걸려 있다`);
     }
@@ -85,7 +86,7 @@ const H = {
     const m = extractCsMember(cs, 'private static Dictionary<string, object?> EntryRowToState(');
     assert.ok(/withRemind \? IntOrNull\(rd, "remind"\) : null/.test(m), 'EntryRowToState 가 withRemind:false 에서도 remind 컬럼을 읽는다(SELECT 에 없으면 터진다)');
     assert.ok(/if \(!withRemind\) e\.Remove\("remind"\);/.test(m), 'EntryRowToState 가 withRemind:false 에서 remind 키를 지우지 않는다');
-    assert.ok(/\["commits"\]\s*=\s*new List<object\?>\(\)/.test(m), 'EntryRowToState 의 commits 가 항상 배열이 아니다(G-7)');
+    assert.ok(!/\["commits"\]|\["source"\]/.test(stripCsComments(m)), 'EntryRowToState 가 커밋 목록이나 source 키를 만든다(2026-10-26 Git 삭제)');
   },
   //  P7 — 권한 재판정 · 정렬 · 시간제한 · 실패 분류는 그대로.
   keepsAuthOrderTimeout(cs) {
@@ -94,25 +95,25 @@ const H = {
     assert.ok(auth >= 0, '타인 일정 조회가 권한을 다시 판정하지 않는다(view_scope)');
     assert.ok(auth < b.indexOf('FROM cal_'), '권한 판정이 데이터 읽기보다 뒤에 있다 — 읽고 나서 막으면 늦다');
     for (const ord of ['ORDER BY c.sort_order, c.uid', 'ORDER BY e.sort_order, e.uid', 'ORDER BY t.sort_order, t.uid',
-                       'ORDER BY entry_no, seq', 'ORDER BY except_date', 'ORDER BY note_date']) {
+                       'ORDER BY except_date', 'ORDER BY note_date']) {
       assert.ok(b.includes(ord), `타인 일정 조회의 정렬(${ord})이 부팅과 다르다 — 주인과 열람자가 다른 순서를 본다`);
     }
     assert.ok(/TimeSpan\.FromSeconds\(10\)/.test(b), '타인 일정 조회의 읽기 시간제한(10초)이 사라졌다');
     assert.ok(/START TRANSACTION WITH CONSISTENT SNAPSHOT/.test(b) && /"COMMIT"/.test(b) && /"ROLLBACK"/.test(b),
-      '타인 일정 조회가 한 스냅샷에서 읽지 않는다 — 재사용되는 entry_no 에 남의 커밋이 붙을 수 있다');
+      '타인 일정 조회가 한 스냅샷에서 읽지 않는다 — 재사용되는 entry_no 에 남의 예외일이 붙을 수 있다');
     assert.ok(/DbErrors\.Observe\(ex, _log\)/.test(b), '타인 일정 조회 실패가 분류기에 닿지 않는다');
   },
 };
 
-test('(H) P2: 타인 일정 조회가 할 일·커밋·메모·장소·출처를 읽고 allowed·categories·entries·todos 를 돌려준다', () => H.sendsScreenScope(caldb));
+test('(H) P2: 타인 일정 조회가 할 일·메모·장소·과제 출처를 읽고 allowed·categories·entries·todos 를 돌려준다', () => H.sendsScreenScope(caldb));
 test('(H) P3: 과제별 시간·근태·서식·회의실·알림·저장소 경로는 읽지도 싣지도 않는다(Q4)', () => H.omitsReportValues(caldb));
 test('(H) 행 변환은 부팅과 같은 함수 — 열람만 remind 를 뺀다', () => H.sharesBootMapping(caldb));
 test('(H) P7: 권한 재판정이 먼저 · 정렬·시간제한·스냅샷·실패 분류 유지(Q7)', () => H.keepsAuthOrderTimeout(caldb));
-test('(H) 주석 걷기: 설명 주석의 「description」 같은 낱말은 판정에 끼지 않는다(본문만 본다)', () => {
-  //  사전조건 — 실제 주석에 그 낱말이 있다(없으면 이 시험이 지키는 것이 없다).
-  assert.ok(caldb.slice(caldb.indexOf(PEER_SIG) - 4000, caldb.indexOf(PEER_SIG)).includes('uses_repo'),
-    '사전조건: 머리 주석에 uses_repo 언급이 있어야 한다');
-  assert.ok(!stripCsComments(extractCsMember(caldb, PEER_SIG)).includes('uses_repo'));
+test('(H) 주석 걷기: 설명 주석의 「e.remind」 같은 낱말은 판정에 끼지 않는다(본문만 본다)', () => {
+  //  사전조건 — 실제 본문 주석에 그 낱말이 있다(없으면 이 시험이 지키는 것이 없다).
+  //  (예전 사전조건 낱말 uses_repo 는 2026-10-26 Git 삭제로 머리 주석에서 빠졌다.)
+  assert.ok(caldb.slice(caldb.indexOf(PEER_SIG), caldb.indexOf(PEER_SIG) + 6000).includes('e.remind'), '사전조건: 본문 주석에 e.remind 언급이 있어야 한다');
+  assert.ok(!stripCsComments(extractCsMember(caldb, PEER_SIG)).includes('e.remind'));
 });
 
 // ── (M) 호스트 변이 ─────────────────────────────────────────────────────
@@ -149,16 +150,16 @@ function cssRules(src) {
   return out;
 }
 const W = {
-  //  P2 — 두 탭은 PEER 에서 감추지 않는다.
+  //  P2 — 「할 일」 탭은 PEER 에서 감추지 않는다. (「커밋 내역」 탭은 2026-10-26 Git 기능과 함께 없앴다.)
   tabsNotHidden(src) {
     for (const r of cssRules(src)) {
       if (!/display\s*:\s*none/.test(r.decl)) continue;
       for (const one of r.sel.split(',')) {
-        assert.ok(!/body\[data-peer\][^,]*#dptab-(todo|git)\b/.test(one),
-          `PEER 에서 ${one.trim()} 을(를) 감춘다 — 「할 일」·「커밋 내역」 탭은 열람 창에서도 보여야 한다(P2)`);
+        assert.ok(!/body\[data-peer\][^,]*#dptab-todo\b/.test(one),
+          `PEER 에서 ${one.trim()} 을(를) 감춘다 — 「할 일」 탭은 열람 창에서도 보여야 한다(P2)`);
       }
     }
-    for (const id of ['dptab-todo', 'dptab-git']) assert.ok(src.includes(`id="${id}"`), `#${id} 탭 마크업이 없다`);
+    assert.ok(src.includes('id="dptab-todo"'), '#dptab-todo 탭 마크업이 없다');
   },
   //  P3 — 편집 수단은 감추고(CSS) 막는다(JS).
   editAffordancesGuarded(src) {
@@ -167,14 +168,14 @@ const W = {
       if (!/display\s*:\s*none\s*!important/.test(r.decl)) continue;
       for (const one of r.sel.split(',')) { const m = /^body\[data-peer\]\s+(\S+)$/.exec(one.trim()); if (m) hidden.add(m[1]); }
     }
-    for (const sel of ['#btnAddHere', '#btnTodoNew', '#btnGitHere', '#btnGitBulk', '.todo-del', '.nd-cbtn', '.card-actions']) {
+    for (const sel of ['#btnAddHere', '#btnTodoNew', '.todo-del', '.card-actions']) {
       assert.ok(hidden.has(sel), `PEER 에서 ${sel} 을(를) 감추지 않는다 — 열람 창에 편집 수단이 보인다(P3)`);
     }
     //  setCommitSubject, setTodoText, setEntryTitle 은 일간 보고서 줄 ✎ 와 함께 없앴다(REPORT-EDIT §5) — 아래에서 '없다'를 본다.
     for (const fn of ['setCommitSubject', 'setTodoText', 'setEntryTitle']) {
       assert.ok(!src.includes('function ' + fn + '('), `${fn} 가 되살아났다 — 열람 창 관문 목록에 다시 올려야 할 쓰기 경로다`);
     }
-    for (const fn of ['toggleTodo', 'updateTodo', 'deleteTodo', 'addTodo', 'setCommitMessage', 'deleteCommitRow']) {
+    for (const fn of ['toggleTodo', 'updateTodo', 'deleteTodo', 'addTodo']) {
       const body = extractFunction(src, fn);
       const g = body.indexOf('peerReadOnly()');
       assert.ok(g >= 0, `${fn} 에 PEER 관문(peerReadOnly)이 없다 — 열람 창에서 state 를 바꾼다`);
@@ -187,10 +188,8 @@ const W = {
       'deleteEntry 의 PEER 관문이 사라졌다');
     const pro = extractFunction(src, 'peerReadOnly');
     assert.ok(/if\(!PEER\) return false;/.test(pro) && /return true;/.test(pro), 'peerReadOnly 가 PEER 에서만 참이 아니다');
-    //  렌더 — 할 일 행·커밋 행이 편집 버튼을 만들지 않는다.
+    //  렌더 — 할 일 행이 편집 버튼을 만들지 않는다.
     assert.ok(/const ro = PEER;/.test(extractFunction(src, 'todoRowHtml')), 'todoRowHtml 에 읽기 전용(PEER) 갈래가 없다');
-    assert.ok(/const editable = r\.cidx >= 0 && !PEER;/.test(extractFunction(src, 'renderGitTab')), 'renderGitTab 이 PEER 에서도 커밋 수정·삭제 버튼을 만든다');
-    assert.ok(/HOST && !PEER && gitEnabledCats\(\)/.test(extractFunction(src, 'renderGitTab')), 'renderGitTab 이 PEER 에서 커밋 불러오기 버튼을 만든다');
     //  끌기 — 칩은 draggable=false · dragstart 가 끊는다.
     assert.ok(/draggable="\$\{\(PEER\|\|mine\|\|kind==='recur'\)\?'false':'true'\}"/.test(extractFunction(src, 'chipHtml')), '일정 칩이 PEER 에서 끌린다');
     assert.ok(/draggable="\$\{PEER \? 'false' : 'true'\}"/.test(extractFunction(src, 'todoChipHtml')), '할 일 칩이 PEER 에서 끌린다');
@@ -245,7 +244,7 @@ const W = {
       '내 겹이 일정(state.entries)에서만 만들어지지 않는다');
   },
 };
-test('(W) P2: 「할 일」·「커밋 내역」 탭은 PEER 에서 감추지 않는다', () => W.tabsNotHidden(app));
+test('(W) P2: 「할 일」 탭은 PEER 에서 감추지 않는다', () => W.tabsNotHidden(app));
 test('(W) P3: 편집 수단은 CSS 로 감추고 변경 함수는 PEER 관문으로 먼저 끊는다(Q6)', () => W.editAffordancesGuarded(app));
 test('(W) P4: 밀도 — 열람 창 전용 키 · 기본 펼침 · 띠의 전환(고정/촘촘히/펼침)', () => W.densitySeparated(app));
 test('(W) P5: 열람 창(따로 뜨는 창)은 창 전체를 쓰고 iframe 이 본문을 채운다', () => W.modalLarge(app));
@@ -278,7 +277,7 @@ test('변이 W4: 그리드 클릭에 PEER 전용 갈래를 넣으면 P1 계약�
 const JSDOM = (await importOptional('jsdom'))?.JSDOM || null;
 
 if (!JSDOM) {
-  skip('peer-view-full: jsdom 미설치 — 열람 창 실행 계약(할 일·커밋 렌더 · 밀도 · 기간 칩 클릭 · 편집 차단)을 돌리지 못했다',
+  skip('peer-view-full: jsdom 미설치 — 열람 창 실행 계약(할 일 렌더 · 밀도 · 기간 칩 클릭 · 편집 차단)을 돌리지 못했다',
        SKIP_NO_JSDOM, `이 파일의 test( 호출 ${countTestsBelow(import.meta.url, 'if (!JSDOM) {')}곳이 등록되지 않았다(정적 계수)`);
 } else {
   //  부팅 옵션은 팩토리 하나에서만 — peer-overlay.test.mjs 와 같은 모양(WebView2 는 iframe 에도 chrome.webview 를 넣는다).
@@ -312,7 +311,7 @@ if (!JSDOM) {
   const settle = () => new Promise((r) => setTimeout(r, 60));
 
   //  ── 픽스처 — 호스트 payload 모양 그대로(H 계약이 지키는 키) ──────────────
-  //    10월: 9/29~10/2 기간 일정(P1) · 10/1 시간 일정(장소·메모) · 10/1 작업일지(커밋) · 10/15 일정 15건(+N 유발).
+  //    10월: 9/29~10/2 기간 일정(P1) · 10/1 시간 일정(장소·메모) · 10/1 옛 DB 의 커밋 기록(읽지 않고 버린다) · 10/15 일정 15건(+N 유발).
   const CATS = [
     { id: 'c-A', name: '설계 검토', color: '#c0392b' },
     { id: 'c-B', name: '공식 과제', color: '#2980b9', source: 'db', dbGone: false },
@@ -324,6 +323,7 @@ if (!JSDOM) {
     E({ id: 'e-r1', date: '2026-09-29', endDate: '2026-10-02', allDay: true, title: '상대: 통합시험 기간' }),
     E({ id: 'e-t1', date: '2026-10-01', startTime: '09:00', endTime: '10:00', title: '상대: 설계회의',
         location: '3층 소회의실', memo: '안건 정리 메모' }),
+    //  구조 18 이전 DB 가 아직 보내는 꼴 — 2026-10-26 Git 삭제 뒤 웹은 이 기록을 통째로 버린다(buildStateFrom → dropLegacyGit).
     E({ id: 'e-g1', date: '2026-10-01', source: 'git', categoryId: 'c-B', title: '커밋 기록',
         commits: [{ hash: 'abc1234def', short: 'abc1234', time: '14:05', subject: 'fix: 열람 커밋 제목', body: '' }] }),
   ];
@@ -335,7 +335,7 @@ if (!JSDOM) {
       completedAt: '2026-10-01T03:00:00.000Z', note: '', dayNotes: {}, createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-10-01T03:00:00.000Z' },
   ];
   //  부모(mountPeerFrame)가 iframe 에 넣는 모양 — 호스트 payload + 빈 보고서 값.
-  const DATA = { categories: CATS, entries: ENTRIES, todos: TODOS, rooms: [], taskHours: {}, attendance: {}, gitAuthor: '', svnAuthor: '' };
+  const DATA = { categories: CATS, entries: ENTRIES, todos: TODOS, rooms: [], taskHours: {}, attendance: {} };
   function inject(m) {
     m.ev('view = {y:2026, m:9}; selectedDate = "2026-10-01";');
     m.w.__applyState(JSON.stringify(DATA), { peerName: '홍길동', canWrite: false });
@@ -352,22 +352,23 @@ if (!JSDOM) {
   if (bootErr) {
     test('peer-view-full: jsdom 부팅 실패(조사 필요)', () => { throw bootErr; });
   } else {
-    test('R 부팅: 열람 창(PEER)에 호스트 payload 모양을 넣으면 할 일·커밋·일정이 그대로 선다', async () => {
+    test('R 부팅: 열람 창(PEER)에 호스트 payload 모양을 넣으면 할 일·일정이 그대로 서고 옛 커밋 기록은 버린다', async () => {
       await settle();
       P.ev('localStorage.setItem("tc_calDensity","fixed");');   // 내 화면 밀도 — 아래 시험이 「안 바뀜」을 본다
       inject(P);
       await settle();
       assert.strictEqual(P.ev('PEER'), true);
       assert.strictEqual(P.ev('state.todos.length'), 2, '할 일이 state 에 안 들어왔다');
-      assert.strictEqual(P.ev('state.entries.find(function(e){return e.id==="e-g1";}).commits.length'), 1);
+      assert.strictEqual(P.ev('state.entries.some(function(e){return e.id==="e-g1";})'), false, '옛 DB 의 커밋 기록이 열람 창 state 에 남았다');
+      assert.strictEqual(P.ev('state.entries.some(function(e){return "source" in e || "commits" in e;})'), false, '기록에 source/commits 키가 남았다');
+      assert.strictEqual(P.ev('state.entries.length'), ENTRIES.length - 1, '커밋 기록 말고 다른 일정까지 빠졌다');
       assert.deepStrictEqual(P.posted, [], '열람 창이 호스트로 무언가 보냈다');
     });
 
-    test('R P2: 「할 일」·「커밋 내역」 탭이 보인다(감추지 않는다)', () => {
-      for (const id of ['dptab-todo', 'dptab-git']) {
-        const disp = P.ev(`getComputedStyle(document.getElementById("${id}")).display`);
-        assert.notStrictEqual(disp, 'none', `#${id} 가 열람 창에서 감춰져 있다`);
-      }
+    test('R P2: 「할 일」 탭이 보인다(감추지 않는다) · 「커밋 내역」 탭은 없다', () => {
+      const disp = P.ev('getComputedStyle(document.getElementById("dptab-todo")).display');
+      assert.notStrictEqual(disp, 'none', '#dptab-todo 가 열람 창에서 감춰져 있다');
+      assert.strictEqual(P.ev('!!document.getElementById("dptab-git")'), false, '「커밋 내역」 탭이 되살아났다');
     });
 
     test('R P2/Q3: 일정 상세 카드에 시간·장소·메모가 보이고 수정·삭제는 감춰진다', () => {
@@ -393,15 +394,6 @@ if (!JSDOM) {
       assert.strictEqual(P.ev(body + '.querySelectorAll("span.todo-check").length'), 2, '완료 상태 표시가 없다');
       assert.strictEqual(P.ev(body + '.querySelectorAll(".todo-row.done").length'), 1);
       assert.strictEqual(P.ev(body + '.querySelectorAll("span.todo-star-btn.on").length'), 1, '중요 표시(별)가 안 보인다');
-    });
-
-    test('R P2/Q2: 「커밋 내역」 탭이 그 사람의 커밋을 그리고 수정·삭제·불러오기 버튼은 없다', () => {
-      P.ev('setPanelTab("git");');
-      const t = P.ev('document.getElementById("dpBody").textContent');
-      for (const s of ['fix: 열람 커밋 제목', '14:05', 'abc1234', '공식 과제']) assert.ok(t.includes(s), `커밋 내역 탭에 '${s}' 가 없다`);
-      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .nd-commit").length'), 1);
-      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .nd-cbtn, #btnGitHere, #btnGitBulk").length'), 0,
-        '열람 창에 커밋 수정·삭제·불러오기 버튼이 그려졌다');
     });
 
     test('R P2: 그리드에 할 일 칩이 그려지고 모든 칩이 draggable=false 다(끌기 없음)', () => {
@@ -456,28 +448,25 @@ if (!JSDOM) {
       assert.strictEqual(P.ev('selectedDate'), '2026-10-01');
     });
 
-    test('R P3/Q6: 할 일·커밋·줄편집 함수는 열람 창에서 state 를 바꾸기 **전에** 끊는다(save() 까지 가지 않는다)', async () => {
+    test('R P3/Q6: 할 일·일정 함수는 열람 창에서 state 를 바꾸기 **전에** 끊는다(save() 까지 가지 않는다)', async () => {
       spyRevert(P);
       const before = P.ev('JSON.stringify({t:state.todos, e:state.entries})');
       const calls = [
         'toggleTodo("t-1")', 'updateTodo("t-1", {text:"침입"})', 'deleteTodo("t-1")', 'addTodo("침입 할일")',
-        'setCommitMessage("e-g1", "abc1234def", 0, "침입")',
-        'deleteCommitRow("e-g1", "abc1234def", 0)', 'deleteEntry("e-t1")',
+        'deleteEntry("e-t1")',
       ];
       for (const c of calls) {
         P.ev('try{ ' + c + '; }catch(_){}');
         assert.strictEqual(rv(P), 0, `${c} 가 save() 까지 갔다 — state 를 먼저 바꾸고 되돌리는 깜빡임이 난다`);
       }
       assert.strictEqual(P.ev('JSON.stringify({t:state.todos, e:state.entries})'), before, '열람 창의 state 가 바뀌었다');
-      //  화면 조작으로도 — 할 일 행·커밋 행을 눌러 본다.
+      //  화면 조작으로도 — 할 일 행을 눌러 본다.
       P.ev('setPanelTab("todo");');
       P.ev('Array.prototype.forEach.call(document.querySelectorAll("#dpBody .todo-row *"), function(el){ el.dispatchEvent(new MouseEvent("click", {bubbles:true})); });');
-      P.ev('setPanelTab("git");');
-      P.ev('Array.prototype.forEach.call(document.querySelectorAll("#dpBody .nd-commit *"), function(el){ el.dispatchEvent(new MouseEvent("click", {bubbles:true})); });');
       await settle();
-      assert.strictEqual(rv(P), 0, '열람 창 할 일·커밋 행을 눌렀더니 save() 가 돌았다');
+      assert.strictEqual(rv(P), 0, '열람 창 할 일 행을 눌렀더니 save() 가 돌았다');
       assert.strictEqual(P.ev('JSON.stringify({t:state.todos, e:state.entries})'), before);
-      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .todo-edit, #dpBody .nd-cedit").length'), 0, '편집기가 열렸다');
+      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .todo-edit").length'), 0, '편집기가 열렸다');
       assert.deepStrictEqual(P.posted, [], '편집 시도 끝에 호스트로 메시지가 나갔다');
       P.ev('setPanelTab("detail");');
     });

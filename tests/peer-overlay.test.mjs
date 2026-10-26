@@ -54,23 +54,21 @@ const PARENT_ENTRIES = Object.freeze([
   { id: 'e-m1', date: '2026-09-08', categoryId: 'c-me-A', title: '나: 회의 준비',
     allDay: false, startTime: '09:00', endTime: '10:00', endDate: '',
     location: '3층 소회의실', memo: '발표자료 인쇄', remind: 30, hours: 90,
-    source: '', commits: [], recur: null, recurExcept: [],
+    recur: null, recurExcept: [],
     createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-02T00:00:00.000Z' },
   { id: 'e-m2', date: '2026-09-16', categoryId: 'c-me-B', title: '나: 출장',
     allDay: true, startTime: '', endTime: '', endDate: '2026-09-18',
     location: '', memo: '숙소 예약 완료', remind: 0, hours: null,
-    source: '', commits: [],
     recur: { freq: 'weekly', interval: 2, until: '2026-12-31', count: 0, bogus: '이 키는 넘어가면 안 된다' },
     recurExcept: ['2026-09-30'],
     createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
-  { id: 'e-g1', date: '2026-09-08', categoryId: 'c-me-A', title: '나: 커밋 기록',
-    source: 'git', commits: [{ hash: 'abc', title: 'fix' }], memo: '', recur: null, recurExcept: [] },
+  null,   // 빈 칸(손상 데이터) — 겹에서 건너뛴다. (예전 이 자리의 커밋 기록은 2026-10-26 Git 기능과 함께 없앴다.)
 ]);
 
 test('(순수) buildMineOverlay: 결과 객체의 키는 허용 목록과 정확히 일치한다(늘지도 줄지도 않는다)', () => {
   const fn = overlayFnFrom(loadAppSource());
   const out = fn(PARENT_ENTRIES);
-  assert.strictEqual(out.length, 2, 'git 을 뺀 2건이 나와야 한다: ' + JSON.stringify(out.map(e => e.id)));
+  assert.strictEqual(out.length, 2, '빈 칸을 뺀 2건이 나와야 한다: ' + JSON.stringify(out.map(e => e.id)));
   for (const o of out) {
     assert.deepStrictEqual(Object.keys(o).slice().sort(), ALLOWED_KEYS.slice().sort(),
       `허용 키와 다르다(id=${o.id}): ` + JSON.stringify(Object.keys(o)));
@@ -85,15 +83,15 @@ test('(순수) buildMineOverlay: 메모·장소·알림·공수·커밋·생성�
   assert.deepStrictEqual(leaked, [], '금지 키가 겹에 실렸다 — 남의 화면에 내 개인 기록이 간다');
   // 값으로도 확인한다 — 키 이름을 바꿔 담는 경우까지 잡는다.
   const blob = JSON.stringify(out);
-  for (const secret of ['발표자료 인쇄', '3층 소회의실', '숙소 예약 완료', 'abc']) {
+  for (const secret of ['발표자료 인쇄', '3층 소회의실', '숙소 예약 완료']) {
     assert.ok(!blob.includes(secret), `겹 payload 에 '${secret}' 이 남아 있다: ` + blob);
   }
 });
 
-test('(순수) buildMineOverlay: source==="git"(커밋 기록)은 겹에서 제외한다', () => {
+test('(순수) buildMineOverlay: 빈 칸(null)은 겹에서 건너뛴다', () => {
   const fn = overlayFnFrom(loadAppSource());
   const ids = fn(PARENT_ENTRIES).map(e => e.id);
-  assert.deepStrictEqual(ids, ['e-m1', 'e-m2'], '커밋 기록이 겹에 섞였다: ' + JSON.stringify(ids));
+  assert.deepStrictEqual(ids, ['e-m1', 'e-m2'], '빈 칸이 겹을 깨뜨렸거나 섞였다: ' + JSON.stringify(ids));
 });
 
 test('(순수) buildMineOverlay: 모든 항목이 _mine:true · categoryId:null 이다(과제 구분 없는 한 겹)', () => {
@@ -186,18 +184,17 @@ test('변이③: buildMineOverlay 가 memo 를 복사하면 최소 payload 계�
   }, '허용 키 계약이 늘어난 키를 통과시킨다');
 });
 
-// ── 변이④ buildMineOverlay 가 커밋을 안 거른다 → 캘린더에 안 그리는 기록이 남의 화면에 뜬다 ──
-test('변이④: buildMineOverlay 가 source==="git" 을 안 거르면 커밋 제외 계약이 깨진다', () => {
+// ── 변이④ buildMineOverlay 가 빈 칸을 안 거른다 → 손상된 칸 하나가 겹 전체를 깨뜨린다(열람 창이 안 뜬다) ──
+//    (예전 앵커 `e.source === 'git'` 는 2026-10-26 Git 기능과 함께 없앴다. 걸러내는 자리는 이 한 줄이다.)
+test('변이④: buildMineOverlay 가 빈 칸을 안 거르면 빈 칸 계약이 깨진다', () => {
   assert.deepStrictEqual(overlayFnFrom(loadAppSource())(PARENT_ENTRIES).map(e => e.id), ['e-m1', 'e-m2'],
-    '사전조건: 정상 앱은 커밋 기록을 겹에서 뺀다');
+    '사전조건: 정상 앱은 빈 칸을 겹에서 뺀다');
 
   const fn = overlayFnFrom(mutateSource(
-    "    if(!e || e.source === 'git') continue;",
-    '    if(!e) continue;'));
-  const ids = fn(PARENT_ENTRIES).map(e => e.id);
-  assert.ok(ids.includes('e-g1'),
-    '변이했는데도 커밋이 안 실린다 — 변이가 걸러내는 자리에 닿지 않았다(앵커 재검토): ' + JSON.stringify(ids));
-  assert.notDeepStrictEqual(ids, ['e-m1', 'e-m2'], '커밋 제외 계약이 결과 id 목록을 안 본다');
+    '  for(const e of entries){\n    if(!e) continue;\n    const r = e.recur;',
+    '  for(const e of entries){\n    const r = e.recur;'));
+  assert.throws(() => fn(PARENT_ENTRIES),
+    '변이했는데도 빈 칸에서 안 깨진다 — 변이가 걸러내는 자리에 닿지 않았다(앵커 재검토)');
 });
 
 // ── 변이⑤ 부모가 state.entries 를 그대로 concat → 걸러지지 않은 내 데이터가 통째로 간다 ──
@@ -280,7 +277,7 @@ if (!JSDOM) {
   ];
   const MIX = {
     categories: PEER_CATS, entries: [...PEER_ES, ...MINE_ES],
-    todos: [], rooms: [], taskHours: {}, attendance: {}, gitAuthor: '', svnAuthor: '',
+    todos: [], rooms: [], taskHours: {}, attendance: {}, 
   };
   // 격자에 뜨는 칩 수 — 기간 일정은 날짜마다 한 조각이다.
   const MINE_CHIPS = 4;   // e-m1(1일) + e-m2(16·17·18)
@@ -348,8 +345,6 @@ if (!JSDOM) {
       assert.deepStrictEqual(
         P.evJSON('Array.prototype.map.call(document.querySelectorAll("#grid .chip.chip-mine"), function(c){return c.getAttribute("draggable");})'),
         new Array(MINE_CHIPS).fill('false'));
-      // 상대 칩은 그대로 둔다 — 이번 변경이 남의 칩 모양을 건드리면 안 된다.
-      assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip.chip-mine.chip-git").length'), 0);
     });
 
     test('P 렌더: 일자 패널(9/8)에 상대 카드 2 + 내 카드 1(.card-mine) 이 함께 선다', () => {
@@ -385,15 +380,7 @@ if (!JSDOM) {
       assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip").length'), MINE_CHIPS + PEER_CHIPS);
     });
 
-    test('P 필터(출처): filterSource 를 켜도 내 겹은 그대로다(겹은 소스 축과도 무관)', () => {
-      P.ev('filterSource = "git"; renderAll();');
-      assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip.chip-mine").length'), MINE_CHIPS,
-        '출처 필터가 내 겹을 걷어냈다');
-      assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip:not(.chip-mine)").length'), 0,
-        '사전조건: 상대 일정에는 source 가 없으므로 git 필터에서 전부 빠져야 한다');
-      P.ev('filterSource = null; renderAll();');
-      assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip").length'), MINE_CHIPS + PEER_CHIPS);
-    });
+    //  (출처 필터 filterSource 는 커밋 기록만 거르던 죽은 갈래라 2026-10-26 Git 기능과 함께 없앴다.)
 
     // ── 계약 6. 필터바 ──────────────────────────────────────────────
     test('P 필터바: 칩은 「전체」+ 상대 과제뿐이고, 상대 과제 건수에 내 일정이 안 섞인다', () => {

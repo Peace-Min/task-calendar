@@ -52,6 +52,8 @@ const PRE_VERSION_FILES = new Map([
 const DROP_ONLY_ALLOWED = new Map([
   ['cal_audit_trash',
    '폐지(설계 §7.5). 옛 배포분에 남은 실물을 지우기 위해 DROP 만 남기고 재생성하지 않는다'],
+  ['cal_entry_commit',
+   '폐지(2026-10-26 Git, SVN 삭제, 구조 18, docs/GIT-SVN-REMOVAL.md). 옛 DB 에 남은 실물을 지우고(cal_entry 를 참조해 그보다 먼저) 재생성하지 않는다'],
 ]);
 
 // ══ SQL 잡음 마스킹 ═══════════════════════════════════════════════════
@@ -440,10 +442,10 @@ test('변이②: DROP 순서를 뒤집으면 dropOrderChildFirst 가 실패한�
 });
 
 test('변이③: 마이그레이션 체인에 구멍을 내면 migrationChain 이 실패한다', () => {
-  //  2026-10-22 남은 판이 다섯(12 → 13, 13 → 14, 조각 14 → 15, 조각 15 → 16, 조각 16 → 17)이라, 그 뒤에 한 칸 떨어진 가짜 파일(18 → 19)을 붙여 v=17 출발이 없는 상태를 만든다.
+  //  2026-10-22 남은 판이 다섯(12 → 13, 13 → 14, 조각 14 → 15, 조각 15 → 16, 조각 16 → 17, 2026-10-26 조각 17 → 18)이라, 그 뒤에 한 칸 떨어진 가짜 파일(19 → 20)을 붙여 v=18 출발이 없는 상태를 만든다.
   const holed = new Map(migrateSrc);
   holed.set('migrate-2099-01-01-ghost.sql',
-    "UPDATE cal_schema_meta SET v = '19', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '18';\n");
+    "UPDATE cal_schema_meta SET v = '20', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '19';\n");
   assert.doesNotThrow(() => checks.migrationChain(migrateSrc, canonSql), '원본은 통과해야 한다');
   assert.throws(() => checks.migrationChain(holed, canonSql), /체인이 끊겼다/);
 });

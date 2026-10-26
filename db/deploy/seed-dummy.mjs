@@ -12,7 +12,7 @@
  * ── 이 도구가 지키는 안전 규칙(운영 DB 에서 잘못 돌면 남의 데이터를 지우는 도구다) ────────
  *   R1 대상 사용자 외에는 단 한 행도 건드리지 않는다 — 모든 DELETE/INSERT 에 user_id 가 있다.
  *   R2 삭제는 FK 순서대로: cal_task_hours → cal_entry → cal_todo → cal_category
- *      (cal_entry_commit·except 는 CASCADE, cal_todo_day_note 도 CASCADE.
+ *      (cal_entry_except 는 CASCADE, cal_todo_day_note 도 CASCADE.  cal_entry_commit 은 구조 18 에서 없어졌다.
  *       cal_category 는 3표가 RESTRICT 로 잡고 있어 **맨 마지막**). cal_attendance 는 FK 가 없다.
  *   R3 cal_user_rev 는 DELETE 하지 않는다 — 단조 증가값이라 되돌리면 앱의 변경 감지가 깨진다.
  *      사용자별 시딩이 끝나면 ODKU 로 **+1 만** 한다.
@@ -31,15 +31,13 @@
  *                   일반과제 = 'c-<base36 8>-<base36 8>'(source='local', project_uid=NULL).
  *                   이 규칙은 chk_cal_category_projuid 가 DB 에서 직접 강제한다.
  *   · 일정 uid 'e-…', 할일 uid 't-…' — 같은 seed·같은 사람이면 언제나 같은 값이 나온다.
- *   · cal_entry.source 는 ''(사람이 만든 일정) 또는 'git'(커밋 수집) 둘뿐이다.
+ *   · 커밋 기록(옛 cal_entry.source = 'git')과 커밋 목록은 만들지 않는다(2026-10-26 Git, SVN 삭제, 구조 18).
  *   · 근태 status 는 문자열 코드이고 **미기록은 NULL 이 아니라 '행 부재'** 다. 무효·미지 코드를
  *     '1'(정근)로 흡수하지 않는다 — 이 앱의 과거 사고가 정확히 그것이었다.
  *
  * ── 스키마와 브리프가 어긋난 자리(스키마를 따랐다) ──────────────────────────────
  *   · cal_todo.prio 는 0~2 정수가 아니라 CHECK (prio IN ('normal','high')) 다. → 'normal'/'high'.
  *   · cal_attendance.overtime 은 NOT NULL DEFAULT 0(0..11) 이라 NULL 을 넣을 수 없다. → 0.
- *   · cal_entry_commit.seq 는 스키마 주석이 '부모 commits 배열 인덱스(0부터)' 라고 못박는다.
- *     → 1..N 이 아니라 **0..N-1** 로 넣는다(앱의 표시 순서 근거가 이 값이다).
  *   · 반복 일정은 chk_cal_entry_recur 가 recur_count 를 NOT NULL 로 요구한다(0=제한 없음).
  *     → until 을 쓰는 반복은 recur_count=0, count 를 쓰는 반복은 recur_until=NULL.
  *
@@ -429,12 +427,6 @@ const MEMOS = ['담당자 확인 필요', '자료 미리 공유할 것', '지난
 const LOCATIONS = ['회의실 A', '회의실 B', '3층 회의실', '대회의실', '고객사', '온라인', '현장', '본사 1층 라운지'];
 const REMINDS = [0, 5, 10, 30, 60];
 
-const COMMIT_SUBJECTS = ['로그인 처리 오류 수정', '목록 조회 성능 개선', '설정 파일 정리', '예외 처리 보완',
-  '단위 테스트 추가', '리팩토링: 중복 제거', '문서 갱신', '빌드 스크립트 수정', 'UI 여백 조정',
-  '쿼리 인덱스 추가', '로그 메시지 정리', '경계값 처리 수정'];
-const COMMIT_BODIES = ['', '', '', '재현 절차와 원인은 이슈에 적어 두었다.', '동작 확인: 로컬 · 개발 서버',
-  '기존 동작은 그대로 두고 내부 구현만 바꿨다.'];
-
 const TODO_TEXTS = ['월간 보고서 초안 작성', '회의록 공유', '시험 결과 정리', '예산 집행 확인', '자료 취합 요청',
   '장비 반납 처리', '교육 이수 등록', '산출물 검토 회신', '일정표 갱신', '고객 회신 대기',
   '변경 이력 정리', '점검 체크리스트 작성', '협력사 견적 확인', '휴가 계획 제출'];
@@ -551,7 +543,7 @@ function buildUserData(user, projects, seed) {
       uid: 'db-' + p.uid, source: 'db', name: p.label,
       color: DB_SECTION_COLORS[p.sectionId] || FALLBACK_COLOR,
       description: chance(0.3) ? p.section + ' 과제' : '',
-      projectUid: p.uid, usesRepo: 0, titles: DB_TITLES,
+      projectUid: p.uid, titles: DB_TITLES,
     });
   }
   const catUids = new Set();
@@ -567,13 +559,9 @@ function buildUserData(user, projects, seed) {
       uid: newCatUid(), source: 'local', name: lc.name,
       color: colorBag[i % colorBag.length],
       description: chance(0.25) ? lc.name + ' 관련 개인 과제' : '',
-      projectUid: null, usesRepo: 0, titles: lc.titles,
+      projectUid: null, titles: lc.titles,
     });
   });
-  // 저장소를 쓰는 과제 1개 — git 수집 일정이 붙을 자리다(DB 과제는 uses_repo=0 규약이라 일반과제에 둔다).
-  const repoCat = cats.find((c) => c.kind === 'local') || null;
-  if (repoCat) repoCat.usesRepo = 1;
-
   // 표시 순서는 섞는다(일반과제가 먼저 오기도, 뒤에 오기도 한다).
   shuffled(cats).forEach((c, i) => { c.sortOrder = i; });
 
@@ -607,14 +595,14 @@ function buildUserData(user, projects, seed) {
   for (let i = 0; i < entryCount; i++) {
     const day = pick(DAY_BAG);
     const cat = chance(0.10) ? null : pick(catBag);     // ~10% 미분류
-    const kind = pickWeighted([[55, 'allday'], [25, 'timed'], [10, 'span'], [7, 'recur'], [3, 'git']]);
+    const kind = pickWeighted([[55, 'allday'], [25, 'timed'], [10, 'span'], [7, 'recur']]);   // 커밋 기록(git)은 구조 18 에서 없앴다
     const [createdAt, updatedAt] = stamps(day.ms);
     const e = {
       uid: newUid('e', entryUids), catNo: cat ? cat.catNo : null,
       entryDate: day.s, endDate: null, allDay: 1, startTime: null, endTime: null,
-      title: titleFor(cat), memo: '', source: '', location: '', remind: null,
+      title: titleFor(cat), memo: '', location: '', remind: null,
       recurFreq: null, recurInterval: null, recurUntil: null, recurCount: null,
-      createdAt, updatedAt, commits: [], excepts: [],
+      createdAt, updatedAt, excepts: [],
     };
 
     if (kind === 'timed') {
@@ -654,26 +642,11 @@ function buildUserData(user, projects, seed) {
           if (!seen.has(s)) { seen.add(s); e.excepts.push(s); }   // PK 중복(1062) 방지 — 앱 어댑터와 같은 dedup
         }
       }
-    } else if (kind === 'git') {
-      // git 수집 일정: 기간·반복 개념이 없다(chk_cal_entry_git).
-      const n = 1 + rint(8);
-      e.source = 'git';
-      e.title = (cat ? cat.name : '작업') + ' · 커밋 ' + n + '건';
-      for (let s = 0; s < n; s++) {
-        const h = hex(40);
-        e.commits.push({
-          seq: s, hash: h, shortHash: h.slice(0, 7),
-          commitTime: pad2(9 + rint(10)) + ':' + pad2(rint(60)) + ':00',
-          subject: pick(COMMIT_SUBJECTS), body: pick(COMMIT_BODIES),
-        });
-      }
     }
 
-    if (e.source !== 'git') {
-      if (chance(0.25)) e.memo = pick(MEMOS);
-      if (chance(0.15)) e.location = pick(LOCATIONS);
-      if (chance(0.10)) e.remind = pick(REMINDS);
-    }
+    if (chance(0.25)) e.memo = pick(MEMOS);
+    if (chance(0.15)) e.location = pick(LOCATIONS);
+    if (chance(0.10)) e.remind = pick(REMINDS);
     entries.push(e);
   }
 
@@ -807,7 +780,7 @@ function insertChunks(out, table, cols, valueRows) {
 function deleteStatements(uid) {
   return [
     'DELETE FROM cal_task_hours WHERE user_id = ' + uid + ';',
-    'DELETE FROM cal_entry      WHERE user_id = ' + uid + ';',   // commit·except 는 CASCADE
+    'DELETE FROM cal_entry      WHERE user_id = ' + uid + ';',   // except 는 CASCADE
     'DELETE FROM cal_todo       WHERE user_id = ' + uid + ';',   // day_note 는 CASCADE
     'DELETE FROM cal_category   WHERE user_id = ' + uid + ';',
     'DELETE FROM cal_attendance WHERE user_id = ' + uid + ';',   // FK 없음 — 독립
@@ -833,25 +806,18 @@ function buildUserSql(userId, data) {
   const out = ['SET NAMES utf8mb4;', 'START TRANSACTION;'].concat(deleteStatements(uid));
 
   insertChunks(out, 'cal_category',
-    ['user_id', 'cat_no', 'uid', 'source', 'name', 'color', 'description', 'project_uid', 'uses_repo', 'sort_order', 'created_at', 'updated_at'],
+    ['user_id', 'cat_no', 'uid', 'source', 'name', 'color', 'description', 'project_uid', 'sort_order', 'created_at', 'updated_at'],
     data.cats.map((c) => [uid, I(c.catNo), q(c.uid), q(c.source), q(c.name), q(c.color), q(c.description),
-      q(c.projectUid), I(c.usesRepo), I(c.sortOrder), q(CAT_TS), q(CAT_TS)]));
+      q(c.projectUid), I(c.sortOrder), q(CAT_TS), q(CAT_TS)]));
 
   insertChunks(out, 'cal_entry',
     ['user_id', 'entry_no', 'uid', 'cat_no', 'entry_date', 'end_date', 'all_day', 'start_time', 'end_time',
-      'title', 'memo', 'source', 'location', 'remind', 'recur_freq', 'recur_interval', 'recur_until', 'recur_count',
+      'title', 'memo', 'location', 'remind', 'recur_freq', 'recur_interval', 'recur_until', 'recur_count',
       'sort_order', 'created_at', 'updated_at'],
     data.entries.map((e) => [uid, I(e.entryNo), q(e.uid), I(e.catNo), q(e.entryDate), q(e.endDate), I(e.allDay),
-      q(e.startTime), q(e.endTime), q(e.title), q(e.memo), q(e.source), q(e.location), I(e.remind),
+      q(e.startTime), q(e.endTime), q(e.title), q(e.memo), q(e.location), I(e.remind),
       q(e.recurFreq), I(e.recurInterval), q(e.recurUntil), I(e.recurCount), I(e.sortOrder),
       q(e.createdAt), q(e.updatedAt)]));
-
-  const commitRows = [];
-  for (const e of data.entries) for (const c of e.commits) {
-    commitRows.push([uid, I(e.entryNo), I(c.seq), q(c.hash), q(c.shortHash), q(c.commitTime), q(c.subject), q(c.body)]);
-  }
-  insertChunks(out, 'cal_entry_commit',
-    ['user_id', 'entry_no', 'seq', 'hash', 'short_hash', 'commit_time', 'subject', 'body'], commitRows);
 
   const exceptRows = [];
   for (const e of data.entries) for (const d of e.excepts) exceptRows.push([uid, I(e.entryNo), q(d)]);
@@ -885,12 +851,12 @@ function buildUserSql(userId, data) {
 const CAT_TS = '2026-05-25 00:30:00.000';
 
 function countRows(data) {
-  let commits = 0, excepts = 0, dayNotes = 0;
-  for (const e of data.entries) { commits += e.commits.length; excepts += e.excepts.length; }
+  let excepts = 0, dayNotes = 0;
+  for (const e of data.entries) excepts += e.excepts.length;
   for (const t of data.todos) dayNotes += t.dayNotes.length;
   return {
     cal_category: data.cats.length, cal_entry: data.entries.length,
-    cal_entry_commit: commits, cal_entry_except: excepts,
+    cal_entry_except: excepts,
     cal_todo: data.todos.length, cal_todo_day_note: dayNotes,
     cal_task_hours: data.taskHours.length, cal_attendance: data.attendance.length,
   };
@@ -903,7 +869,7 @@ const V_LABELS = {
   V2: "대상 전원이 source='db' 와 source='local' 카테고리를 둘 다 가진다",
   V3: "db 카테고리의 project_uid 가 project 에 실재 · local 카테고리는 project_uid=NULL",
   V4: 'cal_entry.cat_no 고아 0',
-  V5: 'cal_entry_commit · cal_entry_except 고아 0',
+  V5: 'cal_entry_except 고아 0',
   V6: 'all_day 와 시각의 정합(종일=시각 NULL · 시간지정=둘 다 있고 end>start)',
   V7: 'end_date 가 있으면 entry_date 이상',
   V8: 'recur_* 는 반복 일정에서만 채워져 있다',
@@ -961,13 +927,10 @@ function verifyContent(ids) {
   orphan4 ? badV('V4', '고아 ' + orphan4 + '건') : okV('V4');
 
   // V5
-  const o5a = Number(one('SELECT COUNT(*) FROM cal_entry_commit x LEFT JOIN cal_entry e' +
-    ' ON e.user_id = x.user_id AND e.entry_no = x.entry_no' +
-    ' WHERE x.user_id IN ' + L + ' AND e.entry_no IS NULL;', 'V5-a')[0] || 0);
   const o5b = Number(one('SELECT COUNT(*) FROM cal_entry_except x LEFT JOIN cal_entry e' +
     ' ON e.user_id = x.user_id AND e.entry_no = x.entry_no' +
     ' WHERE x.user_id IN ' + L + ' AND e.entry_no IS NULL;', 'V5-b')[0] || 0);
-  (o5a || o5b) ? badV('V5', 'commit 고아 ' + o5a + '건 · except 고아 ' + o5b + '건') : okV('V5');
+  o5b ? badV('V5', 'except 고아 ' + o5b + '건') : okV('V5');
 
   // V6
   const bad6 = Number(one('SELECT COUNT(*) FROM cal_entry WHERE user_id IN ' + L +

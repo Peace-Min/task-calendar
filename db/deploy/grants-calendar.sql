@@ -91,8 +91,8 @@ SET NAMES utf8mb4;
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_category TO 'taskmgr_app'@'%';
 
 -- ---------- 일정 ----------
--- DELETE 필요: deleteEntry(:4483) 호출부 6곳 + 가져오기 '교체'/초기화의 전량 삭제 +
---   git 재수집이 [from,to] 범위의 자동생성 일정을 통째로 지우고 다시 넣는 경로(:10892).
+-- DELETE 필요: deleteEntry(:4483) 호출부 6곳 + 가져오기 '교체'/초기화의 전량 삭제.
+--   (git 재수집 경로는 2026-10-26 Git, SVN 삭제로 없어졌다)
 -- UPDATE 는 일정 편집뿐 아니라 과제 삭제 시 소속 일정의 categoryId(DB 컬럼 이름은 cal_entry.cat_no 다)를
 --   NULL 로 미는 데도 쓴다(:4512).
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_entry TO 'taskmgr_app'@'%';
@@ -108,12 +108,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_entry TO 'taskmgr_app'@'%';
 --   의미를 잃어 전량 비운다(:5671-5675).
 GRANT SELECT, INSERT, DELETE ON taskmgr.cal_entry_except TO 'taskmgr_app'@'%';
 
--- ---------- 커밋 목록 ----------
--- DELETE 필요: 개별 삭제 UI 가 실재하고(deleteCommitRow :8934, 호출부 :9725/:10486), 범위 재수집은 삭제 후 재삽입이다.
--- UPDATE 는 주지 않는다(2026-10-15, CODE-TABLE-IDS §8-3). 제목과 본문 인라인 편집(setCommitSubject, setCommitMessage)도
---   호스트는 그 일정의 커밋 행을 지운 뒤 다시 넣는다(widget/CalendarWriteDb.cs 의 DELETE FROM cal_entry_commit → INSERT).
---   이 표에 UPDATE 를 내는 경로가 없다.
-GRANT SELECT, INSERT, DELETE ON taskmgr.cal_entry_commit TO 'taskmgr_app'@'%';
+-- ---------- (커밋 목록: 폐지) ----------
+-- cal_entry_commit 은 2026-10-26 Git, SVN 삭제(구조 번호 18, 이관 조각 v18-remove-git.sql)로 표째 없앴다. 권한도 주지 않는다.
+--   이미 이 표에 권한을 준 DB(개발 PC 의 최소 권한 앱 계정)는 root 가 그 표 권한을 거두어 정리한다
+--   (표가 지워져도 표 권한 줄은 남는다. 남아도 해는 없다).
 
 -- ---------- 할 일 ----------
 -- DELETE 필요: deleteTodo(:8809) 호출부 3곳. (완료 토글·본문 수정은 UPDATE)
@@ -156,9 +154,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_task_hours TO 'taskmgr_app'@
 -- ※ cal_task_hours 의 '0 = 행 삭제' 와 같은 근거·같은 동사 조합이다. 한 쌍으로 읽을 것.
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_attendance TO 'taskmgr_app'@'%';
 
--- ---------- 사용자당 1행 설정(커밋 수집 작성자 + 보고서 서식) ----------
--- DELETE 를 주지 않는다: setGitAuthor(:10726)/setSvnAuthor(:10728)는 값을 비워도
---   빈 문자열을 저장할 뿐 키를 지우지 않는다. 앱 전체에 삭제 경로가 0건이라
+-- ---------- 사용자당 1행 설정(보고서 서식) ----------
+-- DELETE 를 주지 않는다: 앱 전체에 이 표의 삭제 경로가 0건이라(작성자 칸은 2026-10-26 Git, SVN 삭제로 없앴다)
 --   설계 §7.3 의 DELETE 금지와 코드가 일치한다(캘린더에서 문서와 코드가 맞는 몇 안 되는 곳).
 --   2026-08-21 에 이 표로 옮겨 온 보고서 서식도 같다. 서식을 '기본으로 되돌리기' 는 행 삭제가
 --   아니라 기본값 UPDATE 다(파서가 부재를 기본값으로 읽으므로 '행 없음'과 '기본값'이 같은 뜻이다).
