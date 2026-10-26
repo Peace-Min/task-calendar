@@ -153,7 +153,19 @@ $guideShipped = $false
 if (-not $guideVer) {
   Write-Host "* 사용 영상: 저장소에 guide\guide.json 이 없음(영상 없이 배포)" -ForegroundColor DarkGray
 } elseif ($Guide -or $guideVer -ne $markGuide -or $ver -eq $markApp) {
-  Copy-Item -LiteralPath $guideSrc -Destination $guideOut -Recurse -Force
+  #  guide.json 이 가리키는 mp4 와 같은 이름의 srt, 그리고 guide.json 만 내보낸다(README 나 지난 판 파일은 공유 폴더에 올라가지 않게).
+  $gj = Get-Content -LiteralPath $guideJson -Raw -Encoding UTF8 | ConvertFrom-Json
+  $files = @(@($gj.videos) | ForEach-Object { [string]$_.file } | Where-Object { $_ })
+  if (-not $files.Count) { Fail "guide\guide.json 에 영상이 없음" }
+  New-Item -ItemType Directory -Force -Path $guideOut | Out-Null
+  foreach ($f in $files) {
+    $src = Join-Path $guideSrc $f
+    if (-not (Test-Path -LiteralPath $src)) { Fail "guide\guide.json 의 영상이 저장소 guide\ 에 없음: $f" }
+    Copy-Item -LiteralPath $src -Destination $guideOut -Force
+    $srt = Join-Path $guideSrc ([IO.Path]::ChangeExtension($f, '.srt'))
+    if (Test-Path -LiteralPath $srt) { Copy-Item -LiteralPath $srt -Destination $guideOut -Force }
+  }
+  Copy-Item -LiteralPath $guideJson -Destination $guideOut -Force
   [System.IO.File]::WriteAllText($guideMark, "guide=$guideVer`napp=$ver`n", (New-Object System.Text.UTF8Encoding($false)))
   $guideShipped = $true
   $n = @(Get-ChildItem -LiteralPath $guideOut -File).Count

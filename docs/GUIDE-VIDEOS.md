@@ -7,7 +7,7 @@
 
 - 영상은 **Setup 에 넣지 않는다.** 업데이트 때마다 Setup 전체를 받으므로, 영상(4편 약 54MB)을 넣으면 매번 다시 받게 된다.
 - 폐쇄망 공유 폴더(업데이트 폴더, `latest.json` 과 Setup 이 있는 곳) 아래 `guide\` 폴더에 사용자가 직접 올린다.
-- 올릴 원본은 **저장소의 `guide/` 폴더**다(2026-10-23 사용자: 폐쇄망은 git clone 만 되고 GitHub 릴리스 파일은 받지 못한다). 폐쇄망에서 clone 한 뒤 그 폴더를 통째로 공유 폴더의 `guide\` 로 복사한다. 영상을 다시 찍으면 이 폴더의 mp4, srt 를 바꾸고 `guide.json` 의 `version` 을 바꿔 커밋한다. `.gitattributes` 가 이 폴더의 줄끝을 건드리지 않는다.
+- 올릴 원본은 **저장소의 `guide/` 폴더**다(2026-10-23 사용자: 폐쇄망은 git clone 만 되고 GitHub 릴리스 파일은 받지 못한다). 폐쇄망에서 clone 하고 빌드하면 `dist/installer/guide/` 에 올릴 파일만(guide.json 이 가리키는 mp4, 같은 이름의 srt, guide.json) 나온다(§6). 그 파일을 공유 폴더의 `guide\` 에 올린다. 저장소 `guide/` 에는 지난 판 파일을 남기지 않는다(README 는 빌드가 내보내지 않는다). 영상을 다시 찍으면 이 폴더의 mp4, srt 를 바꾸고 `guide.json` 의 `version` 을 바꿔 커밋한다. `.gitattributes` 가 이 폴더의 줄끝을 건드리지 않는다.
 
 ```
 <업데이트 폴더>\guide\
