@@ -34,7 +34,7 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 | `load-template.sql` | **내부망 LLM용** 데이터 INSERT 템플릿 + 규칙(이름으로 적고 번호로 바꿔 넣는다) |
 | `migrate-2026-10-15-code-ids.sql` | **데이터가 있는 로컬 DB 전용 1회 이관**(v12 → v13). 코드표 넷(발주처, 구분, 상태, 직급)을 번호 키로. 절단 관문(BINARY)과 사후 검증이 어긋나면 에러로 멈춘다. 언제, 어떻게는 아래 '코드표 번호 키 이관' 절 |
 | `migrate-code-ids.cmd` / `migrate-code-ids.ps1` | **위 이관 SQL 의 마스터 cmd**(2026-10-16). 더블클릭 한 번으로 판번호 확인(13 이면 할 일 없음), 앱 세션 확인, 확인(Y), 백업과 검증, 이관 SQL(`--force` 없이), 결과 판정까지 한다. 멈추면 절단 전인지 뒤인지 DB 상태로 가르고 되돌리는 명령을 보여 준다. 종료코드 0~5. 아래 '기존 PC 의 DB 이관(마스터 cmd)' 절 |
-| `migrations/v<번호>-*.sql` | **이관 조각**(2026-10-21 부터의 구조 변경, 첫 조각 `v14-version-gate.sql` 13 에서 14). 혼자 돌리지 않는다. `installer/publish-update.ps1` 이 구조 번호 순서로 이어 붙여 배포 SQL `release-v<버전>.sql` 하나를 만들고, 운영자는 그 파일만 Workbench 에서 한 번 실행한다. 규칙은 `docs/DB-RELEASE-OPS.md` 5절 |
+| `migrations/v<번호>-*.sql` | **이관 조각**(2026-10-21 부터의 구조 변경, 첫 조각 `v14-version-gate.sql` 13 에서 14). 혼자 돌리지 않는다. `installer/publish-update.ps1` 이 구조 번호 순서로 이어 붙여 배포 SQL `release-v<버전>.sql` 하나를 만들고, 운영자는 그 파일만 Workbench 에서 한 번 실행한다. 지금 사슬은 13 에서 19 다(v14 에서 v19, 0.24.0 은 18 과 19 를 함께 싣는다). 비공개 저장소의 과제 데이터 최신화 SQL 은 배포 SQL 다음에 돌린다(구조 19 의 `sort_no` 를 채운다). 규칙은 `docs/DB-RELEASE-OPS.md` 4.2, 5절 |
 
 ## 구성: 캘린더 트랙 (`cal_*`), 백업
 
@@ -48,7 +48,7 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 | `grants-calendar.sql` | 앱 계정(`taskmgr_app`) 권한 **단일 소스**. 표마다 '왜 그 동사를 주는지 / 왜 안 주는지'가 주석으로 붙어 있다 |
 | `backup-taskmgr.cmd` / `backup-taskmgr.ps1` | **주간 mysqldump 백업 + '온전한 덤프인지' 대조.** 구축이 아니라 **운영** 도구라 `init-calendar` 와 별개로 돈다. `-Install` 로 작업 스케줄러에 등록. 아래 '백업' 절 |
 | `create-backup-user.sql` | 백업 전용 최소권한 계정(`taskmgr_backup`). **주는 권한과 안 주는 권한의 근거가 주석에 붙어 있다.** 특히 `TRIGGER` 를 왜 함께 줘야 하는지 |
-| `setup-taskcalendar.cmd` / `setup-taskcalendar.ps1` | **새 주 DB `taskcalendar` 원큐 구축(2026-09-23, 09-29 개정).** 기존 `taskmgr`(0.16 전용, 읽기만) 옆에 정본 DDL 3개로 최신 구조(2026-10-15 부터 v13)를 세우고, 사용자 3표는 회사 시드(02, 03, 04)로, 과제 4표는 원본에서 id/uid 보존으로 복사(시각 KST→UTC. 코드표 이름은 고정 번호 지도에 맞춰 번호로 바꾸고, 번호로 되살린 이름이 원본과 `BINARY` 로 같은지 확인한다), 앱 권한 3파일 적용, 검증 보고서. 원본 사용자 표는 login_id 대조(경고)에만 읽는다. 어떻게 끝나든 보고서(`-FAILED`)가 남는다. **대상이 이미 있으면 실행할 때마다 백업(`<대상>-before-drop-<시각>.sql`) 후 DROP 하고 처음부터 다시 만든다**(2026-09-30, `-Force` 불필요. 받기만 하고 무시). 운영 전환 뒤 다시 돌리면 대상의 캘린더 데이터가 지워진다(before-drop 덤프가 유일한 사본). 종료코드 0/1/2/3. 왜, 언제 쓰는지는 DEPLOY.md §0-6 |
+| `setup-taskcalendar.cmd` / `setup-taskcalendar.ps1` | **새 주 DB `taskcalendar` 원큐 구축(2026-09-23, 09-29 개정).** 기존 `taskmgr`(0.16 전용, 읽기만) 옆에 정본 DDL 3개로 최신 구조(2026-10-15 부터 v13)를 세우고, 사용자 3표는 회사 시드(02, 03, 04)로, 과제 4표는 원본에서 id/uid 보존으로 복사(시각 KST→UTC. 코드표 이름은 고정 번호 지도에 맞춰 번호로 바꾸고, 번호로 되살린 이름이 원본과 `BINARY` 로 같은지 확인한다), 앱 권한 3파일 적용, 검증 보고서. 원본 사용자 표는 login_id 대조(경고)에만 읽는다. 어떻게 끝나든 보고서(`-FAILED`)가 남는다. **대상이 이미 있으면 실행할 때마다 백업(`<대상>-before-drop-<시각>.sql`) 후 DROP 하고 처음부터 다시 만든다**(2026-09-30, `-Force` 불필요. 받기만 하고 무시). 운영 전환 뒤 다시 돌리면 대상의 캘린더 데이터가 지워진다(before-drop 덤프가 유일한 사본). 종료코드 0/1/2/3. 왜, 언제 쓰는지는 DEPLOY.md §0-6. *(2026-10-26: 보이는 과제에 구분마다 처음 순서 `sort_no` 를 매긴다. 구분 2, 상태 2 보호 행 검사와 켜기는 지웠다)* |
 | `restore-taskmgr.cmd` / `restore-taskmgr.ps1` | **덤프 되살리기 + '정말 되살아났는지' 대조.** `backup-taskmgr` 의 짝이다. 기본은 라이브가 아닌 **별도 DB** 로 복구하고, 라이브 덮어쓰기는 스위치+**이름 타이핑**이 있어야만 열린다. `-Grants` 가 `복구방법.txt` 4번(계정과 권한은 덤프에 없다)을 대신한다. 아래 '복구' 절 |
 
 > 두 `.sql` 은 `init-calendar` 없이 `mysql` 로 직접 돌려도 되지만, **순서와 게이트를 사람이 대신 지켜야 한다.** 아래 두 절이 그 내용이다.
@@ -1167,7 +1167,7 @@ SELECT v FROM cal_schema_meta WHERE k='schema_version';
 ```
 mysql -u root -p --default-character-set=utf8mb4 taskcalendar < 내부망LLM이_만든_INSERT.sql
 ```
-규칙(코드값+발주처 먼저, section/status는 코드테이블에 있는 이름, 선진행 NULL 등)은 `load-template.sql` 상단 참고. 2026-10-15 부터 과제는 이름으로 적어 임시 표에 넣고 템플릿 끝에서 이름으로 번호를 찾아 옮깁니다(못 찾는 이름이 있으면 멈춥니다. `--force` 금지).
+규칙(코드값+발주처 먼저, section/status는 코드테이블에 있는 이름, 상태 없으면 NULL, 넣은 순서가 과제 순서 No 등)은 `load-template.sql` 상단 참고. 2026-10-26 부터 구분, 상태와 날짜는 서로 묶이지 않는다(옛 '선진행이면 날짜와 상태 NULL' 규칙은 지웠다). 2026-10-15 부터 과제는 이름으로 적어 임시 표에 넣고 템플릿 끝에서 이름으로 번호를 찾아 옮깁니다(못 찾는 이름이 있으면 멈춥니다. `--force` 금지).
 
 ## 나중: 서버 이관
 

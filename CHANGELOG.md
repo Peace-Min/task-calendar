@@ -18,6 +18,17 @@
 - 확인: 전체 strict 3094 pass, 0 fail, 0 skip. MySQL 8.4 에서 구조 17 복제본과 개발 DB 에 v18 실행(커밋 기록 128건 삭제, 일정 3628 에서 3500, 다시 돌리면 바뀌는 것 없음, 칸 삭제는 INSTANT). DB 하네스 calendar-adapter, loop-calendar-write(126), dryrun-xml-to-db(22), loop-peer-view(24), db-project-calendar(54), db-schedule-image(42) 통과, 실제 앱 확인.
 - 문서: README, USAGE(§7 은 '삭제됨' 안내로), SPEC(§8 의 git 항목은 폐기 표시), docs/ARCHITECTURE, DECISIONS, PEER-VIEW-FULL, DB-RELEASE-OPS, ROADMAP, db 문서들, tests/README, 위키(새 쪽 '지운 기능'). `docs/DB-SCHEMA.html` 은 재생성한 `tools/schema-report/schema.json` 으로 다시 만들었다.
 
+## 🆕 2026-10-26 (다음 판, 번호는 배포 때): 과제 순서 No 와 옮기기, 상태 체크박스, 구분, 상태, 날짜 연결 규칙 삭제, DB 구조 19
+
+`aa148b2` feat(project-admin), 기획 `d183f8c` [docs/PROJECT-ADMIN-UX.md](docs/PROJECT-ADMIN-UX.md), 결정 [docs/DECISIONS.md](docs/DECISIONS.md) 결정 8. **DB 구조 번호가 19** 가 된다(`DbGate.AppStructureVersion = 19`). 이관 조각 사슬은 13 에서 19 이고 `db/deploy/migrations/v19-project-order.sql` 이 붙는다. 다음 판(0.24.0 예정)은 구조 18(Git 삭제)과 19 를 함께 싣는다. 폐쇄망 순서는 배포 SQL 먼저, 그다음 비공개 저장소의 과제 데이터 최신화 SQL(구조 19 의 `sort_no` 를 채운다, docs/DB-RELEASE-OPS.md 4.2).
+
+- DB(v19 조각): `project.sort_no INT UNSIGNED NULL`(그 구분 안의 순서)을 `status_id` 뒤에 INSTANT 로 더하고, 보이는 과제에 구분마다 그때 화면 순서(통상명칭, 비었으면 사업명)로 1 부터 매긴다(숨긴 과제는 NULL). `section_code`, `status_code` 의 표 설명에서 고정 번호 문구를 뺀다. 다시 돌리면 빈 번호만 채운다. 정본 스키마, `load-template.sql`((5) 넣은 순서로 번호), `setup-taskcalendar.ps1`(처음 순서 채우기, 보호 행 검사와 켜기 삭제), 데모 DB 를 맞췄다.
+- 호스트: 명령 `projectReorder { sectionId, uids }`(`ProjectDb.ReorderProjectsAsync`, 그 구분의 보이는 과제 전체를 한 트랜잭션에서 1 부터, 집합이 다르면 `stale` 로 거부, 권한은 `OpenWriteAsync`). 새 과제, 구분을 바꾼 과제, 숨김을 푼 과제, 휴지통 복구 과제는 그 구분의 맨 뒤 번호. 목록 정렬은 구분 순서, `sort_no`(NULL 뒤), 표시 이름. 선진행이면 날짜와 상태를 NULL 로 덮던 저장 규칙과 구분 2, 상태 2 코드 행의 숨김, 삭제 거부를 지웠다. `CodeIds` 는 상태 색 상수만 남는다. 과제 캘린더의 읽기 전용 문구는 "숨긴 과제라 읽기 전용입니다."
+- 웹: 공식 과제 목록에 No 칸(그 구분 안에서 몇 번째, 거른 뒤에도 전체 기준). 관리 창에서만 손잡이 ⠿ 끌기(거르는 동안 막음)와 ⋯ 메뉴(맨 위로, 한 칸 위로, 한 칸 아래로, 맨 아래로, N번째로 이동). 상태마다 체크박스(`tc_projStatusOff` 에 끈 상태 기억, 관리 목록, 찾아보기, 재연결 고르기가 함께 씀)로 '진행중만'과 상태 고르기 상자를 대신한다. Excel 은 같은 순서와 No, 부제에 `뺀 상태=`. 참조 id 줄, 구분 색 점, 선진행 잠금과 개발 날짜 비우기를 지웠다. 남긴 것은 새 과제 개발 날짜 기본값, 상태 색, 비슷한 과제 확인창, 무결성 검사.
+- 시험: `project-order.test.mjs`, `project-order-web.test.mjs` 추가. code-ids-app, code-ids-db, setup-taskcalendar, trash, xlsx-export, release-sql(흉내기에 v19) 등을 새 규칙으로 고쳤다. 실 위젯 루프 loop-admin-hub, loop-trash, loop-ui-integrity 갱신.
+- 확인: 전체 strict 3143 pass, 0 fail, 0 skip. loop-admin-hub, loop-trash(299), loop-ui-integrity(위반 0). MySQL 에서 구조 18 복제본과 개발 DB 에 v19 실행. 실제 위젯에서 No 칸, ⋯ 메뉴로 옮긴 순서의 DB 저장, 거를 때 끌기 막힘, 상태 체크박스, 선진행 폼이 잠기지 않음, 어두운 테마 확인.
+- 문서: PROJECT-ADMIN-UX(구현 메모), CODE-TABLE-IDS §3, DECISIONS 결정 8, DB-RELEASE-OPS, db 문서들(TABLE-DESIGN ADR-24, ARCHITECTURE, CALENDAR-TABLE-DESIGN §5.6.3-a, DESIGN_NOTES, README, ROADMAP, deploy/README), TRASH-DELETE, 위키(새 쪽 '공식 과제 순서와 거르기', 관리 화면, 과제 캘린더, 지운 기능). `docs/DB-SCHEMA.html`, `db/table-design-report.html` 은 다시 만들었다.
+
 ## 🆕 2026-10-23, v0.23.0: 과제 공용 캘린더, 월간 보고, 개인 달력 기간 막대와 한 화면 입력, 시각 5분 단위, 개발 시작과 종료 기본값, 사용 영상 안내, 공용 회의실, 관리 창, DB 버전 관문 (구조 13 에서 17)
 
 0.22.0 이후 커밋을 한 판으로 낸다. **DB 구조 번호가 17** 이 된다(`DbGate.AppStructureVersion = 17`, 정확히 같아야 연다). 배포는 `installer/publish-update.ps1 -Build` 가 만드는 `release-v0.23.0.sql` 하나다. 이관 조각 사슬은 `db/deploy/migrations/` 의 v14(버전 관문, cal_schema_meta 키), v15(공용 회의실), v16(cal_project_event, cal_project_change), v17(project.dev_start_date 와 CHECK chk_project_dev_dates, project_schedule_image)이다. 순서는 **Setup 먼저 공유 폴더에, 그다음 SQL**(db_updating 을 닫고 조각을 돌린 뒤 한 트랜잭션으로 연다, docs/DB-RELEASE-OPS.md).

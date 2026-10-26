@@ -13,7 +13,7 @@
 - **`project.uid` = 외부 안정 참조키(D1)**: `CHAR(36) NOT NULL DEFAULT (UUID())`, `UNIQUE`(assign-once). 위젯 일정이 `db-<uid>`로 참조하고, 앱의 마스터 CRUD도 대상 행을 **uid로 지목**한다(UPSERT/소프트삭제 `WHERE uid=@uid`). 일정이 DB 밖에 있어 rebuild, rename, 재채번에 참조가 엉키는 사고를 막는다. ✅ 그때의 schema.sql 반영 완료(지금 정본은 `deploy/schema-structure.sql`. 로컬 전 행에 UUID 부여. 행 수는 여기 적지 않는다. 현황 조회로 확인할 것). (참고: `ARCHITECTURE.md` §4.7.3, ADR #13)
 - **`section`/`status` = 코드테이블 + FK** *(2026-07-24 ADR-22, 원래 ENUM이었다)*: Admin이 드롭다운에서 고르게 만들어 "진행중"/"진행 중"/"진행중 " 같은 **오타·공백 변종을 DB가 거부**하는 목표는 같고, 강제 수단이 타입에서 **외래키**로 바뀌었다.
   - `section_id SMALLINT UNSIGNED NOT NULL` → FK `section_code(section_id)`
-  - `status_id SMALLINT UNSIGNED NULL` → FK `status_code(status_id)` (상태 없음 = NULL, 선진행이면 비운다. NULL이면 FK 검사 스킵)
+  - `status_id SMALLINT UNSIGNED NULL` → FK `status_code(status_id)` (상태 없음 = NULL. NULL이면 FK 검사 스킵. 2026-10-26 부터 구분과 무관하게 넣거나 비운다)
   - 코드테이블은 번호 PK(`section_id`/`status_id`) + `name`(UNIQUE 라벨) + `sort_order` + `is_active` + 감사. **추가=INSERT, 개명=라벨 한 행 UPDATE(과제는 번호를 들고 있어 그대로, 화면은 조인으로 따라온다), 재배치=`sort_order`, 숨김=`is_active=0`** 이 전부 앱에서 된다. 구분 2(선진행), 상태 2(종료)는 고정 번호라 숨김과 삭제가 막힌다.
   - *(2026-10-15 전에는 `section VARCHAR(50)`, `status VARCHAR(50)` 이 이름을 들고 `name` PK 를 `ON UPDATE CASCADE` 로 가리켰다. 번호 키로 바꾼 이유는 [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §9 ADR-23)*
   - **왜 바꿨나: ENUM의 트레이드오프가 실제로 아팠다.** 값 추가, 개명, 순서, 숨김에 전부 `ALTER TABLE ... MODIFY`가 필요해 런타임 관리가 불가능했다. 아래 §5가 "필요해지면 룩업 테이블로 승급"이라 적어 둔 그 경로를 실제로 갔다. 기존 DB 이관은 `deploy/migrate.ps1` 단계2(무손실·멱등. 그 스크립트는 2026-10-15 에 지웠다). 근거표는 [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.5.
@@ -26,6 +26,7 @@
 ## §3 Excel 추출(리포트) 방향
 DB → Excel 추출 시:
 - **No 컬럼 = 추출 시점에 `ROW_NUMBER()`로 생성**한다. 저장하지 않는다(그래서 `source_no`·`customer.no`를 제거). 원본 No는 Excel 행 순번 아티팩트일 뿐, DB가 원본이면 무의미하다.
+  - *(2026-10-26 개정, 구조 19)* 사업부가 구분 안 No 순서를 실제로 관리한다는 것이 확인되어 **순서는 저장한다**(`project.sort_no`, 관리 화면에서 옮긴다). 화면과 Excel 의 No 는 여전히 저장값이 아니라 그 구분 안에서 몇 번째인가를 그때 센 값이다. 저장된 번호에 빈칸이 있어도(숨긴 과제 등) No 는 1, 2, 3 으로 나온다([`../docs/PROJECT-ADMIN-UX.md`](../docs/PROJECT-ADMIN-UX.md) §1.1).
 - **섹션 헤더/그룹핑 = `section` 값으로 렌더링**한다. "일반계약/선진행/사업부관리" 블록 헤더와 그룹은 추출기가 section을 보고 그린다.
 - 즉 **Excel의 시각적 구조(순번, 섹션 헤더, 정렬)는 저장된 데이터가 아니라 추출기의 표현 관심사**다. DB는 순수 데이터만 갖고, 표현은 추출 단계에서 입힌다.
 

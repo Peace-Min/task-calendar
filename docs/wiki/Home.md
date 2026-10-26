@@ -19,11 +19,12 @@
 - [앱 업데이트와 서버 갱신](앱-업데이트와-서버-갱신): 새 버전 알림, 서버 갱신 중, 업데이트 필요, 설치 실패, 관리자 문의 카드와 할 일
 - [XML 가져오기](XML-가져오기): 예전 버전 기록 옮기기, 가져오기는 언제나 교체(2026-10-07 병합 제거)
 - [사용 영상](사용-영상): "?" 의 [사용 영상], 켤 때 한 번 묻기와 세 단추, 운영자가 올리는 guide 폴더와 판 번호 올리기
-- [지운 기능](지운-기능): Git, SVN 연동(2026-10-26, 커밋 기록은 바꾸지 않고 지움, 과제 데이터 내보내기는 캘린더.md 만)
+- [지운 기능](지운-기능): Git, SVN 연동(2026-10-26, 커밋 기록은 바꾸지 않고 지움, 과제 데이터 내보내기는 캘린더.md 만), 선진행 잠금과 '진행중만'(2026-10-26)
 
 ## 운영·관리자
 
 - [관리 화면](관리-화면): '⚙ 관리' 한 화면에서 구성원, 직급/소속, 공식 과제, 발주처, 구분/상태, 휴지통을 관리합니다
+- [공식 과제 순서와 거르기](공식-과제-순서와-거르기): 구분 안 No 순서, 끌기와 ⋯ 메뉴로 옮기기, 상태 체크박스, 구분, 상태와 날짜는 서로 따로(2026-10-26)
 - [서버 장애 시 동작과 진단](서버-장애-시-동작과-진단): 장애 종류별 동작, 재연결 주기, 로그 보는 법, 자주 나는 원인
 
 ## 개발·QA
@@ -44,5 +45,6 @@
 - 과제 공용 캘린더 기획서: [`docs/PROJECT-CALENDAR-PLAN.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/PROJECT-CALENDAR-PLAN.md), 실 위젯 루프 `tests/loop-project-calendar.mjs`, DB 계약 `tests/db-project-calendar.mjs`
 - 월간보고 기획서: [`docs/MONTHLY-REPORT-PLAN.md`](https://github.com/Peace-Min/task-calendar/blob/feat/monthly-report-plan/docs/MONTHLY-REPORT-PLAN.md), 화면 시험 `tests/monthly-report.test.mjs`, 실 위젯 루프 `tests/loop-monthly-report.mjs`
 - 사용 영상 규칙과 구현 메모: [`docs/GUIDE-VIDEOS.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/GUIDE-VIDEOS.md), 화면 시험 `tests/guide-videos.test.mjs`, 실 위젯 루프 `tests/loop-guide-videos.mjs`
+- 과제 관리 화면 개선 기획서(No 순서, 상태 체크박스, 연결 규칙 삭제): [`docs/PROJECT-ADMIN-UX.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/PROJECT-ADMIN-UX.md), 이관 조각 `db/deploy/migrations/v19-project-order.sql`(구조 19), 시험 `tests/project-order.test.mjs`, `tests/project-order-web.test.mjs`
 - Git, SVN 삭제 기획서: [`docs/GIT-SVN-REMOVAL.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/GIT-SVN-REMOVAL.md), 이관 조각 `db/deploy/migrations/v18-remove-git.sql`(구조 18), 시험 `tests/git-removal.test.mjs`, `tests/git-removal-web.test.mjs`
 - 화면 혼란 3건 기획서: [`docs/UI-CLARITY-2026-10-01.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/UI-CLARITY-2026-10-01.md)

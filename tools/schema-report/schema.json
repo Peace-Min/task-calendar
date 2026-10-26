@@ -1,7 +1,7 @@
 {
  "meta": {
   "db": "taskcalendar",
-  "schemaVersion": "18",
+  "schemaVersion": "19",
   "mysql": "8.4.9",
   "charset": [
    "utf8mb4",
@@ -66,7 +66,7 @@
    "taskmgr_app@%",
    "taskmgr_backup@localhost"
   ],
-  "dumpedAt": "2026-10-26T03:30:33.406Z",
+  "dumpedAt": "2026-10-26T08:00:14.965Z",
   "stats": {
    "viewScope": {
     "self": 71,
@@ -2461,6 +2461,15 @@
      "comment": ""
     },
     {
+     "name": "sort_no",
+     "type": "int unsigned",
+     "nullable": true,
+     "def": null,
+     "key": "",
+     "extra": "",
+     "comment": ""
+    },
+    {
      "name": "note",
      "type": "varchar(500)",
      "nullable": false,
@@ -2797,7 +2806,7 @@
    "name": "section_code",
    "engine": "InnoDB",
    "rows": 3,
-   "comment": "구분 코드. PK=section_id(고정 번호 2=선진행), name=UNIQUE 라벨. Admin 관리.",
+   "comment": "구분 코드. PK=section_id, name=UNIQUE 라벨. Admin 관리.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 3,
    "columns": [
@@ -2884,7 +2893,7 @@
    "name": "status_code",
    "engine": "InnoDB",
    "rows": 4,
-   "comment": "상태 코드. PK=status_id(고정 번호 2=종료), name=UNIQUE 라벨. Admin 관리.",
+   "comment": "상태 코드. PK=status_id, name=UNIQUE 라벨. Admin 관리.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 4,
    "columns": [

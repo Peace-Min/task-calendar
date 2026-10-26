@@ -108,6 +108,7 @@
 2. Workbench **Data Export** 로 `taskcalendar` 를 백업한다(Dump Structure and Data, Self-Contained File, Single Transaction, Include Create Schema). 파일 끝에 `-- Dump completed` 가 있는지 본다. 구조 18(`v18-remove-git.sql`)이 든 배포는 커밋 기록을 지우고 표와 칸을 없애므로 되돌릴 길이 이 백업뿐이다. 백업 없이 돌리지 않는다.
 3. `release-v<버전>.sql` 을 Workbench 에서 열고 `taskcalendar` 를 기본 스키마로 둔 채 **전체 실행(Ctrl+Shift+Enter)** 을 **한 번** 한다. 오류가 나면 멈추는 기본 설정을 그대로 둔다.
 4. 마지막 결과 표에서 `db_structure_version`(앱 구조 번호), `db_updating = 0`, `app_latest_version`(새 버전)을 본다.
+   - 과제 데이터 최신화 SQL 을 함께 받은 배포(0.24.0)는 **배포 SQL 이 끝난 다음에** 그것을 돌린다. 그 SQL 은 비공개 저장소 taskmgr-company-data 의 `project-data/` 에 있고 과제 순서(`sort_no`)를 채우므로 구조 19 이상에서만 돈다(18 이하 DB 에는 그 칸이 없다).
 5. 내 PC 에서 업데이트 버튼을 눌러 새 버전이 정상 동작하는지 본다.
 
 이 SQL 이 하는 일(순서대로):
@@ -128,7 +129,7 @@
 
 ## 5. 이관 조각 작성 규칙 (개발자)
 
-구조 변경은 **이관 조각**으로 낸다. 조각은 `db/deploy/migrations/v<도착 번호>-<이름>.sql`(예: `v14-version-gate.sql`) 한 파일에 구조 번호 한 칸이다. 지금 사슬은 13 에서 18 이다(v14 버전 관문, v15 공용 회의실, v16 과제 캘린더, v17 월간 보고의 개발 시작일과 개발 일정 그림, v18 Git, SVN 삭제). 운영자에게 조각을 따로 주지 않는다. `installer/publish-update.ps1` 이 `installer/release-sql.ps1` 로 조각을 구조 번호 순서로 이어 붙여 `release-v<버전>.sql` 하나를 만든다(4절). 확인, 닫기, 끝 확인, 열기는 그 감싸개가 하고, 조각은 바꾸기만 한다.
+구조 변경은 **이관 조각**으로 낸다. 조각은 `db/deploy/migrations/v<도착 번호>-<이름>.sql`(예: `v14-version-gate.sql`) 한 파일에 구조 번호 한 칸이다. 지금 사슬은 13 에서 19 다(v14 버전 관문, v15 공용 회의실, v16 과제 캘린더, v17 월간 보고의 개발 시작일과 개발 일정 그림, v18 Git, SVN 삭제, v19 과제 순서 `project.sort_no`). 0.24.0 은 18 과 19 를 함께 싣는다. 운영자에게 조각을 따로 주지 않는다. `installer/publish-update.ps1` 이 `installer/release-sql.ps1` 로 조각을 구조 번호 순서로 이어 붙여 `release-v<버전>.sql` 하나를 만든다(4절). 확인, 닫기, 끝 확인, 열기는 그 감싸개가 하고, 조각은 바꾸기만 한다.
 
 ### 5.1 형식
 

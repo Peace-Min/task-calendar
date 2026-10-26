@@ -1,6 +1,6 @@
 # 과제 관리 화면 개선 기획 (사업부 인계 전)
 
-정한 날: 2026-10-26(사용자). 상태: 기획(개발 전).
+정한 날: 2026-10-26(사용자). 상태: 구현 완료(2026-10-26, `aa148b2`). 0.24.0 에 구조 18 과 함께 나간다(아직 배포 안 함).
 배경: 사업부에 넘기기 전에 관리 창(회사 과제)을 사업부 엑셀 장표처럼 쓰게 한다. 과제 데이터 최신화 SQL 은 비공개 저장소 taskmgr-company-data 의 project-data/ 에 따로 있다.
 
 ## 1. 바꾸는 것
@@ -44,3 +44,13 @@
 ## 2. 순서
 기획(이 문서) 다음 개발(호스트와 DB, 웹을 나눠 동시에) 다음 QA(전체 strict, 실제 위젯, 복제 DB 에 v19 와 최신화 SQL) 다음 위키.
 배포는 버전 갱신 지시 때 0.24.0 으로(구조 17 에서 19).
+
+## 3. 구현 메모 (2026-10-26)
+
+- DB: 구조 19. 이관 조각 `db/deploy/migrations/v19-project-order.sql` 이 `project.sort_no`(INT UNSIGNED NULL, `status_id` 와 `note` 사이)를 더하고, 보이는 과제에 구분마다 그때 화면 순서(통상명칭, 비었으면 사업명)로 1 부터 매긴다. 숨긴 과제는 비워 둔다. 같은 조각이 `section_code`, `status_code` 의 표 설명(COMMENT)에서 고정 번호 문구를 뺀다. `setup-taskcalendar.ps1` 과 `load-template.sql` 도 같은 규칙으로 처음 순서를 채운다.
+- 호스트 명령 `projectReorder { sectionId, uids }`: 그 구분의 보이는 과제 uid 전체를 새 순서로 받아 한 트랜잭션에서 1 부터 다시 쓴다(`ProjectDb.ReorderProjectsAsync`). 받은 집합이 지금 그 구분의 보이는 과제와 다르면 아무것도 쓰지 않고 `kind:'stale'` 로 거부하고, 웹은 안내 뒤 목록을 새로 읽는다. 권한은 과제 편집과 같다(`OpenWriteAsync`).
+- 맨 뒤로 가는 경우: 새 과제, 구분을 바꾼 과제, 숨김을 푼 과제, 휴지통에서 되살린 과제는 그 구분의 보이는 과제 최댓값 + 1 을 받는다. 숨긴 과제의 옛 번호는 건드리지 않는다.
+- 웹: 손잡이(⠿)와 ⋯ 메뉴는 관리 창 안의 공식 과제 목록에만 선다(`offOrderAllowed`). 찾아보기 창은 No 칸만 보인다. No 는 거른 뒤에도 전체 목록 기준이다(`offNoMap`). 정렬 함수 하나(`offGroups`: 구분 순서, `sortNo`, 이름)를 관리 목록, Excel 추출, 찾아보기, 재연결 고르기가 같이 쓴다. Excel 의 첫 열 No 도 화면의 No 다.
+- 상태 체크박스: 상태표 순서, 그다음 데이터에만 남은 상태, 맨 끝에 상태 없음(그런 과제가 있을 때만). 이 PC 의 localStorage `tc_projStatusOff` 에 끈 상태의 열쇠(번호 문자열)만 기억하므로 새로 더한 상태는 켜진 채 나온다. 공식 과제 목록(관리 창과 찾아보기 창의 `#offStChecks`)과 재연결 고르기(`#rlpStChecks`)가 같은 값을 쓴다. [필터 초기화]는 모두 켬으로 되돌린다. Excel 부제에는 `뺀 상태=종료/미정` 처럼 끈 상태를 이름으로 적는다.
+- 남은 번호 상수: 웹 `CODE_ID`(상태 1, 2)와 호스트 `CodeIds`(상태 1, 2, 3)는 색만 정한다. 웹 `DB_SECTION_COLORS`(구분 1, 2, 3)는 공식 과제를 내 과제에 처음 넣을 때의 기본 색이다. 어느 것도 숨김, 삭제, 날짜, 상태를 막지 않는다.
+- 시험: `tests/project-order.test.mjs`, `tests/project-order-web.test.mjs` 추가. 실 위젯 루프 `loop-admin-hub`, `loop-trash`, `loop-ui-integrity` 를 새 규칙에 맞췄다. 전체 strict 3143/0/0, MySQL 에서 18 에서 19 를 복제본과 개발 DB 에 돌려 확인했다.

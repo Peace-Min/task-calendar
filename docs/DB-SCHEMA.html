@@ -161,8 +161,8 @@ footer p{margin:0 0 4px; max-width:none}
   <li>엔진 <b>MySQL 8.4.9 / InnoDB</b></li>
   <li>문자셋 <b>utf8mb4_0900_ai_ci</b></li>
   <li>표 <b>25</b> <span class="ko">과제 6, 사용자·조직 3, 캘린더 16</span></li>
-  <li>컬럼 <b>206</b>, 외래키 <b>28</b>, CHECK <b>52</b></li>
-  <li>db_structure_version <b>18</b></li>
+  <li>컬럼 <b>207</b>, 외래키 <b>28</b>, CHECK <b>52</b></li>
+  <li>db_structure_version <b>19</b></li>
   <li>기준 <b>2026-10-26</b></li>
 </ul>
 <!-- GEN:FACTS:END -->
@@ -240,6 +240,7 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">dev_start_date</td><td class="type">DATE</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note">개발시작일. 월간보고의 과제 수행 기간 시작(2026-10-22, 구조 17). 계약시작일과 별개이고, 개발종료일과 둘 다 있으면 종료보다 늦을 수 없습니다(CHECK).</td></tr>
 <tr><td class="col">dev_end_date</td><td class="type">DATE</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note">개발종료일. 계약종료일과 별개(개발 완료 목표·실제). 선진행이어도 입력할 수 있습니다.</td></tr>
 <tr><td class="col">status_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k fk">FK</span><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note">상태 번호. <code>status_code.status_id</code>를 가리킵니다. 비어 있으면(상태 없음, 선진행 등) 외래키 검사를 건너뜁니다.</td></tr>
+<tr><td class="col">sort_no</td><td class="type">INT UNSIGNED</td><td><span class="k">NULL 허용</span></td><td class="note auto">비워 둘 수 있습니다.</td></tr>
 <tr><td class="col">note</td><td class="type">VARCHAR(500)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note">비고. <b>관리 화면에서만</b> 보이는 내부 메모. 캘린더·보고서에는 나오지 않습니다.</td></tr>
 <tr><td class="col">is_active</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 1</span><span class="k">CHECK</span><span class="k ix">INDEX</span></td><td class="note">1=사용, 0=숨김. <b>앱에서 지우면 이 값만 0이 되고 행은 남습니다</b>(되돌릴 수 있음).</td></tr>
 <tr class="audit"><td class="col">created_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 CURRENT_TIMESTAMP(3)</span></td><td class="note">등록 시각(자동).</td></tr>
