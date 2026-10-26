@@ -212,16 +212,21 @@ if (!jsdom) {
   });
 }
 
-//  ⑧ 선진행으로 바꾸면 계약 날짜가 비므로, 자동으로 채운(손대지 않은) 개발 날짜도 함께 비운다(2026-10-23 사용자).
-//    손으로 넣은 개발 날짜는 그대로 둔다(선진행에도 개발 날짜는 의미가 있다, offEdApplySectionRule 주석).
-function checkPreClear(src) {
-  const fn = extractFunction(src, 'offEdApplySectionRule');
-  assert.ok(/if\(pre[^{]*\)\{[\s\S]*?offEdDevAuto\[k\] && !offEdDevTouched\[k\][\s\S]*?e\.value = ''[\s\S]*?offEdDevAuto\[k\] = false[\s\S]*?offEdDevHintSync\(\)/.test(fn),
-    '선진행으로 바꿀 때 자동으로 채운 개발 날짜(손대지 않은 칸만)를 비우는 줄이 없다');
+//  ⑧ 구분을 바꿔도 개발 날짜(자동으로 채운 값 포함)는 그대로다(PROJECT-ADMIN-UX §1.4, 2026-10-26).
+//    옛 규칙(선진행으로 바꾸면 자동 개발 날짜를 비운다, 2026-10-23)은 선진행 잠금과 함께 없앴다. 구분, 상태, 날짜는 서로 독립이다.
+//    구분 칸에는 바뀜 처리기가 없어야 하고, 선진행 번호(CODE_ID.SECTION_PRE)로 판정하는 코드도 없어야 한다.
+function checkNoPreClear(src) {
+  assert.ok(!/function\s+offEdApplySectionRule\s*\(/.test(src), '선진행 규칙 함수(offEdApplySectionRule)가 남아 있다');
+  assert.ok(!/\$\('#offEdSection'\)[^\n]*addEventListener/.test(src), '구분 칸(#offEdSection)에 바뀜 처리기가 있다(구분을 바꾸면 다른 칸이 움직인다)');
+  const code = src.replace(/^const CODE_ID = .*$/m, '');
+  assert.ok(!/CODE_ID\.SECTION_PRE/.test(code), '선진행 번호(CODE_ID.SECTION_PRE)로 동작을 가르는 코드가 남아 있다');
 }
-test('개발 날짜 기본값⑧: 선진행으로 바꾸면 자동으로 채운 개발 날짜만 비운다(손으로 넣은 값은 그대로)', () => checkPreClear(app));
-test('변이⑧: 손댐 확인을 빼면(손으로 넣은 값까지 비움) ⑧ 이 실패한다', () => {
-  const bad = app.replace('if(offEdDevAuto[k] && !offEdDevTouched[k]){', 'if(offEdDevAuto[k]){');
-  assert.notStrictEqual(bad, app, '변이 준비 실패');
-  assert.throws(() => checkPreClear(bad), /선진행/);
+test('개발 날짜 기본값⑧: 구분을 바꿔도 개발 날짜는 그대로다(선진행 규칙 없음, PROJECT-ADMIN-UX §1.4)', () => checkNoPreClear(app));
+test('변이⑧: 구분 칸에 옛 바뀜 처리기를 되살리면 ⑧ 이 실패한다', () => {
+  const anchor = "  ['#offEdStart', '#offEdEnd'].forEach(sel =>";
+  assert.ok(app.includes(anchor), '변이 준비 실패(앵커가 낡았다)');
+  const bad = app.replace(anchor, "  { const s = $('#offEdSection'); if(s) s.addEventListener('change', offEdClearPre); }\n" + anchor);
+  assert.throws(() => checkNoPreClear(bad), /바뀜 처리기/);
+  const bad2 = app.replace(anchor, "  if(codeIdOf(1) === CODE_ID.SECTION_PRE) offEdDevReset();\n" + anchor);
+  assert.throws(() => checkNoPreClear(bad2), /SECTION_PRE/);
 });

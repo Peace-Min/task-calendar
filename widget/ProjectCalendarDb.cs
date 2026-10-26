@@ -32,10 +32,10 @@ namespace TaskCalendarWidget
     //  【트랜잭션 규칙】
     //    - 연결은 모두 DbGate.OpenAsync. 읽기는 REPEATABLE-READ 한 스냅샷, 쓰기는 READ-COMMITTED.
     //    - 공용 쓰기 트랜잭션은 판정(신원, 내 과제, 쓰기 가능)으로 시작한다(BeginSharedWriteAsync). 판정이 과제 행을 FOR SHARE 로
-    //      잡고(관리자 종료, 영구 삭제와 엇갈리지 않게), 그다음 그 일정 행을 FOR UPDATE 로 잡는다.
+    //      잡고(관리자 숨김, 영구 삭제와 엇갈리지 않게), 그다음 그 일정 행을 FOR UPDATE 로 잡는다.
     //      같은 일정의 저장과 삭제만 줄 서고, 다른 일정끼리는 막지 않는다(과제 행 공유 잠금끼리는 서로 막지 않는다).
     //    - 잠금 순서는 어디서나 과제 행, 일정 행, 그다음 cal_user_rev 다. 개인 복사: 과제 행(공유), 원본 일정 행(공유),
-    //      cal_user_rev ODKU(§5.5). 휴지통 영구 삭제와 관리자 종료는 과제 행만 잠근다(일정 행을 먼저 잡지 않는다).
+    //      cal_user_rev ODKU(§5.5). 휴지통 영구 삭제와 관리자 숨김은 과제 행만 잠근다(일정 행을 먼저 잡지 않는다).
     //    - 과제 영구 삭제와 엇갈려 FK 1452/1451 이 나면 원문 대신 고정 문구 forbidden(MsgProjectGone).
     //    - 커밋은 CommitWithGateAsync 한 곳에서만 한다. 커밋 바로 앞에서 관문을 다시 읽는다(CalendarWriteDb 와 같은 규칙).
     //    - 멱등: 같은 (과제, mutationUid) 이력이 있으면 그 결과를 돌려준다. 생성은 같은 eventUid 가 있으면 같다.
@@ -158,7 +158,7 @@ namespace TaskCalendarWidget
         internal const string MsgUnregistered = "사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요.";
         internal const string MsgInactiveUser = "비활성 처리된 계정입니다.";
         internal const string MsgNotMine = "내 과제에 없는 과제입니다. 내 과제에 공식 과제를 넣으면 과제 캘린더를 쓸 수 있습니다.";
-        internal const string MsgReadOnly = "종료되었거나 숨긴 과제라 읽기 전용입니다.";
+        internal const string MsgReadOnly = "숨긴 과제라 읽기 전용입니다.";
         internal const string MsgConflict = "다른 사람이 먼저 고쳤습니다. 최신 내용을 확인한 뒤 다시 저장하세요.";
         internal const string MsgGone = "이미 지워졌거나 없는 일정입니다.";
         internal const string MsgOtherProject = "다른 과제의 일정입니다.";
@@ -236,7 +236,7 @@ namespace TaskCalendarWidget
         // ================================================================================
         //  onlyUid 가 있으면 그 과제 하나만 본다(없으면 빈 목록). 쓰기 가능 여부는 Proj.Active 다.
         //  lockProject: 같은 판정 SQL 에 FOR SHARE OF p 를 붙여 **과제 행만** 공유 잠금한다(쓰기 트랜잭션 안에서만).
-        //    관리자의 종료(UPDATE project SET is_active)와 휴지통 영구 삭제(DELETE project)가 진행 중인 공용 쓰기와
+        //    관리자의 숨김(UPDATE project SET is_active)과 휴지통 영구 삭제(DELETE project)가 진행 중인 공용 쓰기와
         //    엇갈리지 않게 한다. MySQL 8 의 FOR SHARE 는 SELECT 에 더해 UPDATE(또는 DELETE, LOCK TABLES) 권한이 필요한데
         //    앱 계정은 project 에 SELECT, INSERT, UPDATE, DELETE 가 있다(server-app-account.sql, create-app-user.sql).
         private static async Task<List<Proj>> EligibleProjectsAsync(MySqlConnection conn, MySqlTransaction? tx, int userId,
@@ -327,7 +327,7 @@ namespace TaskCalendarWidget
             try
             {
                 var me = await IdentityAsync(conn, tx, login, ct);
-                //  잠금 1: 과제 행(공유). 커밋까지 관리자 종료와 영구 삭제가 끼어들지 못한다. 잠금 순서는 어디서나 과제 행 다음 일정 행이다.
+                //  잠금 1: 과제 행(공유). 커밋까지 관리자 숨김과 영구 삭제가 끼어들지 못한다. 잠금 순서는 어디서나 과제 행 다음 일정 행이다.
                 var proj = await RequireProjectAsync(conn, tx, me, projectUid, write: true, ct, lockProject: true);
                 CheckName(me.Name);
                 return (tx, me, proj);

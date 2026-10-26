@@ -932,32 +932,44 @@ test('setup-taskcalendar ㉓ 번호 키: 고정 번호 지도는 schema-structur
 test('setup-taskcalendar ㉓ 번호 키: 확인 전 원본 점검(고아, NOT NULL, 빈 이름, is_active), 읽기만', () => codeIdChecks.sourcePreflight(psSrc));
 test('setup-taskcalendar ㉓ 번호 키: 복사 SQL(지도 BINARY, MAX+1 이름순, JOIN ON name, 원본 별칭 s)', () => codeIdChecks.copySql(psSrc));
 test('setup-taskcalendar ㉓ 번호 키: 복사 뒤 검증(이름 복원 BINARY, NULL 대칭, 고정 번호, 16진 비교, Die)', () => codeIdChecks.verifyAfterCopy(psSrc));
-// ㉔ 2026-10-15 리뷰 수정: 보호 번호(구분 2, 상태 2)와 AUTO_INCREMENT 바닥.
-//  원본에서 라벨을 바꿔 번호 2 가 비면 멈추고(확인 전 원본 점검 + 복사 뒤 Die), 숨겨져 왔으면 켜고 알린다.
-//  고정 번호를 둔 표(구분, 상태, 직급)는 카운터를 max(고정 번호 최댓값 + 1, MAX+1)로 올린다. 바닥은 시드에서 읽는다.
+// ㉔ 2026-10-15 리뷰 수정: AUTO_INCREMENT 바닥. 고정 번호를 둔 표(구분, 상태, 직급)는 카운터를 max(고정 번호 최댓값 + 1, MAX+1)로
+//  올린다. 바닥은 시드에서 읽는다.
+//  ★ 2026-10-26(PROJECT-ADMIN-UX §1.4): 보호 번호(구분 2, 상태 2)의 강제(원본에 시드 이름이 없으면 멈춤, 숨겨져 왔으면 켬)를 지웠다.
+//    번호에 묶인 동작이 없어졌기 때문이다. 대신 구조 19 의 과제 처음 순서(sort_no)를 채운다(이관 조각 v19 와 같은 문장).
 const fixedRowChecks = {
-  protectedIds(ps) {
+  //  보호 번호 강제가 없다: $PROTECTED_IDS, 원본 점검의 보호 이름, 복사 뒤 Die, 숨겨진 행 켜기 모두 없다. 지도에 없는 이름은 경고만.
+  noProtectedIds(ps) {
     const code = maskPs(ps);
-    assert.ok(code.includes("$PROTECTED_IDS = [ordered]@{ section_code = '2'; status_code = '2' }"), '$PROTECTED_IDS 가 (구분 2, 상태 2) 가 아니다(호스트 CodeIds, 웹 CODE_ID 와 같아야 한다)');
-    // 확인 전 원본 점검: 보호 이름이 원본에 글자 그대로(16진) 있는가. 없으면 $srcBad 로 멈춘다(아무것도 바꾸기 전).
-    const die = onlyOnce(code, /if\(\$srcBad\.Count -gt 0\)\{ Die /, '원본 점검 Die');
-    const pre = code.slice(code.indexOf('$srcBad = @()'), die);
-    assert.ok(/foreach\(\$t in \$PROTECTED_IDS\.Keys\)\{/.test(pre) && pre.includes("AS BINARY) = X'\" + $phex + \"';") &&
-      /if\(\$n -ne 1\)\{ \$srcBad \+= /.test(pre), '확인 전 원본 점검이 보호 이름(선진행, 종료)이 원본에 있는지 16진으로 보고 멈추지 않는다');
-    // 복사 뒤: 보호 번호의 이름이 없으면 Warn 이 아니라 Die, 라벨을 시드 이름으로 되돌리라고 말한다.
+    assert.ok(!code.includes('$PROTECTED_IDS'), '$PROTECTED_IDS(구분 2, 상태 2 보호)가 남아 있다(PROJECT-ADMIN-UX §1.4 로 지웠다)');
+    assert.ok(!/SET is_active = 1 WHERE/.test(code), '코드표 행을 강제로 켜는 UPDATE 가 남아 있다');
     const apply = onlyOnce(code, /ApplySqlFile\s+\$copyFile\b/, '과제 복사 적용');
     const idDie = onlyOnce(code, /if\(\$idBad\.Count -gt 0\)\{ Die /, '번호 키 검증 Die');
     const blk = code.slice(apply, idDie);
-    const m = /if\("\$got" -eq ""\)\{\s*\n\s*if\(\$PROTECTED_IDS\.Contains\(\$t\) -and \$PROTECTED_IDS\[\$t\] -eq \$id\)\{\s*\n\s*Die "([^\n]*)"/.exec(blk);
-    assert.ok(m, '복사 뒤 보호 번호 행이 없을 때 멈추지 않는다(경고만 하면 선진행, 종료 동작이 아무 행에도 걸리지 않는다)');
-    assert.ok(/되돌린 뒤 다시 실행하세요/.test(m[1]), '보호 번호가 비었을 때 원본 라벨을 시드 이름으로 되돌리라고 안내하지 않는다');
-    // 숨겨져 온 보호 행은 켜고(SET is_active = 1) 알린 뒤, 켜져 있음을 확인한다. 고아 검사 앞.
-    const orphan = onlyOnce(code, /foreach\(\$oc in \$ORPHAN_CHECKS\)/, '고아 행 검사');
-    const re = code.slice(idDie, orphan);
-    assert.ok(re.includes('" SET is_active = 1 WHERE " + $protPk + " = " + $protId + " AND is_active = 0;"') &&
-      /Warn "[^"\n]*숨겨져 있어 켰습니다/.test(re), '숨겨져 온 보호 행을 켜고 알리지 않는다');
-    assert.ok(/if\(\$on -ne 1\)\{ Die /.test(re), '보호 행을 켠 뒤 켜져 있는지 확인해 멈추지 않는다');
+    const m = /if\("\$got" -eq ""\)\{\s*\n([\s\S]*?)\n\s*\}\s*\n\s*elseif/.exec(blk);
+    assert.ok(m, '복사 뒤 고정 번호 확인의 (이름 없음) 갈래를 찾지 못했다');
+    assert.ok(/^\s*Warn "/.test(m[1]) && !/\bDie\b/.test(m[1]), '고정 번호의 이름이 원본에 없을 때 경고만 하지 않는다(멈춘다)');
     assert.ok(!/\$pid\b/i.test(code), '$pid 를 쓴다(PowerShell 자동 변수 $PID 는 읽기 전용이라 대입하면 죽는다)');
+  },
+  //  과제 처음 순서: 번호 키 검증 뒤, 고아 검사 앞에서 v19 와 같은 문장으로 채우고, 빈 순서가 남으면 멈춘다.
+  orderFill(ps, frag) {
+    const code = maskPs(ps);
+    const idDie = onlyOnce(code, /if\(\$idBad\.Count -gt 0\)\{ Die /, '번호 키 검증 Die');
+    const orphan = onlyOnce(code, /foreach\(\$oc in \$ORPHAN_CHECKS\)/, '고아 행 검사');
+    const at = onlyOnce(code, /Q \("UPDATE " \+ \$tp \+ " p JOIN /, '과제 처음 순서 UPDATE');
+    const end = code.indexOf(') "과제 처음 순서"', at);
+    assert.ok(end > at, '과제 처음 순서 UPDATE 의 끝을 찾지 못했다');
+    assert.ok(idDie < at && end < orphan, '과제 처음 순서가 (번호 키 검증 뒤, 고아 검사 앞) 이 아니다');
+    assert.ok(/\$tp = TQ \$TargetDb 'project'/.test(code), '순서를 채우는 표가 대상 DB 의 project 가 아니다');
+    //  글자 조각을 이어 붙이면(사이의 $tp 는 표 이름) 이관 조각 v19 의 순서 채우기와 같아야 한다(두 경로가 같은 순서를 낸다).
+    const lits = [...code.slice(at, end).matchAll(/"([^"]*)"/g)].map((x) => x[1]);
+    const got = lits.join('project').replace(/;\s*$/, '').replace(/\s+/g, ' ').trim();
+    const fb = /SET @s := IF\(@go,\n  '(UPDATE project p[\s\S]*?)',\n  'DO 0'\);/.exec(frag);
+    assert.ok(fb, 'v19 조각에서 순서 채우기를 찾지 못했다(판정 불가)');
+    const want = fb[1].replace(/''/g, "'").replace(/\s+/g, ' ').trim();
+    assert.strictEqual(got, want, 'setup 의 과제 처음 순서가 이관 조각 v19 의 순서 채우기와 다르다');
+    const after = code.slice(end, orphan);
+    assert.ok(/WHERE is_active = 1 AND sort_no IS NULL;"\) "과제 순서 빈 행"\)/.test(after) && /if\(\$noOrder -ne 0\)\{ Die /.test(after),
+      '과제 처음 순서 뒤에 빈 순서가 남았는지 세어 멈추지 않는다');
   },
   autoIncFloor(ps, seedOrg) {
     const code = maskPs(ps);
@@ -982,20 +994,24 @@ const fixedRowChecks = {
   },
 };
 const seedOrgSrc = (() => { try { return readText(new URL('../../taskmgr-company-data/02-seed-org.sql', import.meta.url)); } catch { return ''; } })();
-test('setup-taskcalendar ㉔ 보호 번호: 원본에 선진행, 종료가 없으면 확인 전에 멈추고 복사 뒤에도 Die, 숨겨져 왔으면 켠다', () => fixedRowChecks.protectedIds(psSrc));
+const fragV19Src = readText(new URL('../db/deploy/migrations/v19-project-order.sql', import.meta.url));
+test('setup-taskcalendar ㉔ 보호 번호 없음: 구분 2, 상태 2 를 강제하지 않는다(원본 이름 점검, 복사 뒤 Die, 숨긴 행 켜기 없음, 경고만)', () => fixedRowChecks.noProtectedIds(psSrc));
+test('setup-taskcalendar ㉔ 과제 처음 순서: 번호 키 검증 뒤 v19 와 같은 문장으로 sort_no 를 채우고 빈 순서가 남으면 멈춘다', () => fixedRowChecks.orderFill(psSrc, fragV19Src));
 test('setup-taskcalendar ㉔ AUTO_INCREMENT 바닥: 구분 4, 상태 5, 직급 12(시드에서 읽음), 올린 뒤 확인', () => fixedRowChecks.autoIncFloor(psSrc, seedOrgSrc));
-test('setup-taskcalendar ㉔ 변이: 보호 번호 Die 를 Warn 으로, 켜기를 빼거나, 바닥 올리기나 확인을 빼면 잡는다', () => {
-  assert.throws(() => fixedRowChecks.protectedIds(mutate(psSrc,
-    "        if($PROTECTED_IDS.Contains($t) -and $PROTECTED_IDS[$t] -eq $id){\n          Die ", "        if($PROTECTED_IDS.Contains($t) -and $PROTECTED_IDS[$t] -eq $id){\n          Warn ")), /멈추지 않는다/);
-  assert.throws(() => fixedRowChecks.protectedIds(mutate(psSrc,
-    "    if($n -ne 1){ $srcBad += ", "    if($false){ $srcBad += ")), /확인 전 원본 점검/);
-  assert.throws(() => fixedRowChecks.protectedIds(mutate(psSrc,
-    '" SET is_active = 1 WHERE " + $protPk', '" SET is_active = 0 WHERE " + $protPk')), /켜고 알리지 않는다/);
+test('setup-taskcalendar ㉔ 변이: 보호 강제를 되살리거나, 순서 채우기 문장을 바꾸거나 빈 순서 확인을 빼거나, 바닥 올리기나 확인을 빼면 잡는다', () => {
+  assert.throws(() => fixedRowChecks.noProtectedIds(mutate(psSrc,
+    '        Warn "$t 고정 번호 $id 의 이름이 원본에 없습니다.', '        Die "$t 고정 번호 $id 의 이름이 원본에 없습니다.')), /경고만 하지 않는다/);
+  assert.throws(() => fixedRowChecks.noProtectedIds(mutate(psSrc, '  # --- 접속 ---', "  $PROTECTED_IDS = [ordered]@{ section_code = '2'; status_code = '2' }\n  # --- 접속 ---")), /\$PROTECTED_IDS/);
+  assert.throws(() => fixedRowChecks.orderFill(mutate(psSrc,
+    'SET p.sort_no = IFNULL(m.mx, 0) + o.rn, p.updated_at = p.updated_at WHERE p.id > 0;', 'SET p.sort_no = o.rn WHERE p.id > 0;'), fragV19Src), /v19 의 순서 채우기와 다르다/);
+  assert.throws(() => fixedRowChecks.orderFill(mutate(psSrc,
+    '  if($noOrder -ne 0){ Die ', '  if($false){ Die '), fragV19Src), /빈 순서가 남았는지/);
   assert.throws(() => fixedRowChecks.autoIncFloor(mutate(psSrc,
     "    if($ai -lt $floor){ Die ", "    if($false){ Die "), seedOrgSrc), /바닥 이상인지/);
   assert.throws(() => fixedRowChecks.autoIncFloor(mutate(psSrc,
     '" AUTO_INCREMENT = " + [Math]::Max($floor, $mx + 1)', '" AUTO_INCREMENT = " + ($mx + 1)'), seedOrgSrc), /max\(바닥, MAX\+1\)/);
-  assert.doesNotThrow(() => fixedRowChecks.protectedIds(psSrc));
+  assert.doesNotThrow(() => fixedRowChecks.noProtectedIds(psSrc));
+  assert.doesNotThrow(() => fixedRowChecks.orderFill(psSrc, fragV19Src));
   assert.doesNotThrow(() => fixedRowChecks.autoIncFloor(psSrc, seedOrgSrc));
 });
 test('setup-taskcalendar ㉓ 변이: 복사 뒤 검증의 Die 를 끄거나 BINARY 매칭을 빼거나 정수 키로 되돌리면 잡는다', () => {

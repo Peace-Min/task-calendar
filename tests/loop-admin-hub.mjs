@@ -16,7 +16,8 @@
  *      📁 회사 과제 › 📁 공식 과제(도킹)의 상세·목록에 「캘린더에 추가 · ✓ 추가됨 · 제거」 · ✓ · 왼쪽 막대가 보이지 않는다(편집·숨김은 보인다).
  *   H3c 항목 분리(docs/ADMIN-HUB-4.md N4 · 보기만 한다) — 왼쪽 10개(사람 4, 회사 과제 5, 일정 1) · 직급/소속/구분/상태가 그 탭으로 도킹 ·
  *      머리 제목 = 그 이름 · 화면 안 탭 전환 숨김 · 위치 줄 · 직급·소속 줄에 사용 개수 배지 없음(N1) · 꺼진 [숨김] = aria-disabled + 이유(N2).
- *      구분·상태는 고정 번호 2번 줄만 [숨김]이 잠긴다(CODE-TABLE-IDS §3). 그 버튼을 눌러도 확인창과 호스트 요청이 없다(이것만 누른다).
+ *      구분과 상태는 어느 줄도 [숨김]이 잠기지 않는다(2번 줄 포함, PROJECT-ADMIN-UX §1.4, 2026-10-26 에 고정 번호 잠금을 지웠다).
+ *      잠금 표식(data-codelock, aria-disabled, 이유 title, aria-describedby)이 없는지 보기만 한다(누르지 않는다).
  *   H4 📁 회사 과제 › 🏭 발주처 — zz 발주처 하나를 **화면으로** 추가(＋ 추가) → 목록·DB(선택)에 생긴다.
  *   H5 같은 발주처를 **화면으로** 숨김 → 📁 회사 과제 › 🗑 휴지통 › 발주처 탭 → 영구 삭제(이름 입력) → 목록·휴지통·DB(선택)에서 사라진다.
  *      (2026-10-02 ADMIN-HUB-3 M2 — 항목 이름 「삭제된 항목」→「🗑 휴지통」 · 항목 id 는 그대로 trash.)
@@ -64,11 +65,6 @@ if (ARG.has('help') || ARG.has('h')) {
   process.exit(0);
 }
 const ZZ = `zzC_hub${OPT.seed}`;   // zzC 접두 — loop-trash·loop-ui-integrity 의 정리 규칙(zzC%)과 같은 이름 공간
-//  고정 번호 잠금 문장(ProjectDb.CodeIds 와 웹 CODE_PROTECT_WHY 와 글자까지 같다, CODE-TABLE-IDS §3)
-const PROTECT_WHY = {
-  section: '이 구분은 과제 날짜 규칙(선진행)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.',
-  status: '이 상태는 목록 필터와 엑셀 강조(종료)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.',
-};
 
 const T0 = Date.now();
 const el = () => ((Date.now() - T0) / 1000).toFixed(1).padStart(6) + 's';
@@ -358,34 +354,26 @@ async function main() {
           hides: [].map.call(o.querySelectorAll('#otList [data-otop="hide"][aria-disabled="true"]'), function(b){
             var d = document.getElementById(b.getAttribute('aria-describedby') || ''); return { t: b.title, d: d ? d.textContent : null, dis: b.disabled }; }),
           codeRows: o.querySelectorAll('#codeList .cust-row').length,
-          locks: [].map.call(o.querySelectorAll('#codeList [data-codelock="1"]'), function(b){
-            var d = document.getElementById(b.getAttribute('aria-describedby') || ''), r = b.closest('.cust-row');
-            return { id: b.getAttribute('data-codehide'), rowId: r ? String(r.dataset.id || '') : null, aria: b.getAttribute('aria-disabled'),
-                     t: b.title, d: d ? d.textContent : null, dis: b.disabled }; }) }; })())`);
+          lockMarks: o.querySelectorAll('#codeList [data-codelock]').length,
+          codeHides: [].map.call(o.querySelectorAll('#codeList [data-codehide]'), function(b){
+            var r = b.closest('.cust-row');
+            return { id: b.getAttribute('data-codehide'), rowId: r ? String(r.dataset.id || '') : null, lock: b.hasAttribute('data-codelock'),
+                     aria: b.getAttribute('aria-disabled'), t: b.title || '', d: b.getAttribute('aria-describedby'), dis: b.disabled }; }) }; })())`);
       ok(`H3c ${nm}: 그 탭으로 도킹 · 제목 「${nm}」 · 화면 안 탭 전환 숨김 · 위치 줄`, !!s && v.kind === it && v.head === nm && v.tabs === false && v.where.endsWith(nm), J(v));
       if (ov === 'orgTitleModal') {
         ok(`H3c ${nm}: 줄에 사용 개수 배지가 없다(N1)`, v.badges === 0, String(v.badges));
         if (v.hides.length) ok(`H3c ${nm}: 꺼진 [숨김] = aria-disabled(포커스 가능) + title = aria-describedby 문장 「…있어 숨길 수 없습니다」(N2)`,
           v.hides.every((h) => !h.dis && h.t && h.t === h.d && /숨길 수 없습니다/.test(h.t)), J(v.hides.slice(0, 3)));
         else log(`H3c ${nm}: 숨길 수 없는 줄이 없다 — N2 판정 생략`);
-      } else if (!v.codeRows) log(`H3c ${nm}: 코드 목록이 비어 있다(오프라인?), 고정 번호 잠금 판정 생략`);
+      } else if (!v.codeRows) log(`H3c ${nm}: 코드 목록이 비어 있다(오프라인?), [숨김] 잠금 없음 판정 생략`);
       else {
-        //  고정 번호 잠금(CODE-TABLE-IDS §3): 구분 2(선진행), 상태 2(종료)만 [숨김]이 꺼진다. 이유 문장은 호스트 거부 문장과 같다.
-        const want = PROTECT_WHY[it];
-        ok(`H3c ${nm}: 꺼진 [숨김]은 2번 줄 하나뿐 = data-codelock + aria-disabled(포커스 가능) + title = aria-describedby = 고정 문장`,
-          v.locks.length === 1 && v.locks.every((h) => h.id === '2' && h.rowId === '2' && h.aria === 'true' && !h.dis && h.t === want && h.d === want),
-          J(v.locks));
-        //  눌러도 아무것도 나가지 않는다. 누르는 동안만 hostRequest 를 감싸 명령을 센다(원본은 그대로 부른다).
-        if (v.locks.length) {
-          const pressed = await evj(`(async function(){
-            var oH = window.hostRequest, got = [];
-            window.hostRequest = function(cmd){ got.push(String(cmd)); return oH.apply(this, arguments); };
-            try{ var b = document.querySelector('#codeList [data-codelock="1"]'); if(b) b.click(); await new Promise(function(r){ setTimeout(r, 600); }); }
-            finally { window.hostRequest = oH; }
-            return JSON.stringify({ got: got, cf: isOverlayOpen(document.getElementById('confirmModal')) }); })()`);
-          ok(`H3c ${nm}: 꺼진 [숨김]을 눌러도 확인창도 호스트 요청도 없다`, pressed.got.length === 0 && pressed.cf === false, J(pressed));
-          if (pressed.cf) await ev(`(function(){ var b = document.querySelector('#confirmModal [data-close]'); if(b) b.click(); return 1; })()`);
-        }
+        //  2026-10-26(PROJECT-ADMIN-UX §1.4): 구분 2(선진행), 상태 2(종료)의 잠금을 지웠다. 모든 줄의 [숨김]이 같은 버튼이다.
+        //  보기만 한다(누르면 정말 숨겨진다). 숨김 왕복은 loop-ui-integrity 의 P 구간이 시드 행을 되살리며 한다.
+        const odd = v.codeHides.filter((h) => h.lock || h.aria === 'true' || h.dis || h.t || h.d);
+        ok(`H3c ${nm}: 어느 줄의 [숨김]도 잠기지 않았다(data-codelock, aria-disabled, disabled, 이유 title, aria-describedby 없음)`,
+          v.lockMarks === 0 && odd.length === 0 && v.codeHides.length === v.codeRows, J({ lockMarks: v.lockMarks, odd: odd.slice(0, 3), hides: v.codeHides.length, rows: v.codeRows }));
+        if (v.codeHides.some((h) => h.rowId === '2')) ok(`H3c ${nm}: 2번 줄에도 다른 줄과 같은 [숨김]이 있다`, v.codeHides.some((h) => h.rowId === '2' && h.id === '2'), J(v.codeHides.filter((h) => h.rowId === '2')));
+        else log(`H3c ${nm}: 2번 줄이 목록에 없다(숨겨져 있다?), 2번 줄 판정 생략`);
       }
     }
   }

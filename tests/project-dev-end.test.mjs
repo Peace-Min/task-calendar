@@ -7,11 +7,9 @@
 //   사용자는 저장했다고 믿고 값은 사라진다(무음 유실). 사람의 기억에 맡기지 않는다.
 //
 //   ★ 그리고 이 게이트는 **설계 결정 하나를 계약으로 붙잡는다** —
-//     dev_end_date 는 **선진행 잠금 규칙에 들어가지 않는다.** 선진행은 '계약 전'일 뿐이고
-//     개발은 이미 돌고 있어, 그 구간에서 유일하게 의미 있는 날짜가 개발종료일이기 때문이다.
-//     이 결정은 화면(offEdApplySectionRule)과 호스트(ProjectDb 의 선진행 분기) 양쪽에 걸쳐 있어
-//     "정리한다"며 계약시작·계약종료 옆에 끼워 넣기 딱 좋은 모양이다. 그러면 조용히 값이 지워진다.
-//     그래서 '없어야 한다'를 시험이 지킨다('있어야 한다'만 지키면 반쪽이다).
+//     dev_end_date 는 구분에 따라 잠기거나 비워지지 않는다. 2026-10-26(PROJECT-ADMIN-UX §1.4)부터는 선진행 잠금 규칙 자체가 없다
+//     (구분, 상태, 날짜는 서로 독립). 화면의 잠금 함수(offEdApplySectionRule)가 되살아나면 개발 날짜가
+//     계약 날짜 옆에 끼기 딱 좋은 모양이라, '없어야 한다'를 시험이 지킨다.
 //
 //   판정 불가 ≠ 통과 — 기준 파일을 못 읽으면 그 사실 자체가 실패다(계약⓪).
 import { test, assert, loadAppSource, extractFunction, readText } from './harness.mjs';
@@ -169,7 +167,7 @@ export const checks = {
       'ProjectExportCols 에 개발종료일 열이 없다 — 화면엔 보이는데 Excel 장표에만 빠진다');
   },
 
-  //  ④ 화면: 폼·payload 에는 있고, **선진행 잠금 배열에는 없다**(설계 결정)
+  //  ④ 화면: 폼·payload 에는 있고, 구분에 따른 잠금(offEdApplySectionRule)은 없다(설계 결정)
   appWiring(appSrc) {
     const code = stripCode(appSrc);
     assert.ok(new RegExp('id="' + FORM_ID + '"').test(code),
@@ -182,16 +180,11 @@ export const checks = {
     assert.ok(save.includes(FORM_ID),
       'payload 가 #' + FORM_ID + ' 를 읽지 않는다 — 다른 칸의 값을 보내고 있다');
 
+    //  구분에 따른 잠금은 없다(PROJECT-ADMIN-UX §1.4). 함수가 없으면 lockedFieldIds 는 null 이다.
     const locked = lockedFieldIds(appSrc);
-    assert.ok(Array.isArray(locked) && locked.length > 0,
-      'offEdApplySectionRule 의 잠금 배열을 읽지 못했다 — 형태가 바뀌었다면 lockedFieldIds 를 고칠 것. ' +
-      '못 읽으면 "없다"를 증명할 수 없으니 통과가 아니다');
-    assert.ok(locked.includes('offEdStart') && locked.includes('offEdEnd'),
-      '잠금 배열에서 계약 날짜가 빠졌다 — 선진행 규칙 자체가 무너졌다. 실제: ' + locked.join(', '));
-    assert.ok(!locked.includes(FORM_ID),
-      '선진행 잠금 배열에 ' + FORM_ID + ' 가 들어갔다 — 선진행은 계약 전일 뿐 개발은 이미 돈다. ' +
-      '이 칸을 잠그면 그 구간에서 유일하게 의미 있는 날짜를 못 적고, 잠금이 값까지 비우므로 ' +
-      '기존 값이 조용히 지워진다(2026-09-10 설계 결정). 실제: ' + locked.join(', '));
+    assert.strictEqual(locked, null,
+      '편집 폼에 구분에 따른 잠금(offEdApplySectionRule)이 되살아났다. 구분, 상태, 날짜는 서로 독립이다. ' +
+      '잠그면 값까지 비워 ' + FORM_ID + ' 같은 날짜가 조용히 지워진다. 실제 배열: ' + (locked || []).join(', '));
   },
 
 };
@@ -214,7 +207,7 @@ test('계약③: saveProject 분기가 devEndDate 를 읽고 장표에 개발종
   checks.hostWiring(mainWin);
 });
 
-test('계약④: 폼·payload 에 개발종료일이 있고 선진행 잠금 배열에는 없다(설계 결정)', () => {
+test('계약④: 폼·payload 에 개발종료일이 있고 구분에 따른 잠금이 없다(설계 결정)', () => {
   checks.appWiring(app);
 });
 
@@ -263,11 +256,11 @@ test('변이③: 장표 열 정의에서 devEndDate 를 빼면 계약③ 이 실
   assert.doesNotThrow(() => checks.hostWiring(mainWin));
 });
 
-test('변이④: 잠금 배열에 offEdDevEnd 를 끼워 넣으면 계약④ 가 실패한다(설계 결정 봉인)', () => {
-  const bad = app.replace("['offEdStart', 'offEdEnd', 'offEdStatus'].forEach(id => {",
-                          "['offEdStart', 'offEdEnd', 'offEdDevEnd', 'offEdStatus'].forEach(id => {");
-  assert.notStrictEqual(bad, app, '변이 준비 실패: 잠금 배열의 모양이 바뀌었다');
-  assert.throws(() => checks.appWiring(bad), /선진행 잠금 배열에 offEdDevEnd 가 들어갔다/);
+test('변이④: 잠금 함수를 되살리면(개발종료일까지 잠그는 배열) 계약④ 가 실패한다(설계 결정 봉인)', () => {
+  const bad = app.replace('function offAddMonths(ymd, n){',
+    "function offEdApplySectionRule(){ ['offEdStart', 'offEdEnd', 'offEdDevEnd', 'offEdStatus'].forEach(id => {}); }\nfunction offAddMonths(ymd, n){");
+  assert.notStrictEqual(bad, app, '변이 준비 실패: 앵커(offAddMonths)가 낡았다');
+  assert.throws(() => checks.appWiring(bad), /잠금\(offEdApplySectionRule\)이 되살아났다/);
   assert.doesNotThrow(() => checks.appWiring(app));
 });
 

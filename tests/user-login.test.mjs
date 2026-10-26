@@ -468,11 +468,12 @@ test('관문: OpenReadAsync는 static 그대로이고 권한 검사가 없다(�
     '읽기 관문에 권한 검사가 들어갔다 — 로그인 인가 조회(LoadAppUserJsonAsync)도 이 경로라 "권한을 알려면 먼저 권한이 필요"한 순환이 생긴다');
 });
 
-test('★ 쓰기 11곳 전부: NotAuthorizedException catch가 Exception catch보다 앞에 있다', () => {
+test('★ 쓰기 12곳 전부: NotAuthorizedException catch가 Exception catch보다 앞에 있다', () => {
+  //  2026-10-26(PROJECT-ADMIN-UX §1.1): 과제 순서 저장(ReorderProjectsAsync)이 같은 쓰기 관문을 지난다(11 → 12).
   // 이걸 빠뜨리면 "편집 권한이 없습니다"가 "서버에 연결할 수 없습니다"로 표시된다(원인 오해).
   // C#은 먼저 일치하는 catch를 고르므로 '앞'이 아니면 아무 의미가 없다.
   const sites = [...projectDb.matchAll(/try \{ conn = await OpenWriteAsync\(cts\.Token\); \}\r?\n([\s\S]*?)\r?\n\s*await using var connOwn/g)];
-  assert.strictEqual(sites.length, 11, `쓰기 관문 호출부가 ${sites.length}곳이다(11곳이어야 한다)`);
+  assert.strictEqual(sites.length, 12, `쓰기 관문 호출부가 ${sites.length}곳이다(12곳이어야 한다)`);
   sites.forEach((m, i) => {
     const tail = m[1];
     const na = tail.indexOf('catch (NotAuthorizedException nex)');
@@ -570,8 +571,9 @@ test('offEditGuard: 인자는 fn 하나 — 폐지된 관리자 비밀번호를 
   //    상태 탭으로 연다(구분은 지금 문 #offCodeMgr 그대로) — 게이트가 는 것이 아니라 그 관문을 지나는 문이 하나 더 생겼다(15 → 16).
   //  ★ 2026-10-06(ADMIN-HUB-4 후속) — 발주처·구분·상태의 제자리 [복구](custDoShow · codeDoShow)가 없어져 호출이 둘 줄었다(16 → 14):
   //    복구는 회사 과제 휴지통(#offTrash — 이미 이 관문을 지난다)이 한다. 게이트를 비운 것이 아니라 그 문이 휴지통 하나로 모였다.
+  //  ★ 2026-10-26(PROJECT-ADMIN-UX §1.1) — 공식 과제 순서 옮기기(offOrderMove: ⋯ 메뉴와 끌기가 함께 쓰는 한 곳)가 **같은 관문**을 지난다(14 → 15).
   const hits = [...src.matchAll(/offEditGuard\(/g)].length;
-  assert.strictEqual(hits, 20, `offEditGuard 등장이 ${hits}곳이다(정의 1 + 호출 14 + 주석 5 = 20이어야 한다)`);
+  assert.strictEqual(hits, 21, `offEditGuard 등장이 ${hits}곳이다(정의 1 + 호출 15 + 주석 5 = 21이어야 한다)`);
 });
 
 test('호스트의 netcusSaveCreds/netcusCredsGet 처리부는 남아 있다(웹이 부르지 않을 뿐)', () => {

@@ -671,6 +671,11 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
 .off-filters{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
 .off-filters select{flex:1 1 132px;width:auto;min-width:0}
 .off-filters .check{flex:none;margin:0;white-space:nowrap}
+/* 상태 체크박스(PROJECT-ADMIN-UX §1.2): 상태표의 상태마다 하나씩 자동으로 선다. 좁으면 여러 줄로 접힌다 */
+.off-stchk{display:flex;flex-wrap:wrap;align-items:center;gap:2px var(--sp-3);min-width:0}
+.off-stchk:empty{display:none}
+.off-stchk .check{flex:none;margin:0;white-space:nowrap}
+.off-stchk-lb{flex:none;font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
 .off-toolrow{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2)}
 .off-toolrow .spacer{flex:1}
 /* 400px 폭: [초기화][⬇ Excel 추출][＋ 새 공식 과제] 가 10px 여유를 두고도 둘째 줄로 접혔다(loop-ui-visual V3 · 2026-09-18 — 「＋ 발주처 관리」를
@@ -754,7 +759,6 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
 .off-row:hover{background:var(--hover-bg)}
 .off-row.on{background:var(--accent-soft)}
 .off-row.on .off-nm{color:var(--accent-2)}
-.off-sw{grid-column:1;grid-row:1;width:10px;height:10px;border-radius:50%;margin-top:4px;flex:none}
 .off-nm{grid-column:2;grid-row:1;font-size:var(--fs-body);font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .off-meta{
   grid-column:2;grid-row:2;display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;min-width:0;
@@ -772,6 +776,41 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
 .off-dot.warn{background:var(--warn-text)}
 .off-dot.end{background:var(--muted)}
 .off-mut{color:var(--faint-text)}
+/* ---------- 과제 순서(PROJECT-ADMIN-UX §1.1) ----------
+   No = 그 구분 안에서 몇 번째(구분마다 1부터, 거른 뒤에도 전체 목록 기준). 끌기 손잡이(⠿)와 ⋯ 메뉴는 관리 화면(도킹)에서만 그린다(목록에 .ord).
+   좁은 폭: [⠿] No 색점 이름(둘째 줄 발주처…) [⋯]. 넓은 폭은 아래 900px 블록이 칸을 다시 놓는다. 재연결 고르기(.rlp-row)는 이 칸이 없다. */
+#offList .off-row{grid-template-columns:2.8em minmax(0,1fr)}
+#offList .off-no{grid-column:1;grid-row:1;padding-right:var(--sp-2)}
+#offList .off-nm,#offList .off-meta{grid-column:2}
+#offList.ord .off-row{grid-template-columns:18px 2.8em minmax(0,1fr) 30px}
+#offList.ord .off-no{grid-column:2}
+#offList.ord .off-nm,#offList.ord .off-meta{grid-column:3}
+.off-no{font-size:var(--fs-meta);color:var(--muted);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;padding-top:1px}
+.off-drag{grid-column:1;grid-row:1 / span 2;align-self:center;justify-self:center;color:var(--faint-text);font-size:var(--fs-body);line-height:1;padding:4px 2px;cursor:grab;user-select:none;touch-action:none}
+.off-row:hover .off-drag{color:var(--muted)}
+.off-drag:hover{color:var(--accent-2)}
+.off-drag.off-drag-off,.off-row:hover .off-drag.off-drag-off{color:var(--faint-text);opacity:.45;cursor:not-allowed}
+.off-more{grid-column:4;grid-row:1 / span 2;align-self:center;justify-self:end;position:relative}
+.off-more-btn{display:grid;place-items:center;width:28px;height:26px;padding:0;border:0;border-radius:var(--r-sm);background:none;color:var(--muted);font:inherit;font-size:var(--fs-emph);line-height:1;cursor:pointer}
+.off-more-btn:hover,.off-more-btn[aria-expanded="true"]{background:var(--hover-bg);color:var(--text)}
+.off-more-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+/* 끄는 동안: 원래 줄은 흐리게, 놓을 자리는 위나 아래 선(아래로 옮기면 그 줄 밑, 위로 옮기면 그 줄 위). 그림자 줄은 포인터를 따라간다 */
+.off-row.off-drag-src{opacity:.45}
+.off-row.off-drop-before{box-shadow:inset 0 2px 0 var(--accent)}
+.off-row.off-drop-after{box-shadow:inset 0 -2px 0 var(--accent)}
+.off-drag-ghost{position:fixed;z-index:60;margin:0;pointer-events:none;border:1px solid var(--line);box-shadow:var(--shadow);opacity:.96}
+body.off-dragging,body.off-dragging *{cursor:grabbing!important;user-select:none}
+.off-ordmenu{position:absolute;right:0;top:calc(100% + 2px);z-index:6;min-width:188px;padding:5px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);cursor:default;text-align:left}
+.off-ordmenu.up{top:auto;bottom:calc(100% + 2px)}
+.off-ordmenu [role="menuitem"]{display:flex;align-items:center;gap:8px;width:100%;min-height:30px;padding:5px 9px;border:0;border-radius:var(--r-sm);background:none;color:var(--text);font:inherit;font-size:var(--fs-body);text-align:left;cursor:pointer}
+.off-ordmenu [role="menuitem"] .off-om-ic{flex:none;width:14px;text-align:center;color:var(--muted)}
+.off-ordmenu [role="menuitem"]:hover:not(:disabled),.off-ordmenu [role="menuitem"]:focus{background:var(--hover-bg);outline:none}
+.off-ordmenu [role="menuitem"]:focus-visible{box-shadow:inset 0 0 0 2px var(--accent)}
+.off-ordmenu [role="menuitem"]:disabled{color:var(--faint-text);cursor:default}
+.off-ordmenu [role="menuitem"]:disabled .off-om-ic{color:var(--faint-text)}
+.off-om-pos{display:flex;align-items:center;gap:6px;margin-top:4px;padding:7px 4px 2px;border-top:1px solid var(--line);font-size:var(--fs-meta);color:var(--muted);white-space:nowrap}
+.off-om-pos input{width:60px;flex:none;padding:3px 6px}
+.off-om-pos .btn{margin-left:auto}
 .off-empty{padding:var(--sp-5) var(--sp-4);text-align:center;color:var(--muted);font-size:var(--fs-body);line-height:var(--lh-body)}
 .off-empty .lnk{margin-top:var(--sp-2);font-size:var(--fs-body)}
 /* ★ 상세 패널도 **height 고정 + 내부 스크롤**이다(2026-09-18 §3.2 · 규칙④와 같은 이유): 세로 스택(<900px)에서는
@@ -787,10 +826,6 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
 .off-dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sp-1) var(--sp-3);margin:var(--sp-3) 0 0}
 .off-dl dt{font-size:var(--fs-meta);font-weight:600;color:var(--muted);white-space:nowrap}
 .off-dl dd{font-size:var(--fs-body);color:var(--text);margin:0;min-width:0;word-break:keep-all;overflow-wrap:anywhere}
-.off-d-ref{
-  margin-top:var(--sp-3);padding-top:var(--sp-2);border-top:1px solid var(--line);
-  font-family:ui-monospace,'Consolas','D2Coding',monospace;font-size:var(--fs-micro);color:var(--faint-text);
-}
 /* 상세 액션 한 줄 — 좌측=편입(주 동작), 우측=관리(편집·숨김). 예전엔 두 div(.off-d-sub/.off-d-act)라
    버튼이 항상 두 줄을 먹었다. 한 줄로 합치되 의미는 스페이서(margin-left:auto)+옅은 구분선으로 나눈다. */
 .off-d-bar{margin-top:var(--sp-3);display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
@@ -812,10 +847,6 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
   word-break:keep-all;overflow-wrap:anywhere;
 }
 .off-ed-req{color:var(--danger-text);font-weight:700}
-/* 선진행 = 계약 전 → 날짜·상태는 스키마상 NULL. 잠긴 이유가 보이도록 채도를 낮춘 '읽기전용' 외형으로. */
-#officialEditModal input:disabled,#officialEditModal select:disabled{
-  opacity:.55;cursor:not-allowed;background:var(--dim-bg);
-}
 /* ---------- 기존 과제 재연결(P3.4) ---------- */
 .rl-list{margin-top:var(--sp-3);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
 .rl-hrow,.rl-row{
@@ -845,9 +876,9 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
    카탈로그(#officialModal)의 .off-meta는 flex + '·' 구분자로 평문을 흘리는 배치라, 여기서 필요한
    '레이블-값 정렬'과 성격이 다르다 — 같은 클래스를 공유하면 한쪽을 고칠 때 다른 쪽이 새는 게 확정이다.
    이 팝업의 목적은 '동명 과제 식별'이므로 카탈로그 상세와 같은 6개 축(통상명칭·구분·상태·발주처·사업·계약·기간)을 다 보여준다. */
-.rlp-row{row-gap:4px}
+.rlp-row{row-gap:4px;grid-template-columns:minmax(0,1fr)}   /* 구분 색 점은 없앴다(구분 배지가 같은 정보, 재연결은 개인 과제의 색을 그대로 쓴다) */
 /* 1행 = 주라벨(통상명칭) + 구분 배지 + 상태 칩. 좁으면 배지·칩이 아래로 접힌다. */
-.rlp-head{grid-column:2;grid-row:1;display:flex;align-items:center;flex-wrap:wrap;gap:4px 7px;min-width:0}
+.rlp-head{grid-column:1;grid-row:1;display:flex;align-items:center;flex-wrap:wrap;gap:4px 7px;min-width:0}
 .rlp-nm{
   flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   font-size:var(--fs-body);font-weight:700;color:var(--text);
@@ -870,7 +901,7 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
      열을 적게 두고 칸을 넓게 주는 쪽이 낫다. 오른쪽 열이 더 넓은 건 사업명과 계약기간(고정폭 21~23자)이 거기 놓이기 때문.
    각 칸은 자기 트랙 안에서만 말줄임되므로(min-width:0) 긴 계약명이 옆 필드를 밀어내지 못한다. */
 .rlp-meta{
-  grid-column:2;grid-row:2;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);
+  grid-column:1;grid-row:2;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);
   gap:2px var(--sp-3);min-width:0;font-size:var(--fs-meta);
 }
 /* 위젯 최소 폭보다 더 좁아지면 2열이 다 잘린다 → 1열 목록으로 접는다(잘림보다 스크롤이 낫다). */
@@ -907,17 +938,31 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
   }
   #officialModal .off-h{font-size:var(--fs-micro);font-weight:700;color:var(--muted);white-space:nowrap}
   #officialModal .off-grp{top:30px}
-  #officialModal .off-row,#officialModal .off-hrow{
-    /* 고정폭은 최장 실값 기준(구분='사업부관리' · 상태='1차 납품완료' · 기간=21자 tabular) — 나머지를 이름·발주처에 준다 */
-    grid-template-columns:12px minmax(0,1.6fr) minmax(0,1fr) 72px 96px 148px;align-items:center;gap:0 var(--sp-2);
+  #officialModal #offList .off-row,#officialModal #offList .off-hrow{
+    /* 고정폭은 최장 실값 기준(구분='사업부관리' · 상태='1차 납품완료' · 기간=21자 tabular), 나머지를 이름·발주처에 준다.
+       맨 앞 칸은 No(PROJECT-ADMIN-UX §1.1). 관리 화면(.ord)은 앞에 손잡이, 뒤에 ⋯ 칸이 더 선다 */
+    grid-template-columns:3.6em minmax(0,1.6fr) minmax(0,1fr) 72px 96px 148px;align-items:center;gap:0 var(--sp-2);
+  }
+  #officialModal #offList.ord .off-row,#officialModal #offList.ord .off-hrow{
+    grid-template-columns:18px 3.6em minmax(0,1.6fr) minmax(0,1fr) 72px 96px 148px 30px;
   }
   #officialModal .off-meta{display:contents}
   #officialModal .off-meta > * + *::before{content:none}
-  #officialModal .off-nm,#officialModal .off-sw{grid-row:1}
-  #officialModal .off-cust{grid-column:3;grid-row:1}
-  #officialModal .off-sec{grid-column:4;grid-row:1}
-  #officialModal .off-st{grid-column:5;grid-row:1}
-  #officialModal .off-per{grid-column:6;grid-row:1}
+  #officialModal #offList .off-no,#officialModal #offList .off-nm{grid-row:1}
+  #officialModal #offList .off-no{padding-top:0;padding-right:var(--sp-4)}   /* No 와 통상명칭 사이 숨 쉴 틈(색 점 칸을 뺀 자리) */
+  #officialModal #offList .off-drag,#officialModal #offList .off-more{grid-row:1}
+  #officialModal #offList .off-nm{grid-column:2}
+  #officialModal #offList .off-cust{grid-column:3;grid-row:1}
+  #officialModal #offList .off-sec{grid-column:4;grid-row:1}
+  #officialModal #offList .off-st{grid-column:5;grid-row:1}
+  #officialModal #offList .off-per{grid-column:6;grid-row:1}
+  #officialModal #offList.ord .off-nm{grid-column:3}
+  #officialModal #offList.ord .off-cust{grid-column:4}
+  #officialModal #offList.ord .off-sec{grid-column:5}
+  #officialModal #offList.ord .off-st{grid-column:6}
+  #officialModal #offList.ord .off-per{grid-column:7}
+  #officialModal #offList.ord .off-more{grid-column:8}
+  #officialModal .off-h.off-h-no{text-align:right;padding-right:var(--sp-4)}
   #officialModal .off-cust,#officialModal .off-sec,#officialModal .off-st,#officialModal .off-per{font-size:var(--fs-meta);color:var(--muted)}
   #officialModal .off-st.run{color:var(--ok)}
   #officialModal .off-st.warn{color:var(--warn-text)}
@@ -3235,9 +3280,9 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
         <div class="off-filters">
           <select id="offCustomer" aria-label="발주처 필터"></select>
           <select id="offSection" aria-label="구분 필터"></select>
-          <select id="offStatus" aria-label="상태 필터"></select>
-          <label class="check"><input type="checkbox" id="offActiveOnly" checked> 진행중만</label>
         </div>
+        <!-- 상태 체크박스(PROJECT-ADMIN-UX §1.2): 상태표에서 자동으로 만든다(fillStatusChecks). 고른 것은 이 PC 에 기억한다 -->
+        <div class="off-stchk" id="offStChecks" role="group" aria-label="상태 거르기"></div>
         <!-- 도구줄 = **조회·추가**만 선다(초기화·추출·새 과제). 기준 정보 관리·휴지통 같은
              부차 동작은 아래 하단 줄(.modal-foot)로 모았다(2026-09-18) — 600px 폭에서 이 줄은
              이미 꽉 차, 버튼이 하나만 더 서도 두 줄로 접힌다(loop-ui-visual V3). -->
@@ -3431,9 +3476,8 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
         <div class="off-filters">
           <select id="rlpCustomer" aria-label="발주처 필터"></select>
           <select id="rlpSection" aria-label="구분 필터"></select>
-          <select id="rlpStatus" aria-label="상태 필터"></select>
-          <label class="check"><input type="checkbox" id="rlpActiveOnly" checked> 진행중만</label>
         </div>
+        <div class="off-stchk" id="rlpStChecks" role="group" aria-label="상태 거르기"></div>
         <div class="off-toolrow">
           <span class="off-count" id="rlpCount" role="status" aria-live="polite" aria-atomic="true"></span>
           <span class="spacer"></span>
@@ -4972,7 +5016,7 @@ const ADMINWIN = (() => { try { return HOST && !PEER && new URLSearchParams(loca
                           catch (_) { return false; } })();
 const ADMINWIN_CMD = new Set(['adminWinReady','userInfoGet','gateRecheck',
   'loadProjects','loadCustomers','loadCodes',
-  'saveProject','setProjectActive','exportProjectsXlsx','openFolder',
+  'saveProject','setProjectActive','projectReorder','exportProjectsXlsx','openFolder',
   'loadCustomersFull','addCustomer','renameCustomer','setCustomerActive','customerRefCount',
   'getCodesFull','codeAdd','codeRename','codeSetActive','codeReorder','codeRefCount',
   'roomsFull','roomAdd','roomRename','roomDelete','roomReorder',
@@ -6818,6 +6862,8 @@ function mapDbRows(arr){
       devEndDate:String(r.dev_end_date || ''),   // 개발종료일 — 계약종료일과 별개. 상세·편집·Excel 에만 쓰인다(목록 행은 폭 고정)
       projectName:String(r.project_name || ''), contractName:String(r.contract_name || ''),
       commonName:String(r.common_name || ''),   // 편집 폼이 '통상명칭 비어 있음'과 '사업명과 같음'을 구분해야 해서 원본도 보존
+      //  구분 안 순서(구조 19 project.sort_no, PROJECT-ADMIN-UX §1.1). 빈 값은 null = 그 구분의 뒤(이름순)
+      sortNo:(r.sortNo == null || r.sortNo === '' || !Number.isInteger(Number(r.sortNo)) || Number(r.sortNo) < 0) ? null : Number(r.sortNo),
       note:String(r.note || '') };   // 비고(관리 화면 전용 내부메모) — 편집 폼에서만 노출. 편입분엔 안 넘어감(라벨 최소 메타 원칙)
   }).filter(Boolean);
 }
@@ -9471,9 +9517,7 @@ function trRender(){
     //  ★ 사유(why)를 **보이는 줄**로 낸다(2026-09-10). 예전에는 꺼진 버튼의 title 에만 있었는데,
     //    Chromium 은 disabled 컨트롤에 툴팁을 띄우지 않는다 — 관리자는 '왜 안 눌리지'를 영영 알 수 없었다.
     //    title 은 그대로 둔다(마우스가 아닌 경로·기존 시험의 손잡이).
-    //  ★ 동작이 묶인 코드(구분 2, 상태 2)는 호스트 힌트가 없어도 이유를 낸다(lockWhy · CODE-TABLE-IDS §3).
-    const lockWhy = codeProtectedWhy(def.kind, key);
-    const shownWhy = (it && it.deletable === false && it.why) ? String(it.why) : lockWhy;
+    const shownWhy = (it && it.deletable === false && it.why) ? String(it.why) : '';
     if(shownWhy){
       const wy = document.createElement('div');
       wy.className = 'set-hint'; wy.style.margin = '0';
@@ -9505,9 +9549,9 @@ function trRender(){
     db.dataset.top = 'delete'; db.dataset.tkey = key;
     //  ★ 지울 수 없으면 **끄고 사유를 붙인다**. 눌러 봐야 거부되는 버튼은 관리자에게 이유를 알려 주지 않는다.
     //    '지울 수 없음'과 '왕복 중'은 사유가 다르지만 결과는 같다 — 잠금은 한 식으로 정한다.
-    //  ★ 동작이 묶인 코드(구분 2, 상태 2)는 호스트 힌트와 무관하게 화면도 끈다(위 lockWhy). 판정은 호스트가 다시 한다.
-    const deletable = !!(it && it.deletable === true) && !lockWhy;
-    if(!deletable) db.title = (it && it.why) ? String(it.why) : lockWhy;
+    //  판정은 호스트 힌트(deletable) 하나다. 화면이 따로 막는 코드 행은 없다(PROJECT-ADMIN-UX §1.4).
+    const deletable = !!(it && it.deletable === true);
+    if(!deletable && it && it.why) db.title = String(it.why);
     db.disabled = !deletable || __trSaving;
     db.addEventListener('click', () => trDelete(def.kind, key, nm, refs));
     act.appendChild(db);
@@ -9892,14 +9936,8 @@ let dbCatalog = [];   // [{ id:'db-<uid>', name, color, source:'db', customer, s
 /* ---------- 코드값 고정 번호(CODE-TABLE-IDS §3) ----------
    ★ 동작은 이름 글자가 아니라 이 번호로 판정한다. 이름은 관리 화면에서 바꿀 수 있고 바꿔도 동작은 그대로다.
    ★ 호스트에 같은 표가 한 벌 있다(widget/ProjectDb.cs 의 CodeIds). 시험(code-ids-app)이 둘을 대조한다.
-   ★ 고정 번호를 늘릴 때는 이 표와 CODE_PROTECT_WHY 에 함께 더한다. */
-const CODE_ID = { SECTION_PRE: 2, STATUS_ACTIVE: 1, STATUS_ENDED: 2 };
-//  숨김과 삭제를 막는 행(구분 2, 상태 2)과 그 이유. 호스트 CodeIds.SectionPreMsg, StatusEndedMsg 와 글자까지 같다.
-const CODE_PROTECT_WHY = {
-  section: { [CODE_ID.SECTION_PRE]: '이 구분은 과제 날짜 규칙(선진행)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.' },
-  status:  { [CODE_ID.STATUS_ENDED]: '이 상태는 목록 필터와 엑셀 강조(종료)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.' },
-};
-const codeProtectedWhy = (kind, id) => { const t = CODE_PROTECT_WHY[kind]; return (t && t[Number(id)]) || ''; };
+   ★ 2026-10-26 부터 번호는 표시(상태 색)에만 쓴다. 숨김, 삭제를 막는 행이나 날짜를 잠그는 구분은 없다(PROJECT-ADMIN-UX §1.4). */
+const CODE_ID = { STATUS_ACTIVE: 1, STATUS_ENDED: 2 };
 // 번호 정규화 — 양의 정수만 번호다(그 밖은 null = 없음).
 const codeIdOf = v => { const n = Number(v); return (Number.isInteger(n) && n > 0) ? n : null; };
 //  구분 색 = 번호 기준(CODE-TABLE-IDS §3-4). 표에 없는 번호는 기본색. 1=일반계약 · 2=선진행 · 3=사업부관리(시드)
@@ -12798,44 +12836,98 @@ function offStatusKind(statusId){
   return 'warn';
 }
 function offSectionOf(c){ return offTrim(c.section) || '구분 없음'; }
-// 필터 셀렉트 하나 읽기 — 값(v)은 번호(또는 OFF_NO_STATUS), 글자(t)는 고른 옵션의 이름이다.
-//   ★ 판정은 번호(customerId·sectionId·statusId)로 하고 이름(customer·section·status)은 추출 정보줄에만 쓴다.
+// 필터 셀렉트 하나 읽기: 값(v)은 번호, 글자(t)는 고른 옵션의 이름이다.
+//   ★ 판정은 번호(customerId·sectionId)로 하고 이름(customer·section)은 추출 정보줄에만 쓴다.
 function offFilterPick(id){
   const e = document.getElementById(id);
   if(!e || !e.value) return { v:'', t:'' };
   const o = e.options && e.selectedIndex >= 0 ? e.options[e.selectedIndex] : null;
-  return { v:String(e.value), t:(e.value === OFF_NO_STATUS) ? OFF_NO_STATUS : (o ? offTrim(o.textContent) : '') };
+  return { v:String(e.value), t:o ? offTrim(o.textContent) : '' };
 }
-function catalogFilters(searchId, custId, secId, stId, activeId){
+/* ---------- 상태 체크박스(PROJECT-ADMIN-UX §1.2, 2026-10-26) ----------
+   상태표의 상태마다 체크박스가 하나씩 선다(데이터에만 남은 상태, 상태 없는 과제가 있으면 '상태 없음'도). 기본은 모두 켬.
+   ★ 기억하는 것은 '끈 상태'의 열쇠(번호 문자열, 상태 없음은 OFF_NO_STATUS)다. 그래서 새로 더한 상태는 켜진 채 나온다.
+   ★ 이 PC 에 한 벌이다: 관리 목록, Excel 추출, 재연결 고르기가 같은 값을 쓴다(한쪽에서 끄면 다른 쪽도 꺼져 있다).
+   ★ 옛 '진행중만'(상태 종료 하나만 빼던 특별 규칙)은 없앴다. 어느 상태도 이름이나 번호로 따로 다루지 않는다. */
+const OFF_ST_KEY = 'tc_projStatusOff';
+let offStOff = null;   // Set<string> = 끈 상태 열쇠. null = 아직 기억을 읽지 않음
+function offStOffSet(){
+  if(offStOff) return offStOff;
+  let arr = null;
+  try{ arr = JSON.parse(localStorage.getItem(OFF_ST_KEY) || 'null'); }catch(_){ arr = null; }
+  offStOff = new Set(Array.isArray(arr) ? arr.map(String) : []);
+  return offStOff;
+}
+function offStSave(){ try{ localStorage.setItem(OFF_ST_KEY, JSON.stringify([...offStOffSet()])); }catch(_){} }
+const offStKeyOf = c => { const id = codeIdOf(c && c.statusId); return id == null ? OFF_NO_STATUS : String(id); };
+// 체크박스로 세울 상태 [{k, t}]: 코드 순서, 그다음 데이터에만 있는 상태(가나다), 맨 끝에 상태 없음(그런 과제가 있을 때만)
+function offStOptions(){
+  const out = (offStatuses || []).map(o => ({ k:String(o.id), t:String(o.name) }));
+  const seen = new Set(out.map(o => o.k)), extra = new Map();
+  let none = false;
+  for(const c of dbCatalog){
+    const k = offStKeyOf(c);
+    if(k === OFF_NO_STATUS){ none = true; continue; }
+    const nm = offTrim(c.status);
+    if(!seen.has(k) && nm && !extra.has(k)) extra.set(k, nm);
+  }
+  out.push(...[...extra.entries()].map(([k, t]) => ({ k, t })).sort((a, b) => a.t.localeCompare(b.t, 'ko')));
+  if(none) out.push({ k:OFF_NO_STATUS, t:'상태 없음' });
+  return out;
+}
+// 체크박스 묶음 그리기(카탈로그 #offStChecks, 재연결 고르기 #rlpStChecks). 바꾸면 offStToggle 이 받는다.
+function fillStatusChecks(boxId){
+  const box = document.getElementById(boxId); if(!box) return;
+  const off = offStOffSet(), opts = offStOptions();
+  box.innerHTML = !opts.length ? '' : `<span class="off-stchk-lb" aria-hidden="true">상태</span>`
+    + opts.map(o => `<label class="check"><input type="checkbox" data-offst="${esc(o.k)}"${off.has(o.k) ? '' : ' checked'}> ${esc(o.t)}</label>`).join('');
+}
+// 이미 선 체크박스의 켜짐만 맞춘다(다시 그리지 않는다: 누른 칸의 포커스를 지킨다)
+function offStSyncChecks(){
+  const off = offStOffSet();
+  document.querySelectorAll('[data-offst]').forEach(i => { i.checked = !off.has(i.dataset.offst); });
+}
+function offStToggle(k, on){
+  const off = offStOffSet(), key = String(k || '');
+  if(!key) return;
+  if(on) off.delete(key); else off.add(key);
+  offStSave();
+  offStSyncChecks();
+  try{ const om = document.getElementById('officialModal'); if(om && !om.classList.contains('hidden')) renderOfficialList(); }catch(_){}
+  try{ const rp = document.getElementById('relinkPickModal'); if(rp && !rp.classList.contains('hidden')) renderRlpList(); }catch(_){}
+}
+// 초기화 = 모두 켬(기억도 비운다)
+function offStReset(){ offStOffSet().clear(); offStSave(); offStSyncChecks(); }
+function catalogFilters(searchId, custId, secId){
   const se = document.getElementById(searchId);
   const raw = se ? se.value : '';
-  const chk = document.getElementById(activeId);
-  const cu = offFilterPick(custId), sc = offFilterPick(secId), st = offFilterPick(stId);
+  const cu = offFilterPick(custId), sc = offFilterPick(secId);
+  //  지금 선 체크박스 가운데 끈 것만 거르기에 든다(기억에만 남은 옛 상태는 거르지도, 세지도 않는다).
+  const off = offStOffSet(), ex = offStOptions().filter(o => off.has(o.k));
   // qRaw = 사용자가 친 그대로(추출 정보줄에 남길 원문). q = 비교용 정규화(공백·대소문자 무시).
   return { q:offNorm(raw), qRaw:offTrim(raw),
-           customerId:cu.v, customer:cu.t, sectionId:sc.v, section:sc.t, statusId:st.v, status:st.t,
-           activeOnly:!chk || chk.checked };
+           customerId:cu.v, customer:cu.t, sectionId:sc.v, section:sc.t,
+           stOff:new Set(ex.map(o => o.k)), stOffNames:ex.map(o => o.t) };
 }
-function offFilters(){ return catalogFilters('offSearch', 'offCustomer', 'offSection', 'offStatus', 'offActiveOnly'); }
-// '활성 필터'는 기본값에서 벗어난 것만 센다 — 진행중만(기본 ON)은 켜져 있는 게 정상이라 세지 않는다.
+function offFilters(){ return catalogFilters('offSearch', 'offCustomer', 'offSection'); }
+// '활성 필터'는 기본값에서 벗어난 것만 센다. 상태 체크는 하나라도 끄면 필터 하나다(기본은 모두 켬).
 function offActiveFilterCount(f){
-  return (f.q ? 1 : 0) + (f.customer ? 1 : 0) + (f.section ? 1 : 0) + (f.status ? 1 : 0) + (f.activeOnly ? 0 : 1);
+  return (f.q ? 1 : 0) + (f.customer ? 1 : 0) + (f.section ? 1 : 0) + (f.stOff && f.stOff.size ? 1 : 0);
 }
-//  ★ 판정은 전부 번호다(CODE-TABLE-IDS §3·§4). '진행중만'(activeOnly)은 고정 번호 종료(CODE_ID.STATUS_ENDED)를 뺀다.
+//  ★ 판정은 전부 번호다(CODE-TABLE-IDS §3·§4). 상태는 끈 체크박스의 열쇠(번호, 없음은 OFF_NO_STATUS)로 거른다.
 function offMatches(c, f){
   const sid = codeIdOf(c.statusId);
-  if(f.activeOnly && sid === CODE_ID.STATUS_ENDED) return false;
+  if(f.stOff && f.stOff.has(sid == null ? OFF_NO_STATUS : String(sid))) return false;
   if(f.customerId && String(codeIdOf(c.customerId)) !== String(f.customerId)) return false;
   if(f.sectionId && String(codeIdOf(c.sectionId)) !== String(f.sectionId)) return false;
-  if(f.statusId === OFF_NO_STATUS){ if(sid != null) return false; }
-  else if(f.statusId && String(sid) !== String(f.statusId)) return false;
   if(f.q){
     const hay = offNorm([c.name, c.projectName, c.contractName, c.customer].join(' '));
     if(!hay.includes(f.q)) return false;
   }
   return true;
 }
-// 구분 번호(sectionId)로 묶고 코드 순서(offSections) → 그 외는 가나다. 그룹 안은 이름순.
+// 구분 번호(sectionId)로 묶고 코드 순서(offSections) → 그 외는 가나다.
+// 그룹 안은 순서 번호(sortNo, 빈 값은 뒤) → 이름순(PROJECT-ADMIN-UX §1.1). 관리 목록, Excel, 찾아보기, 재연결 고르기가 다 이 순서다.
 //   돌려주는 모양은 [[라벨(구분 이름), 행들], …] 그대로다(그리는 쪽은 라벨만 본다).
 function offGroups(list){
   const map = new Map();   // 열쇠 = 구분 번호 문자열(없으면 '')
@@ -12846,14 +12938,20 @@ function offGroups(list){
   }
   const rank = k => { const i = offSections.findIndex(s => String(s.id) === k); return i < 0 ? offSections.length : i; };
   const out = [...map.entries()].sort((a, b) => (rank(a[0]) - rank(b[0])) || a[1][0].localeCompare(b[1][0], 'ko')).map(([, g]) => g);
-  out.forEach(([, rows]) => rows.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko')));
+  const no = c => (c.sortNo == null || c.sortNo === '' || !Number.isFinite(Number(c.sortNo))) ? null : Number(c.sortNo);
+  out.forEach(([, rows]) => rows.sort((a, b) => {
+    const x = no(a), y = no(b);
+    if(x !== y){ if(x == null) return 1; if(y == null) return -1; return x - y; }
+    return String(a.name).localeCompare(String(b.name), 'ko');
+  }));
   return out;
 }
 // 필터 셀렉트 채우기 — 발주처는 데이터에서 distinct, 구분·상태는 코드 순서(+데이터에만 있는 값 보강).
 // 현재 선택값은 옵션이 남아 있으면 보존, 사라졌으면 '전체'로 되돌린다(유령 필터 방지).
 // ★ 옵션 값은 번호, 글자는 이름이다(CODE-TABLE-IDS §4). 이름을 바꿔도 고른 필터가 그대로 남는다.
-// ★ 카탈로그와 재연결 선택 팝업이 같은 로직을 쓰도록 셀렉트 id 3개를 인자로 받는다(재사용, 동작 동일).
-function fillCatalogFilterSelects(custId, secId, stId){
+// ★ 카탈로그와 재연결 선택 팝업이 같은 로직을 쓰도록 셀렉트 id 2개를 인자로 받는다(재사용, 동작 동일).
+//   상태는 셀렉트가 아니라 체크박스다(fillStatusChecks, PROJECT-ADMIN-UX §1.2).
+function fillCatalogFilterSelects(custId, secId){
   const fill = (id, values, allLabel) => {
     const sel = document.getElementById(id); if(!sel) return;
     const cur = sel.value;
@@ -12875,25 +12973,49 @@ function fillCatalogFilterSelects(custId, secId, stId){
   const codeOpts = arr => (arr || []).map(o => ({ v:String(o.id), t:String(o.name) }));
   const secBase = codeOpts(offSections);
   fill(secId, [...secBase, ...pairs('sectionId', 'section', secBase)], '구분 전체');
-  const stBase = codeOpts(offStatuses);
-  const sts = [...stBase, ...pairs('statusId', 'status', stBase)];
-  if(dbCatalog.some(c => codeIdOf(c.statusId) == null)) sts.push({ v:OFF_NO_STATUS, t:'상태 없음' });
-  fill(stId, sts, '상태 전체');
 }
-function offFillSelects(){ fillCatalogFilterSelects('offCustomer', 'offSection', 'offStatus'); }
-function offRowHtml(c){
+function offFillSelects(){ fillCatalogFilterSelects('offCustomer', 'offSection'); fillStatusChecks('offStChecks'); }
+/* ---------- 과제 순서 옮기기(PROJECT-ADMIN-UX §1.1, 시안 C: 끌기 손잡이 + ⋯ 메뉴) ----------
+   ★ 같은 구분 안에서만 옮긴다. 옮기면 그 구분의 과제 전체(거른 줄 포함)에 1부터 번호를 다시 매겨 한 번에 보낸다(offOrderSend).
+   ★ 손잡이와 ⋯ 는 관리 화면(⚙ 관리에 도킹된 공식 과제)에서만 그린다. 편집, 숨김 버튼과 같은 문이다(J3: 찾아보기는 읽기 전용).
+   ★ 필터를 쓰는 동안에는 끌기를 막는다(일부만 보일 때 놓을 자리가 애매하다). ⋯ 메뉴는 늘 되고 번호는 전체 목록 기준이다. */
+function offOrderAllowed(){
+  const m = document.getElementById('officialModal');
+  return !!(HOST && m && m.classList.contains('docked'));
+}
+// 한 구분의 전체 줄(화면과 같은 순서). 숨긴 과제는 카탈로그에 애초에 없다(호스트가 is_active=1 만 읽는다).
+function offSectionRows(sectionId){
+  const sid = codeIdOf(sectionId); if(sid == null) return [];
+  const g = offGroups(dbCatalog.filter(c => codeIdOf(c.sectionId) === sid))[0];
+  return g ? g[1] : [];
+}
+// No = 그 구분 안에서 몇 번째(1부터). 거른 뒤에도 전체 목록 기준이다.
+function offNoMap(){
+  const m = new Map();
+  for(const [, rows] of offGroups(dbCatalog)) rows.forEach((c, i) => m.set(c.id, i + 1));
+  return m;
+}
+function offRowHtml(c, no, ord){
   const k = offStatusKind(c.statusId), on = (offSelId === c.id);
   const cust = offTrim(c.customer), sec = offTrim(c.section), st = offTrim(c.status), per = offPeriod(c);
   const subbed = catIsSubscribed(c.id);   // 편입 상태(단일 목록 헬퍼) — 행에 시각 표시(좌측 강조 + 이름 옆 ✓)
-  return `<div class="off-row${on ? ' on' : ''}${subbed ? ' subbed' : ''}" role="row" tabindex="-1" aria-selected="${on ? 'true' : 'false'}" data-id="${esc(c.id)}">`
-    + `<span class="off-sw" aria-hidden="true" style="background:${validColor(c.color)}"></span>`
+  const sid = codeIdOf(c.sectionId);
+  //  ord = { drag:끌 수 있나 }: 관리 화면일 때만 넘어온다. 손잡이는 마우스 전용(aria-hidden)이고 키보드는 ⋯ 메뉴가 맡는다.
+  const lead = !ord ? '' : (ord.drag && sid != null
+    ? `<span class="off-drag" data-offdrag="${esc(c.id)}" aria-hidden="true" title="끌어서 순서 바꾸기">⠿</span>`
+    : `<span class="off-drag off-drag-off" aria-hidden="true" title="필터를 쓰는 동안에는 끌어서 옮길 수 없습니다. ⋯ 메뉴로 옮기세요">⠿</span>`);
+  const more = (!ord || sid == null) ? (ord ? `<span class="off-more" aria-hidden="true"></span>` : '')
+    : `<span class="off-more" role="cell"><button type="button" class="off-more-btn" data-offmore="${esc(c.id)}" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(c.name)} 순서 옮기기" title="순서 옮기기">⋯</button></span>`;
+  return `<div class="off-row${on ? ' on' : ''}${subbed ? ' subbed' : ''}" role="row" tabindex="-1" aria-selected="${on ? 'true' : 'false'}" data-id="${esc(c.id)}"${sid != null ? ` data-sid="${sid}"` : ''}>`
+    + lead
+    + `<span class="off-no" role="cell">${no != null ? no : ''}</span>`
     + `<span class="off-nm" role="cell">${esc(c.name)}${subbed ? `<span class="off-subtick" title="캘린더에 추가됨">✓</span>` : ''}</span>`
     + `<span class="off-meta" role="none">`
     +   `<span class="off-cust${cust ? '' : ' off-mut'}" role="cell">${esc(cust || '-')}</span>`
     +   `<span class="off-sec${sec ? '' : ' off-mut'}" role="cell">${esc(sec || '-')}</span>`
     +   `<span class="off-st ${k}" role="cell"><i class="off-dot ${k}" aria-hidden="true"></i>${esc(st || '-')}</span>`
     +   `<span class="off-per${per ? '' : ' off-mut'}" role="cell">${per ? esc(per) : '미정'}</span>`
-    + `</span></div>`;
+    + `</span>` + more + `</div>`;
 }
 function renderOfficialList(){
   const box = document.getElementById('offList'); if(!box) return;
@@ -12917,15 +13039,22 @@ function renderOfficialList(){
           : `<div class="off-empty">등록된 공식 과제가 없습니다.</div>`);
     return;
   }
-  let html = `<div class="off-hrow" role="row"><span aria-hidden="true"></span>`
+  //  순서 옮기기(관리 화면만): 끌기는 필터가 없을 때만, ⋯ 메뉴는 늘(offRowHtml 의 ord).
+  const canOrd = offOrderAllowed();
+  const ord = canOrd ? { drag: nf === 0 } : null;
+  box.classList.toggle('ord', canOrd);
+  offOrdMenuState = null;   // 다시 그리면 열린 ⋯ 메뉴는 사라진다
+  const no = offNoMap();
+  let html = `<div class="off-hrow" role="row">${canOrd ? '<span aria-hidden="true"></span>' : ''}`
+    + `<span class="off-h off-h-no" role="columnheader">No</span>`
     + ['통상명칭', '발주처', '구분', '상태', '계약기간'].map(t => `<span class="off-h" role="columnheader">${t}</span>`).join('')
-    + `</div>`;
+    + `${canOrd ? '<span aria-hidden="true"></span>' : ''}</div>`;
   for(const [sec, rows] of offGroups(list)){
     const col = offCollapsed.has(sec);
     html += `<div class="off-grp" role="row" tabindex="-1" aria-expanded="${col ? 'false' : 'true'}" data-sec="${esc(sec)}">`
       + `<span class="off-grp-c" role="cell"><span class="off-caret" aria-hidden="true">${col ? '▸' : '▾'}</span>`
       + `${esc(sec)}<span class="off-grp-n">${rows.length}건</span></span></div>`;
-    if(!col) html += rows.map(offRowHtml).join('');
+    if(!col) html += rows.map(c => offRowHtml(c, no.get(c.id), ord)).join('');
   }
   box.innerHTML = html;
   offSyncTabstops();
@@ -12948,7 +13077,6 @@ function renderOfficialDetail(){
     +   `<dt>개발시작</dt><dd>${c.devStartDate ? esc(offDate(c.devStartDate)) : `<span class="off-mut">미정</span>`}</dd>`
     +   `<dt>개발종료</dt><dd>${c.devEndDate ? esc(offDate(c.devEndDate)) : `<span class="off-mut">미정</span>`}</dd>`
     + `</dl>`
-    + `<div class="off-d-ref">참조 id: ${esc(c.id)}</div>`
     // 액션 한 줄 — 왼쪽 편입(주 동작) / 오른쪽 관리(편집·숨김). 포커스 순서도 이 DOM 순서 그대로다.
     + `<div class="off-d-bar">`
     // 편입(구독) — 캘린더에 추가/제거. 편입된 것만 단일 목록·필터·피커·보고서에 나타난다.
@@ -13012,11 +13140,18 @@ function offSyncTabstops(){
   let idx = items.findIndex(el => el.classList.contains('off-row') && el.dataset.id === offSelId);
   if(idx < 0) idx = 0;
   items.forEach((el, i) => { el.tabIndex = (i === idx ? 0 : -1); });
+  offSyncMoreTab(items[idx]);
+}
+// ⋯ 버튼은 지금 Tab 이 닿는 줄의 것 하나만 Tab 에 든다(줄마다 서면 Tab 이 목록에 갇힌다). 줄에서 → 로도 간다.
+function offSyncMoreTab(cur){
+  const b = document.getElementById('offList'); if(!b) return;
+  b.querySelectorAll('[data-offmore]').forEach(x => { x.tabIndex = (cur && cur.contains(x)) ? 0 : -1; });
 }
 function offFocusItem(i){
   const items = offNavItems(); if(!items.length) return;
   const j = Math.max(0, Math.min(items.length - 1, i));
   items.forEach((el, k) => { el.tabIndex = (k === j ? 0 : -1); });
+  offSyncMoreTab(items[j]);
   items[j].focus();
 }
 function offSelect(id){
@@ -13036,8 +13171,8 @@ function offToggleGroup(sec){
 }
 function offResetFilters(){
   const set = (id, v) => { const e = document.getElementById(id); if(e) e.value = v; };
-  set('offSearch', ''); set('offCustomer', ''); set('offSection', ''); set('offStatus', '');
-  const chk = document.getElementById('offActiveOnly'); if(chk) chk.checked = true;   // 관리 화면 기본 = 진행중만
+  set('offSearch', ''); set('offCustomer', ''); set('offSection', '');
+  offStReset();   // 상태 체크는 모두 켬(기억도 함께, 재연결 고르기와 한 벌이다)
   renderOfficialList();
 }
 function openOfficialModal(){
@@ -13048,11 +13183,137 @@ function openOfficialModal(){
   // 발주처 마스터·구분/상태 코드목록을 미리 싣는다(필터·드롭다운·관리가 최신을 쓰도록). 결과는 __applyCustomers/__applyCodes.
   if(HOST){ hpost({ cmd: 'loadCustomers' }); hpost({ cmd: 'loadCodes' }); }
   openModal('#officialModal');
+  //  ⚙ 관리 화면이면 openModal 이 방금 도킹했다. 순서 옮기기(손잡이, ⋯)는 도킹된 창에서만 서므로 목록을 한 번 더 그린다.
+  if(offOrderAllowed()) renderOfficialList();
 }
 // 렌더 없이 컨트롤 값만 기본으로 — openOfficialModal이 곧바로 renderOfficial을 부르므로 이중 렌더 방지.
+//  상태 체크는 되돌리지 않는다: 고른 것을 이 PC 에 기억한다(PROJECT-ADMIN-UX §1.2).
 function offResetFiltersSilently(){
-  ['offSearch', 'offCustomer', 'offSection', 'offStatus'].forEach(id => { const e = document.getElementById(id); if(e) e.value = ''; });
-  const chk = document.getElementById('offActiveOnly'); if(chk) chk.checked = true;
+  ['offSearch', 'offCustomer', 'offSection'].forEach(id => { const e = document.getElementById(id); if(e) e.value = ''; });
+}
+
+/* ---------- 과제 순서 옮기기: ⋯ 메뉴, 끌기, 저장 ---------- */
+let offOrdMenuState = null;    // 열린 ⋯ 메뉴 { id } (다시 그리면 사라진다)
+let __offOrderBusy = false;    // 순서 저장 왕복 중(겹쳐 보내지 않는다)
+// 옮긴 뒤 자리(0부터). 'top' | 'up' | 'down' | 'bottom' | 숫자(N번째, 1부터). 범위 밖은 끝으로 붙인다. 순수 함수.
+function offOrderTarget(from, n, how){
+  if(how === 'top') return 0;
+  if(how === 'bottom') return n - 1;
+  if(how === 'up') return Math.max(0, from - 1);
+  if(how === 'down') return Math.min(n - 1, from + 1);
+  const k = Math.round(Number(how));
+  if(!Number.isFinite(k)) return from;
+  return Math.max(0, Math.min(n - 1, k - 1));
+}
+// 순서 저장 왕복은 이 함수 하나다. 호스트 명령의 이름과 모양은 여기서만 안다.
+//   { sectionId, uids } = 그 구분의 과제 전체(숨긴 과제 제외)를 새 순서대로. 호스트는 1부터 번호를 매겨 한 번에 쓰고,
+//   그사이 그 구분의 과제가 바뀌었으면(목록이 다르면) { ok:false, kind:'stale' } 로 거부한다(구분, 상태 순서 바꾸기와 같은 방식).
+function offOrderSend(sectionId, uids){
+  return hostRequest('projectReorder', { sectionId: sectionId, uids: uids }, 20000);
+}
+// 한 과제를 같은 구분 안 to(0부터) 자리로. 메뉴와 끌기가 다 여기로 온다.
+function offOrderMove(id, to){
+  if(!offOrderAllowed()) return;
+  if(__offOrderBusy){ toast('순서를 저장하는 중입니다. 잠시 뒤에 다시 옮기세요', 'warn'); return; }
+  const c = dbCatalogById(id); if(!c) return;
+  const sid = codeIdOf(c.sectionId); if(sid == null) return;
+  const rows = offSectionRows(sid), from = rows.findIndex(x => x.id === id);
+  if(from < 0) return;
+  const t = Math.max(0, Math.min(rows.length - 1, Number(to) | 0));
+  if(t === from) return;
+  const next = rows.slice(); next.splice(from, 1); next.splice(t, 0, c);
+  offEditGuard(() => offOrderCommit(sid, next, id));
+}
+async function offOrderCommit(sid, next, focusId){
+  //  먼저 화면에서 옮겨 보이고(낙관적), 실패하면 원래 번호로 돌리고 목록을 새로 받는다.
+  const before = next.map(x => [x, x.sortNo]);
+  next.forEach((x, i) => { x.sortNo = i + 1; });
+  renderOfficialList();
+  offOrdFocusAfter(focusId);
+  __offOrderBusy = true;
+  let res = null;
+  try{ res = await offOrderSend(sid, next.map(x => offUidOf(x.id))); }catch(_){ res = null; }
+  finally{ __offOrderBusy = false; }
+  if(res && res.ok){
+    //  회신에 새 목록이 있으면 그것으로 맞춘다(없으면 지금 화면이 곧 저장된 순서다)
+    const p = res.projects;
+    if(Array.isArray(p)) window.__applyProjects(JSON.stringify(p));
+    else if(typeof p === 'string' && p.trim()) window.__applyProjects(p);
+    return;
+  }
+  before.forEach(([x, v]) => { x.sortNo = v; });
+  renderOfficialList();
+  if(res && res.kind === 'stale') toast('그사이 이 구분의 과제가 바뀌어 순서를 저장하지 않았습니다. 목록을 새로 불러옵니다', 'warn');
+  else toast((res && (res.error || res.msg)) || '순서를 저장하지 못했습니다. 목록을 새로 불러옵니다', 'error');
+  offOrderReload();
+}
+function offOrderReload(){ if(HOST) hpost({ cmd: 'loadProjects' }); }   // 회신은 __applyProjects → refreshDbUi 가 다시 그린다
+// 옮긴 줄의 ⋯ 로 포커스를 돌린다. 줄이 접힌 묶음 안이면 그대로 둔다.
+function offOrdFocusAfter(id){
+  const b = document.getElementById('offList'); if(!b) return;
+  const btn = [...b.querySelectorAll('[data-offmore]')].find(x => x.dataset.offmore === id);
+  if(!btn) return;
+  const row = btn.closest('.off-row');
+  b.querySelectorAll('.off-grp,.off-row').forEach(el => { el.tabIndex = (el === row ? 0 : -1); });
+  offSyncMoreTab(row);
+  try{ btn.focus(); }catch(_){}
+}
+function offOrdMenuClose(focusBtn){
+  const st = offOrdMenuState; if(!st) return;
+  offOrdMenuState = null;
+  const b = document.getElementById('offList');
+  const m = b && b.querySelector('.off-ordmenu'); if(m) m.remove();
+  const btn = b ? [...b.querySelectorAll('[data-offmore]')].find(x => x.dataset.offmore === st.id) : null;
+  if(btn){ btn.setAttribute('aria-expanded', 'false'); if(focusBtn) try{ btn.focus(); }catch(_){} }
+}
+function offOrdMenuOpen(btn){
+  const id = btn && btn.dataset.offmore; if(!id) return;
+  if(offOrdMenuState && offOrdMenuState.id === id){ offOrdMenuClose(true); return; }
+  offOrdMenuClose(false);
+  const c = dbCatalogById(id); if(!c) return;
+  const rows = offSectionRows(c.sectionId), i = rows.findIndex(x => x.id === id), n = rows.length;
+  if(i < 0) return;
+  const it = (how, ic, t, off) => `<button type="button" role="menuitem" data-offmv="${how}"${off ? ' disabled' : ''}><span class="off-om-ic" aria-hidden="true">${ic}</span><span>${t}</span></button>`;
+  const m = document.createElement('div');
+  m.className = 'off-ordmenu'; m.setAttribute('role', 'menu');
+  m.setAttribute('aria-label', `${c.name} 순서 옮기기(${n}개 중 ${i + 1}번째)`);
+  m.innerHTML = it('top', '⤒', '맨 위로', i === 0) + it('up', '↑', '한 칸 위로', i === 0)
+    + it('down', '↓', '한 칸 아래로', i === n - 1) + it('bottom', '⤓', '맨 아래로', i === n - 1)
+    + `<div class="off-om-pos" role="none"><input type="number" id="offOrdTo" min="1" max="${n}" value="${i + 1}" aria-label="옮길 순서(1부터 ${n}까지)">`
+    + `<span aria-hidden="true">번째로</span><button type="button" class="btn sm" data-offmv="to">이동</button></div>`;
+  //  목록 아래쪽이라 메뉴가 잘리면 위로 연다(목록 상자는 스크롤 상자다)
+  try{
+    const lr = document.getElementById('offList').getBoundingClientRect(), br = btn.getBoundingClientRect();
+    if(lr.height && br.bottom + 210 > lr.bottom && br.top - 210 > lr.top) m.classList.add('up');
+  }catch(_){}
+  btn.parentNode.appendChild(m);
+  btn.setAttribute('aria-expanded', 'true');
+  offOrdMenuState = { id };
+  const first = m.querySelector('[role="menuitem"]:not(:disabled)') || m.querySelector('#offOrdTo');
+  if(first) try{ first.focus(); }catch(_){}
+}
+function offOrdMenuPick(how){
+  const st = offOrdMenuState; if(!st) return;
+  const c = dbCatalogById(st.id); if(!c){ offOrdMenuClose(false); return; }
+  const rows = offSectionRows(c.sectionId), i = rows.findIndex(x => x.id === st.id);
+  let arg = how;
+  if(how === 'to'){
+    const inp = document.getElementById('offOrdTo'), v = inp ? Number(inp.value) : NaN;
+    if(!Number.isInteger(v) || v < 1 || v > rows.length){
+      toast(`1부터 ${rows.length}까지의 순서를 넣으세요`, 'warn');
+      if(inp) try{ inp.focus(); inp.select(); }catch(_){}
+      return;
+    }
+    arg = v;
+  }
+  const to = offOrderTarget(i, rows.length, arg);
+  offOrdMenuClose(true);
+  if(to !== i) offOrderMove(st.id, to);
+}
+// 끌어서 놓은 자리(0부터) = 놓은 줄의 자리(시안 C: 아래로 끌면 그 줄 밑, 위로 끌면 그 줄 위). 순수 함수.
+function offDropIndex(rows, dragId, overId){
+  const from = rows.findIndex(x => x.id === dragId), to = rows.findIndex(x => x.id === overId);
+  return (from < 0 || to < 0) ? -1 : to;
 }
 
 /* ---------- 사업부 Excel(.xlsx) 추출 (P4) — 카탈로그 책임 구역 ----------
@@ -13065,10 +13326,12 @@ let __offExportBusy = false;   // 왕복 중(중복 클릭·렌더에 의한 라
 
 // 카탈로그 행 1개 → 호스트가 이해하는 레코드(값은 전부 문자열).
 // 빈 값/누락은 빈 문자열로 잠근다 — "null"·"undefined"가 셀에 새어 나가지 않게.
-// (연번 No는 여기서 만들지 않는다 — 이 배열의 순서가 곧 연번이라 호스트가 index+1로 채운다.)
-function offExportRow(c){
+// (연번은 이 배열의 순서라 호스트가 index+1로 채운다. no 는 화면의 No, 그 구분 안에서 몇 번째인가다(PROJECT-ADMIN-UX §1.1).
+//  어느 열에 쓸지는 호스트가 정한다. 모르면 null.)
+function offExportRow(c, no){
   const o = c || {};
   return {
+    no:           Number.isInteger(no) ? no : null,
     section:      offTrim(o.section),
     customer:     offTrim(o.customer),
     projectName:  offTrim(o.projectName),
@@ -13085,26 +13348,22 @@ function offExportRow(c){
     // 잃어버린 정보(=숨김은 포함 안 됨)는 부제에 상시 표기한다. 숨김 포함 추출이 생기면 그때 열을 되살린다.
   };
 }
-// 화면과 같은 순서(구분 그룹 → 이름순)로 평탄화. 접힌 그룹도 당연히 포함한다(접기는 보기일 뿐).
-function offExportRows(list){
+// 화면과 같은 순서(구분 그룹 → 순서 번호 → 이름순)로 평탄화. 접힌 그룹도 당연히 포함한다(접기는 보기일 뿐).
+//  noMap = 과제 id → 화면의 No(offNoMap). 거른 뒤에도 전체 목록 기준이라 따로 받는다.
+function offExportRows(list, noMap){
   const out = [];
-  for(const [, rows] of offGroups(list || [])) for(const c of rows) out.push(offExportRow(c));
+  for(const [, rows] of offGroups(list || [])) for(const c of rows) out.push(offExportRow(c, noMap && noMap.get ? noMap.get(c.id) : undefined));
   return out;
 }
 // 필터 요약 — 파일만 봐도 '일부만 뽑혔다'를 알 수 있어야 한다.
-// offActiveFilterCount('기본값에서 벗어난 필터 수')와 셈이 다른 점 주의: 여기선 기본값이어도 행을 걸러내면 적는다
-// (activeOnly는 기본 ON이지만 실제로 행을 걸러내므로 반드시 남긴다).
-//
-// ★ 표기는 '종료 제외'다 — 화면 체크박스 라벨('진행중만')을 그대로 쓰면 파일이 거짓말을 한다.
-//   offMatches의 실제 조건은 '상태 번호가 종료(CODE_ID.STATUS_ENDED)가 아님'이라서 미정·1차 납품완료가 함께 뽑힌다. 화면은 사용자가 눈으로 보지만
-//   장표는 파일로 남아 남에게 전달된다 — 받는 사람이 '진행중 과제 목록'으로 오해하면 안 된다.
-//   (화면 라벨은 UX 문제라 건드리지 않는다. 파일 표기만 정확히 한다.)
+// ★ 상태는 '뺀 상태'를 이름 그대로 적는다(PROJECT-ADMIN-UX §1.2). 장표는 파일로 남아 남에게 전달된다,
+//   켠 상태만 적으면 받는 사람이 무엇이 빠졌는지 셈해야 한다. 이름은 지금 체크박스의 글자다(stOffNames).
 function offExportFilterSummary(f){
   const g = f || {}, parts = [];
   if(g.section)  parts.push('구분=' + g.section);
   if(g.customer) parts.push('발주처=' + g.customer);
-  if(g.status)   parts.push('상태=' + (g.status === OFF_NO_STATUS ? '없음' : g.status));
-  if(g.activeOnly) parts.push('종료 제외');
+  const ex = Array.isArray(g.stOffNames) ? g.stOffNames.map(offTrim).filter(Boolean) : [];
+  if(ex.length) parts.push('뺀 상태=' + ex.join('/'));
   const q = offTrim(g.qRaw) || offTrim(g.q);
   if(q) parts.push('검색="' + q + '"');
   return parts.length ? ('필터: ' + parts.join(', ')) : '필터 없음';
@@ -13155,7 +13414,7 @@ async function runOfficialXlsxExport(){
   if(!list.length){ toast('추출할 과제가 없습니다', 'warn'); return; }
   const today = ymd(new Date());
   const payload = {
-    rows: offExportRows(list),
+    rows: offExportRows(list, offNoMap()),
     customers: offCustomerExportList(),   // 시트2(발주처 마스터) — 과제 필터와 무관한 전체 활성 발주처
     subtitle: offExportSubtitle(f, dbCatalog.length, list.length, today),
     fileName: '사업부_과제목록_' + today.replace(/-/g, ''),
@@ -13281,36 +13540,8 @@ function offEdFillEnums(section, status, secName, stName){
     st.value = sts.some(o => o.id === curSt) ? String(curSt) : '';
   }
 }
-// 선진행 = 계약 전 단계 → 계약시작·종료·상태는 스키마상 NULL. 값을 비우고 잠근다(다른 구분이면 다시 연다).
-//   ★ 판정은 이름이 아니라 고정 번호(CODE_ID.SECTION_PRE)다 — 이름을 바꿔도 잠금이 따라간다(CODE-TABLE-IDS §3).
-//     호스트(ProjectDb.UpsertProjectAsync)도 같은 번호로 판정한다. 한쪽만 바꾸면 갈린다.
-function offEdApplySectionRule(){
-  const sec = document.getElementById('offEdSection');
-  const pre = !!sec && codeIdOf(sec.value) === CODE_ID.SECTION_PRE;
-  // ★ 'offEdDevEnd' 는 이 배열에 넣지 않는다 — 선진행은 '계약 전'일 뿐 개발은 이미 돌고 있어
-  //   개발종료일이야말로 이 구간에서 유일하게 의미 있는 날짜다(2026-09-10 설계 결정).
-  //   호스트(ProjectDb)도 같은 이유로 선진행 분기에서 ded 를 비우지 않는다. 한쪽만 바꾸면 갈린다.
-  ['offEdStart', 'offEdEnd', 'offEdStatus'].forEach(id => {
-    const e = document.getElementById(id); if(!e) return;
-    if(pre && e.value) e.value = '';
-    e.disabled = pre;
-  });
-  //  자동으로 채운(손대지 않은) 개발 날짜는 계약 날짜에서 계산한 값이라, 선진행으로 계약 날짜가 비면 함께 비운다
-  //  (2026-10-23 사용자). 손으로 넣은 개발 날짜는 그대로 둔다(위 주석: 선진행에도 개발 날짜는 의미가 있다).
-  //  typeof 확인: 이 함수만 떼어 돌리는 시험(code-ids-app ⑨)에도 그대로 돌게 한다
-  if(pre && typeof offEdDevAuto === 'object' && typeof offEdDevHintSync === 'function'){
-    [['start', 'offEdDevStart'], ['end', 'offEdDevEnd']].forEach(([k, id]) => {
-      if(offEdDevAuto[k] && !offEdDevTouched[k]){ const e = document.getElementById(id); if(e) e.value = ''; offEdDevAuto[k] = false; }
-    });
-    offEdDevHintSync();
-  }
-  const h = document.getElementById('offEdHint');
-  //  안내 글자는 지금 고른 구분의 이름을 그대로 쓴다(이름을 바꿔도 화면이 거짓말하지 않게).
-  const preName = (pre && sec.selectedIndex >= 0 && sec.options[sec.selectedIndex]) ? offTrim(sec.options[sec.selectedIndex].textContent) : '';
-  if(h) h.innerHTML = pre
-    ? `<b>${esc(preName)}</b>은(는) 계약 전 단계라 계약기간·상태를 비워 둡니다(자동 잠금). 계약이 확정되면 구분을 바꾸고 날짜를 입력하세요.`
-    : `발주처는 <b>등록된 목록에서만</b> 고를 수 있습니다(DB 마스터). 같은 발주처에 비슷한 과제가 있으면 확인을 요청합니다.`;
-}
+//  ★ 구분, 상태, 날짜는 서로 독립이다(PROJECT-ADMIN-UX §1.4, 2026-10-26). 옛 '선진행이면 계약 날짜와 상태를 비우고 잠그고,
+//    자동 개발 날짜도 비운다' 규칙(offEdApplySectionRule)은 없앴다. 구분을 바꿔도 다른 칸은 그대로다.
 /* ---------- 개발 날짜 기본값(2026-10-23 사용자 결정, MONTHLY-REPORT-PLAN §6.5) ----------
    새 과제를 등록할 때만, 계약시작이나 계약종료를 고르면 개발시작 = 계약시작 + 1달, 개발종료 = 계약종료 - 1달로 채운다.
    ★ 손으로 넣거나 지운 칸(이 폼을 연 동안)은 다시 채우지 않는다. 기존 과제 편집에서는 채우지 않는다.
@@ -13428,7 +13659,6 @@ function offEditOpen(id){
   set('offEdNote', c ? c.note : '');   // 비고(관리 전용 내부메모)
   offEdFillEnums(c ? c.sectionId : '', c ? c.statusId : '', c ? c.section : '', c ? c.status : '');
   offEdFillCustomers(c ? c.customerId : '');
-  offEdApplySectionRule();
   offEdDevReset();   // 개발 날짜 기본값의 손댐 표시와 안내를 새로 시작한다(값은 위에서 넣은 그대로)
   offEdMsgSet('');
   offEdSetBusy(false);
@@ -13450,8 +13680,8 @@ function offEdSaveNow(){
     commonName: val('offEdCommon'),
     startDate: val('offEdStart'),
     endDate: val('offEdEnd'),
-    devStartDate: val('offEdDevStart'),   // 개발시작일(구조 17). 개발종료일과 같이 선진행이어도 보낸다
-    devEndDate: val('offEdDevEnd'),   // 선진행이어도 보낸다 — 잠금 대상이 아니다(offEdApplySectionRule 참조)
+    devStartDate: val('offEdDevStart'),   // 개발시작일(구조 17)
+    devEndDate: val('offEdDevEnd'),
     statusId: idv('offEdStatus'),
     note: (document.getElementById('offEdNote') ? String(document.getElementById('offEdNote').value || '').trim() : ''),
     //  ADMIN-WINDOW: 이 폼으로 새 과제를 등록하면 만든 사람의 캘린더(메인 창)에 넣는다. 저장은 관리 창에서 하므로 호스트가 메인 창에 알린다
@@ -13680,7 +13910,8 @@ function custCommitRename(id, row){
    호스트 왕복 = hostRequest. 성공 시 드롭다운(offSections/offStatuses)을 loadCodes로 갱신,
    개명은 과제 표기(section/status)가 조인으로 따라오므로 loadProjects도 재호출.
    ★ 2026-10-15 — 개명·숨김·순서·참조 수는 번호(id · ids)로 보낸다(CODE-TABLE-IDS §4). 이름은 추가할 때만 보낸다.
-   ★ 동작이 묶인 행(구분 2, 상태 2)은 [숨김]을 끄고 이유를 단다(codeProtectedWhy). 판정은 호스트가 다시 한다. */
+   ★ 2026-10-26: 어느 행도 따로 보호하지 않는다(PROJECT-ADMIN-UX §1.4). 구분 2, 상태 2 를 막던 보호는 선진행 잠금과
+     진행중만 필터 때문에 있었고, 그 규칙들이 없어져 함께 없앴다. 숨김, 이름 바꾸기, 순서는 모든 행이 같다. */
 let codeKind = 'section';    // 현재 탭
 let codeList = [];           // [{id, name, active, sort}] — 현재 탭의 마지막 로드 목록
 let codeBusy = false;
@@ -13745,14 +13976,7 @@ function renderCodeList(){
         + `<button type="button" class="btn sm" data-codeup="${id}"${i <= 0 ? ' disabled' : ''} title="위로">▲</button>`
         + `<button type="button" class="btn sm" data-codedown="${id}"${i >= active.length - 1 ? ' disabled' : ''} title="아래로">▼</button></span>`;
     }
-    //  ★ 동작이 묶인 행은 [숨김]을 끄고 이유를 붙인다(직급·소속 화면의 꺼진 [숨김]과 같은 손: title + aria-describedby).
-    //    disabled 가 아니라 aria-disabled 다 — 포커스가 닿아야 키보드 사용자도 그 문장을 듣는다. 눌러도 아무것도 하지 않는다.
-    const why = codeProtectedWhy(codeKind, c.id);
-    const wid = 'codeWhy-' + n;
-    const hide = why
-      ? `<span class="sr-only" id="${wid}">${esc(why)}</span>`
-        + `<button type="button" class="btn sm danger" data-codehide="${id}" data-codelock="1" aria-disabled="true" title="${esc(why)}" aria-describedby="${wid}">숨김</button>`
-      : `<button type="button" class="btn sm danger" data-codehide="${id}">숨김</button>`;
+    const hide = `<button type="button" class="btn sm danger" data-codehide="${id}">숨김</button>`;
     const act = `<button type="button" class="btn sm" data-codeedit="${id}">이름변경</button>` + hide;
     return `<div class="cust-row" role="listitem" data-id="${id}" data-name="${nm}"><span class="cust-nm">${nm}</span>${ord}${act}</div>`;
   }).join('');
@@ -13787,9 +14011,6 @@ function codeDoAdd(){
 }
 function codeDoHide(key){
   const id = codeIdOf(key); if(id == null) return;
-  //  고정 번호 행 — 버튼이 꺼져 있다(aria-disabled). 위임으로 닿아도 이유만 다시 보이고 끝낸다.
-  const why = codeProtectedWhy(codeKind, id);
-  if(why){ codeMsgSet(ICON.alert + ' ' + esc(why), 'err'); return; }
   offEditGuard(async () => {
     // 참조 수 조회가 실패하면 '모름'이다 — 0건인 것처럼 조용히 넘어가지 않는다(잘못된 확신을 주므로).
     const rc = await hostRequest('codeRefCount', { kind: codeKind, id }, 15000);
@@ -14571,8 +14792,8 @@ function openRelinkModal(){
    재사용: offMatches / offGroups / offActiveFilterCount / offStatusKind / fillCatalogFilterSelects(순수·공유).
    분리: 자체 DOM(rlp*)과 자체 상태(rlpFor, rlpCollapsed) — 카탈로그의 offSelId/offCollapsed를 건드리지 않는다.
    행 렌더만 카탈로그와 다르다: 동명 과제 식별을 위해 사업명·계약명을 추가로 노출한다. */
-function rlpFilters(){ return catalogFilters('rlpSearch', 'rlpCustomer', 'rlpSection', 'rlpStatus', 'rlpActiveOnly'); }
-function rlpFillSelects(){ fillCatalogFilterSelects('rlpCustomer', 'rlpSection', 'rlpStatus'); }
+function rlpFilters(){ return catalogFilters('rlpSearch', 'rlpCustomer', 'rlpSection'); }
+function rlpFillSelects(){ fillCatalogFilterSelects('rlpCustomer', 'rlpSection'); fillStatusChecks('rlpStChecks'); }
 // 팝업 행 — .off-row 골격(그리드·hover·선택·포커스)만 재사용하고 내용은 .rlp-* 전용 마크업.
 // 1행 = 통상명칭 + 구분 배지 + 상태 칩 / 2행 = 레이블 붙은 발주처·사업·계약·기간. data-rlpid=대상 db-id.
 // 카탈로그 상세와 같은 축을 다 보여주는 이유: 여기서 고른 하나로 일정·할일 수십 건의 소속이 바뀐다(되돌리기 비싸다).
@@ -14586,7 +14807,6 @@ function rlpRowHtml(c){
     + `<span class="rlp-lbl">${esc(lb)}</span>`
     + `<span class="rlp-v${v ? '' : ' rlp-mut'}">${esc(v || '-')}</span></span>`;
   return `<div class="off-row rlp-row${picked ? ' on' : ''}" role="row" tabindex="-1" data-rlpid="${esc(c.id)}">`
-    + `<span class="off-sw" aria-hidden="true" style="background:${validColor(c.color)}"></span>`
     + `<span class="rlp-head" role="none">`
     +   `<span class="rlp-nm" role="cell" title="${esc(c.name)}">${esc(c.name)}${picked ? `<span class="off-subtick" title="현재 선택됨">✓</span>` : ''}</span>`
     +   `<span class="rlp-sec${sec ? '' : ' rlp-mut'}" role="cell" title="구분: ${esc(sec || '없음')}">${esc(sec || '구분 없음')}</span>`
@@ -14627,8 +14847,7 @@ function renderRlpList(){
   box.innerHTML = html;
 }
 function rlpResetFilters(){
-  ['rlpSearch', 'rlpCustomer', 'rlpSection', 'rlpStatus'].forEach(id => { const e = document.getElementById(id); if(e) e.value = ''; });
-  const chk = document.getElementById('rlpActiveOnly'); if(chk) chk.checked = true;
+  ['rlpSearch', 'rlpCustomer', 'rlpSection'].forEach(id => { const e = document.getElementById(id); if(e) e.value = ''; });
   renderRlpList();
 }
 function rlpToggleGroup(sec){
@@ -19827,21 +20046,55 @@ function bind(){
       // ↓ 로 목록 첫 줄로 내려간다(검색 → 결과 탐색이 한 손에서 이어지게)
       s.addEventListener('keydown', ev => { if(ev.key === 'ArrowDown'){ ev.preventDefault(); offFocusItem(0); } });
   } }
-  ['#offCustomer', '#offSection', '#offStatus'].forEach(sel => { const e = $(sel); if(e) e.addEventListener('change', renderOfficialList); });
-  { const c = $('#offActiveOnly'); if(c) c.addEventListener('change', renderOfficialList); }
+  ['#offCustomer', '#offSection'].forEach(sel => { const e = $(sel); if(e) e.addEventListener('change', renderOfficialList); });
+  //  상태 체크박스(두 화면 공용, 한 벌의 기억): 바꾸면 열린 목록을 다시 그린다(offStToggle)
+  ['#offStChecks', '#rlpStChecks'].forEach(sel => { const b = $(sel); if(b) b.addEventListener('change', ev => {
+      const i = ev.target.closest && ev.target.closest('[data-offst]'); if(i) offStToggle(i.dataset.offst, i.checked);
+    }); });
   { const r = $('#offReset'); if(r) r.addEventListener('click', offResetFilters); }
   { const box = $('#offList'); if(box){
       box.addEventListener('click', ev => {
         if(ev.target.closest('#offResetIn')){ offResetFilters(); return; }   // 빈 상태 안내의 '필터 초기화'
+        //  순서 옮기기(관리 화면): ⋯ 는 메뉴를 열고 닫는다. 메뉴 안을 누르면 줄을 고르지 않는다.
+        const mb = ev.target.closest('[data-offmore]');
+        if(mb){ offOrdMenuOpen(mb); return; }
+        const mv = ev.target.closest('.off-ordmenu [data-offmv]');
+        if(mv){ if(!mv.disabled) offOrdMenuPick(mv.dataset.offmv); return; }
+        if(ev.target.closest('.off-ordmenu,.off-drag')) return;
         const g = ev.target.closest('.off-grp');
         if(g){ offToggleGroup(g.dataset.sec || ''); return; }
         const r = ev.target.closest('.off-row');
         if(r) offSelect(r.dataset.id);
       });
       box.addEventListener('keydown', ev => {
+        //  ⋯ 메뉴 안: 위아래 화살표로 항목 사이, Esc 는 메뉴만 닫고 ⋯ 로(창은 그대로: 전파를 막는다). 칸에서 Enter 는 이동.
+        const menu = ev.target.closest ? ev.target.closest('.off-ordmenu') : null;
+        if(menu){
+          if(ev.key === 'Escape'){ ev.preventDefault(); ev.stopPropagation(); offOrdMenuClose(true); return; }
+          if(ev.key === 'Enter' && ev.target.id === 'offOrdTo'){ ev.preventDefault(); offOrdMenuPick('to'); return; }
+          const its = [...menu.querySelectorAll('[role="menuitem"]:not(:disabled)')], n = its.length, k = its.indexOf(ev.target);
+          if(k >= 0 && n){
+            let j = -1;
+            if(ev.key === 'ArrowDown') j = (k + 1) % n; else if(ev.key === 'ArrowUp') j = (k - 1 + n) % n;
+            else if(ev.key === 'Home') j = 0; else if(ev.key === 'End') j = n - 1;
+            if(j >= 0){ ev.preventDefault(); its[j].focus(); }
+          }
+          ev.stopPropagation();   // 줄 이동(아래 처리기)이나 전역 단축키로 새지 않게
+          return;
+        }
+        //  ⋯ 버튼: ← 는 줄로, Enter/Space 는 버튼 그대로(click), Esc 는 열린 메뉴만 닫는다
+        if(ev.target.closest && ev.target.closest('[data-offmore]')){
+          if(ev.key === 'ArrowLeft'){ ev.preventDefault(); const r = ev.target.closest('.off-row'); if(r) r.focus(); }
+          else if(ev.key === 'Escape' && offOrdMenuState){ ev.preventDefault(); ev.stopPropagation(); offOrdMenuClose(true); }
+          return;
+        }
         const el = ev.target.closest ? ev.target.closest('.off-grp,.off-row') : null;
         if(!el) return;
         const items = offNavItems(), i = items.indexOf(el);
+        if(ev.key === 'ArrowRight' && el.classList.contains('off-row')){
+          const mbt = el.querySelector('[data-offmore]'); if(mbt){ ev.preventDefault(); offSyncMoreTab(el); mbt.focus(); }
+          return;
+        }
         if(ev.key === 'ArrowDown'){ ev.preventDefault(); offFocusItem(i + 1); }
         else if(ev.key === 'ArrowUp'){
           ev.preventDefault();
@@ -19855,7 +20108,79 @@ function bind(){
           else offSelect(el.dataset.id);
         }
       });
+      //  메뉴 밖으로 포커스가 나가면(Tab) 메뉴를 닫는다
+      box.addEventListener('focusout', ev => {
+        if(!offOrdMenuState) return;
+        const m = box.querySelector('.off-ordmenu'), to = ev.relatedTarget;
+        if(m && to && !m.contains(to) && !(to.closest && to.closest('[data-offmore]'))) offOrdMenuClose(false);
+      });
+      //  끌어서 옮기기(포인터 이벤트, 보고서 묶기 창과 같은 손): HTML5 끌어 놓기는 자동화에서 멈추고 WebView2 와 터치에서 동작이 달라 쓰지 않는다.
+      //    ⠿ 를 누르고 5px 넘게 움직이면 시작한다. 같은 구분의 줄 위에서 놓으면 그 줄의 자리로 간다(offDropIndex).
+      //    Esc, pointercancel, 창 포커스 잃기는 취소한다. 필터를 쓰는 동안에는 손잡이가 꺼져 있다(data-offdrag 없음).
+      let d = null;
+      const overRow = ev => {
+        const el = (document.elementFromPoint ? document.elementFromPoint(ev.clientX, ev.clientY) : null) || ev.target;
+        return el && el.closest ? el.closest('#offList .off-row') : null;
+      };
+      const clearDrop = () => box.querySelectorAll('.off-drop-before,.off-drop-after').forEach(x => x.classList.remove('off-drop-before', 'off-drop-after'));
+      const end = (apply) => {
+        const st = d; if(!st) return;
+        d = null;
+        document.removeEventListener('pointermove', move, true); document.removeEventListener('pointerup', up, true);
+        document.removeEventListener('pointercancel', cancel, true); document.removeEventListener('keydown', key, true);
+        if(!st.on) return;
+        if(st.ghost) st.ghost.remove();
+        document.body.classList.remove('off-dragging'); clearDrop();
+        box.querySelectorAll('.off-drag-src').forEach(x => x.classList.remove('off-drag-src'));
+        if(!apply || !st.over) return;
+        const to = offDropIndex(offSectionRows(st.sid), st.id, st.over);
+        if(to >= 0) offOrderMove(st.id, to);
+      };
+      function move(ev){
+        if(!d || ev.pointerId !== d.pid) return;
+        if(!d.on){
+          if(Math.hypot(ev.clientX - d.x, ev.clientY - d.y) < 5) return;
+          d.on = true;
+          offOrdMenuClose(false);
+          const row = d.row, rc = row.getBoundingClientRect();
+          d.dx = d.x - rc.left; d.dy = d.y - rc.top;
+          const gh = row.cloneNode(true); gh.classList.add('off-drag-ghost'); gh.setAttribute('aria-hidden', 'true');
+          gh.removeAttribute('data-id'); gh.querySelectorAll('button').forEach(b => b.remove());
+          if(rc.width) gh.style.width = rc.width + 'px';
+          (document.getElementById('officialModal') || document.body).appendChild(gh); d.ghost = gh;
+          row.classList.add('off-drag-src'); document.body.classList.add('off-dragging');
+        }
+        if(ev.preventDefault) ev.preventDefault();
+        d.ghost.style.left = (ev.clientX - d.dx) + 'px'; d.ghost.style.top = (ev.clientY - d.dy) + 'px';
+        const r = overRow(ev);
+        clearDrop();
+        d.over = (r && r.dataset.id !== d.id && r.dataset.sid === String(d.sid)) ? r.dataset.id : null;
+        if(d.over){
+          const rows = offSectionRows(d.sid), from = rows.findIndex(x => x.id === d.id), to = rows.findIndex(x => x.id === d.over);
+          r.classList.add(to < from ? 'off-drop-before' : 'off-drop-after');
+        }
+      }
+      function up(ev){ if(d && ev.pointerId === d.pid){ const r = overRow(ev); if(d.on && r) d.over = (r.dataset.id !== d.id && r.dataset.sid === String(d.sid)) ? r.dataset.id : null; end(true); } }
+      function cancel(ev){ if(d && ev.pointerId === d.pid) end(false); }
+      function key(ev){ if(ev.key === 'Escape' && d && d.on){ ev.preventDefault(); ev.stopImmediatePropagation(); end(false); } }
+      box.addEventListener('pointerdown', ev => {
+        if(d || ev.button !== 0 || ev.isPrimary === false) return;
+        const h = ev.target.closest && ev.target.closest('[data-offdrag]'); if(!h || !offOrderAllowed()) return;
+        const row = h.closest('.off-row'); if(!row || !row.dataset.sid) return;
+        ev.preventDefault();   // 글자 선택과 터치 스크롤을 막는다
+        d = { id: h.dataset.offdrag, sid: Number(row.dataset.sid), row, x: ev.clientX, y: ev.clientY, pid: ev.pointerId, on: false, ghost: null, over: null };
+        document.addEventListener('pointermove', move, true); document.addEventListener('pointerup', up, true);
+        document.addEventListener('pointercancel', cancel, true); document.addEventListener('keydown', key, true);
+      });
+      window.addEventListener('blur', () => { if(d) end(false); });
   } }
+  //  ⋯ 메뉴: 목록 밖을 누르면 닫는다(포인터 캡처: click 은 다른 처리기가 막을 수 있다)
+  document.addEventListener('pointerdown', ev => {
+    if(!offOrdMenuState) return;
+    const t = ev.target;
+    if(t && t.closest && (t.closest('.off-ordmenu') || t.closest('[data-offmore]'))) return;
+    offOrdMenuClose(false);
+  }, true);
   { const b = $('#offRefresh'); if(b) b.addEventListener('click', () => {
       if(!HOST){ toast('데스크톱 위젯 전용입니다', 'warn'); return; }
       const m = $('#offMsg'); if(m){ m.innerHTML = ICON.spinner + ' 새로고침 중…'; m.style.color = 'var(--accent)'; }
@@ -19884,7 +20209,7 @@ function bind(){
       const hb = ev.target.closest('[data-offhide]');
       if(hb){ const id = hb.dataset.offhide; offEditGuard(() => offHideProject(id)); }
     }); }
-  { const s = $('#offEdSection'); if(s) s.addEventListener('change', offEdApplySectionRule); }
+  //  구분을 바꿔도 다른 칸은 건드리지 않는다(PROJECT-ADMIN-UX §1.4).
   //  개발 날짜 기본값: 계약 날짜를 고르면 채우고(새 과제만), 개발 날짜를 손으로 넣거나 지우면 그 칸은 손댄 칸이 된다.
   ['#offEdStart', '#offEdEnd'].forEach(sel => { const e = $(sel); if(e){ e.addEventListener('input', offEdAutoDev); e.addEventListener('change', offEdAutoDev); } });
   [['#offEdDevStart', 'start'], ['#offEdDevEnd', 'end']].forEach(([sel, k]) => { const e = $(sel); if(e){ const mark = () => offEdDevTouch(k); e.addEventListener('input', mark); e.addEventListener('change', mark); } });
@@ -19953,8 +20278,7 @@ function bind(){
       s.addEventListener('input', renderRlpList);
       s.addEventListener('keydown', ev => { if(ev.key === 'ArrowDown'){ ev.preventDefault(); const f = document.querySelector('#rlpList .off-grp,#rlpList .off-row'); if(f){ f.tabIndex = 0; f.focus(); } } });
   } }
-  ['#rlpCustomer', '#rlpSection', '#rlpStatus'].forEach(sel => { const e = $(sel); if(e) e.addEventListener('change', renderRlpList); });
-  { const c = $('#rlpActiveOnly'); if(c) c.addEventListener('change', renderRlpList); }
+  ['#rlpCustomer', '#rlpSection'].forEach(sel => { const e = $(sel); if(e) e.addEventListener('change', renderRlpList); });
   { const r = $('#rlpReset'); if(r) r.addEventListener('click', rlpResetFilters); }
   { const box = $('#rlpList'); if(box){
       box.addEventListener('click', ev => {
@@ -20859,7 +21183,7 @@ function pcSideHtml(inDrawer){
         + '<input type="checkbox" data-act="toggle" data-uid="' + u + '" data-fk="ck-' + u + '"' + (on ? ' checked' : '') + ' aria-label="' + esc(p.name) + ' 달력에 표시">'
         + '<span class="pc-dot" aria-hidden="true"></span>'
         + '<span class="pc-nm"><span class="pc-name">' + esc(p.name) + '</span>'
-        + (p.writable ? '' : '<span class="pc-state">종료, 읽기 전용</span>') + '</span>'
+        + (p.writable ? '' : '<span class="pc-state">숨긴 과제, 읽기 전용</span>') + '</span>'
         //  n명은 참여자 명단 단추다(밑줄 글자 모양, 기획 §6.9). 과제 이름은 그대로 글자다.
         + '<button type="button" class="pc-mbc" id="pcMbc-' + u + '" data-act="members" data-uid="' + u + '" data-fk="mb-' + u + '" title="참여자 보기" aria-label="' + esc(p.name + ' 참여자 ' + p.members + '명 보기') + '">' + p.members + '명</button></li>';
     }).join('') + '</ul>'
@@ -20982,7 +21306,7 @@ function pcRenderWeek(body){
   for(const p of ps){
     const L = pcLayoutWeek(PCAL.events.filter(e => !e.deleted && e.projectUid === p.projectUid), R.from, order);
     h += '<div class="pc-wname" style="--c:' + p.color + '"><span class="pc-wpn">' + esc(p.name) + '</span><span class="pc-wmeta">' + p.members + '명, 이번 주 ' + L.items.length + '건</span>'
-      + (p.writable ? '' : '<span class="pc-state">종료, 읽기 전용</span>') + '</div>';
+      + (p.writable ? '' : '<span class="pc-state">숨긴 과제, 읽기 전용</span>') + '</div>';
     h += '<div class="pc-wcells" data-from="' + R.from + '" data-proj="' + esc(p.projectUid) + '" style="grid-template-rows:4px' + (L.lanes ? ' repeat(' + L.lanes + ', auto)' : '') + ' minmax(20px,1fr)">';
     days.forEach((ds, i) => {
       const dw = parseYmd(ds).getDay();
@@ -21112,7 +21436,7 @@ function pcRenderDetail(){
   const p = pcProj(e.projectUid) || { name: '', color: '#8a93a6', writable: false };
   const ro = !p.writable;
   const none = t => '<span class="none">' + t + '</span>';
-  body.innerHTML = '<div class="pcd-proj"><span class="pc-dot" style="--c:' + p.color + '" aria-hidden="true"></span>' + esc(p.name) + (ro ? '<span class="pc-ro" style="margin-left:0">종료, 읽기 전용</span>' : '') + '</div>'
+  body.innerHTML = '<div class="pcd-proj"><span class="pc-dot" style="--c:' + p.color + '" aria-hidden="true"></span>' + esc(p.name) + (ro ? '<span class="pc-ro" style="margin-left:0">숨긴 과제, 읽기 전용</span>' : '') + '</div>'
     + '<h3 class="pcd-title">' + esc(e.title) + '</h3>'
     + '<dl class="pcd-grid">'
     + '<dt>날짜</dt><dd>' + esc(e.startDate === e.endDate ? pcMd(e.startDate) : pcMd(e.startDate) + ' ~ ' + pcMd(e.endDate) + ', ' + (diffDays(e.startDate, e.endDate) + 1) + '일') + '</dd>'
@@ -21137,7 +21461,7 @@ function pcOpenForm(opt){
   pcClosePop(true);
   const e = o.uid ? pcEv(o.uid) : null;
   if(o.uid && !e) return;
-  if(e){ const p = pcProj(e.projectUid); if(!p || !p.writable){ toast('종료되었거나 숨긴 과제라 읽기 전용입니다.', 'warn'); return; } }
+  if(e){ const p = pcProj(e.projectUid); if(!p || !p.writable){ toast('숨긴 과제라 읽기 전용입니다.', 'warn'); return; } }
   else if(!pcCanNew()){ toast('일정을 등록할 수 있는 과제가 없습니다. 종료된 과제는 읽기 전용입니다.', 'warn'); return; }
   if(guardEdit()) return;
   const F = PCAL.form = { mode: e ? 'edit' : 'new', uid: e ? e.eventUid : pcUuid(), projectUid: e ? e.projectUid : '',
@@ -21286,7 +21610,7 @@ function pcConflictKeep(){
 async function pcDelete(uid){
   const e = pcEv(uid); if(!e) return;
   const p = pcProj(e.projectUid);
-  if(!p || !p.writable){ toast('종료되었거나 숨긴 과제라 읽기 전용입니다.', 'warn'); return; }
+  if(!p || !p.writable){ toast('숨긴 과제라 읽기 전용입니다.', 'warn'); return; }
   if(guardEdit()) return;
   const ok = await confirmBox('이 일정을 삭제할까요?', e.title + '. 모든 참여자의 과제 캘린더에서 사라집니다. 개인 일정에 복사해 둔 것은 그대로 남습니다. 누가 언제 지웠는지는 최근 변경에 남습니다.', '삭제');
   if(ok !== 'ok' || guardEdit()) return;

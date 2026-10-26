@@ -491,10 +491,12 @@ if (!JSDOM) {
     assert.strictEqual(W.w.__pwned, undefined);
   }));
 
-  test('화면④: 왼쪽 목록(전체 선택, 전체 해제, 체크, 종료 읽기 전용), 이름을 눌러도 아무 일 없음, 계정별 설정에 빈 선택이 남는다', () => withBoot({}, async (W) => {
+  test('화면④: 왼쪽 목록(전체 선택, 전체 해제, 체크, 숨긴 과제 읽기 전용), 이름을 눌러도 아무 일 없음, 계정별 설정에 빈 선택이 남는다', () => withBoot({}, async (W) => {
     await W.enter([]);
     assert.ok(/3 \/ 3/.test(W.q('#pcView .pc-side-h').textContent));
-    assert.ok(/종료, 읽기 전용/.test(W.q(`#pcView .pc-row input[data-uid="${P3}"]`).closest('.pc-row').textContent), '종료된 과제에 읽기 전용 표시가 없다');
+    //  읽기 전용 = 숨긴 과제(is_active = 0)다. 상태 '종료'와 헷갈리지 않게 '숨긴 과제'라 적는다(PROJECT-ADMIN-UX §1.4).
+    const roRow = W.q(`#pcView .pc-row input[data-uid="${P3}"]`).closest('.pc-row').textContent;
+    assert.ok(/숨긴 과제, 읽기 전용/.test(roRow) && !/종료/.test(roRow), '숨긴 과제에 "숨긴 과제, 읽기 전용" 표시가 없거나 아직 "종료"라 적는다: ' + roRow);
     const hint = W.q('#pcView .pc-hint').textContent;
     assert.ok(/체크하면 달력에 보이고, 해제하면 숨깁니다/.test(hint) && /내 과제에서 빠지지 않습니다/.test(hint) && !/이름/.test(hint), '목록 안내가 체크만 말하지 않는다: ' + hint);
     await W.click(`#pcView input[data-uid="${P2}"]`);

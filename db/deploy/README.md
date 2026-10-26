@@ -29,6 +29,7 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 | `schema-structure.sql` | 과제 트랙 구조 DDL(customer, section_code, status_code, project, room_code). 코드표는 번호 키(2026-10-15), 기본 코드 행은 고정 번호로 시드. room_code 는 회사 공용 회의실 목록(2026-10-21, 관리자만 고친다, docs/SHARED-ROOMS.md) |
 | `migrations/v15-shared-rooms.sql` | **이관 조각**(14 → 15, 2026-10-21). 혼자 돌리지 않는다. 배포 SQL(release-v<버전>.sql)에 들어가 room_code 를 만들고, 사람마다 두던 cal_room 의 이름을 모아(앞뒤 공백 정리, 중복 제거) 넣고 검증한 뒤 cal_room 을 지운다. 이미 15 이상이면 건너뛴다 |
 | `migrations/v18-remove-git.sql` | **이관 조각**(17 → 18, 2026-10-26, docs/GIT-SVN-REMOVAL.md). 혼자 돌리지 않는다. 커밋 기록(`cal_entry.source = 'git'` 인 행, 그 메모와 장소와 공수, 예외일까지)을 지우고 `cal_entry_commit` 표, `cal_entry.source`, `cal_category.uses_repo`, `cal_user_pref` 의 `git_author`, `svn_author`, `git_commit_body` 칸과 그 CHECK 를 없앤다. 되돌릴 수 없으므로 배포 SQL 을 돌리기 전 Workbench 백업이 필수다. 이미 18 이상이면 건너뛰고, 다시 돌려도 있는 것만 지운다 |
+| `migrations/v19-project-order.sql` | **이관 조각**(18 → 19, 2026-10-26, docs/PROJECT-ADMIN-UX.md). 혼자 돌리지 않는다. `project.sort_no`(그 구분 안의 순서, 화면 No)를 `status_id` 뒤에 더하고(INSTANT), 보이는 과제에 구분마다 지금 화면 순서(통상명칭, 비었으면 사업명)로 1 부터 매긴다(숨긴 과제는 비워 둔다). `section_code`, `status_code` 표 설명에서 고정 번호 문구를 지운다. 이미 19 이상이면 건너뛰고, 다시 돌려도 번호가 빈 행만 채운다. 과제 최신화 SQL(엑셀 No 순서)은 이 조각이 든 배포 SQL 다음에 돌린다 |
 | `create-app-user.sql` | 앱 계정 생성과 과제 표 권한(setup 이 스키마 이름을 바꿔 적용한다) |
 | `load-template.sql` | **내부망 LLM용** 데이터 INSERT 템플릿 + 규칙(이름으로 적고 번호로 바꿔 넣는다) |
 | `migrate-2026-10-15-code-ids.sql` | **데이터가 있는 로컬 DB 전용 1회 이관**(v12 → v13). 코드표 넷(발주처, 구분, 상태, 직급)을 번호 키로. 절단 관문(BINARY)과 사후 검증이 어긋나면 에러로 멈춘다. 언제, 어떻게는 아래 '코드표 번호 키 이관' 절 |

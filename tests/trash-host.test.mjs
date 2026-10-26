@@ -494,8 +494,9 @@ test('변이⑤-b: 대조 전에 confirm 을 TRIM 하면 계약⑤ 가 실패한
 
 test('변이⑥: 휴지통 밖에 하드삭제 경로가 생기면 계약⑥ 이 실패한다', () => {
   const bad = mutate(pdb,
-    'await using var cmd = new MySqlCommand("UPDATE project SET is_active=@a WHERE uid=@uid", conn);',
-    'await using var cmd = new MySqlCommand("DELETE FROM project WHERE uid=@uid", conn);');
+    //  2026-10-26 숨김과 되살리기가 한 MySqlCommand 의 두 갈래(삼항)가 됐다(되살리면 그 구분의 맨 뒤 순서, PROJECT-ADMIN-UX §1.1).
+    ': "UPDATE project SET is_active=@a WHERE uid=@uid", conn);',
+    ': "DELETE FROM project WHERE uid=@uid", conn);');
   assert.throws(() => checks.deleteSqlLivesInOneFunction(bad), /DeleteTrashAsync 밖에서 project 를 DELETE 한다/);
   assert.doesNotThrow(() => checks.deleteSqlLivesInOneFunction(pdb));   // 통제군
 });
@@ -511,8 +512,9 @@ test('변이⑥-b: 부속 2표를 app_user 뒤로 옮기면 계약⑥ 이 실패
 
 test('변이⑦: 과제 복구에까지 sort_order 재매김을 번지게 하면 계약⑦ 이 실패한다', () => {
   const bad = mutate(pdb,
-    '"UPDATE project SET is_active=1 WHERE uid=@k"',
-    '"UPDATE project SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM project) x) WHERE uid=@k"');
+    //  2026-10-26 과제 복구는 sort_no(그 구분의 맨 뒤, PROJECT-ADMIN-UX §1.1)를 새로 받는다. 코드 2종의 sort_order MAX+10 과는 다른 칸이다.
+    '"UPDATE project SET is_active=1, sort_no=@sort WHERE uid=@k"',
+    '"UPDATE project SET is_active=1, sort_no=@sort, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM project) x) WHERE uid=@k"');
   assert.throws(() => checks.restoreReordersOnlyCodes(bad), /project 복구가 sort_order 를 다시 매긴다/);
   assert.doesNotThrow(() => checks.restoreReordersOnlyCodes(pdb));   // 통제군
 });

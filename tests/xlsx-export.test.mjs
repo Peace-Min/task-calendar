@@ -54,69 +54,68 @@ const X = makeExportCtx({ HOST: true, document: { getElementById: () => null } }
 // ── 필터 요약 문자열 ───────────────────────────────────────────────────
 // 목적: 파일만 봐도 '일부만 뽑혔다'를 알 수 있어야 한다.
 
+//  필터 묶음의 모양(catalogFilters): 상태는 '끈 체크박스'의 열쇠(stOff)와 이름(stOffNames)이다(PROJECT-ADMIN-UX §1.2).
+const NOF = (o) => Object.assign({ q: '', qRaw: '', customerId: '', customer: '', sectionId: '', section: '', stOff: new Set(), stOffNames: [] }, o);
+
 test('추출 필터 요약: 아무 필터도 없으면 "필터 없음"', () => {
-  assert.strictEqual(
-    X.offExportFilterSummary({ q: '', qRaw: '', customer: '', section: '', status: '', activeOnly: false }),
-    '필터 없음');
+  assert.strictEqual(X.offExportFilterSummary(NOF()), '필터 없음');
   assert.strictEqual(X.offExportFilterSummary(null), '필터 없음');   // 방어 — 크래시 금지
 });
 
 test('추출 필터 요약: 필터 1개 — 구분만', () => {
-  assert.strictEqual(
-    X.offExportFilterSummary({ q: '', qRaw: '', customer: '', section: '일반계약', status: '', activeOnly: false }),
-    '필터: 구분=일반계약');
+  assert.strictEqual(X.offExportFilterSummary(NOF({ section: '일반계약' })), '필터: 구분=일반계약');
 });
 
-// ★ 화면 체크박스 라벨은 '진행중만'이지만 offMatches의 실제 조건은 status !== '종료'다.
-//   화면은 사용자가 눈으로 보정하지만 파일은 남에게 전달된다 — 미정·1차 납품완료가 섞인 목록에
-//   '진행중만'이라고 적히면 받는 사람이 오해한다. 파일 표기는 '종료 제외'여야 한다.
-test('추출 필터 요약: activeOnly는 "진행중만"이 아니라 "종료 제외"로 적는다(파일이 거짓말하지 않게)', () => {
-  const s = X.offExportFilterSummary({ q: '', qRaw: '', customer: '', section: '', status: '', activeOnly: true });
-  assert.strictEqual(s, '필터: 종료 제외');
-  assert.ok(!s.includes('진행중만'), '화면 라벨을 그대로 쓰면 미정·1차 납품완료가 진행중으로 읽힌다');
+// ★ 상태는 '뺀 상태'를 이름 그대로 적는다. 옛 '종료 제외'(진행중만 체크의 파일 표기)는 없앴다:
+//   이제 어느 상태든 끌 수 있으니 무엇이 빠졌는지를 파일이 그대로 말해야 한다.
+test('추출 필터 요약: 끈 상태는 "뺀 상태=이름/이름"으로 적는다(옛 "종료 제외"와 "진행중만" 없음)', () => {
+  const s = X.offExportFilterSummary(NOF({ stOff: new Set(['2', '4']), stOffNames: ['종료', '미정'] }));
+  assert.strictEqual(s, '필터: 뺀 상태=종료/미정');
+  assert.ok(!/종료 제외|진행중만/.test(s), '옛 표기가 남았다');
+  //  이름을 바꾼 상태도 지금 이름으로 적힌다(이름은 체크박스 글자에서 온다).
+  assert.strictEqual(X.offExportFilterSummary(NOF({ stOff: new Set(['2']), stOffNames: ['완료(개명)'] })), '필터: 뺀 상태=완료(개명)');
+  //  옛 필드(activeOnly, status)는 더 읽지 않는다.
+  assert.strictEqual(X.offExportFilterSummary(NOF({ activeOnly: true, status: '진행중' })), '필터 없음');
 });
 
-test('추출 필터 요약: 복합(검색+구분+상태+발주처) — 구분·발주처·상태·종료 제외·검색 순서', () => {
+test('추출 필터 요약: 복합(검색+구분+상태+발주처): 구분, 발주처, 뺀 상태, 검색 순서', () => {
   assert.strictEqual(
-    X.offExportFilterSummary({ q: '레이더', qRaw: '레이더', customer: '방위사업청', section: '일반계약',
-                               status: '진행중', activeOnly: true }),
-    '필터: 구분=일반계약, 발주처=방위사업청, 상태=진행중, 종료 제외, 검색="레이더"');
+    X.offExportFilterSummary(NOF({ q: '레이더', qRaw: '레이더', customer: '방위사업청', section: '일반계약', stOff: new Set(['2']), stOffNames: ['종료'] })),
+    '필터: 구분=일반계약, 발주처=방위사업청, 뺀 상태=종료, 검색="레이더"');
 });
 
 test('추출 필터 요약: 검색어는 정규화본(q)이 아니라 사용자가 친 원문(qRaw)을 남긴다', () => {
-  const s = X.offExportFilterSummary({ q: 'kf21레이더', qRaw: 'KF21 레이더', customer: '', section: '', status: '', activeOnly: false });
+  const s = X.offExportFilterSummary(NOF({ q: 'kf21레이더', qRaw: 'KF21 레이더' }));
   assert.strictEqual(s, '필터: 검색="KF21 레이더"');
   // qRaw가 없는 옛 호출부(방어) → 정규화본으로 폴백
-  assert.strictEqual(
-    X.offExportFilterSummary({ q: 'kf21레이더', customer: '', section: '', status: '', activeOnly: false }),
-    '필터: 검색="kf21레이더"');
+  assert.strictEqual(X.offExportFilterSummary({ q: 'kf21레이더', customer: '', section: '' }), '필터: 검색="kf21레이더"');
 });
 
-test('추출 필터 요약: 상태 센티널(__none__)은 "상태=없음"으로 읽히게 번역', () => {
+test('추출 필터 요약: 상태 없는 과제를 빼면 "상태 없음"으로 적는다', () => {
   assert.strictEqual(
-    X.offExportFilterSummary({ q: '', qRaw: '', customer: '', section: '', status: X.OFF_NO_STATUS, activeOnly: false }),
-    '필터: 상태=없음');
+    X.offExportFilterSummary(NOF({ stOff: new Set([X.OFF_NO_STATUS]), stOffNames: ['상태 없음'] })),
+    '필터: 뺀 상태=상태 없음');
 });
 
 // ── 부제(xlsx 2행) ─────────────────────────────────────────────────────
 // v2에서 제목("사업부 과제 목록")은 1행이고 호스트 상수다 — 부제에 제목을 되풀이하지 않는다.
 
 test('추출 부제: 날짜·건수(전체 N건 중 M건)·필터 요약을 한 줄로(제목 반복 없음)', () => {
-  const f = { q: '레이더', qRaw: '레이더', customer: '', section: '일반계약', status: '', activeOnly: false };
+  const f = NOF({ q: '레이더', qRaw: '레이더', section: '일반계약' });
   assert.strictEqual(
     X.offExportSubtitle(f, 13, 5, '2026-07-22'),
     '2026-07-22 추출 · 전체 13건 중 5건 · 필터: 구분=일반계약, 검색="레이더" · 숨김 과제 제외');
 });
 
-test('추출 부제: 기본 상태(체크박스 ON) 그대로 뽑은 실제 모양', () => {
-  const f = { q: '', qRaw: '', customer: '', section: '', status: '', activeOnly: true };
+test('추출 부제: 상태 하나(종료)를 끄고 뽑은 실제 모양', () => {
+  const f = NOF({ stOff: new Set(['2']), stOffNames: ['종료'] });
   assert.strictEqual(
     X.offExportSubtitle(f, 14, 9, '2026-07-22'),
-    '2026-07-22 추출 · 전체 14건 중 9건 · 필터: 종료 제외 · 숨김 과제 제외');
+    '2026-07-22 추출 · 전체 14건 중 9건 · 필터: 뺀 상태=종료 · 숨김 과제 제외');
 });
 
 test('추출 부제: 필터가 없어도 건수는 항상 적는다(전체=추출)', () => {
-  const f = { q: '', qRaw: '', customer: '', section: '', status: '', activeOnly: false };
+  const f = NOF();
   assert.strictEqual(
     X.offExportSubtitle(f, 13, 13, '2026-07-22'),
     '2026-07-22 추출 · 전체 13건 중 13건 · 필터 없음 · 숨김 과제 제외');
@@ -125,9 +124,9 @@ test('추출 부제: 필터가 없어도 건수는 항상 적는다(전체=추�
 // '사용여부' 열을 뺀 대신 이 문구가 그 정보를 진다 — 필터를 아무것도 안 걸어도 사라지면 안 된다.
 test('추출 부제: "숨김 과제 제외"는 필터와 무관하게 상시 표기(모집단의 성질이지 필터가 아니다)', () => {
   const variants = [
-    { q: '', qRaw: '', customer: '', section: '', status: '', activeOnly: false },
-    { q: '', qRaw: '', customer: '', section: '', status: '', activeOnly: true },
-    { q: 'x', qRaw: 'x', customer: 'A', section: '선진행', status: '미정', activeOnly: true },
+    NOF(),
+    NOF({ stOff: new Set(['2']), stOffNames: ['종료'] }),
+    NOF({ q: 'x', qRaw: 'x', customer: 'A', section: '선진행', stOff: new Set(['1', '4']), stOffNames: ['진행중', '미정'] }),
   ];
   for (const f of variants) {
     assert.ok(X.offExportSubtitle(f, 5, 1, '2026-07-22').endsWith('· ' + X.OFF_EXPORT_SCOPE_NOTE),
@@ -136,7 +135,7 @@ test('추출 부제: "숨김 과제 제외"는 필터와 무관하게 상시 표
 });
 
 test('추출 부제: 건수 방어 — 숫자가 아니면 0으로(NaN이 파일에 박히지 않게)', () => {
-  const f = { q: '', qRaw: '', customer: '', section: '', status: '', activeOnly: false };
+  const f = NOF();
   assert.ok(X.offExportSubtitle(f, undefined, null, '2026-07-22').includes('전체 0건 중 0건'));
 });
 
@@ -159,14 +158,23 @@ test('추출 행 매핑: null/빈 계약명·통상명칭·상태는 빈 문자�
 test('추출 행 매핑: 상수 열이던 사용여부(active)는 행에 담지 않는다', () => {
   assert.strictEqual('active' in X.offExportRow({ active: false }), false);
   assert.strictEqual('active' in X.offExportRow({}), false);
-  assert.strictEqual(Object.keys(X.offExportRow({})).length, 11);   // 2026-09-10 개발종료일 신설로 8 → 9, 2026-10-15 statusId(색 힌트)로 → 10, 2026-10-22 개발시작일(구조 17)로 → 11
+  assert.strictEqual(Object.keys(X.offExportRow({})).length, 12);   // 2026-09-10 개발종료일 신설로 8 → 9, 2026-10-15 statusId(색 힌트)로 → 10, 2026-10-22 개발시작일(구조 17)로 → 11, 2026-10-26 no(구분 안 순서)로 → 12
   assert.doesNotThrow(() => X.offExportRow(null));   // 방어 — 크래시 금지
 });
 
-// 연번(No)은 배열 순서에서 나온다 — 웹이 만들면 필터·정렬이 바뀔 때마다 어긋난다.
-test('추출 행 매핑: 연번(No)은 웹이 만들지 않는다(호스트가 배열 순서로 채운다)', () => {
+// 연번(배열 순서)은 여전히 호스트가 만든다. 웹이 싣는 no 는 연번이 아니라 화면의 No, 그 구분 안에서 몇 번째인가다
+// (PROJECT-ADMIN-UX §1.1). 거른 뒤에도 전체 목록 기준이라 배열 순서로는 만들 수 없어 웹이 싣는다. 어느 열에 쓸지는 호스트가 정한다.
+test('추출 행 매핑: no 는 화면의 No(구분 안 순서)이고 배열 순서가 아니다, 모르면 null', () => {
   const keys = Object.keys(X.offExportRow({}));
-  assert.ok(!keys.some(k => /^(no|No|seq|index)$/.test(k)), '웹이 연번을 만들면 호스트 연번과 이중 소스가 된다');
+  assert.ok(!keys.some(k => /^(No|seq|index)$/.test(k)), '연번 성격의 키가 생겼다(연번은 호스트가 배열 순서로 채운다)');
+  assert.strictEqual(X.offExportRow({}).no, null, 'No 를 모르는데 no 가 null 이 아니다');
+  assert.strictEqual(X.offExportRow({}, 3).no, 3);
+  assert.strictEqual(X.offExportRow({}, '3').no, null, '숫자가 아닌 no 를 그대로 실었다');
+  //  거른 목록(구분 1 의 2번째, 구분 2 의 1번째)을 뽑아도 no 는 전체 목록 기준이다(배열 순서 1, 2 가 아니다).
+  const list = [{ id: 'db-b', name: '나', sectionId: 1, sortNo: 2 }, { id: 'db-c', name: '다', sectionId: 2, sortNo: 1 }];
+  const noMap = new Map([['db-a', 1], ['db-b', 2], ['db-c', 1]]);
+  assert.deepStrictEqual(X.offExportRows(list, noMap).map(r => r.no), [2, 1]);
+  assert.deepStrictEqual(X.offExportRows(list).map(r => r.no), [null, null], 'No 표 없이 부르면 null 이어야 한다(배열 순서로 지어내지 않는다)');
 });
 
 test('추출 행 매핑: 날짜는 YYYY-MM-DD 앞부분만, 비거나 형식이 아니면 빈 문자열', () => {
@@ -176,16 +184,27 @@ test('추출 행 매핑: 날짜는 YYYY-MM-DD 앞부분만, 비거나 형식이 
   assert.strictEqual(X.offExportRow({ startDate: '미정' }).startDate, '미정');   // 형식 아님 → 호스트가 빈 셀로 처리
 });
 
-test('추출 행 매핑: 값은 전부 문자열(호스트가 문자열만 읽는다) · statusId 만 번호(색 힌트)', () => {
+test('추출 행 매핑: 값은 전부 문자열(호스트가 문자열만 읽는다) · statusId 와 no 만 번호', () => {
   const r = X.offExportRow({ section: '선진행', customer: 1234, projectName: 0 });
-  for (const [k, v] of Object.entries(r)) if (k !== 'statusId') assert.strictEqual(typeof v, 'string', `${k}가 문자열이 아님`);
+  for (const [k, v] of Object.entries(r)) if (k !== 'statusId' && k !== 'no') assert.strictEqual(typeof v, 'string', `${k}가 문자열이 아님`);
   //  ★ 상태색은 이름이 아니라 번호로 정한다(CODE-TABLE-IDS §3). 번호가 없으면 null(힌트 없음).
   assert.strictEqual(r.statusId, null, '상태 번호가 없는데 statusId 가 null 이 아니다');
   assert.strictEqual(X.offExportRow({ statusId: 2 }).statusId, 2, 'statusId 가 번호로 실리지 않는다');
   assert.strictEqual(X.offExportRow({ statusId: '3' }).statusId, 3, 'statusId 문자열 번호를 정규화하지 않는다');
 });
 
-test('추출 행 순서: 화면과 같은 구분 그룹 순(ENUM 순) → 그룹 안은 이름순', () => {
+test('추출 행 순서: 그룹 안은 순서 번호(sortNo) → 빈 번호는 뒤 → 이름순(PROJECT-ADMIN-UX §1.1)', () => {
+  const list = [
+    { name: '가', projectName: '가', sectionId: 1 },
+    { name: '나', projectName: '나', sectionId: 1, sortNo: 2 },
+    { name: '다', projectName: '다', sectionId: 1, sortNo: 1 },
+    { name: '라', projectName: '라', sectionId: 1, sortNo: null },
+    { name: '마', projectName: '마', sectionId: 2, sortNo: 1 },
+  ];
+  assert.deepStrictEqual(X.offExportRows(list).map(r => r.projectName), ['다', '나', '가', '라', '마']);
+});
+
+test('추출 행 순서: 화면과 같은 구분 그룹 순(ENUM 순) → 번호가 없으면 그룹 안은 이름순', () => {
   //  ★ 묶음과 순서는 구분 번호(sectionId)와 코드 순서로 정한다 — 이름 글자가 아니다(CODE-TABLE-IDS §3).
   const list = [
     { name: '나과제', projectName: '나과제', section: '선진행', sectionId: 2 },
@@ -293,7 +312,9 @@ test('추출 계약(v2): 웹이 만드는 행의 키 집합 = 호스트가 읽�
   const cols = hostExportCols();
   const fields = cols.map(c => c.field).filter(Boolean);   // Field 빈 문자열 = 연번(웹이 안 보냄)
   //  statusId 는 열이 아니라 상태색 힌트다(호스트 ReadProjectExportRows 가 따로 읽는다).
-  const keys = Object.keys(X.offExportRow({})).filter(k => k !== 'statusId');
+  //  no 는 화면의 No(구분 안 순서)다. 호스트가 그 열(field "no")을 두기 전까지는 힌트일 뿐이다.
+  const hint = ['statusId'].concat(fields.includes('no') ? [] : ['no']);
+  const keys = Object.keys(X.offExportRow({})).filter(k => !hint.includes(k));
   assert.deepStrictEqual([...keys].sort(), [...fields].sort());
   assert.ok(/r\.TryGetProperty\("statusId", out var sid\)/.test(hostSource()), '호스트가 행의 statusId(상태색 힌트)를 읽지 않는다');
   assert.strictEqual(cols.filter(c => !c.field).length, 1, '연번 열은 정확히 하나(Field 빈 문자열)');

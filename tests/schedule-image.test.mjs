@@ -178,7 +178,8 @@ const checks = {
     assert.ok(/cmd\.Parameters\.AddWithValue\("@dsd", DateOrNull\(dsd\)\)/.test(pdb), 'BindProject 가 @dsd 를 묶지 않는다');
     const up = extractCsMember(pdb, 'public async Task<(bool ok, string msg, bool needConfirm)> UpsertProjectAsync(');
     assert.ok(/if \(!IsDateOrEmpty\(dsd\)\)/.test(up) && /string\.CompareOrdinal\(dsd, ded\) > 0/.test(up), 'UpsertProjectAsync 가 개발시작일 형식과 순서(시작 <= 종료)를 보지 않는다');
-    assert.ok(!/sectionId == CodeIds\.SectionPre\) \{[^}]*dsd/.test(up), '선진행 분기가 개발시작일을 비운다(개발종료일과 같은 설계 결정 위반)');
+    //  호스트는 받은 개발 날짜를 구분과 상관없이 그대로 저장한다(2026-10-26 PROJECT-ADMIN-UX §1.4 로 선진행 분기 자체를 지웠다).
+    assert.ok(!/\b(dsd|ded)\s*=\s*""\s*;/.test(stripCsComments(up)) && !/CodeIds\.Section/.test(up), 'UpsertProjectAsync 가 개발 날짜를 비우거나 구분 번호로 갈래를 탄다(구분, 상태와 날짜는 서로 묶이지 않는다)');
     const mc = stripCsComments(main);
     const sp = /case "saveProject":[\s\S]*?break;/.exec(mc);
     assert.ok(sp && /GetStr\(doc, "devStartDate"\), GetStr\(doc, "devEndDate"\)/.test(sp[0]), 'saveProject 분기가 devStartDate 를 읽지 않는다');
@@ -189,8 +190,8 @@ const checks = {
     assert.ok(/devStartDate: val\('offEdDevStart'\)/.test(extractFunction(html, 'offEdSaveNow')), '편집 저장 payload 에 devStartDate 가 없다');
     assert.ok(/set\('offEdDevStart', c \? offDate\(c\.devStartDate\) : ''\)/.test(extractFunction(html, 'offEditOpen')), '편집 폼을 열 때 개발시작일을 채우지 않는다');
     assert.ok(/devStartDate: offDate\(o\.devStartDate\)/.test(extractFunction(html, 'offExportRow')), '엑셀 행에 devStartDate 가 없다');
-    const lock = /\[([^\]]*)\]\s*\.forEach\s*\(/.exec(extractFunction(html, 'offEdApplySectionRule').replace(/\/\/[^\n]*/g, ''));
-    assert.ok(lock && !lock[1].includes('offEdDevStart'), '선진행 잠금 배열에 offEdDevStart 가 들어갔다(개발 기간은 계약 전에도 있다)');
+    //  구분에 따른 잠금은 없다(PROJECT-ADMIN-UX §1.4, 2026-10-26). 잠금 함수가 돌아오면 개발 날짜가 다시 그 배열에 끼기 쉽다.
+    assert.ok(!/function\s+offEdApplySectionRule\s*\(/.test(html), '편집 폼에 구분에 따른 잠금(offEdApplySectionRule)이 되살아났다(구분, 상태, 날짜는 서로 독립)');
   },
 
   // ══ ⑤ 그림 명령 ════════════════════════════════════════════════════
@@ -352,9 +353,9 @@ test('변이SI8: UPDATE 에서 dev_start_date 를 빼면 ④ 가 실패한다', 
   const bad = mutate(src.pdb, 'dev_start_date=@dsd, dev_end_date=@ded, ', 'dev_end_date=@ded, ');
   assert.throws(() => checks.devStartWiring(bad, src.main, src.html), /UPDATE 가 dev_start_date/);
 });
-test('변이SI9: 선진행 잠금 배열에 offEdDevStart 를 넣으면 ④ 가 실패한다', () => {
-  const bad = mutate(src.html, "['offEdStart', 'offEdEnd', 'offEdStatus'].forEach(id => {", "['offEdStart', 'offEdEnd', 'offEdDevStart', 'offEdStatus'].forEach(id => {");
-  assert.throws(() => checks.devStartWiring(src.pdb, src.main, bad), /선진행 잠금 배열에 offEdDevStart/);
+test('변이SI9: 선진행 잠금 함수를 되살리면 ④ 가 실패한다', () => {
+  const bad = mutate(src.html, 'function offAddMonths(ymd, n){', "function offEdApplySectionRule(){ ['offEdStart', 'offEdEnd', 'offEdDevStart'].forEach(id => {}); }\nfunction offAddMonths(ymd, n){");
+  assert.throws(() => checks.devStartWiring(src.pdb, src.main, bad), /잠금\(offEdApplySectionRule\)이 되살아났다/);
 });
 test('변이SI10: 추가에서 과제당 5장 검사를 빼면 ⑤a 가 실패한다', () => {
   const add = extractCsMember(src.sidb, 'public async Task<ScheduleImageReply> AddAsync(');

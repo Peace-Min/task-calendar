@@ -215,8 +215,8 @@ export function loadAppSource() {
 
 // ── 코드값 고정 번호 머리(CODE-TABLE-IDS §3) ─────────────────────────
 // 웹의 `const CODE_ID = ` 부터 `function sectionColor(` 줄까지를 그대로 떼어 준다.
-//   함수만 떼어 심는 시험이 번호 판정(CODE_ID · CODE_PROTECT_WHY · codeProtectedWhy · codeIdOf ·
-//   DB_SECTION_COLORS · sectionColor)을 앱과 같은 글자로 갖게 한다(대역을 손으로 적으면 앱과 갈린다).
+//   함수만 떼어 심는 시험이 번호 판정(CODE_ID, codeIdOf, DB_SECTION_COLORS, sectionColor)을 앱과 같은 글자로
+//   갖게 한다(대역을 손으로 적으면 앱과 갈린다). 코드 행 보호 표(CODE_PROTECT_WHY, codeProtectedWhy)는 2026-10-26 에 지웠다.
 export function extractCodeIdsBlock(source) {
   const a = source.indexOf('const CODE_ID = ');
   const b = a < 0 ? -1 : source.indexOf('function sectionColor(', a);

@@ -244,7 +244,7 @@ const checks = {
     assert.strictEqual(from[1], '12', '이관 SQL 의 가드가 12 가 아니다');
     //  2026-10-21 부터 정본은 다음 판(14, 이관 조각 db/deploy/migrations/v14-version-gate.sql)이다. 이 이관은 이력이라 13 에서 멈춘다.
     assert.strictEqual(to[1], '13', '이관 SQL 이 올리는 판번호가 13 이 아니다');
-    assert.strictEqual(String(Number(to[1]) + 5), canonSchemaVersion(), '이 이관 뒤 다섯 판(13 에서 14 버전 관문, 14 에서 15 회의실 공용화, 15 에서 16 과제 캘린더, 16 에서 17 월간보고, 17 에서 18 Git, SVN 삭제)이 정본(schema-calendar.sql)과 이어지지 않는다');
+    assert.strictEqual(String(Number(to[1]) + 6), canonSchemaVersion(), '이 이관 뒤 여섯 판(13 에서 14 버전 관문, 14 에서 15 회의실 공용화, 15 에서 16 과제 캘린더, 16 에서 17 월간보고, 17 에서 18 Git, SVN 삭제, 18 에서 19 과제 순서)이 정본(schema-calendar.sql)과 이어지지 않는다');
   },
 };
 

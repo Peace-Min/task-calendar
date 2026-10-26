@@ -23,25 +23,15 @@ namespace TaskCalendarWidget
         public bool RoleOnly { get; }
     }
 
-    // 동작이 묶인 코드값의 고정 번호(CODE-TABLE-IDS §3). 시드(db/deploy/schema-structure.sql)의 번호와 같아야 한다.
-    //   ★ 앱은 이름 글자가 아니라 이 번호로 판정한다. 이름은 관리 화면에서 바꿀 수 있고, 바꿔도 동작은 그대로다.
-    //   ★ 웹에도 같은 표가 한 벌 있다(task-calendar-prototype.html 의 CODE_ID). 시험(code-ids-app)이 둘을 대조한다.
-    //   ★ 고정 번호를 늘릴 때는 이 표와 IsProtected 에 함께 더한다.
+    // 색이 묶인 상태 코드의 고정 번호(CODE-TABLE-IDS §3). 시드(db/deploy/schema-structure.sql)의 번호와 같아야 한다.
+    //   ★ 앱은 이름 글자가 아니라 이 번호로 판정한다. 이름은 관리 화면에서 바꿀 수 있고, 바꿔도 색은 그대로다.
+    //   ★ 2026-10-26(PROJECT-ADMIN-UX §1.4): 구분 2(선진행)의 날짜와 상태 잠금, 구분 2, 상태 2 의 숨김과 삭제 보호를 지웠다.
+    //     구분, 상태와 날짜는 서로 묶이지 않는다. 남은 것은 엑셀 상태색(표시만)이라 어느 행이든 숨기거나 지울 수 있다.
     internal static class CodeIds
     {
-        public const int SectionPre      = 2;   // 구분 선진행: 날짜와 상태를 비우고 잠근다
-        public const int StatusActive    = 1;   // 상태 진행중: 엑셀 초록(색만, 보호하지 않는다)
-        public const int StatusEnded     = 2;   // 상태 종료: 목록 필터 제외, 엑셀 회색
+        public const int StatusActive    = 1;   // 상태 진행중: 엑셀 초록(색만)
+        public const int StatusEnded     = 2;   // 상태 종료: 엑셀 회색(색만)
         public const int StatusDelivered = 3;   // 상태 1차 납품완료: 엑셀 파랑(색만)
-
-        // 숨김과 삭제를 막는 행 = 동작이 묶인 둘(구분 2, 상태 2). 색만 묶인 행은 지워도 깨지는 것이 없어 막지 않는다.
-        public static bool IsProtected(string kind, int id) =>
-            (kind == "section" && id == SectionPre) || (kind == "status" && id == StatusEnded);
-
-        // 거부 문장. 웹의 꺼진 버튼 사유(CODE_PROTECT_WHY)와 글자까지 같다.
-        public const string SectionPreMsg  = "이 구분은 과제 날짜 규칙(선진행)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.";
-        public const string StatusEndedMsg = "이 상태는 목록 필터와 엑셀 강조(종료)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.";
-        public static string ProtectedMsg(string kind) => kind == "section" ? SectionPreMsg : StatusEndedMsg;
     }
 
     // 과제 DB 연동 — 사내 MySQL(taskmgr)의 공식 과제(project)를 읽어 웹으로 넘기고(READ),
@@ -250,6 +240,11 @@ namespace TaskCalendarWidget
             return conn;
         }
 
+        // 공식 과제 목록의 순서(PROJECT-ADMIN-UX §1.1, 구조 19). 구분 순서, 그 구분 안의 순서(sort_no, 빈 값은 뒤), 표시 이름
+        //   (통상명칭, 비었으면 사업명), 끝으로 id. 관리 목록, Excel 추출, '공식 과제 찾아보기'와 재연결 고르기가 모두 이 목록을 쓴다.
+        internal const string ProjectListOrder =
+            "ORDER BY s.sort_order, s.section_id, p.sort_no IS NULL, p.sort_no, COALESCE(NULLIF(p.common_name, ''), p.project_name), p.id";
+
         // 공식 과제(is_active=1)를 읽어 JSON 배열 문자열로 반환. 연결/조회 실패 시 null(호출측이 웹에 ""를 넘겨 목록을 비운다).
         public async Task<string?> LoadProjectsJsonAsync()
         {
@@ -263,7 +258,7 @@ namespace TaskCalendarWidget
                 //   상태는 NULL(상태 없음)이 있어 LEFT JOIN 이다. 구분·발주처는 NOT NULL + FK 라 내부 조인이다.
                 const string sql =
                     "SELECT p.uid, s.name AS section, p.section_id, c.name AS customer, p.customer_id, " +
-                    "p.project_name, p.contract_name, p.common_name, " +
+                    "p.project_name, p.contract_name, p.common_name, p.sort_no, " +
                     "DATE_FORMAT(p.start_date,'%Y-%m-%d') start_date, DATE_FORMAT(p.end_date,'%Y-%m-%d') end_date, " +
                     "DATE_FORMAT(p.dev_start_date,'%Y-%m-%d') dev_start_date, DATE_FORMAT(p.dev_end_date,'%Y-%m-%d') dev_end_date, " +
                     "st.name AS status, p.status_id, p.note, p.is_active " +
@@ -271,7 +266,7 @@ namespace TaskCalendarWidget
                     "JOIN section_code s ON s.section_id = p.section_id " +
                     "JOIN customer c ON c.customer_id = p.customer_id " +
                     "LEFT JOIN status_code st ON st.status_id = p.status_id " +
-                    "WHERE p.is_active=1 ORDER BY p.common_name";
+                    "WHERE p.is_active=1 " + ProjectListOrder;
                 await using var cmd = new MySqlCommand(sql, conn);
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
 
@@ -294,6 +289,7 @@ namespace TaskCalendarWidget
                         ["dev_end_date"]  = Str(rd, "dev_end_date"),
                         ["status"]        = Str(rd, "status"),
                         ["statusId"]      = IntOrNull(rd, "status_id"),   // 상태 없음이면 null
+                        ["sortNo"]        = IntOrNull(rd, "sort_no"),     // 그 구분 안의 순서(구조 19, 1 부터). 아직 없으면 null(맨 뒤)
                         ["note"]          = Str(rd, "note"),
                         ["is_active"]     = IntOrNull(rd, "is_active"),
                     });
@@ -1289,7 +1285,7 @@ namespace TaskCalendarWidget
         // ※ 구분/상태는 하드코딩 배열이 아니라 코드테이블에서 로드해 선검증한다(최종 보증은 FK).
         // ================================================================================
 
-        // 'YYYY-MM-DD'만 날짜로 인정. 빈값 → DBNull(선진행·미정 계약은 날짜가 없다).
+        // 'YYYY-MM-DD'만 날짜로 인정. 빈값 → DBNull(계약 전이거나 미정이면 날짜가 없다).
         // ★ 형식 불일치는 여기서 조용히 NULL로 만들지 않는다 — 호출부(UpsertProjectAsync)가 IsDateOrEmpty로 선검증해 실패를 되돌린다.
         //   (선검증을 통과한 값만 도달하므로 여기 도달 시엔 반드시 빈값 아니면 유효 날짜다. 방어적으로 파싱 실패는 DBNull.)
         private static bool IsDateOrEmpty(string? s)
@@ -1350,16 +1346,13 @@ namespace TaskCalendarWidget
             string nt = (note ?? "").Trim();                                            // 비고(빈값 '')
             string sd = (startDate ?? "").Trim(), ed = (endDate ?? "").Trim();
             int? st = statusId.HasValue && statusId.Value > 0 ? statusId : null;      // 상태 없음 = NULL
-            string ded = (devEndDate ?? "").Trim();                                    // 개발종료일 — 아래 선진행 분기에서 비우지 않는다
-            string dsd = (devStartDate ?? "").Trim();                                  // 개발시작일(구조 17). 개발종료일과 같이 선진행에서도 살아 있다
+            string ded = (devEndDate ?? "").Trim();                                    // 개발종료일
+            string dsd = (devStartDate ?? "").Trim();                                  // 개발시작일(구조 17)
             if (pname.Length == 0) return (false, "사업명을 입력하세요.", false);
             if (customerId <= 0) return (false, "발주처를 선택하세요.", false);
             if (sectionId <= 0) return (false, "구분을 선택하세요.", false);
-            // 선진행 = 계약 전 단계 → 날짜·상태는 스키마상 NULL이어야 한다(웹 폼도 같은 규칙으로 잠근다).
-            //   ★ 판정은 이름이 아니라 고정 번호(CodeIds.SectionPre)다 — 이름을 바꿔도 규칙이 따라간다(CODE-TABLE-IDS §3).
-            //   ★ ded(개발종료일)는 여기서 비우지 않는다 — 선진행은 '계약 전'일 뿐 개발은 이미 돌고 있어
-            //     개발종료일이야말로 이 구간에서 유일하게 의미 있는 날짜다(2026-09-10 설계 결정).
-            if (sectionId == CodeIds.SectionPre) { sd = ""; ed = ""; st = null; }
+            // ★ 구분, 상태와 날짜는 서로 묶이지 않는다(PROJECT-ADMIN-UX §1.4, 2026-10-26). 전에는 구분 2(선진행)이면
+            //   계약 날짜와 상태를 말없이 NULL 로 덮었다. 이제 어느 구분이든 받은 값 그대로 저장한다.
             // 날짜 형식 선검증 — 잘못된 형식을 조용히 NULL로 저장하지 않고 사용자에게 되돌린다(무음 데이터 유실 방지).
             if (!IsDateOrEmpty(sd)) return (false, "계약시작일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
             if (!IsDateOrEmpty(ed)) return (false, "계약종료일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
@@ -1407,12 +1400,17 @@ namespace TaskCalendarWidget
                                 true);
                         }
                     }
+                    // 새 과제는 그 구분의 맨 뒤(보이는 과제의 최댓값 + 1, PROJECT-ADMIN-UX §1.1). INSERT 와 같은 표 SELECT 를
+                    //   한 문장에 섞지 않게 두 단계로 한다(코드값 추가의 MAX+10 과 같은 방식). 동시에 둘이 같은 번호를 받으면
+                    //   표시 이름 순으로 서고, 다음 순서 저장(ReorderProjectsAsync)이 1 부터 다시 매긴다.
+                    long sortNo = await NextProjectSortNoAsync(conn, null, sectionId, cts.Token);
                     const string ins = "INSERT INTO project (section_id, customer_id, project_name, contract_name, common_name, " +
-                                       "start_date, end_date, dev_start_date, dev_end_date, status_id, note) " +
-                                       "VALUES (@sec,@cust,@pn,@cn,@mn,@sd,@ed,@dsd,@ded,@st,@note)";
+                                       "start_date, end_date, dev_start_date, dev_end_date, sort_no, status_id, note) " +
+                                       "VALUES (@sec,@cust,@pn,@cn,@mn,@sd,@ed,@dsd,@ded,@sort,@st,@note)";
                     await using (var cmd = new MySqlCommand(ins, conn))
                     {
                         BindProject(cmd, sectionId, customerId, pname, cn, mn, sd, ed, dsd, ded, st, nt);
+                        cmd.Parameters.AddWithValue("@sort", sortNo);
                         await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
                     // uid는 DB가 만든다(assign-once) — 로그에만 남긴다. 웹은 재조회(loadProjects)로 새 행을 받는다.
@@ -1424,13 +1422,20 @@ namespace TaskCalendarWidget
                 }
                 else
                 {
-                    const string upd = "UPDATE project SET section_id=@sec, customer_id=@cust, project_name=@pn, contract_name=@cn, " +
+                    // 구분을 바꾼 과제는 새 구분의 맨 뒤로 간다(PROJECT-ADMIN-UX §1.1). 구분이 그대로면 순서도 그대로다.
+                    //   ★ sort_no 대입을 **맨 앞**에 둔다. MySQL 한 표 UPDATE 는 대입을 왼쪽부터 하고 뒤 대입은 앞에서 바꾼 값을 본다.
+                    //     section_id=@sec 뒤에 두면 비교가 늘 '같다'가 되어 구분을 바꿔도 순서가 옛 구분의 번호로 남는다.
+                    //   새 구분의 최댓값은 이 과제가 아직 들어가기 전의 값이라 자기 자신을 세지 않는다.
+                    long movedSortNo = await NextProjectSortNoAsync(conn, null, sectionId, cts.Token);
+                    const string upd = "UPDATE project SET sort_no=IF(section_id=@sec, sort_no, @sortMoved), " +
+                                       "section_id=@sec, customer_id=@cust, project_name=@pn, contract_name=@cn, " +
                                        "common_name=@mn, start_date=@sd, end_date=@ed, dev_start_date=@dsd, dev_end_date=@ded, " +
                                        "status_id=@st, note=@note WHERE uid=@uid";
                     int n;
                     await using (var cmd = new MySqlCommand(upd, conn))
                     {
                         BindProject(cmd, sectionId, customerId, pname, cn, mn, sd, ed, dsd, ded, st, nt);
+                        cmd.Parameters.AddWithValue("@sortMoved", movedSortNo);
                         cmd.Parameters.AddWithValue("@uid", u);
                         n = await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
@@ -1486,10 +1491,29 @@ namespace TaskCalendarWidget
             cmd.Parameters.AddWithValue("@mn", mn);   // '' 그대로(NULL 아님)
             cmd.Parameters.AddWithValue("@sd", DateOrNull(sd));
             cmd.Parameters.AddWithValue("@ed", DateOrNull(ed));
-            cmd.Parameters.AddWithValue("@dsd", DateOrNull(dsd));   // 개발시작일(빈값=NULL). 선진행이어도 살아 있다
-            cmd.Parameters.AddWithValue("@ded", DateOrNull(ded));   // 개발종료일(빈값=NULL). 선진행이어도 살아 있다
+            cmd.Parameters.AddWithValue("@dsd", DateOrNull(dsd));   // 개발시작일(빈값=NULL)
+            cmd.Parameters.AddWithValue("@ded", DateOrNull(ded));   // 개발종료일(빈값=NULL)
             cmd.Parameters.AddWithValue("@st", st.HasValue ? (object)st.Value : DBNull.Value);   // 상태 번호(없음=NULL)
             cmd.Parameters.AddWithValue("@note", nt);  // 비고 '' 그대로(NULL 아님)
+        }
+
+        // 그 구분의 맨 뒤 순서 = 보이는 과제(is_active=1)의 sort_no 최댓값 + 1(없으면 1). PROJECT-ADMIN-UX §1.1.
+        //   새 과제, 구분을 바꾼 과제, 되살린 과제가 쓴다. 숨긴 과제의 옛 번호는 세지 않는다(되살릴 때 다시 매긴다).
+        private static async Task<long> NextProjectSortNoAsync(MySqlConnection conn, MySqlTransaction? tx, int sectionId, CancellationToken ct)
+        {
+            await using var q = new MySqlCommand(
+                "SELECT COALESCE(MAX(sort_no),0)+1 FROM project WHERE section_id=@sec AND is_active=1", conn, tx);
+            q.Parameters.AddWithValue("@sec", sectionId);
+            return Convert.ToInt64((await q.ExecuteScalarAsync(ct)) ?? 1L);
+        }
+
+        // 그 과제(uid)가 속한 구분의 맨 뒤 순서. 되살리기(숨김 해제, 휴지통 복구)가 쓴다. 과제가 없으면 1.
+        private static async Task<long> NextProjectSortNoForUidAsync(MySqlConnection conn, MySqlTransaction? tx, string uid, CancellationToken ct)
+        {
+            await using var q = new MySqlCommand(
+                "SELECT COALESCE(MAX(p.sort_no),0)+1 FROM project t JOIN project p ON p.section_id = t.section_id AND p.is_active=1 WHERE t.uid=@uid", conn, tx);
+            q.Parameters.AddWithValue("@uid", uid);
+            return Convert.ToInt64((await q.ExecuteScalarAsync(ct)) ?? 1L);
         }
 
         // 소프트삭제/복구 — is_active=0이면 LoadProjectsJsonAsync가 아예 안 가져온다(목록에서 사라짐).
@@ -1507,8 +1531,15 @@ namespace TaskCalendarWidget
                 catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(과제 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
-                await using var cmd = new MySqlCommand("UPDATE project SET is_active=@a WHERE uid=@uid", conn);
+                // 되살리면 그 구분의 맨 뒤로 간다(PROJECT-ADMIN-UX §1.1). 숨김은 순서를 그대로 둔다(보이는 목록에서 빠질 뿐).
+                //   ★ 이미 보이는 과제를 다시 '복구'하면 순서를 바꾸지 않는다(is_active=0 일 때만 새 번호). 대입은 sort_no 가 먼저다
+                //     (is_active=1 을 먼저 쓰면 IF 가 늘 '보임'을 본다. 한 표 UPDATE 는 대입을 왼쪽부터 한다).
+                long sortNo = active ? await NextProjectSortNoForUidAsync(conn, null, u, cts.Token) : 0L;
+                await using var cmd = new MySqlCommand(active
+                    ? "UPDATE project SET sort_no=IF(is_active=1, sort_no, @sort), is_active=1 WHERE uid=@uid"
+                    : "UPDATE project SET is_active=@a WHERE uid=@uid", conn);
                 cmd.Parameters.AddWithValue("@a", active ? 1 : 0);
+                cmd.Parameters.AddWithValue("@sort", sortNo);
                 cmd.Parameters.AddWithValue("@uid", u);
                 int n = await cmd.ExecuteNonQueryAsync(cts.Token);
                 if (n == 0)
@@ -1660,7 +1691,7 @@ namespace TaskCalendarWidget
         // 구분/상태 코드값 관리 — 발주처 CRUD를 그대로 복제(kind로 테이블·컬럼 해석).
         //   추가=INSERT / 개명=번호로 찾은 한 행 UPDATE name / 숨김=is_active / 재배치=sort_order.
         //   ★ 개명·숨김·순서·참조 수는 전부 번호로 받는다(CODE-TABLE-IDS §4). 이름은 추가할 때만 받는다.
-        //   ★ 동작이 묶인 행(CodeIds.IsProtected: 구분 2, 상태 2)은 숨기지 못한다. 개명과 순서 바꾸기는 된다(§3).
+        //   ★ 2026-10-26(PROJECT-ADMIN-UX §1.4) 부터 어느 행이든 숨기고 지울 수 있다(구분 2, 상태 2 의 보호를 지웠다).
         //   하드삭제는 휴지통에서만(관리자). 규약은 UpsertProjectAsync와 동일.
         // ================================================================================
 
@@ -1720,7 +1751,7 @@ namespace TaskCalendarWidget
         }
 
         // 코드값 개명 = 번호로 찾은 한 행 UPDATE. project 는 번호로 가리켜 조인이 따라온다. 0행/1062 처리.
-        //   ★ 고정 번호 행(선진행·종료)도 이름은 바꿀 수 있다 — 동작은 번호에 묶여 있다(CODE-TABLE-IDS §3).
+        //   ★ 기본 행(번호 1~4)도 이름을 바꿀 수 있다. 상태 색은 번호에 묶여 있어 그대로다(CODE-TABLE-IDS §3).
         public async Task<(bool ok, string msg)> RenameCodeAsync(string? kind, int id, string? newName)
         {
             if (!ResolveCodeKind(kind, out string table, out string idCol)) return (false, "대상 종류가 올바르지 않습니다.");
@@ -1751,15 +1782,14 @@ namespace TaskCalendarWidget
         }
 
         // 코드값 소프트삭제(숨김)/복구. 하드삭제 안 함(FK RESTRICT).
-        //   ★ 동작이 묶인 행(구분 2, 상태 2)의 숨김은 연결도 열기 전에 거부한다(CODE-TABLE-IDS §3). 복구는 막지 않는다
-        //     (옛 DB 에서 이미 숨겨 둔 행을 되살리는 길이다).
+        //   ★ 2026-10-26 까지 구분 2, 상태 2 의 숨김을 거부했다. 그 행에 묶였던 규칙(날짜와 상태 잠금, '진행중만' 필터)을
+        //     지워 보호도 지웠다(PROJECT-ADMIN-UX §1.4). 숨긴 구분이나 상태를 쓰던 과제는 그 값을 그대로 갖는다.
         public async Task<(bool ok, string msg)> SetCodeActiveAsync(string? kind, int id, bool active)
         {
             if (!ResolveCodeKind(kind, out string table, out string idCol)) return (false, "대상 종류가 올바르지 않습니다.");
             string kd = kind!.Trim();
             string lbl = KindLabel(kd);
             if (id <= 0) return (false, "대상 " + lbl + "이(가) 지정되지 않았습니다.");
-            if (!active && CodeIds.IsProtected(kd, id)) { _log(lbl + " 숨김 거부(고정 번호): " + idCol + "=" + id); return (false, CodeIds.ProtectedMsg(kd)); }
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -1848,6 +1878,79 @@ namespace TaskCalendarWidget
             }
             catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log(lbl + " 순서변경 실패(" + mex.Number + "): " + Short(mex)); return (false, "변경하지 못했습니다: " + Short(mex)); }
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log(lbl + " 순서변경 실패: " + Short(ex)); return (false, "변경하지 못했습니다: " + Short(ex)); }
+        }
+
+        // 과제 순서 바꾸기(PROJECT-ADMIN-UX §1.1, 구조 19): 구분 하나의 **보이는 과제 전부**를 새 순서대로 받아 sort_no = 1, 2, 3 …
+        //   ★ 권한은 과제 편집과 같다(OpenWriteAsync, 관리자와 편집자).
+        //   ★ 받은 uid 집합이 지금 그 구분의 보이는 과제 집합과 같아야 한다(중복, 빠짐, 낯선 uid, 다른 구분의 과제 모두 거부).
+        //     다르면 그사이 다른 관리자가 그 구분의 과제를 더하거나 숨기거나 옮긴 것이다. 그대로 일부만 다시 매기면 목록 밖 과제가
+        //     새 번호들 사이에 끼어든다. 아무것도 쓰지 않고 stale=true 로 거부한다(구분, 상태 순서의 ReorderCodesAsync 와 같은 규칙).
+        //   ★ 판정과 쓰기 사이를 닫으려고 그 구분의 보이는 과제를 FOR UPDATE 로 잠근 채 읽는다(한 트랜잭션).
+        //   ★ 숨긴 과제의 옛 번호는 건드리지 않는다(되살릴 때 맨 뒤 번호를 새로 받는다).
+        internal const string ProjectOrderStaleMsg = OrgTitleStaleMsg;
+        public async Task<(bool ok, string msg, bool stale)> ReorderProjectsAsync(int sectionId, IReadOnlyList<string>? orderedUids)
+        {
+            if (sectionId <= 0) return (false, "구분이 지정되지 않았습니다.", false);
+            var kept = new List<string>();
+            foreach (string? x in orderedUids ?? Array.Empty<string>())
+            {
+                string t = (x ?? "").Trim();
+                if (t.Length > 0) kept.Add(t);
+            }
+            if (kept.Count == 0) return (false, "정렬할 과제 목록이 비어 있습니다.", false);
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenWriteAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(과제 순서): " + nex.Message); return (false, nex.Message, false); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(과제 순서): " + Short(cex)); return (false, OfflineMsg, false); }
+                await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
+
+                await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    // ① 그 구분의 보이는 과제를 잠근 채 읽어 받은 집합과 같은지 본다.
+                    var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    await using (var q = new MySqlCommand("SELECT uid FROM project WHERE section_id=@sec AND is_active=1 FOR UPDATE", conn, tx))
+                    {
+                        q.Parameters.AddWithValue("@sec", sectionId);
+                        await using var rd = await q.ExecuteReaderAsync(cts.Token);
+                        while (await rd.ReadAsync(cts.Token)) live.Add(Str(rd, "uid"));
+                    }
+                    var given = new HashSet<string>(kept, StringComparer.OrdinalIgnoreCase);
+                    if (given.Count != kept.Count || given.Count != live.Count || !given.SetEquals(live))
+                    {
+                        await SafeRollbackAsync(tx);
+                        _log("과제 순서 거부: 구분 " + sectionId + ", 받은 " + kept.Count + "개 / 보이는 과제 " + live.Count + "개, 화면이 낡았다");
+                        return (false, ProjectOrderStaleMsg, true);
+                    }
+
+                    // ② 받은 순서대로 1, 2, 3 … 전량 재작성. 같은 구분의 보이는 과제만 고친다(위에서 잠근 행들).
+                    int order = 0;
+                    foreach (string uid in kept)
+                    {
+                        order++;
+                        await using var cmd = new MySqlCommand(
+                            "UPDATE project SET sort_no=@n WHERE uid=@uid AND section_id=@sec AND is_active=1", conn, tx);
+                        cmd.Parameters.AddWithValue("@n", order);
+                        cmd.Parameters.AddWithValue("@uid", uid);
+                        cmd.Parameters.AddWithValue("@sec", sectionId);
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    await tx.CommitAsync(cts.Token);
+                    _log("과제 순서 변경: 구분 " + sectionId + ", " + kept.Count + "건");
+                    return (true, "과제 순서를 저장했습니다.", false);
+                }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로(SafeRollbackAsync 주석)
+            }
+            catch (MySqlException mex)
+            {
+                DbErrors.Observe(mex, _log);
+                _log("과제 순서 변경 실패(" + mex.Number + "): " + Short(mex));
+                return (false, IsLockContention(mex) ? DbBusyMsg : "순서를 저장하지 못했습니다: " + Short(mex), false);
+            }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("과제 순서 변경 실패: " + Short(ex)); return (false, "순서를 저장하지 못했습니다: " + Short(ex), false); }
         }
 
         // 이 코드값을 쓰는 '활성' 과제 수 — 숨김 확인 UX용(막지는 않는다).
@@ -2276,7 +2379,7 @@ namespace TaskCalendarWidget
         //     (힌트 ≠ 판정이 되는 자리). LEFT JOIN 은 FK 와 **같은 콜레이션**으로 맞으므로 그 틈이 사라진다.
         //   ★ 표·컬럼 이름은 전부 코드 상수다(ResolveTrashKind 와 같은 규약) — 사용자 입력은 SQL 에 닿지 않는다.
         //   ★ 2026-10-15 — 번호 키(CODE-TABLE-IDS §2). 조인은 번호끼리라 콜레이션 틈 자체가 없다. 행 열쇠(key)도 번호다.
-        //   ★ 동작이 묶인 행(구분 2, 상태 2)은 숨겨져 있어도(옛 DB) 지울 수 없다고 미리 말한다. 판정은 DeleteTrashAsync 가 다시 한다.
+        //   ★ 2026-10-26(PROJECT-ADMIN-UX §1.4) 부터 구분 2, 상태 2 도 다른 행과 같다(쓰는 과제가 없으면 지울 수 있다).
         private static async Task<List<Dictionary<string, object?>>> TrashCodeListAsync(
             MySqlConnection conn, string kind, string table, string idCol, CancellationToken ct)
         {
@@ -2293,9 +2396,7 @@ namespace TaskCalendarWidget
                     int? cid = IntOrNull(rd, "cid");
                     if (n.Length == 0 || !cid.HasValue) continue;
                     long c = LongOrZero(rd, "cnt");
-                    bool locked = CodeIds.IsProtected(kind, cid.Value);
-                    string why = locked ? CodeIds.ProtectedMsg(kind) : (c == 0 ? "" : CodeInUseMsg(c));
-                    rows.Add(TrashRow(cid.Value.ToString(CultureInfo.InvariantCulture), n, "", c, c == 0 && !locked, why));
+                    rows.Add(TrashRow(cid.Value.ToString(CultureInfo.InvariantCulture), n, "", c, c == 0, c == 0 ? "" : CodeInUseMsg(c)));
                 }
             }
             return rows;
@@ -2494,7 +2595,8 @@ namespace TaskCalendarWidget
                     string sql;
                     switch (kd)
                     {
-                        case "project":  sql = "UPDATE project SET is_active=1 WHERE uid=@k"; break;
+                        //  ★ 과제는 그 구분의 맨 뒤로 되살린다(PROJECT-ADMIN-UX §1.1). 번호는 아래에서 같은 트랜잭션으로 구한다.
+                        case "project":  sql = "UPDATE project SET is_active=1, sort_no=@sort WHERE uid=@k"; break;
                         //  ★ 인력의 복구는 sort_order 를 **비운다**(NULL = 명부 맨 뒤) — 코드 2종의 MAX+10 과
                         //    같은 이유이고, SetUserActiveAsync 의 복구와 **같은 규칙**이다(2026-09-11 R3).
                         //    옛 순번을 들고 돌아오면 그 숫자가 활성 서열(10·20·30…) 사이에 끼어든다(USER-ADMIN §7-1a).
@@ -2510,6 +2612,7 @@ namespace TaskCalendarWidget
                     await using (var cmd = new MySqlCommand(sql, conn, tx))
                     {
                         cmd.Parameters.AddWithValue("@k", keyVal);
+                        if (kd == "project") cmd.Parameters.AddWithValue("@sort", await NextProjectSortNoForUidAsync(conn, tx, k, cts.Token));
                         await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
                     await tx.CommitAsync(cts.Token);
@@ -2553,8 +2656,7 @@ namespace TaskCalendarWidget
                     return (false, TrashNoTarget);
                 keyVal = tid;
                 if (kd == "user") targetUserId = tid;
-                //  ★ 동작이 묶인 행(구분 2, 상태 2)은 숨겨져 있어도 지우지 않는다(CODE-TABLE-IDS §3). 연결도 열지 않는다.
-                if (CodeIds.IsProtected(kd, tid)) { _log("영구 삭제 거부(고정 번호) " + label + " " + tid); return (false, CodeIds.ProtectedMsg(kd)); }
+                //  (2026-10-26 까지 구분 2, 상태 2 는 여기서 거부했다. PROJECT-ADMIN-UX §1.4 로 그 보호를 지웠다. FK RESTRICT 판정은 그대로다.)
             }
             try
             {

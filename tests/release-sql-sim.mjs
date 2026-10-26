@@ -30,6 +30,12 @@
 //   ALTER TABLE ... DROP CHECK(없으면 3821), ALTER TABLE ... DROP COLUMN ..., ALGORITHM=INSTANT(없으면 1091, 그 칸을 쓰는
 //   CHECK 가 남아 있으면 MySQL 처럼 3959), ALTER TABLE cal_user_pref COMMENT, 그리고 information_schema.COLUMNS 와
 //   TABLE_CONSTRAINTS 의 이름 하나 또는 IN 목록 하위 질의. 지울 칸이 없는데 그 칸을 읽거나 지우면 1054 로 멈춘다.
+//   과제 순서(v19 조각 migrations/v19-project-order.sql): project 표의 행(tables.project 의 id, section_id, common_name,
+//   project_name, is_active, 그리고 칸이 있으면 sort_no), ALTER TABLE project ADD COLUMN sort_no INT UNSIGNED NULL AFTER ...
+//   (행마다 sort_no = NULL 이 생긴다), section_code 와 status_code 의 표 설명(codes 옵션, 기본은 18 까지의 글자)과
+//   ALTER TABLE ... COMMENT, information_schema.COLUMNS 의 COLUMN_TYPE 과 TABLES 의 TABLE_COMMENT 하위 질의,
+//   순서 채우기 UPDATE 한 문장(V19_FILL 과 글자까지 같아야 한다. 구분마다 표시 이름 순, 같으면 id 순으로 그 구분의 최댓값 뒤에),
+//   그리고 SELECT COUNT(*) INTO @x FROM project WHERE is_active = 1 AND sort_no IS NULL. 칸이 없으면 1054 로 멈춘다.
 //
 // ★ *.test.mjs 가 아니다(러너가 수집하지 않는다. ps-guard-lib.mjs 머리말과 같은 이유).
 
@@ -211,7 +217,31 @@ export const PROJECT_V17 = () => {
   p.checks.push('chk_project_dev_dates');
   return p;
 };
+//  v19: sort_no 를 status_id 뒤에 넣는다. 형은 COLUMN_TYPE 글자('int unsigned')로 둔다(DATA_TYPE 은 첫 낱말).
+export const PROJECT_V19 = () => {
+  const p = PROJECT_V17();
+  p.cols.splice(p.cols.indexOf('status_id:smallint?') + 1, 0, 'sort_no:int unsigned?');
+  return p;
+};
 const colOf = (c) => { const [name, t] = c.split(':'); return { name, type: t.replace('?', ''), nullable: t.endsWith('?') }; };
+
+// ── 과제 순서(v19): 코드표 표 설명과 순서 채우기 ─────────────────────────────
+//  18 까지는 고정 번호 문구가 있다(2026-10-15 이관과 정본 13~18). 19 에서 지운다(정본 schema-structure.sql 과 같은 글자).
+export const CODES_V18 = () => ({
+  section_code: '구분 코드. PK=section_id(고정 번호 2=선진행), name=UNIQUE 라벨. Admin 관리.',
+  status_code: '상태 코드. PK=status_id(고정 번호 2=종료), name=UNIQUE 라벨. Admin 관리.',
+});
+export const CODES_V19 = () => ({
+  section_code: '구분 코드. PK=section_id, name=UNIQUE 라벨. Admin 관리.',
+  status_code: '상태 코드. PK=status_id, name=UNIQUE 라벨. Admin 관리.',
+});
+const CODE_TABLES = ['section_code', 'status_code'];
+//  v19 순서 채우기(PREPARE 로 실행되는 글자, 공백 하나로 접은 것). 조각이 바뀌면 여기도 함께 바꾼다(다르면 모르는 문장).
+export const V19_FILL = 'UPDATE project p JOIN (SELECT id, ROW_NUMBER() OVER (PARTITION BY section_id ORDER BY COALESCE(NULLIF(common_name, \'\'), project_name), id) AS rn '
+  + 'FROM project WHERE is_active = 1 AND sort_no IS NULL) o ON o.id = p.id '
+  + 'LEFT JOIN (SELECT section_id, MAX(sort_no) AS mx FROM project WHERE is_active = 1 GROUP BY section_id) m ON m.section_id = p.section_id '
+  + 'SET p.sort_no = IFNULL(m.mx, 0) + o.rn, p.updated_at = p.updated_at WHERE p.id > 0';
+const showName = (r) => (String(r.common_name || '') !== '' ? String(r.common_name) : String(r.project_name || ''));
 export function defOf(createSql) {
   const open = createSql.indexOf('(');
   const close = createSql.lastIndexOf(') ENGINE=');
@@ -239,6 +269,8 @@ const ROW_KEY = {
   cal_entry: (r) => `${r.user_id}:${r.entry_no}` + ('source' in r ? `:${r.source}` : ''),
   cal_entry_except: (r) => `${r.user_id}:${r.entry_no}:${r.d}`,
   cal_entry_commit: (r) => `${r.user_id}:${r.entry_no}:${r.seq}`,
+  //  과제: 번호, 구분, 보임. sort_no 는 칸이 있을 때만 행에 있다(없으면 '-' 도 붙이지 않는다).
+  project: (r) => `${r.id}:${r.section_id}:${r.is_active}` + ('sort_no' in r ? `:${r.sort_no === null ? 'NULL' : r.sort_no}` : ''),
 };
 
 // ── 흉내 DB ────────────────────────────────────────────────────────────
@@ -246,12 +278,13 @@ const ROW_KEY = {
 //  tables: { cal_room: [{ user_id, name }], room_code: [{ name, sort_order }] } 처럼 있는 표만 준다(없는 키 = 없는 표).
 //  표 바꾸기도 writes 에 'table:<이름>' 으로 남긴다(다시 돌렸을 때 바뀐 것이 없는지 보려고).
 export class FakeDb {
-  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {}, project = PROJECT_V16(), vcs = VCS_V17() } = {}) {
+  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {}, project = PROJECT_V16(), vcs = VCS_V17(), codes = CODES_V18() } = {}) {
     this.rows = new Map(Object.entries(meta).map(([k, v]) => [k, { v, at: 0 }]));
     this.tables = Object.fromEntries(Object.entries(tables).map(([n, rs]) => [n, rs.map((r) => ({ ...r }))]));
     this.defs = Object.fromEntries(Object.entries(defs).map(([n, d]) => [n, { ...d }]));   // 표 이름 → { cols, fks }(v16 검증용)
     this.project = { cols: [...project.cols], checks: [...project.checks] };                  // project 표 모양(v17 검증용)
     this.vcs = { cols: [...vcs.cols], checks: [...vcs.checks], prefComment: vcs.prefComment };  // 지울 칸, CHECK, 표 설명(v18 검증용)
+    this.codes = { ...codes };                                                                   // 코드표 표 설명(v19 검증용)
     this.tableExists = tableExists;
     this.schema = schema;
     this.comment = '';
@@ -266,7 +299,8 @@ export class FakeDb {
   snap() { if (!this.tx) this.visible.push(this.state()); }
   meta() { return Object.fromEntries([...this.rows].map(([k, r]) => [k, r.v])); }
   //  meta 에 회의실 표 모양('#tables')을 붙인 것. 앱에 보인 상태 비교와 실패 뒤 재실행 결과 비교에 쓴다.
-  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()), '#project': JSON.stringify(this.project), '#vcs': JSON.stringify(this.vcs) }; }
+  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()), '#project': JSON.stringify(this.project), '#vcs': JSON.stringify(this.vcs), '#codes': JSON.stringify(this.codes) }; }
+  projectHasCol(c) { return this.project.cols.some((x) => colOf(x).name === c); }
   tableShape() {
     const out = {};
     for (const n of Object.keys(this.tables).sort()) {
@@ -324,14 +358,19 @@ export class FakeDb {
       return this.schema ? names.filter((c) => this.vcs.checks.includes(`${m[1]}.${c}`)).length : 0;
     }
     //  v17: project 의 칸(이름만, 또는 형과 NULL 허용까지), 바로 앞 칸 자리, CHECK 이름
-    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = 'project' AND COLUMN_NAME = '(\w+)'(?: AND DATA_TYPE = '(\w+)' AND IS_NULLABLE = '(YES|NO)')?$/.exec(s);
+    //  v17, v19: DATA_TYPE 은 형의 첫 낱말('int'), COLUMN_TYPE 은 형 글자 전체('int unsigned')와 비교한다.
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = 'project' AND COLUMN_NAME = '(\w+)'(?: AND (DATA_TYPE|COLUMN_TYPE) = '([\w ]+)' AND IS_NULLABLE = '(YES|NO)')?$/.exec(s);
     if (m) {
       if (!this.schema) return 0;
       const c = this.project.cols.map(colOf).find((x) => x.name === m[1]);
       if (!c) return 0;
       if (m[2] === undefined) return 1;
-      return c.type === m[2] && c.nullable === (m[3] === 'YES') ? 1 : 0;
+      const got = m[2] === 'DATA_TYPE' ? c.type.split(' ')[0] : c.type;
+      return got === m[3] && c.nullable === (m[4] === 'YES') ? 1 : 0;
     }
+    //  v19: 코드표 표 설명(정확히 같은 글자일 때만 1)
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLES WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(section_code|status_code)' AND TABLE_COMMENT = '((?:[^']|'')*)'$/.exec(s);
+    if (m) return this.schema && this.codes[m[1]] === m[2].replace(/''/g, "'") ? 1 : 0;
     m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS a JOIN information_schema\.COLUMNS b ON b\.TABLE_SCHEMA = a\.TABLE_SCHEMA AND b\.TABLE_NAME = a\.TABLE_NAME AND b\.ORDINAL_POSITION = a\.ORDINAL_POSITION \+ 1 WHERE a\.TABLE_SCHEMA = DATABASE\(\) AND a\.TABLE_NAME = 'project' AND a\.COLUMN_NAME = '(\w+)' AND b\.COLUMN_NAME = '(\w+)'$/.exec(s);
     if (m) {
       if (!this.schema) return 0;
@@ -381,6 +420,13 @@ export class FakeDb {
       this.vars.set(m[1], rows.filter((r) => r.source === 'git').length);
       return;
     }
+    //  v19: 보이는 과제 가운데 번호가 빈 것의 수(검증). 칸이 없으면 MySQL 처럼 1054 로 멈춘다.
+    if ((m = /^SELECT COUNT\(\*\) INTO (@\w+) FROM project WHERE is_active = 1 AND sort_no IS NULL$/.exec(q))) {
+      const rows = this.need('project');
+      if (!this.projectHasCol('sort_no')) throw new SqlStop('1054 칸 project.sort_no 가 없다');
+      this.vars.set(m[1], rows.filter((r) => r.is_active === 1 && r.sort_no === null).length);
+      return;
+    }
     if ((m = /^SELECT COUNT\(\*\) INTO (@\w+) FROM ([\s\S]+)$/.exec(q))) {
       const f = ROOM_COUNTS[m[2]];
       if (!f) throw new Error(`모르는 문장: ${q.slice(0, 160)}`);
@@ -414,7 +460,7 @@ export class FakeDb {
       return;
     }
     //  v17: project 에 칸 하나(AFTER), CHECK 하나. 이미 있으면 MySQL 처럼 오류로 멈춘다(1060, 3822). 조각은 information_schema 로 건너뛴다.
-    if ((m = /^ALTER TABLE project ADD COLUMN (\w+) (DATE) NULL AFTER (\w+), ALGORITHM=INSTANT$/.exec(q))) {
+    if ((m = /^ALTER TABLE project ADD COLUMN (\w+) (DATE|INT UNSIGNED) NULL AFTER (\w+), ALGORITHM=INSTANT$/.exec(q))) {
       if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
       this.mutating(s, opts);
       const names = this.project.cols.map((c) => colOf(c).name);
@@ -422,6 +468,8 @@ export class FakeDb {
       const at = names.indexOf(m[3]);
       if (at < 0) throw new SqlStop(`1054 칸 ${m[3]} 이 없다`);
       this.project.cols.splice(at + 1, 0, `${m[1]}:${m[2].toLowerCase()}?`);
+      //  v19: 과제 행은 sort_no 만 흉내 낸다(새 칸은 NULL 로 생긴다).
+      if (m[1] === 'sort_no' && this.hasTable('project')) for (const r of this.tables.project) r.sort_no = null;
       this.writes.push({ k: `col:project.${m[1]}`, v: 'add' });
       return;
     }
@@ -481,6 +529,36 @@ export class FakeDb {
       if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
       this.mutating(s, opts);
       this.vcs.prefComment = m[1].replace(/''/g, "'");
+      return;
+    }
+    //  v19: 코드표 표 설명(메타데이터만)
+    if ((m = /^ALTER TABLE (section_code|status_code) COMMENT = '((?:[^']|'')*)'$/.exec(s))) {
+      if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
+      this.mutating(s, opts);
+      const v = m[2].replace(/''/g, "'");
+      if (this.codes[m[1]] !== v) this.writes.push({ k: `comment:${m[1]}`, v });
+      this.codes[m[1]] = v;
+      return;
+    }
+    //  v19: 순서 채우기. 보이는 과제 가운데 번호가 빈 것만, 구분마다 (그 구분의 보이는 과제 최댓값 + 표시 이름 순 자리).
+    if (q === V19_FILL) {
+      this.mutating(s, opts);
+      const rows = this.need('project');
+      if (!this.projectHasCol('sort_no')) throw new SqlStop('1054 칸 project.sort_no 가 없다');
+      const bySec = new Map();
+      for (const r of rows) {
+        if (r.is_active !== 1 || r.sort_no !== null) continue;
+        if (!bySec.has(r.section_id)) bySec.set(r.section_id, []);
+        bySec.get(r.section_id).push(r);
+      }
+      let n = 0;
+      for (const [sec, list] of bySec) {
+        const mx = Math.max(0, ...rows.filter((r) => r.section_id === sec && r.is_active === 1 && r.sort_no !== null).map((r) => r.sort_no));
+        list.sort((a, b) => { const x = fold(showName(a)), y = fold(showName(b)); return x < y ? -1 : x > y ? 1 : a.id - b.id; });
+        list.forEach((r, i) => { r.sort_no = mx + i + 1; n++; });
+      }
+      this.rowCount = n;
+      if (n) this.writes.push({ k: 'table:project', v: `sort_no+${n}` });
       return;
     }
     if (q === ROOM_INSERT) {

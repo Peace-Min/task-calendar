@@ -28,8 +28,10 @@
  *   C10 확인창 취소    — confirmTyped 의 [data-close] **실클릭** → 호스트로 아무것도 나가지 않는다
  *   C11 사유 가시화    — 기록 있는 퇴사자의 why 가 **보이는 줄**(.set-hint[data-trwhy])로 그려진다(툴팁만으로는 안 보인다)
  *   C12 쓰기 중 잠금   — [복구] → [확인] 그 순간 #trList 의 버튼 전부 disabled + #trashModal[data-busy=1] → 회신 뒤 해제
- *   C13 고정 번호 보호: 구분 2(선진행), 상태 2(종료)의 숨김과 영구 삭제는 거부(DB 그대로), 복구는 막지 않는다.
- *                        개명은 되고, 개명 뒤에도 날짜 잠금과 '진행중만' 필터는 번호를 따른다(이름은 반드시 되돌린다)
+ *   C13 구분 2(선진행), 상태 2(종료)도 다른 코드와 같다(PROJECT-ADMIN-UX §1.4, 2026-10-26 에 보호와 묶인 규칙을 지웠다):
+ *                        zz 과제가 두 행을 붙든 채 숨김 → 휴지통에 보임 → 영구 삭제는 '쓰는 과제' 문장으로 거부(확인 이름도 틀리게,
+ *                        시드 행을 지우는 요청은 없다) → 휴지통 복구 → 순번을 SQL 로 원래대로. 구분 2 과제도 날짜와 상태가 그대로 앉고,
+ *                        개명 뒤에도 거르기는 상태 체크박스 열쇠(번호)로만 한다('진행중만' 없음, 숨김과 이름은 반드시 되돌린다)
  *
  * v13(docs/CODE-TABLE-IDS.md §3, §4): 코드는 번호로 주고받는다. saveProject 는 sectionId/customerId/statusId,
  *   saveUser 는 titleId, 발주처/코드 관리는 customerId 와 id, 휴지통 키는 과제만 uid 이고 나머지는 번호 문자열이다.
@@ -513,9 +515,12 @@ function invariants(caseId) {
  *    (customer/section_code/status_code 는 project 가 먼저 사라져야 지워진다 — FK RESTRICT.)
  *  ★ 편입분(cal_category, source='db')은 **이름으로** 찾는다. 과제 행이 이미 사라진 잔재에는
  *    project_uid 로 되짚을 근거가 없기 때문이다 — 편입분의 name 은 과제명(zzP…)을 그대로 물려받는다. */
-/*  ★ C13 은 고정 번호 행(구분 2, 상태 2)의 **이름을 잠시 바꾼다**(이름 + RENAME_MARK + 시드). 실행 중 강제 종료되면
+/*  ★ C13 은 시드 행(구분 2, 상태 2)의 **이름을 잠시 바꾼다**(이름 + RENAME_MARK + 시드). 실행 중 강제 종료되면
  *    바뀐 이름이 남으므로, 시작과 종료 양쪽에서 표식 앞부분으로 되돌린다. 번호로 고정한 절대값 UPDATE 라 재적용해도 같다.
- *    ★ 표식은 zz 접두가 아니라 **뒤에 붙인다**. 'zzT%' 로 지우는 sweep 이 고정 번호 행을 지우려 들면 안 된다.   */
+ *    ★ 표식은 zz 접두가 아니라 **뒤에 붙인다**. 'zzT%' 로 지우는 sweep 이 시드 행을 지우려 들면 안 된다.
+ *  ★ C13 은 그 두 행을 **잠시 숨기기도 한다**(2026-10-26 부터 앱이 허용한다). 숨기기 직전에 C13_HIDDEN 에 숨기기 전 순번을
+ *    적고, 케이스의 finally 와 종료 정리(sweepZz)가 활성과 그 순번으로 되돌린다. 강제 종료(TerminateProcess)면 이 기억이
+ *    사라지므로 그때는 사람이 되살려야 한다(UPDATE section_code/status_code SET is_active=1 WHERE ..._id=2, 순번은 시작 로그의 해시 대조로). */
 const RENAME_MARK = '~zzR';
 function restoreRenamedCodes(reason) {
   const like = esc('%' + RENAME_MARK + '%'), mark = esc(RENAME_MARK);
@@ -524,12 +529,23 @@ function restoreRenamedCodes(reason) {
   if (!n) return 0;
   sql(`UPDATE section_code SET name=SUBSTRING_INDEX(name, ${mark}, 1) WHERE section_id=2 AND name LIKE ${like};\n` +
       `UPDATE status_code  SET name=SUBSTRING_INDEX(name, ${mark}, 1) WHERE status_id=2  AND name LIKE ${like}`,
-    { readOnly: false, idempotent: true, what: '고정 번호 행 이름 복원' });
-  console.error(`[cleanup] 고정 번호 행 이름 복원(${reason}): ${n}건`);
+    { readOnly: false, idempotent: true, what: '시드 행 이름 복원' });
+  console.error(`[cleanup] 시드 행 이름 복원(${reason}): ${n}건`);
   return n;
 }
+const C13_HIDDEN = [];   // [{table, idCol, sort}] C13 이 숨긴 시드 행(번호 2)과 숨기기 전 순번
+function restoreHiddenSeed(reason) {
+  if (!C13_HIDDEN.length) return 0;
+  const hs = C13_HIDDEN.slice();
+  sql(hs.map((h) => `UPDATE ${h.table} SET is_active=1, sort_order=${Number(h.sort)} WHERE ${h.idCol}=2`).join(';\n'),
+    { readOnly: false, idempotent: true, what: '시드 행 숨김 되살리기' });
+  C13_HIDDEN.length = 0;
+  if (!/^C13/.test(String(reason))) console.error(`[cleanup] 시드 행 숨김 되살리기(${reason}): ${hs.map((h) => h.table).join(', ')}`);
+  return hs.length;
+}
 function sweepZz(reason) {
-  try { restoreRenamedCodes(reason); } catch (e) { console.error('[cleanup] 고정 번호 행 이름 복원 실패: ' + e.message); }
+  try { restoreHiddenSeed(reason); } catch (e) { console.error('[cleanup] 시드 행 숨김 되살리기 실패: ' + e.message); }
+  try { restoreRenamedCodes(reason); } catch (e) { console.error('[cleanup] 시드 행 이름 복원 실패: ' + e.message); }
   const before = {
     user: n1(`SELECT COUNT(*) FROM app_user WHERE login_id LIKE 'zzU%'`, 'zz 인력 수'),
     proj: n1(`SELECT COUNT(*) FROM project WHERE project_name LIKE 'zzP%'`, 'zz 과제 수'),
@@ -662,10 +678,9 @@ const MSG = {
   done: '영구 삭제했습니다.',
   records: (n) => `기록 ${n}건이 있어 지울 수 없습니다. 퇴사 상태로 유지됩니다.`,
   inUse: (n) => `이 값을 쓰는 과제가 ${n}건(숨긴 과제 포함) 있어 지울 수 없습니다.`,
-  //  고정 번호 보호(ProjectDb.CodeIds.SectionPreMsg, StatusEndedMsg, CODE-TABLE-IDS §3)
-  protSection: '이 구분은 과제 날짜 규칙(선진행)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.',
-  protStatus: '이 상태는 목록 필터와 엑셀 강조(종료)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.',
 };
+/* 옛 보호 문장(구분 2, 상태 2 의 숨김과 삭제 거부, 2026-10-26 에 지움)의 공통 꼬리. 회신에 다시 보이면 보호가 되살아난 것이다. */
+const OLD_PROTECT_RE = /숨기거나 지울 수 없습니다/;
 
 /* ────────────────────────────── 7. 본체 ────────────────────────────── */
 
@@ -703,8 +718,8 @@ async function main() {
   log(`시작 스냅샷: 실행 ${countsKey(BASE.counts)}(과제/직원/발주처/구분/상태) · schema_version=${BASE.schemaVersion} · 해시 ${String(BASE.hash).slice(0, 12)}`);
 
   //  실행 코드값 — 시험 과제가 빌려 쓴다(값을 고치지 않는다. 참조만 한다).
-  //  ★ 구분 2(선진행)는 제외한다: 그 구분은 날짜·상태를 강제로 비우는 특수 규칙이 있어(UpsertProjectAsync)
-  //    시험 과제가 의도한 모습으로 앉지 않는다. 상태 2(종료)도 뺀다(진행중만 필터에서 빠진다. C13 이 따로 본다).
+  //  ★ 구분 2(선진행), 상태 2(종료)는 빌려 쓰지 않는다. 옛 특수 규칙(날짜와 상태 비움, 진행중만)은 2026-10-26 에 지웠지만,
+  //    C13 이 그 두 행을 숨기고 쓰는 과제 수를 세므로 다른 케이스의 시험 과제가 거기에 끼지 않게 한다.
   //  ★ v13: 번호로 고른다(이름 글자 비교 없음, CODE-TABLE-IDS §3). saveProject/saveUser 가 번호를 받는다.
   const pick = (q, what) => Number(s1(q, what) || 0);
   const REAL = {
@@ -1024,8 +1039,8 @@ async function main() {
     const SEid = n1(`SELECT section_id FROM section_code WHERE name=${esc(SE)}`, 'C04 구분 번호');
     const STid = n1(`SELECT status_id FROM status_code WHERE name=${esc(STT)}`, 'C04 상태 번호');
     if (!okq('C04 새 코드 셋의 번호를 찾았다', CUid > 0 && SEid > 0 && STid > 0, J({ CUid, SEid, STid }))) return;
-    //  고정 번호(2)와 겹치면 아래 숨김·삭제가 보호 규칙에 걸려 이 케이스가 보려는 것을 못 본다.
-    okq('C04 새 구분·상태 번호가 고정 번호(2)가 아니다', SEid !== 2 && STid !== 2, J({ SEid, STid }));
+    //  새 번호가 2 면 시드 행(선진행, 종료)이 없던 DB 다. 이 케이스는 그 번호를 영구 삭제하므로, 시드 번호와 겹치지 않는지 먼저 본다.
+    okq('C04 새 구분, 상태 번호가 시드 번호(2)가 아니다', SEid !== 2 && STid !== 2, J({ SEid, STid }));
 
     const uid = await makeProject(P2, { sectionId: SEid, customerId: CUid, statusId: STid });
     const linked = sql(`SELECT CAST(section_id AS CHAR), CAST(customer_id AS CHAR), CAST(IFNULL(status_id,0) AS CHAR) FROM project WHERE uid=${esc(uid)}`, { what: 'C04 과제 번호' })[0] || [];
@@ -1331,43 +1346,86 @@ async function main() {
     okq('C12 정리 완료(0행)', projRows(uid) === 0);
   });
 
-  /* ── C13 고정 번호 보호(구분 2 선진행, 상태 2 종료, CODE-TABLE-IDS §3) ── */
-  //  숨김과 영구 삭제는 호스트가 거부한다(DB 그대로). 복구와 개명은 된다. 개명한 뒤에도 날짜 잠금과 '진행중만' 필터는
-  //  이름이 아니라 번호를 따른다. 개명은 반드시 되돌린다(finally, 강제 종료는 restoreRenamedCodes 가 받친다).
-  const P7 = NM.proj(7), P8 = NM.proj(8);
-  await runCase('C13', '고정 번호(구분 2, 상태 2): 숨김과 삭제는 거부, 개명은 되고 동작은 번호를 따른다', async () => {
+  /* ── C13 구분 2(선진행), 상태 2(종료)도 다른 코드와 같다(PROJECT-ADMIN-UX §1.4, 2026-10-26) ── */
+  //  옛 보호(숨김, 영구 삭제 거부)와 그 번호에 묶인 규칙(선진행이면 날짜와 상태를 비움, '진행중만')을 지웠다. 이 케이스는
+  //  ① 시험 과제 하나(zzP)가 두 행을 붙든 채 ② 숨김 → 휴지통에 보임 → 영구 삭제는 다른 코드처럼 '쓰는 과제' 문장으로 거부
+  //  → 휴지통 복구 → 순번을 SQL 로 원래대로, ③ 개명해도 과제의 날짜와 상태는 그대로이고 거르기는 체크박스 열쇠(번호)로만 한다를 본다.
+  //  ★ 시드 행(선진행, 종료)을 지우는 요청은 보내지 않는다. 영구 삭제는 '쓰는 과제 있음'(③ 관문)을 보려고 보내되, 시험 과제가
+  //    붙들고 있고 확인 이름도 일부러 틀리게 보낸다(쓰는 과제 관문이 깨져도 이름 대조가, 그것도 깨지면 FK RESTRICT 가 막는다).
+  //  ★ 숨김과 개명은 반드시 되돌린다(finally, 강제 종료 아닌 종료는 sweepZz 의 restoreHiddenSeed 와 restoreRenamedCodes 가 받친다).
+  const P7 = NM.proj(7);
+  await runCase('C13', '구분 2, 상태 2: 숨김, 휴지통, 복구가 다른 코드와 같고, 개명해도 날짜와 상태는 그대로다', async () => {
     const orig = {
       section: s1(`SELECT name FROM section_code WHERE section_id=2`, 'C13 구분 2 이름'),
       status: s1(`SELECT name FROM status_code WHERE status_id=2`, 'C13 상태 2 이름'),
     };
-    if (!orig.section || !orig.status) { skip('C13', `고정 번호 행이 없다(구분 2=${orig.section}, 상태 2=${orig.status}), v13 시드가 아니다`); return; }
+    if (!orig.section || !orig.status) { skip('C13', `시드 행이 없다(구분 2=${orig.section}, 상태 2=${orig.status}), v13 시드가 아니다`); return; }
     const T = {
-      section: { table: 'section_code', idCol: 'section_id', label: '구분', want: MSG.protSection },
-      status: { table: 'status_code', idCol: 'status_id', label: '상태', want: MSG.protStatus },
+      section: { table: 'section_code', idCol: 'section_id', label: '구분', trKey: 'sections' },
+      status: { table: 'status_code', idCol: 'status_id', label: '상태', trKey: 'statuses' },
     };
     const rowOf = (k) => J(sql(`SELECT name, CAST(is_active AS CHAR), CAST(sort_order AS CHAR) FROM ${T[k].table} WHERE ${T[k].idCol}=2`,
       { what: `C13 ${T[k].label} 2 행` })[0] || null);
     const row0 = { section: rowOf('section'), status: rowOf('status') };
+    const act0 = {
+      section: s1(`SELECT CAST(is_active AS CHAR) FROM section_code WHERE section_id=2`, 'C13 구분 2 활성'),
+      status: s1(`SELECT CAST(is_active AS CHAR) FROM status_code WHERE status_id=2`, 'C13 상태 2 활성'),
+    };
+    if (act0.section !== '1' || act0.status !== '1') { skip('C13', `시드 행이 숨겨져 있다(구분 2=${act0.section}, 상태 2=${act0.status}), 숨김 왕복을 볼 수 없다`); return; }
+    const sort0 = {
+      section: n1(`SELECT sort_order FROM section_code WHERE section_id=2`, 'C13 구분 2 순번'),
+      status: n1(`SELECT sort_order FROM status_code WHERE status_id=2`, 'C13 상태 2 순번'),
+    };
 
-    //  ① 숨김 거부, ② 영구 삭제 거부(활성이어도 보호 문장이 먼저다. 연결도 열지 않는다), ③ 복구는 막지 않는다
-    for (const kind of ['section', 'status']) {
-      const { label, want } = T[kind];
-      const r = await hreq('codeSetActive', { kind, id: 2, active: false });
-      okq(`C13 ${label} 2 숨김은 거부된다`, !!r && r.ok === false, J(r));
-      okq(`C13 ${label} 2 숨김 거부 문구가 호스트 상수 그대로`, !!r && r.msg === want, J(r && r.msg));
-      const d = await hsend({ cmd: 'trashDelete', kind, key: '2', confirm: orig[kind] }, 't');
-      okq(`C13 ${label} 2 영구 삭제는 거부된다(이름을 맞게 쳐도)`, d.ok === false, `ok=${d.ok}`);
-      okq(`C13 ${label} 2 삭제 거부 문구가 호스트 상수 그대로`, d.msg === want, J(d.msg));
-      const rs = await hsend({ cmd: 'trashRestore', kind, key: '2' }, 't');
-      okq(`C13 ${label} 2 복구는 보호에 막히지 않는다(활성이라 '이미 복구됨')`, rs.ok === false && rs.msg === MSG.already, J(rs));
-      okq(`C13 ${label} 2 행이 그대로다(이름, 활성, 순번)`, rowOf(kind) === row0[kind], `${row0[kind]} → ${rowOf(kind)}`);
-    }
-
-    //  ④ 개명: 한 행 UPDATE. 과제 행은 바뀌지 않고, 규칙은 번호를 따른다.
     const nm = { section: orig.section + RENAME_MARK + OPT.seed, status: orig.status + RENAME_MARK + OPT.seed };
-    let u7 = '', u8 = '';
+    let u7 = '';
     try {
-      const refs0 = n1(`SELECT COUNT(*) FROM project WHERE section_id=2 OR status_id=2`, 'C13 고정 번호를 쓰는 과제 수');
+      //  ① 시험 과제: 구분 2, 상태 2, 날짜를 실어 보낸다. 옛 선진행 규칙이 없으니 날짜와 상태가 그대로 앉아야 한다.
+      u7 = await makeProject(P7, { sectionId: 2, customerId: REAL.customerId, statusId: 2 });
+      const r7 = sql(`SELECT IFNULL(DATE_FORMAT(start_date,'%Y-%m-%d'),''), IFNULL(DATE_FORMAT(end_date,'%Y-%m-%d'),''), ` +
+        `CAST(IFNULL(status_id,0) AS CHAR), CAST(section_id AS CHAR) FROM project WHERE uid=${esc(u7)}`, { what: 'C13 시험 과제' })[0] || [];
+      okq('C13 구분 2 과제도 날짜와 상태가 보낸 그대로다(선진행 규칙 없음)', J(r7) === J(['2026-01-01', '2026-12-31', '2', '2']), J(r7));
+
+      //  ② 숨김 → 휴지통 → 영구 삭제 거부(쓰는 과제) → 복구 → 순번 원래대로. 활성 행의 영구 삭제, 복구 문장도 다른 코드와 같다.
+      for (const kind of ['section', 'status']) {
+        const { table, idCol, label, trKey } = T[kind];
+        const a = await hsend({ cmd: 'trashDelete', kind, key: '2', confirm: orig[kind] + '~X' }, 't');
+        okq(`C13 ${label} 2 활성 행의 영구 삭제는 '숨긴 항목만' 문장으로 거부된다(옛 보호 문장 아님)`, a.ok === false && a.msg === MSG.active, J(a));
+        const rs0 = await hsend({ cmd: 'trashRestore', kind, key: '2' }, 't');
+        okq(`C13 ${label} 2 활성 행의 복구는 '이미 복구됨'`, rs0.ok === false && rs0.msg === MSG.already, J(rs0));
+
+        C13_HIDDEN.push({ table, idCol, sort: sort0[kind] });   // 숨기기 전에 기억한다(숨긴 직후 죽어도 종료 정리가 되살리게)
+        try {
+          const h = await hreq('codeSetActive', { kind, id: 2, active: false });
+          okq(`C13 ${label} 2 숨김이 된다`, !!h && h.ok === true, J(h));
+          okq(`C13 ${label} 2 숨김 회신에 옛 보호 문장이 없다`, !OLD_PROTECT_RE.test(String((h && h.msg) || '')), J(h && h.msg));
+          const hid = sql(`SELECT CAST(is_active AS CHAR), CAST(sort_order AS CHAR) FROM ${table} WHERE ${idCol}=2`, { what: `C13 ${label} 2 숨김 확인` })[0] || [];
+          okq(`C13 ${label} 2 가 DB 에서 숨겨졌고 순번은 그대로다`, hid[0] === '0' && Number(hid[1]) === sort0[kind], J(hid));
+
+          const refs = n1(`SELECT COUNT(*) FROM project WHERE ${idCol}=2`, `C13 ${label} 2 를 쓰는 과제 수`);
+          const g = (await trashGet()).data;
+          const tr = trFind(g, trKey, '2');
+          if (okq(`C13 휴지통 ${label} 탭에 2번이 보인다`, !!tr)) {
+            okq(`C13 ${label} 2 휴지통 줄 = refs ${refs}, deletable:false, why 가 '쓰는 과제' 문장`,
+              Number(tr.refs) === refs && tr.deletable === false && tr.why === MSG.inUse(refs), J(tr));
+          }
+          if (refs > 0) {
+            const d = await hsend({ cmd: 'trashDelete', kind, key: '2', confirm: orig[kind] + '~X' }, 't');
+            okq(`C13 ${label} 2 영구 삭제는 다른 코드처럼 '쓰는 과제 ${refs}건' 문장으로 거부된다`, d.ok === false && d.msg === MSG.inUse(refs), J(d));
+          } else note(`C13 ${label} 2 를 쓰는 과제가 0건이다(시험 과제가 사라졌다?), 영구 삭제 요청은 보내지 않는다`);
+          okq(`C13 ${label} 2 행이 남아 있다`, n1(`SELECT COUNT(*) FROM ${table} WHERE ${idCol}=2`, `C13 ${label} 2 잔존`) === 1);
+
+          const rs = await hsend({ cmd: 'trashRestore', kind, key: '2' }, 't', { expectPush: 'ta' });
+          okq(`C13 ${label} 2 휴지통 복구가 된다`, rs.ok === true, J(rs));
+        } finally {
+          //  앱의 복구는 순번을 맨 뒤(MAX+10)로 준다. 시드 순서를 지키려고 숨기기 전 순번으로 되돌린다(활성도 함께, 복구가 실패했어도).
+          restoreHiddenSeed('C13');
+        }
+        okq(`C13 ${label} 2 행이 시작과 같다(이름, 활성, 순번)`, rowOf(kind) === row0[kind], `${row0[kind]} → ${rowOf(kind)}`);
+      }
+
+      //  ③ 개명: 한 행 UPDATE. 과제 행은 바뀌지 않는다. 지운 규칙은 이름을 바꿔도 돌아오지 않고, 남은 색만 번호를 따른다.
+      const refs0 = n1(`SELECT COUNT(*) FROM project WHERE section_id=2 OR status_id=2`, 'C13 2번을 쓰는 과제 수');
       for (const kind of ['section', 'status']) {
         const r = await hreq('codeRename', { kind, id: 2, newName: nm[kind] });
         okq(`C13 ${T[kind].label} 2 개명은 된다`, !!r && r.ok === true, J(r));
@@ -1375,43 +1433,46 @@ async function main() {
           s1(`SELECT name FROM ${T[kind].table} WHERE ${T[kind].idCol}=2`, 'C13 개명 확인') === nm[kind]);
       }
       okq('C13 개명해도 과제 행의 번호 참조는 그대로다(CASCADE 없음)',
-        n1(`SELECT COUNT(*) FROM project WHERE section_id=2 OR status_id=2`, 'C13 고정 번호를 쓰는 과제 수(후)') === refs0);
+        n1(`SELECT COUNT(*) FROM project WHERE section_id=2 OR status_id=2`, 'C13 2번을 쓰는 과제 수(후)') === refs0);
+      try { await ev(`(hpost({ cmd: 'loadCodes' }), hpost({ cmd: 'loadProjects' }), 1)`); } catch (_) { }
 
-      //  ④-a 구분 2 날짜 잠금: 날짜와 상태를 실어 보내도 호스트가 비운다(이름이 바뀌어도).
-      u7 = await makeProject(P7, { sectionId: 2, customerId: REAL.customerId, statusId: REAL.statusId });
-      const r7 = sql(`SELECT IFNULL(DATE_FORMAT(start_date,'%Y-%m-%d'),''), IFNULL(DATE_FORMAT(end_date,'%Y-%m-%d'),''), ` +
-        `CAST(IFNULL(status_id,0) AS CHAR), CAST(section_id AS CHAR) FROM project WHERE uid=${esc(u7)}`, { what: 'C13 선진행 과제' })[0] || [];
-      okq('C13 개명한 구분 2 과제도 날짜와 상태가 비었다(번호 규칙)', J(r7) === J(['', '', '0', '2']), J(r7));
-
-      //  ④-b 상태 2 '진행중만' 필터: 이름이 바뀌어도 번호 2 는 빠진다(웹 offMatches, offStatusKind).
-      u8 = await makeProject(P8, { sectionId: REAL.sectionId, customerId: REAL.customerId, statusId: 2 });
-      okq('C13 상태 2 과제가 status_id=2 로 앉았다',
-        n1(`SELECT COUNT(*) FROM project WHERE uid=${esc(u8)} AND status_id=2`, 'C13 종료 과제') === 1);
-      let has = false;
-      for (let i = 0; i < 40 && !has; i++) { has = await catalogHas(u8); if (!has) await sleep(150); }
-      if (okq('C13 카탈로그에 상태 2 과제가 실렸다', has)) {
-        const f = await evj(`JSON.stringify((function(){
-          var c = dbCatalog.find(function(x){ return x && x.id === 'db-' + ${J(u8)}; }); if(!c) return null;
-          var base = { q:'', qRaw:'', customerId:'', customer:'', sectionId:'', section:'', statusId:'', status:'' };
-          return { statusId: c.statusId, status: c.status, kind: offStatusKind(c.statusId),
-                   on: offMatches(c, Object.assign({}, base, { activeOnly: true })), off: offMatches(c, Object.assign({}, base, { activeOnly: false })) };
-        })())`);
-        okq('C13 카탈로그 행 = statusId 2, 이름은 바뀐 이름(표시용)', !!f && f.statusId === 2 && f.status === nm.status, J(f));
-        okq("C13 '진행중만'은 개명한 상태 2 를 뺀다, 끄면 보인다, 색 종류 end", !!f && f.on === false && f.off === true && f.kind === 'end', J(f));
-        const sec = await evj(`JSON.stringify((function(){ var c = dbCatalog.find(function(x){ return x && x.id === 'db-' + ${J(u7)}; });
-          return c ? { sectionId: c.sectionId, section: c.section } : null; })())`);
-        okq('C13 카탈로그의 구분 2 과제 = sectionId 2, 바뀐 이름', !!sec && sec.sectionId === 2 && sec.section === nm.section, J(sec));
+      //  카탈로그: 이름은 표시용으로 따라오고, 거르기는 체크박스 열쇠(번호 문자열)로만 한다. 옛 activeOnly 는 아무 일도 하지 않는다.
+      let has = false, f = null;
+      for (let i = 0; i < 40; i++) {
+        has = await catalogHas(u7);
+        if (has) {
+          f = await evj(`JSON.stringify((function(){
+            var c = dbCatalog.find(function(x){ return x && x.id === 'db-' + ${J(u7)}; }); if(!c) return null;
+            var base = { q:'', qRaw:'', customerId:'', customer:'', sectionId:'', section:'', stOff: new Set(), stOffNames: [] };
+            var opt = (typeof offStOptions === 'function') ? offStOptions().find(function(o){ return o.k === '2'; }) : null;
+            return { statusId: c.statusId, status: c.status, sectionId: c.sectionId, section: c.section, kind: offStatusKind(c.statusId),
+                     none: offMatches(c, base),
+                     legacy: offMatches(c, Object.assign({}, base, { activeOnly: true })),
+                     offMe: offMatches(c, Object.assign({}, base, { stOff: new Set(['2']) })),
+                     offOther: offMatches(c, Object.assign({}, base, { stOff: new Set(['1']) })),
+                     label: opt ? opt.t : null };
+          })())`);
+          if (f && f.status === nm.status && f.section === nm.section && f.label === nm.status) break;   // 개명 뒤 다시 받은 카탈로그와 코드표를 기다린다
+        }
+        await sleep(150);
+      }
+      if (okq('C13 카탈로그에 시험 과제가 실렸다', has)) {
+        okq('C13 카탈로그 행 = sectionId 2, statusId 2, 이름은 바뀐 이름(표시용)',
+          !!f && f.statusId === 2 && f.sectionId === 2 && f.status === nm.status && f.section === nm.section, J(f));
+        okq('C13 상태 2 거르기: 아무것도 안 끄면 보이고, 옛 activeOnly 로 빠지지 않고, 열쇠 2 를 끄면 빠지고, 열쇠 1 을 꺼도 보인다',
+          !!f && f.none === true && f.legacy === true && f.offMe === false && f.offOther === true, J(f));
+        okq('C13 상태 2 색 종류는 end, 체크박스 글자는 바뀐 이름', !!f && f.kind === 'end' && f.label === nm.status, J(f));
       }
     } finally {
-      //  시험 과제 정리(숨김 → 이름 대조 삭제) → 이름 되돌리기(앱 경로 → 안 되면 번호 고정 UPDATE).
-      for (const [u, p] of [[u7, P7], [u8, P8]]) {
-        if (!u) continue;
+      //  시험 과제 정리(숨김 → 이름 대조 삭제) → 숨김 되살리기 → 이름 되돌리기(앱 경로 → 안 되면 번호 고정 UPDATE).
+      if (u7) {
         try {
-          const h = await hsend({ cmd: 'setProjectActive', uid: u, active: false }, 'p', { expectPush: 'pa' });
-          const d = h.ok ? await hsend({ cmd: 'trashDelete', kind: 'project', key: u, confirm: p }, 't', { expectPush: 'ta' }) : h;
-          okq(`C13 정리: ${p} 삭제(0행)`, d.ok === true && projRows(u) === 0, J(d));
-        } catch (e) { ok(`C13 정리: ${p}`, false, e.message); }
+          const h = await hsend({ cmd: 'setProjectActive', uid: u7, active: false }, 'p', { expectPush: 'pa' });
+          const d = h.ok ? await hsend({ cmd: 'trashDelete', kind: 'project', key: u7, confirm: P7 }, 't', { expectPush: 'ta' }) : h;
+          okq(`C13 정리: ${P7} 삭제(0행)`, d.ok === true && projRows(u7) === 0, J(d));
+        } catch (e) { ok(`C13 정리: ${P7}`, false, e.message); }
       }
+      try { restoreHiddenSeed('C13'); } catch (e) { note('C13 숨김 되살리기 예외: ' + e.message); }
       for (const kind of ['section', 'status']) {
         try {
           const cur = s1(`SELECT name FROM ${T[kind].table} WHERE ${T[kind].idCol}=2`, 'C13 이름 확인');

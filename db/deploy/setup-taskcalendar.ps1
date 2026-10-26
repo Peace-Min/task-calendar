@@ -374,13 +374,9 @@ foreach($t in $CODE_ID_COLS.Keys){
 if($FIXED_IDS['section_code'].Count -lt 1 -or $FIXED_IDS['status_code'].Count -lt 1){
   Die "schema-structure.sql 에서 코드표 시드(INSERT INTO section_code / status_code (번호, name, sort_order))를 읽지 못했습니다. 파일 형식이 바뀌었습니다."
 }
-# 동작이 묶인 고정 번호(CODE-TABLE-IDS §3). 호스트 CodeIds.SectionPre, StatusEnded 와 웹 CODE_ID 가 같은 번호를 쓰고,
-#   앱은 이 두 행의 숨김과 삭제를 막는다. 원본에 그 시드 이름이 없으면(라벨을 바꿨으면) 번호 2 가 비므로 멈추고,
-#   원본에서 숨겨져 왔으면 대상에서 켠다. 색만 묶인 나머지 고정 번호는 없어도 경고만 한다.
-$PROTECTED_IDS = [ordered]@{ section_code = '2'; status_code = '2' }
-foreach($t in $PROTECTED_IDS.Keys){
-  if(-not $FIXED_IDS[$t].Contains($PROTECTED_IDS[$t])){ Die "schema-structure.sql 의 $t 시드에 보호 번호 $($PROTECTED_IDS[$t]) 이 없습니다. 파일 형식이 바뀌었습니다." }
-}
+# 2026-10-26(PROJECT-ADMIN-UX §1.4): 구분 2(선진행), 상태 2(종료)에 묶였던 동작(날짜와 상태 잠금, 숨김과 삭제 보호)을 없앴다.
+#   고정 번호는 기본 행의 번호일 뿐이고 앱은 상태 번호로 색만 정한다. 그래서 원본에 그 시드 이름이 없거나 숨겨져 있어도
+#   멈추거나 켜지 않는다(아래 복사 뒤 검증은 지도에 없는 이름을 경고만 한다).
 
 # 세 DDL 파일이 만드는 표 이름(줄머리의 CREATE TABLE 만 — 주석 속 예시는 '--' 로 시작하므로 안 걸린다).
 $ddlTables = @()
@@ -593,14 +589,6 @@ try {
   foreach($t in $CODE_ID_COLS.Keys){
     $n = [long](Q ("SELECT COUNT(*) FROM " + (TQ $SourceDb $t) + " WHERE ``name`` = '';") "원본 $t 빈 이름 수")
     if($n -ne 0){ $srcBad += "$t 의 빈 이름 $n 행(대상 CHECK name <> '')" }
-  }
-  # 보호 번호(구분 2, 상태 2)는 시드 이름으로만 받는다. 원본에서 라벨을 바꿨다면 번호 2 가 비어 동작이 아무 행에도 걸리지 않는다.
-  #   한글 이름은 명령줄 글자가 아니라 16진(X'...')으로 넘긴다(콘솔 코드페이지에서 깨진다).
-  foreach($t in $PROTECTED_IDS.Keys){
-    $pnm = $FIXED_IDS[$t][$PROTECTED_IDS[$t]]
-    $phex = ([BitConverter]::ToString([Text.Encoding]::UTF8.GetBytes($pnm))).Replace('-', '')
-    $n = [long](Q ("SELECT COUNT(*) FROM " + (TQ $SourceDb $t) + " WHERE CAST(CONVERT(``name`` USING utf8mb4) AS BINARY) = X'" + $phex + "';") "원본 $t 보호 이름")
-    if($n -ne 1){ $srcBad += "$t 에 이름 '$pnm' 이 없음(고정 번호 $($PROTECTED_IDS[$t]) 은 앱 동작에 묶여 있다. 원본에서 그 라벨을 '$pnm' 으로 되돌릴 것. 이름은 구축 뒤 관리 화면에서 다시 바꿀 수 있다)" }
   }
   foreach($t in $COPY_ORDER){
     if($srcColMap[$t] -contains 'is_active'){
@@ -963,10 +951,7 @@ try {
       $hex = ([BitConverter]::ToString([Text.Encoding]::UTF8.GetBytes($FIXED_IDS[$t][$id]))).Replace('-', '')
       $got = Q ("SELECT IFNULL(MIN(" + (BQ $CODE_ID_COLS[$t]) + "), '') FROM " + (TQ $TargetDb $t) + " WHERE CAST(``name`` AS BINARY) = X'" + $hex + "';") "$t 고정 번호 $id"
       if("$got" -eq ""){
-        if($PROTECTED_IDS.Contains($t) -and $PROTECTED_IDS[$t] -eq $id){
-          Die "$t 에 고정 번호 $id 행이 없습니다. 원본 '$SourceDb' 의 $t 에 이름 '$($FIXED_IDS[$t][$id])' 이 없어서입니다(라벨을 바꿨다면 그 행은 MAX+1 번호를 받았습니다). 이 번호는 앱 동작에 묶여 있습니다. 원본에서 그 라벨을 '$($FIXED_IDS[$t][$id])' 으로 되돌린 뒤 다시 실행하세요. 이름은 구축 뒤 관리 화면에서 다시 바꿀 수 있습니다."
-        }
-        Warn "$t 고정 번호 $id 의 이름이 원본에 없습니다. 이 번호는 색만 묶여 있어 멈추지 않습니다."
+        Warn "$t 고정 번호 $id 의 이름이 원본에 없습니다. 번호에 묶인 동작이 없어(상태 번호는 색만) 멈추지 않습니다."
       }
       elseif("$got" -ne "$id"){ $idBad += "$t 고정 번호 $id 의 이름이 번호 $got 을 받음" }
     }
@@ -979,20 +964,16 @@ try {
   if($idBad.Count -gt 0){ Die ("번호 키 복사 검증 실패: " + ($idBad -join '; ') + ". 대소문자만 다른 참조처럼 원본의 이름 표기가 어긋난 곳을 고친 뒤 다시 실행하세요.") }
   Ok "번호 키 복사 검증: 이름 복원 BINARY 일치(코드표 3, project 참조 3), 고정 번호 일치"
 
-  # 보호 행(구분 2, 상태 2)은 켜져 있어야 한다. 앱은 이 행의 숨김을 막으므로, 원본에서 숨겨져 왔다면 풀 길이 없다. 여기서 켜고 알린다.
-  #   ($pid 는 PowerShell 자동 변수(읽기 전용)라 쓰지 않는다.)
-  foreach($t in $PROTECTED_IDS.Keys){
-    $protId = $PROTECTED_IDS[$t]
-    $protPk = BQ $CODE_ID_COLS[$t]
-    $off = [long](Q ("SELECT COUNT(*) FROM " + (TQ $TargetDb $t) + " WHERE " + $protPk + " = " + $protId + " AND is_active = 0;") "$t 보호 행 숨김 여부")
-    if($off -gt 0){
-      Q ("UPDATE " + (TQ $TargetDb $t) + " SET is_active = 1 WHERE " + $protPk + " = " + $protId + " AND is_active = 0;") "$t 보호 행 켜기" | Out-Null
-      Warn "$t 고정 번호 $protId('$($FIXED_IDS[$t][$protId])') 이 원본에서 숨겨져 있어 켰습니다. 앱 동작에 묶인 행이라 숨길 수 없습니다."
-    }
-    $on = [long](Q ("SELECT COUNT(*) FROM " + (TQ $TargetDb $t) + " WHERE " + $protPk + " = " + $protId + " AND is_active = 1;") "$t 보호 행 확인")
-    if($on -ne 1){ Die "$t 고정 번호 $protId 행이 켜져 있지 않습니다(켠 뒤 $on 행)." }
-  }
-  Ok "보호 행 확인: 구분 $($PROTECTED_IDS['section_code']), 상태 $($PROTECTED_IDS['status_code']) 이 있고 켜져 있음"
+  # 과제 처음 순서(구조 19, PROJECT-ADMIN-UX §1.1). 원본에는 순서 칸(sort_no)이 없어 모두 NULL 로 들어온다.
+  #   보이는 과제에 구분마다 표시 이름(통상명칭, 비었으면 사업명) 순으로 1 부터 매긴다. 숨긴 과제는 NULL 로 둔다(되살리면 앱이 맨 뒤로).
+  #   이관 조각 migrations/v19-project-order.sql 의 순서 채우기와 같은 문장이다(빈 번호만, 그 구분의 최댓값 뒤에).
+  $tp = TQ $TargetDb 'project'
+  Q ("UPDATE " + $tp + " p JOIN (SELECT id, ROW_NUMBER() OVER (PARTITION BY section_id ORDER BY COALESCE(NULLIF(common_name, ''), project_name), id) AS rn FROM " + $tp +
+     " WHERE is_active = 1 AND sort_no IS NULL) o ON o.id = p.id LEFT JOIN (SELECT section_id, MAX(sort_no) AS mx FROM " + $tp +
+     " WHERE is_active = 1 GROUP BY section_id) m ON m.section_id = p.section_id SET p.sort_no = IFNULL(m.mx, 0) + o.rn, p.updated_at = p.updated_at WHERE p.id > 0;") "과제 처음 순서" | Out-Null
+  $noOrder = [long](Q ("SELECT COUNT(*) FROM " + $tp + " WHERE is_active = 1 AND sort_no IS NULL;") "과제 순서 빈 행")
+  if($noOrder -ne 0){ Die "보이는 과제 가운데 순서(sort_no)가 빈 행이 $noOrder 개 남았습니다." }
+  Ok "과제 처음 순서: 보이는 과제에 구분마다 1 부터(빈 순서 0)"
 
   # cal_user_rev — schema-calendar.sql 이 'app_user 전원에게 rev 0 행' 을 시딩하지만, 그 시점의 app_user 는
   # 비어 있었다. 사람이 (a) 회사 시드로 들어왔으므로 같은 시딩을 다시 한다(그 파일 끝 '릴리스 게이트' 가 누락 0 을 요구한다).

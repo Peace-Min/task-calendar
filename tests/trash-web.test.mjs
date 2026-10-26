@@ -611,7 +611,7 @@ function renderHarnessJs(src) {
     '// 이 계약과 무관한 협력자는 빈 함수로 — 여기서 보는 것은 "무엇이 그려지는가" 하나다.',
     'function trRestore(){} function trDelete(){} function toast(){} function hostRequest(){}',
     constLine(src, 'josa'),
-    extractCodeIdsBlock(src),   // codeProtectedWhy — 동작이 묶인 코드(구분 2, 상태 2)는 [영구 삭제]를 끈다(CODE-TABLE-IDS §3)
+    extractCodeIdsBlock(src),   // CODE_ID 머리(코드 행 보호는 2026-10-26 없앴다, PROJECT-ADMIN-UX §1.4)
     constLine(src, 'trEmptyLabel'),
     constBlock(src, 'const TR_TABS = ['),
     constLine(src, 'trTabDef'),
@@ -686,7 +686,7 @@ function busyHarnessJs(src) {
     'var __rosters = 0;',
     'function uaSeatReply(json, cmd){ if(json) __rosters++; }',
     constLine(src, 'josa'),
-    extractCodeIdsBlock(src),   // codeProtectedWhy — 동작이 묶인 코드(구분 2, 상태 2)는 [영구 삭제]를 끈다(CODE-TABLE-IDS §3)
+    extractCodeIdsBlock(src),   // CODE_ID 머리(코드 행 보호는 2026-10-26 없앴다, PROJECT-ADMIN-UX §1.4)
     constLine(src, 'trEmptyLabel'),
     constBlock(src, 'const TR_TABS = ['),
     constLine(src, 'trTabDef'),
@@ -1547,7 +1547,7 @@ if (!jsdom) {
       '변이 전제: 분기를 지우면 admin:false 에도 탭·조작 버튼이 그려져야 한다');
 
     // (d) 삭제 가능 판정을 무조건 참으로 바꾸면 지울 수 없는 계정의 버튼이 켜진다
-    const badD = mutate(app, '    const deletable = !!(it && it.deletable === true) && !lockWhy;', '    const deletable = true;');
+    const badD = mutate(app, '    const deletable = !!(it && it.deletable === true);', '    const deletable = true;');
     const rd = probeRender(PAYLOAD, 'user', badD);
     assert.deepStrictEqual(rd.ops.filter((o) => o.op === 'delete').map((o) => o.disabled), [false, false],
       '변이 전제: 잠금을 지우면 기록이 있는 계정의 [영구 삭제]도 켜져야 한다');
@@ -1615,38 +1615,36 @@ if (!jsdom) {
   });
 }
 
-// ── 고정 번호 보호(CODE-TABLE-IDS §3 · 2026-10-15) ─────────────────────
-//   구분 2(선진행)와 상태 2(종료)는 동작이 묶인 행이다. 옛 DB 에서 숨겨 둔 채 휴지통에 와 있어도
-//   **지울 수 없다** — 호스트가 거부하고(DeleteTrashAsync), 화면도 호스트 힌트(deletable)와 무관하게 [영구 삭제]를 끄고
-//   이유를 보이는 줄로 낸다. 되살리는 길(복구)은 막지 않는다. 이름은 바뀌어 있어도(개명) 번호로 판정한다.
-const CODE_WHY = new Function(extractCodeIdsBlock(app) + '\nreturn CODE_PROTECT_WHY;')();
+// ── 고정 번호 보호 없음(PROJECT-ADMIN-UX §1.4, 2026-10-26) ─────────────
+//   구분 2(선진행)와 상태 2(종료)를 지우지 못하게 하던 보호(2026-10-15)는 그 행에 묶였던 규칙(선진행 잠금, 진행중만 필터)과
+//   함께 없앴다. 이제 휴지통의 코드 행은 번호와 상관없이 호스트 힌트(deletable) 하나로 [영구 삭제]가 켜지고 꺼진다.
+//   화면이 따로 이유 줄을 달지도 않는다. 아래 시험은 보호가 되살아나지 않는지 본다.
 const LOCK_PAYLOAD = Object.assign({}, PAYLOAD, {
   sections: [{ key: '2', name: 'zz이름바꾼선진행', sub: '', refs: 0, deletable: true, why: '' },
              { key: '5', name: 'zz다른구분', sub: '', refs: 0, deletable: true, why: '' }],
   statuses: [{ key: '2', name: 'zz이름바꾼종료', sub: '', refs: 0, deletable: true, why: '' },
              { key: '1', name: 'zz진행중', sub: '', refs: 0, deletable: true, why: '' }],
 });
-function lockedRows(src) {
-  for (const [tab, other] of [['section', '5'], ['status', '1']]) {
+function unlockedRows(src) {
+  for (const tab of ['section', 'status']) {
     const r = probeRender(LOCK_PAYLOAD, tab, src);
     const op = (o, k) => r.ops.find((x) => x.op === o && x.key === k);
     assert.ok(op('delete', '2') && op('restore', '2'), `전제 붕괴: ${tab} 탭에 번호 2 의 행이 서지 않았다`);
-    assert.strictEqual(op('delete', '2').disabled, true, `${tab} 2 의 [영구 삭제]가 켜져 있다 — 동작이 묶인 행을 지우게 둔다`);
-    assert.strictEqual(op('delete', '2').title, CODE_WHY[tab][2], `${tab} 2 의 [영구 삭제] 이유가 다르다: ${op('delete', '2').title}`);
-    assert.deepStrictEqual(r.whys.filter((w) => w.key === '2').map((w) => w.text), [CODE_WHY[tab][2]],
-      `${tab} 2 의 이유가 보이는 줄로 서지 않는다(꺼진 버튼의 title 은 뜨지 않는다)`);
-    assert.strictEqual(op('restore', '2').disabled, false, `${tab} 2 의 [복구]까지 껐다 — 숨겨 둔 행을 되살리는 길이다`);
-    assert.strictEqual(op('delete', other).disabled, false, `${tab} ${other} 는 보호 대상이 아닌데 [영구 삭제]가 꺼졌다`);
+    assert.strictEqual(op('delete', '2').disabled, false, `${tab} 2 의 [영구 삭제]가 꺼져 있다(호스트가 지울 수 있다고 했는데 화면이 번호로 막는다)`);
+    assert.strictEqual(op('delete', '2').title, '', `${tab} 2 의 [영구 삭제]에 이유가 붙었다: ${op('delete', '2').title}`);
+    assert.deepStrictEqual(r.whys.filter((w) => w.key === '2'), [], `${tab} 2 에 막는 이유 줄이 섰다`);
+    assert.strictEqual(op('restore', '2').disabled, false, `${tab} 2 의 [복구]가 꺼졌다`);
   }
+  assert.ok(!/CODE_PROTECT_WHY|codeProtectedWhy/.test(src), '화면에 코드 행 보호 표(CODE_PROTECT_WHY, codeProtectedWhy)가 남아 있다');
 }
 if (!jsdom) {
-  skip('보호-DOM: 구분 2, 상태 2 는 숨겨져 있어도 [영구 삭제]가 꺼지고 이유가 보인다(복구는 켜짐)', SKIP_NO_JSDOM);
-  skip('변이 보호-DOM: 화면의 고정 번호 판정을 빼면 호스트 힌트만 믿게 된다', SKIP_NO_JSDOM);
+  skip('보호 없음-DOM: 구분 2, 상태 2 도 호스트 힌트대로 [영구 삭제]가 켜지고 이유 줄이 없다', SKIP_NO_JSDOM);
+  skip('변이 보호 없음-DOM: 화면에 번호 보호를 되살리면 잡힌다', SKIP_NO_JSDOM);
 } else {
-  test('보호-DOM: 구분 2, 상태 2 는 숨겨져 있어도 [영구 삭제]가 꺼지고 이유가 보인다(호스트 힌트와 무관 · 복구는 켜짐)', () => lockedRows(app));
-  test('변이 보호-DOM: 화면의 고정 번호 판정을 빼면 호스트 힌트만 믿게 된다(그래서 이 계약이 필요하다)', () => {
-    const bad = mutate(app, '    const lockWhy = codeProtectedWhy(def.kind, key);', "    const lockWhy = '';");
-    assert.throws(() => lockedRows(bad), /\[영구 삭제\]가 켜져 있다/);
-    assert.doesNotThrow(() => lockedRows(app));   // 통제군
+  test('보호 없음-DOM: 구분 2, 상태 2 도 호스트 힌트대로 [영구 삭제]가 켜지고 이유 줄이 없다(PROJECT-ADMIN-UX §1.4)', () => unlockedRows(app));
+  test('변이 보호 없음-DOM: 화면에 번호 2 보호를 되살리면 잡힌다', () => {
+    const bad = mutate(app, '    const deletable = !!(it && it.deletable === true);', '    const deletable = !!(it && it.deletable === true) && String(key) !== \'2\';');
+    assert.throws(() => unlockedRows(bad), /\[영구 삭제\]가 꺼져 있다/);
+    assert.doesNotThrow(() => unlockedRows(app));   // 통제군
   });
 }

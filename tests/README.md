@@ -77,7 +77,7 @@ console\                       ← 부모 폴더
 | 상시 스위트(엄격) | `TC_TEST_STRICT=1 node tests/run-tests.mjs` | **exit 0**. skip 이 있으면 2(판정 없음)이고 strict 는 그것을 1 로 올린다 |
 | 사용자 관리 루프 | `node tests/loop-user-admin.mjs` | **무작위 시드로 5회 연속** 통과(한 번이라도 실패하면 1부터 다시 센다) |
 | 과제 캘린더 DB 계약 | `node tests/db-project-calendar.mjs --db=zz_pc_dev` | 한 번 통과(0). 공용 DB 가 아니라 구조 번호가 앱(`DbGate.AppStructureVersion`, 지금 18)과 같은 복사본(이름이 zz_ 로 시작)에서만 돈다. 비밀번호는 `TC_TEST_DB_ADMIN_PW` 환경 변수로만 |
-| 개발 일정 그림 DB 계약 | `node tests/db-schedule-image.mjs --db=zz_si_dev` | 한 번 통과(0). 구조 번호가 앱과 같은 복사본(이름이 zz_ 로 시작, 지금 18)에서만 돈다. 2026-10-26 부터 앱 번호를 `widget/DbGate.cs` 의 `AppStructureVersion` 에서 읽는다(전에는 17 을 박아 두었다). 일회용 계정, 비밀번호는 `TC_TEST_DB_ADMIN_PW` 환경 변수로만. mysqldump 가 mysql.exe 옆에 있어야 한다(`TC_TEST_MYSQLDUMP` 로 바꿀 수 있다) |
+| 개발 일정 그림 DB 계약 | `node tests/db-schedule-image.mjs --db=zz_si_dev` | 한 번 통과(0). 구조 번호가 앱과 같은 복사본(이름이 zz_ 로 시작, 지금 19)에서만 돈다. 2026-10-26 부터 앱 번호를 `widget/DbGate.cs` 의 `AppStructureVersion` 에서 읽는다(전에는 17 을 박아 두었다). 일회용 계정, 비밀번호는 `TC_TEST_DB_ADMIN_PW` 환경 변수로만. mysqldump 가 mysql.exe 옆에 있어야 한다(`TC_TEST_MYSQLDUMP` 로 바꿀 수 있다) |
 | 휴지통 루프 | `node tests/loop-trash.mjs` | 같은 규약. 앱 계정에 DELETE 권한이 **먼저** 적용돼 있어야 한다(DEPLOY.md §0-5) |
 | 직급·소속 관리 루프 | `node tests/loop-org-title.mjs` | 같은 규약. 앱 계정에 `org_unit`·`title_code` 의 **INSERT·UPDATE** 가 먼저 적용돼 있어야 한다(DEPLOY.md §0-5, ORG-TITLE-ADMIN §6). 없으면 **exit 2(판정 없음)** 로 끝난다. 실패가 아니다 |
 

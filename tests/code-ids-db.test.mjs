@@ -137,7 +137,22 @@ const CHILDREN = [
 ];
 
 // ══ 검사 함수(시험 + 변이 주입이 같은 함수를 쓴다) ═══════════════════════
-export const checks = {
+export // 2026-10-15 이관 뒤의 이관 조각(db/deploy/migrations)이 다시 쓴 코드표 표 설명. 표 이름 → { text, from(조각 이름) }.
+//  조각 안에서는 PREPARE 문자열이라 작은따옴표가 두 겹이다. 뒤 조각이 이긴다(파일 이름의 구조 번호 순서).
+function laterComments(dirUrl = new URL('../db/deploy/migrations/', import.meta.url)) {
+  const out = {};
+  let names = [];
+  try { names = readdirSync(dirUrl).filter((f) => /^v\d+-.*\.sql$/.test(f)).sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10)); }
+  catch { missing.push('db/deploy/migrations'); return out; }
+  for (const f of names) {
+    const code = stripSqlComments(readText(new URL(f, dirUrl)));
+    for (const m of code.matchAll(/ALTER TABLE (\w+) COMMENT = ''((?:[^']|'''')*)''/g)) out[m[1]] = { text: m[2].replace(/''/g, "'"), from: f };
+  }
+  return out;
+}
+const LATER_COMMENTS = laterComments();
+
+const checks = {
   // ① 스키마 모양(재구축 경로의 정본 두 파일)
   schemaShape(struct, users) {
     const srcOf = (p) => (p.src() === USERS01 ? users : struct);
@@ -257,10 +272,10 @@ export const checks = {
     assert.ok(post, '사후 검증의 중단 조건이 (고아, 행 수, 이름 복원, 불변, 구조, AUTO_INCREMENT, 판번호, 보호 행) 전부가 아니다');
     assert.ok(/information_schema_stats_expiry = 0/.test(code), 'AUTO_INCREMENT 를 낡은 캐시(stats_expiry)로 읽는다');
     // 판번호: 이 파일이 만든 13 에서 다음 판(이관 조각 migrations/v14-version-gate.sql, 13 에서 14)이 출발한다.
-    //   2026-10-21 부터 정본은 키가 db_structure_version 이다. 값은 회의실 공용화(v15 조각)로 15, 2026-10-22 과제 캘린더(v16 조각)로 16, 월간보고(v17 조각)로 17, 2026-10-26 Git, SVN 삭제(v18 조각)로 18 이다. 체인 전체는 schema-guards ⑥ 이 본다.
+    //   2026-10-21 부터 정본은 키가 db_structure_version 이다. 값은 회의실 공용화(v15 조각)로 15, 2026-10-22 과제 캘린더(v16 조각)로 16, 월간보고(v17 조각)로 17, 2026-10-26 Git, SVN 삭제(v18 조각)로 18, 같은 날 과제 순서(v19 조각)로 19 다. 체인 전체는 schema-guards ⑥ 이 본다.
     const nextMig = readText(R('db/deploy/migrations/v14-version-gate.sql'));
     assert.ok(/^-- @migration from=13 to=14\r?\n/.test(nextMig), '다음 판(version-gate 조각)이 13 에서 출발하지 않는다');
-    assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '18', 'schema-calendar.sql 이 db_structure_version 18 을 시딩하지 않는다');
+    assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '19', 'schema-calendar.sql 이 db_structure_version 19 를 시딩하지 않는다');
     // 머리말: 실행법(백업 -DbName taskcalendar, utf8mb4, --force 금지)
     assert.ok(mig.includes('backup-taskmgr.cmd -DbName taskcalendar'), '머리말에 백업 명령(-DbName taskcalendar)이 없다');
     assert.ok(/mysql -u root -p --default-character-set=utf8mb4 taskcalendar < db\\deploy\\migrate-2026-10-15-code-ids\.sql/.test(mig), '머리말에 실행 명령(utf8mb4, taskcalendar)이 없다');
@@ -316,7 +331,7 @@ export const checks = {
   },
 
   // ③-b 두 경로가 같은 구조를 내놓는가: 이관이 거는 제약, 인덱스, 표 COMMENT 가 재구축 정본과 글자까지 같다
-  pathsAgree(struct, users, mig) {
+  pathsAgree(struct, users, mig, later = LATER_COMMENTS) {
     const canonC = { ...constraintDefs(struct), ...constraintDefs(users) };
     const migC = constraintDefs(mig);
     const want = ['chk_customer_name', 'chk_customer_active', 'chk_section_code_name', 'chk_section_code_active',
@@ -337,6 +352,14 @@ export const checks = {
     for (const [t, src] of [['customer', struct], ['section_code', struct], ['status_code', struct], ['project', struct], ['title_code', users]]) {
       const c = tableComment(src, t);
       assert.ok(c, `${t} 의 표 COMMENT 를 정본에서 찾지 못했다`);
+      //  뒤 판의 이관 조각이 표 설명을 다시 썼으면(2026-10-26 v19 의 section_code, status_code) 정본은 그 조각과 같고,
+      //  이 이관 파일(구조 13 을 만든 기록)은 그 앞 판의 글자를 그대로 둔다. 기록 파일은 고치지 않는다.
+      if (later[t] !== undefined) {
+        assert.strictEqual(c, later[t].text, `${t} 의 정본 표 COMMENT 가 그것을 마지막으로 바꾼 이관 조각(${later[t].from})과 다르다`);
+        assert.ok(new RegExp(`ALTER TABLE ${t}\\b[^;]*\\bCOMMENT = '[^']*';`).test(mig), `${MIG_NAME} 가 ${t} 표 COMMENT 를 걸지 않는다`);
+        assert.ok(!/—|–/.test(c), `${t} 의 새 표 COMMENT 에 대시가 있다`);
+        continue;
+      }
       assert.ok(mig.includes(`COMMENT = '${c}';`), `${MIG_NAME} 의 ${t} 표 COMMENT 가 정본과 다르다(정본: ${c})`);
       assert.ok(mig.includes(`'${c}'`), `${MIG_NAME} 사후 검증이 ${t} 표 COMMENT 를 정본 문자열로 대조하지 않는다`);
       assert.ok(!/—|–/.test(c), `${t} 의 새 표 COMMENT 에 대시가 있다`);

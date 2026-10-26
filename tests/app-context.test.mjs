@@ -2304,8 +2304,8 @@ if (!JSDOM) {
     // (배선 누락 = 0건인데 눌러서 빈 파일이 나오는 실버그)를 진짜 DOM에서 확인한다.
     const seedCatalog = (rows) => {
       ev('dbCatalog = ' + JSON.stringify(rows) + ';');
-      ev("var __c = document.getElementById('offActiveOnly'); if(__c) __c.checked = false;");
-      ev("['offSearch','offCustomer','offSection','offStatus'].forEach(function(id){var e=document.getElementById(id); if(e) e.value='';});");
+      ev('offStReset();');   // 상태 체크박스는 모두 켬(PROJECT-ADMIN-UX §1.2)
+      ev("['offSearch','offCustomer','offSection'].forEach(function(id){var e=document.getElementById(id); if(e) e.value='';});");
       ev('offFillSelects(); renderOfficialList();');
     };
 

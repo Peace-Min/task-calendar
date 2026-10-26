@@ -465,7 +465,7 @@ namespace TaskCalendarWidget
         {
             "adminWinReady", "userInfoGet", "gateRecheck",                          // 창이 뜸, 관리자 확인(허브의 틀), 관문 재확인
             "loadProjects", "loadCustomers", "loadCodes",                           // 목록 읽기(회신은 목록 갱신 알림. 메인 창도 함께 받는다)
-            "saveProject", "setProjectActive", "exportProjectsXlsx", "openFolder",  // 공식 과제(저장, 숨김, 엑셀 내보내기와 그 폴더 열기)
+            "saveProject", "setProjectActive", "projectReorder", "exportProjectsXlsx", "openFolder",  // 공식 과제(저장, 숨김, 순서, 엑셀 내보내기와 그 폴더 열기)
             "loadCustomersFull", "addCustomer", "renameCustomer", "setCustomerActive", "customerRefCount",   // 발주처
             "getCodesFull", "codeAdd", "codeRename", "codeSetActive", "codeReorder", "codeRefCount",         // 구분, 상태
             "roomsFull", "roomAdd", "roomRename", "roomDelete", "roomReorder",                               // 회의실
@@ -700,6 +700,10 @@ namespace TaskCalendarWidget
                         break;
                     case "setProjectActive":   // 소프트삭제(active=false)/복구 — 목록에서 감추기
                         _ = SetProjectActiveAsync(GetStr(doc, "uid"), GetBool(doc, "active"));
+                        break;
+                    case "projectReorder":     // 구분 하나의 보이는 과제 전부를 새 순서로(PROJECT-ADMIN-UX §1.1). 회신 {ok,msg,stale}
+                        //  ★ 구분은 번호(sectionId), 과제는 uid 배열(uids)이다. 권한은 과제 편집과 같다(ProjectDb.OpenWriteAsync).
+                        _ = RunReorderProjectsAsync(GetStr(doc, "reqId"), GetInt(doc, "sectionId"), GetStrArray(doc, "uids"));
                         break;
 
                     // ----- 발주처(customer) 마스터 관리 — 이름만. 회신은 ReplyOnUi(reqId)로 {ok,msg,count?} -----
@@ -1152,6 +1156,9 @@ namespace TaskCalendarWidget
         // ★ 장표 컬럼 정의의 단일 소스(템플릿 v2 — 자체 서식 확정, 2026-07-22 사용자 승인).
         //   Field = 웹이 보내는 행 객체의 키(웹은 값만 만들고 순서·제목·너비·정렬은 모른다).
         //   Field가 빈 문자열인 열 = 연번(No) — 호스트가 배열 순서로 채운다(화면 정렬 순서가 곧 연번).
+        //     ★ 2026-10-26(PROJECT-ADMIN-UX §1.1): No 는 그 구분 안의 순서다(사업부 장표의 No). 웹이 행마다 싣는 no(화면의 No,
+        //       거른 뒤에도 전체 목록 기준)가 1 이상의 정수면 그 값을 쓴다. 없으면 구분마다 1 부터 센다(행의 구분 sectionId,
+        //       없으면 section 이름이 앞 행과 달라지면 1 로 돌아간다). 웹은 구분 묶음 순서대로 보낸다(offExportRows).
         //   '사용여부' 열은 두지 않는다 — LoadProjectsJsonAsync가 is_active=1만 읽어 숨김 행이 애초에 오지 않으므로
         //   전 행이 "사용"인 상수 열이 된다(장표에서 상수 열은 노이즈). 그 사실은 부제의 '숨김 과제 제외'가 담는다.
         private static readonly (string Header, string Field, double Width, XlsxWriter.Align Align, bool IsDate, bool Wrap)[] ProjectExportCols =
@@ -1216,6 +1223,19 @@ namespace TaskCalendarWidget
             return list;
         }
 
+        // 엑셀 No: 웹이 실은 no(1 이상의 정수)가 있으면 그것, 없으면 구분마다 센 값(running).
+        private static int ProjectExportNo(JsonElement r, int running) =>
+            r.TryGetProperty("no", out var nv) && nv.ValueKind == JsonValueKind.Number && nv.TryGetInt32(out int n) && n >= 1 ? n : running;
+
+        // 엑셀 No 의 묶음 열쇠: 구분 번호(sectionId)가 있으면 번호, 없으면 구분 이름(section). 둘 다 없으면 빈 묶음 하나.
+        private static string ProjectExportGroupKey(JsonElement r)
+        {
+            if (r.TryGetProperty("sectionId", out var sid) && sid.ValueKind == JsonValueKind.Number && sid.TryGetInt32(out int n))
+                return "#" + n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (r.TryGetProperty("section", out var sn) && sn.ValueKind == JsonValueKind.String) return "@" + (sn.GetString() ?? "").Trim();
+            return "";
+        }
+
         // 웹이 보낸 rows(객체 배열)를 컬럼 순서의 문자열 배열로 확정. 없는 키/비문자열 값은 빈 문자열
         // (웹이 이미 정규화해 보내지만, 여기서도 "null" 문자열이 새지 않게 한 번 더 잠근다).
         private static List<XlsxWriter.Row> ReadProjectExportRows(JsonDocument doc)
@@ -1223,16 +1243,19 @@ namespace TaskCalendarWidget
             var list = new List<XlsxWriter.Row>();
             if (!doc.RootElement.TryGetProperty("rows", out var arr) || arr.ValueKind != JsonValueKind.Array) return list;
             int no = 0;
+            string? groupKey = null;
             foreach (var r in arr.EnumerateArray())
             {
                 if (r.ValueKind != JsonValueKind.Object) continue;
+                string key = ProjectExportGroupKey(r);
+                if (!string.Equals(key, groupKey, StringComparison.Ordinal)) { groupKey = key; no = 0; }   // 구분이 바뀌면 No 를 1 부터
                 no++;
                 var cells = new string[ProjectExportCols.Length];
                 for (int i = 0; i < ProjectExportCols.Length; i++)
                 {
                     string field = ProjectExportCols[i].Field;
                     // WPF 파일이라 using System.Globalization을 들이지 않는다(Calendar 등 이름 충돌 여지) — 한 곳뿐이므로 전체 한정.
-                    if (field.Length == 0) { cells[i] = no.ToString(System.Globalization.CultureInfo.InvariantCulture); continue; }   // No = 연번
+                    if (field.Length == 0) { cells[i] = ProjectExportNo(r, no).ToString(System.Globalization.CultureInfo.InvariantCulture); continue; }   // No = 구분 안 순서
                     cells[i] = r.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.String
                         ? (v.GetString() ?? "") : "";
                 }
@@ -1454,6 +1477,17 @@ namespace TaskCalendarWidget
             var (ok, msg) = await _projectDb.SetProjectActiveAsync(uid, active);
             ProjectSaved(ok, msg);   // needConfirm 기본 false — 숨김/복구엔 소프트경고 없음
             if (ok) await LoadProjectsToWebAsync();
+        }
+
+        // 과제 순서 저장(PROJECT-ADMIN-UX §1.1). 회신 {ok, msg, stale, kind, error}: stale=true(kind "stale")는 그사이 다른 관리자가
+        //   그 구분의 과제를 바꿔 받은 목록이 낡았다는 뜻이다(아무것도 쓰지 않았다). 그 밖의 실패는 kind "error" 이고 error 가 사용자 문장이다
+        //   (msg 와 같은 글자). 성공이든 낡음이든 새 목록을 두 창에 다시 보낸다(__applyProjects). 웹은 따로 loadProjects 를 보내지 않아도 된다.
+        private async Task RunReorderProjectsAsync(string reqId, int sectionId, List<string> uids)
+        {
+            var (ok, msg, stale) = await _projectDb.ReorderProjectsAsync(sectionId, uids);
+            string kind = ok ? "" : stale ? "stale" : "error";
+            ReplyOnUi(reqId, new { ok, msg, stale, kind, error = ok ? "" : msg });
+            if (ok || stale) await LoadProjectsToWebAsync();
         }
 
         // ----- 발주처(customer) 관리 — 회신은 ReplyOnUi(=UI 스레드 마샬)로만. 재조회(loadProjects/loadCustomers)는

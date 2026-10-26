@@ -1754,9 +1754,12 @@ CREATE TABLE cal_schema_meta (
 --       커밋 기록(cal_entry.source = 'git')과 cal_entry_commit 을 지우고, cal_entry.source, cal_category.uses_repo,
 --       cal_user_pref.git_author, svn_author, git_commit_body 와 그 CHECK 넷을 지운다(위 4. 참조). 표 수가 하나 준다.
 --       앱 상수는 DbGate.AppStructureVersion(18).
+--   - 19 (2026-10-26): 과제 순서(이관 조각 db/deploy/migrations/v19-project-order.sql, docs/PROJECT-ADMIN-UX.md).
+--       project.sort_no(그 구분 안의 순서, 정본 schema-structure.sql)를 더하고 section_code, status_code 의 표 설명에서
+--       고정 번호 문구를 지운다. 이 파일의 cal_* 는 바뀌지 않았다. 앱 상수는 DbGate.AppStructureVersion(19).
 --   ★ app_ 세 키는 빈 값으로 시딩한다(새 버전 없음). 배포 때 release-v<버전>.sql 이 채운다(DB-RELEASE-OPS §4).
 --   ★ 첫 줄(db_structure_version)의 모양을 바꾸지 말 것. setup-taskcalendar.ps1 과 시험이 이 줄에서 기대값을 읽는다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '18', UTC_TIMESTAMP(3)),
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '19', UTC_TIMESTAMP(3)),
   ('db_updating', '0', UTC_TIMESTAMP(3)),
   ('app_latest_version', '', UTC_TIMESTAMP(3)),
   ('app_installer_file', '', UTC_TIMESTAMP(3)),

@@ -37,7 +37,7 @@ const member = (src, sig) => extractCsMember(src, sig);
 //  관리 화면이 쓰는 명령(코드에서 하나씩 셌다: 허브 관리자 확인, 공식 과제, 발주처, 구분과 상태, 회의실, 구성원과 직원 편집, 직급, 소속, 휴지통).
 const ADMIN_CMDS = ['adminWinReady', 'userInfoGet', 'gateRecheck',
   'loadProjects', 'loadCustomers', 'loadCodes',
-  'saveProject', 'setProjectActive', 'exportProjectsXlsx', 'openFolder',
+  'saveProject', 'setProjectActive', 'projectReorder', 'exportProjectsXlsx', 'openFolder',   // projectReorder: 과제 순서(2026-10-26 PROJECT-ADMIN-UX §1.1)
   'loadCustomersFull', 'addCustomer', 'renameCustomer', 'setCustomerActive', 'customerRefCount',
   'getCodesFull', 'codeAdd', 'codeRename', 'codeSetActive', 'codeReorder', 'codeRefCount',
   'roomsFull', 'roomAdd', 'roomRename', 'roomDelete', 'roomReorder',

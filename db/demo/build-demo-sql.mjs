@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import * as D from './demo-data.mjs';
 
-export const SCHEMA_VERSION = '18';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
+export const SCHEMA_VERSION = '19';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
 export const LOGIN_RE = /^[A-Za-z0-9._@-]{1,50}$/;
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -125,8 +125,11 @@ const monthEnd = (base, off) => utc(base.getUTCFullYear(), base.getUTCMonth() + 
 // ── 공식 과제 ───────────────────────────────────────────────────────────
 export function projectRows(baseDate) {
   const { base } = dateRange(baseDate);
+  //  과제 순서(구조 19, sort_no): 구분마다 PROJECTS 에 적은 순서대로 1 부터(관리 화면의 No).
+  const seen = {};
   return D.PROJECTS.map((p, i) => ({
     id: i + 1,
+    sortNo: (seen[p.section] = (seen[p.section] || 0) + 1),
     key: p.key,
     uid: uuidFrom('project:' + p.key),
     sectionId: p.section,
@@ -390,8 +393,8 @@ export function buildDemoSql({ myLogin, baseDate }) {
     'DELETE FROM customer;',
     'INSERT INTO customer (customer_id, name, is_active) VALUES',
     D.CUSTOMERS.map((c, i) => `  (${i + 1}, ${sqlStr(c)}, 1)`).join(',\n') + ';',
-    'INSERT INTO project (id, uid, section_id, customer_id, project_name, contract_name, common_name, start_date, end_date, dev_end_date, status_id, note, is_active) VALUES',
-    projects.map((p) => `  (${p.id}, ${sqlStr(p.uid)}, ${p.sectionId}, ${p.customerId}, ${sqlStr(p.projectName)}, ${sqlStr(p.contractName)}, ${sqlStr(p.commonName)}, ${lit(p.startDate)}, ${lit(p.endDate)}, ${lit(p.devEndDate)}, ${lit(p.statusId)}, '', 1)`).join(',\n') + ';',
+    'INSERT INTO project (id, uid, section_id, customer_id, project_name, contract_name, common_name, start_date, end_date, dev_end_date, status_id, sort_no, note, is_active) VALUES',
+    projects.map((p) => `  (${p.id}, ${sqlStr(p.uid)}, ${p.sectionId}, ${p.customerId}, ${sqlStr(p.projectName)}, ${sqlStr(p.contractName)}, ${sqlStr(p.commonName)}, ${lit(p.startDate)}, ${lit(p.endDate)}, ${lit(p.devEndDate)}, ${lit(p.statusId)}, ${p.sortNo}, '', 1)`).join(',\n') + ';',
     '',
     '-- 3b) 회사 공용 회의실(room_code, 2026-10-21 SHARED-ROOMS). 사람마다 두던 cal_room 은 없어졌다',
     'DELETE FROM room_code;',

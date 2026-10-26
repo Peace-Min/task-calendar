@@ -57,7 +57,7 @@ const checks = {
     at(/HEX\('가나다'\) = 'EAB080EB8298EB8BA4'/, '문자셋 가드');
     at(/@n_tbl = \d+, 'DO 0'/, '표 존재 가드');
     assert.ok(/SET @v := \(SELECT v FROM cal_schema_meta WHERE k = 'db_structure_version'\);/.test(c), 'SQL 이 구조 번호를 db_structure_version 키로 읽지 않는다');
-    const ver = at(/IF\(@v <=> '18', 'DO 0', 'SELECT 1 FROM `중단: [^`]+`'\)/, 'db_structure_version 18 가드');
+    const ver = at(/IF\(@v <=> '19', 'DO 0', 'SELECT 1 FROM `중단: [^`]+`'\)/, 'db_structure_version 19 가드');
     const me = at(/IF\(@n_me = 1, 'DO 0'/, '녹화 계정 존재 가드');
     at(/IF\(@n_other_active >= 3, 'DO 0'/, '동료 수 가드');
     at(/IF\(@n_my_dummy = 0, 'DO 0'/, '녹화 계정과 가상 명단 겹침 가드');
@@ -161,9 +161,11 @@ test('데모②: 공식 과제, 발주처, 장소는 모두 (예시) 로 시작�
   }
   assert.ok(rows.some((p) => p.sectionId === 2 && p.startDate === null && p.contractName === ''), '선진행 과제(날짜와 계약명 비움)가 없다');
   assert.ok(rows.some((p) => p.statusId === 2), '종료 과제가 없다');
-  //  선진행(구분 2)은 앱 규칙대로 날짜와 상태가 비어 있어야 한다(ProjectDb 의 선진행 판정과 같은 모양).
-  for (const p of rows.filter((r) => r.sectionId === 2)) {
-    assert.ok(p.statusId === null && p.startDate === null && p.endDate === null, `선진행 과제 ${p.commonName} 에 날짜나 상태가 있다`);
+  //  (2026-10-26 PROJECT-ADMIN-UX §1.4: 선진행이면 날짜와 상태를 비우던 앱 규칙을 지웠다. 위 한 줄은 예시 데이터의 모양만 본다.)
+  //  과제 순서(구조 19, sort_no): 구분마다 1 부터 빈틈 없이(관리 화면의 No).
+  for (const sec of new Set(rows.map((p) => p.sectionId))) {
+    const nos = rows.filter((p) => p.sectionId === sec).map((p) => p.sortNo);
+    assert.deepStrictEqual(nos, nos.map((_, i) => i + 1), `구분 ${sec} 의 과제 순서가 1 부터 빈틈 없이가 아니다: ${nos}`);
   }
   assert.deepStrictEqual([...new Set(rows.map((p) => p.sectionId))].sort(), [1, 2, 3], '구분이 섞여 있지 않다');
   assert.strictEqual(D.CUSTOMERS.length, 5, '발주처가 5개가 아니다');
@@ -215,7 +217,7 @@ test('데모④: SQL 은 계정, 권한, DDL, 조직과 코드표, 판번호를 
 
 test('변이③④②: 가드를 빼거나 금지 문장을 넣으면 검사가 잡는다', () => {
   const muts = [
-    [checks.sqlGuards, mutate(sql, "IF(@v <=> '18', 'DO 0',", "IF(1, 'DO 0',")],
+    [checks.sqlGuards, mutate(sql, "IF(@v <=> '19', 'DO 0',", "IF(1, 'DO 0',")],
     [checks.sqlGuards, mutate(sql, 'IF(@n_me = 1, ', 'IF(1, ')],
     [checks.sqlGuards, mutate(sql, '\nSTART TRANSACTION;\n', '\n')],
     [checks.sqlGuards, mutate(sql, 'IF(@fp_user2 = @fp_user, ', 'IF(1, ')],
@@ -334,7 +336,7 @@ test('데모⑥: 지우는 표와 그대로 두는 표가 스키마의 cal_* 표
     '구분 코드 고정 번호(1 일반계약, 2 선진행, 3 사업부관리)가 바뀌었다. demo-data.mjs 의 section 번호를 함께 볼 것');
   assert.ok(/\(1, '진행중', 10\), \(2, '종료', 20\), \(3, '1차 납품완료', 30\), \(4, '미정', 40\);/.test(schemaStruct),
     '상태 코드 고정 번호가 바뀌었다. demo-data.mjs 의 status 번호를 함께 볼 것');
-  assert.ok(/INSERT INTO cal_schema_meta \(k, v, updated_at\) VALUES \('db_structure_version', '18'/.test(schemaCal), '구조 번호가 18 이 아니다. SCHEMA_VERSION 을 함께 올릴 것');
+  assert.ok(/INSERT INTO cal_schema_meta \(k, v, updated_at\) VALUES \('db_structure_version', '19'/.test(schemaCal), '구조 번호가 19 가 아니다. SCHEMA_VERSION 을 함께 올릴 것');
 });
 
 // ══ ⑦ ps1 과 .cmd 의 공통 계약 ═════════════════════════════════════════

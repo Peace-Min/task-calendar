@@ -5,10 +5,11 @@
 //      빈틈과 겹침, 끝 = 앱 구조 번호. 어기면 정해진 종료코드로 실패한다(빌드 전에 publish-update.ps1 이 부른다).
 //   ② 만들어진 SQL 의 모양: 잠금 대기 상한, 확인이 닫기보다 먼저, 닫기가 첫 조각보다 먼저, 조각은 구조 번호 순서,
 //      끝 확인 뒤 마지막 한 트랜잭션에 네 키(app_ 셋과 db_updating 0), 그 뒤 결과 표. 멈춤은 모두 '없는 표 SELECT'.
-//   ③ 상태 전이(흉내 실행기 tests/release-sql-sim.mjs): 실제 사슬(13 에서 14, 14 에서 15, 15 에서 16, 16 에서 17, 17 에서 18) 그대로.
-//      13 에서 처음(다섯 조각을 몰아서), 14 에서 네 칸, 16 에서 두 칸, 17 에서 한 칸, 앱만 바뀐 배포(닫지 않는다), 성공 뒤 재실행(바뀌는 것 없음),
+//   ③ 상태 전이(흉내 실행기 tests/release-sql-sim.mjs): 실제 사슬(13 에서 14, 14 에서 15, 15 에서 16, 16 에서 17, 17 에서 18, 18 에서 19) 그대로.
+//      13 에서 처음(여섯 조각을 몰아서), 14 에서 다섯 칸, 16 에서 세 칸, 17 에서 두 칸, 18 에서 한 칸, 앱만 바뀐 배포(닫지 않는다), 성공 뒤 재실행(바뀌는 것 없음),
 //      마지막 조각 뒤에 멈춘 DB 마무리, 새 DB, 낮은 DB, 이상한 값, v15 회의실 검증 멈춤, v16 과제 캘린더 표 모양 검증 멈춤,
 //      v17 월간보고(칸, CHECK, 그림 표) 검증 멈춤, v18 Git, SVN 삭제(커밋 기록, 커밋 목록 표, 칸과 CHECK) 결과와 검증 멈춤,
+//      v19 과제 순서(칸, 코드표 표 설명, 보이는 과제의 처음 순서) 결과와 검증 멈춤,
 //      실제 사슬 뒤에 시험 조각을 붙인 건너뛴 배포,
 //      그리고 바꾸는 문장마다 실패를 넣어 보고 같은 파일을 다시 돌리면 끝나는지, 그 사이 앱에 반쯤 바뀐 상태(meta 와 표)가 보이지 않는지.
 //   ④ 조각 폴더의 모든 파일이 조각 규칙(§5.2)을 따른다.
@@ -20,7 +21,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, assert, readText } from './harness.mjs';
 import { mutate, exitCodeTable, exitCodesInTable, maskPs } from './ps-guard-lib.mjs';
-import { FakeDb, splitStatements, defOf, PROJECT_V16, PROJECT_V17, VCS_V17, VCS_V18, PREF_COMMENT_V18 } from './release-sql-sim.mjs';
+import { FakeDb, splitStatements, defOf, PROJECT_V16, PROJECT_V17, PROJECT_V19, VCS_V17, VCS_V18, PREF_COMMENT_V18, CODES_V18, CODES_V19, V19_FILL } from './release-sql-sim.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const GEN = join(ROOT, 'installer', 'release-sql.ps1');
@@ -142,6 +143,19 @@ const VCS_ROWS18 = () => ({
   cal_entry: [{ user_id: 1, entry_no: 2 }, { user_id: 2, entry_no: 5 }],
   cal_entry_except: [{ user_id: 1, entry_no: 2, d: '2026-10-07' }],
 });
+//  19 부터는 과제에 sort_no(그 구분 안의 순서)가 있다(v19 조각). 18 까지의 DB 에는 과제 여섯이 있다: 구분 1 에 보이는 둘
+//  ('나', 통상명칭이 비어 사업명 '가사업'으로 보이는 것)과 숨긴 하나, 구분 3 에 'B', 'A', 구분 2 에 하나.
+//  v19 는 보이는 과제에 구분마다 표시 이름 순으로 1 부터 매기고(가사업 1, 나 2 / A 1, B 2 / 선 1) 숨긴 과제는 NULL 로 둔다.
+const PROJ_ROWS18 = () => [
+  { id: 1, section_id: 1, common_name: '나', project_name: '나사업', is_active: 1 },
+  { id: 2, section_id: 1, common_name: '', project_name: '가사업', is_active: 1 },
+  { id: 3, section_id: 1, common_name: '다', project_name: '다사업', is_active: 0 },
+  { id: 4, section_id: 3, common_name: 'B', project_name: 'B사업', is_active: 1 },
+  { id: 5, section_id: 3, common_name: 'A', project_name: 'A사업', is_active: 1 },
+  { id: 6, section_id: 2, common_name: '선', project_name: '선사업', is_active: 1 },
+];
+const PROJ_SORT19 = { 1: 2, 2: 1, 3: null, 4: 2, 5: 1, 6: 1 };
+const PROJ_ROWS19 = () => PROJ_ROWS18().map((r) => ({ ...r, sort_no: PROJ_SORT19[r.id] }));
 const T = {
   old: () => ({ cal_room: CAL_ROOMS, ...VCS_ROWS17() }),
   shared: () => ({ room_code: ROOM_CODES.map(([name, sort_order]) => ({ name, sort_order })) }),
@@ -149,7 +163,7 @@ const T = {
   si: () => ({ [SI_TABLE]: [] }),
 };
 const S = {
-  legacy13: () => ({ meta: { schema_version: '13' }, tables: T.old() }),
+  legacy13: () => ({ meta: { schema_version: '13' }, tables: { ...T.old(), project: PROJ_ROWS18() } }),
   at: (n, upd = '0', app = ['0.22.0', 'TaskCalendarWidget-Setup-v0.22.0.exe', 'cd'.repeat(32)]) => ({
     meta: {
       db_structure_version: String(n), db_updating: upd,
@@ -158,20 +172,23 @@ const S = {
     tables: {
       ...(Number(n) >= 17 ? { ...T.shared(), ...T.pc(), ...T.si() } : Number(n) >= 16 ? { ...T.shared(), ...T.pc() } : Number(n) >= 15 ? T.shared() : T.old()),
       ...(Number(n) >= 18 ? VCS_ROWS18() : VCS_ROWS17()),
+      project: Number(n) >= 19 ? PROJ_ROWS19() : PROJ_ROWS18(),
     },
     defs: Number(n) >= 17 ? { ...PC_DEFS, ...SI_DEFS } : Number(n) >= 16 ? PC_DEFS : {},
-    project: Number(n) >= 17 ? PROJECT_V17() : PROJECT_V16(),
+    project: Number(n) >= 19 ? PROJECT_V19() : Number(n) >= 17 ? PROJECT_V17() : PROJECT_V16(),
     vcs: Number(n) >= 18 ? VCS_V18() : VCS_V17(),
+    codes: Number(n) >= 19 ? CODES_V19() : CODES_V18(),
   }),
 };
-const open = (init, opts = {}) => new FakeDb(init.meta, { tables: init.tables || {}, defs: init.defs || {}, project: init.project || PROJECT_V16(), vcs: init.vcs || VCS_V17(), ...opts });
+const open = (init, opts = {}) => new FakeDb(init.meta, { tables: init.tables || {}, defs: init.defs || {}, project: init.project || PROJECT_V16(), vcs: init.vcs || VCS_V17(), codes: init.codes || CODES_V18(), ...opts });
 const stateOf = (init) => open(init).state();
 const finalMeta = (n) => ({ db_structure_version: String(n), db_updating: '0', app_latest_version: VER, app_installer_file: FILE, app_installer_sha256: SHA });
 //  끝 상태(meta 와 표): 공용 회의실 목록 하나, cal_room 없음, 과제 캘린더 표 둘과 그림 표(정본과 같은 모양), project 에 개발 시작일 칸과 CHECK,
-//  일반 일정과 예외일만(커밋 기록, cal_entry_commit, 지울 칸과 CHECK 없음, cal_user_pref 표 설명은 18)
-const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si(), ...VCS_ROWS18() }, defs: { ...PC_DEFS, ...SI_DEFS }, project: PROJECT_V17(), vcs: VCS_V18() }).state();
+//  일반 일정과 예외일만(커밋 기록, cal_entry_commit, 지울 칸과 CHECK 없음, cal_user_pref 표 설명은 18),
+//  과제에 순서 칸과 처음 순서(보이는 과제만), 코드표 표 설명은 19
+const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si(), ...VCS_ROWS18(), project: PROJ_ROWS19() }, defs: { ...PC_DEFS, ...SI_DEFS }, project: PROJECT_V19(), vcs: VCS_V18(), codes: CODES_V19() }).state();
 const FINAL_TABLES = FINAL_DB['#tables'];
-const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES, '#project': FINAL_DB['#project'], '#vcs': FINAL_DB['#vcs'] });
+const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES, '#project': FINAL_DB['#project'], '#vcs': FINAL_DB['#vcs'], '#codes': FINAL_DB['#codes'] });
 const sortObj = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
 const same = (a, b) => JSON.stringify(sortObj(a)) === JSON.stringify(sortObj(b));
 
@@ -307,6 +324,9 @@ const checks = {
     const iGit = ['table:cal_entry', 'table:cal_entry_commit', 'check:chk_cal_entry_git', 'col:cal_entry.source', 'col:cal_user_pref.git_commit_body']
       .map((k) => db.writes.findIndex((w) => w.k === k));
     assert.ok(iGit[0] > iMr[2] && iGit.every((x, k) => k === 0 || x > iGit[k - 1]), `v18(지우기, 표, CHECK, 칸)이 v17 뒤에 차례로 돌지 않는다: ${iGit}`);
+    //  v19: 순서 칸, 코드표 표 설명 둘, 처음 순서 채우기 순서이고 v18 뒤다
+    const iOrd = ['col:project.sort_no', 'comment:section_code', 'comment:status_code', 'table:project'].map((k) => db.writes.findIndex((w) => w.k === k));
+    assert.ok(iOrd[0] > iGit[iGit.length - 1] && iOrd.every((x, k) => k === 0 || x > iOrd[k - 1]), `v19(칸, 표 설명, 순서 채우기)가 v18 뒤에 차례로 돌지 않는다: ${iOrd}`);
     assertNoHalfOpen(db, stateOf(init), finalState(APP), '13 에서 처음');
     //  성공 뒤 다시 돌리면 바뀌는 것이 없다
     const n = db.writes.length, before = db.stamps(), shape = db.state();
@@ -486,7 +506,54 @@ const checks = {
     assert.ok(db.hasCol('cal_entry', 'source') && db.hasTable('cal_entry_commit'), '커밋 기록이 남았는데 칸이나 표를 지웠다');
     assertNoHalfOpen(db, stateOf(mk()), null, 'v18 커밋 기록 남음');
   },
+  // v19 결과: 순서 칸이 status_id 뒤에 생기고, 코드표 표 설명이 19 가 되고, 보이는 과제에 구분마다 표시 이름 순 1 부터, 숨긴 과제는 NULL
+  orderAdded(sql) {
+    const db = open(S.at(18));
+    const r = db.run(sql);
+    assert.ok(r.ok, `18 에서 19 로 올리는 배포가 끝나지 않는다: ${JSON.stringify(r)}`);
+    assert.deepStrictEqual(db.project, PROJECT_V19(), `project 모양이 정본(v19, status_id 뒤 sort_no)과 다르다: ${JSON.stringify(db.project)}`);
+    assert.deepStrictEqual(db.codes, CODES_V19(), `코드표 표 설명이 19 가 아니다: ${JSON.stringify(db.codes)}`);
+    const got = Object.fromEntries(db.tables.project.map((x) => [x.id, x.sort_no]));
+    assert.deepStrictEqual(got, PROJ_SORT19, `처음 순서가 (구분마다 표시 이름 순 1 부터, 숨긴 과제 NULL) 이 아니다: ${JSON.stringify(got)}`);
+    assert.strictEqual(db.writes.find((w) => w.k === 'table:project')?.v, 'sort_no+5', '보이는 과제 다섯에만 순서를 매기지 않았다');
+    //  다시 돌려도 바뀌는 것이 없다(조각은 건너뛰고 열기는 같은 값이라 0행)
+    const n = db.writes.length, shape = db.state();
+    assert.ok(db.run(sql).ok, '18 에서 올린 뒤 다시 돌리면 끝나야 한다');
+    assert.strictEqual(db.writes.length, n, `다시 돌렸는데 ${db.writes.length - n}행을 바꿨다`);
+    assert.ok(same(db.state(), shape), '다시 돌렸는데 표나 칸이 바뀌었다');
+  },
+  // v19 이어서 끝내기: 칸이 이미 있고 일부에 번호가 있으면(앞선 실행이 남긴 값) 그 번호는 두고, 빈 것만 그 구분의 최댓값 뒤에 붙인다
+  orderKeeps(sql) {
+    const init = S.at(18);
+    init.project = PROJECT_V19();
+    init.tables.project = PROJ_ROWS18().map((x) => ({ ...x, sort_no: x.id === 1 ? 7 : null }));
+    const db = open(init);
+    const r = db.run(sql);
+    assert.ok(r.ok, `순서 칸이 이미 있는 18 에서 올리는 배포가 끝나지 않는다: ${JSON.stringify(r)}`);
+    const got = Object.fromEntries(db.tables.project.map((x) => [x.id, x.sort_no]));
+    assert.deepStrictEqual(got, { 1: 7, 2: 8, 3: null, 4: 2, 5: 1, 6: 1 }, `이미 있던 번호를 두고 빈 것만 그 구분의 최댓값 뒤에 붙이지 않았다: ${JSON.stringify(got)}`);
+  },
+  // v19 검증: 같은 이름의 다른 모양 칸이 있거나(형, 자리), 표 설명이나 순서 채우기가 빠지면 닫힌 채 멈추고 구조 번호를 올리지 않는다
+  orderVerify(sql, label, mk = () => S.at(18)) {
+    const db = open(mk());
+    const r = db.run(sql);
+    assert.ok(!r.ok && /v19 조각 검증 실패/.test(r.stop || ''), `${label}: v19 검증에서 멈추지 않았다: ${JSON.stringify(r)}`);
+    assert.strictEqual(db.meta().db_updating, '1', `${label}: v19 검증에서 멈췄는데 닫힌 상태(db_updating 1)가 아니다`);
+    assert.strictEqual(db.meta().db_structure_version, '18', `${label}: v19 검증에서 멈췄는데 구조 번호가 올라갔다`);
+    assertNoHalfOpen(db, stateOf(mk()), null, `v19 검증 멈춤(${label})`);
+  },
 };
+//  v19 검증이 잡아야 하는 출발 모양(같은 이름의 다른 칸)
+const V19_BAD_SHAPES = [
+  ['순서 칸 형이 다름(부호 있는 INT)', () => { const x = S.at(18); x.project.cols.splice(x.project.cols.indexOf('status_id:smallint?') + 1, 0, 'sort_no:int?'); return x; }],
+  ['순서 칸 자리가 다름(맨 끝)', () => { const x = S.at(18); x.project.cols.push('sort_no:int unsigned?'); return x; }],
+];
+//  v19 의 바꾸기 단계(검증이 잡아야 하는 것): 조건 앞부분 글자. 하나씩 IF(0 …) 로 꺼서 ③k3 과 변이에 쓴다.
+const V19_STEPS = [
+  ['구분 표 설명', "SET @s := IF(@go, 'ALTER TABLE section_code COMMENT"],
+  ['상태 표 설명', "SET @s := IF(@go, 'ALTER TABLE status_code COMMENT"],
+  ['처음 순서 채우기', "SET @s := IF(@go,\n  'UPDATE project p"],
+];
 
 // ══ ④ 조각 폴더 ═══════════════════════════════════════════════════════
 test('배포SQL④: db/deploy/migrations 의 조각은 모두 머리, 자기 건너뛰기, 구조 번호 올리기 한 줄, db_updating 쓰기 없음을 지킨다', () => {
@@ -538,10 +605,10 @@ test(`배포SQL③g2: 14 에서 올리면 v14 는 건너뛰고 v15(회의실), v
 test('배포SQL③h: v15 검증이 맞지 않으면(공용 목록에 모르는 이름) 닫힌 채 멈추고 cal_room 을 지우지 않는다', () => checks.roomVerify(realSql()));
 test('배포SQL③h2: v16 검증이 맞지 않으면(같은 이름의 다른 모양 표) 닫힌 채 멈추고 구조 번호를 올리지 않는다', () => checks.pcVerify(realSql()));
 test('배포SQL③h3: v17 검증이 맞지 않으면(그림 표 모양, 개발 시작일 형이나 자리) 닫힌 채 멈추고 구조 번호를 올리지 않는다', () => checks.mrVerify(realSql()));
-test('배포SQL③g3: 16 에서 올리면 project 모양이 정본(v17)과 같아지고, 칸 추가, CHECK, 그림 표 어디서 실패해도 다시 돌리면 끝난다', () => {
+test('배포SQL③g3: 16 에서 올리면 project 모양이 정본(v17 의 칸과 CHECK, v19 의 순서 칸)과 같아지고, 칸 추가, CHECK, 그림 표 어디서 실패해도 다시 돌리면 끝난다', () => {
   const db = open(S.at(16));
   assert.ok(db.run(realSql()).ok, '16 에서 올리는 배포가 끝나지 않는다');
-  assert.strictEqual(db.state()['#project'], JSON.stringify(PROJECT_V17()), `16 에서 올린 project 모양이 정본(v17)과 다르다: ${db.state()['#project']}`);
+  assert.strictEqual(db.state()['#project'], JSON.stringify(PROJECT_V19()), `16 에서 올린 project 모양이 정본(v19)과 다르다: ${db.state()['#project']}`);
   checks.faults(realSql(), () => S.at(16), APP, '16 에서');
 });
 test('배포SQL③j: 17 에서 18 로 올리면 커밋 기록(자식 행 포함)과 cal_entry_commit, 출처, 저장소, 작성자 칸과 CHECK 가 지워지고 다시 돌려도 그대로다', () =>
@@ -562,6 +629,37 @@ test('배포SQL③j5: v18 의 cal_user_pref 표 설명은 정본 schema-calendar
   assert.strictEqual(m[1].replace(/''/g, "'"), PREF_COMMENT_V18, '정본 cal_user_pref 표 설명이 v18 조각(흉내 실행기 PREF_COMMENT_V18)과 다르다');
   const frag = readText(join(FRAG_DIR, 'v18-remove-git.sql'));
   assert.ok(frag.includes(`ALTER TABLE cal_user_pref COMMENT = ''${PREF_COMMENT_V18}''`), 'v18 조각의 표 설명이 정본과 다르다');
+});
+test('배포SQL③k: 18 에서 19 로 올리면 순서 칸(status_id 뒤), 코드표 표 설명, 보이는 과제의 처음 순서(구분마다 표시 이름 순)가 생기고 다시 돌려도 그대로다', () =>
+  checks.orderAdded(realSql()));
+test('배포SQL③k2: 순서 칸이 이미 있고 일부에 번호가 있으면 그 번호는 두고 빈 것만 그 구분의 최댓값 뒤에 붙인다', () => checks.orderKeeps(realSql()));
+test('배포SQL③k3: v19 검증이 맞지 않으면(칸의 형이나 자리, 표 설명 하나, 순서 채우기가 빠짐) 닫힌 채 멈추고 구조 번호를 올리지 않는다', () => {
+  for (const [label, mk] of V19_BAD_SHAPES) checks.orderVerify(realSql(), label, mk);
+  for (const [label, from] of V19_STEPS) checks.orderVerify(mutate(realSql(), from, from.replace('IF(@go', 'IF(0')), label);
+});
+test('배포SQL③k4: 17 에서 19 까지 두 칸을 몰아 올려도 같은 끝 상태가 되고, 어디서 실패해도 다시 돌리면 끝난다', () => {
+  const db = open(S.at(17));
+  assert.ok(db.run(realSql()).ok, '17 에서 19 까지 올리는 배포가 끝나지 않는다');
+  assert.ok(same(db.state(), finalState(APP)), `17 에서 올린 결과가 끝 상태가 아니다: ${JSON.stringify(db.state())}`);
+  checks.faults(realSql(), () => S.at(17), APP, '17 에서');
+});
+test('배포SQL③k5: v19 의 코드표 표 설명은 정본 schema-structure.sql 과 같은 글자다(흉내 실행기 CODES_V19 와 조각)', () => {
+  const struct = readText(join(ROOT, 'db', 'deploy', 'schema-structure.sql'));
+  const frag = readText(join(FRAG_DIR, 'v19-project-order.sql'));
+  for (const [t, c] of Object.entries(CODES_V19())) {
+    const m = new RegExp(`CREATE TABLE ${t} \\([\\s\\S]*?\\) ENGINE=InnoDB[^\\n]*\\n\\s*COMMENT='([^']*)';`).exec(struct);
+    assert.ok(m, `정본에서 ${t} 표 설명을 찾지 못했다(판정 불가)`);
+    assert.strictEqual(m[1], c, `정본 ${t} 표 설명이 v19(흉내 실행기 CODES_V19)와 다르다`);
+    assert.ok(frag.includes(`ALTER TABLE ${t} COMMENT = ''${c}''`), `v19 조각의 ${t} 표 설명이 정본과 다르다`);
+    assert.ok(frag.includes(`AND TABLE_COMMENT = '${c}'`), `v19 조각의 검증이 ${t} 표 설명을 정본 글자로 보지 않는다`);
+  }
+  //  흉내 실행기의 18 까지 표 설명은 2026-10-15 이관이 건 글자다(그 파일은 기록이라 고치지 않는다)
+  const mig = readText(join(ROOT, 'db', 'deploy', 'migrate-2026-10-15-code-ids.sql'));
+  for (const c of Object.values(CODES_V18())) assert.ok(mig.includes(`COMMENT = '${c}';`), `흉내 실행기 CODES_V18 이 2026-10-15 이관의 표 설명과 다르다: ${c}`);
+  //  흉내 실행기가 아는 순서 채우기 문장은 조각의 것과 글자까지 같다(공백만 접는다)
+  const body = /SET @s := IF\(@go,\n  '(UPDATE project p[\s\S]*?)',\n  'DO 0'\);/.exec(frag);
+  assert.ok(body, 'v19 조각에서 순서 채우기를 찾지 못했다(판정 불가)');
+  assert.strictEqual(body[1].replace(/''/g, "'").replace(/\s+/g, ' ').trim(), V19_FILL, '흉내 실행기 V19_FILL 이 조각의 순서 채우기와 다르다');
 });
 test(`배포SQL③i: 건너뛴 배포(13, 14, ${APP} 에서 ${NEXT})는 조각을 차례로 돌리고, 어디서 실패해도 다시 돌리면 끝난다`, () => {
   checks.extended(extSql());
@@ -633,7 +731,8 @@ test('변이R11: v17 이 칸, CHECK, 그림 표 모양을 검증하지 않으면
   assert.throws(() => checks.mrVerify(bad), /멈추지 않았다/);
 });
 test('변이R12: v17 이 칸이 있는지 보지 않고 늘 더하면 중간 실패 뒤 재실행이 멈춘다(③g3 실패)', () => {
-  const bad = mutate(realSql(), 'SET @s := IF(@go AND @m_col = 0,', 'SET @s := IF(@go,');
+  //  2026-10-26 v19 도 같은 모양의 칸 확인을 써서 앵커에 v17 의 칸 이름까지 넣는다.
+  const bad = mutate(realSql(), "SET @s := IF(@go AND @m_col = 0,\n  'ALTER TABLE project ADD COLUMN dev_start_date", "SET @s := IF(@go,\n  'ALTER TABLE project ADD COLUMN dev_start_date");
   assert.throws(() => checks.faults(bad, () => S.at(16), APP, '16 에서'), /다시 돌려도 끝나지 않는다/);
 });
 test('변이R13: v17 이 CHECK 가 있는지 보지 않고 늘 걸면 중간 실패 뒤 재실행이 멈춘다(③g3 실패)', () => {
@@ -672,6 +771,27 @@ test('변이R18: v18 이 칸이 있는지 보지 않고 늘 지우면 중간 실
 test('변이R19: v18 이 source 칸이 없어도 커밋 기록을 지우려 하면(칸 확인 빼기) 중간 실패 뒤 재실행이 멈춘다(③g 실패)', () => {
   const bad = mutate(realSql(), "SET @s := IF(@go AND @m_src = 1,\n  'DELETE FROM cal_entry", "SET @s := IF(@go,\n  'DELETE FROM cal_entry");
   assert.throws(() => checks.faults(bad, () => S.at(17), APP, '17 에서'), /다시 돌려도 끝나지 않는다/);
+});
+test('변이R21: v19 검증을 끄면(칸 모양이 다르거나 단계 하나가 빠진 조각) ③k3 이 실패한다', () => {
+  const sql = realSql();
+  const i = sql.indexOf('SET @g := IF(NOT @go OR (@m_cty = 1 AND @m_pos = 1 AND @m_c1 = 1');
+  assert.ok(i >= 0, '변이 준비 실패: v19 검증을 찾지 못했다');
+  const off = sql.slice(0, i) + 'SET @g := IF(1 OR ' + sql.slice(i + 'SET @g := IF('.length);
+  assert.throws(() => checks.orderVerify(off, V19_BAD_SHAPES[1][0], V19_BAD_SHAPES[1][1]), /멈추지 않았다/);
+  const [label, from] = V19_STEPS[2];
+  assert.throws(() => checks.orderVerify(mutate(off, from, from.replace('IF(@go', 'IF(0')), label), /멈추지 않았다/);
+});
+test('변이R22: v19 가 칸이 있는지 보지 않고 늘 더하면 중간 실패 뒤 재실행이 멈춘다(③g 실패)', () => {
+  const bad = mutate(realSql(), "SET @s := IF(@go AND @m_col = 0,\n  'ALTER TABLE project ADD COLUMN sort_no", "SET @s := IF(@go,\n  'ALTER TABLE project ADD COLUMN sort_no");
+  assert.throws(() => checks.faults(bad, () => S.at(18), APP, '18 에서'), /다시 돌려도 끝나지 않는다/);
+});
+test('변이R23: v19 순서 채우기가 이미 있는 번호를 무시하면(최댓값을 더하지 않음) 흉내 실행기가 모르는 문장으로 거부한다(③k2 가 실패)', () => {
+  const bad = mutate(realSql(), 'SET p.sort_no = IFNULL(m.mx, 0) + o.rn', 'SET p.sort_no = o.rn');
+  assert.throws(() => checks.orderKeeps(bad), /모르는 문장/);
+});
+test('변이R24: v19 가 숨긴 과제에도 순서를 매기면 흉내 실행기가 모르는 문장으로 거부한다(③k 가 실패)', () => {
+  const bad = mutate(realSql(), 'FROM project WHERE is_active = 1 AND sort_no IS NULL) o ON o.id = p.id', 'FROM project WHERE sort_no IS NULL) o ON o.id = p.id');
+  assert.throws(() => checks.orderAdded(bad), /모르는 문장/);
 });
 test('변이R20: v18 이 CHECK 보다 칸을 먼저 지우면 17 에서 올리는 배포가 멈춘다(③j 실패, MySQL 3959)', () => {
   const sql = realSql();

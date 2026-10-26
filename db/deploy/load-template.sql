@@ -16,8 +16,8 @@
 --   3) 구분과 상태는 코드표에 있는 이름이어야 한다. 기본 행은 번호가 고정이다:
 --        구분 1 일반계약, 2 선진행, 3 사업부관리 / 상태 1 진행중, 2 종료, 3 1차 납품완료, 4 미정.
 --      새 이름이 필요하면 아래 (0)처럼 번호 없이 이름만 넣는다(번호는 자동으로 다음 값).
---   4) 상태가 없으면(선진행 등) NULL.
---   5) '선진행' 행은 start_date, end_date, status 를 NULL 로.
+--   4) 상태가 없으면 NULL. 구분, 상태와 날짜는 서로 묶이지 않는다(어느 구분이든 날짜와 상태를 넣거나 비울 수 있다).
+--   5) 과제 순서(No, 구조 19 의 sort_no)는 (2)에 적은 순서다. 구분마다 그 구분의 지금 마지막 번호 뒤에 1 씩 붙는다(아래 (5)).
 --   6) 날짜는 '2026-01-31' 형식 문자열 또는 NULL.
 --   7) 발주처 이름은 (1)에서 넣은 이름과 글자까지 같아야 한다. 못 찾는 이름이 하나라도 있으면 (3)에서 멈춘다.
 --   8) 이름 유니크 없음. 같은 발주처, 같은 사업명 중복을 허용한다(구성품별 계약, 연도별 갱신). 실수 중복은 앱 소프트경고가 잡는다.
@@ -58,7 +58,7 @@ VALUES
   ('일반계약','발주처A','○○ 성능개량 사업','○○ 성능개량 계약','○○개량','2026-01-01','2026-12-31','진행중'),
   -- 사업부관리 예: 1차 납품완료
   ('사업부관리','발주처A','△△ 체계 운영','△△ 연간 운영 계약','△△운영','2025-06-15','2027-05-31','1차 납품완료'),
-  -- 선진행 예: 계약 전 → 날짜/상태 NULL
+  -- 선진행 예: 계약 전이라 날짜와 상태가 아직 없다
   ('선진행','발주처B','□□ 선행연구','','',NULL,NULL,NULL);
 
 -- (3) 이름 → 번호 검사. 코드표에서 못 찾는 이름(BINARY 기준)이 하나라도 있으면 여기서 멈춘다.
@@ -86,8 +86,18 @@ SELECT s.section_id, c.customer_id, l.project_name, l.contract_name, l.common_na
 
 DROP TEMPORARY TABLE IF EXISTS _load_project;
 
+-- (5) 과제 순서(구조 19, sort_no). 방금 넣은 과제(번호가 빈 보이는 과제)에 구분마다 넣은 순서(id 순)로
+--     그 구분의 지금 최댓값 뒤 번호를 매긴다. 이미 번호가 있는 과제는 건드리지 않는다.
+UPDATE project p
+  JOIN (SELECT id, ROW_NUMBER() OVER (PARTITION BY section_id ORDER BY id) AS rn
+          FROM project WHERE is_active = 1 AND sort_no IS NULL) o ON o.id = p.id
+  LEFT JOIN (SELECT section_id, MAX(sort_no) AS mx FROM project WHERE is_active = 1 GROUP BY section_id) m ON m.section_id = p.section_id
+   SET p.sort_no = IFNULL(m.mx, 0) + o.rn
+ WHERE p.id > 0;
+
 -- 확인:
 --   SELECT COUNT(*) FROM project;
 --   SELECT s.name, COUNT(*) FROM project p JOIN section_code s ON s.section_id = p.section_id GROUP BY s.name;
---   SELECT * FROM project WHERE section_id = 2;    -- 선진행(고정 번호 2): 날짜/상태 NULL 확인
+--   SELECT s.name, p.sort_no, p.common_name FROM project p JOIN section_code s ON s.section_id = p.section_id
+--    WHERE p.is_active = 1 ORDER BY s.sort_order, p.sort_no;    -- 과제 순서(No) 확인
 --   SELECT section_id, name, sort_order FROM section_code ORDER BY sort_order;  -- 코드값 확인

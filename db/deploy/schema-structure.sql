@@ -15,6 +15,9 @@
 --     end_date 와 dev_end_date 사이에 두고, 둘 다 있을 때 시작이 종료보다 늦지 않게 CHECK 를 건다.
 --     같은 변경을 이미 데이터가 있는 DB 에 하는 것은 이관 조각 migrations/v17-monthly-report.sql 이다.
 --     과제별 개발 일정 그림 표(project_schedule_image)는 app_user 도 가리켜서 schema-calendar.sql 에 있다(16번 표).
+--  ※ 2026-10-26 과제 순서(docs/PROJECT-ADMIN-UX.md §1.1, 구조 번호 19): project.sort_no(그 구분 안의 순서)를 status_id 와
+--     note 사이에 둔다. 구분, 상태와 날짜는 서로 묶이지 않는다(§1.4). 코드표 표 설명에서 고정 번호 문구를 지웠다.
+--     같은 변경을 이미 데이터가 있는 DB 에 하는 것은 이관 조각 migrations/v19-project-order.sql 이다.
 --  주의: 맨 위 DROP 은 처음부터 다시 짓기 위한 것이다. 데이터가 있는 DB 에 다시 돌리면 지워진다.
 -- =====================================================================
 SET NAMES utf8mb4;
@@ -45,7 +48,7 @@ CREATE TABLE customer (
   COMMENT='발주처 마스터. PK=customer_id, name=UNIQUE 라벨. Admin 관리.';
 
 -- ---------- 구분(section) 코드표. project.section_id 가 가리킨다 ----------
---  고정 번호: 2=선진행(날짜와 상태를 비우고 잠근다). 앱은 이름이 아니라 이 번호로 판정한다.
+--  번호는 기본 행만 정해 둔다(아래 시드). 2026-10-26 부터 어느 번호에도 동작이 묶이지 않는다(PROJECT-ADMIN-UX §1.4).
 CREATE TABLE section_code (
   section_id  SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name        VARCHAR(50)  NOT NULL,
@@ -58,10 +61,10 @@ CREATE TABLE section_code (
   CONSTRAINT chk_section_code_name   CHECK (name <> ''),
   CONSTRAINT chk_section_code_active CHECK (is_active IN (0,1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='구분 코드. PK=section_id(고정 번호 2=선진행), name=UNIQUE 라벨. Admin 관리.';
+  COMMENT='구분 코드. PK=section_id, name=UNIQUE 라벨. Admin 관리.';
 
 -- ---------- 상태(status) 코드표. project.status_id 가 가리킨다 ----------
---  고정 번호: 2=종료(목록 필터 제외, 엑셀 회색).
+--  번호는 기본 행만 정해 둔다(아래 시드). 앱은 번호로 색만 정한다(1 진행중 초록, 2 종료 회색, 3 1차 납품완료 파랑). 숨기거나 지울 수 있다.
 CREATE TABLE status_code (
   status_id   SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name        VARCHAR(50)  NOT NULL,
@@ -74,7 +77,7 @@ CREATE TABLE status_code (
   CONSTRAINT chk_status_code_name   CHECK (name <> ''),
   CONSTRAINT chk_status_code_active CHECK (is_active IN (0,1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='상태 코드. PK=status_id(고정 번호 2=종료), name=UNIQUE 라벨. Admin 관리.';
+  COMMENT='상태 코드. PK=status_id, name=UNIQUE 라벨. Admin 관리.';
 
 -- ---------- 회의실(room) 코드표. 회사 공용 장소 추천 목록(2026-10-21, docs/SHARED-ROOMS.md) ----------
 --  관리자만 관리 화면에서 고친다(ProjectDb 의 회의실 쓰기는 OpenAdminAsync). 일반 사용자는 loadCodes 로 읽기만 한다.
@@ -101,11 +104,12 @@ CREATE TABLE project (
   project_name  VARCHAR(200) NOT NULL,                 -- 사업명
   contract_name VARCHAR(200) NOT NULL DEFAULT '',      -- 계약명(빈값=''; NULL 금지)
   common_name   VARCHAR(200) NOT NULL DEFAULT '',      -- 통상명칭(빈값=''; NULL 금지)
-  start_date    DATE         NULL,                     -- 계약시작일(선진행/미정=NULL)
-  end_date      DATE         NULL,                     -- 계약종료일(선진행/미정=NULL)
+  start_date    DATE         NULL,                     -- 계약시작일(미정=NULL)
+  end_date      DATE         NULL,                     -- 계약종료일(미정=NULL)
   dev_start_date DATE        NULL,                     -- 개발시작일(월간보고 과제 수행 기간의 시작. 계약시작일과 별개. 미정=NULL)
   dev_end_date  DATE         NULL,                     -- 개발종료일(개발 완료 목표·실제. 계약종료일과 별개. 미정=NULL)
   status_id     SMALLINT UNSIGNED NULL DEFAULT NULL,   -- 상태 (FK -> status_code.status_id; NULL 은 상태 없음)
+  sort_no       INT UNSIGNED NULL,                     -- 그 구분 안의 순서(1 부터, 화면 No). NULL 은 맨 뒤. 새 과제, 구분을 바꾼 과제, 되살린 과제는 맨 뒤(앱)
   note          VARCHAR(500) NOT NULL DEFAULT '',      -- 비고(관리 화면 전용; 캘린더·보고서 미노출). 빈값=''
   is_active     TINYINT(1)   NOT NULL DEFAULT 1,       -- 소프트 삭제(0=숨김)
   created_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -132,8 +136,8 @@ CREATE TABLE project (
   COMMENT='과제 마스터. DB 원본. 코드는 번호 참조(customer_id, section_id, status_id), is_active=소프트삭제.';
 
 -- 코드표 시드(참조 데이터, 더미 아님). project INSERT 전에 있어야 FK 가 성립한다.
---  ★ 번호를 명시한다(org_id 와 같은 방식). 앱이 이 번호로 동작을 판정한다(CODE-TABLE-IDS §3):
---    구분 2=선진행, 상태 2=종료. 이름은 바꿀 수 있지만 번호는 바꾸지 않는다.
+--  ★ 번호를 명시한다(org_id 와 같은 방식). 2026-10-26 부터 앱은 상태 번호로 색만 정한다(PROJECT-ADMIN-UX §1.4).
+--    이름은 바꿀 수 있고, 행을 숨기거나 지울 수도 있다.
 --  ★ setup-taskcalendar.ps1 과 migrate-2026-10-15-code-ids.sql 이 이 두 줄을 고정 번호 지도로 쓴다.
 --    번호나 이름을 고칠 때는 세 곳이 함께 움직인다(tests/code-ids-db.test.mjs 가 대조한다).
 INSERT INTO section_code (section_id, name, sort_order) VALUES

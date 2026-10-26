@@ -10,7 +10,9 @@
  *   이미 떠 있는 위젯(TC_DEBUG_PORT=9222)에 CDP로 붙어 **실제 DOM을 클릭·입력**해
  *   구분/상태 코드값(#codeModal)과 발주처(#customerModal)를 무작위 시퀀스로 반복 편집하고,
  *   매 조작 뒤 MySQL을 직접 조회해 정합성 불변식(I1~I8)을 검사한다.
- *   v13(docs/CODE-TABLE-IDS.md): 코드표와 과제 참조는 번호(id)로 본다. 끝에서 고정 번호 보호(P: 구분 2, 상태 2)를 따로 본다.
+ *   v13(docs/CODE-TABLE-IDS.md): 코드표와 과제 참조는 번호(id)로 본다. 끝에서 구분 2, 상태 2 를 따로 본다(P).
+ *   2026-10-26(PROJECT-ADMIN-UX §1.4): 그 둘의 보호(숨김, 영구 삭제 거부)와 묶인 규칙(선진행 잠금, 진행중만)을 지웠다.
+ *     P 는 이제 '다른 코드와 똑같이 숨기고 되살릴 수 있고, 이름을 바꿔도 남은 동작(상태 색)만 번호를 따른다'를 본다.
  *   중간중간 DB 계정을 잠가 온라인→오프라인→온라인 전환(시나리오 A/B/C)을 주입한다.
  *
  * 전제(이 스크립트가 하지 않는 것):
@@ -235,14 +237,15 @@ const activeIds = (snap, table) => listOf(snap, table).filter((x) => x.active).m
 const projKeyOf = (table) => (table === 'section_code' ? 'sectionId' : table === 'status_code' ? 'statusId' : 'customerId');
 /** 표마다 번호 열 이름(SQL) */
 const idColOf = (table) => (table === 'section_code' ? 'section_id' : table === 'status_code' ? 'status_id' : 'customer_id');
-/* 고정 번호(CODE-TABLE-IDS §3): 구분 2(선진행), 상태 2(종료)는 숨김과 영구 삭제가 막혀 있다.
- * 무작위 조작이 이 둘을 숨기거나 지울 후보로 고르지 않게 한 곳에 둔다. 발주처는 해당 없음. */
-const PROTECTED_ID = { section_code: 2, status_code: 2 };
-const isProtected = (table, id) => PROTECTED_ID[table] != null && Number(id) === PROTECTED_ID[table];
-const PROTECTED_MSG = {
-  section_code: '이 구분은 과제 날짜 규칙(선진행)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.',
-  status_code: '이 상태는 목록 필터와 엑셀 강조(종료)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.',
-};
+/* 구분 2(선진행), 상태 2(종료). 2026-10-26(PROJECT-ADMIN-UX §1.4)부터 앱은 이 둘을 따로 막지 않는다(숨김, 영구 삭제 모두 허용).
+ * 그래도 무작위 조작과 I7 은 이 둘을 숨기거나 지울 후보로 고르지 않는다: 끝의 P 구간이 둘을 활성으로 찾아 숨김 왕복을 직접 하고,
+ * 개발 DB 의 시드 행(선진행, 종료)을 시험이 잃거나 숨긴 채 남기지 않게 하려는 것이다(앱의 규칙이 아니라 시험의 몸가짐). 발주처는 해당 없음. */
+const SEED_KEEP_ID = { section_code: 2, status_code: 2 };
+const isSeedKeep = (table, id) => SEED_KEEP_ID[table] != null && Number(id) === SEED_KEEP_ID[table];
+/* 옛 보호 문장(2026-10-26 에 지움)의 공통 꼬리. 호스트 회신에 다시 보이면 보호가 되살아난 것이다. */
+const OLD_PROTECT_RE = /숨기거나 지울 수 없습니다/;
+/* P 구간이 숨긴 시드 행 [{table, id, sort}]. 되살리기 전에 죽으면 종료 정리(sweepTemp 5)가 되살린다. */
+let __pHidden = [];
 
 /* ── 직원 명부 스냅샷(USER-ADMIN §8-8) ────────────────────────────────────────
  *  ★ 위 snapshot() 에 합치지 않는다. 그 해시는 오프라인 구간의 '비트 단위 불변' 비교에 쓰이는데,
@@ -406,8 +409,20 @@ function sweepTemp(reason) {
   report.orderRestored = 0;
   restoreOrderSnapshot(report);
 
-  const any = report.renamed || report.deleted || report.kept.length || report.failed.length || report.orderRestored;
-  if (any) console.error(`[cleanup] 임시값 정리(${reason}): 개명 복원 ${report.renamed} · 삭제 ${report.deleted} · 서열 복원 ${report.orderRestored}명`
+  // 5) P 구간이 숨긴 시드 행(구분 2, 상태 2)을 되살린다. 숨김은 순번을 건드리지 않으므로 숨기기 전 순번 그대로 돌린다.
+  //    ★ 이 실행이 숨긴 것만 기억한다(옛 DB 에서 원래 숨겨져 있던 행은 건드리지 않는다). 강제 종료면 이 기억도 사라진다.
+  report.reactivated = 0;
+  for (const h of __pHidden.splice(0)) {
+    const u = mysqlRun(`UPDATE ${h.table} SET is_active=1, sort_order=${Number(h.sort)} WHERE ${h.idCol}=${Number(h.id)} AND is_active=0;`);
+    if (u.ok) report.reactivated++; else report.failed.push(`${h.table} ${h.idCol}=${h.id} 되살리기 (errno ${u.errno})`);
+  }
+
+  // 6) 구분, 상태의 실제 행 sort_order 복원(무작위 코드순서 ▲▼ 뒤). 5) 뒤에 둬서 시작 스냅샷 값이 마지막에 이긴다.
+  report.codeOrderChanged = 0;
+  restoreCodeOrderSnapshot(report);
+
+  const any = report.renamed || report.deleted || report.kept.length || report.failed.length || report.orderRestored || report.reactivated || report.codeOrderChanged;
+  if (any) console.error(`[cleanup] 임시값 정리(${reason}): 개명 복원 ${report.renamed}, 삭제 ${report.deleted}, 서열 복원 ${report.orderRestored}명, 시드 되살림 ${report.reactivated}, 코드 순서 되돌림 ${report.codeOrderChanged}행`
     + (report.kept.length ? ` · 참조 중이라 남김 ${report.kept.length}: ${report.kept.join(', ')}` : '')
     + (report.failed.length ? ` · 실패 ${report.failed.length}: ${report.failed.join(', ')}` : ''));
   return report;
@@ -429,6 +444,39 @@ function restoreOrderSnapshot(report) {
   const ids = __uOrderSnap.map(([id]) => Number(id)).join(',');
   const u = mysqlRun(`UPDATE app_user SET sort_order = CASE user_id ${cases} ELSE sort_order END, updated_at = updated_at WHERE user_id IN (${ids});`);
   if (u.ok) report.orderRestored = __uOrderSnap.length; else report.failed.push(`sort_order 복원 (errno ${u.errno})`);
+}
+/* ── 6) 구분, 상태 sort_order 복원(2026-10-26). 무작위 조작의 코드순서(codeReorder)가 실제 행의 순번을 다시 쓴다.
+ *  위의 직원 서열 복원이 없던 때와 같은 사고다. 실측: 실행 뒤 개발 DB 에서 구분 일반계약/사업부관리,
+ *  상태 1차 납품완료/미정의 순서가 바뀐 채 남았다. 선행 정리 직후 스냅샷(번호 → sort_order)을 떠 두고
+ *  절대값 CASE UPDATE 로 되돌린다(idempotent, updated_at 을 명시해 ON UPDATE 발화를 막는다).
+ *  sweepTemp 안에서 돌므로 정상 종료, 예외, 신호(SIGINT 등) 어느 경로든 되돌린다.
+ *  ★ 메모리에만 있어서 강제 종료(TerminateProcess)면 사라진다. 직원 서열 스냅샷과 같은 한계다.
+ *  ★ 실행 중 sweepTemp 가 여러 번 돌 수 있어(직원 관리 구간 끝, 최종) 되돌린 행 수는 누적해 요약에 낸다. */
+let __codeOrderSnap = null;   // { section_code: [[id, sort], ...], status_code: [...] }, main 의 선행 정리 직후 1회
+const __codeOrderStat = { changed: 0, failed: [] };
+const CODE_ORDER_TABLES = [['section_code', 'section_id', 'sections'], ['status_code', 'status_id', 'statuses']];
+function captureCodeOrderSnapshot(snap) {
+  __codeOrderSnap = {};
+  for (const [table, , key] of CODE_ORDER_TABLES) __codeOrderSnap[table] = snap[key].map((x) => [x.id, x.sort]);
+}
+function restoreCodeOrderSnapshot(report) {
+  if (!__codeOrderSnap) return;
+  for (const [table, idCol] of CODE_ORDER_TABLES) {
+    const list = __codeOrderSnap[table];
+    if (!list || !list.length) continue;
+    const cases = list.map(([id, v]) => `WHEN ${Number(id)} THEN ${Number(v)}`).join(' ');
+    const ids = list.map(([id]) => Number(id)).join(',');
+    // ROW_COUNT 는 값이 실제로 바뀐 행만 센다(mysql 클라이언트 기본). 0 이면 이미 시작 순서 그대로였다.
+    const u = mysqlRun(`UPDATE ${table} SET sort_order = CASE ${idCol} ${cases} ELSE sort_order END, updated_at = updated_at WHERE ${idCol} IN (${ids}); SELECT ROW_COUNT();`);
+    if (u.ok) {
+      const n = Number(u.out.trim().split(/\r?\n/).pop()) || 0;
+      report.codeOrderChanged += n;
+      __codeOrderStat.changed += n;
+    } else {
+      report.failed.push(`${table} sort_order 복원 (errno ${u.errno})`);
+      __codeOrderStat.failed.push(`${table} (errno ${u.errno})`);
+    }
+  }
 }
 let __swept = false;
 function sweepOnce(reason) { if (__swept) return; __swept = true; try { sweepTemp(reason); } catch (e) { console.error('[cleanup] 임시값 정리 실패: ' + (e && e.message)); } }
@@ -646,12 +694,13 @@ const INSTALL_JS = `(function(){
     var box = document.querySelector(boxSel); if(!box) return [];
     return Array.prototype.slice.call(box.querySelectorAll('.cust-row')).map(function(r){
       var g = function(a){ var b = r.querySelector('['+a+']'); return !!b && !b.disabled && b.getAttribute('aria-disabled') !== 'true'; };
-      /* v13: 고정 번호 행(구분 2, 상태 2)의 [숨김]은 disabled 가 아니라 aria-disabled + data-codelock 이다. 후보에서 뺀다. */
-      var lock = !!r.querySelector('[data-codehide][data-codelock]');
+      /* 2026-10-26(PROJECT-ADMIN-UX §1.4): 고정 번호 행 잠금(data-codelock)은 없어졌다. 모든 행의 [숨김]이 같은 버튼이다.
+         lock 은 '옛 잠금 표식이 남았는가'를 P 구간이 보려고 그대로 센다(늘 false 여야 한다). */
+      var lock = !!r.querySelector('[data-codelock]');
       return { id: r.getAttribute('data-id'), name: r.getAttribute('data-name'), hidden: r.classList.contains('hidden-cust'),
                up: g('data-codeup'), down: g('data-codedown'),
                edit: g('data-codeedit') || g('data-custedit'),
-               hide: !lock && (g('data-codehide') || g('data-custhide')),
+               hide: g('data-codehide') || g('data-custhide'),
                lock: lock,
                show: g('data-codeshow') || g('data-custshow') };
     });
@@ -1235,9 +1284,9 @@ async function runRandomOp(before) {
     const act = dbList.filter((x) => x.active), hid = dbList.filter((x) => !x.active);
     const activeOrder = act.map((x) => x.id);   // v13: 순서는 번호 배열(codeReorder ids)
     const caps = await codeCaps();
-    //  v13: 후보는 {id, name}. 고정 번호(구분 2, 상태 2)는 숨김 후보에서 뺀다(개명과 순서는 허용이라 그대로 둔다)
+    //  v13: 후보는 {id, name}. 구분 2, 상태 2 는 숨김 후보에서 뺀다(앱은 허용한다. P 구간이 직접 숨기고 되살린다, SEED_KEEP_ID 주석)
     const renamable = caps.filter((c) => c.edit).map((c) => ({ id: Number(c.id), name: c.name }));
-    const hideable = caps.filter((c) => c.hide && !isProtected(table, c.id)).map((c) => ({ id: Number(c.id), name: c.name }));
+    const hideable = caps.filter((c) => c.hide && !isSeedKeep(table, c.id)).map((c) => ({ id: Number(c.id), name: c.name }));
     const movable = caps.filter((c) => c.up || c.down);
 
     const opts = [[3, 'add'], [1, 'addDup']];   // 「숨김표시 토글」은 없다(ADMIN-HUB-4 후속 — 편집 화면은 활성만)
@@ -1552,8 +1601,8 @@ async function scenarioC(before) {
     }
   }
   // C-3) 숨김(refCount 왕복이 먼저 실패 → 확인창 없이 setActive 실패로 가야 한다)
-  //   고정 번호 행은 웹이 왕복 없이 막으므로(토스트 없음) 후보에서 뺀다(rowCaps 의 hide 가 이미 거른다)
-  const hideT = caps.find((c) => c.hide && !isProtected('section_code', c.id)) || null;
+  //   구분 2 는 후보에서 뺀다(앱은 막지 않지만, 혹시 끊김 판정이 새어 숨겨지면 시드 행이 숨은 채 남는다. SEED_KEEP_ID 주석)
+  const hideT = caps.find((c) => c.hide && !isSeedKeep('section_code', c.id)) || null;
   if (hideT) attempts.push(await doWrite(`C:코드숨김 id=${hideT.id} '${hideT.name}'`, `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codehide', ${jstr(String(hideT.id))})`, { timeout: 30000 }));
 
   // C-4) 발주처 추가(다른 모달 경로도 한 번)
@@ -1615,16 +1664,26 @@ async function reconverge() {
   return snap;
 }
 
-/* ────────────────────────────── 14.5 고정 번호 보호(CODE-TABLE-IDS §3) ──────────────────────────────
- *  구분 2(선진행), 상태 2(종료)는 숨김과 영구 삭제가 막혀 있고 이름은 바꿀 수 있다. 값싸게 넷을 본다.
- *   (1) 화면: 그 행의 [숨김]은 aria-disabled + data-codelock + title(이유) + aria-describedby(이유 span) 이다.
- *       눌러도 확인창도 토스트도 없고 #codeMsg 에 이유만 뜬다. DB 는 그대로다.
- *   (2) 호스트: codeSetActive(active:false), trashDelete 를 직접 보내도 ok:false 와 그 문장으로 거부한다. DB 는 그대로다.
- *       (화면이 버튼을 꺼도 호스트가 마지막 관문이다. 웹을 거치지 않는 요청으로 그 관문을 따로 잠근다.)
- *   (3) 개명 왕복: 이름을 바꿔도 동작은 번호를 따라간다(구분 2: 날짜와 상태 잠금, 상태 2: 진행중만 필터에서 빠짐).
+/* ────────────────────────────── 14.5 구분 2, 상태 2 도 다른 코드와 같다(PROJECT-ADMIN-UX §1.4) ──────────────────────────────
+ *  2026-10-26 까지 구분 2(선진행), 상태 2(종료)는 숨김과 영구 삭제가 막혀 있었고(옛 CODE-TABLE-IDS §3), 그 번호에 규칙이
+ *  묶여 있었다(선진행이면 계약 날짜와 상태를 비우고 잠금, '진행중만'이면 종료를 뺌). 셋 다 지웠다. 값싸게 다섯을 본다.
+ *   (0) 페이지: 옛 함수와 표(offEdApplySectionRule, CODE_PROTECT_WHY, codeProtectedWhy)와 옛 필터 칸(#offActiveOnly,
+ *       #rlpActiveOnly, #offStatus, #rlpStatus)이 없고, 상태 체크박스 묶음(#offStChecks, #rlpStChecks)이 있다.
+ *   (1) 화면: 그 행의 [숨김]은 다른 행과 같은 버튼이다(data-codelock, aria-disabled, disabled, title, aria-describedby 없음).
+ *   (2) 호스트: 활성인 그 행에 trashDelete 를 보내면 '숨긴 항목만' 문장으로 거부한다(옛 보호 문장이 아니다). DB 는 그대로다.
+ *       ★ 영구 삭제 자체는 하지 않는다. 개발 DB 의 시드 행(선진행, 종료)을 잃지 않게, 활성인 채로, 확인 이름도 틀리게 보내 거부만 본다.
+ *   (3) 숨김 왕복: [숨김]을 실제로 눌러(참조가 있으면 확인창 승인) 성공 토스트와 DB is_active=0 을 본다(verifyOp).
+ *       그다음 시험이 SQL 로 숨기기 전 순번 그대로 되살리고(앱의 복구는 맨 뒤로 보내 시드 순서를 바꾼다), DB 가 숨기기 전과
+ *       비트 단위로 같은지 본다. 되살리기 전에 죽으면 종료 정리(sweepTemp 5)가 되살린다.
+ *   (4) 개명 왕복: 이름을 바꿔도
+ *       구분 2: 편집 폼에서 그 구분을 골라도(change) 계약 날짜, 개발 날짜, 상태 칸이 꺼지거나 비지 않는다(잠금 규칙 없음).
+ *       상태 2: 색은 여전히 번호를 따른다(offStatusKind = 'end'). 거르기는 체크박스 열쇠(번호 문자열)로만 한다:
+ *               아무것도 끄지 않으면 보이고, 옛 activeOnly:true 를 넘겨도 빠지지 않고, 열쇠 '2' 를 끄면 빠지고,
+ *               체크박스 후보(offStOptions)의 그 열쇠 글자는 새 이름이다.
  *       바꾼 이름은 `_zzR<seed>` 라 중간에 죽어도 sweepTemp 가 되돌린다. 끝나면 원래 이름으로 돌린다.
  *  권한 거부(편집 권한 없는 계정)는 결함이 아니라 사전조건 미충족이라 건너뜀으로 적는다. */
 const DENY_RE = /편집 권한이 없습니다|관리자만|관리자 인증|로그인이 필요합니다|비활성 처리된 계정|사용자 정보가 등록되어 있지 않습니다/;
+const TRASH_ACTIVE_MSG = '숨긴(퇴사) 항목만 지울 수 있습니다. 먼저 숨기세요.';   // ProjectDb.TrashActiveMsg 와 글자까지 같다
 
 async function hostCall(cmd, params, timeout = 15000) {
   try {
@@ -1633,7 +1692,7 @@ async function hostCall(cmd, params, timeout = 15000) {
 }
 
 /** DB 가 바뀌었으면 위반으로 적고, 숨겨졌으면 원래 활성 순번으로 되돌린다(지워졌으면 되돌릴 수 없어 보고만 한다). */
-function protectFrozen(tag, before, table, id) {
+function mustBeFrozen(tag, before, table, id) {
   const after = snapshot();
   if (before.hash === after.hash) return after;
   violate('P', `${tag}: 거부돼야 할 요청 뒤에 DB가 바뀌었다`, diffSnap(before, after));
@@ -1647,73 +1706,110 @@ function protectFrozen(tag, before, table, id) {
   return snapshot();
 }
 
-async function phaseProtectedCodes(snap) {
-  curPhase = 'P-protected-codes';
-  log('── P: 고정 번호 보호(구분 2 선진행, 상태 2 종료) ──');
+/** P(3) 이 숨긴 시드 행을 숨기기 전 순번 그대로 되살린다. 되살렸으면 종료 정리의 기억(__pHidden)에서 뺀다. */
+function reactivateSeed(table, id, sort) {
+  const r = mysqlRun(`UPDATE ${table} SET is_active=1, sort_order=${Number(sort)} WHERE ${idColOf(table)}=${Number(id)} AND is_active=0;`);
+  if (r.ok) __pHidden = __pHidden.filter((h) => !(h.table === table && h.id === Number(id)));
+  return r;
+}
+
+async function phaseFixedCodes(snap) {
+  curPhase = 'P-fixed-codes';
+  log('── P: 구분 2(선진행), 상태 2(종료)도 다른 코드와 같다(PROJECT-ADMIN-UX §1.4) ──');
   await closeIfOpen('#customerModal');
+
+  // (0) 페이지 전체: 지운 것은 없고, 새 체크박스 묶음은 있다
+  {
+    const g = await ev(`(function(){
+      var gone = { offEdApplySectionRule: typeof offEdApplySectionRule, CODE_PROTECT_WHY: typeof CODE_PROTECT_WHY,
+                   codeProtectedWhy: typeof codeProtectedWhy };
+      var left = ['offActiveOnly', 'rlpActiveOnly', 'offStatus', 'rlpStatus'].filter(function(id){ return !!document.getElementById(id); });
+      var boxes = ['offStChecks', 'rlpStChecks'].filter(function(id){ return !document.getElementById(id); });
+      return { gone: gone, left: left, missing: boxes, locks: document.querySelectorAll('[data-codelock]').length };
+    })()`);
+    const back = Object.entries((g && g.gone) || {}).filter(([, t]) => t !== 'undefined').map(([k]) => k);
+    const left = (g && g.left) || [], missing = (g && g.missing) || [], locks = (g && g.locks) || 0;
+    if (back.length) violate('P', `지운 보호와 잠금 코드가 페이지에 남아 있다: ${back.join(', ')}`, g.gone);
+    if (left.length) violate('P', `지운 필터 칸(진행중만, 상태 드롭다운)이 남아 있다: ${left.join(', ')}`);
+    if (missing.length) violate('P', `상태 체크박스 묶음이 없다: ${missing.join(', ')}`);
+    if (locks) violate('P', `페이지에 data-codelock 표식이 ${locks}개 있다`);
+    if (!back.length && !left.length && !missing.length && !locks) ok('옛 보호, 선진행 잠금, 진행중만, 상태 드롭다운이 없고 상태 체크박스 묶음이 있다');
+  }
+
   for (const kind of ['section', 'status']) {
     const table = TABLE_OF(kind);
-    const pid = PROTECTED_ID[table];
-    const msg = PROTECTED_MSG[table];
+    const pid = SEED_KEEP_ID[table];
     let cur = snapshot();
     const row = findRowById(cur, table, pid);
-    if (!row) { violate('P', `${table} ${idColOf(table)}=${pid} 행이 없다(시드 고정 번호 누락)`); continue; }
-    if (!row.active) { log(`   [건너뜀] ${table} id=${pid} '${row.name}' 가 숨겨져 있다(옛 DB). 화면 행이 없어 이 구간을 볼 수 없다.`); continue; }
+    if (!row) { violate('P', `${table} ${idColOf(table)}=${pid} 행이 없다(시드 행 누락)`); continue; }
+    if (!row.active) { log(`   [건너뜀] ${table} id=${pid} '${row.name}' 가 숨겨져 있다. 화면 행이 없어 이 구간을 볼 수 없다.`); continue; }
     const ctx = { codeOpen: true, custOpen: false, kind };
 
-    // (1) 화면의 꺼진 [숨김]
+    // (1) 화면: 다른 행과 같은 [숨김]
     await openCodeModal(kind);
     const ui = await ev(`(function(){
       var box = document.getElementById('codeList'); if(!box) return { ok:false, err:'목록 없음' };
       var r = [].find.call(box.querySelectorAll('.cust-row'), function(x){ return x.getAttribute('data-id') === ${jstr(String(pid))}; });
       if(!r) return { ok:false, err:'행 없음' };
       var b = r.querySelector('[data-codehide]'); if(!b) return { ok:false, err:'숨김 버튼 없음' };
-      var dId = b.getAttribute('aria-describedby'); var d = dId ? document.getElementById(dId) : null;
-      return { ok:true, lock: b.getAttribute('data-codelock'), aria: b.getAttribute('aria-disabled'), title: b.getAttribute('title'),
-               desc: d ? String(d.textContent||'') : null };
+      return { ok:true, lock: b.getAttribute('data-codelock'), rowLock: !!r.querySelector('[data-codelock]'), aria: b.getAttribute('aria-disabled'),
+               disabled: !!b.disabled, title: b.getAttribute('title'), desc: b.getAttribute('aria-describedby') };
     })()`);
-    if (!ui || !ui.ok) violate('P', `(${kind}) 고정 번호 행의 [숨김]을 찾지 못했다`, ui);
+    if (!ui || !ui.ok) violate('P', `(${kind}) id=${pid} 행의 [숨김]을 찾지 못했다`, ui);
     else {
       const bad = [];
-      if (ui.lock !== '1') bad.push('data-codelock');
-      if (ui.aria !== 'true') bad.push('aria-disabled');
-      if (ui.title !== msg) bad.push('title');
-      if (ui.desc !== msg) bad.push('aria-describedby');
-      if (bad.length) violate('P', `(${kind}) 고정 번호 행 [숨김]의 잠금 표식이 어긋난다: ${bad.join(', ')}`, ui);
-      else ok(`(${kind}) id=${pid} [숨김] 꺼짐 + 이유 표시`);
-    }
-    {
-      const b0 = cur;
-      const rec = await doWrite(`P:(${kind}) 꺼진 [숨김] 클릭 id=${pid}`,
-        `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codehide', ${jstr(String(pid))})`, { expectToast: false, timeout: 8000 });
-      const s = await state();
-      if (rec.confirm) violate('P', `(${kind}) 꺼진 [숨김]을 누르자 확인창이 떴다`, rec.confirm);
-      if ((rec.toasts || []).length) violate('P', `(${kind}) 꺼진 [숨김]을 누르자 토스트가 떴다(왕복이 나갔다)`, rec.toasts);
-      if (!String(s.codeMsg || '').includes(msg)) violate('P', `(${kind}) 꺼진 [숨김]을 눌러도 이유 문장이 #codeMsg 에 없다`, s.codeMsg);
-      cur = protectFrozen(`(${kind}) 꺼진 [숨김] 클릭`, b0, table, pid);
-      opLog.push({ n: curOp, phase: curPhase, desc: rec.desc, outcome: rec.outcome, confirm: null });
+      if (ui.lock != null || ui.rowLock) bad.push('data-codelock');
+      if (ui.aria === 'true') bad.push('aria-disabled');
+      if (ui.disabled) bad.push('disabled');
+      if (ui.title) bad.push('title');
+      if (ui.desc) bad.push('aria-describedby');
+      if (bad.length) violate('P', `(${kind}) id=${pid} [숨김]에 옛 잠금 표식이 남아 있다: ${bad.join(', ')}`, ui);
+      else ok(`(${kind}) id=${pid} [숨김]이 다른 행과 같은 버튼이다(잠금 표식 없음)`);
     }
 
-    // (2) 호스트 직접 요청: 숨김, 영구 삭제
-    for (const [cmd, params] of [
-      ['codeSetActive', { kind, id: pid, active: false }],
-      ['trashDelete', { kind, key: String(pid), confirm: row.name }],
-    ]) {
+    // (2) 호스트: 활성 행의 영구 삭제는 다른 코드처럼 '숨긴 항목만'으로 거부한다(지우지 않는다)
+    {
       const b0 = snapshot();
-      const res = await hostCall(cmd, params);
+      //  확인 이름은 일부러 틀리게 보낸다: 활성 관문(②)이 이름 대조(④)보다 먼저라 기대 문장은 같고, 관문이 깨져도 이름 대조가 지우지 못하게 막는다
+      const res = await hostCall('trashDelete', { kind, key: String(pid), confirm: row.name + '~X' });
       const rmsg = String((res && (res.msg || res.error)) || '');
-      if (res && res.ok) violate('P', `(${kind}) 호스트가 고정 번호 ${cmd} 를 받아들였다`, res);
-      else if (rmsg === msg) ok(`(${kind}) 호스트 ${cmd} 거부 + 보호 문장`);
-      else if (DENY_RE.test(rmsg)) log(`   [건너뜀] (${kind}) ${cmd} 가 권한으로 먼저 거부됐다: ${rmsg}`);
-      else violate('P', `(${kind}) 호스트 ${cmd} 거부 문장이 보호 문장이 아니다`, { 기대: msg, 실제: rmsg });
-      cur = protectFrozen(`(${kind}) 호스트 ${cmd}`, b0, table, pid);
-      opLog.push({ n: curOp, phase: curPhase, desc: `P:(${kind}) host ${cmd} id=${pid}`, outcome: res && res.ok ? 'success' : 'error', confirm: null });
+      if (res && res.ok) violate('P', `(${kind}) 활성 행 id=${pid} 의 영구 삭제를 호스트가 받아들였다(숨긴 항목만 지워야 한다)`, res);
+      else if (OLD_PROTECT_RE.test(rmsg)) violate('P', `(${kind}) 호스트가 옛 보호 문장으로 거부했다(보호가 되살아났다)`, rmsg);
+      else if (rmsg === TRASH_ACTIVE_MSG) ok(`(${kind}) 호스트 trashDelete(활성 행) 거부 = '숨긴 항목만' 문장(다른 코드와 같다)`);
+      else if (DENY_RE.test(rmsg)) log(`   [건너뜀] (${kind}) trashDelete 가 권한으로 먼저 거부됐다: ${rmsg}`);
+      else violate('P', `(${kind}) 호스트 trashDelete(활성 행) 거부 문장이 '숨긴 항목만' 문장이 아니다`, { 기대: TRASH_ACTIVE_MSG, 실제: rmsg });
+      cur = mustBeFrozen(`(${kind}) 호스트 trashDelete(활성 행)`, b0, table, pid);
+      opLog.push({ n: curOp, phase: curPhase, desc: `P:(${kind}) host trashDelete(활성) id=${pid}`, outcome: res && res.ok ? 'success' : 'error', confirm: null });
     }
     // 호스트 휴지통 회신이 목록을 다시 밀었을 수 있다. 화면을 다시 맞추고 넘어간다
     await ev(`(hpost({cmd:'loadCodes'}), 1)`);
-    await closeIfOpen('#codeModal');
 
-    // (3) 개명 왕복. 동작은 번호를 따라가야 한다
+    // (3) 숨김 왕복: 실제 [숨김] 클릭 → 숨기기 전 순번 그대로 SQL 로 되살림
+    {
+      const b0 = cur;
+      const sort0 = (findRowById(b0, table, pid) || row).sort;
+      __pHidden.push({ table, idCol: idColOf(table), id: pid, sort: sort0 });   // 누르기 전에 기억한다(눌린 직후 죽어도 종료 정리가 되살리게)
+      const h = await opCodeHide(kind, pid, row.name, 'ok');
+      const mid = await verifyOp(b0, h.plan, h.rec, ctx);
+      const hr = findRowById(mid, table, pid);
+      if (h.rec.outcome !== 'success') {
+        if (h.rec.denied) log(`   [건너뜀] (${kind}) 숨김이 권한으로 거부됐다`);
+        else violate('P', `(${kind}) id=${pid} 숨김이 되지 않았다(다른 코드처럼 숨겨져야 한다)`, { outcome: h.rec.outcome, toasts: h.rec.toasts, trigger: h.rec.trigger, codeMsg: (await state()).codeMsg });
+      } else if (!hr || hr.active) violate('P', `(${kind}) 숨김 성공 토스트인데 id=${pid} 가 DB 에서 활성이다`, hr);
+      else ok(`(${kind}) id=${pid} [숨김] 성공(${h.rec.confirm ? '확인창 승인 뒤, ' : ''}DB is_active=0)`);
+      const rr = reactivateSeed(table, pid, sort0);
+      if (!rr.ok) violate('P', `(${kind}) id=${pid} 되살리기 SQL 이 실패했다(errno ${rr.errno}). 종료 정리가 다시 해 본다`);
+      const back = snapshot();
+      if (back.hash !== b0.hash) violate('P', `(${kind}) 숨김 왕복 뒤 DB 가 숨기기 전과 다르다`, diffSnap(b0, back));
+      else if (h.rec.outcome === 'success') ok(`(${kind}) id=${pid} 를 숨기기 전 순번(${sort0}) 그대로 되살렸다`);
+      cur = back;
+      // 시험이 앱 몰래 되살렸다. 드롭다운 소스를 다시 읽히고, 편집 목록은 닫아 다음 열기에서 새로 그리게 한다
+      await ev(`(hpost({cmd:'loadCodes'}), 1)`);
+      await waitConverge((x) => ((kind === 'section' ? x.offSections : x.offStatuses) || []).some((o) => o.id === pid), 4000);
+      await closeIfOpen('#codeModal');
+    }
+
+    // (4) 개명 왕복. 남은 동작(상태 색)은 번호를 따르고, 지운 규칙은 이름을 바꿔도 돌아오지 않는다
     const orig = row.name;
     const via = `${orig}_zzR${OPT.seed}`;
     const r1 = await opCodeRename(kind, pid, orig, via);
@@ -1721,41 +1817,69 @@ async function phaseProtectedCodes(snap) {
     const mid = await verifyOp(cur, r1.plan, r1.rec, ctx);
     if (r1.rec.outcome !== 'success' || !findRow(mid, table, via)) {
       if (r1.rec.denied) log(`   [건너뜀] (${kind}) 개명이 권한으로 거부됐다`);
-      else violate('P', `(${kind}) 고정 번호 행의 개명이 되지 않았다(개명은 허용이어야 한다)`, { outcome: r1.rec.outcome, toasts: r1.rec.toasts });
+      else violate('P', `(${kind}) id=${pid} 행의 개명이 되지 않았다(개명은 허용이어야 한다)`, { outcome: r1.rec.outcome, toasts: r1.rec.toasts });
       continue;
     }
     await waitConverge((x) => (x.offSections || []).concat(x.offStatuses || []).some((o) => o.id === pid && o.name === via), 4000);
     const caps = await codeCaps();
     const cap = caps.find((c) => Number(c.id) === pid);
-    if (!cap || !cap.lock) violate('P', `(${kind}) 개명 뒤 목록 행의 [숨김] 잠금이 풀렸다(이름으로 판정하고 있다)`, cap);
+    if (!cap || cap.lock || !cap.hide) violate('P', `(${kind}) 개명 뒤 목록 행의 [숨김]이 다른 행과 다르다(잠금 표식이 생겼거나 꺼졌다)`, cap);
     if (kind === 'section') {
+      //  닫힌 편집 폼에서 본다. 날짜와 상태에 값을 넣고 구분을 그 번호로 바꿔(change) 아무 칸도 꺼지거나 비지 않는지 본 뒤 원래 값으로 돌린다
       const r = await ev(`(function(){
-        var sec = document.getElementById('offEdSection'), st = document.getElementById('offEdStart'), en = document.getElementById('offEdEnd'), ss = document.getElementById('offEdStatus');
-        if(!sec || !st || typeof offEdFillEnums !== 'function' || typeof offEdApplySectionRule !== 'function') return { ok:false, err:'편집 폼 요소나 함수 없음' };
+        var sec = document.getElementById('offEdSection');
+        if(!sec || typeof offEdFillEnums !== 'function') return { ok:false, err:'편집 폼 요소나 함수 없음' };
+        var ids = ['offEdStart', 'offEdEnd', 'offEdDevStart', 'offEdDevEnd', 'offEdStatus'];
+        var els = ids.map(function(id){ return document.getElementById(id); }).filter(Boolean);
+        var st0 = document.getElementById('offEdStatus');
+        var keepSec = sec.innerHTML, keepSecV = sec.value, keepSt = st0 ? st0.innerHTML : null, keepV = els.map(function(e){ return e.value; });
         offEdFillEnums(${jstr(String(pid))}, '', ${jstr(via)}, '');
-        sec.value = ${jstr(String(pid))};
-        offEdApplySectionRule();
-        var out = { ok:true, value: sec.value, label: sec.options[sec.selectedIndex] ? String(sec.options[sec.selectedIndex].textContent||'') : '',
-                    start: !!st.disabled, end: !!(en && en.disabled), status: !!(ss && ss.disabled) };
         var other = [].find.call(sec.options, function(o){ return o.value !== ${jstr(String(pid))}; });
-        if(other){ sec.value = other.value; offEdApplySectionRule(); }   // 닫힌 폼이지만 잠금을 풀어 둔다(열 때 다시 채운다)
+        if(other) sec.value = other.value;
+        var put = { offEdStart:'2026-01-05', offEdEnd:'2026-12-20', offEdDevStart:'2026-02-05', offEdDevEnd:'2026-11-20' };
+        var st = document.getElementById('offEdStatus');
+        var stOpt = st ? [].find.call(st.options, function(o){ return o.value !== ''; }) : null;
+        els.forEach(function(e){ if(e.id === 'offEdStatus'){ if(stOpt) e.value = stOpt.value; } else e.value = put[e.id]; });
+        var set = els.map(function(e){ return e.value; });
+        sec.value = ${jstr(String(pid))};
+        sec.dispatchEvent(new Event('input', { bubbles:true }));
+        sec.dispatchEvent(new Event('change', { bubbles:true }));
+        var out = { ok:true, value: sec.value, label: sec.options[sec.selectedIndex] ? String(sec.options[sec.selectedIndex].textContent||'') : '',
+                    disabled: els.filter(function(e){ return !!e.disabled; }).map(function(e){ return e.id; }),
+                    cleared: els.filter(function(e, i){ return e.value !== set[i]; }).map(function(e){ return e.id; }) };
+        sec.innerHTML = keepSec; sec.value = keepSecV;   // 닫힌 폼이지만 원래 값으로 돌려 둔다(열 때 다시 채운다)
+        if(st0 && keepSt != null) st0.innerHTML = keepSt;
+        els.forEach(function(e, i){ e.value = keepV[i]; });
         return out;
       })()`);
-      if (!r || !r.ok) violate('P', '(section) 날짜 잠금 판정을 돌리지 못했다', r);
-      else if (!(r.start && r.end && r.status)) violate('P', `(section) 이름을 '${via}' 로 바꾸자 선진행 날짜 잠금이 풀렸다(이름으로 판정하고 있다)`, r);
-      else ok(`(section) 이름을 바꿔도 id=${pid} 의 날짜와 상태 잠금 유지`);
+      if (!r || !r.ok) violate('P', '(section) 편집 폼 판정을 돌리지 못했다', r);
+      else if (r.disabled.length || r.cleared.length) violate('P', `(section) 구분 '${via}'(id=${pid}) 를 고르자 칸이 꺼지거나 비었다(지운 선진행 잠금이 남아 있다)`, r);
+      else ok(`(section) 이름을 '${via}' 로 바꾸고 그 구분을 골라도 날짜와 상태 칸이 그대로다(잠금 없음)`);
     } else {
       const r = await ev(`(function(){
         if(typeof offMatches !== 'function') return { ok:false, err:'offMatches 없음' };
         var blank = { name:'', projectName:'', contractName:'', customer:'' };
-        var end = offMatches(Object.assign({ statusId: ${pid} }, blank), { activeOnly:true, q:'' });
-        var run = offMatches(Object.assign({ statusId: 1 }, blank), { activeOnly:true, q:'' });
+        var row = Object.assign({ statusId: ${pid} }, blank);
+        var none = offMatches(row, { q:'', stOff: new Set() });
+        var legacy = offMatches(row, { q:'', activeOnly:true, stOff: new Set() });
+        var offMe = offMatches(row, { q:'', stOff: new Set([${jstr(String(pid))}]) });
+        var offOther = offMatches(row, { q:'', stOff: new Set(['1']) });
         var kindOf = (typeof offStatusKind === 'function') ? offStatusKind(${pid}) : null;
-        return { ok:true, end: end, run: run, kind: kindOf };
+        var opt = (typeof offStOptions === 'function') ? offStOptions().find(function(o){ return o.k === ${jstr(String(pid))}; }) : null;
+        return { ok:true, none: none, legacy: legacy, offMe: offMe, offOther: offOther, kind: kindOf, label: opt ? opt.t : null };
       })()`);
-      if (!r || !r.ok) violate('P', '(status) 진행중만 필터 판정을 돌리지 못했다', r);
-      else if (r.end !== false || r.run !== true || r.kind !== 'end') violate('P', `(status) 이름을 '${via}' 로 바꾸자 종료 동작(필터 제외, 회색)이 어긋났다`, r);
-      else ok(`(status) 이름을 바꿔도 id=${pid} 는 진행중만 필터에서 빠지고 종료로 칠해진다`);
+      if (!r || !r.ok) violate('P', '(status) 상태 거르기 판정을 돌리지 못했다', r);
+      else {
+        const bad = [];
+        if (r.none !== true) bad.push('아무것도 안 껐는데 빠짐');
+        if (r.legacy !== true) bad.push('옛 activeOnly:true 로 빠짐(진행중만이 남아 있다)');
+        if (r.offMe !== false) bad.push(`열쇠 '${pid}' 를 꺼도 보임`);
+        if (r.offOther !== true) bad.push(`다른 열쇠 '1' 을 끄자 빠짐`);
+        if (r.kind !== 'end') bad.push(`색 종류 ${r.kind}(end 여야 한다)`);
+        if (r.label !== via) bad.push(`체크박스 글자 '${r.label}'(새 이름 '${via}' 여야 한다)`);
+        if (bad.length) violate('P', `(status) 이름을 '${via}' 로 바꾼 id=${pid} 의 거르기나 색이 어긋났다: ${bad.join(', ')}`, r);
+        else ok(`(status) 이름을 바꿔도 id=${pid} 는 체크박스 열쇠로만 걸러지고(진행중만 없음) 종료 색이다`);
+      }
     }
     const r2 = await opCodeRename(kind, pid, via, orig);
     if (r2.rec.outcome !== 'success') await cancelInline('code');
@@ -1775,10 +1899,10 @@ async function phaseHardDelete(snap) {
   log('── I7: 하드삭제 정책(UI엔 삭제 없음 → DB에서 직접 확인) ──');
 
   // (a) 사용 중인 값 DELETE → FK RESTRICT로 거부돼야 한다(시드 값은 삭제되지 않으므로 안전)
-  //   v13: 번호로 지운다. 고정 번호(구분 2, 상태 2)는 FK 가 막더라도 후보로 고르지 않는다(혹시 FK 가 빠졌을 때 잃지 않게)
+  //   v13: 번호로 지운다. 구분 2, 상태 2 는 FK 가 막더라도 후보로 고르지 않는다(혹시 FK 가 빠졌을 때 시드 행을 잃지 않게, SEED_KEEP_ID 주석)
   const usedOf = (table) => {
     const k = projKeyOf(table);
-    const v = snap.projects.map((p) => p[k]).find((id) => id != null && !isProtected(table, id));
+    const v = snap.projects.map((p) => p[k]).find((id) => id != null && !isSeedKeep(table, id));
     return v == null ? null : v;
   };
   for (const t of ['section_code', 'status_code', 'customer']) {
@@ -1799,7 +1923,7 @@ async function phaseHardDelete(snap) {
   for (const p of snap.projects) { refd.add('S:' + p.sectionId); if (p.statusId != null) refd.add('T:' + p.statusId); refd.add('C:' + p.customerId); }
   const targets = [];
   const pickTemp = (list, tag, table) => {
-    const t = list.find((x) => isTemp(x.name) && !isProtected(table, x.id) && !refd.has(tag + ':' + x.id));
+    const t = list.find((x) => isTemp(x.name) && !isSeedKeep(table, x.id) && !refd.has(tag + ':' + x.id));
     if (t) targets.push({ table, name: t.name });
   };
   pickTemp(snap.sections, 'S', 'section_code');
@@ -2090,6 +2214,23 @@ function printSummary(finalSnap) {
     if (leftovers.length) violate('FIN', `테스트 잔여 임시값 ${leftovers.length}건 — 정리가 새고 있다`, leftovers.map((x) => x.name));
     console.log(`  스냅샷 해시: ${finalSnap.hash}`);
   }
+  /* 코드 순서 복원(sweepTemp 6). 최종 스냅샷이 있으면 시작 순번과 다시 대조한다. 어긋나면 개발 DB 가 섞인 채 남은 것이라 위반이다. */
+  if (__codeOrderSnap) {
+    const n = (t) => (__codeOrderSnap[t] || []).length;
+    console.log(`  코드 순서 복원: 스냅샷 구분 ${n('section_code')}행, 상태 ${n('status_code')}행, 되돌린 행 ${__codeOrderStat.changed}`
+      + (__codeOrderStat.failed.length ? `, 실패 ${__codeOrderStat.failed.join(', ')}` : ''));
+    if (__codeOrderStat.failed.length) violate('FIN', `코드 순서 복원 실패 ${__codeOrderStat.failed.length}건, 개발 DB 순서가 섞인 채 남았을 수 있다`, __codeOrderStat.failed);
+    if (finalSnap) {
+      const off = [];
+      for (const [table, , key] of CODE_ORDER_TABLES) {
+        const now = new Map(finalSnap[key].map((x) => [x.id, x.sort]));
+        for (const [id, sort] of __codeOrderSnap[table]) if (now.has(id) && now.get(id) !== sort) off.push(`${table}:${id} ${sort} → ${now.get(id)}`);
+      }
+      if (off.length) violate('FIN', `코드 순서가 시작 스냅샷과 다르다 ${off.length}행, 복원이 새고 있다`, off);
+    }
+  } else {
+    console.log('  코드 순서 복원: 스냅샷 없음(선행 정리 전에 끝남)');
+  }
 
   console.log('\n' + line);
   if (violations.length === 0) {
@@ -2120,11 +2261,11 @@ async function selfcheck() {
   const plan = { table: 'section_code', kind: 'add', name: 'zzSelfCheck' };
   const exp = expectAfter(s, plan, true);
   log(`기대모델 검산: add 후 section_code ${exp.sections.length}행, 새 sort=${exp.sections[exp.sections.length - 1].sort}`);
-  //  v13: 고정 번호 둘이 시드대로 있는지(읽기만)
+  //  v13: P 구간이 보는 시드 행 둘(구분 2, 상태 2)이 있는지(읽기만)
   for (const t of ['section_code', 'status_code']) {
-    const r = findRowById(s, t, PROTECTED_ID[t]);
-    if (!r) violate('P', `${t} ${idColOf(t)}=${PROTECTED_ID[t]} 행이 없다(시드 고정 번호 누락)`);
-    else log(`고정 번호 ${t} ${PROTECTED_ID[t]} = '${r.name}'${r.active ? '' : ' (숨김: 옛 DB)'}`);
+    const r = findRowById(s, t, SEED_KEEP_ID[t]);
+    if (!r) violate('P', `${t} ${idColOf(t)}=${SEED_KEEP_ID[t]} 행이 없다(시드 행 누락)`);
+    else log(`시드 행 ${t} ${SEED_KEEP_ID[t]} = '${r.name}'${r.active ? '' : ' (숨김)'}`);
   }
   printSummary(s);
   process.exit(violations.length ? 1 : 0);
@@ -2183,6 +2324,7 @@ async function main() {
   //    그래서 정리한 게 없어도 **항상** 재조회시킨다. 안 하면 op#1 의 I6 가 유령 목록과 비교해 운다(2026-09-07 실측).
   await resyncDropdowns();
   let snap = snapshot();
+  captureCodeOrderSnapshot(snap);   // 선행 정리 뒤라 이번 시드의 임시 행은 없다. 종료 정리(sweepTemp 6)가 이 순서로 되돌린다.
   PROJECT_N0 = snap.projects.length;
   log(`시작 DB — project ${snap.projects.length} · customer ${snap.customers.length} · section ${snap.sections.length} · status ${snap.statuses.length} · hash ${snap.hash}`);
   if (PROJECT_N0 !== 14) log(`  (참고) 과제 행수가 14가 아닙니다(${PROJECT_N0}) — 이 값을 기준선으로 고정합니다.`);
@@ -2234,10 +2376,10 @@ async function main() {
     }
   }
 
-  /* ── P 고정 번호 보호(CODE-TABLE-IDS §3) ── */
+  /* ── P 구분 2, 상태 2 도 다른 코드와 같다(PROJECT-ADMIN-UX §1.4) ── */
   curOp = OPT.ops;
-  try { snap = await phaseProtectedCodes(snap); }
-  catch (e) { violate('P', `고정 번호 보호 검사 중 예외: ${e.message}`); snap = snapshot(); try { await closeIfOpen('#codeModal'); } catch (_) { } }
+  try { snap = await phaseFixedCodes(snap); }
+  catch (e) { violate('P', `구분 2, 상태 2 검사 중 예외: ${e.message}`); snap = snapshot(); try { await closeIfOpen('#codeModal'); } catch (_) { } }
 
   /* ── I7 하드삭제 정책 ── */
   try { snap = await phaseHardDelete(snap); }
