@@ -37,6 +37,13 @@ if ($ver) { $ver = ([string]$ver).Trim() }
 if (-not $ver) { Fail "csproj에서 <Version>을 못 읽음" }
 Write-Host "● 버전: $ver" -ForegroundColor Cyan
 
+# 폐쇄망용 런타임이 없으면 publish 전에 중단한다. Inno 직접 컴파일도 같은 조건을 검사한다.
+$webviewSetup = Join-Path $root 'redist\MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
+if (-not (Test-Path -LiteralPath $webviewSetup -PathType Leaf)) {
+  Fail "WebView2 오프라인 x64 설치기가 없습니다. redist/README.md에 따라 준비하세요."
+}
+Write-Host "● WebView2 오프라인 런타임 포함: $webviewSetup" -ForegroundColor Cyan
+
 # 2) 위젯 publish (self-contained 단일 exe)
 $exe = Join-Path $root 'dist\portable\TaskCalendarWidget.exe'
 if (-not $SkipPublish) {

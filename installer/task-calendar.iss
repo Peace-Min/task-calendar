@@ -1,6 +1,6 @@
 ﻿; ============================================================================
 ;  수행과제 캘린더 — Inno Setup 인스톨러 (installer/에서 단일 관리)
-;  담기는 것: ① 위젯 exe(자체포함) ② 브라우저용 단일 HTML ③ (redist에 있으면) WebView2 런타임 자동설치
+;  담기는 것: ① 위젯 exe(자체포함) ② 브라우저용 단일 HTML ③ 오프라인 WebView2 런타임 자동설치
 ;
 ;  빌드(권장): installer\build-installer.ps1  — csproj <Version>을 읽어 /DMyAppVersion 주입
 ;  수동:        ISCC.exe /DMyAppVersion=0.6.0 task-calendar.iss
@@ -21,8 +21,10 @@
 #define SourceHtml "..\task-calendar-prototype.html"
 #define WebView2SetupName "MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
 #define WebView2SetupSource "..\redist\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
-; redist에 WebView2 설치기가 실제로 있을 때만 번들(없으면 그 부분을 빼고 정상 컴파일 — Win11은 내장이라 대개 불필요)
-#define HasWebView2 FileExists(AddBackslash(SourcePath) + WebView2SetupSource)
+; 폐쇄망 설치에 필요하다. 런타임 설치기가 없으면 불완전한 설치기를 만들지 않는다.
+#if !FileExists(AddBackslash(SourcePath) + WebView2SetupSource)
+  #error "WebView2 오프라인 x64 설치기가 없습니다. redist/README.md를 확인하세요."
+#endif
 
 [Setup]
 ; 소스 경로 기준을 .iss 위치로 고정 — 어디서 ISCC를 호출하든 ..\dist\portable 가
@@ -65,10 +67,8 @@ Name: "desktophtml"; Description: "바탕화면에 브라우저용 바로가기 
 Source: "{#SourceExe}";  DestDir: "{app}"; DestName: "{#MyAppExeName}";  Flags: ignoreversion
 ; ② 브라우저용 단일 HTML (file://로 그대로 실행 — 위젯 없이/외부용. 데이터는 위젯과 별개, XML로 이동)
 Source: "{#SourceHtml}"; DestDir: "{app}"; DestName: "{#MyAppHtmlName}"; Flags: ignoreversion
-; ③ WebView2 런타임 설치기 (redist에 있을 때만)
-#if HasWebView2
+; ③ 오프라인 WebView2 런타임 설치기(필수 포함)
 Source: "{#WebView2SetupSource}"; DestDir: "{tmp}"; DestName: "{#WebView2SetupName}"; Flags: deleteafterinstall
-#endif
 
 [Icons]
 Name: "{group}\{#MyAppName}";            Filename: "{app}\{#MyAppExeName}"
@@ -77,9 +77,7 @@ Name: "{userdesktop}\{#MyAppName}";            Filename: "{app}\{#MyAppExeName}"
 Name: "{userdesktop}\{#MyAppName} (브라우저)"; Filename: "{app}\{#MyAppHtmlName}"; Tasks: desktophtml
 
 [Run]
-#if HasWebView2
 Filename: "{tmp}\{#WebView2SetupName}"; Parameters: "/silent /install"; StatusMsg: "Microsoft Edge WebView2 Runtime 확인/설치 중..."; Flags: waituntilterminated; Check: NeedsWebView2
-#endif
 Filename: "{app}\{#MyAppExeName}"; Description: "{#MyAppName} 실행"; Flags: nowait postinstall skipifsilent
 ; 무인 자동 업데이트(위젯이 /SILENT /UPDATED=1 로 실행)일 때만 새 앱을 재시작.
 ; (위 대화형 라인은 skipifsilent라 무인 설치에선 실행되지 않으므로 별도 라인이 필요하다.)
