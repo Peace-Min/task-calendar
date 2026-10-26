@@ -7,6 +7,17 @@
 
 ---
 
+## 🆕 2026-10-26 (다음 판, 번호는 배포 때): Git, SVN 기능 전량 삭제, DB 구조 18
+
+`e072104` feat(remove-git). 기획 [docs/GIT-SVN-REMOVAL.md](docs/GIT-SVN-REMOVAL.md), 결정 [docs/DECISIONS.md](docs/DECISIONS.md) 결정 7. **DB 구조 번호가 18** 이 된다(`DbGate.AppStructureVersion = 18`). 배포 SQL 의 이관 조각 사슬은 13 에서 18 이고, 이번에 `db/deploy/migrations/v18-remove-git.sql` 이 붙는다. **되돌릴 수 없는 삭제**가 들어 있으므로 배포 SQL 을 돌리기 전 Workbench 백업이 필수다(docs/DB-RELEASE-OPS.md 4.2).
+
+- 웹: 하루 패널의 '커밋 내역' 탭과 커밋 불러오기(그날, 여러 날), 달력의 커밋 칩, 과제 창의 Git, SVN 저장소와 작성자 카드, Git, SVN 작성자 설정, 일간, 주간, 기간 보고서와 월간 보고의 커밋 항목, 다른 사람 일정 보기의 커밋 탭, 커밋 기록 전용 일정 창(`#entryModal`), 사용설명서의 Git 장을 지웠다. 옛 XML, localStorage, DB 스냅숏의 커밋 기록(`source="git"`)은 버리고, 커밋 목록, 저장소 경로, 작성자, 커밋 본문 설정은 읽지 않는다(`dropLegacyGit`). XML 내보내기도 그 값들을 쓰지 않는다. 패치노트의 지난 이력은 그대로 둔다.
+- 호스트: `widget/Svn.cs`, `widget/RepoPaths.cs` 삭제. 명령 `gitlog`, `gitauthor`, `gitcheck`, `pickfolder` 삭제. '과제 데이터 내보내기'(`exportResearch`)는 남되 `calendar/캘린더.md` 만 쓴다(폴더 `과제데이터_<과제>_<시작>_<끝>`, Git, SVN patch 없음). 사용자 PC 의 `repo-paths.json` 은 지우지 않고 읽지도 않는다.
+- DB(v18 조각): `cal_entry` 의 `source='git'` 행(커밋 기록)을 그 메모, 장소, 공수와 함께 지우고(예외일은 FK CASCADE), `cal_entry_commit` 표, `cal_entry.source`, `cal_category.uses_repo`, `cal_user_pref` 의 `git_author`, `svn_author`, `git_commit_body` 칸과 그 CHECK 를 없앤다. 다시 돌려도 있는 것만 지운다. 정본 스키마, 권한 파일(`grants-calendar.sql`, `server-app-account.sql`), 시드와 데모, `init-calendar.ps1` 표 목록, `xml-to-db` 를 18 에 맞췄다. 부팅 조회는 8개 표.
+- 시험: `vcs-branching.test.mjs`, `commit-merge.test.mjs` 삭제. `git-removal.test.mjs`(호스트와 DB 흔적 0, 판 번호 사슬), `git-removal-web.test.mjs`(웹 흔적 0, 옛 XML 가져오기에서 커밋 기록 버림, 내보내기, 보고서 데이터) 추가. `db-schedule-image.mjs` 는 구조 번호를 박지 않고 `DbGate.cs` 에서 읽는다. 하네스가 이름으로 컴파일하던 `RepoPaths.cs` 를 목록에서 뺐다.
+- 확인: 전체 strict 3094 pass, 0 fail, 0 skip. MySQL 8.4 에서 구조 17 복제본과 개발 DB 에 v18 실행(커밋 기록 128건 삭제, 일정 3628 에서 3500, 다시 돌리면 바뀌는 것 없음, 칸 삭제는 INSTANT). DB 하네스 calendar-adapter, loop-calendar-write(126), dryrun-xml-to-db(22), loop-peer-view(24), db-project-calendar(54), db-schedule-image(42) 통과, 실제 앱 확인.
+- 문서: README, USAGE(§7 은 '삭제됨' 안내로), SPEC(§8 의 git 항목은 폐기 표시), docs/ARCHITECTURE, DECISIONS, PEER-VIEW-FULL, DB-RELEASE-OPS, ROADMAP, db 문서들, tests/README, 위키(새 쪽 '지운 기능'). `docs/DB-SCHEMA.html` 은 재생성한 `tools/schema-report/schema.json` 으로 다시 만들었다.
+
 ## 🆕 2026-10-23, v0.23.0: 과제 공용 캘린더, 월간 보고, 개인 달력 기간 막대와 한 화면 입력, 시각 5분 단위, 개발 시작과 종료 기본값, 사용 영상 안내, 공용 회의실, 관리 창, DB 버전 관문 (구조 13 에서 17)
 
 0.22.0 이후 커밋을 한 판으로 낸다. **DB 구조 번호가 17** 이 된다(`DbGate.AppStructureVersion = 17`, 정확히 같아야 연다). 배포는 `installer/publish-update.ps1 -Build` 가 만드는 `release-v0.23.0.sql` 하나다. 이관 조각 사슬은 `db/deploy/migrations/` 의 v14(버전 관문, cal_schema_meta 키), v15(공용 회의실), v16(cal_project_event, cal_project_change), v17(project.dev_start_date 와 CHECK chk_project_dev_dates, project_schedule_image)이다. 순서는 **Setup 먼저 공유 폴더에, 그다음 SQL**(db_updating 을 닫고 조각을 돌린 뒤 한 트랜잭션으로 연다, docs/DB-RELEASE-OPS.md).

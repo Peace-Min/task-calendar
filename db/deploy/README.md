@@ -28,6 +28,7 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 | `setup-taskcalendar.cmd` / `setup-taskcalendar.ps1` | **원큐(진입점)**: 새 DB 구조 + 회사 시드 + 원본 과제 복사(코드표 이름을 번호로) + 앱 권한 + 검증. 아래 캘린더 트랙 표의 같은 줄 참조 |
 | `schema-structure.sql` | 과제 트랙 구조 DDL(customer, section_code, status_code, project, room_code). 코드표는 번호 키(2026-10-15), 기본 코드 행은 고정 번호로 시드. room_code 는 회사 공용 회의실 목록(2026-10-21, 관리자만 고친다, docs/SHARED-ROOMS.md) |
 | `migrations/v15-shared-rooms.sql` | **이관 조각**(14 → 15, 2026-10-21). 혼자 돌리지 않는다. 배포 SQL(release-v<버전>.sql)에 들어가 room_code 를 만들고, 사람마다 두던 cal_room 의 이름을 모아(앞뒤 공백 정리, 중복 제거) 넣고 검증한 뒤 cal_room 을 지운다. 이미 15 이상이면 건너뛴다 |
+| `migrations/v18-remove-git.sql` | **이관 조각**(17 → 18, 2026-10-26, docs/GIT-SVN-REMOVAL.md). 혼자 돌리지 않는다. 커밋 기록(`cal_entry.source = 'git'` 인 행, 그 메모와 장소와 공수, 예외일까지)을 지우고 `cal_entry_commit` 표, `cal_entry.source`, `cal_category.uses_repo`, `cal_user_pref` 의 `git_author`, `svn_author`, `git_commit_body` 칸과 그 CHECK 를 없앤다. 되돌릴 수 없으므로 배포 SQL 을 돌리기 전 Workbench 백업이 필수다. 이미 18 이상이면 건너뛰고, 다시 돌려도 있는 것만 지운다 |
 | `create-app-user.sql` | 앱 계정 생성과 과제 표 권한(setup 이 스키마 이름을 바꿔 적용한다) |
 | `load-template.sql` | **내부망 LLM용** 데이터 INSERT 템플릿 + 규칙(이름으로 적고 번호로 바꿔 넣는다) |
 | `migrate-2026-10-15-code-ids.sql` | **데이터가 있는 로컬 DB 전용 1회 이관**(v12 → v13). 코드표 넷(발주처, 구분, 상태, 직급)을 번호 키로. 절단 관문(BINARY)과 사후 검증이 어긋나면 에러로 멈춘다. 언제, 어떻게는 아래 '코드표 번호 키 이관' 절 |
@@ -164,7 +165,7 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 
 ### 왜 앱 계정에 `DELETE` 를 주는가: 과제 트랙과 갈리는 지점
 
-- `cal_*` 에는 **소프트삭제가 없습니다.** 일정, 할 일, 과제, 회의실, 예외일, 커밋, 공수, 근태는 행을 지우는 것이 정상 동작이고, 공수에 0 을 넣는 것도 0 저장이 아니라 **행 삭제**입니다(`chk_cal_task_hours_range` 가 0 을 거부합니다). **근태를 '미기록'으로 되돌리는 것도 같은 규약**입니다. `cal_attendance` 는 `status=''` 를 저장하지 않고(`chk_cal_attendance_status` 의 IN 목록에 `''` 가 없어 INSERT, UPDATE 모두 `ERROR 3819`) 행을 지웁니다.
+- `cal_*` 에는 **소프트삭제가 없습니다.** 일정, 할 일, 과제, 회의실, 예외일, 공수, 근태는 행을 지우는 것이 정상 동작이고, 공수에 0 을 넣는 것도 0 저장이 아니라 **행 삭제**입니다(`chk_cal_task_hours_range` 가 0 을 거부합니다). **근태를 '미기록'으로 되돌리는 것도 같은 규약**입니다. `cal_attendance` 는 `status=''` 를 저장하지 않고(`chk_cal_attendance_status` 의 IN 목록에 `''` 가 없어 INSERT, UPDATE 모두 `ERROR 3819`) 행을 지웁니다.
 - 그래서 과제 트랙의 관례(`SELECT`/`INSERT`/`UPDATE` 만)를 글자대로 옮기면 **앱의 모든 삭제 UI 가 `ERROR 1142` 로 실패**합니다. 그것도 사용자가 저장에 실패한 뒤에야 드러납니다.
   **즉 `DELETE` 는 "위험하지만 감수하는 동사" 가 아니라 안 주면 앱이 동작하지 않는 필수 동사**입니다. 부여 근거는 그것 하나로 충분하고, 무엇이 상쇄하느냐와는 별개입니다.
 - **남는 위험과 그 상쇄**: 접속 자격은 배포본에 담겨 전 사용자 PC 에 퍼집니다(노출 전제). 우회 접속자가 남의 행을 지울 수 있습니다. 이걸 되돌리는 수단은 **DB 밖에 두 가지뿐**입니다. **주간 mysqldump**(기준 스냅샷)와 **binlog 30일**(그 이후 변경). 아래 '백업' 절.
@@ -238,7 +239,7 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 | `migrate-2026-08-24-user-id.sql` | (사용자 표) `app_user` PK `login_id` → **`user_id`**. `cal_*` 의 FK 대상이라 **이것이 먼저입니다** | (전제) |
 | `migrate-2026-08-24-org-id.sql` | (조직 표) `org_unit` PK `name` → **`org_id`** + 구 컬럼 절단 | (전제) |
 | `migrate-2026-08-27-sort-order.sql` | `cal_entry`·`cal_todo` 에 **`sort_order`** 신설. 배열(문서) 순서를 박제. `created_at` 만으로는 되살릴 수 없었습니다(실 `data.xml` 계측: 일정 23건 중 **22건이 같은 밀리초**) | 3 → 4 |
-| `migrate-2026-08-27-repo-flag.sql` | `cal_category` 에 **`uses_repo`** 신설. '저장소를 쓰는 과제' 한 비트. **경로 자체는 DB 에 올리지 않으므로**(PC 마다 달라야 하는 값이다. 올리면 남의 커밋이 내 보고서에 실립니다) 화면이 판단할 근거로 비트만 올립니다. 경로의 보관처는 `%APPDATA%\TaskCalendar\repo-paths.json` | 4 → 5 |
+| `migrate-2026-08-27-repo-flag.sql` | `cal_category` 에 **`uses_repo`** 신설. '저장소를 쓰는 과제' 한 비트. **경로 자체는 DB 에 올리지 않으므로**(PC 마다 달라야 하는 값이다. 올리면 남의 커밋이 내 보고서에 실립니다) 화면이 판단할 근거로 비트만 올립니다. 경로의 보관처는 `%APPDATA%\TaskCalendar\repo-paths.json`. *(2026-10-26 구조 18 에서 이 칸을 지웠습니다)* | 4 → 5 |
 | `migrate-2026-08-31-report-daily.sql` | **`cal_report_daily`·`cal_report_hours`** 신설. 일간보고 사본 2표 | 5 → 6 |
 | `migrate-2026-08-31-report-weekly.sql` | **`cal_report_weekly`** 신설. 주간보고 사본 1표. 일간과 달리 `content_from` 이 없습니다(위젯이 주간은 폼만 채우고 전송하지 않아 **전송 시점 자체를 모릅니다**) | 6 → 7 |
 | `migrate-2026-08-31-sent-only.sql` | 위 세 표를 **캘린더가 만든 것만** 으로 좁힘. 사이트는 우리에게 무효화 신호를 주지 않으므로 "지금 사이트에 뭐가 있나"는 물어보기 전엔 알 수 없고 물어본 뒤에도 그 순간의 사진일 뿐입니다(2026-08-31 사용자 결정) | 7 → 8 |
@@ -290,7 +291,7 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 - **가드(아무것도 바꾸기 전)**: 대상 표 7개, `schema_version = '12'`, 옛 모양(이름 키)인지, 문자셋, 뷰와 트리거 없음, 외래키 모양, 데이터 사전 점검.
 - **절단 관문(옛 열을 지우기 직전)**: 번호로 되살린 이름이 스냅숏(과제 uid 별 발주처, 구분, 상태와 사용자별 직급)과 `BINARY` 로 한 글자도 다르지 않고 NULL 여부도 같아야 합니다. 시드 이름은 고정 번호 지도(구분 2=선진행, 상태 2=종료 등)로 번호를 받고, 나머지는 MAX+1 부터 이름순입니다.
 - **사후 검증**: 고아 0, 표별 행 수 불변, 이름 복원 `BINARY` 일치, `cal_*` 행 수와 `cal_user_rev` 불변, 구조, `AUTO_INCREMENT` > MAX. 어긋나면 실행을 실패시킵니다.
-- 끝으로 앱 계정의 안 쓰는 `UPDATE` 권한(`cal_entry_commit`, `cal_todo_day_note`, `cal_room`)을 거둡니다(CODE-TABLE-IDS §8-3). `cal_room` 은 2026-10-21 구조 번호 15 에서 표째 없앴습니다(SHARED-ROOMS).
+- 끝으로 앱 계정의 안 쓰는 `UPDATE` 권한(`cal_entry_commit`, `cal_todo_day_note`, `cal_room`)을 거둡니다(CODE-TABLE-IDS §8-3). `cal_room` 은 2026-10-21 구조 번호 15 에서, `cal_entry_commit` 은 2026-10-26 구조 번호 18 에서 표째 없앴습니다(SHARED-ROOMS, GIT-SVN-REMOVAL).
 - 사람이 따로 할 대조: 빈 격리 DB 에 `setup-taskcalendar` 로 새로 만든 결과와 `information_schema`(열, 인덱스, 외래키, CHECK, 표 COMMENT)가 같아야 합니다. 질의 예는 파일 머리말 【대조】.
 
 **멈추면.** 조건이 어긋나면 '없는 표 이름'을 SELECT 해 `ERROR 1146` 으로 멈춥니다. 마지막 *"중단: …"* 줄이 이유입니다.

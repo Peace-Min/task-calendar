@@ -105,7 +105,7 @@
 구조가 바뀌는 배포는 퇴근 후에 한다(사용자는 다음 날 버튼을 한 번 누른다). 앱만 바뀌는 배포는 아무 때나 해도 된다.
 
 1. Setup 파일과 `latest.json` 을 공유 폴더에 올린다. 옛 Setup 파일은 지우지 않는다. 이 시점에는 0.23.0 이상 사용자 누구도 새 버전을 안내받지 않는다(`-CopyTo` 를 쓰면 exe 복사, 해시 대조, `latest.json` 순서로 올린다).
-2. Workbench **Data Export** 로 `taskcalendar` 를 백업한다(Dump Structure and Data, Self-Contained File, Single Transaction, Include Create Schema). 파일 끝에 `-- Dump completed` 가 있는지 본다.
+2. Workbench **Data Export** 로 `taskcalendar` 를 백업한다(Dump Structure and Data, Self-Contained File, Single Transaction, Include Create Schema). 파일 끝에 `-- Dump completed` 가 있는지 본다. 구조 18(`v18-remove-git.sql`)이 든 배포는 커밋 기록을 지우고 표와 칸을 없애므로 되돌릴 길이 이 백업뿐이다. 백업 없이 돌리지 않는다.
 3. `release-v<버전>.sql` 을 Workbench 에서 열고 `taskcalendar` 를 기본 스키마로 둔 채 **전체 실행(Ctrl+Shift+Enter)** 을 **한 번** 한다. 오류가 나면 멈추는 기본 설정을 그대로 둔다.
 4. 마지막 결과 표에서 `db_structure_version`(앱 구조 번호), `db_updating = 0`, `app_latest_version`(새 버전)을 본다.
 5. 내 PC 에서 업데이트 버튼을 눌러 새 버전이 정상 동작하는지 본다.
@@ -128,7 +128,7 @@
 
 ## 5. 이관 조각 작성 규칙 (개발자)
 
-구조 변경은 **이관 조각**으로 낸다. 조각은 `db/deploy/migrations/v<도착 번호>-<이름>.sql`(예: `v14-version-gate.sql`) 한 파일에 구조 번호 한 칸이다. 운영자에게 조각을 따로 주지 않는다. `installer/publish-update.ps1` 이 `installer/release-sql.ps1` 로 조각을 구조 번호 순서로 이어 붙여 `release-v<버전>.sql` 하나를 만든다(4절). 확인, 닫기, 끝 확인, 열기는 그 감싸개가 하고, 조각은 바꾸기만 한다.
+구조 변경은 **이관 조각**으로 낸다. 조각은 `db/deploy/migrations/v<도착 번호>-<이름>.sql`(예: `v14-version-gate.sql`) 한 파일에 구조 번호 한 칸이다. 지금 사슬은 13 에서 18 이다(v14 버전 관문, v15 공용 회의실, v16 과제 캘린더, v17 월간 보고의 개발 시작일과 개발 일정 그림, v18 Git, SVN 삭제). 운영자에게 조각을 따로 주지 않는다. `installer/publish-update.ps1` 이 `installer/release-sql.ps1` 로 조각을 구조 번호 순서로 이어 붙여 `release-v<버전>.sql` 하나를 만든다(4절). 확인, 닫기, 끝 확인, 열기는 그 감싸개가 하고, 조각은 바꾸기만 한다.
 
 ### 5.1 형식
 
@@ -148,7 +148,7 @@
    - 값이 바뀌는 열: 새 열 추가, 트랜잭션으로 변환해 채우기, 검증, 필수로 바꾸기, 옛 열 삭제.
    - 큰 변경: 새 표(`X_new`)를 만들어 채우고 검증한 뒤 `RENAME TABLE X TO X_old, X_new TO X` 한 문장으로 바꿔 끼운다(여러 표를 원자적으로 바꾼다). 앞서 실패한 실행의 잔여물(`X_new`)이 있으면 먼저 지운다.
    - 값 바꾸기(INSERT, UPDATE, DELETE)는 `START TRANSACTION ... COMMIT` 으로 묶는다. 그 사이에 구조 변경 문장을 섞지 않는다(자동 확정된다).
-   - "지우고 다시 넣기" 로 저장하는 표(`cal_todo_day_note`, `cal_entry_commit`, `cal_entry_except`)는 앱의 저장 방식을 함께 확인한다.
+   - "지우고 다시 넣기" 로 저장하는 표(`cal_todo_day_note`, `cal_entry_except`)는 앱의 저장 방식을 함께 확인한다. (`cal_entry_commit` 도 그랬으나 구조 18 에서 표째 지웠다.)
 4. **검증:** 행 수, 남은 NULL 등. 틀리면 오류로 멈춘다(`db_updating = 1` 인 채로).
 5. **구조 번호 올리기(끝에서 한 줄):** `UPDATE cal_schema_meta SET v = 'N+1', updated_at = UTC_TIMESTAMP(3)` 다음 줄 `WHERE k = 'db_structure_version' AND v = 'N';`. 이미 올라가 있으면 0행이다. `db_updating` 은 그대로 1 이라 앱은 끝의 열기까지 계속 기다린다.
 6. **쓰지 않는 것:** `db_updating`(닫기와 열기는 감싸개의 몫), 감싸개 변수 `@r_`.

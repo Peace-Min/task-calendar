@@ -76,8 +76,8 @@ console\                       ← 부모 폴더
 |---|---|---|
 | 상시 스위트(엄격) | `TC_TEST_STRICT=1 node tests/run-tests.mjs` | **exit 0**. skip 이 있으면 2(판정 없음)이고 strict 는 그것을 1 로 올린다 |
 | 사용자 관리 루프 | `node tests/loop-user-admin.mjs` | **무작위 시드로 5회 연속** 통과(한 번이라도 실패하면 1부터 다시 센다) |
-| 과제 캘린더 DB 계약 | `node tests/db-project-calendar.mjs --db=zz_pc_dev` | 한 번 통과(0). 공용 DB 가 아니라 구조 번호가 앱(`DbGate.AppStructureVersion`, 지금 17)과 같은 복사본(이름이 zz_ 로 시작)에서만 돈다. 비밀번호는 `TC_TEST_DB_ADMIN_PW` 환경 변수로만 |
-| 개발 일정 그림 DB 계약 | `node tests/db-schedule-image.mjs --db=zz_si_dev` | 한 번 통과(0). 구조 17 인 복사본(이름이 zz_ 로 시작)에서만 돈다. 일회용 계정, 비밀번호는 `TC_TEST_DB_ADMIN_PW` 환경 변수로만. mysqldump 가 mysql.exe 옆에 있어야 한다(`TC_TEST_MYSQLDUMP` 로 바꿀 수 있다) |
+| 과제 캘린더 DB 계약 | `node tests/db-project-calendar.mjs --db=zz_pc_dev` | 한 번 통과(0). 공용 DB 가 아니라 구조 번호가 앱(`DbGate.AppStructureVersion`, 지금 18)과 같은 복사본(이름이 zz_ 로 시작)에서만 돈다. 비밀번호는 `TC_TEST_DB_ADMIN_PW` 환경 변수로만 |
+| 개발 일정 그림 DB 계약 | `node tests/db-schedule-image.mjs --db=zz_si_dev` | 한 번 통과(0). 구조 번호가 앱과 같은 복사본(이름이 zz_ 로 시작, 지금 18)에서만 돈다. 2026-10-26 부터 앱 번호를 `widget/DbGate.cs` 의 `AppStructureVersion` 에서 읽는다(전에는 17 을 박아 두었다). 일회용 계정, 비밀번호는 `TC_TEST_DB_ADMIN_PW` 환경 변수로만. mysqldump 가 mysql.exe 옆에 있어야 한다(`TC_TEST_MYSQLDUMP` 로 바꿀 수 있다) |
 | 휴지통 루프 | `node tests/loop-trash.mjs` | 같은 규약. 앱 계정에 DELETE 권한이 **먼저** 적용돼 있어야 한다(DEPLOY.md §0-5) |
 | 직급·소속 관리 루프 | `node tests/loop-org-title.mjs` | 같은 규약. 앱 계정에 `org_unit`·`title_code` 의 **INSERT·UPDATE** 가 먼저 적용돼 있어야 한다(DEPLOY.md §0-5, ORG-TITLE-ADMIN §6). 없으면 **exit 2(판정 없음)** 로 끝난다. 실패가 아니다 |
 
@@ -384,8 +384,9 @@ PK 순서를 돌려주고 그 자리에서 잡힌다. **오름차순만 깨는 �
 **초록으로 통과**했다. 그래서 조건은 "표시 순서가 `_no`의 오름차순으로도 내림차순으로도 재현되지 않는다"이고,
 그렇지 못하면 "픽스처 조건 미달"로 그 사실을 찍는다(고정 시드 Fisher-Yates라 실행마다 같은 배치가 나온다).
 
-★ 커밋은 **일부러 적재한다.** G-7이 요구하는 것은 '없다'가 아니라 '부팅 조회에 넣지 않는다'이므로,
-DB에 있는데도 `commits`가 `[]`로 오는지를 봐야 그 계약이 실제로 시험된다.
+★ 2026-10-26 Git, SVN 삭제(구조 18) 뒤로 커밋은 적재하지 않는다(`cal_entry_commit` 표가 없다). 대신 `synth` XML 에 옛 흔적
+(`gitRepo`/`svnRepo`, `source="git"` 일정과 `<commits>`, 루트 `gitAuthor`/`svnAuthor`, `prefs@gitCommitBody`)을 **일부러 남겨 두고**,
+기준(`fromXML()`)과 어댑터 둘 다 그 키를 만들지 않는지 G-18 이 본다.
 
 ### ★ 이 게이트가 증명하지 **못하는** 것: 픽스처 한계
 
@@ -422,15 +423,15 @@ DB에 있는데도 `commits`가 `[]`로 오는지를 봐야 그 계약이 실제
 ### 비교 규칙
 
 - **키 유무까지** 본다. `undefined`와 `null`을 구분한다. 다르면 **어느 경로의 어느 키가 어떻게** 다른지 찍는다(해시 아님)
-- 순서를 보는 배열: `categories`, `rooms`, `recurExcept`, `commits`
+- 순서를 보는 배열: `categories`, `rooms`, `recurExcept` (`commits` 는 2026-10-26 Git, SVN 삭제로 빠졌다)
 - `entries`·`todos`도 **배열 그대로 인덱스별로** 본다(`diffArrayOrdered`). 화면 순서 = 배열 순서이고
   렌더 정렬(`entrySort`)도 `createdAt`에서 끝나므로, 정렬 키가 동률이면 배열 순서가 그대로 화면에 새어 나온다.
   보고는 `[ORDER]`(자리 어긋남. 동률 그룹 안의 재배치는 따로 센다)와 `[DIFF]`(항목 누락/잉여, 내용 차이)로 갈린다.
   예전에는 대조 **직전에** `byId`로 배열을 접어 순서가 비교에서 통째로 빠져 있었다(자리가 뒤바뀌어도 "차이 0건").
   순서를 포기해야 하는 구간은 `ORDER_EXEMPT`에 적고 요약에 **반드시** 찍는다. **지금은 비어 있다**
 - 맵(`taskHours`, `attendance`, `dayNotes`)의 **키 순서는 계약이 아니다.** 키 집합과 값만 본다
-- **계약상 차이표**: `entry.hours→null`(컬럼 폐지), `category.usesRepo` 신설 키를 기준에 얹음(2026-08-27),
-  `gitRepo`/`svnRepo`(로컬 소유). 이 표에 **없는** 차이는 전부 위반이고, 표에 있는 것은 요약에 **반드시 찍는다**.
+- **계약상 차이표**: `entry.hours→null`(컬럼 폐지). 이 표에 **없는** 차이는 전부 위반이고, 표에 있는 것은 요약에 **반드시 찍는다**.
+  ※ 2026-10-26 Git, SVN 삭제(구조 18)로 `category.usesRepo` 를 기준에 얹던 항목과 `gitRepo`/`svnRepo`(로컬 소유) 항목이 없어졌다.
   ※ 옛 항목 둘은 없어졌다. `commits→[]`는 **G-7 개정(2026-09-01)으로 대조 대상이 됐고**(커밋을 지우던 정규화를 제거했다),
   `lsMigrated→true`는 그 키 자체가 사라졌다. 차이표의 정본은 `calendar-adapter.mjs`의 `normalizeExpected()`다
 
@@ -438,17 +439,18 @@ DB에 있는데도 `commits`가 `[]`로 오는지를 봐야 그 계약이 실제
 
 | 코드 | 검사 |
 |---|---|
-| G-0 | 최상위 키가 정확히 **14개**인가(그 이상도 이하도 아니다). 명부는 `calendar-adapter.mjs`의 `TOP15` 상수가 정본이다. **이름은 `TOP15`인데 항목은 14개**다(2026-09-01 `lsMigrated` 제거로 15 → 14가 됐고 상수 이름만 남았다) |
+| G-0 | 최상위 키가 정확히 **10개**인가(그 이상도 이하도 아니다). 명부는 `calendar-adapter.mjs`의 `TOP15` 상수가 정본이다. **이름은 `TOP15`인데 항목은 10개**다(2026-09-01 `lsMigrated`, 2026-10-21 `rooms`, 2026-10-26 `gitAuthor`, `svnAuthor`, `gitCommitBody` 가 빠졌고 상수 이름만 남았다) |
 | G-1b/c | `categoryId`가 실재하는 과제 **uid**인가. **숫자(cat_no)를 흘리면 오류 없이 전 일정이 '미분류'가 된다.** `taskHours` 안쪽 키도 uid |
 | G-1d | `user_id`, `*_no`, `sort_order`, `seq`, `uid`, DB 컬럼명 그대로가 state에 새지 않았나 |
 | G-2 | NULL → `''`(start/end time, endDate 둘, due, recur.until, completedAt) |
 | G-2b | 반대로 NULL을 유지해야 하는 둘: `cat_no`(→null, `''` 아님), `remind`(null=기본 사다리 / 0=알림 없음) |
 | G-3 | 시각 6자리가 ISO `Z`, 소수 **정확히 3자리**(자릿수가 흔들리면 §8 왕복 서명이 어긋난다) |
-| G-4 | `allDay`, `done`, `gitCommitBody`, `lsMigrated`, `dbGone`이 boolean(0/1이면 화면은 같고 내보내기만 달라진다) |
+| G-4 | `allDay`, `done`, `dbGone`이 boolean(0/1이면 화면은 같고 내보내기만 달라진다) |
 | G-5 | `recurExcept`가 `except_date` 오름차순, 근태에 빈 status 키 없음, `taskHours` 값이 숫자(DECIMAL을 문자열로 흘리면 합계가 문자열 접합이 된다). ※ `entries`/`todos`의 **배열 순서**는 여기서가 아니라 `[ORDER]`가 기준과 인덱스별로 대조해 본다(더 강한 판정이다. 날짜뿐 아니라 문서 순서를 본다). 옛 "`entry_date` 단조" 검사는 기준이 갖지 않은 성질을 요구하던 것이라 삭제됐다 |
-| G-6 | `hours`가 명시적 null(컬럼 폐지), `source`/`dbGone`은 공식 과제에만(개인 과제에는 키 자체가 없다), `usesRepo`는 DB에만 있는 거울값(경로에서 파생하지 않는다), `gitRepo`/`svnRepo`는 로컬 저장소 몫. ※ 옛 **`lsMigrated` 검사는 2026-09-01에 삭제**됐다. 자동이관(`migrateLocalStores()`)이 사라지면서 그 키 자체가 없어졌다(G-0 15 → 14) |
-| G-7 | **(2026-09-01 개정)** `entry.commits`를 **부팅 조회가 실어 왔는가.** DB 행수와 일치해야 한다. 개정 전에는 *"`commits`가 `[]`인가"*(지연 조회 전제)였는데, **그 지연 조회가 한 번도 배선된 적이 없어** DB 모드에서 커밋이 영영 빈 배열이었고 커밋 기반 일간·주간 보고가 통째로 비어 나갔다. **DB에 커밋이 실제로 있는 상태에서** 통과해야 의미가 있다(0행이면 "검출력 없음"으로 찍는다) |
-| §3.5/§3.6 | `performance_schema` 문장 다이제스트로 **관측**한다: `START TRANSACTION WITH CONSISTENT SNAPSHOT`, 격리수준, time_zone, lock_wait_timeout 설정, **부팅 조회가 읽어야 하는 표 전부**(명부는 `calendar-adapter.mjs`의 부팅 조회 표 목록이 정본. **`cal_entry_commit`도 2026-09-01 G-7 개정으로 들어왔다.** 예전엔 "없음"을 확인했다), COMMIT, **연결 1회**. 다이제스트는 리터럴을 `?`로 지우므로 **값**(`REPEATABLE-READ`, `+00:00`, `5`)은 소스 텍스트로 따로 본다 |
+| G-6 | `hours`가 명시적 null(컬럼 폐지), `source`/`dbGone`은 공식 과제에만(개인 과제에는 키 자체가 없다). `usesRepo`, `gitRepo`/`svnRepo` 검사는 2026-10-26 Git, SVN 삭제로 없어졌다(G-18 참조). ※ 옛 **`lsMigrated` 검사는 2026-09-01에 삭제**됐다. 자동이관(`migrateLocalStores()`)이 사라지면서 그 키 자체가 없어졌다(G-0 15 → 14) |
+| G-18 | **(2026-10-26, 구조 18)** 없앤 키가 되살아나지 않는가: 일정에 `source`, `commits`, 과제에 `gitRepo`, `svnRepo`, `usesRepo` 가 **없어야** 한다(기준과 actual 둘 다). 최상위 `gitAuthor`, `svnAuthor`, `gitCommitBody` 는 G-0 이 본다. 아래 G-7 을 대신한다 |
+| ~~G-7~~ | **(2026-10-26 폐지, `cal_entry_commit` 표가 없다)** 기록으로 남긴다. **(2026-09-01 개정)** `entry.commits`를 **부팅 조회가 실어 왔는가.** DB 행수와 일치해야 한다. 개정 전에는 *"`commits`가 `[]`인가"*(지연 조회 전제)였는데, **그 지연 조회가 한 번도 배선된 적이 없어** DB 모드에서 커밋이 영영 빈 배열이었고 커밋 기반 일간·주간 보고가 통째로 비어 나갔다. **DB에 커밋이 실제로 있는 상태에서** 통과해야 의미가 있다(0행이면 "검출력 없음"으로 찍는다) |
+| §3.5/§3.6 | `performance_schema` 문장 다이제스트로 **관측**한다: `START TRANSACTION WITH CONSISTENT SNAPSHOT`, 격리수준, time_zone, lock_wait_timeout 설정, **부팅 조회가 읽어야 하는 표 전부**(명부는 `calendar-adapter.mjs`의 부팅 조회 표 목록이 정본. **`cal_entry_commit`은 2026-09-01 G-7 개정으로 들어왔다가 2026-10-26 구조 18 에서 표째 없어졌다.** 지금은 여덟 표다), COMMIT, **연결 1회**. 다이제스트는 리터럴을 `?`로 지우므로 **값**(`REPEATABLE-READ`, `+00:00`, `5`)은 소스 텍스트로 따로 본다 |
 
 ### 변이 시험: `--selftest`
 
@@ -549,6 +551,17 @@ DB도 jsdom도 없이 `db/deploy/*.sql` **텍스트만** 읽어 재적용 가능
 | `retryable=false` 면 자동 재시도 없음 | 로그인 없음·미등록은 몇 번을 걸어도 같은 답이다 |
 | 재시도는 `hostRequest` 가 아니라 `hpost` | `reloadState` 는 **회신이 없는 명령**이라 hostRequest 로 보내면 성공해도 25초 뒤 '응답 시간 초과'로 끝난다 |
 
+## git-removal.test.mjs, git-removal-web.test.mjs: Git, SVN 삭제 지킴이 (기본 스위트)
+
+2026-10-26 Git, SVN 기능 전량 삭제([`../docs/GIT-SVN-REMOVAL.md`](../docs/GIT-SVN-REMOVAL.md), 구조 18)와 함께 들어왔다. 같은 날 `vcs-branching.test.mjs`(git, svn 분기 단일화)와 `commit-merge.test.mjs`(커밋 다시 불러오기 때 고친 제목 보존)는 지킬 기능이 없어져 지웠다.
+
+| 파일 | 무엇을 지키나 |
+|---|---|
+| `git-removal.test.mjs` | 호스트와 DB 쪽 흔적 0. `widget/Svn.cs`, `widget/RepoPaths.cs` 가 다시 생기지 않고, 명령 `gitlog`, `gitauthor`, `gitcheck`, `pickfolder` 와 git, svn 실행 코드가 없다. `exportResearch` 는 `project`, `calendarMd`, `from`, `to` 넷만 받는다. 정본 스키마(주석 제외)에 `cal_entry_commit` 정의와 없앤 칸 다섯, CHECK 넷이 없다(옛 DB 정리용 DROP 한 줄만 남는다). `DbGate.AppStructureVersion`, 정본 시드, 이관 조각 사슬의 끝이 같다. 권한 파일, 시드와 데모, `xml-to-db` 가 없앤 표와 칸을 쓰지 않는다 |
+| `git-removal-web.test.mjs` | 웹 쪽 흔적 0(정적, 주석 포함). 예외는 옛 흔적을 버리는 두 함수 `isLegacyGitEntry`, `dropLegacyGit` 뿐이다. 이름만 git 처럼 보이는 공용 이름(`.git-hint`, `.git-opt`, `.git-note`, `badge-git`, `gitaTaskId`)은 금지 목록에 없다. jsdom 으로 옛 XML 가져오기(커밋 기록은 버리고 나머지는 그대로), XML 내보내기(커밋, 저장소, 작성자, `source` 를 쓰지 않음), 옛 localStorage 와 옛 DB 스냅숏, 보고서 데이터(커밋 항목 없음), 과제 데이터 내보내기 값 넷을 본다. jsdom 이 없으면 행동 시험은 skip |
+
+두 파일 모두 변이 시험으로 각 검사가 정말 무는지 본다(흔적 하나를 되살린 사본을 같은 검사에 넣는다).
+
 ## 하네스 API (harness.mjs)
 
 - `test(name, fn)` / `run()`: 테스트 등록·일괄 실행. `fn`은 sync/async 모두 가능.
@@ -628,7 +641,7 @@ v0.12.0에서 나온 결함이 **대부분 레이아웃**이었고 전부 수작
 |---|---|---|
 | `data.xml` 폐기 게이트가 `.cs` 15개 중 **2개만** 훑었다 | 실제 `widget/Reminders.cs`에 `data.xml` 코드 줄을 심었더니 옛 게이트는 **9 pass / 0 fail / exit 0** | `widget/` 디렉터리를 **열거**해 전부 훑는다(새 `.cs`도 자동). `xml-retirement`의 폐기⑤·변이⑲ |
 | 게이트가 **총량을 안 봤다.** 시험 파일이 개명이나 삭제되면 수집조차 안 되므로 skip 도 안 남는다 | `holiday.test.mjs`를 잠깐 감췄더니 **1085 → 1060 pass, 0 fail** (24건 증발했는데 초록) | `러너①`·`러너②` + `census①~③` |
-| `gitcheck`만 `ResolveVcs`를 안 부르고 같은 식을 복제했다. `Svn.cs` 주석은 "세 진입점 모두 통일"이라고 단언 | 동작은 같았다(그래서 아무 시험도 안 빨개졌다). 주석이 앞서고 코드가 뒤처진 상태 | 통일 + `vcs-branching.test.mjs`(분기①~⑤·변이㉑~㉔) |
+| `gitcheck`만 `ResolveVcs`를 안 부르고 같은 식을 복제했다. `Svn.cs` 주석은 "세 진입점 모두 통일"이라고 단언 | 동작은 같았다(그래서 아무 시험도 안 빨개졌다). 주석이 앞서고 코드가 뒤처진 상태 | 통일 + `vcs-branching.test.mjs`(분기①~⑤·변이㉑~㉔). 2026-10-26 Git, SVN 삭제로 `Svn.cs` 와 이 시험을 함께 지웠다 |
 | `loop-peer-frame`·`loop-peer-view`의 `sql()`이 stdout을 `'\n'`으로만 잘라 여러 행일 때 마지막 열에 `\r` 잔존 | 한 행짜리는 바깥 `.trim()`이 가려 줘서 조용했다. `Number()`가 `\r`를 공백으로 먹어 더 조용 | `/\r?\n/` + 셀에 CR가 남으면 **크게 실패** |
 | `db/deploy`의 배포 스크립트에 계약이 **0** | `backup-taskmgr.ps1`은 데이터를 지키는 스크립트인데 검사가 없었다 | `restore-guards.test.mjs`가 첫 계약(복구)이고 `backup-guards.test.mjs`가 그 짝(백업)이다. 공용 기계는 `ps-guard-lib.mjs` |
 | `restore-taskmgr.ps1`이 **무인 실행에서 영원히 멎었다** | stdin이 리다이렉트되고 **파이프가 열린 채 비어 있으면** `[Console]::In.ReadLine()`이 안 돌아온다. `-WhatIf`가 5분 뒤에도 안 끝났다(25초 상한으로 강제 종료, 코드 `124`). `< NUL`(즉시 EOF)에서는 멀쩡해서 **대화형·수동 실행으로는 절대 안 드러난다** | 자격 획득 순서를 `.cnf` → 환경변수 `TASKMGR_ADMIN_PW` → **상한 10초** stdin → 대화형으로 바꾸고, 상한 초과는 코드 `2`. `restore-guards`의 가드 ⑧⑨⑩ + 변이 ⑧, ⑧-b~e, ⑨, ⑨-b~e |

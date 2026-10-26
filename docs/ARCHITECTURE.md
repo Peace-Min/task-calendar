@@ -9,7 +9,7 @@
 ## 0. 한눈 요약 (TL;DR)
 
 - 앱 본체(UI와 도메인 로직)는 **의존성 0의 단일 웹 문서**(`task-calendar-prototype.html` = HTML + CSS + JS)다.
-- 위젯은 그 웹 문서를 **`.NET → WPF → WebView2`** 3계층이 감싸 호스팅하고, 브라우저가 못 하는 **OS 능력**(서버 DB 접속, git/svn, 회사 보고 자동화, 알림, 임의 파일 저장)을 제공한다.
+- 위젯은 그 웹 문서를 **`.NET → WPF → WebView2`** 3계층이 감싸 호스팅하고, 브라우저가 못 하는 **OS 능력**(서버 DB 접속, 회사 보고 자동화, 알림, 임의 파일 저장)을 제공한다.
 - **데이터 원본은 사내 서버 MySQL이다**(v0.18.0~). 위젯은 API 서버를 거치지 않고 **커넥터로 직접** 붙는다. 그래서 신뢰 경계가 API가 아니라 **DB GRANT**다. 이건 중간 단계이며 대가는 [ROADMAP.md](ROADMAP.md) §1 표에 적혀 있다.
 - 브라우저로 `.html`만 열면 그 3계층이 없다. 이때 **도메인 로직과 브라우저 표준 능력은 그대로 동작**하고 **OS 능력(서버 접속 포함)만 빠지며**, 데이터는 그 브라우저의 localStorage에만 남는다.
 - 그래서 로직 배치 원칙은 하나다. **"공유돼야 하면 JS, OS가 필요하면 C#(호스트), 여러 사람이 공유하면 DB(지금) / 서버 API(T2 이후)."**
@@ -21,7 +21,7 @@
 ```mermaid
 flowchart TB
   subgraph host["위젯 실행체 (하나의 프로세스)"]
-    dotnet[".NET 9 런타임 + C# 로직<br/><b>호스팅 주체 · 능력 제공자</b><br/>서버 MySQL 접속 · git/svn · netcus · 알림 · DPAPI · 파일 저장"]
+    dotnet[".NET 9 런타임 + C# 로직<br/><b>호스팅 주체 · 능력 제공자</b><br/>서버 MySQL 접속 · netcus · 알림 · DPAPI · 파일 저장"]
     wpf["WPF 창<br/><b>껍데기</b> — 로직 0, WebView2를 담아 화면에 띄움"]
     wv["WebView2<br/><b>임베드 브라우저 엔진</b> — JS 실행 + 표준 능력"]
     dotnet --> wpf --> wv
@@ -49,15 +49,13 @@ flowchart TB
 
 | 파일 | 담당 능력 |
 |---|---|
-| `widget/MainWindow.xaml.cs` | 창 모드(위젯↔앱창/트레이), 8방향 리사이즈, 자동시작, 자기교체, **브리지 디스패치**(포트 계약의 진입점, §4), git CLI 실행/파싱, WebView2 부팅(가상 호스트) |
+| `widget/MainWindow.xaml.cs` | 창 모드(위젯↔앱창/트레이), 8방향 리사이즈, 자동시작, 자기교체, **브리지 디스패치**(포트 계약의 진입점, §4), WebView2 부팅(가상 호스트) |
 | `widget/CalendarDb.cs` | **캘린더 본체 부팅 조회.** `cal_*`를 **단일 트랜잭션, 일관 스냅샷**으로 읽어 앱 state 한 덩어리로 환원. 어댑터 계약(G-0~G-7)의 구현체 |
 | `widget/CalendarWriteDb.cs` | 캘린더 저장. `saveState`(차분)와 `replaceAllState`(전량 교체) 두 원시연산 |
 | `widget/ReportDb.cs` | 보낸 일간·주간 보고를 `cal_report_*`에 기록 |
 | `widget/ProjectDb.cs` | 공식 과제 마스터(`project`, `customer`, 코드테이블) 읽기/쓰기. **쓰기 권한 판정은 `OpenWriteAsync` 한 곳**(`app_user.edit_role`, `is_active`) |
 | `widget/UserSession.cs` | 로그인 세션 4필드 DPAPI 보관, 복원, 삭제(`user.session`). **권한은 담지 않는다** |
-| `widget/RepoPaths.cs` | 과제별 git/svn 저장소 경로의 **로컬** 보관(`repo-paths.json`). 자리마다 다르므로 **일부러 DB에 올리지 않는다** |
 | `widget/DeployConfig.cs` | 배포 구성 단일 소스. DB 접속, 업데이트 소스, `XmlRetired` 스위치 |
-| `widget/Svn.cs` | svn CLI 실행, XML 파싱, UTC→로컬 보정, 작성자 필터, `ResolveVcs`(git/svn 분기 단일 소스) |
 | `widget/NetcusService.cs` | 회사 보고 자동화(보조 WebView2로 로그인, 이동, 채움, 제출, 되읽기 검증), euc-kr 폼 우회, DPAPI 자격증명, **로그인 인증 위임** |
 | `widget/NetcusText.cs` | netcus 페이지에서 **텍스트를 뽑아내는** 순수 파서(셀 라벨, 표 읽기). `NetcusService`가 가져온 문서를 이 파일이 해석한다(통신 없음) |
 | `widget/Reminders.cs` | 일정 시작 알림. 에스컬레이션 상태기계(60→30→10→5분), Topmost 알림창, 절전복귀 재평가, 영속/GC |
@@ -76,7 +74,7 @@ flowchart TB
 | 로직 종류 | 자리 | 이유 |
 |---|---|---|
 | **도메인**: 일정, 반복 전개, 보고서 집계, XML 직렬화, 렌더 | **HTML/JS** | 브라우저에서도 돌아야 하니, 공유 가능한 유일한 곳 |
-| **능력**: **서버 DB 접속**, 임의 파일 저장, git/svn, 회사 보고 자동화, 네이티브 알림 | **C#(호스트)** | OS, 프로세스, first-party 창, TCP 소켓이 필요 (브라우저 샌드박스가 금지) |
+| **능력**: **서버 DB 접속**, 임의 파일 저장, 회사 보고 자동화, 네이티브 알림 | **C#(호스트)** | OS, 프로세스, first-party 창, TCP 소켓이 필요 (브라우저 샌드박스가 금지) |
 | **공유 데이터**: 일정, 할 일, 과제 마스터, 사용자/조직 | **중앙 MySQL** | 여러 사용자와 여러 자리가 같은 것을 봐야 하니. 지금은 클라이언트 직결, T2 이후 API 경유 |
 
 > **DB 스키마와 제약은 도메인 로직인가?** 아니다. **DB가 강제하는 것**(FK, CHECK, UNIQUE)과 **앱이 지키는 것**의 경계는 [db/CALENDAR-TABLE-DESIGN.md](../db/CALENDAR-TABLE-DESIGN.md)와 `db/deploy/schema-calendar.sql`이 정본이다. 그 경계를 JS에 복제하지 않는다(같은 규칙을 두 곳에 두지 않는다는 아래 원칙의 연장).
@@ -117,7 +115,6 @@ const HOST = !!(window.chrome && window.chrome.webview);  // 위젯=true, 브라
 | **데이터 저장 위치** | **사내 서버 MySQL `cal_*`** | 그 브라우저의 localStorage | **갈림 (데이터가 공유되지 않는다)** |
 | **회사 계정 로그인과 권한** | ✅ | ❌ (netcus에 CORS 없음, 원천 불가) | OS 능력 |
 | **공식 과제 마스터와 구성원 명부** | ✅ | ❌ (DB 접속 불가) | OS 능력 |
-| **git/svn 커밋 수집** | ✅ | ❌ (프로세스와 로컬FS 불가) | OS 능력 |
 | **회사 보고 자동 전송** | ✅ 원클릭 | ❌ 안내만(netcus 창+가이드. 자동 작성은 same-origin 배포 시, [DECISIONS 결정5](DECISIONS.md)) | OS 능력 |
 | **일정 시작 알림** | ✅ Topmost 창 | ❌ | OS 능력 |
 | 바탕화면 위젯, 트레이, 자동시작 | ✅ | ❌ | OS 능력 |
@@ -138,10 +135,11 @@ JS는 C# 함수를 직접 호출하지 않는다. **문자열 메시지**만 주
 | **로그인·권한** | `userLogin`, `userLogout`, `userSessionGet`, `userInfoGet`, `membersGet` | `__hostReply` |
 | **과제 마스터** | `loadProjects`, `saveProject`, `loadCustomers`, `addCustomer`, `code*`, `dbInfoGet` | `__applyProjects`, `__applyCustomers`, `__applyCodes`, `__projectSaved`, `__dbInfo` |
 | **과제 캘린더**(2026-10-22, 메인 창 전용) | `projectCalendarBootstrap`, `projectCalendarLoad`, `projectCalendarSave`, `projectCalendarDelete`, `projectCalendarChanges`, `projectCalendarCopy` | `__hostReply`(`{ ok, data?, error?: { kind, message } }`). 개인 일정에 등록(`projectCalendarCopy`)은 부를 때마다 새 개인 일정 한 건을 만드는 사본이다(대응표 없음, 원본과 이어지지 않음). 성공하면 `__applyState` 로 개인 스냅샷을 다시 싣는다 |
-| **VCS** | `gitlog`, `gitauthor`, `gitcheck` | `__hostReply` |
 | **회사 보고** | `netcusSubmit`, `netcusWeekSubmit`, `netcusWeekMerge`, `netcusCreds*`, `netcusProbe` | `__netcus*` |
-| **창, 업데이트, 기타** | `menu`/`pin`/`focus`/`hide`/`close`, `drag*`/`resize*`, `reminderSync`, `update*`, `pickfolder`, `pickImportXml`, `openFolder`/`openLogFolder`, `export*` | `__setPinned`, `__setTray`, `__setFocus`, `__update*` |
+| **창, 업데이트, 기타** | `menu`/`pin`/`focus`/`hide`/`close`, `drag*`/`resize*`, `reminderSync`, `update*`, `pickImportXml`, `openFolder`/`openLogFolder`, `export*` | `__setPinned`, `__setTray`, `__setFocus`, `__update*` |
 
+> **없앤 것(2026-10-26, Git, SVN 기능 삭제)**: `gitlog`, `gitauthor`, `gitcheck`, `pickfolder` 와 `widget/Svn.cs`, `widget/RepoPaths.cs`. `exportResearch` 는 남아 캘린더.md 만 쓴다([GIT-SVN-REMOVAL.md](GIT-SVN-REMOVAL.md)).
+>
 > **없앤 것(2026-09-01, v0.18.0)**: `save`, `backupdata`(= `data.xml` 쓰기와 그 원본 백업), `__applyXml`, `__saveFailed`, `TC_DATA_SOURCE` 갈래. 저장은 위 **데이터** 행의 두 문으로만 간다. `saveState`와 `replaceAllState`를 굳이 나눈 이유는 **전량 교체가 되돌릴 수 없는 조작**이라 "평범한 저장"과 같은 문으로 들어오면 안 되기 때문이다. 호출부를 눈으로 셀 수 있어야 한다.
 
 이 계약은 **어떤 실행체가 뒤에 있든 동일하게 지킬 수 있다.** 그래서 확장의 접점이 된다(§5). 호스트가 돌려주는 state의 모양은 **어댑터 계약 G-0~G-7**이 잠그고, 그 게이트가 `tests/calendar-adapter.mjs`다.
@@ -155,7 +153,7 @@ JS는 C# 함수를 직접 호출하지 않는다. **문자열 메시지**만 주
 ```mermaid
 flowchart TB
   dom["도메인 로직 (HTML/JS · 전 플랫폼 공유)"]
-  port["능력 포트 + caps 플래그<br/>persist · vcs · report · reminders · shell"]
+  port["능력 포트 + caps 플래그<br/>persist · report · reminders · shell"]
   dom --> port
   port --> wadapter["위젯 어댑터<br/>postMessage → .NET (붙은 몸)"]
   port --> badapter["브라우저 어댑터<br/>localStorage · 클립보드+새탭 · 능력 축소"]
@@ -177,7 +175,7 @@ flowchart TB
 목표 형태에서 기능 코드는 **플랫폼을 모르고 능력만 묻는다**.
 
 ```js
-if (Platform.caps.vcs) { ... }              // if(HOST) 대체
+if (Platform.caps.reportAuto) { ... }       // if(HOST) 대체
 Platform.report.submitDaily(payload);        // 위젯=postMessage / 브라우저=클립보드+새탭 / (미래)서버=fetch
 ```
 
@@ -189,11 +187,10 @@ Platform.report.submitDaily(payload);        // 위젯=postMessage / 브라우�
 
 | 데이터 | 위젯 | 브라우저 |
 |---|---|---|
-| 일정, 할일, 과제, 회의실, 공수, 근태, 커밋 (캘린더 본체) | **사내 서버 MySQL `cal_*`** (`CalendarDb`/`CalendarWriteDb`) | 그 브라우저의 `localStorage` |
+| 일정, 할일, 과제, 회의실, 공수, 근태 (캘린더 본체) | **사내 서버 MySQL `cal_*`** (`CalendarDb`/`CalendarWriteDb`) | 그 브라우저의 `localStorage` |
 | 보낸 일간·주간 보고 기록 | 서버 `cal_report_daily`/`_hours`/`_weekly` | - (전송 자체가 없음) |
 | 공식 과제 마스터, 사용자, 조직 | 서버 `project`, `customer`, `app_user`, `org_unit`, `title_code` | - (DB 접속 불가) |
 | 창 위치, 크기, 모드, 알림 확인 이력 | `widget.settings.json`, `reminders.json` | - |
-| **과제별 저장소 경로** | `repo-paths.json`, **일부러 로컬** (자리마다 다르다) | - |
 | 테마, 패널 폭 등 이 PC 한정 UI 상태 | localStorage(가상 호스트 `tcapp.local` origin) | localStorage |
 | 회사 자격증명, 로그인 세션 | `netcus.cred`, `user.session` (DPAPI 암호화) | - (해당 없음) |
 

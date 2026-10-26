@@ -1,7 +1,7 @@
 {
  "meta": {
   "db": "taskcalendar",
-  "schemaVersion": "17",
+  "schemaVersion": "18",
   "mysql": "8.4.9",
   "charset": [
    "utf8mb4",
@@ -66,7 +66,7 @@
    "taskmgr_app@%",
    "taskmgr_backup@localhost"
   ],
-  "dumpedAt": "2026-10-22T12:17:33.726Z",
+  "dumpedAt": "2026-10-26T03:30:33.406Z",
   "stats": {
    "viewScope": {
     "self": 71,
@@ -251,7 +251,7 @@
   {
    "name": "cal_attendance",
    "engine": "InnoDB",
-   "rows": 5839,
+   "rows": 5840,
    "comment": "날짜별 근태·초과시간(netcus 일간보고용). PK=(user_id,work_date). ★미기록=행 없음 — 되돌리기는 DELETE.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 5838,
@@ -411,15 +411,6 @@
      "comment": ""
     },
     {
-     "name": "uses_repo",
-     "type": "tinyint(1)",
-     "nullable": false,
-     "def": "0",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
      "name": "sort_order",
      "type": "int",
      "nullable": false,
@@ -490,20 +481,16 @@
     {
      "name": "chk_cal_category_uid",
      "clause": "(`uid` <> _utf8mb4\\\\'\\\\')"
-    },
-    {
-     "name": "chk_cal_category_usesrepo01",
-     "clause": "(`uses_repo` in (0,1))"
     }
    ]
   },
   {
    "name": "cal_entry",
    "engine": "InnoDB",
-   "rows": 3627,
+   "rows": 3502,
    "comment": "일정. PK=(user_id,entry_no), 앱 id 는 uid. 반복은 recur_* 로 평탄화. updated_at=낙관적 잠금 토큰.",
    "coll": "utf8mb4_0900_ai_ci",
-   "exact": 3628,
+   "exact": 3500,
    "columns": [
     {
      "name": "user_id",
@@ -602,15 +589,6 @@
      "def": "_utf8mb4\\\\'\\\\'",
      "key": "",
      "extra": "DEFAULT_GENERATED",
-     "comment": ""
-    },
-    {
-     "name": "source",
-     "type": "varchar(8)",
-     "nullable": false,
-     "def": "",
-     "key": "",
-     "extra": "",
      "comment": ""
     },
     {
@@ -749,20 +727,12 @@
      "clause": "((`end_date` is null) or (`end_date` > `entry_date`))"
     },
     {
-     "name": "chk_cal_entry_git",
-     "clause": "((`source` <> _utf8mb4\\\\'git\\\\') or ((`end_date` is null) and (`recur_freq` is null)))"
-    },
-    {
      "name": "chk_cal_entry_recur",
      "clause": "(((`recur_freq` is null) and (`recur_interval` is null) and (`recur_count` is null) and (`recur_until` is null)) or ((`recur_freq` is not null) and (`recur_freq` in (_utf8mb4\\\\'weekly\\\\',_utf8mb4\\\\'monthly\\\\')) and (`recur_interval` is not null) and (`recur_interval` >= 1) and (`recur_count` is not null) and (`recur_count` >= 0)))"
     },
     {
      "name": "chk_cal_entry_remind",
      "clause": "((`remind` is null) or (`remind` between 0 and 10080))"
-    },
-    {
-     "name": "chk_cal_entry_source",
-     "clause": "(`source` in (_utf8mb4\\\\'\\\\',_utf8mb4\\\\'git\\\\'))"
     },
     {
      "name": "chk_cal_entry_uid",
@@ -773,111 +743,6 @@
      "clause": "((`recur_until` is null) or regexp_like(`recur_until`,_utf8mb4\\\\'^[0-9]{4}-[0-9]{2}-[0-9]{2}$\\\\'))"
     }
    ]
-  },
-  {
-   "name": "cal_entry_commit",
-   "engine": "InnoDB",
-   "rows": 708,
-   "comment": "일정에 붙은 커밋 목록. PK=(user_id,entry_no,seq). 부팅 조회 제외(지연 로드). seq=배열 인덱스 0-base.",
-   "coll": "utf8mb4_0900_ai_ci",
-   "exact": 708,
-   "columns": [
-    {
-     "name": "user_id",
-     "type": "smallint unsigned",
-     "nullable": false,
-     "def": null,
-     "key": "PRI",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "entry_no",
-     "type": "int unsigned",
-     "nullable": false,
-     "def": null,
-     "key": "PRI",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "seq",
-     "type": "smallint unsigned",
-     "nullable": false,
-     "def": null,
-     "key": "PRI",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "hash",
-     "type": "varchar(64)",
-     "nullable": false,
-     "def": "",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "short_hash",
-     "type": "varchar(64)",
-     "nullable": false,
-     "def": "",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "commit_time",
-     "type": "time",
-     "nullable": true,
-     "def": null,
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "subject",
-     "type": "mediumtext",
-     "nullable": false,
-     "def": "_utf8mb4\\\\'\\\\'",
-     "key": "",
-     "extra": "DEFAULT_GENERATED",
-     "comment": ""
-    },
-    {
-     "name": "body",
-     "type": "mediumtext",
-     "nullable": false,
-     "def": "_utf8mb4\\\\'\\\\'",
-     "key": "",
-     "extra": "DEFAULT_GENERATED",
-     "comment": ""
-    }
-   ],
-   "indexes": [
-    {
-     "name": "ix_cal_entry_commit_hash",
-     "unique": false,
-     "cols": "user_id,hash"
-    },
-    {
-     "name": "PRIMARY",
-     "unique": true,
-     "cols": "user_id,entry_no,seq"
-    }
-   ],
-   "fks": [
-    {
-     "name": "fk_cal_entry_commit_entry",
-     "cols": "user_id,entry_no",
-     "ref": "cal_entry",
-     "refCols": "user_id,entry_no",
-     "upd": "RESTRICT",
-     "del": "CASCADE"
-    }
-   ],
-   "checks": []
   },
   {
    "name": "cal_entry_except",
@@ -992,10 +857,10 @@
   {
    "name": "cal_project_change",
    "engine": "InnoDB",
-   "rows": 49,
+   "rows": 91,
    "comment": "과제 일정 변경 이력(지우지 않는 기록). 한 저장의 바뀐 필드만 한 행. 바뀐 것이 없으면 행이 없다.",
    "coll": "utf8mb4_0900_ai_ci",
-   "exact": 49,
+   "exact": 91,
    "columns": [
     {
      "name": "change_no",
@@ -1142,10 +1007,10 @@
   {
    "name": "cal_project_event",
    "engine": "InnoDB",
-   "rows": 27,
+   "rows": 39,
    "comment": "과제 일정(과제 캘린더 공용 트랙). PK=event_id, 웹과의 정체성은 uid. 소프트 삭제, row_version 낙관적 잠금.",
    "coll": "utf8mb4_0900_ai_ci",
-   "exact": 27,
+   "exact": 39,
    "columns": [
     {
      "name": "event_id",
@@ -1468,7 +1333,7 @@
   {
    "name": "cal_report_hours",
    "engine": "InnoDB",
-   "rows": 0,
+   "rows": 1,
    "comment": "보낸 과제별 시간 — 공수계산기의 원천. 캘린더가 본문을 만들 때 이미 아는 값이다(파싱 아님)",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 0,
@@ -1737,7 +1602,7 @@
   {
    "name": "cal_task_hours",
    "engine": "InnoDB",
-   "rows": 6562,
+   "rows": 6561,
    "comment": "(날짜×과제) 투입 시간(시간 단위). PK=(user_id,work_date,cat_no). 과제 FK RESTRICT. 0=행 삭제.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 6561,
@@ -2096,7 +1961,7 @@
    "name": "cal_user_pref",
    "engine": "InnoDB",
    "rows": 1,
-   "comment": "사용자당 1행 설정 — 커밋 수집 작성자(git/svn) + 보고서 서식. PK=(user_id). 삭제 경로 없음.",
+   "comment": "사용자당 1행 설정(보고서 서식). PK=(user_id). 삭제 경로 없음.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 1,
    "columns": [
@@ -2106,24 +1971,6 @@
      "nullable": false,
      "def": null,
      "key": "PRI",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "git_author",
-     "type": "varchar(120)",
-     "nullable": false,
-     "def": "",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "svn_author",
-     "type": "varchar(120)",
-     "nullable": false,
-     "def": "",
-     "key": "",
      "extra": "",
      "comment": ""
     },
@@ -2150,15 +1997,6 @@
      "type": "tinyint",
      "nullable": false,
      "def": "2",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "git_commit_body",
-     "type": "tinyint(1)",
-     "nullable": false,
-     "def": "0",
      "key": "",
      "extra": "",
      "comment": ""
@@ -2263,10 +2101,6 @@
     }
    ],
    "checks": [
-    {
-     "name": "chk_cal_user_pref_commit_body",
-     "clause": "(`git_commit_body` in (0,1))"
-    },
     {
      "name": "chk_cal_user_pref_font_family",
      "clause": "((`report_font_family` in (_utf8mb4\\\\'\\\\',_utf8mb4\\\\'Malgun Gothic\\\\',_utf8mb4\\\\'Gulim\\\\',_utf8mb4\\\\'Dotum\\\\',_utf8mb4\\\\'Batang\\\\',_utf8mb4\\\\'NanumGothic\\\\')) and (not((`report_font_family` like _utf8mb4\\\\'% \\\\'))))"
@@ -2735,10 +2569,10 @@
   {
    "name": "project_schedule_image",
    "engine": "InnoDB",
-   "rows": 2,
+   "rows": 0,
    "comment": "사람별 과제 개발 일정 그림(월간보고). 주인만 보고 고친다. 과제 삭제 때 함께 지워진다. 주인은 RESTRICT. 앱이 사람마다 과제당 5장, 장당 5MB 로 막는다.",
    "coll": "utf8mb4_0900_ai_ci",
-   "exact": 2,
+   "exact": 0,
    "columns": [
     {
      "name": "id",

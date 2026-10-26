@@ -2,7 +2,7 @@
 
 # 📅 수행과제 캘린더 (TaskCalendar)
 
-**바탕화면에 상주하는 폐쇄망 데스크톱 캘린더 위젯. 과제별 git/svn 커밋으로 일/주 보고서를 만들고, 사내 보고 시스템 자동 작성과 일정 시작 알림까지 맡습니다.**
+**바탕화면에 상주하는 폐쇄망 데스크톱 캘린더 위젯. 과제별 일정과 할 일로 일/주 보고서를 만들고, 사내 보고 시스템 자동 작성과 일정 시작 알림까지 맡습니다.**
 
 [![Version](https://img.shields.io/badge/Version-v0.22.0-3e5be0)](#-릴리스-내역)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011-0078D6?logo=windows&logoColor=white)](#)
@@ -46,19 +46,19 @@
 
 ## 소개
 
-**수행과제 캘린더**는 폐쇄망(망분리) 사내에서 동작하는 Windows 데스크톱 캘린더 위젯입니다. "수행 과제"를 카테고리로 두고 일정, 할 일, 근태를 기록하며, 과제별 로컬 **git 저장소의 내 커밋을 끌어와 작업일지**로 만들고, 기간을 골라 **보고서(일간/주간) 초안**을 뽑은 뒤 **사내 보고 시스템에 자동 작성**까지 합니다. 시작시각이 있는 일정은 **시작 전 알림**으로 챙겨줍니다. 데이터는 v0.18.0부터 **사내 서버 MySQL**에 저장됩니다. 어느 자리 PC에서 로그인해도 같은 캘린더가 따라옵니다.
+**수행과제 캘린더**는 폐쇄망(망분리) 사내에서 동작하는 Windows 데스크톱 캘린더 위젯입니다. "수행 과제"를 카테고리로 두고 일정, 할 일, 근태를 기록하며, 기간을 골라 **보고서(일간/주간) 초안**을 뽑은 뒤 **사내 보고 시스템에 자동 작성**까지 합니다. 시작시각이 있는 일정은 **시작 전 알림**으로 챙겨줍니다. 데이터는 v0.18.0부터 **사내 서버 MySQL**에 저장됩니다. 어느 자리 PC에서 로그인해도 같은 캘린더가 따라옵니다.
 
 - 🔒 **폐쇄망 전용**: 외부 리소스, CDN, 인터넷 호출이 0개입니다(번들 자산만). 나가는 통신은 **사내 MySQL(TCP 3306)** 과 **사내 보고 시스템(netcus)** 뿐입니다.
-- 🌐 **서버 저장, 온라인 전용**: 일정, 할 일, 과제, 공수, 근태, 커밋, 보고 기록이 모두 서버 DB에 있습니다. **로컬 캐시는 두지 않습니다**(두 번째 진실이 되기 때문입니다. [db/CALENDAR-TABLE-DESIGN §2](db/CALENDAR-TABLE-DESIGN.md) 참고). 서버에 못 붙으면 화면이 비고 "위젯을 다시 시작" 안내가 뜹니다.
+- 🌐 **서버 저장, 온라인 전용**: 일정, 할 일, 과제, 공수, 근태, 보고 기록이 모두 서버 DB에 있습니다. **로컬 캐시는 두지 않습니다**(두 번째 진실이 되기 때문입니다. [db/CALENDAR-TABLE-DESIGN §2](db/CALENDAR-TABLE-DESIGN.md) 참고). 서버에 못 붙으면 화면이 비고 "위젯을 다시 시작" 안내가 뜹니다.
 - 🖥️ **두 가지 창 모드**: 바탕화면 최하위 위젯(기본)과 일반 앱 창(작업표시줄, Alt+Tab, 트레이) 중 하나로 씁니다. ⚙에서 전환합니다.
-- 🧾 **보고서 자동화**: 과제별 git, svn 커밋을 작업일지로 모으고, 일간/주간 보고서 초안을 만든 뒤 **회사 시스템에 자동 작성/전송**합니다.
+- 🧾 **보고서 자동화**: 과제별 일정과 할 일로 일간/주간 보고서 초안을 만든 뒤 **회사 시스템에 자동 작성/전송**합니다.
 - ⏰ **시작 알림**: 시작시각이 있는 일정을 1시간 전부터 60→30→10→5분 에스컬레이션으로 알립니다(무음, 폐쇄망 대응).
 - 🎨 **테마 6종 + 다크**: 라이트, 다크, 포레스트, 세피아, 고대비, 시스템. 단색 SVG 아이콘이 currentColor로 전 테마에 자동으로 맞춰집니다.
 - 🐞 **사내 문의 동선**: 앱 상단 문의 버튼에서 버그·개선사항 접수처(`phmin@netcus.com` / 랜메신저 민평화)를 바로 확인합니다.
 - 🗂️ **개방형 반출 포맷**: `taskCalendar` XML v1. **저장 형식이 아니라 내보내기/가져오기(백업·이관) 형식**입니다. 옛 `data.xml`을 서버로 올리는 문도 이것입니다.
 - ♿ **접근성(WCAG AA)**: 월 그리드 키보드 내비, 모달 포커스 트랩과 복원, ARIA 탭/그리드, 가시 포커스 링.
 
-> 단일 HTML(`task-calendar-prototype.html`)을 **그대로 본체로 임베드**해 WPF + WebView2 위젯으로 패키징합니다. 브라우저에서 HTML만 열어도 도메인 기능은 동일하게 동작합니다. 단, 브라우저에는 호스트가 없어 **서버 DB에 붙지 않고 그 브라우저의 localStorage에만** 저장되며, 로그인, 커밋 수집, 회사 보고 전송, 알림도 빠집니다.
+> 단일 HTML(`task-calendar-prototype.html`)을 **그대로 본체로 임베드**해 WPF + WebView2 위젯으로 패키징합니다. 브라우저에서 HTML만 열어도 도메인 기능은 동일하게 동작합니다. 단, 브라우저에는 호스트가 없어 **서버 DB에 붙지 않고 그 브라우저의 localStorage에만** 저장되며, 로그인, 회사 보고 전송, 알림도 빠집니다.
 
 > - 📖 **사용 방법**: [USAGE.md (사용 설명서)](USAGE.md)
 > - 📄 **개발 이력**: [CHANGELOG.md](CHANGELOG.md)
@@ -80,13 +80,12 @@
 
 ## ✨ 주요 기능
 
-- 🏷️ **수행 과제 관리**: 생성/수정/삭제, 색상, 과제별 **git/svn 저장소(작업복사본) 경로** 연결
+- 🏷️ **수행 과제 관리**: 생성/수정/삭제, 색상, 설명
 - 🗓️ **월간 캘린더**: 월/연·월 점프, 양력 공휴일, 오늘 강조, **기간(다일) + 반복(매주/매월) 일정**(연속 막대, 겹침 레인), **월 보기 밀도 3모드**(고정/촘촘히/펼침)
 - ⚡ **한 줄 빠른 캡처**: 일정/할 일 토글 + 제목 + 날짜 + 과제(+옵션 더보기). 시작시각은 **시·분 분리 드롭다운**
-- 🧩 **우측 패널 탭**: `[일정 상세 | 할 일 | 커밋 내역]`, 셋 다 **선택한 날짜**를 따라감. 좁은 폭에선 하단 시트
+- 🧩 **우측 패널 탭**: `[일정 상세 | 할 일]`, 둘 다 **선택한 날짜**를 따라감. 좁은 폭에선 하단 시트
 - ✅ **할 일(TODO)**: ★중요, 완료 섹션, 기한/기간, 캘린더에 **속 빈 링 칩**(일정 막대와 모양 구분, 색맹 안전)
-- 🔧 **Git/SVN 커밋 → 작업일지**: 과제별로 **Git 또는 SVN**을 고르고(.git/.svn 자동 감지) 저장소에서 `내 커밋`을 끌어와 구조화해 기록합니다(단건·기간 일괄). SVN은 TortoiseSVN/SlikSVN `svn.exe` 사용
-- 📋 **보고서(2단 레이아웃)**: **일간 작성 / 주간 작성 / 기간 취합** 탭. 넓게 보기는 좌 옵션, 우 미리보기이고 좁으면 **⚙ 옵션 접기**. 과제별 `[과제명] : 시간` + 업무 불릿 초안을 만들어 복사/저장. 포함 항목, **머리기호(개요)**, 들여쓰기 선택. 커밋, 할 일, 일정 항목은 미리보기에서 바로 편집
+- 📋 **보고서(2단 레이아웃)**: **일간 작성 / 주간 작성 / 기간 취합** 탭. 넓게 보기는 좌 옵션, 우 미리보기이고 좁으면 **⚙ 옵션 접기**. 과제별 `[과제명] : 시간` + 업무 불릿 초안을 만들어 복사/저장. 포함 항목, **머리기호(개요)**, 들여쓰기 선택. 할 일, 일정 항목은 미리보기에서 바로 편집
 - 🔐 **회사 계정 로그인, 계정별 편집 권한**: 시작 시 netcus 계정으로 1회 로그인(세션 유지), 과제 DB 편집 가능 여부는 `app_user`가 **요청 시점**에 판정. 👤 **사용자 정보**에서 내 권한과 구성원 명부 확인 ([아래](#-로그인--권한--구성원))
 - 🗄️ **과제 DB 연동**: 사업부 공식 과제 마스터(발주처, 구분, 상태, 계약기간)를 중앙 MySQL에서 읽고 관리, Excel 장표 추출
 - 🏢 **회사 보고 자동 작성**: 일간보고 자동 전송, 주간보고 폼 자동 채움, **주간을 netcus 일간보고 병합으로 생성**, **기간 취합으로 netcus 주간보고들을 과제별 진행사항 병합**(내용 출처: 캘린더 기록, netcus 일간, netcus 주간) ([아래](#-회사-보고-연동-netcus))
@@ -113,7 +112,7 @@ dotnet publish widget\TaskCalendarWidget.csproj -c Release -r win-x64 --self-con
 - 결과물을 실행하면 바탕화면 위젯이 시작됩니다. 배포/시작프로그램/단일 exe 상세는 **[DEPLOY.md](DEPLOY.md)**.
 
 ### ② 브라우저로 바로 써보기 (빌드 없이)
-- `task-calendar-prototype.html`을 더블클릭해 Edge로 열면 캘린더·보고서 초안 등 도메인 기능은 그대로 동작합니다. 단 **서버 DB에 붙지 않고 그 브라우저의 localStorage에만** 저장되며(위젯과 데이터가 공유되지 않습니다), 로그인, 커밋 수집, 회사 보고 전송, 시작 알림 등 **호스트 기능은 위젯(앱)에서만** 동작합니다.
+- `task-calendar-prototype.html`을 더블클릭해 Edge로 열면 캘린더·보고서 초안 등 도메인 기능은 그대로 동작합니다. 단 **서버 DB에 붙지 않고 그 브라우저의 localStorage에만** 저장되며(위젯과 데이터가 공유되지 않습니다), 로그인, 회사 보고 전송, 시작 알림 등 **호스트 기능은 위젯(앱)에서만** 동작합니다.
 
 ## 📖 사용법
 
@@ -123,8 +122,7 @@ dotnet publish widget\TaskCalendarWidget.csproj -c Release -r win-x64 --self-con
 |---|---|
 | 새 일정/할 일 | 날짜 더블클릭, 우측 **＋ 추가**, 상단 **＋ 새 기록** 중 하나로 **빠른 캡처**(일정/할일 토글) 열기 |
 | 상세(반복, 시간, 기간, 장소, 메모) | 빠른 캡처 **옵션 더보기**, 또는 칩 클릭 후 편집 |
-| 우측 패널 전환 | `[일정 상세 / 할 일 / 커밋 내역]` 탭(모두 선택한 날짜 기준) |
-| 커밋 가져오기 | **커밋 내역 탭**의 `이 날 커밋` / `기간 일괄` (과제에 git/svn 경로 연결, 위젯 전용) |
+| 우측 패널 전환 | `[일정 상세 / 할 일]` 탭(모두 선택한 날짜 기준) |
 | 보고서 | 우측 **📋 보고서**에서 **일간 작성 / 주간 작성 / 기간 취합** 탭을 골라 복사/저장 |
 | 회사 보고 전송 | 보고서 모달에서 일간(오늘)은 **📤 일간보고 전송**, 주간(이번 주)은 **📤 주간보고 작성** (시작 시 로그인 필요) |
 | 내 정보, 권한, 구성원 | 상단 **👤 사용자 정보**에서 신원·권한 확인, 로그아웃, **구성원 보기**(조직 트리) |
@@ -177,7 +175,7 @@ v0.17.0부터 **회사 계정(netcus)으로 로그인**합니다. 위젯(앱) �
 
 ## 🏗️ 아키텍처 / 구조
 
-UI·로직은 **의존성 0의 단일 HTML**(`task-calendar-prototype.html`)에 들어 있고, WPF 호스트가 이를 **WebView2로 창 100% 호스팅**합니다. HTML↔호스트는 **postMessage 브리지**로만 통신하며, 영속화, git, 창 관리, 회사 보고 전송, 알림은 호스트가 담당합니다.
+UI·로직은 **의존성 0의 단일 HTML**(`task-calendar-prototype.html`)에 들어 있고, WPF 호스트가 이를 **WebView2로 창 100% 호스팅**합니다. HTML↔호스트는 **postMessage 브리지**로만 통신하며, 영속화, 창 관리, 회사 보고 전송, 알림은 호스트가 담당합니다.
 
 > 🧱 **계층 구조, 로직 배치 원칙, 위젯↔브라우저 능력 차이, 확장(어댑터) 설계**는 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)에 정리돼 있습니다. `.NET → WPF → WebView2 → (HTML+CSS+JS)` 계층, "도메인=JS / 능력=C# / 공유=서버" 배치 규칙, HOST 능력 매트릭스가 들어 있습니다.
 > 🗺 **현재 수준과 최종 그림(같은 origin 배포 + 서버 DB + 투클라이언트), 단계별 승격 경로, 착수 트리거**는 [docs/ROADMAP.md](docs/ROADMAP.md)에 정리돼 있습니다.
@@ -194,9 +192,9 @@ flowchart TB
     sess["UserSession.cs: 로그인 세션 4필드<br/>DPAPI(user.session) · 권한은 담지 않음"]
   end
   user --> app
-  app <-->|"postMessage 브리지<br/>HTML→호스트 : ready · saveState · replaceAllState · gitlog · netcus* · reminderSync · user*(로그인·권한) · membersGet · dbInfoGet<br/>호스트→HTML : __applyState · __applyStateError · __netcus* · __dbInfo · __hostReply"| hostfn
+  app <-->|"postMessage 브리지<br/>HTML→호스트 : ready · saveState · replaceAllState · netcus* · reminderSync · user*(로그인·권한) · membersGet · dbInfoGet<br/>호스트→HTML : __applyState · __applyStateError · __netcus* · __dbInfo · __hostReply"| hostfn
   hostfn --> caldb["CalendarDb.cs / CalendarWriteDb.cs / ReportDb.cs<br/>캘린더 본체 읽기·쓰기·보고 기록"]
-  hostfn --> cfg[("widget.settings.json · reminders.json · repo-paths.json")]
+  hostfn --> cfg[("widget.settings.json · reminders.json")]
   netcus --> cred[("netcus.cred<br/>DPAPI 암호화")]
   netcus -.HTTPS.-> pjm["사내 보고 시스템<br/>netcus pjm<br/>(인증 = 로그인의 진실 원천)"]
   sess --> ses[("user.session<br/>DPAPI 암호화")]
@@ -205,7 +203,6 @@ flowchart TB
   hostfn --> rem
   db -.TCP 3306.-> mysql[("중앙 MySQL · taskcalendar<br/>과제: project·customer·코드테이블<br/>사용자: app_user·org_unit·title_code<br/>캘린더 본체: cal_*")]
   caldb -.TCP 3306.-> mysql
-  hostfn --> git["git/svn CLI → 작업일지(source=git)"]
 ```
 
 | 구성요소 | 위치 | 역할 |
@@ -225,7 +222,7 @@ flowchart TB
 
 ## 🗂️ 데이터 / 설정 파일
 
-**캘린더 본체(과제, 일정, 할 일, 회의실, 공수, 근태, 커밋, 보고 기록)는 사내 서버 MySQL의 `cal_*` 표에 있습니다.** v0.17.1까지 쓰던 `%APPDATA%\TaskCalendar\data.xml`은 **v0.18.0에서 폐기**됐습니다(`DeployConfig.XmlRetired = true`). 앱은 그 파일을 읽지도 쓰지도 않습니다. 옛 파일은 'XML 가져오기'로 **한 번** 올리는 이관 입구로만 씁니다([아래](#기존-dataxml-이관)).
+**캘린더 본체(과제, 일정, 할 일, 회의실, 공수, 근태, 보고 기록)는 사내 서버 MySQL의 `cal_*` 표에 있습니다.** v0.17.1까지 쓰던 `%APPDATA%\TaskCalendar\data.xml`은 **v0.18.0에서 폐기**됐습니다(`DeployConfig.XmlRetired = true`). 앱은 그 파일을 읽지도 쓰지도 않습니다. 옛 파일은 'XML 가져오기'로 **한 번** 올리는 이관 입구로만 씁니다([아래](#기존-dataxml-이관)).
 
 `%APPDATA%\TaskCalendar\` 에 남는 것은 전부 **이 PC 한정**입니다.
 
@@ -233,10 +230,11 @@ flowchart TB
 |---|---|
 | `widget.settings.json` | 창 위치, 크기, 모드, 업데이트 소스 URL |
 | `reminders.json` | 시작 알림 확인 이력(ack) |
-| `repo-paths.json` | 과제별 git/svn 저장소 경로. **일부러 서버에 안 올립니다**(자리마다 경로가 달라, 올리면 남의 저장소에서 커밋을 긁어 옵니다. 근거는 `widget/RepoPaths.cs` 머리말) |
 | `netcus.cred` | 회사 보고 자격증명(DPAPI 암호화) |
 | `user.session` | 로그인 세션(`loginId·name·title·orgUnit` 4필드, DPAPI 암호화). **권한은 담지 않음** |
 | `widget.log`, `WebView2\` | 진단 로그(회전), WebView2 프로필 |
+
+옛 버전이 남긴 `repo-paths.json`(과제별 Git, SVN 저장소 경로)은 2026-10-26 Git, SVN 기능 삭제 뒤로 읽는 곳이 없습니다. 지우지 않고 그냥 둡니다([docs/GIT-SVN-REMOVAL.md](docs/GIT-SVN-REMOVAL.md)).
 
 ### 기존 `data.xml` 이관
 
@@ -250,16 +248,13 @@ flowchart TB
 내보내기·가져오기가 쓰는 형식입니다(저장 형식이 아님). 전체 스키마는 [SPEC.md](SPEC.md) §3:
 
 ```xml
-<taskCalendar version="1" gitAuthor="hong@corp">
+<taskCalendar version="1">
   <categories>
-    <category id="c-..." color="#3e5be0" gitRepo="D:\repos\report"><name>보고서 작성</name><description/></category>
+    <category id="c-..." color="#3e5be0"><name>보고서 작성</name><description/></category>
   </categories>
   <entries>
     <entry id="e-..." date="2026-06-11" categoryId="c-..." allDay="false" startTime="10:00" endTime="11:30" location="201호">
       <title>요구사항 정리</title><memo/>
-    </entry>
-    <entry id="e-..." date="2026-06-12" categoryId="c-..." source="git" allDay="true">
-      <title>리팩터링</title><memo/><commits><commit hash="..." short="abc123" time="10:00">fix: ...</commit></commits>
     </entry>
     <entry id="e-..." date="2026-06-15" endDate="2026-06-19" categoryId="c-..." allDay="true">
       <title>출장</title><memo/><recur freq="weekly" interval="1"><except date="2026-06-26"/></recur>
@@ -270,6 +265,8 @@ flowchart TB
   </todos>
 </taskCalendar>
 ```
+
+옛 파일에 있는 `gitAuthor`, `gitRepo`, 커밋 기록(`source="git"` 인 entry), `<commits>` 는 가져올 때 읽지 않고 버리며, 내보낼 때도 쓰지 않습니다(2026-10-26 Git, SVN 기능 삭제).
 
 ## ⌨️ 접근성 / 키보드
 
@@ -321,7 +318,7 @@ flowchart TB
 ## 🗺️ 로드맵
 
 - [x] 기간 + 반복 일정
-- [x] Git 커밋 → 작업일지 + 보고서
+- [x] Git 커밋 → 작업일지 + 보고서 (2026-10-26 Git, SVN 기능과 함께 삭제)
 - [x] 할 일(TODO)
 - [x] 트레이/창 모드
 - [x] 자체포함 단일 exe
@@ -333,7 +330,7 @@ flowchart TB
 - [x] **근태/초과시간**, **회의실 관리**, **월 보기 밀도**, 보고 유형 탭(일간 작성/주간 작성/기간 취합)
 - [x] **netcus 주간보고 범위 병합**: 기간 취합에서 사내 주간보고들을 과제별 진행사항으로 병합(주차별/평면)
 - [x] **일정 시작 알림**: 60→30→10→5분 에스컬레이션, 테마별 Topmost 카드, 무음 대응
-- [x] **Git/SVN 선택**: 과제별 버전관리(git/svn) 선택 + .git/.svn 자동 감지, svn log 작업일지
+- [x] **Git/SVN 선택**: 과제별 버전관리(git/svn) 선택 + .git/.svn 자동 감지, svn log 작업일지 (2026-10-26 삭제, [docs/GIT-SVN-REMOVAL.md](docs/GIT-SVN-REMOVAL.md))
 - [x] **과제 DB 연동**: 공식 과제 마스터(발주처, 구분, 상태, 계약기간), 재연결, Excel 장표 추출
 - [x] **회사 계정 로그인, 계정별 편집 권한**: netcus 인증 + `app_user` 인가, 쓰기 시점 판정(공용 관리자 인증 폐지)
 - [x] **사용자 정보, 구성원 명부**: 신원·권한 실시간 확인, 조직 트리, `view_scope`별 열람 제한

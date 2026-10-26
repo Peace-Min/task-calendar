@@ -6,7 +6,7 @@
 > | 트랙 | 표 | 진입점 문서 | 구축 |
 > |---|---|---|---|
 > | **과제**(사업부 공식 과제 마스터) | `project`, `customer`, `section_code`, `status_code` | **이 문서** → [`ARCHITECTURE.md`](ARCHITECTURE.md) → [`DESIGN_NOTES.md`](DESIGN_NOTES.md)/[`TABLE-DESIGN.md`](TABLE-DESIGN.md) | `deploy/setup-taskcalendar.cmd`(세 묶음을 한 번에) |
-> | **캘린더**(개인 일정, 할 일, 공수, 근태, 커밋, 보고 기록) | `cal_*` | [`CALENDAR-TABLE-DESIGN.md`](CALENDAR-TABLE-DESIGN.md) | 위와 같음. 캘린더만 다시 세울 때는 `deploy/init-calendar.cmd` |
+> | **캘린더**(개인 일정, 할 일, 공수, 근태, 보고 기록) | `cal_*` | [`CALENDAR-TABLE-DESIGN.md`](CALENDAR-TABLE-DESIGN.md) | 위와 같음. 캘린더만 다시 세울 때는 `deploy/init-calendar.cmd` |
 > | (밖) 사용자·조직 | `app_user`, `org_unit`, `title_code` | [`../docs/USER-LOGIN.md`](../docs/USER-LOGIN.md) | DDL 과 명단은 **별도 비공개 저장소**. `setup-taskcalendar` 가 그 파일을 읽어 만든다 |
 >
 > **2026-10-15**: 새 DB 진입점은 **`deploy/setup-taskcalendar.cmd` 하나**입니다. 옛 진입점 `deploy/init-db.cmd`, `deploy/migrate.cmd`, `schema.sql`, 지난 `deploy/migrate-2026-*.sql` 과 되돌리기 파일은 지웠습니다(git 이력에 있습니다). 같은 날 코드표(발주처, 구분, 상태, 직급)의 기본키가 번호가 됐습니다(`schema_version` 13, [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §9 ADR-23).

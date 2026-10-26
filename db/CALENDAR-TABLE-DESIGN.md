@@ -35,6 +35,11 @@
 > 회사 공용 목록 `room_code`(번호 키, `name` UNIQUE, 정본 `schema-structure.sql`) 하나를 관리자만 고친다. 부팅 조회와 저장,
 > XML 이관은 회의실을 다루지 않는다(`<rooms>` 는 읽지 않는다). 아래 본문의 `cal_room` 은 그 전의 기록이다.
 > 이관은 조각 `db/deploy/migrations/v15-shared-rooms.sql` 이 한다(이름을 모아 넣고 표를 지운다).
+> **2026-10-26, Git, SVN 기능을 지웠다**(구조 번호 18, [`../docs/GIT-SVN-REMOVAL.md`](../docs/GIT-SVN-REMOVAL.md)). 조각
+> `db/deploy/migrations/v18-remove-git.sql` 이 커밋 기록(`cal_entry.source = 'git'` 인 행과 그 메모, 장소, 공수, 예외일)을 지우고,
+> `cal_entry_commit` 표, `cal_entry.source`, `cal_category.uses_repo`, `cal_user_pref` 의 `git_author`, `svn_author`, `git_commit_body`
+> 칸과 그 CHECK 를 없앤다. 커밋 기록은 일반 일정으로 바꾸지 않고 버린다(되돌릴 수 없어 배포 전 백업 필수). 부팅 조회는 8개 표가 된다.
+> 아래 본문의 커밋 표, 저장소 플래그, 작성자 칸, `repo-paths.json` 이야기는 그 전의 기록이다.
 > 이 문서는 **결정과 근거**를 담는다. 컬럼 수준 DDL 의 단일 소스는
 > `db/deploy/schema-calendar.sql` 이다. 문서와 그 파일이 어긋나면 **그 파일이 정본**이다.
 > **표를 두 벌 두지 않는다**: 실제로 그 사고가 났다(초안 §4.0 이 `ON DELETE CASCADE` 로 적혀
@@ -374,7 +379,7 @@ UPDATE cal_entry SET ..., updated_at = ?      -- 앱이 UTC 로 계산해 보낸
 > 격리수준 명시가 왜 여기 붙는지는 §3.2 의 '읽기 연결에는 걸지 않는다' 참조.
 > READ COMMITTED 위에서는 이 구문이 Warning 138 하나만 남기고 무시된다.
 
-**대상 10개**(세어서 적는다. 게이트가 셀 수 있어야 한다. 2026-10-21 `cal_room` 폐지로 지금은 **9개**다):
+**대상 10개**(세어서 적는다. 게이트가 셀 수 있어야 한다. 2026-10-21 `cal_room` 폐지로 9개, 2026-10-26 `cal_entry_commit` 폐지(구조 18)로 지금은 **8개**다):
 `cal_category`, `cal_entry`, `cal_entry_except`, **`cal_entry_commit`**, `cal_todo`, `cal_todo_day_note`,
 `cal_room`, `cal_task_hours`, **`cal_attendance`**, `cal_user_pref`
 
@@ -695,7 +700,7 @@ DB 모드가 읽기 전용을 벗었다. `save()` 의 갈래가 `dbSave()` 로 �
 행 단위 `INSERT`/`UPDATE`/`DELETE` 로 바꾼다. **스냅샷이 `Tokens` 와 `*NoByUid` 를 들고 있는 이유가
 정확히 이것이다**(설계가 의도한 구조다).
 
-##### `cal_entry_commit`: 제외했다가 되돌렸다 (2026-09-01)
+##### `cal_entry_commit`: 제외했다가 되돌렸다 (2026-09-01)  ★ 표 폐지(2026-10-26, 구조 18)
 
 **제외했던 이유**: 부팅 조회가 `commits` 를 `[]` 로 두고 지연 로드했으므로(계약 G-7 원안),
 state 를 그대로 쓰면 **읽지도 않은 커밋이 전부 삭제된다.** 그래서 쓰기 계층은 그 표에
@@ -876,6 +881,9 @@ git/svn 작성자, **근태·초과시간**(`<attendance>` → 신규 `cal_atten
 
 ### 옮기지 않는다: 한 항목뿐이다
 
+> **2026-10-26.** Git, SVN 기능을 지우면서(구조 18) 위 '옮긴다' 의 커밋과 git/svn 작성자, 아래 표의 `gitRepo`, `svnRepo` 도
+> 더는 다루지 않는다. 옛 XML 의 그 값들은 가져올 때 읽지 않고 버린다. 아래는 그때의 판정 기록이다.
+
 | 항목 | 왜 |
 |---|---|
 | **`gitRepo`, `svnRepo`**(과제별 저장소 경로) | **PC 마다 달라야 하는 값이고, 브라우저에는 개념 자체가 없다.** DB 에 올리면 A자리의 `D:\repos\report` 가 B자리까지 따라와 커밋 수집이 조용히 실패한다. 더 나쁜 경우는 **경로는 유효한데 다른 저장소**인 자리다. 그러면 실패조차 안 하고 **남의 커밋이 내 보고서에 실린다.** 앱도 이미 그렇게 본다(`updateOfficialLocalFields` 주석: *"desc, gitRepo, svnRepo, color는 로컬 소유"*) |
@@ -914,7 +922,9 @@ git/svn 작성자, **근태·초과시간**(`<attendance>` → 신규 `cal_atten
 > **④ `gitRepo`·`svnRepo` 만 남은 이유**는 위 표 그대로다. 이 항목은 *"DB 에 있으면 오히려 틀린
 > 값이 된다"* 를 실제로 만족하는 **유일한 예외**다.
 
-#### `gitRepo`·`svnRepo` 는 로컬 어디에 두는가
+#### `gitRepo`·`svnRepo` 는 로컬 어디에 두는가  ★ 폐기(2026-10-26, 구조 18)
+
+> `widget/RepoPaths.cs` 와 `cal_category.uses_repo` 를 지웠다. 사용자 PC 의 `repo-paths.json` 은 지우지 않고 두며 읽는 곳이 없다.
 
 `%APPDATA%\TaskCalendar\` 에 **`repo-paths.json`** 을 새로 둔다. **과제 id 를 키로 하는 맵**이다.
 그 폴더에는 이미 같은 부류의 로컬 파일이 있다(`widget.settings.json`, `reminders.json`,
@@ -1041,7 +1051,7 @@ git/svn 작성자, **근태·초과시간**(`<attendance>` → 신규 `cal_atten
 | `cal_category` | `<category>` |
 | `cal_entry` | `<entry>` |
 | `cal_entry_except` | `<recur><except>` |
-| `cal_entry_commit` | `<commits><commit>` |
+| ~~`cal_entry_commit`~~ (2026-10-26 폐지, 구조 18) | `<commits><commit>` (읽지 않는다) |
 | `cal_todo` | `<todo>` |
 | `cal_todo_day_note` | `<dayNotes><dayNote>` |
 | ~~`cal_room`~~ (2026-10-21 폐지) | `<rooms>` (읽지 않는다. 회의실은 공용 `room_code`) |
@@ -1050,7 +1060,7 @@ git/svn 작성자, **근태·초과시간**(`<attendance>` → 신규 `cal_atten
 | **`cal_report_daily`** | 없음 (캘린더가 **보낸** 일간보고, §5.9) |
 | **`cal_report_hours`** | 없음 (보고한 과제별 시간 = 공수계산기의 원천, §5.9) |
 | **`cal_report_weekly`** | 없음 (캘린더가 **작성한** 주간보고, §5.9) |
-| `cal_user_pref` | 루트 `gitAuthor`·`svnAuthor` + **`<prefs>`**(보고서 서식) |
+| `cal_user_pref` | **`<prefs>`**(보고서 서식). 루트 `gitAuthor`·`svnAuthor` 는 2026-10-26 구조 18 에서 칸째 지웠다 |
 | `cal_user_rev` | 없음 (동시성·동기화, §3.1) |
 | `cal_migration_log` | 없음 (이관 재실행 방지, §8) |
 | `cal_schema_meta` | 없음 (스키마 버전 행, §5.5) |
@@ -1144,7 +1154,7 @@ git/svn 작성자, **근태·초과시간**(`<attendance>` → 신규 `cal_atten
 > - `cal_attendance` 는 **새 표**라 백필 문제가 없다(빈 표로 생긴다). 이관이 채운다
 > - **`cal_category` 의 저장소 플래그**(§4): **2026-08-27 에 `uses_repo` 로 신설됐다**(schema_version 5,
 >   `migrate-2026-08-27-repo-flag.sql`). 이 규칙대로 DEFAULT 는 **0('안 쓴다')** 이다.
->   '쓴다'로 백필하면 §4 의 안내 문구가 **모든 과제에 뜬다**.
+>   '쓴다'로 백필하면 §4 의 안내 문구가 **모든 과제에 뜬다**. (2026-10-26 구조 18 에서 이 칸을 지웠다.)
 >   ★ 다만 DEFAULT 0 은 '계산 실패 시 조용한 쪽으로 넘어지게' 하는 장치이지 **계산을 생략해도 된다는
 >   뜻이 아니다.** 전 행 0 이면 안내가 아무 데도 안 뜨고, 그건 이 컬럼을 만들기 전과 같은 상태다.
 >   이관은 행마다 `gitRepo`/`svnRepo` 유무로 계산해 넣는다(계약 I-1). 그래서 마이그레이션에
@@ -3314,6 +3324,10 @@ binlog 는 **변경 이력**이다. *"어느 상태에서 출발해 이 변경�
 ---
 
 ## 정정 이력
+
+- **2026-10-26, Git, SVN 기능 삭제**([`../docs/GIT-SVN-REMOVAL.md`](../docs/GIT-SVN-REMOVAL.md), 구조 번호 18).
+  - 머리 상자, §3.5 대상 수(9 에서 8), §3.9 `cal_entry_commit` 절 제목, §4(옮기지 않는다, `gitRepo`·`svnRepo` 절), §5.1 목록, §5.1 아래 저장소 플래그 주에 폐지를 적었다.
+    본문의 다른 커밋, 저장소 경로, 작성자 서술(동시성, 트리거 폐기 전 대상, 이관 계약 등)은 그때의 기록이라 그대로 둔다.
 
 - **2026-10-21, 회의실 공용화**([`../docs/SHARED-ROOMS.md`](../docs/SHARED-ROOMS.md), 구조 번호 15).
   - 머리 상자, §3.5 대상 수(10 에서 9), §4 매핑표, §5.6.3 판정표, §5.6.7 에 `cal_room` 폐지와 `room_code` 신설을 적었다.

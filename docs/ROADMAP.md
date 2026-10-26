@@ -19,7 +19,7 @@
 > **구조적 문제**: 문서, CI, 패치노트 체계가 `main`을 트렁크로 전제하는데 실제 트렁크는 `feat/db-app`이다. §5의 첫 번째 결정.
 
 ### 완료된 것
-- **데스크톱 위젯**: WPF .NET9 + WebView2, 단일 HTML 임베드. 바탕화면 상주, 트레이, 미리알림, Git/SVN 커밋 수집, 회사 보고(netcus) 자동 전송, 자동 업데이트. 0.12.0에서 UI/UX 6관점 정합 완료.
+- **데스크톱 위젯**: WPF .NET9 + WebView2, 단일 HTML 임베드. 바탕화면 상주, 트레이, 미리알림, 회사 보고(netcus) 자동 전송, 자동 업데이트. (Git/SVN 커밋 수집은 2026-10-26 삭제, [GIT-SVN-REMOVAL.md](GIT-SVN-REMOVAL.md)) 0.12.0에서 UI/UX 6관점 정합 완료.
 - **과제 카탈로그 DB** (축 A P0~P4): `project`, `customer`, 코드테이블, 앱에서 CRUD, Excel 추출. 로컬 MySQL에서 검증 완료.
 - **캘린더 데이터 DB 전환** (축 B C1~C3.6): `cal_*` 16표(판번호는 정본 `db/deploy/schema-calendar.sql` 끝의 `cal_schema_meta` 시딩 줄이 정한다), 읽기(`CalendarDb`)와 쓰기(`CalendarWriteDb`) 배선, **XML 은퇴**(`DeployConfig.XmlRetired = true`, 2026-09-01), 이관 도구(`db/deploy/xml-to-db`), 명시적 가져오기.
 - **보고 기록 DB**: `cal_report_daily/hours/weekly`(2026-08-31). 캘린더가 보낸 것을 DB에 남긴다.

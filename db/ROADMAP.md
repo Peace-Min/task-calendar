@@ -9,6 +9,9 @@
 > 2026-08 에 **캘린더 데이터**(일정, 과제, 커밋, 할일, 근태 + 보고 기록)를 `data.xml` 에서 DB 로 옮기는 축이 새로 생겼고,
 > 그 정본은 [`CALENDAR-TABLE-DESIGN.md`](CALENDAR-TABLE-DESIGN.md) §11 이다. 여기엔 **C1~C5** 로 옮겨 적는다.
 > 로드맵만 보고 *"캘린더는 아직 XML"* 이라고 오해하지 않게 하려는 것이다. **기본 출처는 이미 DB 다.**
+>
+> **2026-10-26: Git, SVN 기능을 지웠다**(구조 번호 18, [`../docs/GIT-SVN-REMOVAL.md`](../docs/GIT-SVN-REMOVAL.md)). 커밋 기록과 `cal_entry_commit` 표,
+> `cal_category.uses_repo`, 작성자 칸이 없어졌다. 아래 C1~C3 의 커밋, 저장소 경로 항목은 그 전의 기록이다.
 
 ---
 
@@ -234,8 +237,8 @@ P6 폐쇄망 임시서버 ─▶ P7 배포·운영        P6.5 per-user 인증(a
 - [x] `db/deploy/xml-to-db`: **INSERT 전용**(UPSERT, REPLACE, 선삭제 없음), 단일 트랜잭션, `cal_migration_log` **동일 트랜잭션** 기록, `--dry-run`
 - [x] **★ 앱의 `fromXML()` 을 재사용하지 않는다.** 앱 파서는 잘못된 근태 상태를 `1`(정근)로 **흡수**한다.
       그걸로 이관하면 휴가·병가가 **영구 손상**된다. 이관기는 `XDocument` 로 원문을 직접 읽는다
-- [x] `cal_entry_commit` 은 쓰기 계층이 **건드리지 않는다**(부팅이 `commits: []` 로 지연 로드하므로). 이관기가 직접 INSERT
-- [x] 저장소 경로는 DB 에 안 넣는다. `uses_repo` **비트만**. 경로는 `%APPDATA%\TaskCalendar\repo-paths.json`(PC 단위, §4)
+- [x] *(2026-10-26 구조 18 에서 표째 지움)* `cal_entry_commit` 은 쓰기 계층이 **건드리지 않는다**(부팅이 `commits: []` 로 지연 로드하므로). 이관기가 직접 INSERT
+- [x] *(2026-10-26 구조 18 에서 `uses_repo` 지움)* 저장소 경로는 DB 에 안 넣는다. `uses_repo` **비트만**. 경로는 `%APPDATA%\TaskCalendar\repo-paths.json`(PC 단위, §4)
 - **게이트**: 왕복 대조 ✅, 이관기 자체 테스트 **25/25** ✅
 
 ## C3. 앱 저장 경로 전환: **[L]** ✅ **완료**
