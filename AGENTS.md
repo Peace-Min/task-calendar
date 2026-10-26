@@ -5,6 +5,8 @@
 
 ## 1. 프로젝트 한눈에
 
+- 근태 작성 UI를 이어서 작업할 때는 [최신 인계](docs/handoff/2026-10-27-attendance-composer.md)와 [A/B/C 시안](docs/prototypes/attendance-composer/README.md)을 먼저 확인한다. 캘린더 활용 및 여러 과제 편집 방식은 시안 검토 중이며 구현 확정으로 해석하지 않는다.
+
 - 수행과제 캘린더: WPF(.NET 9) 위젯(`widget/*.cs`)이 단일 HTML 화면(`task-calendar-prototype.html`)을 WebView2 로 띄우고, 사내 MySQL(`taskcalendar` DB)에 저장한다.
 - 큰 그림: `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, 위키 `docs/wiki/Home.md`.
 - 시험: `tests/README.md`. DB 배포 규칙: `docs/DB-RELEASE-OPS.md`, `docs/VERSION-GATE.md`.
