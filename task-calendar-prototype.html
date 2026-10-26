@@ -2850,6 +2850,31 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
   .rptm-pane[data-sub="pv"] .rptm-left{display:none}
   .modal .rptm-pane input[type=date]{max-width:none}
 }
+/* #17: scoped attendance page, popups reuse the existing modal accessibility. */
+body.att-on #filterbar,body.att-on main > .cal,body.att-on main > .splitter,body.att-on #dayPanel,body.att-on #bootSkeleton,body.att-on .topbar .nav,body.att-on #btnSearch,body.att-on #btnPeerPick,body.att-on #btnReportTop,body.att-on #btnNew{display:none!important}
+body:not(.att-on) #attendanceView{display:none!important}
+#attendanceView{flex:1;min-width:0;overflow:auto;padding:12px}
+.att-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px}
+.att-toolbar[hidden],#attStatusFields[hidden]{display:none!important}
+.att-toolbar input,.att-toolbar select{max-width:100%;min-width:0}
+.att-note{color:var(--muted);font-size:var(--fs-meta)}
+.att-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.att-weekday{text-align:center;color:var(--muted);padding:4px}
+.att-day,.att-record{font:inherit;color:var(--text);border:1px solid var(--line);background:var(--panel);border-radius:var(--r-sm);padding:8px;text-align:left;cursor:pointer;overflow-wrap:anywhere}
+.att-day{min-height:104px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.att-day span{white-space:pre-line;font-size:var(--fs-meta);color:var(--muted)}
+.att-day:hover,.att-record:hover{background:var(--hover-bg)}
+.att-day:focus-visible,.att-record:focus-visible{outline:2px solid var(--accent)}
+.att-snippet{max-height:60px;overflow:hidden}
+.att-list{display:grid;gap:8px}
+.att-dialog{width:min(880px,96vw);max-height:92vh;display:flex;flex-direction:column}
+.att-dialog .att-content{padding:16px;overflow:auto;min-height:0}
+.att-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;background:var(--dim-bg);padding:12px;border-radius:var(--r-sm)}
+.att-line{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px;margin:10px 0}
+.att-line select{max-width:100%;margin-right:8px}.att-line input[type=number]{width:100px}
+.att-dialog textarea{display:block;box-sizing:border-box;width:100%;min-height:90px}
+#attEditError,#attSubmitResult{color:var(--danger)}
+@media(max-width:600px){.att-calendar{gap:2px}.att-day{padding:4px;min-height:80px}.att-day span{font-size:10px}.att-dialog{width:100%;max-height:96vh}.att-dialog .modal-foot{flex-wrap:wrap}.att-line{padding:8px}}
 </style>
 </head>
 <body>
@@ -2968,6 +2993,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
 <div class="pc-tabs" id="pcTabs" role="tablist" aria-label="캘린더 종류">
   <button type="button" class="pc-tab on" role="tab" id="pcTabPersonal" aria-selected="true" aria-controls="filterbar" data-pctab="personal">개인</button>
   <button type="button" class="pc-tab" role="tab" id="pcTabProject" aria-selected="false" aria-controls="pcView" tabindex="-1" data-pctab="project">과제</button>
+  <button type="button" class="pc-tab" role="tab" id="pcTabAttendance" aria-selected="false" aria-controls="attendanceView" tabindex="-1" data-pctab="attendance">근태</button>
 </div>
 
 <div class="filterbar ovf-scroll" id="filterbar"></div>
@@ -3009,10 +3035,14 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
   </aside>
   <!-- 과제 탭 화면(pcRender 가 채운다). 과제 탭에서는 위의 개인 달력과 패널을 숨기고 이것만 보인다. -->
   <section class="pc-view" id="pcView" role="tabpanel" aria-labelledby="pcTabProject"></section>
+<section id="attendanceView" role="tabpanel" aria-labelledby="pcTabAttendance"></section>
 </main>
 
 </div><!-- /#appSurface -->
 
+<div class="overlay hidden" id="attendanceDetail"><div class="modal att-dialog" role="dialog" aria-modal="true" aria-labelledby="attendanceDetailTitle"><div class="modal-head"><h2 id="attendanceDetailTitle">보고 상세</h2><button class="x" data-close aria-label="닫기">×</button></div><div class="att-content"></div><div class="modal-foot"><button class="btn" data-close>닫기</button></div></div></div>
+<div class="overlay hidden" id="attendanceEditor"><div class="modal att-dialog" role="dialog" aria-modal="true" aria-labelledby="attendanceEditorTitle"><div class="modal-head"><h2 id="attendanceEditorTitle">보고 작성·편집</h2><button class="x" data-close aria-label="닫기">×</button></div><div class="att-content"></div><div class="modal-foot"><button class="btn" data-close>닫기</button><button class="btn primary" id="attReview">제출 내용 확인</button></div></div></div>
+<div class="overlay hidden" id="attendanceConfirm"><div class="modal att-dialog" role="dialog" aria-modal="true" aria-labelledby="attendanceConfirmTitle"><div class="modal-head"><h2 id="attendanceConfirmTitle">회사 제출 내용 확인</h2><button class="x" data-close aria-label="닫기">×</button></div><div class="att-content"></div><div class="modal-foot"><button class="btn" id="attendanceConfirmBack">작성본으로 돌아가기</button><button class="btn primary" id="attSubmitFinal">회사에 직접 제출</button></div></div></div>
 <!-- ===== 일정과 할 일 입력: 한 화면 폼(docs/PERSONAL-IMPROVE-PLAN.md 결정 6~10). 모든 생성과 일정 수정의 진입점 =====
      예전 빠른 등록은 장소, 반복, 기간, 메모를 '옵션 더보기' 뒤에 숨겼다. 지금은 모든 칸이 처음부터 보인다(id 는 예전 그대로).
      칸 모양은 과제 등록 폼(.pcf-grid, .pcf-f)과 같다. 좁은 창(440px 이하)에서는 앱의 다른 창과 같은 아래 시트다
@@ -7009,7 +7039,7 @@ function hideLoginGate(){
   const m = document.getElementById('lgMsg'); if(m) m.textContent = '';   // 색은 CSS(.lg-msg)가 소유한다 — 인라인 style을 쓰지 않는다
   _gateInert(false);
 }
-function applyUser(u){ currentUser = (u && u.loginId) ? u : null; try{ updateUserUi(); }catch(_){} }
+function applyUser(u){ currentUser = (u && u.loginId) ? u : null; attReset(currentUser ? String(currentUser.loginId) : ''); try{ updateUserUi(); }catch(_){} }
 // 소속 한 줄의 문구 — app_user.org_unit 은 NULL 일 수 있다(실제로 있다).
 // 빈 문자열로 두면 그 자리가 통째로 사라져 '아직 안 불러온 것'처럼 보이고, 바로 아래 「열람 범위」가
 // 왜 아무 일정도 열지 못하는 상태인지(=소속이 없어 서브트리가 비었다) 설명하지 못한다. 없는 건 없다고 말한다.
@@ -20652,6 +20682,7 @@ function bind(){
     const modalOpen = $$('.overlay').some(o => !o.classList.contains('hidden'));
     if(modalOpen) return;
     if(/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
+    if(PCAL.tab==='attendance')return;
     if(pcOn()){ pcKeyNav(ev.key); return; }   // 과제 탭: 같은 단축키가 과제 달력을 움직인다
     if(ev.key === 'ArrowLeft' || ev.key === 'PageUp') moveMonth(-1);     // PageUp/Down도 월 이동(예측 가능한 단축키)
     else if(ev.key === 'ArrowRight' || ev.key === 'PageDown') moveMonth(1);
@@ -21037,10 +21068,13 @@ function pcResetFor(user){
 
 /* ── 탭 ─────────────────────────────────────────────────────── */
 function pcSetTab(tab, opt){
-  tab = tab === 'project' ? 'project' : 'personal';
+  tab = ['project','attendance'].includes(tab) ? tab : 'personal';
   const was = PCAL.tab;
   PCAL.tab = tab;
   document.body.classList.toggle('pc-on', tab === 'project');
+  document.body.classList.toggle('att-on', tab === 'attendance');
+  const ta=document.getElementById('pcTabAttendance');if(ta){ta.classList.toggle('on',tab==='attendance');ta.setAttribute('aria-selected',String(tab==='attendance'));ta.tabIndex=tab==='attendance'?0:-1;}
+  if(tab==='attendance'){attReset(pkMe());attShell();}
   const tp = document.getElementById('pcTabPersonal'), tj = document.getElementById('pcTabProject');
   if(tp && tj){
     tp.classList.toggle('on', tab === 'personal'); tj.classList.toggle('on', tab === 'project');
@@ -21127,6 +21161,7 @@ function pcOnBootApplied(){
   const me = pkMe();
   if(!me || me === PCAL.user) return;
   const p = pcResetFor(me);
+  if(PCAL.tab === 'attendance') pcSetTab('personal', {quiet:true});
   if(p.tab === 'project') pcSetTab('project', { quiet: true, force: true });
   else if(pcOn()) pcSetTab('personal', { quiet: true });
 }
@@ -21911,9 +21946,9 @@ function pcInit(){
     tabs.addEventListener('keydown', ev => {
       if(ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight' && ev.key !== 'Home' && ev.key !== 'End') return;
       ev.preventDefault(); ev.stopPropagation();
-      const next = (ev.key === 'Home') ? 'personal' : (ev.key === 'End') ? 'project' : (PCAL.tab === 'personal' ? 'project' : 'personal');
+      const keys=['personal','project','attendance'];const next=ev.key==='Home'?'personal':ev.key==='End'?'attendance':keys[(keys.indexOf(PCAL.tab)+(ev.key==='ArrowRight'?1:2))%3];
       pcSetTab(next);
-      const f = document.getElementById(next === 'project' ? 'pcTabProject' : 'pcTabPersonal'); if(f) try{ f.focus(); }catch(_){}
+      const f = document.getElementById(next === 'attendance' ? 'pcTabAttendance' : next === 'project' ? 'pcTabProject' : 'pcTabPersonal'); if(f) try{ f.focus(); }catch(_){}
     });
   }
   const v = document.getElementById('pcView');
@@ -21997,6 +22032,184 @@ function pcInit(){
   if(!HOST){ const p = pcResetFor(''); if(p.tab === 'project') pcSetTab('project', { quiet: true }); }
 }
 
+/* Attendance reports (#17): scoped queries and structured report editing. */
+const AR = {user:'',gen:0,query:0,editGen:0,mode:'daily',month:todayYmd().slice(0,7),page:1,rows:[],total:0,categories:[],record:null,doc:null,busy:false,error:'',company:null};
+function attReset(user){
+  if(AR.user===user)return;
+  Object.assign(AR,{user,gen:AR.gen+1,query:AR.query+1,editGen:AR.editGen+1,mode:'daily',month:todayYmd().slice(0,7),page:1,rows:[],total:0,categories:[],record:null,doc:null,busy:false,error:'',company:null});
+  ['attendanceDetail','attendanceEditor','attendanceConfirm'].forEach(id=>{const e=document.getElementById(id);if(e){e.classList.add('hidden');delete e.dataset.busy;e.style.display='';e.querySelector('.att-content').replaceChildren();}});
+  const v=document.getElementById('attendanceView');if(v)v.replaceChildren();
+}
+function attPeriod(){
+  const range=document.getElementById('attRange');const mode=range?range.value:'recent';const now=todayYmd();
+  if(AR.mode==='daily')return {from:AR.month+'-01',to:ymd(new Date(Number(AR.month.slice(0,4)),Number(AR.month.slice(5,7)),0))};
+  if(mode==='all')return {from:'1000-01-01',to:'9999-12-31'};
+  if(mode==='custom')return {from:document.getElementById('attFrom').value,to:document.getElementById('attTo').value};
+  if(mode==='year'){const y=document.getElementById('attYear').value;return {from:y+'-01-01',to:y+'-12-31'};}
+  const d=parseYmd(now);d.setMonth(d.getMonth()-3);return {from:ymd(d),to:now};
+}
+async function attRequest(cmd,params,ms){
+  if(!HOST||PEER||SUBWIN||!pkMe())return {ok:false,error:'본인 계정으로 데스크톱 앱에 로그인하세요.'};
+  const gen=AR.gen,user=AR.user;const r=await hostRequest(cmd,params,ms||25000);
+  if(gen!==AR.gen||user!==pkMe())return null;
+  return r;
+}
+function attShell(){
+  const v=document.getElementById('attendanceView');if(!v)return;
+  v.innerHTML='<div class="att-toolbar"><div role="tablist" aria-label="근태 보고 종류"><button class="btn" id="attDaily" role="tab">일간보고</button> <button class="btn" id="attWeekly" role="tab">주간보고</button></div><button class="btn" id="attNew">새 보고 작성</button><button class="btn" id="attRefresh">새로고침</button></div>'+
+    '<div class="att-toolbar" id="attDailyTools"><button class="btn" id="attPrevMonth" aria-label="이전 달">‹</button><input type="month" id="attMonth" aria-label="조회 월" value="'+esc(AR.month)+'"><button class="btn" id="attNextMonth" aria-label="다음 달">›</button><button class="btn" id="attToday">오늘</button><label><input type="checkbox" id="attPreview">본문 미리보기</label><label><input type="checkbox" id="attAsList">보고 기록 목록</label></div>'+
+    '<div class="att-toolbar" id="attWeeklyTools"><select id="attRange" aria-label="조회 기간"><option value="recent">최근 3개월</option><option value="year">연도별</option><option value="all">전체</option><option value="custom">직접 지정</option></select><input type="number" min="1000" max="9999" value="'+todayYmd().slice(0,4)+'" id="attYear" aria-label="조회 연도"><input type="date" id="attFrom" aria-label="조회 시작" value="'+todayYmd()+'"><input type="date" id="attTo" aria-label="조회 종료" value="'+todayYmd()+'"><input type="search" id="attSearch" maxlength="200" placeholder="제목·본문 검색" aria-label="제목·본문 검색"><button class="btn" id="attSearchGo">조회</button></div>'+
+    '<p class="att-note">앱 기록이 없다는 것은 미제출이나 결근을 뜻하지 않습니다. 회사 조회본은 상세에서 별도로 확인합니다.</p><p id="attMessage" role="status" aria-live="polite"></p><div id="attResults"></div><div class="att-toolbar" id="attPages"></div>';
+  v.querySelector('#attDaily').onclick=()=>attMode('daily');v.querySelector('#attWeekly').onclick=()=>attMode('weekly');
+  v.querySelector('#attRefresh').onclick=()=>attLoad();v.querySelector('#attSearchGo').onclick=()=>{AR.page=1;attLoad();};
+  v.querySelector('#attNew').onclick=()=>attNew();
+  v.querySelector('#attMonth').onchange=e=>{AR.month=e.target.value;attLoad();};
+  const move=k=>{const d=parseYmd(AR.month+'-01');d.setMonth(d.getMonth()+k);AR.month=ymd(d).slice(0,7);v.querySelector('#attMonth').value=AR.month;attLoad();};
+  v.querySelector('#attPrevMonth').onclick=()=>move(-1);v.querySelector('#attNextMonth').onclick=()=>move(1);
+  v.querySelector('#attToday').onclick=()=>{AR.month=todayYmd().slice(0,7);v.querySelector('#attMonth').value=AR.month;attLoad();};
+  ['attPreview','attAsList'].forEach(id=>v.querySelector('#'+id).onchange=attRender);
+  v.querySelector('#attRange').onchange=()=>{AR.page=1;attRangeFields();attLoad();};
+  attRangeFields();attMode(AR.mode);
+}
+function attRangeFields(){const r=document.getElementById('attRange');if(!r)return;document.getElementById('attYear').hidden=r.value!=='year';['attFrom','attTo'].forEach(id=>document.getElementById(id).hidden=r.value!=='custom');}
+function attMode(mode){AR.mode=mode;AR.page=1;document.getElementById('attDailyTools').hidden=mode!=='daily';document.getElementById('attWeeklyTools').hidden=mode!=='weekly';['daily','weekly'].forEach(k=>{const b=document.getElementById(k==='daily'?'attDaily':'attWeekly');b.setAttribute('aria-selected',String(k===mode));b.classList.toggle('primary',k===mode);});attLoad();}
+async function attLoad(){
+  const query=++AR.query;AR.error='';const msg=document.getElementById('attMessage');if(msg)msg.textContent='조회 중…';
+  const p=attPeriod();const search=AR.mode==='weekly'?document.getElementById('attSearch').value:'';
+  let r=await attRequest('attendanceList',{kind:AR.mode,...p,search,page:AR.mode==='daily'?1:AR.page});
+  if(!r||query!==AR.query)return;
+  if(!r.ok){AR.rows=[];AR.error=r.error||'보고 조회 실패';attRender();return;}
+  let rows=r.data.rows;
+  if(AR.mode==='daily'&&r.data.total>20){const second=await attRequest('attendanceList',{kind:'daily',...p,search:'',page:2});if(!second||query!==AR.query)return;if(!second.ok){AR.rows=[];AR.error=second.error;attRender();return;}rows=rows.concat(second.data.rows);}
+  AR.rows=rows;AR.total=r.data.total;AR.page=r.data.page;attRender();
+}
+function attLabel(row){if(row.source==='legacy')return row.state==='legacy-sent'?'과거 앱 전송 기록':'과거 회사 폼 작성 기록(제출 여부 미확인)';return {pending:'전송 결과 확인 필요',unknown:'전송 결과 확인 필요',failed:'전송 실패(작성본 유지)',confirmed:'앱 제출 확인 기록',edited:'보고 기록',idle:'작성 중'}[row.state]||row.state;}
+function attBody(row){if(row.source==='legacy')return row.body;try{return JSON.parse(row.body).workText||'';}catch(_){return '';}}
+function attRender(){
+  const root=document.getElementById('attResults');if(!root)return;
+  document.getElementById('attMessage').textContent=AR.error||('앱 기록 '+AR.total+'건');root.replaceChildren();
+  const list=AR.mode==='weekly'||document.getElementById('attAsList').checked;
+  if(AR.error){document.getElementById('attPages').replaceChildren();return;}
+  if(list){
+    if(!AR.rows.length)root.textContent='조회 기간에 저장된 앱 기록이 없습니다.';
+    AR.rows.forEach(row=>{const b=document.createElement('button');b.type='button';b.className='att-record';const p=attSummary(row);b.textContent=row.from+(row.to!==row.from?' ~ '+row.to:'')+' '+(AR.mode==='weekly'?'주간보고':'일간보고')+' / '+attLabel(row)+(p?' / '+p:'');b.onclick=()=>attOpen(row.from,row.to,row);root.appendChild(b);});
+  }else{
+    root.className='att-calendar';const first=parseYmd(AR.month+'-01');const count=new Date(first.getFullYear(),first.getMonth()+1,0).getDate();
+    ['일','월','화','수','목','금','토'].forEach(t=>{const el=document.createElement('div');el.className='att-weekday';el.textContent=t;root.appendChild(el);});
+    for(let i=0;i<first.getDay();i++)root.appendChild(document.createElement('div'));
+    for(let n=1;n<=count;n++){
+      const ds=AR.month+'-'+String(n).padStart(2,'0'),row=AR.rows.find(x=>x.from===ds);const b=document.createElement('button');b.className='att-day';b.type='button';b.textContent=String(n);
+      let status=getAttendance(ds);if(row&&row.source==='app'){try{status={status:JSON.parse(row.body).status};}catch(_){}}
+      const summary=document.createElement('span');summary.textContent=(status&&status.status?'근태 '+((ATTEND_STATUS.find(x=>x.v===status.status)||{}).label||status.status):'근태 미기록')+'\n'+(row?attLabel(row)+'\n'+attSummary(row):'앱 기록 없음');b.appendChild(summary);
+      if(row&&document.getElementById('attPreview').checked){const text=document.createElement('span');text.className='att-snippet';text.textContent=attBody(row).slice(0,150);b.appendChild(text);}
+      b.setAttribute('aria-label',ds+' '+summary.textContent);b.onclick=()=>attOpen(ds,ds,row);root.appendChild(b);
+    }
+  }
+  if(list)root.className='att-list';
+  const pages=document.getElementById('attPages');pages.replaceChildren();if(AR.mode==='weekly'){
+    const last=Math.max(1,Math.ceil(AR.total/20));const text=document.createElement('span');text.textContent=AR.page+' / '+last+' 페이지';pages.appendChild(text);
+    [['이전',-1],['다음',1]].forEach(([label,k])=>{const b=document.createElement('button');b.className='btn';b.textContent=label;b.disabled=AR.page+k<1||AR.page+k>last;b.onclick=()=>{AR.page+=k;attLoad();};pages.appendChild(b);});
+  }
+}
+function attSummary(row){if(row.source==='legacy')return '';try{const d=JSON.parse(row.body);return d.lines.length+'과제 / '+d.lines.reduce((s,l)=>s+Number(l.hours),0).toFixed(2).replace(/\.?0+$/,'')+'시간';}catch(_){return '';}}
+function attNew(){const ds=AR.mode==='daily'?AR.month+'-'+(AR.month===todayYmd().slice(0,7)?todayYmd().slice(8):'01'):todayYmd();attOpen(ds,AR.mode==='daily'?ds:addDays(ds,6),null,true);}
+async function attOpen(from,to,row,edit){
+  if(AR.busy)return;const eg=++AR.editGen;AR.company=null;AR.record=null;
+  AR.doc={kind:AR.mode,from,to,status:'',overtime:0,lines:[],notEndWork:null,problem:null,resultWork:null};
+  const r=await attRequest('attendanceLoad',{document:AR.doc});if(!r||eg!==AR.editGen)return;
+  if(!r.ok){toast(r.error||'상세 조회 실패','err');return;}
+  AR.record=r.data; if(r.data && r.data.document)AR.doc=r.data.document;
+  const c=await attRequest('attendanceCategories',{});if(!c||eg!==AR.editGen)return;
+  if(c.ok)AR.categories=c.categories;else {AR.categories=[];toast(c.error||'과제 조회 실패','err');}
+  if(edit&&!r.data){attEdit();return;}
+  const box=document.querySelector('#attendanceDetail .att-content');box.replaceChildren();
+  const h=document.createElement('h3');h.textContent=from+(to!==from?' ~ '+to:'')+' '+(AR.mode==='daily'?'일간보고':'주간보고');box.appendChild(h);
+  function text(label,body){const title=document.createElement('h4');title.textContent=label;box.appendChild(title);const pre=document.createElement('pre');pre.textContent=body;box.appendChild(pre);}
+  text('DB에 저장된 보고',r.data?(r.data.document?attPreviewText(r.data.document):r.data.body):'저장된 보고 없음');
+  if(r.data)text('기록 시각',r.data.submittedAt||'');
+
+  if(r.data&&r.data.message)text('최근 전송 결과',r.data.message);
+  const company=document.createElement('div');company.id='attCompanyResult';box.appendChild(company);
+  const actions=document.createElement('div');actions.className='att-toolbar';
+  function button(label,fn){const b=document.createElement('button');b.className='btn';b.textContent=label;b.onclick=fn;actions.appendChild(b);return b;}
+  button(r.data&&r.data.document?'보고 편집':'보고 작성',()=>{closeModal('#attendanceDetail');attEdit();});
+  button('회사 조회본 읽기',()=>attCompany());
+  if(AR.mode==='weekly')button('같은 기간 일간보고 참고',()=>attDailyReference(from,to,box));
+  box.appendChild(actions);openModal('#attendanceDetail');
+}
+async function attDailyReference(from,to,box){const r=await attRequest('attendanceList',{kind:'daily',from,to,search:'',page:1});if(!r)return;const pre=document.createElement('pre');pre.textContent=r.ok?r.data.rows.map(x=>x.from+'\n'+attBody(x)).join('\n\n')+(r.data.total>20?'\n일간 참고는 첫 20건입니다. 일간 기록 목록에서 나머지를 조회하세요.':''):(r.error||'조회 실패');box.appendChild(pre);}
+function attPreviewText(d){const work=d.lines.map(l=>'['+l.name+'] : '+Number(l.hours)+'시간\n'+l.work.trim()).join('\n\n');return d.from+(d.to!==d.from?' ~ '+d.to:'')+' '+(d.kind==='weekly'?'주간보고':'일간보고')+'\n\n'+work+(d.kind==='weekly'?'\n\n차주 계획\n'+d.lines.map(l=>'['+l.name+']\n'+l.plan.trim()).join('\n\n'):'');}
+function attValidate(d){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d.from)||!/^\d{4}-\d{2}-\d{2}$/.test(d.to)||d.from>d.to||(d.kind==='daily'&&d.from!==d.to))return '보고 기간을 확인하세요.';
+  if(!d.lines.length)return '보고할 과제를 추가하세요.';const ids=new Set();
+  for(const l of d.lines){if(!l.categoryId||ids.has(l.categoryId))return '과제가 비었거나 중복되었습니다.';ids.add(l.categoryId);if(!Number.isFinite(Number(l.hours))||l.hours<=0||l.hours>24||Math.abs(l.hours*100-Math.round(l.hours*100))>1e-7)return '시간은 과제별 0 초과 24 이하, 소수 둘째 자리까지 입력하세요.';if(!l.work.trim())return '업무 내용을 입력하세요.';}
+  return '';
+}
+function attEdit(){
+  if(AR.busy)return;const d=AR.doc,box=document.querySelector('#attendanceEditor .att-content');
+  box.innerHTML='<p>등록된 과제를 선택하고 시간·업무 내용을 편집하세요. 개인 일정과 과제 원본은 바뀌지 않습니다.</p><div class="att-toolbar"><label>시작<input type="date" id="attEditFrom"></label><label>종료<input type="date" id="attEditTo"></label></div>'+
+    '<div id="attStatusFields" class="att-toolbar"><label>근태<select id="attStatus"></select></label><label>초과근무<select id="attOvertime"></select></label></div><div id="attLines"></div><button type="button" class="btn" id="attAddLine">보고 과제 추가</button><p>시간은 기존 보고 규약에 따라 과제별 0 초과 24 이하, 0.01시간 단위입니다.</p><div id="attExtras"></div><h4>자동 생성 원문(읽기 전용)</h4><pre id="attGenerated"></pre><p id="attEditError" role="alert"></p>';
+  ['From','To'].forEach(k=>{const el=document.getElementById('attEdit'+k);el.value=d[k.toLowerCase()];el.disabled=!!AR.record;el.onchange=()=>{d[k.toLowerCase()]=el.value;if(d.kind==='daily'){d.to=d.from;document.getElementById('attEditTo').value=d.to;}attPreview();};});
+  document.getElementById('attEditTo').closest('label').hidden=d.kind==='daily';document.getElementById('attStatusFields').hidden=d.kind!=='daily';
+  const status=document.getElementById('attStatus');status.innerHTML='<option value="">미기록(회사 기존 근태 유지)</option>'+ATTEND_STATUS.map(o=>'<option value="'+esc(o.v)+'">'+esc(o.label)+'</option>').join('');status.value=d.status||'';status.onchange=()=>{d.status=status.value;};
+  const overtime=document.getElementById('attOvertime');for(let n=0;n<=11;n++){const o=document.createElement('option');o.value=n;o.textContent=n;overtime.appendChild(o);}overtime.value=d.overtime||0;overtime.onchange=()=>{d.overtime=Number(overtime.value);};
+  const extras=document.getElementById('attExtras');if(d.kind==='weekly'){
+    [['notEndWork','미처리사항'],['problem','문제점'],['resultWork','회의내용']].forEach(([key,label])=>{const wrap=document.createElement('label'),toggle=document.createElement('input'),area=document.createElement('textarea');toggle.type='checkbox';toggle.checked=d[key]!=null;wrap.append(toggle,document.createTextNode(label+' 수정(끄면 회사 기존 값 유지)'));area.maxLength=8000;area.value=d[key]||'';area.disabled=!toggle.checked;toggle.onchange=()=>{area.disabled=!toggle.checked;d[key]=toggle.checked?area.value:null;};area.oninput=()=>{d[key]=area.value;};extras.append(wrap,area);});
+  }
+  document.getElementById('attAddLine').onclick=()=>{d.lines.push({categoryId:'',name:'',hours:1,work:'',plan:''});attRenderLines();};
+  document.getElementById('attReview').onclick=()=>attSave();
+  attRenderLines();openModal('#attendanceEditor');
+}
+function attRenderLines(){
+  const box=document.getElementById('attLines');box.replaceChildren();AR.doc.lines.forEach((l,index)=>{
+    const row=document.createElement('fieldset');row.className='att-line';const legend=document.createElement('legend');legend.textContent='보고 과제 '+(index+1);row.appendChild(legend);
+    const select=document.createElement('select');select.setAttribute('aria-label','보고 과제 '+(index+1));select.innerHTML='<option value="">과제 선택</option>'+AR.categories.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>').join('');select.value=l.categoryId;
+    select.onchange=()=>{l.categoryId=select.value;l.name=(AR.categories.find(c=>c.id===select.value)||{}).name||'';attPreview();};row.appendChild(select);
+    const hours=document.createElement('input');hours.type='number';hours.min='0.01';hours.max='24';hours.step='0.01';hours.value=l.hours;hours.setAttribute('aria-label','투입 시간');hours.oninput=()=>{l.hours=hours.value===''?NaN:Number(hours.value);attPreview();};row.appendChild(hours);
+    const remove=document.createElement('button');remove.className='btn';remove.textContent='보고에서 제외';remove.onclick=()=>{AR.doc.lines.splice(index,1);attRenderLines();};row.appendChild(remove);
+    [['work','업무 내용'],['plan','차주 계획']].forEach(([k,label])=>{if(k==='plan'&&AR.doc.kind!=='weekly')return;const wrap=document.createElement('label');wrap.textContent=label;const area=document.createElement('textarea');area.maxLength=8000;area.value=l[k]||'';area.oninput=()=>{l[k]=area.value;attPreview();};wrap.appendChild(area);row.appendChild(wrap);});box.appendChild(row);
+  });attPreview();
+}
+function attPreview(){const el=document.getElementById('attGenerated');if(el&&AR.doc)el.textContent=attPreviewText(AR.doc);}
+function attBusy(on){AR.busy=on;['attendanceEditor','attendanceConfirm','attendanceDetail'].forEach(id=>{const m=document.getElementById(id);if(on)m.dataset.busy='1';else delete m.dataset.busy;m.querySelectorAll('button,input,select,textarea').forEach(b=>{if(on){b.dataset.attDisabled=b.disabled?'1':'0';b.disabled=true;}else if(b.dataset.attDisabled!=null){b.disabled=b.dataset.attDisabled==='1';delete b.dataset.attDisabled;}});});}
+async function attSave(){
+  if(AR.busy)return;const err=attValidate(AR.doc),msg=document.getElementById('attEditError');if(err){msg.textContent=err;return;}
+  attBusy(true);const r=await attRequest('attendancePrepare',{document:AR.doc});if(!r)return;attBusy(false);
+  if(!r.ok){msg.textContent=r.error||'입력 내용을 확인하지 못했습니다.';return;}
+  AR.doc=r.document;
+  ['attEditFrom','attEditTo'].forEach(id=>document.getElementById(id).disabled=true);
+  const box=document.querySelector('#attendanceConfirm .att-content');box.replaceChildren();
+  const pre=document.createElement('pre');pre.textContent=attPreviewText(AR.doc)+'\n\n'+(AR.doc.kind==='daily'?'근태: '+(AR.doc.status||'미기록(회사 기존 값 유지)')+' / 초과근무: '+AR.doc.overtime:['notEndWork','problem','resultWork'].map((k,i)=>['미처리사항','문제점','회의내용'][i]+': '+(AR.doc[k]==null?'회사 기존 값 유지':AR.doc[k])).join('\n'));
+  box.appendChild(pre);const m=document.createElement('p');m.id='attSubmitResult';m.setAttribute('role','status');box.appendChild(m);
+  document.getElementById('attSubmitFinal').onclick=()=>attSubmit();openModal('#attendanceConfirm');
+}
+async function attSubmit(){
+  if(AR.busy)return;
+  const payload=JSON.parse(JSON.stringify(AR.doc));attBusy(true);
+  const r=await attRequest('attendanceSubmit',{document:payload},600000);if(!r)return;attBusy(false);
+  if(!r.ok){
+    closeModal('#attendanceConfirm');
+    document.getElementById('attEditError').textContent='처리를 완료하지 못했습니다. 다시 시도해 주세요.';
+    return;
+  }
+  closeModal('#attendanceConfirm');closeModal('#attendanceEditor');closeModal('#attendanceDetail');
+  toast('보고와 기록 저장을 완료했습니다.','ok');attLoad();
+}
+async function attCompany(){
+  if(AR.busy)return;attBusy(true);const r=await attRequest('attendanceCompanyRead',{document:AR.doc},600000);if(!r)return;attBusy(false);
+  const root=document.getElementById('attCompanyResult');root.replaceChildren();const title=document.createElement('h4');title.textContent='회사 조회본 / 조회 시각 '+(r.checkedAt||'');root.appendChild(title);
+  const pre=document.createElement('pre');root.appendChild(pre);
+  if(!r.ok){pre.textContent=r.error||'회사 조회에 실패했습니다.';return;}
+  try{
+    const d=JSON.parse(r.company),labels={sdate:'시작일',edate:'종료일',subject:'제목',content:'보고 내용',endwork:'진행사항',planwork:'차주 계획',notendwork:'미처리사항',problem:'문제점',resultwork:'회의내용',status:'근태',overtime:'초과근무',iscompletion:'제출 상태'};
+    pre.textContent=Object.entries(d).map(([k,v])=>(labels[k]||k)+'\n'+v).join('\n\n');
+  }catch(_){pre.textContent='회사 조회 결과를 해석하지 못했습니다.';}
+}
+function attInit(){
+  document.getElementById('attendanceView').setAttribute('aria-labelledby','pcTabAttendance');
+  document.getElementById('attendanceConfirmBack').onclick=()=>{if(!AR.busy){closeModal('#attendanceConfirm');}};
+}
+
 /* 호스트(WPF) 비동기 요청/응답 브리지 — reqId로 Promise를 매칭 */
 let __reqSeq = 0;
 //  따로 뜨는 창(열람 창 'pw:', 관리 창 'aw:')의 번호에는 창마다 다른 소금을 붙인다. __reqSeq 는 페이지마다 0 부터 다시 세므로, 창을 닫았다 다시 열거나
@@ -22029,6 +22242,7 @@ renderWeekdays();
 bind();
 setupModalA11y();
 pcInit();                 // 과제 탭(개인 / 과제 탭 줄, 과제 화면, 모달 배선). 모달 접근성 감시가 선 다음
+attInit();
 setupSplitter();
 // 창 폭이 바뀌면 넘침 여부도 바뀐다(위젯은 8방향 리사이즈라 자주 일어남)
 window.addEventListener('resize', syncOverflowFade);

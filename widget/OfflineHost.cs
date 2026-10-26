@@ -20,7 +20,7 @@ namespace TaskCalendarWidget
     //    핑          dbPing 회신   { ok:true } | { ok:false, kind, error, detail }
     //    장애 주입   __dbFault 회신 { ok:true, mode } | { ok:false, error }
     //    S12 푸시    window.__dbConnLost({ kind, detail })              — network 일 때만 · 2초 디바운스
-    //    S10 푸시    window.__reportRecordFailed({ which, date, error }) — 10·30·60초 재시도가 모두 실패한 뒤
+    //    S10 변경   보고 저장은 근태 보고 정책 정본에 따라 요청 결과로 반환한다. DB 전용 자동 재시도는 없다.
     //  ★ detail 은 DbErrors.Detail 하나가 만든다(원문 첫 줄 · 'password' 뒤 절단). 비밀번호는 어디에도 싣지 않는다.
     public partial class MainWindow
     {
@@ -147,36 +147,7 @@ namespace TaskCalendarWidget
             HostReply(reqId, new { ok = true, mode = DbFault.Mode });
         }
 
-        // ── S10 — 보고 기록 저장 재시도 ──────────────────────────────────────────
-        //  보고는 이미 회사 사이트로 나갔다. 기록(cal_report_*) 저장이 **예외로** 실패하면 10·30·60초 뒤 다시 한다.
-        //  셋 다 실패하면 화면에 알린다 — 「보고는 전송됐지만 기록 저장에 실패했습니다」(문구는 웹의 몫).
-        //  ★ 건너뜀(로그인 없음·빈 본문 — ReportDb.LastFailure == null)은 재시도하지 않는다. 다시 해도 같다.
-        private static readonly int[] ReportRetryDelaysSec = { 10, 30, 60 };
-
-        private async Task SaveReportRecordWithRetryAsync(string which, string date, ReportDb db, Func<Task<bool>> save)
-        {
-            string label = which == "weekly" ? "주간" : "일간";
-            if (await TryReportSaveAsync(label, save)) return;
-            if (db.LastFailure == null) return;
-            foreach (int sec in ReportRetryDelaysSec)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(sec));
-                Log("보고 기록 저장 재시도(" + label + " " + date + ") — " + sec + "초 뒤");
-                if (await TryReportSaveAsync(label, save)) { Log("보고 기록 저장 재시도 성공(" + label + " " + date + ")"); return; }
-                if (db.LastFailure == null) return;
-            }
-            string error = db.LastFailure ?? "";
-            Log("보고 기록 저장 최종 실패(" + label + " " + date + ") — 10·30·60초 재시도 모두 실패: " + error);
-            string js = "window.__reportRecordFailed && window.__reportRecordFailed(" + JsonSerializer.Serialize(new { which, date, error }) + ")";
-            try { _ = Dispatcher.BeginInvoke(new Action(() => { try { _ = web.CoreWebView2?.ExecuteScriptAsync(js); } catch { } })); }
-            catch { }
-        }
-
-        private async Task<bool> TryReportSaveAsync(string label, Func<Task<bool>> save)
-        {
-            try { return await save(); }
-            catch (Exception ex) { Log("보고 기록 저장 예외(" + label + "): " + ex.Message); return false; }
-        }
+        // 보고 저장은 docs/ATTENDANCE-REPORT-POLICY.md를 따른다. DB만 자동 재시도하지 않는다.
 
         // ── §6 닫기 경고(S4) ────────────────────────────────────────────────────
         //  웹이 '저장되지 않은 변경' 표시가 바뀔 때마다 unsavedState {on} 을 보낸다. 사용자가 시작한 종료

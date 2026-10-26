@@ -9,6 +9,7 @@
 - 큰 그림: `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, 위키 `docs/wiki/Home.md`.
 - 시험: `tests/README.md`. DB 배포 규칙: `docs/DB-RELEASE-OPS.md`, `docs/VERSION-GATE.md`.
 - 기능별 기획서는 `docs/<기능>.md` 에 있다. 비슷한 기능을 고치기 전에 해당 기획서와 `docs/DECISIONS.md` 를 먼저 읽는다.
+- **근태 및 보고 작업의 필수 정본:** [docs/ATTENDANCE-REPORT-POLICY.md](docs/ATTENDANCE-REPORT-POLICY.md)를 먼저 읽는다. 회사 성공 확인 후에만 관련 DB 변경 전체를 한 트랜잭션으로 저장한다. 어느 단계든 실패하면 편집창과 입력 유지, 공통 실패 안내, 재시도는 회사 보고부터 실행한다. 회사와 DB의 분산 원자성을 구현한다고 확대하지 않는다. 이 정책을 위해 작성본 DB 선저장, DB 전용 재시도, 로컬 복구 큐 및 자동 대조를 추가하지 않는다. 이슈 #17 초기 명세와 충돌하면 이 정본을 따른다. 작업 전후 `node tests/audit-attendance-policy.mjs`로 확인하고 미통과 및 미검증을 인계한다.
 - 실제 운용은 폐쇄망(사내 서버 DB, 공유 폴더)이다. 이 저장소를 여는 PC 는 개발용이다.
 
 ## 2. 절차: 기획, 개발, QA, 위키

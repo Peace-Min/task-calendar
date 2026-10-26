@@ -32,7 +32,7 @@ function mutate(from, to, base = src) {
 }
 //  과제 탭 모듈 구역(상수부터 호스트 다리 앞까지).
 function moduleOf(app) {
-  const a = app.indexOf('const PCAL_LIMITS = '), b = app.indexOf('/* 호스트(WPF) 비동기 요청/응답 브리지');
+  const a = app.indexOf('const PCAL_LIMITS = '), b = app.indexOf('/* Attendance reports (#17)');
   assert.ok(a > 0 && b > a, '과제 탭 모듈 구역(PCAL_LIMITS ~ 호스트 다리)을 찾지 못했다');
   return app.slice(a, b);
 }

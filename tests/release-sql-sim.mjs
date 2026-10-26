@@ -277,13 +277,15 @@ const ROW_KEY = {
 //  meta: { 키: 값 } (cal_schema_meta). 실행 기록(writes)과 updated_at 흉내(시각 카운터)를 남긴다.
 //  tables: { cal_room: [{ user_id, name }], room_code: [{ name, sort_order }] } 처럼 있는 표만 준다(없는 키 = 없는 표).
 //  표 바꾸기도 writes 에 'table:<이름>' 으로 남긴다(다시 돌렸을 때 바뀐 것이 없는지 보려고).
+export const REPORTS_V20 = () => ({ 'cal_report_daily.report_json':'json?', 'cal_report_weekly.report_json':'json?', 'cal_report_weekly.submitted_at':'datetime?' });
 export class FakeDb {
-  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {}, project = PROJECT_V16(), vcs = VCS_V17(), codes = CODES_V18() } = {}) {
+  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {}, project = PROJECT_V16(), vcs = VCS_V17(), codes = CODES_V18(), reports = {} } = {}) {
     this.rows = new Map(Object.entries(meta).map(([k, v]) => [k, { v, at: 0 }]));
     this.tables = Object.fromEntries(Object.entries(tables).map(([n, rs]) => [n, rs.map((r) => ({ ...r }))]));
     this.defs = Object.fromEntries(Object.entries(defs).map(([n, d]) => [n, { ...d }]));   // 표 이름 → { cols, fks }(v16 검증용)
     this.project = { cols: [...project.cols], checks: [...project.checks] };                  // project 표 모양(v17 검증용)
     this.vcs = { cols: [...vcs.cols], checks: [...vcs.checks], prefComment: vcs.prefComment };  // 지울 칸, CHECK, 표 설명(v18 검증용)
+    this.reports = { ...reports };
     this.codes = { ...codes };                                                                   // 코드표 표 설명(v19 검증용)
     this.tableExists = tableExists;
     this.schema = schema;
@@ -299,7 +301,7 @@ export class FakeDb {
   snap() { if (!this.tx) this.visible.push(this.state()); }
   meta() { return Object.fromEntries([...this.rows].map(([k, r]) => [k, r.v])); }
   //  meta 에 회의실 표 모양('#tables')을 붙인 것. 앱에 보인 상태 비교와 실패 뒤 재실행 결과 비교에 쓴다.
-  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()), '#project': JSON.stringify(this.project), '#vcs': JSON.stringify(this.vcs), '#codes': JSON.stringify(this.codes) }; }
+  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()), '#project': JSON.stringify(this.project), '#vcs': JSON.stringify(this.vcs), '#codes': JSON.stringify(this.codes), '#reports': JSON.stringify(this.reports) }; }
   projectHasCol(c) { return this.project.cols.some((x) => colOf(x).name === c); }
   tableShape() {
     const out = {};
@@ -331,6 +333,8 @@ export class FakeDb {
   stamps() { return Object.fromEntries([...this.rows].map(([k, r]) => [k, r.at])); }
   subquery(q) {
     const s = q.replace(/\s+/g, ' ');
+    const report = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_daily|cal_report_weekly)' AND COLUMN_NAME = '(report_json|submitted_at)'(?: AND DATA_TYPE = '(json|datetime)' AND IS_NULLABLE = '(YES|NO)')?$/.exec(s);
+    if (report) { const value=this.reports[report[1]+'.'+report[2]]; return this.schema && value && (!report[3] || value===report[3]+(report[4]==='YES'?'?':'')) ? 1:0; }
     let m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLES WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME (?:= '(\w+)'|IN \(([^)]*)\))$/i.exec(s);
     if (m) {
       if (!this.schema) return 0;
@@ -460,6 +464,12 @@ export class FakeDb {
       return;
     }
     //  v17: project 에 칸 하나(AFTER), CHECK 하나. 이미 있으면 MySQL 처럼 오류로 멈춘다(1060, 3822). 조각은 information_schema 로 건너뛴다.
+    if ((m = /^ALTER TABLE (cal_report_daily|cal_report_weekly) ADD COLUMN (report_json|submitted_at) (JSON|DATETIME\(3\)) NULL$/.exec(q))) {
+      if(this.tx)throw new Error('트랜잭션 안의 DDL');
+      const key=m[1]+'.'+m[2]; if(!(key in REPORTS_V20()))throw new Error('알 수 없는 보고 열');
+      this.mutating(s,opts);if(key in this.reports)throw new SqlStop('1060 중복 보고 열');
+      this.reports[key]=m[3]==='JSON'?'json?':'datetime?';this.writes.push({k:'col:'+key,v:'add'});return;
+    }
     if ((m = /^ALTER TABLE project ADD COLUMN (\w+) (DATE|INT UNSIGNED) NULL AFTER (\w+), ALGORITHM=INSTANT$/.exec(q))) {
       if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
       this.mutating(s, opts);

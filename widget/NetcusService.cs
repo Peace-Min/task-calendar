@@ -26,8 +26,7 @@ namespace TaskCalendarWidget
         //  보고 기록 저장(설계 §5.9). 반환값이 없는 이유 — 이 시점에는 **이미 사이트로 보고서가 나갔다**.
         //  저장 실패로 전송을 실패처럼 보이게 하면 사용자가 재전송하게 되고 그게 더 큰 사고다.
         //  실패는 ReportDb 안에서 잡아 로그로 남는다(조용히 삼키는 것이 아니다).
-        void SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson);
-        void SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork);
+        Task<bool> SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson);
 
         //  버전 관문 확인(VERSION-GATE §2.4). 관문으로 DB 연결을 한 번 열고 닫는다. false = 막혔다.
         //  ★ 회사 사이트에 접속하기 **전에** 부른다. 보고는 사이트로 먼저 나가고 DB 기록은 나중이라,
@@ -39,7 +38,7 @@ namespace TaskCalendarWidget
     // login.htm→goLogin() 로그인 → pjm_work_view.jsp?y&m&d&id 이동 → status/overtime/content 채움 →
     // (실제 제출) Bmodify()로 서버 POST. 자격증명은 DPAPI로 로컬 암호화 저장.
     // Phase1(행위보존 추출): MainWindow.partial(Netcus.cs)에서 전용 서비스로 이관. 로직·타임아웃·문자열·흐름 동일.
-    internal sealed class NetcusService
+    internal sealed partial class NetcusService
     {
         private readonly INetcusHost _host;
         private WV.WebView2? _w2;                      // 보조 WebView2(가시 창)
@@ -596,11 +595,8 @@ namespace TaskCalendarWidget
                 if (vr == -1) NetcusResult(false, "세션이 만료됐거나 로그인이 필요합니다. 자격증명을 확인하세요.");
                 else if (vr == 1)
                 {
-                    NetcusResult(true, "회사 일간보고 전송 완료(한글까지 정상 저장 확인). netcus 사이트에서도 확인하세요.");
-                    //  ★ 결과를 먼저 알리고 그 다음 기록한다 — 사용자가 보는 진실은 '전송됐다'이고,
-                    //    DB 저장은 그걸 바꾸지 못한다. vr==1(되읽어 검증됨)일 때만 부른다 —
-                    //    실패한 전송을 기록하면 표가 거짓말을 하게 된다.
-                    _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.HoursJson);
+                    bool stored = await _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.HoursJson);
+                    NetcusResult(stored, stored ? "보고와 기록 저장을 완료했습니다." : AttendanceWorkflow.Failure);
                 }
                 else if (vr == 2) NetcusResult(false, "저장은 됐으나 한글이 깨졌을 수 있습니다(되읽기 대조 불일치). netcus에서 확인하세요.");
                 else NetcusResult(false, "저장 확인 실패(내용이 비어 있음). 열린 창에서 직접 확인하세요.");
@@ -726,7 +722,6 @@ namespace TaskCalendarWidget
                 //  ★ 여기서 기록하는 것은 '보냈다'가 아니라 **'캘린더가 작성했다'**다.
                 //    위젯은 주간을 전송하지 않고 사용자가 직접 제출한다(위 문구 그대로).
                 //    그래서 사용자가 폼에서 보완한 내용은 담기지 않고, 컴럼 이름도 composed_at 이다(§5.9.5).
-                _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork);
 
                 // ── 같은 기간 글이 있을 때: 그 글의 수정 화면(pjm_modify.jsp)을 열어 세 칸만 채운다(WEEKLY-UPSERT §3.2) ──
                 //   로컬 함수인 이유: 자동수락 detach(이 메서드의 지역 변수)를 수정 화면 로드 직전에 여기서 끊어야 한다(인계 계약).
@@ -803,7 +798,6 @@ namespace TaskCalendarWidget
                     try { _w2win?.Activate(); } catch { }
                     NetcusResult(true, WeekModifyOkMsg(hit.Matches));
                     //  새 글 경로와 같다: 기록하는 것은 '캘린더가 채운 내용'이다(사용자가 창에서 고친 내용은 담기지 않는다).
-                    _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork);
                 }
             }
             catch (Exception ex)

@@ -97,10 +97,9 @@ const checks = {
       'DryRun 블록에 return 이 없다 — 미제출(테스트) 모드가 DB 에 기록하게 된다');
   },
 
-  // ③ 저장 실패가 전송을 깨지 않는다
+  // ③ DB 저장 완료를 기다리고 실패를 요청 결과로 돌려준다
   saveNeverBreaksSend(cs, rdb) {
-    assert.ok(/void SaveDailyReport\(/.test(cs) && /void SaveWeeklyReport\(/.test(cs),
-      '호스트 훅이 void 가 아니다 — 저장 실패가 전송 흐름으로 전파될 수 있다');
+    assert.ok(/Task<bool> SaveDailyReport\(/.test(cs) && /await _host.SaveDailyReport\(/.test(cs), 'DB 저장 완료를 기다리지 않는다');
     // ReportDb 의 두 공개 메서드가 각각 catch 를 갖는다
     for (const m of ['SaveDailyAsync', 'SaveWeeklyAsync']) {
       const i = rdb.indexOf('public async Task<bool> ' + m);
@@ -111,25 +110,14 @@ const checks = {
     }
   },
 
-  // ④ 주간 저장은 폼 채우기 성공 뒤에 불린다
+  // ④ 폼 채우기는 제출 성공이 아니므로 DB 보고 기록을 남기지 않는다
   //   2026-10-08 WEEKLY-UPSERT: NetcusWeekFill 에 같은 기간 글의 수정 경로(로컬 함수 OpenModify)가 생겨 저장 호출이 둘이다.
   //   여기는 새 글 경로(OpenModify 앞)만 본다. 수정 경로의 저장은 weekly-upsert.test.mjs 가 같은 방식으로 잠근다.
   //   옛 판의 고정 창(앞 12000자)은 메서드가 길어지면 수정 경로의 호출을 새 글 경로의 것으로 잘못 집는다 → 멤버 본문으로 자르고 경계에서 끊는다.
   weeklySaveAfterFill(cs) {
-    const i = cs.indexOf('private async Task NetcusWeekFill(');
-    assert.ok(i > 0, 'NetcusWeekFill 을 찾지 못했다');
-    const all = extractCsMember(cs, 'private async Task NetcusWeekFill(');
-    const mod = all.indexOf('async Task OpenModify(');
-    assert.ok(mod > 0, '수정 경로(OpenModify)의 경계를 찾지 못했다. 새 글 경로를 가를 수 없다');
-    const b = all.slice(0, mod);
-    const okMsg = b.indexOf('주간보고 작성 폼을 채웠습니다');
-    const call = b.indexOf('_host.SaveWeeklyReport(');
-    assert.ok(call > 0, 'NetcusWeekFill 안에서 SaveWeeklyReport 호출을 찾지 못했다 — 배선이 끊겼다');
-    assert.ok(okMsg > 0 && call > okMsg,
-      '주간 저장이 폼 채우기 성공 통지보다 앞에 있다 — 실패한 채우기도 기록된다');
-    // 채우기 실패 경로(return)보다 뒤여야 한다
-    const failRet = b.indexOf('주간보고 폼 채우기 실패');
-    assert.ok(failRet > 0 && call > failRet, '저장이 채우기 실패 분기보다 앞에 있다');
+    const body=extractCsMember(cs, 'private async Task NetcusWeekFill(');
+    assert.ok(body.includes('주간보고 작성 폼을 채웠습니다'), '기존 폼 채우기 안내가 없다');
+    assert.doesNotMatch(body, /_host\.SaveWeeklyReport\(/, '폼 채우기만으로 DB 보고 기록을 저장한다');
   },
 
   // ⑤ 웹→호스트 경계가 hours 를 실어 나른다
@@ -191,7 +179,7 @@ const checks = {
       '범위 밖 잔업을 0 으로 내리지 않는다');
 
     // (c) 두 검증이 **저장 호출 앞**에 실제로 끼어 있고, 내린 값이 저장으로 간다(안 그러면 장식이다).
-    const i = mainCs.indexOf('void INetcusHost.SaveDailyReport(');
+    const i = mainCs.indexOf('async Task<bool> INetcusHost.SaveDailyReport(');
     assert.ok(i > 0, 'INetcusHost.SaveDailyReport 를 찾지 못했다');
     const hook = mainCs.slice(i, i + 1600);
     assert.ok(/SafeReportStatus\(status\)/.test(hook) && /SafeOvertime\(overtime\)/.test(hook),
@@ -259,11 +247,11 @@ test('배선②: 미제출(DryRun)은 저장에 도달하지 못한다', () => {
   checks.dryRunReturnsBeforeSave(netcus);
 });
 
-test('배선③: 저장 실패가 전송을 깨지 않는다(훅은 void · ReportDb 가 예외를 잡는다)', () => {
+test('배선③: DB 결과를 기다리고 저장 실패를 false로 전달한다', () => {
   checks.saveNeverBreaksSend(netcus, reportdb);
 });
 
-test('배선④: 주간 저장은 폼 채우기 성공 뒤에 불린다', () => {
+test('배선④: 주간 폼 채우기는 제출 성공 기록을 남기지 않는다', () => {
   checks.weeklySaveAfterFill(netcus);
 });
 
@@ -324,14 +312,9 @@ test('변이③: DryRun 의 return 을 빼면 배선② 가 실패한다(테스�
   assert.throws(() => checks.dryRunReturnsBeforeSave(bad), /return 이 없다/);
 });
 
-test('변이④: 주간 저장을 채우기 성공 통지 앞으로 옮기면 배선④ 가 실패한다', () => {
-  const call = '                _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork);';
-  const msg = '                NetcusResult(true, "주간보고 작성 폼을 채웠습니다';
-  assert.ok(netcus.includes(call), '주간 저장 호출을 찾지 못했다');
-  const bad = mutate(msg, call + '\n' + msg, netcus).replace(call + '\n', (m, off) => off > netcus.indexOf(msg) ? '' : m);
-  // 위 치환이 애매하면 단순히 호출을 지운 변이로 대체(둘 다 배선④ 를 깨야 한다)
-  const bad2 = mutate(call, '                // 옮겨짐', netcus);
-  assert.throws(() => checks.weeklySaveAfterFill(bad2), /배선이 끊겼다/);
+test('변이④: 주간 폼 채우기에 DB 저장을 추가하면 정책 검증 실패', () => {
+  const bad=mutate('NetcusResult(true, "주간보고 작성 폼을 채웠습니다', '_host.SaveWeeklyReport(); NetcusResult(true, "주간보고 작성 폼을 채웠습니다', netcus);
+  assert.throws(()=>checks.weeklySaveAfterFill(bad),/폼 채우기만으로/);
 });
 
 test('변이⑤: 웹이 hours 를 안 실으면 배선⑤ 가 실패한다', () => {

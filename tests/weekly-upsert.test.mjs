@@ -568,19 +568,10 @@ const checks = {
     assert.ok(!/\.value=/.test(fill.replace(/[ecp]\.value=/g, '')), '수정 화면 채우기가 세 칸 말고 다른 값을 쓴다');
   },
 
-  //  C5. 수정 경로의 저장은 성공 통지 뒤에 한 번, 실패 경로들보다 뒤에 있다(새 글 경로는 report-wiring ④).
+  //  C5. 수정 폼을 채우는 것만으로 회사 제출 성공 기록을 저장하지 않는다.
   modifySaveAfterSuccess(cs) {
-    const om = openModify(cs);
-    const call = '_host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork);';
-    const at = om.indexOf(call);
-    assert.ok(at > 0, '수정 경로에서 SaveWeeklyReport 호출을 찾지 못했다. 배선이 끊겼다');
-    assert.strictEqual(om.split('_host.SaveWeeklyReport(').length - 1, 1, '수정 경로에서 저장을 두 번 이상 부른다');
-    const ok = om.indexOf('NetcusResult(true, WeekModifyOkMsg(hit.Matches));');
-    assert.ok(ok > 0 && at > ok, '수정 경로의 저장이 성공 통지보다 앞에 있다. 실패한 채우기도 기록된다');
-    const lastFail = om.lastIndexOf('NetcusResult(false,');
-    assert.ok(lastFail > 0 && at > lastFail, '수정 경로의 저장이 실패 분기보다 앞에 있다');
-    const fillFail = om.indexOf('주간보고 수정 화면 채우기 실패');
-    assert.ok(fillFail > 0 && fillFail < ok, '채우기 실패 분기가 성공 통지보다 뒤에 있다');
+    const om=openModify(cs);
+    assert.doesNotMatch(om, /_host\.SaveWeeklyReport\(/, '주간 수정 폼 채우기를 제출 성공으로 기록한다');
   },
 
   //  C6. 안전판(Bmodify 대체)을 채우기 전에 끼우고, 못 끼우면 창을 닫고 멈춘다(원래 Bmodify 는 빈 폼으로 기존 글을 덮을 수 있다).
@@ -681,7 +672,7 @@ test('주간 고치기 C1: 확인 실패(예외 포함)면 창을 닫고 멈춘�
 test('주간 고치기 C2: 찾기는 세션 만료, 못 읽은 글, 못 읽은 목록, 상한 도달을 "없음" 이 아니라 실패로 본다', () => checks.lookupFailReasons(svc));
 test('주간 고치기 C3: 수정 경로 성공 문구는 "주간보고 " 로 시작하는 WeekModifyOkMsg 하나다', () => checks.okMsgPrefix(svc, txt));
 test('주간 고치기 C4: 수정 경로는 세 칸만 채운다(기간, 제목, 작성일, 미처리사항, 문제점, 회의내용은 건드리지 않는다)', () => checks.modifyFillsThreeOnly(svc, txt));
-test('주간 고치기 C5: 수정 경로의 SaveWeeklyReport 는 성공 통지 뒤에 한 번 불린다', () => checks.modifySaveAfterSuccess(svc));
+test('주간 고치기 C5: 수정 폼 채우기는 DB 제출 기록을 쓰지 않는다', () => checks.modifySaveAfterSuccess(svc));
 test('주간 고치기 C6: Bmodify 안전판은 채우기 전에 끼우고, 못 끼우면 창을 닫고 멈춘다', () => checks.overrideBeforeFill(svc));
 test('주간 고치기 C7: 주간범위 읽기의 창, 상한, 오류 코드, 회신, 포함 규칙은 그대로다(공용 순회로 옮긴 뒤)', () => checks.rangeReadContract(svc));
 test('주간 고치기 C8: 같은 기간 글 찾기의 창은 sdate-7 ~ edate+14, 열람 상한 20 이다', () => checks.upsertWindow(svc));
@@ -733,18 +724,11 @@ test('주간 고치기 변이 CM9: 수정 화면 채우기가 기간이나 제�
     'var mfilled = await wv.ExecuteScriptAsync(WeekModifyFillJs(req.Endwork, req.Content, req.Planwork) + SetJs("subject", req.Subject));');
   assert.throws(() => checks.modifyFillsThreeOnly(bad2, txt), /subject 에 요청 값을 쓴다/);
 });
-test('주간 고치기 변이 CM10: 수정 경로의 저장을 지우거나 성공 통지 앞으로 옮기면 C5 가 잡는다', () => {
-  const call = '                    _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork);';
-  assert.ok(svc.includes(call), '수정 경로의 저장 호출(20칸 들여쓰기)을 찾지 못했다');
-  const at = svc.lastIndexOf(call);
-  const removed = svc.slice(0, at) + '                    // 지워짐' + svc.slice(at + call.length);
-  assert.throws(() => checks.modifySaveAfterSuccess(removed), /배선이 끊겼다/);
-  const okLine = '                    NetcusResult(true, WeekModifyOkMsg(hit.Matches));';
-  const moved = removed.replace('                    var mfilled = ', call + NL + '                    var mfilled = ');
-  assert.notStrictEqual(moved, removed);
-  assert.ok(moved.includes(okLine));
-  assert.throws(() => checks.modifySaveAfterSuccess(moved), /성공 통지보다 앞에 있다|실패 분기보다 앞에 있다/);
+test('주간 고치기 변이 CM10: 수정 폼 채우기에 DB 기록을 추가하면 정책 검증 실패', () => {
+  const bad=mutate(svc, 'NetcusResult(true, WeekModifyOkMsg(hit.Matches));', '_host.SaveWeeklyReport(); NetcusResult(true, WeekModifyOkMsg(hit.Matches));');
+  assert.throws(()=>checks.modifySaveAfterSuccess(bad),/수정 폼 채우기를/);
 });
+
 test('주간 고치기 변이 CM11: 안전판 실패 검사를 지우면 C6 이 잡는다', () => {
   const bad = mutate(svc, 'if (!ovr.StartsWith("ok", StringComparison.Ordinal))', 'if (ovr == null)');
   assert.throws(() => checks.overrideBeforeFill(bad), /멈추는 검사가 채우기 앞에 없다/);

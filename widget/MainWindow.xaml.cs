@@ -1000,6 +1000,14 @@ namespace TaskCalendarWidget
 
                     // ----- 과제 캘린더(docs/PROJECT-CALENDAR-PLAN.md §5.4): 메인 창 전용. 관리 창과 열람 창 허용 목록에 넣지 않는다 -----
                     //  회신은 ReplyOnUi(reqId)로 { ok, data?, error?: { kind, message } }. 판정과 SQL 은 ProjectCalendarDb 한 곳(ProjectCalendarHost.cs).
+                    case "attendanceCategories":
+                    case "attendanceList":
+                    case "attendanceLoad":
+                    case "attendancePrepare":
+                    case "attendanceSubmit":
+                    case "attendanceCompanyRead":
+                        _ = RunAttendanceAsync(cmd, GetStr(doc, "reqId"), raw);
+                        break;
                     case "projectCalendarBootstrap":
                     case "projectCalendarLoad":
                     case "projectCalendarSave":
@@ -2304,29 +2312,16 @@ namespace TaskCalendarWidget
         //  페이로드 해석과 저장은 호스트인 여기서 한다.
         //  ★ await 하지 않는다(반환 void) — 이 시점에는 이미 사이트로 보고서가 나갔고,
         //    저장 지연이 사용자 피드백을 막으면 안 된다. 실패는 ReportDb 가 로그로 남긴다.
-        void INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson)
+        async Task<bool> INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson)
         {
             string? loginId = CurrentLoginId();
             var hours = ParseHoursJson(hoursJson);
-            //  ★ 쓰기 직전 재검증(2026-09-09 CHECK 도메인 · chk_crd_status / chk_crd_overtime).
-            //    값 하나가 3819 를 내면 **그 날 보고 저장 트랜잭션 전체가 롤백**된다 — 전송은 이미 성공한 뒤라
-            //    가장 나쁜 실패다(ReportDb 클래스 주석). 그래서 도메인 밖 값은 여기서 안전한 값으로 내리고,
-            //    무엇을 내렸는지 로그에 남긴다(사이트로 나간 값은 이미 정해졌다 — 여기서 바꾸는 것은 기록뿐이다).
             string st = SafeReportStatus(status);
             int ot = SafeOvertime(overtime);
             var db = new ReportDb(Log);
-            string ymd = $"{y:D4}-{m:D2}-{d:D2}";   // 재시도 실패 알림(__reportRecordFailed)에 실을 날짜
-            _ = Task.Run(() => SaveReportRecordWithRetryAsync("daily", ymd, db,   // 실패 시 10·30·60초 재시도(OfflineHost.cs · S10)
-                () => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours)));
+            return await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours));
         }
 
-        void INetcusHost.SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork)
-        {
-            string? loginId = CurrentLoginId();
-            var db = new ReportDb(Log);
-            _ = Task.Run(() => SaveReportRecordWithRetryAsync("weekly", sdate, db,   // 실패 시 10·30·60초 재시도(OfflineHost.cs · S10)
-                () => db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork)));
-        }
 
         // ================================================================================
         //  데이터 출처(1c) — DB 읽기 배선

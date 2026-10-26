@@ -45,10 +45,10 @@ namespace TaskCalendarWidget
     //    그때 저장소 클래스 이름에 Netcus 가 박혀 있으면 걸림돌이 된다.
     //    (CalendarDb=읽기 / ProjectDb=과제 / ReportDb=보고 — <도메인>Db 관례를 따른다.)
     //
-    //  【실패해도 전송을 깨지 않는다 — 의도된 설계다】
-    //    이 클래스가 불리는 시점에는 **이미 회사 사이트로 보고서가 나갔다.** 여기서 예외를 던져
-    //    사용자에게 실패로 보이면 "안 보내졌나?" 하고 다시 보내게 되고, 그게 더 큰 사고다.
-    //    그래서 모든 실패를 안에서 잡아 로그로 남기고 false 를 돌려준다.
+    //  【실패 처리는 근태 보고 정책 정본을 따른다】
+    //    회사에는 이미 반영됐을 수 있다. DB 실패는 false로 반환하고 호출자는 전체 실패를 안내한다.
+    //    같은 대상에 덮어쓰는 운용을 전제로 사용자가 회사 보고부터 다시 시도한다.
+    //    회사와 DB 모두 성공하기 전에 전체 완료를 알리지 않는다.
     //    ★ 조용히 삼키는 것이 아니다 — 로그에 원인과 대상 날짜가 남는다. 그걸 지우지 말 것.
     // ================================================================================
     internal sealed class ReportDb
@@ -139,7 +139,7 @@ namespace TaskCalendarWidget
                         "INSERT INTO cal_report_daily (user_id, work_date, status, overtime, content, sent_at) " +
                         "VALUES (@u, @dt, @st, @ot, @c, @at) " +
                         "ON DUPLICATE KEY UPDATE status=VALUES(status), overtime=VALUES(overtime), " +
-                        "content=VALUES(content), sent_at=VALUES(sent_at)";
+                        "content=VALUES(content), sent_at=VALUES(sent_at), report_json=NULL";
                     cmd.Parameters.AddWithValue("@u", userId);
                     cmd.Parameters.AddWithValue("@dt", date.Value);
                     cmd.Parameters.AddWithValue("@st", Clamp2(status));
@@ -207,7 +207,7 @@ namespace TaskCalendarWidget
             }
             catch (Exception ex)
             {
-                // 전송은 이미 성공했다. 여기서 던지면 사용자가 재전송하게 되고 그게 더 큰 사고다(클래스 주석).
+                // 회사 처리는 이미 성공했다. DB 실패는 false로 반환해 호출자가 편집창과 입력을 유지하게 한다.
                 _log("보고 기록 저장 실패(전송은 성공했다) — 일간 " + ds + ": " + ex.Message);
                 LastFailure = DbErrors.Observe(ex, _log).detail;   // 재시도 대상 표시(S10) — 건너뜀과 구분한다
                 return false;
@@ -244,7 +244,7 @@ namespace TaskCalendarWidget
                     "(user_id, period_start, period_end, subject, content, endwork, plan, composed_at) " +
                     "VALUES (@u, @s, @e, @sj, @c, @ew, @pl, @at) " +
                     "ON DUPLICATE KEY UPDATE period_end=VALUES(period_end), subject=VALUES(subject), " +
-                    "content=VALUES(content), endwork=VALUES(endwork), plan=VALUES(plan), composed_at=VALUES(composed_at)";
+                    "content=VALUES(content), endwork=VALUES(endwork), plan=VALUES(plan), composed_at=VALUES(composed_at), report_json=NULL, submitted_at=NULL";
                 cmd.Parameters.AddWithValue("@u", userId);
                 cmd.Parameters.AddWithValue("@s", ps.Value);
                 cmd.Parameters.AddWithValue("@e", pe.Value);

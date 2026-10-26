@@ -1427,6 +1427,7 @@ CREATE TABLE cal_report_daily (
   overtime     TINYINT           NOT NULL DEFAULT 0,                        -- 초과시간(정수). cal_attendance 와 같음
   content      MEDIUMTEXT        NOT NULL,                                  -- 본문 전체. 레거시 workpaper_tbl.content 와 같은 크기
   sent_at      DATETIME(3)       NOT NULL,                                  -- 보낸 시각. 이 표는 '보낸 것'만 담는다
+  report_json JSON NULL, -- 회사와 DB 저장이 모두 성공한 구조화 보고 내용
   created_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (user_id, work_date),
@@ -1512,6 +1513,8 @@ CREATE TABLE cal_report_weekly (
   endwork      MEDIUMTEXT        NOT NULL,                                  -- 진행사항
   plan         MEDIUMTEXT        NOT NULL,                                  -- 차주계획(캘린더가 만든 머리표)
   composed_at  DATETIME(3)       NOT NULL,                                  -- 캘린더가 이 주간보고를 작성한 시각
+  report_json JSON NULL, -- 회사와 DB 저장이 모두 성공한 구조화 보고 내용
+  submitted_at DATETIME(3) NULL, -- 회사 제출 성공 확인 시각. 기존 폼 작성 기록은 NULL
   created_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (user_id, period_start),
@@ -1759,7 +1762,7 @@ CREATE TABLE cal_schema_meta (
 --       고정 번호 문구를 지운다. 이 파일의 cal_* 는 바뀌지 않았다. 앱 상수는 DbGate.AppStructureVersion(19).
 --   ★ app_ 세 키는 빈 값으로 시딩한다(새 버전 없음). 배포 때 release-v<버전>.sql 이 채운다(DB-RELEASE-OPS §4).
 --   ★ 첫 줄(db_structure_version)의 모양을 바꾸지 말 것. setup-taskcalendar.ps1 과 시험이 이 줄에서 기대값을 읽는다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '19', UTC_TIMESTAMP(3)),
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '20', UTC_TIMESTAMP(3)),
   ('db_updating', '0', UTC_TIMESTAMP(3)),
   ('app_latest_version', '', UTC_TIMESTAMP(3)),
   ('app_installer_file', '', UTC_TIMESTAMP(3)),

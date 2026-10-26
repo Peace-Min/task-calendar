@@ -275,7 +275,7 @@ const checks = {
     //   2026-10-21 부터 정본은 키가 db_structure_version 이다. 값은 회의실 공용화(v15 조각)로 15, 2026-10-22 과제 캘린더(v16 조각)로 16, 월간보고(v17 조각)로 17, 2026-10-26 Git, SVN 삭제(v18 조각)로 18, 같은 날 과제 순서(v19 조각)로 19 다. 체인 전체는 schema-guards ⑥ 이 본다.
     const nextMig = readText(R('db/deploy/migrations/v14-version-gate.sql'));
     assert.ok(/^-- @migration from=13 to=14\r?\n/.test(nextMig), '다음 판(version-gate 조각)이 13 에서 출발하지 않는다');
-    assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '19', 'schema-calendar.sql 이 db_structure_version 19 를 시딩하지 않는다');
+    assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '20', 'schema-calendar.sql 이 db_structure_version 20 를 시딩하지 않는다');
     // 머리말: 실행법(백업 -DbName taskcalendar, utf8mb4, --force 금지)
     assert.ok(mig.includes('backup-taskmgr.cmd -DbName taskcalendar'), '머리말에 백업 명령(-DbName taskcalendar)이 없다');
     assert.ok(/mysql -u root -p --default-character-set=utf8mb4 taskcalendar < db\\deploy\\migrate-2026-10-15-code-ids\.sql/.test(mig), '머리말에 실행 명령(utf8mb4, taskcalendar)이 없다');

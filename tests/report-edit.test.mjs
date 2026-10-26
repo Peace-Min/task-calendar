@@ -257,7 +257,11 @@ if (!JSDOM) {
     while (Date.now() - t0 < ms) { if (pred()) return; await tick(); }
     assert.fail('시간 안에 일어나지 않았다: ' + what);
   }
+  // 긴 전체 시험이 자정을 지나도 시드 날짜와 UI의 오늘이 달라지지 않게 이 파일의 시간만 고정한다.
+  const reportTestNow = Date.now();
   const shims = (win) => {
+    const RealDate = win.Date;
+    win.Date = class extends RealDate { constructor(...args) { super(...(args.length ? args : [reportTestNow])); } static now() { return reportTestNow; } };
     if (typeof win.crypto === 'undefined') win.crypto = { randomUUID: () => 'x-' + Math.random().toString(36).slice(2), getRandomValues: (a) => a };
     win.scrollTo = () => {};
     win.HTMLElement.prototype.scrollIntoView = function () {};

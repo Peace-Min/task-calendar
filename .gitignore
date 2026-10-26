@@ -29,3 +29,6 @@ tests/.harness-mutant-*
 
 # feature-flow 작업 기록(이 PC 에만 둔다)
 work/
+
+# 로컬 브라우저 QA 스냅샷
+.playwright-cli/

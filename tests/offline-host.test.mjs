@@ -12,7 +12,7 @@
 //      2026-10-21 부터 연결을 만드는 곳은 버전 관문(DbGate.cs)과 dbPing 뿐이고, 데이터 계층 넷은 관문으로 연다.
 //   ⑧ commit-lost 는 한 발짜리이고 COMMIT **뒤**에 터진다.
 //   ⑨ S12 — 연결 끊김 푸시는 network 일 때만 · 2초 이상 디바운스.
-//   ⑩ S10 — 보고 기록 저장 재시도 10·30·60초 → 그래도 실패면 __reportRecordFailed.
+//   ⑩ S10 정책 갱신: 회사 요청 후 DB 저장을 기다리고 DB 전용 자동 재시도는 하지 않는다.
 //   ⑪ 닫기 경고(§6) — _webUnsaved 면 묻고, Windows 세션 종료는 막지 않는다.
 //   ⑫ 비밀번호는 어디에도 싣지 않는다 · 정상 상태에서 주기 DB 접속이 없다(A11).
 //
@@ -287,20 +287,11 @@ const checks = {
 
   // ⑩ S10 — 보고 기록 재시도
   reportRetry(s) {
-    const daily = csMember(s.main, 'void INetcusHost.SaveDailyReport(');
-    assert.ok(/SaveReportRecordWithRetryAsync\("daily", ymd, db,[\s\S]*?db\.SaveDailyAsync\(loginId, y, m, d, st, ot, content, hours\)/.test(daily), '일간 보고 기록이 재시도 경로로 가지 않는다');
-    const weekly = csMember(s.main, 'void INetcusHost.SaveWeeklyReport(');
-    assert.ok(/SaveReportRecordWithRetryAsync\("weekly", sdate, db,[\s\S]*?db\.SaveWeeklyAsync\(/.test(weekly), '주간 보고 기록이 재시도 경로로 가지 않는다');
-    assert.ok(/private static readonly int\[\] ReportRetryDelaysSec = \{ 10, 30, 60 \};/.test(s.off), '재시도 간격이 10·30·60초가 아니다');
-    const r = csMember(s.off, 'private async Task SaveReportRecordWithRetryAsync(string which, string date, ReportDb db, Func<Task<bool>> save)');
-    const first = r.indexOf('if (await TryReportSaveAsync(label, save)) return;');
-    const loop = r.indexOf('foreach (int sec in ReportRetryDelaysSec)');
-    const delay = r.indexOf('await Task.Delay(TimeSpan.FromSeconds(sec));');
-    const push = r.indexOf('window.__reportRecordFailed && window.__reportRecordFailed(');
-    assert.ok(first >= 0 && first < loop && loop < delay && delay < push, '재시도 순서가 첫 시도 → (대기 → 재시도)×3 → 실패 알림이 아니다');
-    assert.ok(/if \(db\.LastFailure == null\) return;/.test(r.slice(first, loop)), '건너뜀(로그인 없음·빈 본문)까지 재시도한다');
-    assert.ok(/JsonSerializer\.Serialize\(new \{ which, date, error \}\)/.test(r), '__reportRecordFailed 페이로드가 {which, date, error} 가 아니다');
-    assert.ok(/LastFailure = null;\s*var date = SafeDate/.test(s.rdb) && /LastFailure = null;\s*var ps = ParseDate/.test(s.rdb), '저장 시작에서 지난 실패 표시를 비우지 않는다');
+    const daily = csMember(s.main, 'async Task<bool> INetcusHost.SaveDailyReport(');
+    assert.ok(/return await Task.Run\(\(\) => db.SaveDailyAsync\(/.test(daily), '일간 DB 저장 완료를 기다리지 않는다');
+    assert.doesNotMatch(s.main, /SaveReportRecordWithRetryAsync/, 'DB 전용 재시도 호출이 남았다');
+    assert.doesNotMatch(s.off, /ReportRetryDelaysSec|SaveReportRecordWithRetryAsync|TryReportSaveAsync/, 'DB 전용 자동 재시도 구현이 남았다');
+    assert.ok(/LastFailure = null;\s*var date = SafeDate/.test(s.rdb), '지난 DB 실패 표시를 비우지 않는다');
   },
 
   // ⑪ 닫기 경고 — 미저장이면 묻고, 세션 종료는 막지 않는다
@@ -363,7 +354,7 @@ test('주입⑥: __dbFault 는 TC_DEBUG_PORT 실행에서만 받는다(A10)', ()
 test('주입⑦: widget/*.cs 의 모든 DB 연결 생성이 DbFault.ThrowIfActive() 를 지난다', () => checks.throwIfActive(src));
 test('주입⑧: commit-lost 는 COMMIT 뒤 한 발이다(S9 재현)', () => checks.commitLost(src));
 test('S12⑨: 연결 끊김 푸시는 network 일 때만 · 2초 디바운스 · 모든 실패가 분류기에 닿는다', () => checks.connLost(src));
-test('S10⑩: 보고 기록 저장 재시도 10·30·60초 → __reportRecordFailed', () => checks.reportRetry(src));
+test('S10⑩: 확정 정책에 따라 DB 완료를 기다리고 DB 전용 자동 재시도 없음', () => checks.reportRetry(src));
 test('닫기⑪: 미저장이면 묻고, Windows 세션 종료는 막지 않는다', () => checks.closeGuard(src));
 test('위생⑫: 비밀번호를 싣지 않고 정상 상태에서 주기 DB 접속이 없다', () => checks.hygiene(src));
 
@@ -492,15 +483,13 @@ test('변이㉑: OfflineMsg catch 하나가 분류기를 건너뛰면 S12⑨ 가
   assert.throws(() => checks.connLost(with_('pdb', bad)), /분류기에 닿지 않는다/);
 });
 
-test('변이㉒: 재시도 간격을 바꾸면 S10⑩ 이 실패한다', () => {
-  const bad = mutate(src.off, '{ 10, 30, 60 }', '{ 1, 1 }');
-  assert.throws(() => checks.reportRetry(with_('off', bad)), /10·30·60/);
+test('변이㉒: 일간 저장 완료를 기다리지 않으면 정책 검증 실패', () => {
+  const bad = mutate(src.main, 'return await Task.Run(() => db.SaveDailyAsync(', 'return Task.Run(() => db.SaveDailyAsync(');
+  assert.throws(() => checks.reportRetry(with_('main', bad)), /기다리지 않는다/);
 });
 
-test('변이㉓: 재시도 없이 바로 알리면 S10⑩ 이 실패한다', () => {
-  const bad = src.off.replace(/            foreach \(int sec in ReportRetryDelaysSec\)\n            \{[\s\S]*?\n            \}\n/, '');
-  assert.notStrictEqual(bad, src.off, '변이가 원본을 바꾸지 못했다');
-  assert.throws(() => checks.reportRetry(with_('off', bad)), /재시도 순서/);
+test('변이㉓: DB 전용 자동 재시도를 되살리면 정책 검증 실패', () => {
+  assert.throws(() => checks.reportRetry(with_('off', src.off+'\nprivate int[] ReportRetryDelaysSec = {10,30,60};')), /자동 재시도 구현/);
 });
 
 test('변이㉔: 세션 종료 면제를 없애면 닫기⑪ 이 실패한다', () => {

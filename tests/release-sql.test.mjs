@@ -21,7 +21,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, assert, readText } from './harness.mjs';
 import { mutate, exitCodeTable, exitCodesInTable, maskPs } from './ps-guard-lib.mjs';
-import { FakeDb, splitStatements, defOf, PROJECT_V16, PROJECT_V17, PROJECT_V19, VCS_V17, VCS_V18, PREF_COMMENT_V18, CODES_V18, CODES_V19, V19_FILL } from './release-sql-sim.mjs';
+import { FakeDb, splitStatements, defOf, PROJECT_V16, PROJECT_V17, PROJECT_V19, VCS_V17, VCS_V18, PREF_COMMENT_V18, CODES_V18, CODES_V19, V19_FILL, REPORTS_V20 } from './release-sql-sim.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const GEN = join(ROOT, 'installer', 'release-sql.ps1');
@@ -178,17 +178,18 @@ const S = {
     project: Number(n) >= 19 ? PROJECT_V19() : Number(n) >= 17 ? PROJECT_V17() : PROJECT_V16(),
     vcs: Number(n) >= 18 ? VCS_V18() : VCS_V17(),
     codes: Number(n) >= 19 ? CODES_V19() : CODES_V18(),
+    reports: Number(n) >= 20 ? REPORTS_V20() : {},
   }),
 };
-const open = (init, opts = {}) => new FakeDb(init.meta, { tables: init.tables || {}, defs: init.defs || {}, project: init.project || PROJECT_V16(), vcs: init.vcs || VCS_V17(), codes: init.codes || CODES_V18(), ...opts });
+const open = (init, opts = {}) => new FakeDb(init.meta, { tables: init.tables || {}, defs: init.defs || {}, project: init.project || PROJECT_V16(), vcs: init.vcs || VCS_V17(), codes: init.codes || CODES_V18(), reports: init.reports || {}, ...opts });
 const stateOf = (init) => open(init).state();
 const finalMeta = (n) => ({ db_structure_version: String(n), db_updating: '0', app_latest_version: VER, app_installer_file: FILE, app_installer_sha256: SHA });
 //  끝 상태(meta 와 표): 공용 회의실 목록 하나, cal_room 없음, 과제 캘린더 표 둘과 그림 표(정본과 같은 모양), project 에 개발 시작일 칸과 CHECK,
 //  일반 일정과 예외일만(커밋 기록, cal_entry_commit, 지울 칸과 CHECK 없음, cal_user_pref 표 설명은 18),
 //  과제에 순서 칸과 처음 순서(보이는 과제만), 코드표 표 설명은 19
-const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si(), ...VCS_ROWS18(), project: PROJ_ROWS19() }, defs: { ...PC_DEFS, ...SI_DEFS }, project: PROJECT_V19(), vcs: VCS_V18(), codes: CODES_V19() }).state();
+const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si(), ...VCS_ROWS18(), project: PROJ_ROWS19() }, defs: { ...PC_DEFS, ...SI_DEFS }, project: PROJECT_V19(), vcs: VCS_V18(), codes: CODES_V19(), reports: REPORTS_V20() }).state();
 const FINAL_TABLES = FINAL_DB['#tables'];
-const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES, '#project': FINAL_DB['#project'], '#vcs': FINAL_DB['#vcs'], '#codes': FINAL_DB['#codes'] });
+const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES, '#project': FINAL_DB['#project'], '#vcs': FINAL_DB['#vcs'], '#codes': FINAL_DB['#codes'], '#reports': FINAL_DB['#reports'] });
 const sortObj = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
 const same = (a, b) => JSON.stringify(sortObj(a)) === JSON.stringify(sortObj(b));
 
@@ -801,4 +802,9 @@ test('변이R20: v18 이 CHECK 보다 칸을 먼저 지우면 17 에서 올리�
   assert.ok(a >= 0 && c > a && e > c, '변이 준비 실패: v18 의 cal_category 단계를 찾지 못했다');
   const bad = sql.slice(0, a) + sql.slice(c, e) + sql.slice(a, c) + sql.slice(e);
   assert.throws(() => checks.gitRemoved(bad), /끝나지 않는다/);
+});
+
+test('근태정책 v20 이관: 기존 보고 표 확장, 재실행 및 잘못된 열 차단',()=>{
+ const db=open(S.at(19));assert.ok(db.run(realSql()).ok);assert.deepEqual(db.reports,REPORTS_V20());const writes=db.writes.length;assert.ok(db.run(realSql()).ok);assert.equal(db.writes.length,writes);
+ const init=S.at(19);init.reports={'cal_report_daily.report_json':'varchar?'};const bad=open(init);assert.equal(bad.run(realSql()).ok,false);assert.equal(bad.meta().db_structure_version,'19');assert.equal(bad.meta().db_updating,'1');
 });

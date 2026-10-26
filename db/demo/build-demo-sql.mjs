@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import * as D from './demo-data.mjs';
 
-export const SCHEMA_VERSION = '19';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
+export const SCHEMA_VERSION = '20';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
 export const LOGIN_RE = /^[A-Za-z0-9._@-]{1,50}$/;
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
