@@ -388,8 +388,8 @@ function seedTarget() {
   sql(`INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,sort_order,created_at,updated_at) ` +
       `VALUES (${u},1,'c-pf-1','local','열람시험과제','#3e5be0',0,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`, '대상 과제');
   TITLES.forEach((t, i) => {
-    sql(`INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,title,memo,source,location,sort_order,created_at,updated_at) ` +
-        `VALUES (${u},${i + 1},'e-pf-${i}',1,'2026-06-1${i + 1}',1,'${t}','비밀메모${i}','','',${i},` +
+    sql(`INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,title,memo,location,sort_order,created_at,updated_at) ` +
+        `VALUES (${u},${i + 1},'e-pf-${i}',1,'2026-06-1${i + 1}',1,'${t}','비밀메모${i}','',${i},` +
         `'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`, '대상 일정' + i);
   });
   return u;
@@ -419,8 +419,8 @@ function seedTarget2() {
   sql(`INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,sort_order,created_at,updated_at) ` +
       `VALUES (${u},1,'c-pf2-1','local','열람시험과제2','#2e9e6b',0,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`, '대상2 과제');
   TITLES2.forEach((t, i) => {
-    sql(`INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,title,memo,source,location,sort_order,created_at,updated_at) ` +
-        `VALUES (${u},${i + 1},'e-pf2-${i}',1,'2026-06-1${i + 5}',1,'${t}','','','',${i},` +
+    sql(`INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,title,memo,location,sort_order,created_at,updated_at) ` +
+        `VALUES (${u},${i + 1},'e-pf2-${i}',1,'2026-06-1${i + 5}',1,'${t}','','',${i},` +
         `'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`, '대상2 일정' + i);
   });
   return Number(u);

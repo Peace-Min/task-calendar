@@ -790,8 +790,8 @@ async function main() {
     catch (e) { ok('C01 두 번째 편입자 등록', false, e.message); }
     if (u0) {
       sql(`DELETE FROM cal_category WHERE user_id=${u0};\n` +
-        `INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,sort_order,created_at,updated_at) ` +
-        `VALUES (${u0},1,${esc('db-' + uid)},'db',${esc(P1)},'#5b6b7d','',${esc(uid)},0,10,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3))`,
+        `INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,sort_order,created_at,updated_at) ` +
+        `VALUES (${u0},1,${esc('db-' + uid)},'db',${esc(P1)},'#5b6b7d','',${esc(uid)},10,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3))`,
         { readOnly: false, idempotent: true, what: 'C01 두 번째 편입분 심기' });
       const n2 = n1(`SELECT COUNT(*) FROM cal_category WHERE project_uid=${esc(uid)}`, 'C01 편입분 수');
       okq('C01 같은 과제를 가리키는 편입분이 둘이 됐다(두 사람)', n2 === 2, `실제 ${n2}`);
@@ -958,10 +958,10 @@ async function main() {
     sql(
       `DELETE FROM cal_entry WHERE user_id=${uid};\n` +
       `DELETE FROM cal_category WHERE user_id=${uid};\n` +
-      `INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,sort_order,created_at,updated_at) ` +
-      `VALUES (${uid},1,${esc('c-zz' + OPT.seed + '-cat00000001')},'local',${esc('zz기록과제')},'#5b6b7d','',NULL,0,10,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3));\n` +
-      `INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,title,source,location,sort_order,created_at,updated_at) ` +
-      `VALUES (${uid},1,${esc('e-zz' + OPT.seed + '-ent00000001')},1,'2026-09-10',0,${esc('zz기록일정')},'','',10,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3))`,
+      `INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,sort_order,created_at,updated_at) ` +
+      `VALUES (${uid},1,${esc('c-zz' + OPT.seed + '-cat00000001')},'local',${esc('zz기록과제')},'#5b6b7d','',NULL,10,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3));\n` +
+      `INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,title,location,sort_order,created_at,updated_at) ` +
+      `VALUES (${uid},1,${esc('e-zz' + OPT.seed + '-ent00000001')},1,'2026-09-10',0,${esc('zz기록일정')},'',10,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3))`,
       { readOnly: false, idempotent: true, what: 'C03 기록 심기' });
     const seeded = n1(`SELECT (SELECT COUNT(*) FROM cal_category WHERE user_id=${uid}) + (SELECT COUNT(*) FROM cal_entry WHERE user_id=${uid})`, 'C03 기록 수');
     if (!okq('C03 기록 2건을 심었다(과제 1 + 일정 1)', seeded === 2, `실제 ${seeded}`)) return;
@@ -1229,8 +1229,8 @@ async function main() {
     //  기록 1건이면 '기록 있음'이 성립한다(C03 과 같은 이유로 SQL 로 심는다 — 이 계정은 로그인하지 않는다).
     sql(`DELETE FROM cal_entry WHERE user_id=${uid};\n` +
       `DELETE FROM cal_category WHERE user_id=${uid};\n` +
-      `INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,sort_order,created_at,updated_at) ` +
-      `VALUES (${uid},1,${esc('c-zz' + OPT.seed + '-why00000001')},'local',${esc('zz사유과제')},'#5b6b7d','',NULL,0,10,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3))`,
+      `INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,sort_order,created_at,updated_at) ` +
+      `VALUES (${uid},1,${esc('c-zz' + OPT.seed + '-why00000001')},'local',${esc('zz사유과제')},'#5b6b7d','',NULL,10,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3))`,
       { readOnly: false, idempotent: true, what: 'C11 기록 심기' });
     const seeded = n1(`SELECT COUNT(*) FROM cal_category WHERE user_id=${uid}`, 'C11 기록 수');
     if (!okq('C11 기록 1건을 심었다', seeded === 1, `실제 ${seeded}`)) return;
