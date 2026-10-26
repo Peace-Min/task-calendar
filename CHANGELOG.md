@@ -7,7 +7,11 @@
 
 ---
 
-## 🆕 2026-10-26 (다음 판, 번호는 배포 때): Git, SVN 기능 전량 삭제, DB 구조 18
+## 🆕 2026-10-26, v0.24.0: Git, SVN 기능 전량 삭제(DB 구조 18), 과제 순서와 상태 체크박스, 구분과 날짜 독립(DB 구조 19)
+
+0.24.0 은 아래 두 묶음을 한 판으로 낸다. 배포 SQL 하나가 구조 17 에서 19 까지 올린다.
+
+### Git, SVN 기능 전량 삭제, DB 구조 18
 
 `e072104` feat(remove-git). 기획 [docs/GIT-SVN-REMOVAL.md](docs/GIT-SVN-REMOVAL.md), 결정 [docs/DECISIONS.md](docs/DECISIONS.md) 결정 7. **DB 구조 번호가 18** 이 된다(`DbGate.AppStructureVersion = 18`). 배포 SQL 의 이관 조각 사슬은 13 에서 18 이고, 이번에 `db/deploy/migrations/v18-remove-git.sql` 이 붙는다. **되돌릴 수 없는 삭제**가 들어 있으므로 배포 SQL 을 돌리기 전 Workbench 백업이 필수다(docs/DB-RELEASE-OPS.md 4.2).
 
@@ -18,7 +22,7 @@
 - 확인: 전체 strict 3094 pass, 0 fail, 0 skip. MySQL 8.4 에서 구조 17 복제본과 개발 DB 에 v18 실행(커밋 기록 128건 삭제, 일정 3628 에서 3500, 다시 돌리면 바뀌는 것 없음, 칸 삭제는 INSTANT). DB 하네스 calendar-adapter, loop-calendar-write(126), dryrun-xml-to-db(22), loop-peer-view(24), db-project-calendar(54), db-schedule-image(42) 통과, 실제 앱 확인.
 - 문서: README, USAGE(§7 은 '삭제됨' 안내로), SPEC(§8 의 git 항목은 폐기 표시), docs/ARCHITECTURE, DECISIONS, PEER-VIEW-FULL, DB-RELEASE-OPS, ROADMAP, db 문서들, tests/README, 위키(새 쪽 '지운 기능'). `docs/DB-SCHEMA.html` 은 재생성한 `tools/schema-report/schema.json` 으로 다시 만들었다.
 
-## 🆕 2026-10-26 (다음 판, 번호는 배포 때): 과제 순서 No 와 옮기기, 상태 체크박스, 구분, 상태, 날짜 연결 규칙 삭제, DB 구조 19
+### 과제 순서 No 와 옮기기, 상태 체크박스, 구분, 상태, 날짜 연결 규칙 삭제, DB 구조 19
 
 `aa148b2` feat(project-admin), 기획 `d183f8c` [docs/PROJECT-ADMIN-UX.md](docs/PROJECT-ADMIN-UX.md), 결정 [docs/DECISIONS.md](docs/DECISIONS.md) 결정 8. **DB 구조 번호가 19** 가 된다(`DbGate.AppStructureVersion = 19`). 이관 조각 사슬은 13 에서 19 이고 `db/deploy/migrations/v19-project-order.sql` 이 붙는다. 다음 판(0.24.0 예정)은 구조 18(Git 삭제)과 19 를 함께 싣는다. 폐쇄망 순서는 배포 SQL 먼저, 그다음 비공개 저장소의 과제 데이터 최신화 SQL(구조 19 의 `sort_no` 를 채운다, docs/DB-RELEASE-OPS.md 4.2).
 
