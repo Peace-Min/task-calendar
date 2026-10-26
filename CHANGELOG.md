@@ -7,6 +7,10 @@
 
 ---
 
+## 🆕 2026-10-26 (다음 판, 번호는 배포 때): 공유폴더 업데이트용과 처음 설치용 Full 분리
+
+`배포-빌드.cmd`가 기존 이름의 업데이트용과 `-full.exe` 처음 설치용을 함께 만든다. Full에만 WebView2 오프라인 런타임을 포함한다. 업데이트용은 런타임 미설치 PC에서 Full을 안내하고 설치 전에 중단한다. `latest.json`과 배포 SQL은 업데이트용 파일과 해시를 사용한다. 버전은 바꾸지 않았다. 기획: [docs/INSTALLER-VARIANTS.md](docs/INSTALLER-VARIANTS.md).
+
 ## 🆕 2026-10-26 (다음 판, 번호는 배포 때): 설치기에 WebView2 오프라인 런타임 필수 포함
 
 런타임 설치 파일이 없으면 말없이 제외하던 동작을 지웠다. PowerShell 빌드와 Inno 직접 컴파일 모두 누락을 거부한다. 공식 x64 Standalone 설치기를 패키징하고, 대상 PC에 런타임이 없을 때 앱보다 먼저 설치한다. 버전과 DB는 바꾸지 않는다. 기획: [docs/INSTALLER-WEBVIEW2.md](docs/INSTALLER-WEBVIEW2.md).
