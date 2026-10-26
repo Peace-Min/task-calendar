@@ -1940,6 +1940,11 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
 .mb-split{display:grid;grid-template-columns:minmax(112px,36%) 1fr;gap:12px;min-height:0}
 .mb-tree{overflow:auto;height:46vh;border-right:1px solid var(--line);padding-right:8px}   /* 검색으로 오른쪽이 줄어도 두 칸 높이가 같다 */
 .mb-pane{min-width:0;display:flex;flex-direction:column;gap:8px}
+.ua-split{display:grid;grid-template-columns:minmax(110px,28%) minmax(0,1fr);gap:12px}
+.ua-pane{min-width:0;position:relative}
+#uaTree{height:calc(46vh + 120px)}
+#userAdminModal #uaEmpty:not(.hidden){left:10px;bottom:calc(46vh - 30px)}
+#uaTree .mb-node{overflow-wrap:anywhere}
 #mbList{overflow:auto;height:42vh}   /* 검색으로 줄어도 같은 높이(.cust-list 참조) */
 /* ★ 빈 결과 안내(#uaEmpty·#trEmpty·#mbEmpty)는 목록 상자 **안에 겹쳐** 그린다(2026-09-18 사용자: 창 높이 고정).
    상자 아래 한 줄로 두면 결과가 0 이 되는 순간 창이 그 줄만큼 자란다(실측 +28px). 요소와 hidden 토글은 그대로다(계약이 본다) —
@@ -2406,6 +2411,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 #adminHub .ah-slot > .overlay.docked .modal-foot.ah-foot-empty{display:none}   /* 숨긴 [닫기] 하나뿐인 아래 줄(JS ahSyncFoot) */
 #adminHub .ah-slot > .overlay.docked .modal-body{flex:1;min-height:0;display:flex;flex-direction:column}
 #adminHub .ah-slot > .overlay.docked .modal-body > *{flex:none}
+#adminHub .ah-slot > .overlay.docked .ua-split{flex:1 1 0;min-height:0}
+#adminHub .ah-slot > .overlay.docked .ua-pane{display:flex;flex-direction:column;min-height:0}
+#adminHub .ah-slot > .overlay.docked #uaTree{height:100%;min-height:0}
 /* 칸 높이가 고정이다(관리 화면) — 목록 상자의 vh 고정 높이(46vh·44vh·42vh)를 걷고 **남은 높이를 채운다**.
    그대로 두면 본문과 목록이 따로 굴러 스크롤바가 둘이 된다(2026-10-02 실 위젯 확인). 단독 모달은 그대로다(이 규칙은 .docked 만). */
 #adminHub .ah-slot > .overlay.docked #uaList,#adminHub .ah-slot > .overlay.docked #trList,
@@ -3988,8 +3996,8 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
        보기(#membersModal)는 전원에게 같은 모습이고 관리자에게도 편집 컨트롤이 없다.
        편집은 이 화면 하나가 진다 — 진입은 「사용자 정보」의 「구성원 편집」 버튼(#usUserAdmin)이고,
        그 버튼은 **전원에게 보인다**(2026-09-18 사용자 결정) — 관리자가 아니면 이 화면이 호스트의 거절 한 줄만 보여 준다.
-     ★ 여기에 조직 트리를 두지 않는다. 트리는 '누구의 일정을 볼까'를 고르는 도구고,
-       이 화면은 '누구를 고칠까'다. 그리고 순서 편집은 전 명부를 펼친 상태에서만 뜻이 있다(§5.1).
+     조직 트리에서 편집할 소속을 고른다. 순서는 전체 명부 하나를 기준으로 유지한다.
+     소속별 이동도 저장할 때는 전체 명부를 보낸다(docs/MEMBER-ORG-ORDER.md).
      ★ 상단 막대(#uaAdmin)는 **비어 있는 자리**다 — 컨트롤을 마크업에 적으면 호스트가 admin:false 로
        답해도 DOM 에 남는다. 숨김이 아니라 부재여야 한다(uaAdminBar 가 관리자일 때만 만든다).
      ★ #userAdminModal 은 #membersModal 의 **형제**다. 자식으로 넣으면 명부가 .hidden 인 동안
@@ -3998,6 +4006,9 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
   <div class="modal wide">
     <div class="modal-head"><h2>구성원 편집</h2><button class="x" data-close aria-label="닫기">×</button></div>
     <div class="modal-body">
+      <div class="ua-split">
+      <nav class="mb-tree" id="uaTree" aria-label="편집할 소속"></nav>
+      <div class="ua-pane">
       <div class="set-hint" id="uaScope">-</div>
       <div id="uaAdmin"></div>
       <!-- 검색칸 관례는 카탈로그(#offSearch)·재연결(#rlpSearch)과 같다: 클래스 없이 .modal input[type=text]가 그린다.
@@ -4005,6 +4016,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
       <input type="text" id="uaSearch" autocomplete="off" spellcheck="false" aria-label="구성원 검색" placeholder="이름, 소속, ID 검색">
       <div id="uaList"></div>
       <div class="set-hint hidden" id="uaEmpty">검색 결과가 없습니다.</div>
+      </div></div>
     </div>
     <!-- ★ 「＋ 직원 등록」은 이 아래 자리(#uaFoot)에 산다 — 상단 막대에 두었더니 관리자가 찾지 못했다(2026-09-10).
          그래서 「닫기」는 더 이상 primary 가 아니다: 이 화면의 주 동작은 등록이다.
@@ -4054,7 +4066,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
            숫자를 직접 쳐서 옮기는 건 호스트 계약(saveUser)이 달라져야 하는 일이라 이번 판에서는 하지 않는다. -->
       <label for="userEdSort">서열 번호</label>
       <input type="text" id="userEdSort" readonly tabindex="-1" placeholder="미지정(명부 맨 뒤)">
-      <div class="git-note">전사 서열입니다(소속과 무관, 작을수록 위). 바꾸려면 '구성원 편집'의 '순서 편집'에서 ▲▼ 로 옮긴 뒤 저장하세요. 저장하면 전원이 10 간격으로 다시 매겨집니다.</div>
+      <div class="git-note">전체 명부의 순서입니다(작을수록 위). '구성원 편집'에서 소속을 고른 뒤 '순서 편집'의 ▲▼로 조정할 수 있습니다. 저장하면 전체 순서에 반영됩니다.</div>
       <div class="off-ed-msg" id="userEdMsg" role="status" aria-live="polite"></div>
     </div>
     <div class="modal-foot">
@@ -8446,14 +8458,69 @@ let __uaPendingData = null; // 순서 편집 중에 도착한 **관계없는** �
 // 목록을 맨 위로 — '보이는 사람이 갈렸다'를 **아는 쪽**이 부른다(검색·「퇴사자 보기」·순서 편집·관리자 뒤집힘).
 function uaListTop(){ const l = document.getElementById('uaList'); if(l) l.scrollTop = 0; }
 
-// 지금 화면에 나갈 사람 = 검색어로 거른 명부. 순서 편집 중에는 검색칸이 잠겨 있어 전 명부가 곧 이 목록이다.
+// 선택한 소속과 검색어로 명부를 거른다. 전체 명부의 상대 순서는 유지한다.
 //   ★ 화면은 **다시 정렬하지 않는다** — 순서는 호스트가 정한다(§5.3). 여기 있는 것은 거르기뿐이다.
 function uaVisible(){
   const q = document.getElementById('uaSearch');
   const k = q ? String(q.value || '').trim().toLowerCase() : '';
-  if(!k) return __uaMembers;
-  return __uaMembers.filter(m => [m.name, m.title, m.orgUnit, m.loginId]
+  const tree = document.getElementById('uaTree');
+  const sel = tree ? String(tree.dataset.unit || '') : '';
+  let rows = __uaMembers;
+  if(sel === ':none') rows = rows.filter(m => !m.orgUnit);
+  else if(sel){
+    const names = new Set([sel]);
+    // 상위 조직을 고르면 하위까지 포함한다. 방문한 이름은 다시 넣지 않는다.
+    for(let size = -1; size !== names.size;){
+      size = names.size;
+      for(const u of __uaUnits) if(u && names.has(String(u.parent || ''))) names.add(String(u.name));
+    }
+    rows = rows.filter(m => names.has(String(m.orgUnit || '')));
+  }
+  if(!k) return rows;
+  return rows.filter(m => [m.name, m.title, m.orgUnit, m.loginId]
     .some(v => String(v == null ? '' : v).toLowerCase().includes(k)));
+}
+
+function uaRenderTree(){
+  const nav = document.getElementById('uaTree');
+  if(!nav) return;
+  const focused = nav.contains(document.activeElement) ? document.activeElement.dataset.unit : null;
+  const top = nav.scrollTop;
+  const selected = String(nav.dataset.unit || '');
+  if(selected && selected !== ':none' && !__uaUnits.some(u => u && String(u.name) === selected)) nav.dataset.unit = '';
+  nav.replaceChildren();
+  if(!__uaAdmin) return;
+  const add = (name, value, depth) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'mb-node'; b.textContent = name;
+    b.dataset.unit = value; b.style.paddingLeft = (6 + depth * 12) + 'px';
+    const on = value === String(nav.dataset.unit || '');
+    b.classList.toggle('sel', on); if(on) b.setAttribute('aria-current', 'true');
+    b.disabled = __uaOrder || __uaSaving;
+    b.addEventListener('click', () => {
+      if(__uaOrder || __uaSaving) return;
+      nav.dataset.unit = value;
+      const q = document.getElementById('uaSearch'); if(q) q.value = '';
+      uaApply(); uaListTop();
+      for(const node of nav.querySelectorAll('button')) if(node.dataset.unit === value) node.focus();
+    });
+    nav.appendChild(b);
+  };
+  add('전체', '', 0);
+  const units = __uaUnits.filter(u => u && u.name), names = new Set(units.map(u => String(u.name)));
+  const kids = mbChildMap(units), seen = new Set();
+  const walk = (list, depth) => {
+    for(const u of list.slice().sort(mbCmp)){
+      const name = String(u.name); if(seen.has(name)) continue;
+      seen.add(name); add(name, name, depth); walk(kids.get(name) || [], depth + 1);
+    }
+  };
+  walk(units.filter(u => !u.parent || !names.has(String(u.parent))), 0);
+  // 잘못 연결된 조직도 전체 명부에서 사라지지 않게 남은 노드를 표시한다.
+  walk(units.filter(u => !seen.has(String(u.name))), 0);
+  add('소속 없음', ':none', 0);
+  nav.scrollTop = top;
+  if(focused != null) for(const b of nav.querySelectorAll('button')) if(b.dataset.unit === focused && !b.disabled) b.focus();
 }
 //  ★ 검색은 **보이는 사람을 통째로 갈아치운다** — 그래서 새 목록은 맨 위에서 연다(R6-W1). 그 사실을 아는
 //    곳은 여기지 렌더가 아니다(렌더는 자기가 어떤 이유로 불렸는지 모른다 · 2026-09-14 W1).
@@ -8489,7 +8556,7 @@ function uaRowActions(m, rows){
     return b;
   };
   if(__uaOrder){
-    //  ▲▼ 는 '보이는 목록 안에서의 자리'로 막는다 — 순서 편집 중에는 그 목록이 곧 전 명부다(uaOrderToggle).
+    // ▲▼는 선택한 소속에서 보이는 목록의 양 끝에서 잠근다.
     const i = rows.indexOf(m);
     const up = mk('▲', 'up', '위로', () => uaMove(uid, -1));
     const dn = mk('▼', 'down', '아래로', () => uaMove(uid, +1));
@@ -8548,6 +8615,8 @@ function uaSyncControls(){
     const b = document.getElementById(id);
     if(b) b.disabled = __uaSaving;
   }
+  const tree = document.getElementById('uaTree');
+  if(tree) for(const b of tree.querySelectorAll('button')) b.disabled = __uaOrder || __uaSaving;
 }
 
 // 목록 렌더 — innerHTML 금지(이름·소속은 DB 문자열이다. 명부 규칙 ㉑과 같다).
@@ -8736,6 +8805,7 @@ function uaAdminBar(){
 //   ★ 검색 중에는 '구성원 n명' 이 **걸러진 수**라서 명부가 줄어든 것처럼 읽힌다(2026-09-10).
 //     검색어가 있으면 두 수를 함께 낸다 — 관리자가 보는 것이 전부가 아님을 그 줄이 말해야 한다.
 function uaApply(){
+  if(document.getElementById('uaTree')) uaRenderTree();
   const rows = uaVisible();
   uaRender(rows);
   const sc = document.getElementById('uaScope'); if(!sc) return;
@@ -8745,11 +8815,15 @@ function uaApply(){
   sc.textContent = (k ? ('검색 결과 ' + rows.length + '명, 전체 ' + __uaMembers.length + '명')
                       : ('구성원 ' + rows.length + '명'))
                  + (__uaInactive ? ', 퇴사자 포함' : '');
+  const tree = document.getElementById('uaTree');
+  const sel = tree ? String(tree.dataset.unit || '') : '';
+  if(sel) sc.textContent = (sel === ':none' ? '소속 없음' : sel + ' (하위 포함)') + ', ' + sc.textContent;
+  if(__uaOrder) sc.textContent += '. 선택한 목록 안에서 이동합니다. 저장하면 전체 순서에 반영됩니다.';
 }
 
 // 순서 편집 켜기/끄기.
 //   ★ 켤 때 검색어를 **비우고 검색칸을 잠근다.** 걸러진 목록에서 ▲▼ 를 누르면 '보이지 않는 사람 위로'
-//     올라가는 셈이라 관리자가 결과를 예측할 수 없다. 전 명부를 펼친 상태에서만 순서를 만진다(§11-8).
+//     올라가는 셈이라 관리자가 결과를 예측할 수 없다. 선택한 소속의 검색을 풀고 순서를 만진다.
 //   ★ 끌 때는 저장하지 않은 이동을 **되돌린다**(스냅샷). 모달을 닫는 경우도 안전하다 —
 //     다음에 열면 openUserAdmin 이 호스트에서 다시 읽어 오기 때문이다.
 function uaOrderToggle(on){
@@ -8799,9 +8873,12 @@ function uaOrderReset(){
 //   ★ 남는 일은 **끝에 닿은 화살표**뿐이다(첫 행의 ▲ · 마지막 행의 ▼) — uaSyncControls 가 자리 규칙을
 //     그대로 다시 읽어 정한다(렌더와 같은 한 벌이다).
 function uaMove(userId, delta){
-  const i = __uaMembers.findIndex(m => m && Number(m.userId) === Number(userId));
-  const j = i + delta;
-  if(i < 0 || j < 0 || j >= __uaMembers.length) return;
+  if(!__uaOrder || __uaSaving || (delta !== -1 && delta !== 1)) return;
+  const rows = uaVisible();
+  const at = rows.findIndex(m => m && Number(m.userId) === Number(userId));
+  const next = at + delta;
+  if(at < 0 || next < 0 || next >= rows.length) return;
+  const i = __uaMembers.indexOf(rows[at]), j = __uaMembers.indexOf(rows[next]);
   const list = document.getElementById('uaList'); if(!list) return;
   const rowOf = uid => {
     for(const ln of list.querySelectorAll('.mba-line')){
@@ -9122,6 +9199,7 @@ async function openUserAdmin(){
   if(__uaBusy){ toast('불러오는 중입니다. 잠시 후 다시 시도하세요', 'warn'); return; }   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게. 조용히 삼키면 '버튼이 고장났다'가 된다(trSend/otSend 와 같은 문구).
   __uaBusy = true;
   __uaAdmin = false; __uaMembers = []; __uaUnits = []; __uaTitles = []; __uaInactive = false;
+  const tree = document.getElementById('uaTree'); if(tree){ tree.dataset.unit = ''; tree.replaceChildren(); }
   __uaPendingData = null;
   uaOrderReset();
   //  ★ 지난번 왕복의 잠금이 남아 있으면 이 화면이 열자마자 잠긴 채로 선다(회신 없이 창을 닫은 경우).
