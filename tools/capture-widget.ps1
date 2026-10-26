@@ -29,8 +29,8 @@ if ($Demo) {
   $inject = @'
 <script>try{
  state={gitAuthor:'',categories:[
-  {id:'c1',name:'보고서 작성',color:'#3e5be0',desc:'',gitRepo:'',createdAt:''},
-  {id:'c2',name:'시스템 점검',color:'#2e9e6b',desc:'',gitRepo:'',createdAt:''}],
+  {id:'c1',name:'보고서 작성',color:'#3e5be0',desc:'',createdAt:''},
+  {id:'c2',name:'시스템 점검',color:'#2e9e6b',desc:'',createdAt:''}],
  entries:[
   {id:'e1',date:'2026-06-09',endDate:'2026-06-13',categoryId:'c2',allDay:true,startTime:'',endTime:'',title:'출장 워크숍',memo:'',source:'manual',commits:[],recur:null,recurExcept:[],createdAt:'',updatedAt:''},
   {id:'e2',date:'2026-06-11',categoryId:'c2',allDay:true,startTime:'',endTime:'',title:'서버 점검',memo:'',source:'manual',commits:[],endDate:'',recur:null,recurExcept:[],createdAt:'',updatedAt:''},
