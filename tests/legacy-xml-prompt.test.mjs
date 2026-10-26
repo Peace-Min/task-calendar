@@ -260,7 +260,7 @@ const checks = {
     assert.ok(iRead > 0, 'UTF-8 로 읽지 않는다');
     assert.ok(iNull >= 0 && iNull < iRead, '읽기 전에 지난 선택(_lastImportPath)을 비우지 않는다 — 실패해도 옛 경로가 남는다');
     assert.ok(iSet > iRead, '읽은 뒤에 개명 대상(_lastImportPath)을 기억하지 않는다 — 이관 뒤 원본이 개명되지 않는다');
-    const reply = 'GitReply(reqId, new { ok = true, name = fi.Name, text });';
+    const reply = 'HostReply(reqId, new { ok = true, name = fi.Name, text });';
     assert.ok(b.includes(reply) && pick.includes(reply), '회신 모양이 pickImportXml 과 다르다 — 웹은 한 모양만 안다');
     assert.ok(!/new \{[^}]*\b(path|FullName)\s*=/.test(b), '읽기 회신에 경로가 실린다 — 웹에는 내용만 나간다');
   },

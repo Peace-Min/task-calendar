@@ -38,7 +38,7 @@
 
 - 파일째 삭제: `widget/Svn.cs`, `widget/RepoPaths.cs`.
 - MainWindow: 명령 `gitlog`, `gitauthor`, `gitcheck`, `pickfolder`, 그리고 git 실행 함수들(GitLog, GitAuthor, GitListCommits, GitPatchOne, SvnDiff, IsGitRepo, RunGitConfig, GitResult, GitCommit)을 지운다. `exportResearch` 는 남기되 git, svn 부분을 빼고 캘린더.md 만 쓴다.
-- 남기는 공용 함수: `GitReply`(모든 명령의 회신 함수, 이름만 `HostReply` 로 바꿀지는 개발 판단), `SanitizeName`, `OpenFolderSafe`, `ReplyOnUi`.
+- 남기는 공용 함수: `GitReply`(모든 명령의 회신 함수. 2026-10-26 `HostReply` 로 이름을 바꿨다), `SanitizeName`, `OpenFolderSafe`, `ReplyOnUi`.
 - CalendarDb, CalendarWriteDb: cal_entry_commit 읽기와 쓰기, source, uses_repo, 작성자 설정, repoPaths 인자를 지운다. 같은 배포에서 표가 없어지므로 쓰기 경로가 그 표를 건드리면 안 된다.
 - `DbGate.AppStructureVersion = 18`. OfflineHost 의 RepoPaths.Load 줄 삭제.
 - 사용자 PC 의 `repo-paths.json` 은 그냥 둔다(읽는 곳이 없어진다).

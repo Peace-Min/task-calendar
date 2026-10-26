@@ -565,7 +565,7 @@ namespace TaskCalendarWidget
                     if (!fromWin.Commands.Contains(cmd) || !(ownReq || (rq.Length == 0 && fromWin.AcceptsWithoutReq(cmd))))
                     {
                         Log(fromWin.Name + " 명령 거부: " + cmd);
-                        if (ownReq) GitReply(rq, new { ok = false, error = fromWin.Name + "에서는 할 수 없는 요청입니다" });
+                        if (ownReq) HostReply(rq, new { ok = false, error = fromWin.Name + "에서는 할 수 없는 요청입니다" });
                         return;
                     }
                 }
@@ -1076,23 +1076,23 @@ namespace TaskCalendarWidget
                     InitialDirectory = Directory.Exists(_dataDir) ? _dataDir : "",
                 };
                 _lastImportPath = null;   // 새 선택이 시작됐다 — 지난 선택의 흔적을 남기지 않는다
-                if (dlg.ShowDialog(this) != true) { GitReply(reqId, new { ok = false, canceled = true }); return; }
+                if (dlg.ShowDialog(this) != true) { HostReply(reqId, new { ok = false, canceled = true }); return; }
                 //  용량 상한 — 사용자가 엉뚱한 큰 파일을 골랐을 때 위젯이 굳지 않게 한다.
                 var fi = new FileInfo(dlg.FileName);
                 if (fi.Length > 64L * 1024 * 1024)
                 {
-                    GitReply(reqId, new { ok = false, error = "파일이 너무 큽니다(64MB 초과): " + fi.Name });
+                    HostReply(reqId, new { ok = false, error = "파일이 너무 큽니다(64MB 초과): " + fi.Name });
                     return;
                 }
                 string text = File.ReadAllText(dlg.FileName, Encoding.UTF8);
                 _lastImportPath = dlg.FileName;   // 이관 성공 뒤 개명할 대상(P1-8). 실패·취소면 위에서 null 이다
                 Log("가져오기 파일 선택: " + fi.Name + " (" + fi.Length + "B)");
-                GitReply(reqId, new { ok = true, name = fi.Name, text });
+                HostReply(reqId, new { ok = true, name = fi.Name, text });
             }
             catch (Exception ex)
             {
                 Log("가져오기 파일 읽기 실패: " + ex.Message);
-                GitReply(reqId, new { ok = false, error = ex.Message });
+                HostReply(reqId, new { ok = false, error = ex.Message });
             }
         }
 
@@ -1107,10 +1107,10 @@ namespace TaskCalendarWidget
             try
             {
                 var dlg = new OpenFolderDialog { Title = "과제 데이터를 저장할 폴더 선택", Multiselect = false };
-                if (dlg.ShowDialog(this) != true) { GitReply(reqId, new { ok = false, cancelled = true }); return; }
+                if (dlg.ShowDialog(this) != true) { HostReply(reqId, new { ok = false, cancelled = true }); return; }
                 basePath = dlg.FolderName;
             }
-            catch (Exception ex) { GitReply(reqId, new { ok = false, error = ex.Message }); return; }
+            catch (Exception ex) { HostReply(reqId, new { ok = false, error = ex.Message }); return; }
 
             // 2) 파일 쓰기는 백그라운드 스레드에서(IO, UI 비블로킹)
             _ = Task.Run(() =>
@@ -1137,7 +1137,7 @@ namespace TaskCalendarWidget
                     // 편의: 결과 폴더 열기(실패해도 무시, 필수 아님)
                     try { Process.Start(new ProcessStartInfo { FileName = outDir, UseShellExecute = true }); } catch { }
 
-                    //  백그라운드 스레드라 UI 스레드로 넘겨 회신한다(GitReply 를 여기서 부르면 웹뷰 접근이 스레드 오류로 묻혀 웹이 끝없이 기다렸다)
+                    //  백그라운드 스레드라 UI 스레드로 넘겨 회신한다(HostReply 를 여기서 부르면 웹뷰 접근이 스레드 오류로 묻혀 웹이 끝없이 기다렸다)
                     ReplyOnUi(reqId, new { ok = true, outPath = outDir, calendar = true });
                 }
                 catch (Exception ex) { ReplyOnUi(reqId, new { ok = false, error = ex.Message }); }
@@ -1314,12 +1314,12 @@ namespace TaskCalendarWidget
             });
         }
 
-        // GitReply(=window.__hostReply)를 UI 스레드에서 호출하도록 마샬. CoreWebView2는 스레드 친화성이 있어
+        // HostReply(=window.__hostReply)를 UI 스레드에서 호출하도록 마샬. CoreWebView2는 스레드 친화성이 있어
         // 백그라운드에서 그대로 부르면 회신이 통째로 유실될 수 있다(JsCall과 같은 이유로 Dispatcher를 거친다).
         private void ReplyOnUi(string reqId, object payload)
         {
             var p = WithGate(payload);   // 관문 흐름 표시는 이 스레드에서 읽는다(Invoke 너머로 흐른다고 기대하지 않는다)
-            try { Dispatcher.Invoke(() => GitReply(reqId, p)); }
+            try { Dispatcher.Invoke(() => HostReply(reqId, p)); }
             catch (Exception ex) { Log("ReplyOnUi 오류: " + ex.Message); }
         }
 
@@ -1376,7 +1376,7 @@ namespace TaskCalendarWidget
         }
 
         // 결과를 window.__hostReply(reqId, payload) 로 전달 (UI 스레드에서 호출)
-        private void GitReply(string reqId, object payload)
+        private void HostReply(string reqId, object payload)
         {
             if (string.IsNullOrEmpty(reqId)) return;
             try
@@ -1385,7 +1385,7 @@ namespace TaskCalendarWidget
                 string call = "window.__hostReply(" + JsonSerializer.Serialize(reqId) + "," + json + ")";
                 _ = ReplyCore(reqId)?.ExecuteScriptAsync(call);   // 머리 달린 번호면 그 창으로('pw:' 열람 창, 'aw:' 관리 창)
             }
-            catch (Exception ex) { Log("GitReply 오류: " + ex.Message); }
+            catch (Exception ex) { Log("HostReply 오류: " + ex.Message); }
         }
 
         // 메인 웹뷰로 임의 JS 실행(UI 스레드 마샬 + try/catch). netcus·리마인더·업데이트 통지 공유.
@@ -1603,9 +1603,9 @@ namespace TaskCalendarWidget
             UserSession? s = null;
             try { s = UserSession.Load(_dataDir, Log); }
             catch (Exception ex) { Log("사용자 세션 복원 예외(로그인 화면으로): " + ex.Message); }
-            if (s == null) { GitReply(reqId, new { ok = false }); return; }
+            if (s == null) { HostReply(reqId, new { ok = false }); return; }
             Log("사용자 세션 복원: " + s.LoginId + " — netcus 접속 없음");
-            GitReply(reqId, new { ok = true, user = UserPayload(s) });
+            HostReply(reqId, new { ok = true, user = UserPayload(s) });
         }
 
         // 로그인 — 인증(netcus) → 인가(app_user) → 저장 2개. ★ 비밀번호는 로그·회신·예외 메시지 어디에도 넣지 않는다.
@@ -1682,7 +1682,7 @@ namespace TaskCalendarWidget
                 Log("사용자 로그아웃 — 세션·자격증명 삭제");
             }
             catch (Exception ex) { Log("사용자 로그아웃 예외: " + ex.Message); }
-            GitReply(reqId, new { ok = true });
+            HostReply(reqId, new { ok = true });
         }
 
         // 사용자 정보(권한) 조회 — 상단바 「사용자 정보」 모달이 열릴 때마다 부른다.
@@ -1735,13 +1735,13 @@ namespace TaskCalendarWidget
             string? me = CurrentLoginId();
             if (string.IsNullOrEmpty(me))
             {
-                GitReply(reqId, new { ok = false, error = "로그인 정보가 없습니다. 다시 시작하세요" });
+                HostReply(reqId, new { ok = false, error = "로그인 정보가 없습니다. 다시 시작하세요" });
                 return;
             }
             try
             {
                 string? json = await new CalendarDb(Log).LoadPeerScheduleJsonAsync(me, targetLoginId);
-                if (json == null) { GitReply(reqId, new { ok = false, error = "서버에서 일정을 받지 못했습니다" }); return; }
+                if (json == null) { HostReply(reqId, new { ok = false, error = "서버에서 일정을 받지 못했습니다" }); return; }
                 //  ★ allowed:false 도 **성공 회신**이다 — 통신 실패와 권한 없음은 사용자에게 다른 사실이다.
                 //    한 덩어리로 묶으면 화면이 "서버가 이상한가?" 와 "내가 볼 수 없는가?" 를 구분 못 한다.
                 //  회신은 물은 창으로 간다(열람 창이면 'pw:' 번호다. ReplyCore).
@@ -1751,7 +1751,7 @@ namespace TaskCalendarWidget
             catch (Exception ex)
             {
                 Log("타인 일정 조회 예외: " + ex.Message);
-                GitReply(reqId, new { ok = false, error = ex.Message });
+                HostReply(reqId, new { ok = false, error = ex.Message });
             }
         }
 
@@ -2263,7 +2263,7 @@ namespace TaskCalendarWidget
         CoreWebView2Environment? INetcusHost.Env => _cwvEnv;
         string INetcusHost.DataDir => _dataDir;
         void INetcusHost.Eval(string js) => JsCall(js);
-        void INetcusHost.Reply(string reqId, object payload) => GitReply(reqId, payload);
+        void INetcusHost.Reply(string reqId, object payload) => HostReply(reqId, payload);
         void INetcusHost.Log(string msg) => Log(msg);
 
         //  보고 기록 저장(설계 §5.9). NetcusService 는 통신만 하고 DB 를 모른다 —
@@ -2372,7 +2372,7 @@ namespace TaskCalendarWidget
             var snap = _calSnap;
             if (snap == null)
             {
-                GitReply(reqId, new { ok = false, conflict = false, error = "부팅 스냅샷이 없습니다. 위젯을 다시 시작하세요", kind = "", detail = "" });
+                HostReply(reqId, new { ok = false, conflict = false, error = "부팅 스냅샷이 없습니다. 위젯을 다시 시작하세요", kind = "", detail = "" });
                 return;
             }
             try
@@ -2389,14 +2389,14 @@ namespace TaskCalendarWidget
                     //    ★ 저장 전에 개명하면 저장이 실패했을 때 사용자는 원본을 잃은 것처럼 본다.
                     //    ★ 개명 실패는 **가져오기 실패가 아니다** — ok=true 를 그대로 두고 사유만 싣는다.
                     var rn = replaceAll ? RenameImportedSource() : ("", "");
-                    GitReply(reqId, new { ok = true, conflict = false, error = "", rev = r.Rev, ins = r.Inserted, upd = r.Updated, del = r.Deleted, renamedTo = rn.Item1, renameError = rn.Item2 });
+                    HostReply(reqId, new { ok = true, conflict = false, error = "", rev = r.Rev, ins = r.Inserted, upd = r.Updated, del = r.Deleted, renamedTo = rn.Item1, renameError = rn.Item2 });
                 }
                 else
                 {
                     //  ★ 실패했으면 스냅샷을 **건드리지 않는다.** 트랜잭션이 통째로 롤백됐으므로
                     //    DB 는 저장 전 상태이고, 우리 토큰도 그때 것이 맞다.
                     if (r.Kind == DbErrorKind.Network) _lastSaveNetworkFail = true;   // S9 — COMMIT 이 들어갔는지 모른다
-                    GitReply(reqId, new { ok = false, conflict = r.Conflict, schemaMismatch = r.SchemaMismatch, error = r.Message ?? "저장하지 못했습니다", kind = r.Kind, detail = r.Detail });
+                    HostReply(reqId, new { ok = false, conflict = r.Conflict, schemaMismatch = r.SchemaMismatch, error = r.Message ?? "저장하지 못했습니다", kind = r.Kind, detail = r.Detail });
                 }
             }
             catch (Exception ex)
@@ -2404,7 +2404,7 @@ namespace TaskCalendarWidget
                 Log("DB 저장 예외: " + ex);
                 var (ek, ed) = DbErrors.Observe(ex, Log);
                 if (ek == DbErrorKind.Network) _lastSaveNetworkFail = true;
-                GitReply(reqId, new { ok = false, conflict = false, error = DbErrors.Sanitize(ex.Message), kind = ek, detail = ed });
+                HostReply(reqId, new { ok = false, conflict = false, error = DbErrors.Sanitize(ex.Message), kind = ek, detail = ed });
             }
         }
 

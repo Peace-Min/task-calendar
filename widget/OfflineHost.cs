@@ -98,7 +98,7 @@ namespace TaskCalendarWidget
             _calSnap = fresh;
             _lastSaveNetworkFail = false;
             Log("S9: 응답만 끊긴 저장이었다 — 서버가 이미 같은 내용이다(rev=" + fresh.Rev + "). 새 스냅샷을 채택하고 성공으로 돌려준다");
-            GitReply(reqId, new { ok = true, conflict = false, error = "", rev = fresh.Rev, ins = 0, upd = 0, del = 0, renamedTo = "", renameError = "", resolvedConflict = true });
+            HostReply(reqId, new { ok = true, conflict = false, error = "", rev = fresh.Rev, ins = 0, upd = 0, del = 0, renamedTo = "", renameError = "", resolvedConflict = true });
             return true;
         }
 
@@ -116,13 +116,13 @@ namespace TaskCalendarWidget
                 await using (var cmd = new MySqlCommand("SELECT 1", conn))
                     await cmd.ExecuteScalarAsync(cts.Token);
                 Log("DB 핑: 성공");
-                GitReply(reqId, new { ok = true });
+                HostReply(reqId, new { ok = true });
             }
             catch (Exception ex)
             {
                 var (kind, detail) = DbErrors.Observe(ex, Log, notify: false);
                 Log("DB 핑: 실패(" + kind + ")");
-                GitReply(reqId, new { ok = false, kind, error = DbErrors.ConnMessage(kind), detail });
+                HostReply(reqId, new { ok = false, kind, error = DbErrors.ConnMessage(kind), detail });
             }
         }
 
@@ -134,17 +134,17 @@ namespace TaskCalendarWidget
             if (!DbFault.Enabled)
             {
                 Log("__dbFault 거부 — 배포 실행(TC_DEBUG_PORT 없음)에서는 장애 주입을 받지 않는다(mode=" + m + ")");
-                GitReply(reqId, new { ok = false, error = "디버그 실행에서만 쓸 수 있습니다" });
+                HostReply(reqId, new { ok = false, error = "디버그 실행에서만 쓸 수 있습니다" });
                 return;
             }
             if (!DbFault.TrySetMode(m, out var err))
             {
                 Log("__dbFault 거부: " + err);
-                GitReply(reqId, new { ok = false, error = err });
+                HostReply(reqId, new { ok = false, error = err });
                 return;
             }
             Log("DB 장애 주입 모드: " + DbFault.Mode);
-            GitReply(reqId, new { ok = true, mode = DbFault.Mode });
+            HostReply(reqId, new { ok = true, mode = DbFault.Mode });
         }
 
         // ── S10 — 보고 기록 저장 재시도 ──────────────────────────────────────────

@@ -457,6 +457,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .todo-row.flash{animation:flashAnim 1.2s ease-out 2;border-radius:var(--r-sm)}
 
 /* ---------- 회색 배지(퇴사 표시, 휴지통 건수). 이름은 옛 작업일지 배지에서 왔다 ---------- */
+/* badge-git: 이름만 옛 Git 표시에서 왔다. 지금은 퇴사, 휴지통 개수 같은 공용 회색 배지다(지우지 말 것) */
 .badge-git{background:#eef1f6;color:#5b6b7d;border:1px solid var(--line-2)}
 /* 할 일 칩 = HOLLOW(투명 본체+얇은 외곽선+선행 원형 링) — 일정의 SOLID(채운 색막대)와 색이 같아도 모양/채움으로 구분(Google·Apple·Notion·TickTick 공통 패턴, 색맹 안전) */
 .chip-todo{background:transparent !important;color:var(--text) !important;border:1px solid var(--chip-outline);border-left:1px solid var(--chip-outline) !important;display:flex;align-items:center;gap:3px;padding:2px 5px 2px 4px}
@@ -466,7 +467,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .chip-todo.done .txt{text-decoration:line-through;color:var(--faint-text)}
 .chip-todo.chip-range.chip-mid,.chip-todo.chip-range.chip-end{border-style:dashed;border-left-width:1px !important}  /* 기간 할 일은 점선 밴드(일정 실선 색밴드와 구분) */
 .fbar-sep{width:1px;height:18px;background:var(--line-2);margin:0 3px;flex:none}
-/* 설정, 관리, 보고서 곳곳의 안내 글(이름만 옛 Git 카드에서 왔다) */
+/* git-note, git-opt, git-hint: 설정, 관리, 보고서 곳곳의 공용 안내 글 스타일이다. 이름만 옛 Git 카드에서 왔고 Git 기능과 무관하다(지우지 말 것) */
 .git-note{font-size:var(--fs-meta);color:var(--muted);line-height:1.7;margin-top:8px}
 .git-note.warn-text{color:var(--danger-text)}
 .git-note .link{font-size:inherit;font-weight:600}

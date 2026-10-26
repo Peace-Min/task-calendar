@@ -506,8 +506,8 @@ test('변이㉔: 파일창 기본 폴더를 없애면 표시등② 가 실패한
 });
 
 test('변이㉕: 파일창이 경로를 넘기면 표시등② 가 실패한다', () => {
-  const bad = mutate('GitReply(reqId, new { ok = true, name = fi.Name, text });',
-    'GitReply(reqId, new { ok = true, name = fi.Name, path = dlg.FileName });', mainwin);
+  const bad = mutate('HostReply(reqId, new { ok = true, name = fi.Name, text });',
+    'HostReply(reqId, new { ok = true, name = fi.Name, path = dlg.FileName });', mainwin);
   assert.throws(() => c7.importOpensAtDataDir(src, bad), /내용을 읽어 넘기지 않는다/);
 });
 

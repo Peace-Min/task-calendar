@@ -227,11 +227,11 @@ const checks = {
     assert.ok(/case DbGateException:\s*return DbErrorKind\.Gate;/.test(dbe), '관문 예외를 gate 로 분류하지 않는다');
     assert.ok(/public static bool IsRetryable\(string kind\) => kind == DbErrorKind\.Network \|\| kind == DbErrorKind\.Unknown;/.test(dbe),
       '재시도 대상이 network|unknown 이 아니다(gate 는 재시도하지 않는다)');
-    //  회신 장식: 모든 회신(GitReply, ReplyOnUi)이 지나고, ok:false 에만 붙는다.
-    const gr = csMember(s.main, 'private void GitReply(string reqId, object payload)');
-    assert.ok(/JsonSerializer\.Serialize\(WithGate\(payload\)\)/.test(gr), 'GitReply 가 관문 정보를 붙이지 않는다');
+    //  회신 장식: 모든 회신(HostReply, ReplyOnUi)이 지나고, ok:false 에만 붙는다.
+    const gr = csMember(s.main, 'private void HostReply(string reqId, object payload)');
+    assert.ok(/JsonSerializer\.Serialize\(WithGate\(payload\)\)/.test(gr), 'HostReply 가 관문 정보를 붙이지 않는다');
     const ru = csMember(s.main, 'private void ReplyOnUi(string reqId, object payload)');
-    assert.ok(/var p = WithGate\(payload\);/.test(ru) && /GitReply\(reqId, p\)/.test(ru), 'ReplyOnUi 가 관문 정보를 붙이지 않는다');
+    assert.ok(/var p = WithGate\(payload\);/.test(ru) && /HostReply\(reqId, p\)/.test(ru), 'ReplyOnUi 가 관문 정보를 붙이지 않는다');
     const wg = csMember(s.host, 'private static object WithGate(object payload)');
     assert.ok(/var g = DbGate\.FlowBlocked;/.test(wg) && /okv\.TryGetValue<bool>\(out bool ok\) && !ok/.test(wg), '관문 정보를 ok:false 회신에만 붙이지 않는다');
     assert.ok(/o\["kind"\] = DbErrorKind\.Gate;/.test(wg) && /o\["gate"\] = JsonSerializer\.SerializeToNode\(DbGate\.ReplyGate\(g\)\);/.test(wg), '회신에 kind gate 와 gate 정보가 없다');

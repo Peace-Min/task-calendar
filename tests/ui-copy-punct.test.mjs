@@ -226,7 +226,7 @@ const HOST_SINKS = [
   ['ConflictException',   /\bnew ConflictException\(/g, 'call'],
   ['Fail',                /\bFail\(/g, 'call'],
   ['J (웹으로 가는 문구)', /\bJ\(/g, 'call'],
-  ['GitReply',            /\bGitReply\(/g, 'call'],
+  ['HostReply',            /\bHostReply\(/g, 'call'],
   ['ReplyOnUi',           /\bReplyOnUi\(/g, 'call'],
   ['return (false, 사유)', /\breturn \(false,/g, 'call'],
   ['Title/Text/Header =', /\b(?:Title|Text|Header)\s*=(?![=>])/g, 'expr'],
@@ -281,10 +281,10 @@ test('(H) 싱크가 모두 실제 코드에서 잡힌다(이름이 바뀌어 지
 });
 test('(H) 분해기 자기 점검: 로그와 주석은 보지 않고, 화면 싱크의 문자열만 본다', () => {
   const probe = '// 주석 — 무시\nLog("로그 — 무시 · 무시"); _log($"{a} — 로그"); NetcusResult(false, "보임 — 걸림");\n' +
-    'GitReply(reqId, new { ok = false, error = $"{(x ? "가" : "나")} · 걸림" });\nvar t = new TextBlock { Text = "직급·소속" };\n' +
+    'HostReply(reqId, new { ok = false, error = $"{(x ? "가" : "나")} · 걸림" });\nvar t = new TextBlock { Text = "직급·소속" };\n' +
     'MessageBox.Show(\n  "본문",\n  "제목 「걸림」");';
   const { bad } = hostScan([['Probe.cs', probe]]);
-  assert.strictEqual(bad.length, 3, 'NetcusResult, GitReply 보간 문자열, MessageBox 제목 세 곳만 걸려야 한다: ' + bad.join(' | '));
+  assert.strictEqual(bad.length, 3, 'NetcusResult, HostReply 보간 문자열, MessageBox 제목 세 곳만 걸려야 한다: ' + bad.join(' | '));
 });
 test('변이(H): 업데이트 결과 문구와 조직 숨김 거부 문구에 기호를 넣으면 (H)가 잡는다', () => {
   const upd = hostFiles.find(([f]) => f === 'Update.cs');

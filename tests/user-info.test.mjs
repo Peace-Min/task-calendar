@@ -50,7 +50,7 @@ function csCase(source, name) {
 
 // C# 멤버 본문 슬라이스는 **하네스의 정본**(extractCsMember)을 쓴다.
 //   ★ '다음 멤버 선언까지' 로 자르지 않는다: 접근 한정자 없이 시작하는 멤버(명시적 인터페이스 구현 등)
-//     앞에서 멈추지 못해 남의 코드를 끌어온다 — 실제로 뒤에 있던 GitReply 호출이 이 메서드 것으로 오탐됐다.
+//     앞에서 멈추지 못해 남의 코드를 끌어온다 — 실제로 뒤에 있던 HostReply 호출이 이 메서드 것으로 오탐됐다.
 //   ★ 2026-09-18 까지 이 파일은 같은 기계의 사본을 안고 있었다. 사본은 정본이 뒤에 배운 것(식(=>) 본문 ·
 //     축자 문자열 · "선언이 아니라 호출 자리" 판별)을 모른 채 그대로 초록을 낸다. 슬라이서는 한 곳에만 둔다.
 //   ★ 부르는 이름도 정본 그대로 둔다(extractCsMember) — 지역 별칭을 두면 grep 이 사본을 다시 놓친다.
@@ -268,8 +268,8 @@ const checks = {
     assert.ok(/RunUserInfoGetAsync/.test(c), 'case "userInfoGet" 이 RunUserInfoGetAsync 를 부르지 않는다');
     const b = extractCsMember(csMain, 'private async Task RunUserInfoGetAsync(string reqId)');
     assert.ok(/LoadUserInfoJsonAsync/.test(b), '호스트 핸들러가 권한 조회를 하지 않는다');
-    assert.ok(/ReplyOnUi\(/.test(b) && !/GitReply\(/.test(b),
-      'async 핸들러가 GitReply 로 직접 회신한다 — CoreWebView2 는 스레드 친화적이라 ReplyOnUi(UI 마샬)여야 한다');
+    assert.ok(/ReplyOnUi\(/.test(b) && !/HostReply\(/.test(b),
+      'async 핸들러가 HostReply 로 직접 회신한다 — CoreWebView2 는 스레드 친화적이라 ReplyOnUi(UI 마샬)여야 한다');
     assert.ok(/로그인이 필요합니다\./.test(b) && /사용자 정보가 등록되어 있지 않습니다/.test(b),
       '세션 없음/미등록을 구분해 안내하지 않는다');
     assert.ok(!/ex\.Message/.test(b), '예외 원문을 사용자 회신에 실었다 — 내부 사정은 로그에만 남긴다');
@@ -438,8 +438,8 @@ const checks = {
     assert.ok(/RunMembersGetAsync/.test(c), 'case "membersGet" 이 RunMembersGetAsync 를 부르지 않는다');
     const b = extractCsMember(csMain, 'private async Task RunMembersGetAsync(string reqId, bool includeInactive, bool flatOrder = false)');
     assert.ok(/LoadMembersJsonAsync/.test(b), '호스트 핸들러가 구성원 조회를 하지 않는다');
-    assert.ok(/ReplyOnUi\(/.test(b) && !/GitReply\(/.test(b),
-      'async 핸들러가 GitReply 로 직접 회신한다 — CoreWebView2 는 스레드 친화적이라 ReplyOnUi(UI 마샬)여야 한다');
+    assert.ok(/ReplyOnUi\(/.test(b) && !/HostReply\(/.test(b),
+      'async 핸들러가 HostReply 로 직접 회신한다 — CoreWebView2 는 스레드 친화적이라 ReplyOnUi(UI 마샬)여야 한다');
     assert.ok(/로그인이 필요합니다\./.test(b) && /서버에 연결하지 못했습니다/.test(b) && /사용자 정보가 등록되어 있지 않습니다/.test(b),
       '세션 없음 / 연결 실패 / 미등록을 구분해 안내하지 않는다 — 사유가 다르면 사용자의 대처도 다르다');
     assert.ok(!/ex\.Message/.test(b), '예외 원문을 사용자 회신에 실었다 — 내부 사정은 로그에만 남긴다');

@@ -822,7 +822,7 @@ test('발주처 브리지: addCustomer/renameCustomer/setCustomerActive/customer
                    'RunCustomerRefCountAsync', 'RunLoadCustomersFullAsync']) {
     const b = cs.slice(cs.indexOf('private async Task ' + m), cs.indexOf('private async Task ' + m) + 400);
     assert.ok(/ReplyOnUi\(reqId,/.test(b), `${m}가 ReplyOnUi로 회신하지 않는다`);
-    assert.ok(!/GitReply\(reqId/.test(b), `${m}가 GitReply를 직접 부른다(UI 스레드 마샬 우회)`);
+    assert.ok(!/HostReply\(reqId/.test(b), `${m}가 HostReply를 직접 부른다(UI 스레드 마샬 우회)`);
   }
 });
 

@@ -36,7 +36,8 @@ const stripJs = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) =>
 //  없앤 이름: DB 칸과 표, 웹과 주고받던 state 키, 지운 C# 형
 const DB_NAMES = ['cal_entry_commit', 'uses_repo', 'git_author', 'svn_author', 'git_commit_body'];
 const STATE_KEYS = ['gitRepo', 'svnRepo', 'usesRepo', 'gitAuthor', 'svnAuthor', 'gitCommitBody'];
-const CS_TYPES = ['RepoPaths', 'GitResult', 'GitCommit', 'SvnLog', 'SvnExe', 'DetectVcs', 'ResolveVcs', 'IsGitRepo', 'RunGitConfig',
+//  GitReply 는 모든 명령의 공용 회신이라 2026-10-26 HostReply 로 이름을 바꿨다. 옛 이름이 되살아나면 Git 전용으로 오해받아 지워질 수 있다.
+const CS_TYPES = ['GitReply', 'RepoPaths', 'GitResult', 'GitCommit', 'SvnLog', 'SvnExe', 'DetectVcs', 'ResolveVcs', 'IsGitRepo', 'RunGitConfig',
   'GitListCommits', 'GitPatchOne', 'SvnDiff', 'PickFolder', 'RunGitLogAsync', 'RunGitAuthorAsync', 'RunGitCheckAsync'];
 const REMOVED_CMDS = ['gitlog', 'gitauthor', 'gitcheck', 'pickfolder'];
 const DROPPED_CHECKS = ['chk_cal_entry_source', 'chk_cal_entry_git', 'chk_cal_category_usesrepo01', 'chk_cal_user_pref_commit_body'];
@@ -163,7 +164,7 @@ test('변이G6: 권한 파일에 cal_entry_commit GRANT 가 되살아나거나 �
 });
 
 //  ⑦ 과제 데이터 내보내기의 회신 스레드(2026-10-26 QA 실측: 무한 로딩).
-//    파일 쓰기는 Task.Run 안에서 한다. 그 안에서 GitReply 를 바로 부르면 웹뷰 접근이 스레드 오류로 묻혀(로그 'GitReply 오류')
+//    파일 쓰기는 Task.Run 안에서 한다. 그 안에서 HostReply 를 바로 부르면 웹뷰 접근이 스레드 오류로 묻혀(로그 'HostReply 오류')
 //    웹이 120초 동안 '내보내는 중' 에 머문다. 백그라운드 회신은 ReplyOnUi(UI 스레드로 넘김)여야 한다.
 const exportBody = (code) => {
   const m = /private void RunResearchExport\([\s\S]*?\n {8}\}/.exec(code);
@@ -174,11 +175,11 @@ const exportBody = (code) => {
 };
 const checkExportReply = (code) => {
   const bg = exportBody(stripCsComments(code));
-  assert.ok(!/\bGitReply\(/.test(bg), 'RunResearchExport 의 백그라운드 구간에서 GitReply 를 바로 부른다(회신이 사라져 무한 로딩)');
+  assert.ok(!/\bHostReply\(/.test(bg), 'RunResearchExport 의 백그라운드 구간에서 HostReply 를 바로 부른다(회신이 사라져 무한 로딩)');
   assert.ok((bg.match(/\bReplyOnUi\(/g) || []).length >= 2, 'RunResearchExport 의 백그라운드 구간이 성공과 실패 모두 ReplyOnUi 로 회신하지 않는다');
 };
 test('Git 삭제⑦: 과제 데이터 내보내기는 백그라운드에서 ReplyOnUi 로 회신한다(무한 로딩 방지)', () => checkExportReply(src.main));
-test('변이G7: 내보내기 성공 회신을 GitReply 로 되돌리면 ⑦ 이 실패한다', () => {
-  const bad = swap(src.main, 'ReplyOnUi(reqId, new { ok = true, outPath = outDir, calendar = true });', 'GitReply(reqId, new { ok = true, outPath = outDir, calendar = true });');
-  assert.throws(() => checkExportReply(bad), /GitReply 를 바로 부른다/);
+test('변이G7: 내보내기 성공 회신을 HostReply 로 되돌리면 ⑦ 이 실패한다', () => {
+  const bad = swap(src.main, 'ReplyOnUi(reqId, new { ok = true, outPath = outDir, calendar = true });', 'HostReply(reqId, new { ok = true, outPath = outDir, calendar = true });');
+  assert.throws(() => checkExportReply(bad), /HostReply 를 바로 부른다/);
 });

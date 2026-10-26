@@ -33,7 +33,7 @@ namespace TaskCalendarWidget
                 if (!Directory.Exists(_dataDir))
                 {
                     Log("이전 버전 기록 감지: 데이터 폴더 없음");
-                    GitReply(reqId, new { ok = true, found = false });
+                    HostReply(reqId, new { ok = true, found = false });
                     return;
                 }
                 //  ★ TopDirectoryOnly — 하위 폴더(WebView2 프로필 등)는 보지 않는다.
@@ -47,17 +47,17 @@ namespace TaskCalendarWidget
                 if (fi == null)
                 {
                     Log("이전 버전 기록 감지: 없음");
-                    GitReply(reqId, new { ok = true, found = false });
+                    HostReply(reqId, new { ok = true, found = false });
                     return;
                 }
                 string mtime = fi.LastWriteTimeUtc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
                 Log("이전 버전 기록 감지: " + fi.Name + " (" + fi.Length + "B, " + mtime + ")");
-                GitReply(reqId, new { ok = true, found = true, name = fi.Name, size = fi.Length, mtime });
+                HostReply(reqId, new { ok = true, found = true, name = fi.Name, size = fi.Length, mtime });
             }
             catch (Exception ex)
             {
                 Log("이전 버전 기록 감지 실패: " + ex.Message);
-                GitReply(reqId, new { ok = false, error = ex.Message });
+                HostReply(reqId, new { ok = false, error = ex.Message });
             }
         }
 
@@ -71,24 +71,24 @@ namespace TaskCalendarWidget
                 if (path == null)
                 {
                     Log("이전 버전 기록 읽기 거절: " + why);
-                    GitReply(reqId, new { ok = false, error = why });
+                    HostReply(reqId, new { ok = false, error = why });
                     return;
                 }
                 var fi = new FileInfo(path);
                 if (fi.Length > LegacyXmlMaxBytes)
                 {
-                    GitReply(reqId, new { ok = false, error = "파일이 너무 큽니다(64MB 초과): " + fi.Name });
+                    HostReply(reqId, new { ok = false, error = "파일이 너무 큽니다(64MB 초과): " + fi.Name });
                     return;
                 }
                 string text = File.ReadAllText(path, Encoding.UTF8);
                 _lastImportPath = path;   // 이관 성공 뒤 개명할 대상(P1-8). 읽기에 실패하면 위에서 null 이다
                 Log("이전 버전 기록 읽기: " + fi.Name + " (" + fi.Length + "B)");
-                GitReply(reqId, new { ok = true, name = fi.Name, text });
+                HostReply(reqId, new { ok = true, name = fi.Name, text });
             }
             catch (Exception ex)
             {
                 Log("이전 버전 기록 읽기 실패: " + ex.Message);
-                GitReply(reqId, new { ok = false, error = ex.Message });
+                HostReply(reqId, new { ok = false, error = ex.Message });
             }
         }
 

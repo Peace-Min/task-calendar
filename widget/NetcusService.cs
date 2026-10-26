@@ -52,7 +52,7 @@ namespace TaskCalendarWidget
 
         // ----- 호스트 어댑터(기존 멤버 시그니처 유지 → 이관한 본문 무변경) -----
         private void JsCall(string js) => _host.Eval(js);
-        private void GitReply(string reqId, object payload) => _host.Reply(reqId, payload);
+        private void HostReply(string reqId, object payload) => _host.Reply(reqId, payload);
         private void Log(string msg) => _host.Log(msg);
         private System.Windows.Threading.Dispatcher Dispatcher => _host.Dispatcher;
 
@@ -822,7 +822,7 @@ namespace TaskCalendarWidget
         //   error: ""(정상)/"no-creds"/"login"/"read". content 비었거나 요소 없으면 content:""(파서가 '일간 없음' 판정).
         private async Task NetcusWeekMerge(string reqId, string from, string to)
         {
-            if (_ncBusy) { GitReply(reqId, new { ok = false, error = "busy", days = Array.Empty<object>() }); return; }   // 이미 진행 중 → 즉시 반환(_w2 안 건드림)
+            if (_ncBusy) { HostReply(reqId, new { ok = false, error = "busy", days = Array.Empty<object>() }); return; }   // 이미 진행 중 → 즉시 반환(_w2 안 건드림)
             _ncBusy = true; NetcusBusy(true);
             var days = new List<object>();
             CoreWebView2? cw = null;
@@ -832,21 +832,21 @@ namespace TaskCalendarWidget
                 var (id, pw) = NetcusLoadCreds();
                 if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw))
                 {
-                    GitReply(reqId, new { ok = false, error = "no-creds", days = Array.Empty<object>() });
+                    HostReply(reqId, new { ok = false, error = "no-creds", days = Array.Empty<object>() });
                     return;
                 }
-                if (NetcusCredsValid() == false) { GitReply(reqId, new { ok = false, error = "unverified", days = Array.Empty<object>() }); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)
+                if (NetcusCredsValid() == false) { HostReply(reqId, new { ok = false, error = "unverified", days = Array.Empty<object>() }); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)
 
                 // 기간 파싱(YYYY-MM-DD). 실패/역순은 방어 처리.
                 if (!DateTime.TryParse(from, out var dFrom) || !DateTime.TryParse(to, out var dTo))
                 {
-                    GitReply(reqId, new { ok = false, error = "read", days = Array.Empty<object>() });
+                    HostReply(reqId, new { ok = false, error = "read", days = Array.Empty<object>() });
                     return;
                 }
                 if (dTo < dFrom) { var tmp = dFrom; dFrom = dTo; dTo = tmp; }
                 if ((dTo - dFrom).TotalDays > 31)   // 과도한 범위 방어 — 커스텀 폭주/DateTime.MaxValue 증가 예외 차단
                 {
-                    GitReply(reqId, new { ok = false, error = "range", days = Array.Empty<object>() });
+                    HostReply(reqId, new { ok = false, error = "range", days = Array.Empty<object>() });
                     return;
                 }
 
@@ -859,7 +859,7 @@ namespace TaskCalendarWidget
                 NetcusStatus("merge", "login");
                 if (!await NetcusLoginVerify(cw, id, pw))
                 {
-                    GitReply(reqId, new { ok = false, error = "login", days = Array.Empty<object>() });
+                    HostReply(reqId, new { ok = false, error = "login", days = Array.Empty<object>() });
                     return;
                 }
 
@@ -902,14 +902,14 @@ namespace TaskCalendarWidget
                     days.Add(new { date, content, ok = okDay });
                 }
 
-                if (sessionLost) { GitReply(reqId, new { ok = false, error = "session", days = Array.Empty<object>() }); return; }   // 세션 만료 → 부분데이터 폐기, 명시 중단(무음 손실 방지)
+                if (sessionLost) { HostReply(reqId, new { ok = false, error = "session", days = Array.Empty<object>() }); return; }   // 세션 만료 → 부분데이터 폐기, 명시 중단(무음 손실 방지)
                 Log($"netcus 주간병합 완료: {days.Count}일");
-                GitReply(reqId, new { ok = true, error = "", days });
+                HostReply(reqId, new { ok = true, error = "", days });
             }
             catch (Exception ex)
             {
                 Log("netcus 주간병합 예외: " + ex);
-                GitReply(reqId, new { ok = false, error = "read", days = Array.Empty<object>() });
+                HostReply(reqId, new { ok = false, error = "read", days = Array.Empty<object>() });
             }
             finally
             {
@@ -931,7 +931,7 @@ namespace TaskCalendarWidget
         //   (word_code/n_code/s_code/c_code/table_code=report_tbl/id)를 실어 재현한다(기존 NetcusWeekFill와 동일 패턴).
         private async Task NetcusWeeklyRangeRead(string reqId, string from, string to)
         {
-            if (_ncBusy) { GitReply(reqId, new { ok = false, error = "busy", weeks = Array.Empty<object>() }); return; }   // 단일 _w2 레이스 방지(모든 op 공유 가드)
+            if (_ncBusy) { HostReply(reqId, new { ok = false, error = "busy", weeks = Array.Empty<object>() }); return; }   // 단일 _w2 레이스 방지(모든 op 공유 가드)
             _ncBusy = true; NetcusBusy(true);
             var weeks = new List<object>();
             CoreWebView2? cw = null;
@@ -939,12 +939,12 @@ namespace TaskCalendarWidget
             try
             {
                 var (id, pw) = NetcusLoadCreds();
-                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { GitReply(reqId, new { ok = false, error = "no-creds", weeks = Array.Empty<object>() }); return; }
-                if (NetcusCredsValid() == false) { GitReply(reqId, new { ok = false, error = "unverified", weeks = Array.Empty<object>() }); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)
+                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { HostReply(reqId, new { ok = false, error = "no-creds", weeks = Array.Empty<object>() }); return; }
+                if (NetcusCredsValid() == false) { HostReply(reqId, new { ok = false, error = "unverified", weeks = Array.Empty<object>() }); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)
 
-                if (!NcDate(from, out var dFrom) || !NcDate(to, out var dTo)) { GitReply(reqId, new { ok = false, error = "read", weeks = Array.Empty<object>() }); return; }
+                if (!NcDate(from, out var dFrom) || !NcDate(to, out var dTo)) { HostReply(reqId, new { ok = false, error = "read", weeks = Array.Empty<object>() }); return; }
                 if (dTo < dFrom) { var tmp = dFrom; dFrom = dTo; dTo = tmp; }
-                if ((dTo - dFrom).TotalDays > 400) { GitReply(reqId, new { ok = false, error = "range", weeks = Array.Empty<object>() }); return; }   // 일간(31일)과 달리 넓게, 그러나 폭주 방지
+                if ((dTo - dFrom).TotalDays > 400) { HostReply(reqId, new { ok = false, error = "range", weeks = Array.Empty<object>() }); return; }   // 일간(31일)과 달리 넓게, 그러나 폭주 방지
                 DateTime winLo = dFrom.AddDays(-7), winHi = dTo.AddDays(7);   // 작성일 사전필터 창(주간보고 등록일은 기간 끝 근처)
 
                 Log($"netcus 주간범위 읽기: {from} ~ {to}");
@@ -954,7 +954,7 @@ namespace TaskCalendarWidget
 
                 // 로그인 + 양성 인증 확정(공유 헬퍼)
                 NetcusStatus("weekly", "login");
-                if (!await NetcusLoginVerify(cw, id, pw)) { GitReply(reqId, new { ok = false, error = "login", weeks = Array.Empty<object>() }); return; }
+                if (!await NetcusLoginVerify(cw, id, pw)) { HostReply(reqId, new { ok = false, error = "login", weeks = Array.Empty<object>() }); return; }
 
                 // 목록 1페이지 이동(GET). 이후 페이지는 go_list 폼 재현.
                 await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));
@@ -976,15 +976,15 @@ namespace TaskCalendarWidget
                         weeks.Add(new { regdate, title = cell.title ?? "", period = cell.period ?? "", endwork = cell.endwork ?? "", content = cell.content ?? "", plan = cell.plan ?? "" });
                         return true;
                     });
-                if (crawl.SessionLost) { GitReply(reqId, new { ok = false, error = "session", weeks = Array.Empty<object>() }); return; }   // login 폼 = 세션 만료 → 부분데이터 폐기, 명시 중단
+                if (crawl.SessionLost) { HostReply(reqId, new { ok = false, error = "session", weeks = Array.Empty<object>() }); return; }   // login 폼 = 세션 만료 → 부분데이터 폐기, 명시 중단
 
                 Log($"netcus 주간범위 완료: {weeks.Count}건 (열람 {crawl.Opened})");
-                GitReply(reqId, new { ok = true, error = "", weeks });
+                HostReply(reqId, new { ok = true, error = "", weeks });
             }
             catch (Exception ex)
             {
                 Log("netcus 주간범위 예외: " + ex);
-                GitReply(reqId, new { ok = false, error = "read", weeks = Array.Empty<object>() });
+                HostReply(reqId, new { ok = false, error = "read", weeks = Array.Empty<object>() });
             }
             finally
             {

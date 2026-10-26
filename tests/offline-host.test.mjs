@@ -156,10 +156,10 @@ const checks = {
       '차이가 있을 때 충돌로 두지 않는다 — 다른 PC 의 진짜 편집을 덮는다');
     assert.ok(/fresh == null \|\| fresh\.UserId != snap\.UserId\) \{[^}]*return false; \}/.test(t), '다시 읽지 못했거나 다른 사람이면 멈추지 않는다');
     //  성공 회신은 평범한 성공 회신과 **같은 필드**를 갖는다(+ resolvedConflict).
-    const normal = /GitReply\(reqId, new \{ (ok = true,[^}]*)\}\);/.exec(b);
+    const normal = /HostReply\(reqId, new \{ (ok = true,[^}]*)\}\);/.exec(b);
     assert.ok(normal, '평범한 성공 회신을 찾지 못했다(판정 불가)');
     const keys = [...normal[1].matchAll(/(\w+) =/g)].map((m) => m[1]);
-    const s9reply = /GitReply\(reqId, new \{ ([^}]*resolvedConflict = true[^}]*)\}\);/.exec(t);
+    const s9reply = /HostReply\(reqId, new \{ ([^}]*resolvedConflict = true[^}]*)\}\);/.exec(t);
     assert.ok(s9reply, 'S9 성공 회신을 찾지 못했다');
     for (const k of keys) assert.ok(new RegExp('\\b' + k + ' =').test(s9reply[1]), `S9 성공 회신에 ${k} 가 없다 — 웹의 성공 분기가 다르게 읽는다`);
     assert.ok(/ok = true/.test(s9reply[1]) && /conflict = false/.test(s9reply[1]), 'S9 회신이 성공이 아니다');
@@ -184,7 +184,7 @@ const checks = {
     const f = p.indexOf('DbFault.ThrowIfActive();'), c = p.indexOf('new MySqlConnection(CalendarDb.BuildPingConnString())');
     assert.ok(f >= 0 && c > f, '핑이 장애 주입을 지나지 않거나 핑 전용 접속 문자열을 쓰지 않는다');
     assert.ok(/new MySqlCommand\("SELECT 1", conn\)/.test(p), '핑이 SELECT 1 을 하지 않는다');
-    assert.ok(/GitReply\(reqId, new \{ ok = true \}\);/.test(p) && /GitReply\(reqId, new \{ ok = false, kind, error = [^,]+, detail \}\);/.test(p),
+    assert.ok(/HostReply\(reqId, new \{ ok = true \}\);/.test(p) && /HostReply\(reqId, new \{ ok = false, kind, error = [^,]+, detail \}\);/.test(p),
       '핑 회신이 {ok:true} | {ok:false, kind, error, detail} 이 아니다');
     const cs = csMember(s.cdb, 'internal static string BuildPingConnString()');
     assert.ok(/new MySqlConnectionStringBuilder\(BuildConnString\(\)\)/.test(cs) && /ConnectionTimeout = 3,/.test(cs),
@@ -198,9 +198,9 @@ const checks = {
     const gate = r.indexOf('if (!DbFault.Enabled)'), set = r.indexOf('DbFault.TrySetMode(');
     assert.ok(gate >= 0 && gate < set, '__dbFault 가 DbFault.Enabled 를 먼저 보지 않는다 — 배포 실행에서 장애를 주입할 수 있다(A10)');
     const deny = r.slice(gate, set);
-    assert.ok(/Log\(/.test(deny) && /GitReply\(reqId, new \{ ok = false, error = "디버그 실행에서만 쓸 수 있습니다" \}\);/.test(deny) && /return;/.test(deny),
+    assert.ok(/Log\(/.test(deny) && /HostReply\(reqId, new \{ ok = false, error = "디버그 실행에서만 쓸 수 있습니다" \}\);/.test(deny) && /return;/.test(deny),
       '배포 실행의 __dbFault 를 로그·거부 회신 후 끝내지 않는다');
-    assert.ok(/GitReply\(reqId, new \{ ok = true, mode = DbFault\.Mode \}\);/.test(r), '성공 회신이 {ok:true, mode} 가 아니다');
+    assert.ok(/HostReply\(reqId, new \{ ok = true, mode = DbFault\.Mode \}\);/.test(r), '성공 회신이 {ok:true, mode} 가 아니다');
 
     const fc = stripCs(s.fault);
     assert.ok(/public static readonly bool Enabled = DebugPortSet\(Environment\.GetEnvironmentVariable\("TC_DEBUG_PORT"\)\);/.test(fc),
@@ -520,8 +520,8 @@ test('변이㉖: Alt+F4 경로에서 경고를 빼면 닫기⑪ 이 실패한다
 });
 
 test('변이㉗: detail 에 원문 예외를 그대로 실으면 위생⑫ 가 실패한다', () => {
-  const bad = mutate(src.off, 'GitReply(reqId, new { ok = false, kind, error = DbErrors.ConnMessage(kind), detail });',
-    'GitReply(reqId, new { ok = false, kind, error = DbErrors.ConnMessage(kind), detail = ex.ToString() });');
+  const bad = mutate(src.off, 'HostReply(reqId, new { ok = false, kind, error = DbErrors.ConnMessage(kind), detail });',
+    'HostReply(reqId, new { ok = false, kind, error = DbErrors.ConnMessage(kind), detail = ex.ToString() });');
   assert.throws(() => checks.hygiene(with_('off', bad)), /분류기 밖에서 온다/);
 });
 

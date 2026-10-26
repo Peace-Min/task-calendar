@@ -67,7 +67,7 @@ function checkWhitelist(cs, pw = PW) {
   assert.match(member(cs, 'private WinKind? KindOfCore(CoreWebView2? origin)'), /foreach \(var kv in _wins\) if \(ReferenceEquals\(origin, kv\.Value\.Core\)\) return kv\.Key;/, '보낸 창을 지금 창의 CoreWebView2 와 맞대어 가르지 않는다');
   assert.match(d, /if \(fromWin == null && \(origin == null \|\| !ReferenceEquals\(origin, web\.CoreWebView2\)\)\) return;/, '모르는 창의 메시지를 버리지 않는다');
   assert.match(d, /raw = e\.TryGetWebMessageAsString\(\);\s*\}\s*catch \{ return; \}/, '출처와 본문 읽기가 같은 try 안에 있지 않다');
-  assert.match(d, /if \(fromWin != null\)\s*\{\s*bool ownReq = rqKind == fromWin;\s*if \(ownReq\) RememberWinReq\(rq, origin!\);[\s\S]*?if \(!fromWin\.Commands\.Contains\(cmd\) \|\| !\(ownReq \|\| \(rq\.Length == 0 && fromWin\.AcceptsWithoutReq\(cmd\)\)\)\)\s*\{\s*Log\(fromWin\.Name \+ " 명령 거부: " \+ cmd\);\s*if \(ownReq\) GitReply\(rq, new \{ ok = false, error = fromWin\.Name \+ "에서는 할 수 없는 요청입니다" \}\);\s*return;\s*\}\s*\}\s*else if \(rqKind != null\) return;/,
+  assert.match(d, /if \(fromWin != null\)\s*\{\s*bool ownReq = rqKind == fromWin;\s*if \(ownReq\) RememberWinReq\(rq, origin!\);[\s\S]*?if \(!fromWin\.Commands\.Contains\(cmd\) \|\| !\(ownReq \|\| \(rq\.Length == 0 && fromWin\.AcceptsWithoutReq\(cmd\)\)\)\)\s*\{\s*Log\(fromWin\.Name \+ " 명령 거부: " \+ cmd\);\s*if \(ownReq\) HostReply\(rq, new \{ ok = false, error = fromWin\.Name \+ "에서는 할 수 없는 요청입니다" \}\);\s*return;\s*\}\s*\}\s*else if \(rqKind != null\) return;/,
     '열람 창의 명령을 그 종류의 목록과 pw: 번호로 거르지 않는다(또는 거절을 말하지 않는다)');
   assert.match(d, /WinKind\? rqKind = WinKind\.OfReq\(rq\);/, '번호 머리로 창을 가르지 않는다');
   assert.ok(d.indexOf('if (fromWin != null)') < d.indexOf('switch (cmd)'), '거름이 명령 분기보다 뒤에 있다');
@@ -90,11 +90,11 @@ function checkReplyRouting(cs) {
     '보낸 창이 닫혔거나 바뀌었는데 지금 열람 창으로 회신한다(다시 연 창에 옛 회신이 간다)');
   const d = member(cs, 'private void OnWebMessage(CoreWebView2WebMessageReceivedEventArgs e, CoreWebView2? origin)');
   const remAt = d.indexOf('if (ownReq) RememberWinReq(rq, origin!);');
-  assert.ok(remAt >= 0 && remAt < d.indexOf('GitReply(rq, new { ok = false, error = fromWin.Name'),
+  assert.ok(remAt >= 0 && remAt < d.indexOf('HostReply(rq, new { ok = false, error = fromWin.Name'),
     '열람 창 요청이 올 때 보낸 창을 적지 않는다(거절 회신보다 먼저 적어야 거절도 그 창에 간다)');
   assert.match(member(cs, 'private void CloseSubWindows()'), /ForgetWinReqs\(kv\.Key\);/, '열람 창을 닫아도 보낸 창 기록이 남는다');
   assert.match(member(cs, 'private void ForgetWinReqs(WinKind k)'), /x\.StartsWith\(k\.ReqPrefix, StringComparison\.Ordinal\)/, '닫힌 창의 회신 기록을 그 종류의 번호로 지우지 않는다');
-  assert.match(member(cs, 'private void GitReply(string reqId, object payload)'), /_ = ReplyCore\(reqId\)\?\.ExecuteScriptAsync\(call\);/, 'GitReply 가 물은 창으로 회신하지 않는다');
+  assert.match(member(cs, 'private void HostReply(string reqId, object payload)'), /_ = ReplyCore\(reqId\)\?\.ExecuteScriptAsync\(call\);/, 'HostReply 가 물은 창으로 회신하지 않는다');
   const ps = member(cs, 'private async Task RunPeerScheduleAsync(string reqId, string targetLoginId)');
   assert.match(ps, /string\? me = CurrentLoginId\(\);/, '보는 사람을 세션에서 읽지 않는다');
   assert.match(ps, /LoadPeerScheduleJsonAsync\(me, targetLoginId\)/);

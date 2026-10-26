@@ -227,7 +227,7 @@ namespace TaskCalendarWidget
         };
 
         // ── 흐름 표시: 이 웹 명령을 처리하는 동안 관문이 막았는가 ──────────────────
-        //  MainWindow.OnWebMessage 가 명령마다 BeginFlow 를 걸고, 회신(GitReply)이 FlowBlocked 를 보고
+        //  MainWindow.OnWebMessage 가 명령마다 BeginFlow 를 걸고, 회신(HostReply)이 FlowBlocked 를 보고
         //  { ok:false } 회신에 kind 'gate' 와 gate 정보를 붙인다. 회신 경로 마흔 곳을 하나씩 고치지 않는 길이다.
         //  ★ AsyncLocal 은 await 로 부른 메서드 안으로 흐르지만 안에서 바꾼 값은 밖으로 돌아오지 않는다.
         //    그래서 객체 하나를 심고 그 안에 적는다(DbErrors.Capture 와 같은 방식).

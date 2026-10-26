@@ -625,8 +625,8 @@ const checks = {
     assert.ok(r.includes('NcCrawlWeekly(cw, id, winLo, winHi, MAXPAGES, MAXREAD, "netcus 주간범위",'), '주간범위 읽기가 공용 순회를 같은 창과 상한으로 부르지 않는다');
     const errs = [...new Set([...r.matchAll(/error = "([^"]*)"/g)].map((m) => m[1]))].sort();
     assert.deepStrictEqual(errs, ['', 'busy', 'login', 'no-creds', 'range', 'read', 'session', 'unverified'], `주간범위 읽기 오류 코드가 바뀌었다: ${errs}`);
-    assert.ok(r.includes('if (crawl.SessionLost) { GitReply(reqId, new { ok = false, error = "session", weeks = Array.Empty<object>() }); return; }'), '세션 만료 회신(부분 데이터 폐기)이 바뀌었다');
-    assert.ok(r.includes('GitReply(reqId, new { ok = true, error = "", weeks });'), '성공 회신 모양이 바뀌었다');
+    assert.ok(r.includes('if (crawl.SessionLost) { HostReply(reqId, new { ok = false, error = "session", weeks = Array.Empty<object>() }); return; }'), '세션 만료 회신(부분 데이터 폐기)이 바뀌었다');
+    assert.ok(r.includes('HostReply(reqId, new { ok = true, error = "", weeks });'), '성공 회신 모양이 바뀌었다');
     assert.ok(r.includes('n => NetcusStatus("weekly", "reading", n, -1)'), '진행 표시(weekly reading, total=-1)가 바뀌었다');
     assert.ok(r.includes('if (cell == null) return true;'), '셀을 못 읽은 글을 건너뛰지 않는다(예전 동작과 다르다)');
     assert.ok(r.includes('include = (ps <= dTo && pe >= dFrom);') && r.includes('else include = true;'), '기간 겹침, 파싱 실패 관대 포함 규칙이 바뀌었다');
@@ -752,7 +752,7 @@ test('주간 고치기 변이 CM11: 안전판 실패 검사를 지우면 C6 이 
 test('주간 고치기 변이 CM12: 주간범위 읽기의 상한, 창, 세션 회신을 바꾸면 C7 이 잡는다', () => {
   assert.throws(() => checks.rangeReadContract(mutate(svc, 'const int MAXPAGES = 40, MAXREAD = 60;', 'const int MAXPAGES = 40, MAXREAD = 20;')), /상한/);
   assert.throws(() => checks.rangeReadContract(mutate(svc, 'winHi = dTo.AddDays(7);', 'winHi = dTo.AddDays(14);')), /작성일 창/);
-  assert.throws(() => checks.rangeReadContract(mutate(svc, 'if (crawl.SessionLost) { GitReply(reqId, new { ok = false, error = "session", weeks = Array.Empty<object>() }); return; }', '')), /오류 코드가 바뀌었다|세션 만료 회신/);
+  assert.throws(() => checks.rangeReadContract(mutate(svc, 'if (crawl.SessionLost) { HostReply(reqId, new { ok = false, error = "session", weeks = Array.Empty<object>() }); return; }', '')), /오류 코드가 바뀌었다|세션 만료 회신/);
   assert.throws(() => checks.rangeReadContract(mutate(svc, 'if (cell == null) return true;', 'if (cell == null) return false;')), /건너뛰지 않는다|끊는다/);
   assert.throws(() => checks.rangeReadContract(mutate(svc, 'if (allOlder) { end.AllOlder = true; break; }', 'if (allOlder) { end.AllOlder = true; }')), /예전 문장이 사라졌다/);
 });

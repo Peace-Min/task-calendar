@@ -161,7 +161,7 @@ namespace TaskCalendarWidget
         {
             if (Interlocked.Exchange(ref _gateRecheckBusy, 1) == 1)
             {
-                if (reqId.Length > 0) GitReply(reqId, new { ok = true, state = DbGate.Last?.State ?? "ok" });
+                if (reqId.Length > 0) HostReply(reqId, new { ok = true, state = DbGate.Last?.State ?? "ok" });
                 return;
             }
             try
@@ -169,13 +169,13 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
                 var v = await DbGate.RecheckAsync(CalendarDb.BuildConnString(), cts.Token);
                 Log("관문 재확인: " + DbGate.StateName(v));
-                if (reqId.Length > 0) GitReply(reqId, new { ok = true, state = DbGate.StateName(v) });
+                if (reqId.Length > 0) HostReply(reqId, new { ok = true, state = DbGate.StateName(v) });
             }
             catch (Exception ex)
             {
                 var (kind, detail) = DbErrors.Observe(ex, Log, notify: false);
                 Log("관문 재확인 실패(" + kind + "), 상태를 바꾸지 않는다");
-                if (reqId.Length > 0) GitReply(reqId, new { ok = false, kind, error = DbErrors.ConnMessage(kind), detail });
+                if (reqId.Length > 0) HostReply(reqId, new { ok = false, kind, error = DbErrors.ConnMessage(kind), detail });
             }
             finally { Volatile.Write(ref _gateRecheckBusy, 0); }
         }
