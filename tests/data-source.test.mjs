@@ -446,21 +446,15 @@ test('변이㉒: 호스트가 replaceAll 을 통상 저장으로 넘기면 교�
 //  둘 중 하나만 빠져도 "명시적 이관" 은 89명 중 상당수에게 일어나지 않는다.
 
 const c7 = {
-  //  ⑦-1 빈 캘린더면 안내가 뜬다. 그리고 그것은 **안내일 뿐** 아무것도 하지 않는다.
-  emptyHintGuidesOnly(app) {
-    const b = bodyOf(app, 'function renderEmptyHint(){');
-    //  ★ 2026-09-30 — 빈 판정을 calendarIsEmpty() 한 곳으로 뽑았다(「이전 버전 기록 감지」가 같은 정의를 쓴다).
-    //    안내가 그 함수를 부르면 판정은 그 함수의 본문에서 본다. 인라인으로 되돌려도 이 검사는 통과한다.
-    const emptyDef = /calendarIsEmpty\(\)/.test(b) ? bodyOf(app, 'function calendarIsEmpty(){') : b;
-    assert.ok(/categories.*length.*entries.*length/s.test(emptyDef), '빈 상태 판정이 없다');
-    assert.ok(/startImport\(\)/.test(b), '안내가 가져오기로 이어지지 않는다 — 길을 알려 주지 않으면 안내가 아니다');
-    //  ★ 표시등이지 트리거가 아니다 — 여기서 데이터를 옮기면 그것이 자동이관이다.
-    for (const f of ['applyImport', 'saveFull', 'dbSave', 'fromXML'])
-      assert.ok(!b.includes(f),
-        `안내가 ${f}() 를 부른다 — 그 순간 자동이관이 된다(부팅이 사용자 동의 없이 데이터를 바꾼다). 안내는 길만 알려 준다`);
-    //  부팅 경로가 실제로 이 안내를 부르는지
+  //  ⑦-1 빈 캘린더 안내(XML 가져오기 띠)는 없다(2026-10-27 사용자: 처음 쓰는 사람에게도 늘 떠서 원하지 않음).
+  //    미이관자의 길은 둘이 남는다: 옛 XML 이 있는 PC 에서 부팅이 한 번 묻는 것(maybeAskLegacyImport)과 ⋯ 메뉴의 XML 가져오기.
+  noEmptyHintButPathsRemain(app) {
+    assert.ok(!/function renderEmptyHint\(/.test(app) && !/renderEmptyHint\(\)/.test(app), '빈 캘린더 안내(renderEmptyHint)가 되살아났다');
+    assert.ok(!/['"]emptyHint['"]/.test(app), '빈 캘린더 안내 상자(#emptyHint)가 되살아났다');
     const db = bodyOf(app, 'window.__applyState = function(json, meta){');
-    assert.ok(/renderEmptyHint\(\)/.test(db), '부팅이 빈 캘린더 안내를 부르지 않는다 — 미이관자가 빈 화면만 본다');
+    assert.ok(/if\(!PEER\) maybeAskLegacyImport\(\);/.test(db), '부팅이 이전 기록 감지를 부르지 않는다. 옛 XML 이 있는 미이관자에게 길이 없어진다');
+    assert.ok(/\$\('#btnImport'\)\.addEventListener\('click', \(\) => \{ closeMore\(\); startImport\(\); \}\)/.test(app),
+      '⋯ 메뉴의 XML 가져오기가 startImport 로 이어지지 않는다');
   },
 
   //  ⑦-2 위젯의 가져오기는 호스트 파일창으로 간다(기본 폴더 = 데이터 폴더)
@@ -490,14 +484,13 @@ const c7 = {
   },
 };
 
-test('표시등①: 빈 캘린더 안내가 뜨고, 안내일 뿐이다(자동이관 금지)', () => c7.emptyHintGuidesOnly(src));
+test('표시등①: 빈 캘린더 안내는 없고, 이전 기록 감지와 ⋯ 메뉴 가져오기는 남는다', () => c7.noEmptyHintButPathsRemain(src));
 test('표시등②: 가져오기 파일창이 데이터 폴더에서 열리고 내용을 넘긴다', () => c7.importOpensAtDataDir(src, mainwin));
 test('표시등③: 두 진입점이 미리보기를 공유한다', () => c7.previewShared(src));
 
-test('변이㉓: 안내가 가져오기를 대신 실행하면 표시등① 이 실패한다(자동이관 부활)', () => {
-  const bad = mutate("  btn.addEventListener('click', () => startImport());",
-    "  btn.addEventListener('click', () => startImport()); applyImport();", src);
-  assert.throws(() => c7.emptyHintGuidesOnly(bad), /자동이관이 된다/);
+test('변이㉓: 부팅에 빈 캘린더 안내를 되살리면 표시등① 이 실패한다', () => {
+  const bad = mutate('if(!PEER) renderDataSourceBadge(meta);', 'if(!PEER){ renderDataSourceBadge(meta); renderEmptyHint(); }', src);
+  assert.throws(() => c7.noEmptyHintButPathsRemain(bad), /되살아났다/);
 });
 
 test('변이㉔: 파일창 기본 폴더를 없애면 표시등② 가 실패한다', () => {
@@ -511,11 +504,9 @@ test('변이㉕: 파일창이 경로를 넘기면 표시등② 가 실패한다'
   assert.throws(() => c7.importOpensAtDataDir(src, bad), /내용을 읽어 넘기지 않는다/);
 });
 
-test('변이㉖: 부팅이 빈 캘린더 안내를 안 부르면 표시등① 이 실패한다', () => {
-  //  ★ 안내는 이제 if(!PEER) 안에 있다 — 열람 창에 내 이관 안내가 뜨던 것을 막으면서 옮겼다.
-  const bad = mutate('if(!PEER){ renderDataSourceBadge(meta); renderEmptyHint(); }',
-                     'if(!PEER){ renderDataSourceBadge(meta); }', src);
-  assert.throws(() => c7.emptyHintGuidesOnly(bad), /부팅이 빈 캘린더 안내를 부르지 않는다/);
+test('변이㉖: 부팅이 이전 기록 감지를 안 부르면 표시등① 이 실패한다', () => {
+  const bad = mutate('    if(!PEER) maybeAskLegacyImport();', '    ', src);
+  assert.throws(() => c7.noEmptyHintButPathsRemain(bad), /이전 기록 감지를 부르지 않는다/);
 });
 
 /* ── ⑧ 낡은 클라이언트의 파괴적 연산 차단 (설계 §5.5 · P1-1) ─────────────── */

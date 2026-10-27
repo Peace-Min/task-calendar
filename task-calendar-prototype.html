@@ -5672,11 +5672,10 @@ window.__applyState = function(json, meta){
     __bootMeta = meta || null;            // 스키마 게이트(가져오기·초기화)가 읽는 값 — 배지보다 먼저 세운다
     renderAll();
     pushReminders();
-    //  ★ 이 둘은 **내 창의 것**이다 — 열람 창에서는 뜨면 안 된다.
-    //    · 출처 배지: 배너가 이미 "읽기 전용" 이라고 말한다(두 번 말할 자리가 아니다)
-    //    · 미이관 안내: 남의 캘린더가 비었을 때 **내** 이관을 권하는 「XML 가져오기」 버튼이 떴다
-    //      (2026-09-03 사용자 스크린샷). 남의 빈 달력에 내 이관 안내가 뜰 이유가 없다.
-    if(!PEER){ renderDataSourceBadge(meta); renderEmptyHint(); }
+    //  ★ 출처 배지는 **내 창의 것**이다. 열람 창에서는 배너가 이미 "읽기 전용" 이라고 말한다.
+    //    빈 캘린더 안내(XML 가져오기 띠)는 2026-10-27 에 없앴다(사용자: 처음 쓰는 사람에게도 늘 떠서 원하지 않음).
+    //    옛 기록이 있는 PC 는 아래 이전 기록 감지가 한 번 묻고, 그 밖에는 ⋯ 메뉴의 XML 가져오기를 쓴다.
+    if(!PEER) renderDataSourceBadge(meta);
     //  ★ 이전 버전 기록 감지 — 빈 캘린더 + 이 PC 에 옛 XML 이 있으면 **묻는다**(페이지당 한 번 · 여기서는 읽지도 옮기지도 않는다).
     if(!PEER) maybeAskLegacyImport();
     //  ★ 부팅이 **성공했다** — 빨간 상자와 자동 재시도 타이머를 함께 걷는다.
@@ -5886,17 +5885,17 @@ window.__applyStateError = function(msg, opt){
   if(fresh) toast('DB 읽기 실패. 화면 상단 안내를 확인하세요', 'error');
 };
 
-//  빈 캘린더 판정 — 「빈 캘린더 안내」와 「이전 버전 기록 감지」가 **같은 정의**를 쓴다.
-//  ★ 둘로 적으면 한쪽만 고쳐진다: 안내는 떴는데 물음은 안 뜨거나(또는 그 반대) 하게 된다.
+//  빈 캘린더 판정. 이전 버전 기록 감지(maybeAskLegacyImport)와 가져오기 직전 확인이 쓴다.
+//  (빈 캘린더 안내도 이 정의를 썼는데 2026-10-27 에 안내를 없앴다.)
 //  ★ 기본 과제(휴가, 기타)는 늘 있으므로 과제 수로는 빈 캘린더를 가를 수 없다(DEFAULT-TASKS §4.1).
-//    **기본 과제만** 있고 일정, 할 일, 과제별 시간이 하나도 없으면 비어 있다. 그래야 첫 실행의 '이전 버전 기록' 물음과
-//    빈 캘린더 안내가 계속 뜬다. 다른 과제가 하나라도 있으면(사용자가 만든 것) 비어 있지 않다.
+//    **기본 과제만** 있고 일정, 할 일, 과제별 시간이 하나도 없으면 비어 있다. 그래야 첫 실행의 '이전 버전 기록' 물음이 뜬다.
+//    다른 과제가 하나라도 있으면(사용자가 만든 것) 비어 있지 않다.
 function calendarIsEmpty(){
   const cats = (state.categories || []).filter(c => !isDefaultTask(c));
   const hours = state.taskHours && typeof state.taskHours === 'object' ? Object.keys(state.taskHours).length : 0;
   return !cats.length && !(state.entries || []).length && !(state.todos || []).length && !hours;
 }
-//  상단 안내 상자(빈 캘린더 안내·DB 경고 배지·부팅 실패 상자 #dsError·충돌 안내 #dbConflict)의 자리 — **앱 제목줄 아래**(2026-09-30).
+//  상단 안내 상자(DB 경고 배지·부팅 실패 상자 #dsError·충돌 안내 #dbConflict)의 자리 — **앱 제목줄 아래**(2026-09-30).
 //  ★ 예전에는 `.wrap` 의 맨 앞에 넣었는데 이 앱에는 `.wrap` 이 없다 — 그래서 body 맨 앞,
 //    즉 위젯 제목줄(#hostbar)·상단바보다 **위**에 떴다(스크린샷 확인). 제목줄 위의 상자는 창의 일부가 아니라
 //    창 밖에서 끼어든 것처럼 보이고, 드래그 손잡이 자리까지 밀어낸다.
@@ -5909,31 +5908,6 @@ function insertBelowTitleBar(el){
   document.body.insertBefore(el, document.body.firstChild);
 }
 
-//  빈 캘린더 안내 — **미이관 표시등**이다.
-//    ★ 왜 필요한가: 이관하지 않은 사용자가 새 버전을 켜면 로그인도 되고 오류도 없이
-//      **빈 캘린더가 정상처럼** 뜬다. 부팅 실패 안내 셋(로그인 없음·미등록·연결 실패)
-//      어디에도 안 걸린다. 그 사람에게는 "내 데이터가 사라졌다" 로 보인다.
-//    ★ 왜 트리거가 아니라 안내인가: 자동으로 파일을 읽어 옮기는 것이 안티패턴이라
-//      명시적 가져오기로 정했다(2026-09-01). 그래서 여기서는 **아무것도 하지 않고**
-//      길만 알려 준다. 누를지 말지는 사용자가 정한다.
-//    ★ 신규 사용자에게도 무해한 문구여야 한다 — 그 사람에게 빈 화면은 정답이다.
-//      그래서 "옮기세요" 가 아니라 "기존 기록이 있다면" 으로 쓴다.
-function renderEmptyHint(){
-  const box = document.getElementById('emptyHint');
-  if(!calendarIsEmpty() || !HOST){ if(box) box.remove(); return; }
-  if(box) return;                                   // 이미 떠 있다
-  const b = document.createElement('div');
-  b.id = 'emptyHint';
-  b.style.cssText = 'margin:12px 16px 0;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--muted);font-size:13px;line-height:1.7;display:flex;gap:10px;align-items:center;justify-content:space-between';
-  const t = document.createElement('span');
-  t.innerHTML = '캘린더가 비어 있습니다. <b>이전 버전에서 쓰던 기록이 있다면</b> XML 파일에서 가져올 수 있습니다.';
-  const btn = document.createElement('button');
-  btn.type = 'button'; btn.textContent = 'XML 가져오기…';
-  btn.style.cssText = 'padding:5px 12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer;white-space:nowrap';
-  btn.addEventListener('click', () => startImport());
-  b.appendChild(t); b.appendChild(btn);
-  insertBelowTitleBar(b);                           // 제목줄 아래(위가 아니다 — insertBelowTitleBar 머리말)
-}
 
 //  부팅이 준 meta(schemaVersion·expectedSchema·schemaMismatch·gate·rev·userId). 배지와 이전 기록 감지가 읽는다.
 let __bootMeta = null;
@@ -5972,15 +5946,15 @@ function renderDataSourceBadge(meta){
  *    이 창은 빈 캘린더에서만 뜨므로 교체가 지우는 것이 없다. 누른 순간 다시 보고(calendarIsEmpty), 그새 무언가를
  *    적었으면 말없이 지우지 않고 늘 쓰던 미리보기(showImportPreview)로 넘겨 사용자가 확인하게 한다.
  *    2026-10-07 병합 제거(XML-MERGE-REMOVAL). 그 미리보기도 이제 교체만 한다.
- *  ★ 조건: 빈 캘린더(calendarIsEmpty — 빈 캘린더 안내와 같은 정의) · 위젯(HOST) · 내 창(!PEER) ·
+ *  ★ 조건: 빈 캘린더(calendarIsEmpty) · 위젯(HOST) · 내 창(!PEER) ·
  *    스키마 불일치 아님(__bootMeta.schemaMismatch 를 **조용히** 본다 — 부팅 때 토스트를 띄우지 않는다).
  *    버전 관문이 막은 동안에는 이 물음까지 오지 않는다(부팅 조회가 관문에 막히고 차단 카드가 뜬다). 「가져오기」 를 누를 때는
  *    guardEdit() 이 관문 상태(vgBlocked)까지 본다.
  *  ★ 페이지당 한 번 — 재시도·[새로고침] 으로 주입이 다시 와도 두 번 묻지 않는다.
  *  ★ 「다시 묻지 않기」는 **그 파일**(이름|수정시각)에만 건다 — 다른 파일이거나 그 뒤에 고쳐졌으면 다시 묻는다.
  *    저장소가 막힌 환경(시크릿·정책)에서도 동작해야 하므로 읽기·쓰기를 모두 try 로 감싼다.
- *  ★ 「나중에」·×·Esc 는 그냥 닫는다(다음 실행 때 다시 묻는다). 그 사이에도 빈 캘린더 안내의
- *    「XML 가져오기…」가 같은 문으로 이어진다. */
+ *  ★ 「나중에」·×·Esc 는 그냥 닫는다(다음 실행 때 다시 묻는다). 그 사이에는 ⋯ 메뉴의 XML 가져오기가 같은 문으로 이어진다
+ *    (빈 캘린더 안내 띠는 2026-10-27 에 없앴다). */
 let __legacyPromptTried = false;   // 페이지당 한 번
 let __legacyProbe = null;          // 지금 떠 있는 물음의 대상 {name,size,mtime}
 function legacyPromptKey(){
@@ -15169,7 +15143,7 @@ function applyImport(opt){
   //  ★ 전량 교체로 보낸다. state 가 곧 결과이고, DB 는 그 결과를 그대로 반영하기만 하면 된다.
   //    그래서 DB 쪽 중복 판정·번호 부여 규칙이 아예 필요 없다.
   //  #importModal 이 열린 적 없어도(이전 기록 가져오기) 닫기는 무해하다 — closeOverlay 가 이미 닫힌 창은 그냥 지나간다.
-  const saved = saveFull(); closeModal('#importModal'); renderAll(); renderEmptyHint();
+  const saved = saveFull(); closeModal('#importModal'); renderAll();
   return saved;
 }
 async function clearAll(){
@@ -15183,7 +15157,7 @@ async function clearAll(){
   filterCatId = null; noteFilterCat = null;
   //  ★ 초기화도 state 를 통째로 갈아끼운 것이므로 전량 교체다(가져오기와 같은 부류).
   //    실행 취소도 마찬가지 — 되살릴 스냅샷이 곧 결과 state 다.
-  saveFull(); renderAll(); renderEmptyHint();
+  saveFull(); renderAll();
   toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; saveFull(); renderAll(); }});
 }
 

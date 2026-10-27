@@ -504,8 +504,8 @@ if (!JSDOM) {
     async emptyWithDefaultsOnly(source) {
       await withBoot(source, EMPTY, async (W) => {
         assert.deepStrictEqual(W.cats().map((c) => c.name), ['휴가', '기타'], '시험 전제: 기본 과제만 있다');
-        assert.strictEqual(W.ev('calendarIsEmpty()'), true, '기본 과제만 있는데 빈 캘린더가 아니라고 본다 — 이전 기록 물음과 빈 캘린더 안내가 사라진다');
-        assert.ok(W.ev("!!document.getElementById('emptyHint')"), '기본 과제만 있는데 빈 캘린더 안내가 뜨지 않았다');
+        assert.strictEqual(W.ev('calendarIsEmpty()'), true, '기본 과제만 있는데 빈 캘린더가 아니라고 본다. 이전 기록 물음이 사라진다');
+        assert.ok(!W.ev("!!document.getElementById('emptyHint')"), '빈 캘린더 안내 띠가 떴다(2026-10-27 에 없앴다)');
         const probe = (code) => { W.ev('var __s = JSON.stringify(state);' + code); const v = W.ev('calendarIsEmpty()'); W.ev('state = JSON.parse(__s);'); return v; };
         assert.strictEqual(probe("state.entries.push({ id:'e', date:'2026-10-01', title:'x', categoryId: gitaTaskId() });"), false, '일정이 있는데 비었다고 본다');
         assert.strictEqual(probe("state.todos.push({ id:'t', text:'x', categoryId: gitaTaskId() });"), false, '할 일이 있는데 비었다고 본다');
