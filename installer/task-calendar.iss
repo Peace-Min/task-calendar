@@ -1,6 +1,6 @@
 ﻿; ============================================================================
 ;  수행과제 캘린더 — Inno Setup 인스톨러 (installer/에서 단일 관리)
-;  담기는 것: ① 위젯 exe(자체포함) ② 브라우저용 단일 HTML ③ (redist에 있으면) WebView2 런타임 자동설치
+;  담기는 것: ① 위젯 exe(자체포함) ② 브라우저용 단일 HTML ③ Full에만 오프라인 WebView2 런타임 포함
 ;
 ;  빌드(권장): installer\build-installer.ps1  — csproj <Version>을 읽어 /DMyAppVersion 주입
 ;  수동:        ISCC.exe /DMyAppVersion=0.6.0 task-calendar.iss
@@ -21,8 +21,18 @@
 #define SourceHtml "..\task-calendar-prototype.html"
 #define WebView2SetupName "MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
 #define WebView2SetupSource "..\redist\MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
-; redist에 WebView2 설치기가 실제로 있을 때만 번들(없으면 그 부분을 빼고 정상 컴파일 — Win11은 내장이라 대개 불필요)
-#define HasWebView2 FileExists(AddBackslash(SourcePath) + WebView2SetupSource)
+; 기본은 공유폴더 업데이트용. 빌드 스크립트가 Full도 함께 만든다.
+#ifndef FullInstaller
+  #define FullInstaller "0"
+#endif
+#if FullInstaller == "1"
+  #define InstallerSuffix "-full"
+  #if !FileExists(AddBackslash(SourcePath) + WebView2SetupSource)
+    #error "WebView2 오프라인 x64 설치기가 없습니다. redist/README.md를 확인하세요."
+  #endif
+#else
+  #define InstallerSuffix ""
+#endif
 
 [Setup]
 ; 소스 경로 기준을 .iss 위치로 고정 — 어디서 ISCC를 호출하든 ..\dist\portable 가
@@ -39,7 +49,7 @@ DefaultDirName={localappdata}\Programs\TaskCalendar
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=..\dist\installer
-OutputBaseFilename=TaskCalendarWidget-Setup-v{#MyAppVersion}
+OutputBaseFilename=TaskCalendarWidget-Setup-v{#MyAppVersion}{#InstallerSuffix}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -65,8 +75,8 @@ Name: "desktophtml"; Description: "바탕화면에 브라우저용 바로가기 
 Source: "{#SourceExe}";  DestDir: "{app}"; DestName: "{#MyAppExeName}";  Flags: ignoreversion
 ; ② 브라우저용 단일 HTML (file://로 그대로 실행 — 위젯 없이/외부용. 데이터는 위젯과 별개, XML로 이동)
 Source: "{#SourceHtml}"; DestDir: "{app}"; DestName: "{#MyAppHtmlName}"; Flags: ignoreversion
-; ③ WebView2 런타임 설치기 (redist에 있을 때만)
-#if HasWebView2
+; ③ 처음 설치용에만 런타임을 포함한다.
+#if FullInstaller == "1"
 Source: "{#WebView2SetupSource}"; DestDir: "{tmp}"; DestName: "{#WebView2SetupName}"; Flags: deleteafterinstall
 #endif
 
@@ -77,7 +87,7 @@ Name: "{userdesktop}\{#MyAppName}";            Filename: "{app}\{#MyAppExeName}"
 Name: "{userdesktop}\{#MyAppName} (브라우저)"; Filename: "{app}\{#MyAppHtmlName}"; Tasks: desktophtml
 
 [Run]
-#if HasWebView2
+#if FullInstaller == "1"
 Filename: "{tmp}\{#WebView2SetupName}"; Parameters: "/silent /install"; StatusMsg: "Microsoft Edge WebView2 Runtime 확인/설치 중..."; Flags: waituntilterminated; Check: NeedsWebView2
 #endif
 Filename: "{app}\{#MyAppExeName}"; Description: "{#MyAppName} 실행"; Flags: nowait postinstall skipifsilent
@@ -123,3 +133,16 @@ begin
     Exit;
   end;
 end;
+
+#if FullInstaller == "0"
+function InitializeSetup: Boolean;
+begin
+  Result := not NeedsWebView2;
+  if not Result then
+  begin
+    Log('WebView2 런타임이 없어 업데이트용 설치를 중단합니다.');
+    SuppressibleMsgBox('이 PC에는 WebView2 런타임이 없습니다.' + #13#10 +
+      '처음 설치용(-full.exe)으로 설치하세요.', mbCriticalError, MB_OK, IDOK);
+  end;
+end;
+#endif

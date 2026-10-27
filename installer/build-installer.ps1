@@ -4,8 +4,8 @@
   ------------------------------------------------------------------
   csproj의 <Version>을 단일 소스로 삼아:
     1) (기본) 위젯을 self-contained 단일 exe로 publish
-    2) ISCC(Inno Setup 컴파일러)로 task-calendar.iss 컴파일(/DMyAppVersion 주입)
-  → dist\installer\TaskCalendarWidget-Setup-v<버전>.exe 생성
+    2) ISCC로 업데이트용과 처음 설치용(-full)을 각각 컴파일
+  → dist\installer\TaskCalendarWidget-Setup-v<버전>.exe 및 -full.exe 생성
 
   사용 예:
     powershell -ExecutionPolicy Bypass -File build-installer.ps1
@@ -37,6 +37,13 @@ if ($ver) { $ver = ([string]$ver).Trim() }
 if (-not $ver) { Fail "csproj에서 <Version>을 못 읽음" }
 Write-Host "● 버전: $ver" -ForegroundColor Cyan
 
+# 두 설치기를 모두 만들므로 Full에 필요한 런타임이 없으면 publish 전에 중단한다.
+$webviewSetup = Join-Path $root 'redist\MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
+if (-not (Test-Path -LiteralPath $webviewSetup -PathType Leaf)) {
+  Fail "WebView2 오프라인 x64 설치기가 없습니다. redist/README.md에 따라 준비하세요."
+}
+Write-Host "● WebView2 오프라인 런타임 포함: $webviewSetup" -ForegroundColor Cyan
+
 # 2) 위젯 publish (self-contained 단일 exe)
 $exe = Join-Path $root 'dist\portable\TaskCalendarWidget.exe'
 if (-not $SkipPublish) {
@@ -67,14 +74,19 @@ if (-not $Iscc -or -not (Test-Path $Iscc)) {
 }
 Write-Host "● ISCC: $Iscc" -ForegroundColor Cyan
 
-# 4) 컴파일 (버전 주입 — .iss의 #define MyAppVersion 덮어씀)
-& $Iscc "/DMyAppVersion=$ver" $iss
-if ($LASTEXITCODE -ne 0) { Fail "ISCC 컴파일 실패 (exit $LASTEXITCODE)" }
+# 4) 같은 앱으로 공유폴더 업데이트용과 처음 설치용을 함께 만든다.
+$variants = @(
+  @{ Full = 0; Suffix = ''; Label = '공유폴더 업데이트용' },
+  @{ Full = 1; Suffix = '-full'; Label = '처음 설치용(WebView2 포함)' }
+)
+foreach ($variant in $variants) {
+  Write-Host "● $($variant.Label) 컴파일 중..." -ForegroundColor Cyan
+  & $Iscc "/DMyAppVersion=$ver" "/DFullInstaller=$($variant.Full)" $iss
+  if ($LASTEXITCODE -ne 0) { Fail "$($variant.Label) ISCC 컴파일 실패 (exit $LASTEXITCODE)" }
 
-# 5) 결과 (파일명은 .iss의 OutputBaseFilename과 일치)
-$out = Join-Path $root ("dist\installer\TaskCalendarWidget-Setup-v{0}.exe" -f $ver)
-if (Test-Path $out) {
-  Write-Host ("`n✓ 완료 → {0}  ({1:N1} MB)" -f $out, ((Get-Item $out).Length/1MB)) -ForegroundColor Green
-} else {
-  Write-Host "`n✓ ISCC 성공했으나 예상 출력 파일을 못 찾음 — dist\installer\ 확인" -ForegroundColor Yellow
+  $out = Join-Path $root ("dist\installer\TaskCalendarWidget-Setup-v{0}{1}.exe" -f $ver, $variant.Suffix)
+  if (-not (Test-Path -LiteralPath $out -PathType Leaf)) { Fail "예상 설치기가 없습니다: $out" }
+  $hash = (Get-FileHash -LiteralPath $out -Algorithm SHA256).Hash.ToLowerInvariant()
+  Write-Host ("✓ {0}: {1} ({2:N1} MiB)" -f $variant.Label, $out, ((Get-Item -LiteralPath $out).Length/1MB)) -ForegroundColor Green
+  Write-Host "  SHA256: $hash" -ForegroundColor DarkGray
 }

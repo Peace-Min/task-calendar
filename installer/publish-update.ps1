@@ -104,7 +104,7 @@ if (-not (Test-Path $setup)) {
 # 4) SHA256
 $sha = (Get-FileHash -Algorithm SHA256 -Path $setup).Hash.ToLower()
 $sizeMB = (Get-Item $setup).Length / 1MB
-Write-Host ("* 설치기: {0}  ({1:N1} MB)" -f $fileName, $sizeMB) -ForegroundColor Cyan
+Write-Host ("* 공유폴더 업데이트용: {0} ({1:N1} MiB)" -f $fileName, $sizeMB) -ForegroundColor Cyan
 Write-Host "* SHA256: $sha" -ForegroundColor DarkGray
 
 # 5) release-v<버전>.sql: 이 배포의 DB 작업 전부(DB-RELEASE-OPS §4, §5). 조립은 release-sql.ps1 이 한다.
@@ -199,6 +199,7 @@ Write-Host "`n──────────────────────
 Write-Host " 배포 방법(docs/DB-RELEASE-OPS.md §4)" -ForegroundColor White
 Write-Host "  1) $fileName 을 공유폴더(각 위젯의 'UpdateSourceUrl' 위치)에 올린다. 옛 Setup 은 지우지 않는다" -ForegroundColor Gray
 Write-Host "     그다음 latest.json 도 올린다(0.22 이하 사용자용. -CopyTo 를 쓰면 이 순서로 자동)" -ForegroundColor Gray
+Write-Host "     TaskCalendarWidget-Setup-v$ver-full.exe 는 처음 설치용이다. 새 PC에 배포한다(자동 업데이트 대상 아님)" -ForegroundColor Gray
 Write-Host "  2) Workbench Data Export 로 taskcalendar 를 백업한다(파일 끝 '-- Dump completed' 확인)" -ForegroundColor Gray
 Write-Host "  3) Workbench 에서 이 파일 하나를 한 번 실행한다(Ctrl+Shift+Enter): $releaseSql" -ForegroundColor Gray
 Write-Host "     DB 구조가 바뀌는 배포도 이 파일 하나다(이관 조각이 들어 있다)" -ForegroundColor Gray

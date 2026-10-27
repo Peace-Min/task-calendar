@@ -84,7 +84,7 @@ const OK_TOAST = (c, e, t) => `이전 기록을 가져왔습니다. 과제 ${c}�
 //  defaultTaskOf, isDefaultTask — 빈 캘린더 판정이 기본 과제(휴가, 기타)를 빼고 센다(DEFAULT-TASKS §4.1).
 const SANDBOX_FNS = ['defaultTaskOf', 'isDefaultTask', 'calendarIsEmpty', 'insertBelowTitleBar', 'legacyPromptKey', 'legacyPromptSig',
   'legacyPromptDismissed', 'legacyTimeText', 'legacySizeText', 'maybeAskLegacyImport', 'showLegacyPrompt',
-  'legacyPromptImport', 'legacyPromptNever', 'renderEmptyHint', 'renderDataSourceBadge', 'usDbLineText',
+  'legacyPromptImport', 'legacyPromptNever', 'renderDataSourceBadge', 'usDbLineText',
   'ensureBootErrorBox', 'showDbConflict'];   // (schemaServerOlder 는 불일치 띠와 함께 없앴다, VERSION-GATE §3)
 
 // ── 가짜 전역(node:vm) ───────────────────────────────────────────────
@@ -300,9 +300,8 @@ const checks = {
       '스키마 불일치 조건이 없다 — 낡은 위젯이 가져오기를 권한다(전량 교체는 거부된다)');
     assert.ok(/if\(__legacyPromptTried\) return;/.test(pre) && /__legacyPromptTried = true;/.test(pre),
       '페이지당 한 번 가드가 감지보다 앞에 없다 — 재시도·[새로고침] 마다 다시 묻는다');
-    //  빈 판정은 안내와 **같은 정의**다
-    assert.ok(/calendarIsEmpty\(\)/.test(fnBody(src, 'renderEmptyHint')),
-      '빈 캘린더 안내가 calendarIsEmpty() 를 쓰지 않는다 — 두 판정이 갈라진다');
+    //  빈 판정은 calendarIsEmpty() 한 곳이다(빈 캘린더 안내는 2026-10-27 에 없앴다)
+    assert.ok(/calendarIsEmpty\(\)/.test(pre), '감지가 calendarIsEmpty() 를 쓰지 않는다. 빈 판정이 갈라진다');
     //  부팅 성공 자리(내 창)에서 부른다
     const boot = stripJs(src.slice(src.indexOf('window.__applyState = function(json, meta){')));
     const fromBoot = boot.slice(0, boot.indexOf('hideDbConflict();'));
@@ -515,18 +514,12 @@ const checks = {
     //  개인 / 과제 탭 줄(#pcTabs, PROJECT-CALENDAR-PLAN §6.3)이 있으면 그 아래가 먼저다. 띠가 탭 줄 위에 끼면 탭과 화면 사이가 갈린다.
     assert.ok(/document\.getElementById\('pcTabs'\) \|\| document\.querySelector\('header\.topbar'\)/.test(ins),
       '탭 줄(#pcTabs)이 있어도 상단바 바로 아래에 넣는다(띠가 탭 줄 위에 낀다)');
-    for (const [fn, v] of [['renderEmptyHint', 'b'], ['renderDataSourceBadge', 'b'], ['ensureBootErrorBox', 'box'], ['showDbConflict', 'b']]) {
+    for (const [fn, v] of [['renderDataSourceBadge', 'b'], ['ensureBootErrorBox', 'box'], ['showDbConflict', 'b']]) {
       const b = fnBody(src, fn);
       assert.ok(new RegExp('insertBelowTitleBar\\(' + v + '\\)').test(b), `${fn}() 가 제목줄 아래에 넣지 않는다`);
       assert.ok(!/firstChild/.test(b) && !/'\.wrap'/.test(b),
         `${fn}() 가 아직 맨 앞(firstChild)에 넣는다 — 제목줄 **위**에 뜬다(스크린샷의 그 결함)`);
     }
-    //  행동: 빈 캘린더 안내가 제목줄 다음 자리로 들어간다
-    const s = sandbox(src);
-    s.ctx.renderEmptyHint();
-    assert.strictEqual(s.dom.inserted.length, 1, '빈 캘린더 안내가 들어가지 않았다');
-    assert.strictEqual(s.dom.inserted[0].ref, s.dom.bar.nextSibling, '빈 캘린더 안내가 제목줄 바로 아래가 아니다');
-    assert.notStrictEqual(s.dom.inserted[0].where, 'body', '빈 캘린더 안내가 body 맨 앞(제목줄 위)에 들어갔다');
     //  부팅 실패 상자 · 충돌 안내도 같은 자리
     for (const [what, run, id] of [
       ['부팅 실패 상자', (c) => c.ensureBootErrorBox(), 'dsError'],
@@ -773,10 +766,10 @@ test('변이⑩h: 저장소 읽기를 try 밖으로 빼면 감지⑨·⑩ 이 �
   await assert.rejects(() => checks.dismissBehaves(bad), /denied|물음이 죽는다/);
 });
 
-test('변이⑩i: 안내를 다시 맨 앞(제목줄 위)에 넣으면 상단① 이 실패한다', () => {
-  const bad = mutate(app, '  insertBelowTitleBar(b);                           // 제목줄 아래',
-    '  document.body.insertBefore(b, document.body.firstChild);   // 제목줄 아래');
-  assert.throws(() => checks.placementBelowTitleBar(bad), /renderEmptyHint\(\) 가 제목줄 아래에 넣지 않는다/);
+test('변이⑩i: 출처 배지를 다시 맨 앞(제목줄 위)에 넣으면 상단① 이 실패한다', () => {
+  //  (빈 캘린더 안내가 맡던 앵커다. 안내를 2026-10-27 에 없애 출처 배지로 옮겼다)
+  const bad = mutate(app, '    insertBelowTitleBar(b);\n  }\n', '    document.body.insertBefore(b, document.body.firstChild);\n  }\n');
+  assert.throws(() => checks.placementBelowTitleBar(bad), /renderDataSourceBadge\(\) 가 제목줄 아래에 넣지 않는다/);
 });
 
 test('변이⑩j: 다른 .cs 가 _lastImportPath 를 세우면 감지④ 가 실패한다', () => {
@@ -930,7 +923,7 @@ if (!JSDOM) {
         const ok = W.toasts().filter((x) => x.kind === 'success').map((x) => x.toast);
         assert.deepStrictEqual(ok, [OK_TOAST(3, 2, 1)], '성공 토스트가 정확히 한 번(과제 3(기본 과제 포함) · 기록 2 · 할 일 1)이 아니다: ' + JSON.stringify(ok));
         assert.ok(!W.toasts().some((x) => /데이터를 (교체|병합)했습니다/.test(x.toast)), 'applyImport 의 교체 토스트(또는 병합 토스트)가 함께 떴다');
-        assert.ok(!W.el('emptyHint'), '교체 뒤에도 빈 캘린더 안내가 남았다');
+        assert.ok(!W.el('emptyHint'), '빈 캘린더 안내 띠가 떴다(2026-10-27 에 없앴다)');
       } finally { W.close(); }
     },
     //  저장 실패: 성공 토스트 없음 — 실패 처리(저장 실패 토스트)만

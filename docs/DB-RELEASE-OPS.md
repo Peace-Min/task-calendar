@@ -94,9 +94,10 @@
 
 ### 4.1 받는 것
 
-배포 하나에 파일 셋이다. 외부망 개발 PC 의 `installer\publish-update.ps1`(배포-빌드.cmd)이 `dist\installer\` 에 만든다.
+배포 cmd는 설치기 둘과 배포 정보를 만든다. 외부망 개발 PC의 `installer\publish-update.ps1 -Build`(배포-빌드.cmd)가 `dist\installer\`에 만든다.
 
-- `TaskCalendarWidget-Setup-v<버전>.exe`
+- `TaskCalendarWidget-Setup-v<버전>.exe`: 공유폴더 업데이트용. 자동 업데이트와 배포 정보의 파일명 및 해시는 이 파일 기준이다.
+- `TaskCalendarWidget-Setup-v<버전>-full.exe`: 처음 설치용. WebView2 포함. 새 PC에 별도 전달하거나 공유폴더에 구분해서 둔다. `-CopyTo`로는 복사하지 않는다.
 - `latest.json`(0.22 이하 사용자를 위한 전환용, 2절)
 - `release-v<버전>.sql`: **이 배포의 DB 작업 전부가 든 SQL 하나.** DB 구조가 바뀌는 배포든 앱만 바뀌는 배포든 운영자가 돌리는 SQL 은 이것 하나다. 구조가 바뀌면 이관 조각(5절)이 이 안에 들어 있다.
 
