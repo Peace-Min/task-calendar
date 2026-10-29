@@ -21493,7 +21493,7 @@ function atEdOpen(raw){
   else if(ta) try{ ta.focus({ preventScroll: true }); ta.setSelectionRange(0, 0); ta.scrollTop = 0; }catch(_){}
 }
 function atDateRender(){
-  const de = $('#atEdDate'); if(de && ATE.p) de.textContent = atDateLabel(ATE.date) + (ATE.p.saved ? ', 보고함' : '');
+  const de = $('#atEdDate'); if(de && ATE.p) de.textContent = atDateLabel(ATE.date);
 }
 //  쓰기와 보기 화면 바꾸기. 보기는 보고한 날(payload.saved)만 된다.
 function atSetMode(mode){

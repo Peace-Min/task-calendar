@@ -271,7 +271,7 @@ if (!JSDOM) {
       assert.strictEqual(X.$('#atVwText').textContent, '[알파] : 5\n  - 납품 준비');
       assert.strictEqual(X.$('#atVwSent').textContent, X.ev(`atSentLabel(${JSON.stringify(sv.sentAt)})`));
       assert.ok(/^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(X.$('#atVwSent').textContent));
-      assert.ok(X.$('#atEdDate').textContent.endsWith(', 보고함'));
+      assert.ok(X.$('#atEdDate').textContent.indexOf('보고함') < 0);
       assert.strictEqual(X.ev('atDirty()'), false);
       //  [수정] → 쓰기 화면, 보고한 글과 근태
       X.$('#atVwEdit').click();
@@ -566,7 +566,7 @@ if (!JSDOM) {
       assert.strictEqual(A.ev('ATE.mode'), 'edit');
       assert.strictEqual(A.$('#atText').value, '[알파] : 5\n  - 납품 준비');
       assert.strictEqual(A.$('#atStatus').value, '2'); assert.strictEqual(A.$('#atOt').value, '2');
-      assert.ok(A.$('#atEdDate').textContent.endsWith(', 보고함'));
+      assert.ok(A.$('#atEdDate').textContent.indexOf('보고함') < 0);
       input(A, '#atText', '고치는 중');
       const p = payloadFrom(A.T, { status: '2', overtime: 2, content: '[알파] : 5' }); p.refresh = true; p.source.rows = p.source.rows.slice(0, 1);
       A.ev('__attendWinOpen(' + JSON.stringify(p) + ')');
@@ -692,7 +692,7 @@ if (!JSDOM) {
     assert.strictEqual(A.$('#atVwText').textContent, '[알파] : 5\n    - 납품 준비\n    - 탭 줄\n[베타] 3\n[범위 밖] : 30\n[없음]');
     assert.ok(/^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(A.$('#atVwSent').textContent), '보낸 시각이 없다');
     assert.strictEqual(A.$('#atMsg').textContent, '회사 일간보고 전송 완료');
-    assert.ok(A.$('#atEdDate').textContent.endsWith(', 보고함'));
+    assert.ok(A.$('#atEdDate').textContent.indexOf('보고함') < 0);
     assert.strictEqual(A.ev('__winCloseRequest()'), 'close', '보기 화면인데 닫기를 막았다');
     //  [수정]: 보낸 글과 근태로 쓰기 화면
     A.$('#atVwEdit').click();

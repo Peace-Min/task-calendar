@@ -502,7 +502,7 @@ async function main() {
   const v7 = await A.J(`({ mode: ATE.mode, title: document.getElementById('atEdTitle').textContent, date: document.getElementById('atEdDate').textContent,
     st: document.getElementById('atVwStatus').textContent, text: document.getElementById('atVwText').textContent, sent: document.getElementById('atVwSent').textContent,
     msg: document.getElementById('atMsg').textContent })`);
-  ok('A7 보기 화면으로 바뀌었다(머리 근태 보기, 날짜에 보고함)', v7.mode === 'view' && v7.title === '근태 보기' && v7.date === LAB[D] + ', 보고함', JSON.stringify(v7));
+  ok('A7 보기 화면으로 바뀌었다(머리 근태 보기, 날짜만)', v7.mode === 'view' && v7.title === '근태 보기' && v7.date === LAB[D], JSON.stringify(v7));
   ok('A7 보기 화면이 보이고 쓰기 화면은 숨김, [수정] [닫기]', (await shown(A, 'atVw')) && !(await shown(A, 'atEdBody')) && !(await shown(A, 'atSend')) && (await shown(A, 'atVwEdit')) && (await shown(A, 'atVwClose')));
   ok('A7 보기 내용: 근태 야근(+2시간), 보낸 글(공백 되돌림), 보낸 시각', v7.st === '야근(+2시간)' && v7.text === SEND_TEXT && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(v7.sent), JSON.stringify(v7));
   ok('A7 성공 문구', v7.msg === '시험 회신(루프, 실제 전송 아님)');
