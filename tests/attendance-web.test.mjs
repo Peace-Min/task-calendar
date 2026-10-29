@@ -7,7 +7,7 @@
 //   (U) 순수: 근태 표시 문구(야근(+2시간)), 조립(정수와 소수, 빈 과제 : 0, 내용 끝 공백, 자유 메모가 맨 앞), hours(0 제외), 막는 까닭,
 //       되살리기(정확한 머리만, 시간 없는 [과제명], [일정] 은 내용, 첫 머리 앞은 자유 메모, 모르는 이름은 과제 미정).
 //   (B) jsdom 브라우저(HOST=false): 탭 세 값과 기억, payload 로 처음 블록 만들기(옵션 넷, 공수표 시간, 서식), 과제명 잠금, 근태에 미기록 없음(기본 정근),
-//       과제 추가(목록, 중복 금지, 새 과제 창), 블록 고치기(순서, 지우기, 시간 칸, 고침 판단, 글로 보기), 보내기 막기 넷과 빈 과제 : 0,
+//       과제 추가(목록, 중복 금지, 새 과제 창), 블록 순서(캘린더 순서 자동 정렬, ▲ ▼ 없음), 시간 칸(↑ ↓, 0.5 맞춤, 휠 없음), 지우기, 고침 판단, 미리보기 탭(기억, 처음 탭, 접힘 이름), 전체 초기화와 되돌리기, 보내기 막기 넷과 빈 과제 : 0,
 //       가져오기(다른 날짜 캘린더는 그 자리에서, 이전 보고는 위젯 전용 안내), 보고한 날도 바로 쓰기 화면(블록으로 되살림, 보낸 시각),
 //       임시 저장 v2(쓰기, 되살리기, 버리기, 14일 정리)와 v1 바꿔 열기, 화면 전환과 떠날 때 확인(탭 이동, ← 근태 달력, Esc),
 //       브라우저 보내기는 잠그지 않고 임시 저장도 지우지 않는다.
@@ -18,7 +18,7 @@
 //       새 과제 만들기 요청(attendCatNew), 가져오기 캘린더(attendSourceReq 와 __attendSource 중계), 가져오기 이전 보고(reportDailyList 하루를
 //       자유 메모, 블록, 과제 미정으로 되살리기, 없는 날, 오류와 다시 읽기), 보내기 payload(조립, &nbsp;, hours, 고른 근태 코드, 단추 이름),
 //       처리 중 잠금과 연속 클릭(한 번만), 성공이면 임시 저장을 지우고 창은 닫지 않고 보낸 글이 새 처음 상태, 실패면 공통 안내와 함께 남긴다, 닫기 지키기(__winCloseRequest, Esc 는 닫기와 같다).
-//   (M) 변이: 봉인 빼기, 성공 시 임시 저장 지우기 빼기, 닫기 전 확인 빼기, 성공 뒤 처음 상태 바꾸기 빼기, Esc 의 닫기 빼기, 다른 날짜 회신 거르기 빼기,
+//   (M) 변이(과제 추가 뒤 정렬 빼기 포함): 봉인 빼기, 성공 시 임시 저장 지우기 빼기, 닫기 전 확인 빼기, 성공 뒤 처음 상태 바꾸기 빼기, Esc 의 닫기 빼기, 다른 날짜 회신 거르기 빼기,
 //       내용 있는 0시간 막기 빼기, 새로고침의 과제 목록 바꾸기 빼기를 같은 검사가 잡는다.
 // ★ 회사 사이트에는 아무것도 보내지 않는다. Platform.report.submitDaily 와 chrome.webview.postMessage 를 가로채 보기만 한다.
 // 생략 규약: jsdom 이 없으면 (B)(W)(A)(M)은 등록되지 않고 skip(판정 없음)으로 계수된다.
@@ -223,9 +223,9 @@ if (!JSDOM) {
       const h0 = X.$('#atBlocks .at-blk[data-bi="0"] .at-bh');
       assert.strictEqual(h0.querySelector('.at-bn').textContent, '알파');
       assert.ok(h0.querySelector('.at-lock'), '과제명 잠금 표시가 없다');
-      assert.ok(!h0.querySelector('input:not([type=number]), select, [contenteditable]'), '과제명을 고칠 수 있는 칸이 있다');
+      assert.ok(!h0.querySelector('select, [contenteditable]') && h0.querySelectorAll('input').length === 1 && h0.querySelector('input[data-bh]'), '과제명을 고칠 수 있는 칸이 있다');
       const hn = X.$('#atBlocks input[data-bh="0"]');
-      assert.deepStrictEqual([hn.type, hn.min, hn.max, hn.step, hn.value], ['number', '0', '24', '0.5', '2']);
+      assert.deepStrictEqual([hn.type, hn.getAttribute('inputmode'), hn.value], ['text', 'decimal', '2'], '시간 칸이 글 칸(inputmode decimal)이 아니다');
       assert.strictEqual(X.$('#atBlocks textarea[data-bt="0"]').value, b[0].text);
       assert.ok(X.$('#atBlocks').firstElementChild.querySelector('textarea[data-memo]'), '자유 메모가 맨 위에 없다');
       assert.strictEqual(X.$('#atBlocks textarea[data-memo]').value, '', '처음 자유 메모가 비어 있지 않다');
@@ -334,20 +334,79 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(B) 블록 고치기: ▲ ▼ 로 순서, ✕ 로 지우기, 시간 칸, 고침 판단(블록, 자유 메모, 근태), 글로 보기와 복사 글', () => {
+  test('(B) 블록 순서: ▲ ▼ 없이 늘 캘린더 과제 순서(과제 미정은 맨 끝), 추가와 고르기와 불러오기 뒤에도 정렬, 자리가 바뀐 블록은 반짝인다', () => {
     const X = bootBrowser();
     try {
       openB(X);
+      assert.ok(!X.$('#atBlocks [data-bup], #atBlocks [data-bdn]'), '▲ ▼ 단추가 남아 있다');
+      assert.ok(X.$('.at-sorthint') && X.$('.at-sorthint').textContent === '캘린더 과제 순서대로 정렬됩니다', '정렬 안내가 없다');
+      //  머리 순서: 점, 과제명, 🔒, 시간 칸, 시간, ✕(맨 끝)
+      const h0 = X.$('#atBlocks .at-blk[data-bi="0"] .at-bh');
+      assert.deepStrictEqual([].map.call(h0.children, (e) => e.className.split(' ')[0]), ['at-dot', 'at-bn', 'at-lock', 'at-bhr', 'at-bx']);
+      X.$('#atBlocks [data-bx="0"]').click();   // 알파 지우기 → 베타, 감마
+      X.ev("ATE.blocks.push({ name: '', hours: 1, text: '옛 글', raw: '' }); atBlocksRender()");
+      X.ev("atAddPick('알파')");
+      assert.deepStrictEqual(names(X), ['알파', '베타', '감마', ''], '추가한 과제가 캘린더 순서 자리에 들어가지 않았거나 과제 미정이 맨 끝이 아니다');
+      assert.ok(X.$('#atBlocks .at-blk[data-bi="0"]').classList.contains('flash'), '추가한 블록이 반짝이지 않았다');
+      X.ev("atAddPick('델타')");
+      assert.deepStrictEqual(names(X), ['알파', '베타', '감마', '델타', '']);
+      X.$('#atBlocks [data-bx="3"]').click();
+      input(X, '#atBlocks select[data-bpick="3"]', '델타');
+      assert.deepStrictEqual(names(X), ['알파', '베타', '감마', '델타'], '과제를 고른 뒤 정렬하지 않았다');
+      //  과제 목록 순서가 기준이다(브라우저는 지금 내 달력 순서)
+      X.ev("state.categories = [state.categories[3], state.categories[2], state.categories[1], state.categories[0]]");
+      X.$('#atBlocks [data-bx="0"]').click();
+      X.ev("atAddPick('알파')");
+      assert.deepStrictEqual(names(X), ['델타', '감마', '베타', '알파'], '캘린더 과제 순서(바뀐 순서)로 정렬하지 않았다');
+      assert.deepStrictEqual(X.errors, []);
+    } finally { X.close(); }
+  });
+
+  test('(B) 시간 칸: 글 칸(숫자 칸 아님), ↑ ↓ 0.5, Shift 1, 0~24 로 묶고, 휠로 바뀌지 않고, 떠나면 0.5 단위로 맞추며 숫자가 아니면 앞 값', () => {
+    const X = bootBrowser();
+    try {
+      openB(X);
+      const hn = () => X.$('#atBlocks input[data-bh="0"]');
+      assert.deepStrictEqual([hn().type, hn().inputMode || hn().getAttribute('inputmode'), hn().value], ['text', 'decimal', '2']);
+      const key = (k, shift) => hn().dispatchEvent(new X.w.KeyboardEvent('keydown', { key: k, shiftKey: !!shift, bubbles: true, cancelable: true }));
+      key('ArrowUp');
+      assert.deepStrictEqual([hn().value, blk(X)[0].hours], ['2.5', 2.5]);
+      key('ArrowUp', true);
+      assert.deepStrictEqual([hn().value, blk(X)[0].hours], ['3.5', 3.5]);
+      key('ArrowDown'); key('ArrowDown', true);
+      assert.strictEqual(hn().value, '2');
+      for (let i = 0; i < 30; i++) key('ArrowUp', true);
+      assert.strictEqual(blk(X)[0].hours, 24, '24 에서 멈추지 않았다');
+      for (let i = 0; i < 60; i++) key('ArrowDown');
+      assert.strictEqual(blk(X)[0].hours, 0, '0 에서 멈추지 않았다');
+      hn().dispatchEvent(new X.w.WheelEvent('wheel', { deltaY: -100, bubbles: true }));
+      assert.strictEqual(blk(X)[0].hours, 0, '휠로 시간이 바뀌었다');
+      const blur = () => hn().dispatchEvent(new X.w.FocusEvent('focusout', { bubbles: true }));
+      setHours(X, 0, '7.3'); blur();
+      assert.deepStrictEqual([hn().value, blk(X)[0].hours], ['7.5', 7.5], '떠날 때 0.5 단위로 맞추지 않았다');
+      setHours(X, 0, '8.0'); blur();
+      assert.deepStrictEqual([hn().value, blk(X)[0].hours], ['8', 8]);
+      setHours(X, 0, 'abc'); blur();
+      assert.deepStrictEqual([hn().value, blk(X)[0].hours], ['8', 8], '숫자가 아닌 글이면 앞 값으로 돌아가야 한다');
+      setHours(X, 0, '6,5'); blur();
+      assert.strictEqual(blk(X)[0].hours, 6.5);
+      //  범위 밖은 그대로 두고(보내기에서 막는다) 빨간 시간 칸
+      setHours(X, 0, '30'); blur();
+      assert.strictEqual(blk(X)[0].hours, 30);
+      X.ev('ATE.showErr = true; atBlockMark(0)');
+      assert.ok(hn().classList.contains('bad') && X.$('#atBlocks .at-blk[data-bi="0"]').classList.contains('bad'), '범위 밖 시간 칸과 블록이 빨갛지 않다');
+      assert.ok(X.$('#atBlocks .at-blk[data-bi="0"] [data-bmsg] .at-bmsg-i').textContent === '!', '안내 줄에 ! 표시가 없다');
+      assert.deepStrictEqual(X.errors, []);
+    } finally { X.close(); }
+  });
+
+  test('(B) ✕ 로 지우기, 고침 판단(블록, 자유 메모, 근태), 글로 보기 없음', () => {
+    const X = bootBrowser();
+    try {
+      openB(X);
+      assert.ok(!X.$('#atAsText'), '[글로 보기]가 남아 있다');
       assert.strictEqual(X.ev('atDirty()'), false);
-      assert.strictEqual(X.$('#atBlocks [data-bup="0"]').disabled, true, '맨 위 블록의 ▲ 가 켜져 있다');
-      X.$('#atBlocks [data-bdn="0"]').click();
-      assert.deepStrictEqual(names(X), ['베타', '알파', '감마']);
-      assert.strictEqual(X.ev('atDirty()'), true, '순서를 바꿨는데 고친 것이 아니다');
-      X.$('#atBlocks [data-bup="1"]').click();
-      assert.deepStrictEqual(names(X), ['알파', '베타', '감마']);
-      assert.strictEqual(X.ev('atDirty()'), false, '되돌렸는데 고친 것으로 본다');
       setHours(X, 1, '1.5');
-      assert.strictEqual(blk(X)[1].hours, 1.5);
       assert.strictEqual(X.$('#atHours').textContent, '과제 3개, 합계 4.5시간');
       assert.strictEqual(X.ev('atDirty()'), true);
       setHours(X, 1, '0');
@@ -359,20 +418,83 @@ if (!JSDOM) {
       input(X, '#atStatus', '2');
       assert.strictEqual(X.ev('atDirty()'), true);
       input(X, '#atStatus', '6');
-      //  글로 보기: 조립 결과(자유 메모 먼저), 읽기만, 다시 누르면 블록
-      typeMemo(X, '* 외근');
-      X.$('#atAsText').click();
-      assert.ok(shown(X, '#atPreview') && !shown(X, '#atBlocks') && !shown(X, '#atAddWrap'), '글로 보기가 블록을 감추고 한 칸을 보이지 않았다');
-      assert.strictEqual(X.$('#atPreview').textContent, X.ev('atCompose(ATE.blocks, ATE.memo)'));
-      assert.ok(X.$('#atPreview').textContent.startsWith('* 외근\n\n[알파] : 2\n') && X.$('#atPreview').textContent.endsWith('[감마] : 1'));
-      assert.ok(!X.$('#atPreview').matches('textarea, input, [contenteditable]'), '글로 보기를 고칠 수 있다');
-      assert.strictEqual(X.$('#atAsText').textContent, '블록으로 돌아가기');
-      X.$('#atAsText').click();
-      assert.ok(!shown(X, '#atPreview') && shown(X, '#atBlocks'));
-      //  ✕
       X.$('#atBlocks [data-bx="1"]').click();
       assert.deepStrictEqual(names(X), ['알파', '감마']);
       assert.strictEqual(X.$('#atHours').textContent, '과제 2개, 합계 3시간');
+      assert.ok(X.$('#atList').lastElementChild === X.$('#atAddWrap') && X.$('#atBlocks').nextElementSibling === X.$('#atAddWrap'), '[+ 과제 추가]가 마지막 블록 바로 아래(같은 스크롤 목록)가 아니다');
+      assert.deepStrictEqual(X.errors, []);
+    } finally { X.close(); }
+  });
+
+  test('(B) 미리보기 탭: 보낼 때와 같은 조립 글(읽기만), 0.2초 뒤 따라가고, 막는 블록 줄은 빨갛다, n줄 n자와 복사, 탭 기억과 처음 탭 규칙, 접힘 이름', async () => {
+    const X = bootBrowser();
+    try {
+      openB(X);
+      assert.ok(!X.$('#atEd h3'), '가져오기 제목(h3)이 남아 있다');
+      const tabs = X.evJSON("[].map.call(document.querySelectorAll('#atPanel [data-attab]'), function(b){ return b.dataset.attab + ':' + b.textContent; })");
+      assert.deepStrictEqual(tabs, ['pv:미리보기', 'imp:가져오기']);
+      assert.strictEqual(X.ev('ATE.ptab'), 'pv', '블록이 있는 날인데 처음 탭이 미리보기가 아니다');
+      assert.ok(shown(X, '#atPreview') && !shown(X, '#atImp') && shown(X, '#atPvFoot') && !shown(X, '#atImpFoot'));
+      const pv = () => X.$('#atPreview');
+      assert.strictEqual(pv().textContent, X.ev('atCompose(ATE.blocks, ATE.memo)'), '미리보기가 보낼 글과 다르다');
+      assert.ok(!pv().matches('textarea, input, [contenteditable]'), '미리보기를 고칠 수 있다');
+      //  베타는 내용이 있는데 0시간: 그 줄은 빨갛다(보내기 전에도)
+      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#atPreview .bad'), function(e){ return e.textContent.split('\\n')[0]; })"), ['[베타] : 0']);
+      const t0 = pv().textContent;
+      assert.strictEqual(X.$('#atPvStat').textContent, t0.split('\n').length + '줄, ' + t0.length + '자');
+      typeMemo(X, '* 외근');
+      assert.strictEqual(pv().textContent, t0, '0.2초 전에 다시 그렸다');
+      await tick(260);
+      assert.strictEqual(pv().textContent, '* 외근\n\n' + t0, '입력 뒤 미리보기가 따라가지 않았다');
+      setHours(X, 1, '1'); await tick(260);
+      assert.strictEqual(X.$('#atPreview .bad'), null, '고쳤는데 빨간 줄이 남았다');
+      //  복사(같은 함수)
+      X.ev('window.__clip = null; navigator.clipboard = { writeText: function(t){ window.__clip = t; return Promise.resolve(); } };');
+      X.$('#atPvCopy').click(); await tick();
+      assert.strictEqual(X.ev('__clip'), X.ev("reportEditedBodyOut(atCompose(ATE.blocks, ATE.memo), ' ')"), '패널의 복사가 아래 복사와 같은 글이 아니다');
+      //  탭 기억: 가져오기를 고르면 기억하고, 블록이 있는 다른 날은 기억한 탭, 블록이 없는 날은 가져오기
+      X.$('#atPanel [data-attab="imp"]').click();
+      assert.ok(!shown(X, '#atPreview') && shown(X, '#atImp') && shown(X, '#atImpFoot') && !shown(X, '#atPvFoot'));
+      assert.strictEqual(X.ev(`localStorage.getItem('tc_attPanelTab')`), 'imp');
+      X.ev(`atShowEditor(atBuildPayload(${JSON.stringify(X.T)}, null, false))`);
+      X.ev(`localStorage.setItem('tc_attPanelTab', 'pv')`);
+      X.ev(`atShowEditor(atBuildPayload(addDays(todayYmd(), 9), null, false))`);
+      assert.strictEqual(X.ev('ATE.blocks.length'), 0);
+      assert.strictEqual(X.ev('ATE.ptab'), 'imp', '블록이 없는 날인데 가져오기 탭이 아니다');
+      X.ev(`atShowEditor(atBuildPayload(${JSON.stringify(X.T)}, null, false))`);
+      assert.strictEqual(X.ev('ATE.ptab'), 'pv', '블록이 있는 날인데 기억한 탭(미리보기)이 아니다');
+      //  접기: 접힌 동안 "미리보기 열기 ›", 펼치면 미리보기 탭
+      X.$('#atPanel [data-attab="imp"]').click();
+      X.$('#atFold').click();
+      assert.strictEqual(X.$('#atFold').textContent, '미리보기 열기 ›');
+      X.$('#atFold').click();
+      assert.strictEqual(X.ev('ATE.ptab'), 'pv', '펼쳤는데 미리보기 탭이 아니다');
+      assert.notStrictEqual(X.$('#atFold').textContent, '미리보기 열기 ›');
+      assert.deepStrictEqual(X.errors, []);
+    } finally { X.close(); }
+  });
+
+  test('(B) 전체 초기화: 메모와 블록을 지우고 정근, 초과 없음, 묻지 않고 되돌리기도 없다, 빈 상태와 보내는 중에는 잠김', async () => {
+    const X = bootBrowser();
+    try {
+      openB(X);
+      const r = () => X.$('#atReset');
+      assert.strictEqual(r().textContent, '전체 초기화');
+      typeMemo(X, '* 외근'); input(X, '#atStatus', '2'); input(X, '#atOt', '3'); setHours(X, 1, '1.5');
+      r().click();
+      assert.ok(!shown(X, '#atAsk'), '전체 초기화가 물었다');
+      assert.deepStrictEqual([X.ev('ATE.memo'), X.ev('ATE.blocks.length'), X.$('#atStatus').value, X.$('#atOt').value], ['', 0, '1', '0']);
+      assert.ok(!X.$('#atUndo') && X.$('#atMsg').textContent === '', '전체 초기화 뒤에 안내나 되돌리기가 나왔다');
+      assert.strictEqual(r().disabled, true, '이미 빈 상태인데 전체 초기화가 켜져 있다');
+      X.ev('atDraftFlushNow()');
+      const d = JSON.parse(X.ev(`localStorage.getItem(${JSON.stringify(KEYB(X))})`));
+      assert.deepStrictEqual([d.memo, d.blocks, d.status, d.overtime], ['', [], '1', 0], '빈 상태가 임시 저장되지 않았다');
+      //  보내는 중에는 잠김
+      typeMemo(X, '다시 쓴 메모');
+      X.ev('ATE.sending = true; atSetBusy(true)');
+      assert.strictEqual(r().disabled, true, '보내는 중에 전체 초기화가 켜져 있다');
+      X.ev('ATE.sending = false; atSetBusy(false)');
+      assert.strictEqual(r().disabled, false);
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });
@@ -428,7 +550,8 @@ if (!JSDOM) {
       const Y = X.ev('addDays(todayYmd(), -1)');
       X.ev(`state.entries.push(${JSON.stringify(E({ id: 'e-y1', date: Y, title: '어제 일', categoryId: 'c-d' }))});`);
       openB(X);
-      assert.strictEqual(X.$('#atEd h3').textContent, '가져오기');
+      X.$('#atPanel [data-attab="imp"]').click();
+      assert.ok(shown(X, '#atImp'), '가져오기 탭이 보이지 않는다');
       assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('[data-atsrc]'), function(b){ return b.dataset.atsrc + ':' + b.textContent; })"), ['cal:캘린더', 'prev:이전 보고']);
       assert.strictEqual(X.$('#atSrcDate').value, X.T, '가져올 날짜의 처음 값이 보는 날짜가 아니다');
       const sd = X.$('#atSrcDate'); sd.value = Y; sd.dispatchEvent(new X.w.Event('change', { bubbles: true }));
@@ -472,7 +595,7 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(B) 임시 저장 v2: 1초 뒤 쓰기({v:2, memo, blocks}), 다시 열면 되살리기, 버리고 처음 상태로, 처음과 같아지면 지움', async () => {
+  test('(B) 임시 저장 v2: 1초 뒤 쓰기({v:2, memo, blocks}), 다시 열면 안내 없이 되살리기, 처음과 같아지면 지움', async () => {
     const X = bootBrowser();
     try {
       openB(X);
@@ -494,13 +617,9 @@ if (!JSDOM) {
       assert.ok(X.$(`#atGrid .at-day[data-date="${X.T}"] .at-drf`), '달력에 작성 중 표시가 없다');
       X.ev(`atOpen(${JSON.stringify(X.T)})`);
       assert.ok(blk(X)[0].text.endsWith('임시 줄') && X.ev('ATE.memo') === '* 외근', '임시 저장이 되살아나지 않았다');
-      assert.ok(shown(X, '#atRestore') && X.$('#atRestoreMsg').textContent.includes('임시 저장된 글을 이어서 엽니다'));
-      X.$('#atDiscard').click();
-      assert.strictEqual(blk(X)[0].text, t0);
-      assert.strictEqual(X.$('#atBlocks textarea[data-bt="0"]').value, t0, '버렸는데 화면이 처음 상태가 아니다');
-      assert.strictEqual(X.ev('ATE.memo'), '');
-      assert.ok(!shown(X, '#atRestore'));
-      assert.strictEqual(X.ev(`localStorage.getItem(${JSON.stringify(KEYB(X))})`), null, '버렸는데 임시 저장이 남았다');
+      assert.ok(!X.$('#atRestore') && !X.$('#atDiscard'), '되살림 안내나 버리고 처음 상태로가 남아 있다');
+      typeMemo(X, ''); typeBlock(X, 0, t0);
+      assert.strictEqual(X.ev(`localStorage.getItem(${JSON.stringify(KEYB(X))})`), null, '처음 상태로 돌아왔는데 임시 저장이 남았다');
       typeBlock(X, 0, t0 + 'x'); X.ev('atDraftFlushNow()');
       assert.ok(X.ev(`localStorage.getItem(${JSON.stringify(KEYB(X))})`));
       typeBlock(X, 0, t0);
@@ -515,18 +634,17 @@ if (!JSDOM) {
       const D9 = X.ev('addDays(todayYmd(), 9)'), D8 = X.ev('addDays(todayYmd(), 8)');
       X.ev(`localStorage.setItem('tc_attDraft:me:${D9}', JSON.stringify({ v:1, text:'메모 줄\\n[알파] : 3\\n- 옛 글\\n[감마]', status:'2', overtime:0, savedAt:'' }))`);
       X.ev(`atShowEditor(atBuildPayload(${JSON.stringify(D9)}, null, false))`);
-      assert.ok(shown(X, '#atRestore'), 'v1 임시 저장을 되살리지 않았다');
       assert.strictEqual(X.ev('ATE.memo'), '메모 줄');
       assert.deepStrictEqual(blk(X), [{ name: '알파', hours: 3, text: '- 옛 글' }, { name: '감마', hours: 0, text: '' }]);
       assert.strictEqual(X.$('#atStatus').value, '2');
       X.ev(`localStorage.setItem('tc_attDraft:me:${D8}', JSON.stringify({ v:2, memo:'', blocks:[{ name:'옛 과제', hours:4, text:'- 한 일' }, { name:'베타', hours:1, text:'' }], status:'1', overtime:0, savedAt:'' }))`);
       X.ev(`atShowEditor(atBuildPayload(${JSON.stringify(D8)}, null, false))`);
-      assert.deepStrictEqual(blk(X), [{ name: '', hours: 4, text: '[옛 과제] : 4\n- 한 일' }, { name: '베타', hours: 1, text: '' }], '캘린더에 없는 이름이 미정 블록이 아니다');
-      const sel = X.$('#atBlocks select[data-bpick="0"]');
+      assert.deepStrictEqual(blk(X), [{ name: '베타', hours: 1, text: '' }, { name: '', hours: 4, text: '[옛 과제] : 4\n- 한 일' }], '캘린더에 없는 이름이 미정 블록(맨 끝)이 아니다');
+      const sel = X.$('#atBlocks select[data-bpick="1"]');
       assert.deepStrictEqual([].map.call(sel.options, (o) => o.value), ['', '알파', '감마', '델타'], '고르기 칸이 이미 블록이 있는 과제를 빼지 않았다');
-      input(X, '#atBlocks select[data-bpick="0"]', '델타');
-      assert.deepStrictEqual(blk(X)[0], { name: '델타', hours: 4, text: '- 한 일' }, '과제를 골랐는데 원래 머리 줄을 지우지 않았다');
-      assert.ok(!isBad(X, 0));
+      input(X, '#atBlocks select[data-bpick="1"]', '델타');
+      assert.deepStrictEqual(blk(X)[1], { name: '델타', hours: 4, text: '- 한 일' }, '과제를 골랐는데 원래 머리 줄을 지우지 않았다');
+      assert.ok(!isBad(X, 1));
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });
@@ -787,7 +905,7 @@ if (!JSDOM) {
       A.$('#atAdd').click();
       assert.ok(A.$('#atAddList [data-addname="엡실론"]'), '새 과제가 과제 추가 목록에 없다');
       A.$('#atAddList [data-addname="엡실론"]').click();
-      assert.deepStrictEqual(names(A), ['알파', '', '엡실론']);
+      assert.deepStrictEqual(names(A), ['알파', '엡실론', ''], '새 블록이 캘린더 순서 자리(과제 미정 앞)에 들어가지 않았다');
       A.ev('__attendWinActivated()');
       assert.deepStrictEqual(A.posted[A.posted.length - 1], { cmd: 'attendNav', date: A.T, refresh: true });
       assert.deepStrictEqual(A.errors, []);
@@ -879,10 +997,10 @@ if (!JSDOM) {
       assert.strictEqual(A.$('#atPick').textContent, '과제 4 / 4개 선택');
       A.$('#atLoad').click();
       assert.strictEqual(A.ev('ATE.memo'), '* 외근', '이전 보고의 자유 메모를 불러오지 않았다');
-      assert.deepStrictEqual(blk(A), [{ name: '알파', hours: 5, text: '[일정]\n  - 연동' }, { name: '', hours: 2, text: '[모름] : 2\n- 기타 일' }, { name: '베타', hours: 0, text: '' }]);
-      assert.ok(isBad(A, 1) && !isBad(A, 0), '과제 미정 블록만 빨갛지 않다');
-      input(A, '#atBlocks select[data-bpick="1"]', '감마');
-      assert.deepStrictEqual(blk(A)[1], { name: '감마', hours: 2, text: '- 기타 일' }, '과제를 고르면 원래 머리 줄을 지워야 한다');
+      assert.deepStrictEqual(blk(A), [{ name: '알파', hours: 5, text: '[일정]\n  - 연동' }, { name: '베타', hours: 0, text: '' }, { name: '', hours: 2, text: '[모름] : 2\n- 기타 일' }], '불러온 블록이 캘린더 순서(과제 미정은 맨 끝)가 아니다');
+      assert.ok(isBad(A, 2) && !isBad(A, 0), '과제 미정 블록만 빨갛지 않다');
+      input(A, '#atBlocks select[data-bpick="2"]', '감마');
+      assert.deepStrictEqual(blk(A)[2], { name: '감마', hours: 2, text: '- 기타 일' }, '과제를 고르면 원래 머리 줄을 지워야 한다');
       //  메모 카드를 끄고 불러오면 메모는 그대로
       typeMemo(A, '지금 메모');
       const cm = A.$('#atCards input[data-atid="p:memo"]'); cm.checked = false; cm.dispatchEvent(new A.w.Event('change', { bubbles: true }));
@@ -1074,6 +1192,16 @@ if (!JSDOM) {
       X.ev('window.__cap = []; Platform.report.submitDaily = function(p){ __cap.push(1); };');
       X.$('#atSend').click();
       assert.strictEqual(X.evJSON('__cap').length, 1, '변이가 경로에 닿지 않았다');
+    } finally { X.close(); }
+  });
+  test('변이 M9: 과제 추가 뒤 정렬을 빼면 새 블록이 맨 끝에 붙는다(순서 검사가 잡는다)', () => {
+    const bad = mutate(app, '  const moved = atSortBlocks();' + NL + '  atBlocksRender();' + NL + '  atFlash(moved.includes(nb)', '  const moved = [];' + NL + '  atBlocksRender();' + NL + '  atFlash(moved.includes(nb)');
+    const X = bootBrowser(bad);
+    try {
+      openB(X);
+      X.$('#atBlocks [data-bx="0"]').click();
+      X.ev("atAddPick('알파')");
+      assert.deepStrictEqual(names(X), ['베타', '감마', '알파'], '변이가 경로에 닿지 않았다');
     } finally { X.close(); }
   });
   test('변이 M8: 새로고침의 과제 목록 바꾸기를 빼면 새 과제가 목록에 나오지 않는다', () => {

@@ -11,14 +11,15 @@
  *    A2   열기: 근태 달력을 2099-12 로 옮겨 2099-12-02 칸을 누른다. 근태 창 대상이 뜨고 제목과 머리가 근태 보고와 그 날짜,
  *         보고 화면이 보이고, 내 달력은 부팅하지 않았다
  *    A3   가져오기 패널과 과제 블록(결정 12): payload 과제가 있고, 옵션은 패널만 바꾸고, 불러오기가 왼쪽 블록을 채우고, 고친 뒤 불러오기도 묻지 않고 바로 바꾼다.
- *         근태에 미기록이 없고, 회사 달력 표시 미리 보기가 없다. 과제 추가 메뉴(이미 있는 과제 흐림), 글로 보기
+ *         근태에 미기록이 없고, 회사 달력 표시 미리 보기가 없다. 과제 추가 메뉴(이미 있는 과제 흐림, 캘린더 순서 자리), ▲ ▼ 없음,
+ *         오른쪽 [미리보기] 탭(조립 글과 같다), [전체 초기화](되돌리기 없음)
  *    A3b  가져오기 캘린더(다른 날짜 = 오늘): attendSourceReq, 호스트, 메인 창 __attendSourceFor, attendSourcePush, 근태 창 __attendSource 중계로
  *         메인 창이 만든 그날 기록이 오고 카드와 불러오기가 그 기록이다
  *    A3c  가져오기 이전 보고(어제): reportDailyList(DB 읽기만) 하루로 읽는다(오류 없음, 보고가 있으면 카드, 없으면 없는 날 안내). 회사 사이트 명령은 없다
  *    A4   임시 저장: 입력 뒤 2초 안에 tc_attDraft:<who>:2099-12-02 가 근태 창 저장소에 생기고({v:2, memo, blocks}) 메인 창에서도 보인다(같은 출처).
  *         메인 근태 달력의 그 칸에 ✎ 작성 중
  *    A5   닫기 지키기: __winCloseRequest() = 'ask' 와 묻는 창. 계속 쓰기면 남고, 닫기면 창이 닫힌다(키는 남는다).
- *         다시 열면 되살림 안내와 글, 버리고 처음 상태로는 키를 지운다
+ *         다시 열면 안내 없이 글이 되살아나고, 처음 상태와 같아지면 키를 지운다
  *    A6   날짜 이동: › 가 호스트와 메인 창을 거쳐 같은 창에 2099-12-03 으로 돌아온다. 넘기기 전에 12-02 글을 바로 임시 저장한다
  *    A7   보내기(가로채기, 실제 전송 없음): 막는 블록(내용 있는 0시간)은 보내지 않는다. payload(kind, date, 자유 메모와 블록 조립, &nbsp; 들여쓰기,
  *         블록 시간, 빈 과제 : 0, status 코드), 잠금, 연속 클릭 한 번,
@@ -338,7 +339,8 @@ async function main() {
   ok('A2 창이 뜬 뒤 새로 읽기가 되풀이되지 않는다(3초 동안 attendOpen 3번 이하)', L2b.length <= 3, `${L2b.length}번 ${JSON.stringify(L2b.map((x) => x.refresh))}`);
 
   /* ── A3 불러오기 패널과 과제 블록 ── */
-  head('A3 불러오기 패널과 과제 블록: 옵션은 패널만, 불러오기는 왼쪽 블록을 묻지 않고 바꾸고, 과제 추가와 글로 보기');
+  head('A3 불러오기 패널과 과제 블록: 옵션은 패널만, 불러오기는 왼쪽 블록을 묻지 않고 바꾸고, 과제 추가, 미리보기, 전체 초기화');
+  await A.ev(`(function(){ document.querySelector('#atPanel [data-attab="imp"]').click(); return 1; })()`);   // 가져오기 탭(카드를 보며 고른다)
   const p3 = await A.J(`({ rows: ATE.p.source.rows.map(function(r){ return r.name; }), projects: ATE.p.projects.map(function(x){ return x.name; }), cards: document.querySelectorAll('#atCards .at-card').length,
     pick: document.getElementById('atPick').textContent, none: (document.querySelector('#atCards .at-none') || {}).textContent || '', skip: document.getElementById('atOSkip').checked, src: ATE.src })`);
   ok('A3 payload 의 과제가 둘 이상(출처 행)', p3.rows.length >= 2, JSON.stringify(p3.rows.slice(0, 4)));
@@ -347,9 +349,9 @@ async function main() {
   vlog('처음 패널:', p3.cards, p3.pick, p3.none);
   const b3 = await curBlocks();
   ok('A3 처음 블록 = 처음 체크로 한 번 불러온 블록, 자유 메모는 비어 있다', same(b3.blocks, await A.J('atLoadBlocks().map(function(b){ return { name: b.name, hours: b.hours, text: b.text }; })')) && b3.memo === '');
-  ok('A3 블록이 보인다(과제명 잠금, 시간 숫자 칸, 자유 메모가 맨 위)', await A.ev(`(function(){ const n = ATE.blocks.length; if (n !== document.querySelectorAll('#atBlocks .at-blk[data-bi]').length) return false;
+  ok('A3 블록이 보인다(과제명 잠금, 시간 글 칸, ▲ ▼ 없음, 자유 메모가 맨 위)', await A.ev(`(function(){ const n = ATE.blocks.length; if (n !== document.querySelectorAll('#atBlocks .at-blk[data-bi]').length) return false;
     if (!n) return !!document.querySelector('#atBlocks textarea[data-memo]'); const h = document.querySelector('#atBlocks .at-blk[data-bi="0"]');
-    return !!h.querySelector('.at-lock') && h.querySelector('input[data-bh]').type === 'number' && !!document.querySelector('#atBlocks').firstElementChild.querySelector('textarea[data-memo]'); })()`));
+    return !!h.querySelector('.at-lock') && h.querySelector('input[data-bh]').type === 'text' && !h.querySelector('[data-bup], [data-bdn]') && !!document.querySelector('#atBlocks').firstElementChild.querySelector('textarea[data-memo]'); })()`));
   await A.ev(`(function(){ const c = document.getElementById('atOSkip'); c.click(); return c.checked; })()`);
   const p3b = await A.J(`({ cards: document.querySelectorAll('#atCards .at-card').length, checked: document.querySelectorAll('#atCards input[data-atid]:checked').length,
     pick: document.getElementById('atPick').textContent })`);
@@ -379,19 +381,30 @@ async function main() {
   if (free3) {
     await A.ev(`(function(){ [].find.call(document.querySelectorAll('#atAddList [data-addname]'), function(b){ return b.dataset.addname === ${JSON.stringify(free3.n)}; }).click(); return 1; })()`);
     const a3 = await curBlocks();
-    ok('A3 고른 과제가 0시간 빈 블록으로 맨 끝에 생기고 메뉴가 닫힌다', same(a3.blocks[a3.blocks.length - 1], { name: free3.n, hours: 0, text: '' }) && !(await shown(A, 'atAddMenu')));
+    const order3 = a3.blocks.map((b) => p3.projects.indexOf(b.name)).filter((i) => i >= 0);
+    ok('A3 고른 과제가 0시간 빈 블록으로 캘린더 순서 자리에 생기고 메뉴가 닫힌다', a3.blocks.some((b) => same(b, { name: free3.n, hours: 0, text: '' })) && same(order3, order3.slice().sort((x, y) => x - y)) && !(await shown(A, 'atAddMenu')),
+      JSON.stringify(a3.blocks.map((b) => b.name)));
   } else { await A.ev(`(function(){ document.getElementById('atAdd').click(); return 1; })()`); note('모든 과제에 블록이 있어 과제 추가는 건너뛴다'); }
-  //  글로 보기: 조립 결과를 읽기 전용으로
-  await A.ev(`(function(){ document.getElementById('atAsText').click(); return 1; })()`);
-  ok('A3 글로 보기 = 조립 결과(블록은 숨김)', (await shown(A, 'atPreview')) && !(await shown(A, 'atBlocks')) && (await A.ev(`document.getElementById('atPreview').textContent === (atCompose(ATE.blocks, ATE.memo) || '(내용 없음)')`)));
-  await A.ev(`(function(){ document.getElementById('atAsText').click(); return 1; })()`);
+  //  미리보기 탭: 보낼 때와 같은 조립 글(읽기만, 0.2초 모아 그린다). [글로 보기]는 없다
+  ok('A3 [글로 보기]가 없다', await A.ev(`!document.getElementById('atAsText')`));
+  await A.ev(`(function(){ document.querySelector('#atPanel [data-attab="pv"]').click(); return 1; })()`);
+  await typeMemo('* 루프 미리보기');
+  await sleep(400);
+  ok('A3 미리보기 탭 = 조립 결과(자유 메모 먼저), 블록은 그대로 보인다', (await shown(A, 'atPreview')) && (await shown(A, 'atBlocks'))
+    && (await A.ev(`document.getElementById('atPreview').textContent === atCompose(ATE.blocks, ATE.memo) && document.getElementById('atPreview').textContent.indexOf('* 루프 미리보기') === 0`)));
+  ok('A3 미리보기 아래 n줄, n자', await A.ev(`(function(){ const t = atCompose(ATE.blocks, ATE.memo); return document.getElementById('atPvStat').textContent === (t ? t.split('\\n').length : 0) + '줄, ' + t.length + '자'; })()`));
+  //  전체 초기화: 묻지 않고 지운다(정근, 초과 없음). 안내도 되돌리기도 없다(2026-10-29 사용자)
+  ok('A3 전체 초기화를 눌렀다', (await click(A, 'atReset')) === 'ok');
+  ok('A3 전체 초기화 = 메모와 블록이 비고 정근, 초과 없음, 묻지 않고 되돌리기 없음', await A.ev(`ATE.memo === '' && ATE.blocks.length === 0 && document.getElementById('atStatus').value === '1' && document.getElementById('atOt').value === '0'
+    && document.getElementById('atAsk').classList.contains('hidden') && document.getElementById('atMsg').textContent === '' && !document.getElementById('atUndo') && document.getElementById('atReset').disabled`));
+  await A.ev(`(function(){ document.querySelector('#atPanel [data-attab="imp"]').click(); return 1; })()`);
   ok('A3 근태 목록에 미기록이 없고 기본은 정근 또는 그날 근태', await A.ev(`(function(){ const o = [].map.call(document.getElementById('atStatus').options, function(x){ return x.value; }); return o.indexOf('') < 0 && o.length === ATTEND_STATUS.length && !!document.getElementById('atStatus').value; })()`));
   ok('A3 회사 달력 표시 미리 보기와 한 칸 글이 없다', await A.ev(`!document.getElementById('atPv') && !document.getElementById('atText')`));
 
   /* ── A3b 가져오기 캘린더(다른 날짜, 호스트와 메인 창을 거치는 중계) ── */
   head('A3b 가져오기 캘린더: 다른 날짜를 고르면 attendSourceReq, 메인 창 __attendSourceFor, attendSourcePush, __attendSource 로 그날 기록이 온다');
   const TD = await M.ev('todayYmd()');
-  ok('A3b 가져오기 머리, 출처 단추(캘린더, 이전 보고), 날짜 칸(처음 값 = 보는 날짜)', (await A.ev(`document.querySelector('#atEd h3').textContent`)) === '가져오기'
+  ok('A3b 패널 탭(미리보기, 가져오기), 출처 단추(캘린더, 이전 보고), 날짜 칸(처음 값 = 보는 날짜)', same(await A.J(`[].map.call(document.querySelectorAll('#atPanel [data-attab]'), function(b){ return b.textContent; })`), ['미리보기', '가져오기'])
     && same((await A.J(`[].map.call(document.querySelectorAll('[data-atsrc]'), function(b){ return b.textContent; })`)), ['캘린더', '이전 보고']) && (await A.ev(`document.getElementById('atSrcDate').value`)) === D);
   const p3c = await A.ev('__atLoopW.posts.length');
   await A.ev(`(function(){ const s = document.getElementById('atSrcDate'); s.value = ${JSON.stringify(TD)}; s.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
@@ -424,12 +437,12 @@ async function main() {
   ok('A3c 보고가 있으면 카드(자유 메모, 블록, 과제 미정), 없으면 없는 날 안내', n3.has ? (n3.items === n3.cards) : /보낸 보고가 없습니다/.test(n3.none), JSON.stringify(n3));
   if (n3.items > 0) {
     await click(A, 'atLoad'); await sleep(150);
-    ok('A3c 불러오기가 이전 보고의 블록으로 바로 바꾼다(&nbsp; 없이)', await A.ev(`(function(){ const want = atLoadBlocks(); return JSON.stringify(ATE.blocks.map(function(b){ return [b.name, b.hours, b.text]; })) === JSON.stringify(want.map(function(b){ return [b.name, b.hours, b.text]; }))
+    ok('A3c 불러오기가 이전 보고의 블록(캘린더 순서, 과제 미정은 맨 끝)으로 바로 바꾼다(&nbsp; 없이)', await A.ev(`(function(){ const want = atSortedCopy(atLoadBlocks(), atProjNames()); return JSON.stringify(ATE.blocks.map(function(b){ return [b.name, b.hours, b.text]; })) === JSON.stringify(want.map(function(b){ return [b.name, b.hours, b.text]; }))
       && ATE.blocks.every(function(b){ return b.text.indexOf('&nbsp;') < 0; }); })()`));
   }
   note(`이전 보고 어제 ${n3.has ? n3.len + '자' : '없음'}, 카드 ${n3.items}개`);
   //  캘린더 출처, 보는 날짜로 되돌리고 처음 상태로 돌려 둔다(다음 단계가 깨끗한 상태에서 시작한다)
-  await A.ev(`(function(){ document.querySelector('[data-atsrc="cal"]').click(); const s = document.getElementById('atSrcDate'); s.value = ${JSON.stringify(D)}; s.dispatchEvent(new Event('change', { bubbles: true })); atDiscard(); return 1; })()`);
+  await A.ev(`(function(){ document.querySelector('[data-atsrc="cal"]').click(); const s = document.getElementById('atSrcDate'); s.value = ${JSON.stringify(D)}; s.dispatchEvent(new Event('change', { bubbles: true })); atFillSelects(ATE.base.status, ATE.base.overtime); ATE.memo = ATE.base.memo || ''; ATE.blocks = ATE.base.blocks.map(function(b){ return Object.assign({}, b); }); atBlocksRender(); attDraftDel(ATE.date); atOnEdit(false); return 1; })()`);
   ok('A3c 정리: 출처 캘린더, 날짜는 보는 날짜, 고친 것 없음', await A.ev(`ATE.src === 'cal' && ATE.srcDate === ${JSON.stringify(D)} && !atDirty()`));
 
   /* ── A4 임시 저장 ── */
@@ -471,12 +484,13 @@ async function main() {
   await M.ev(`atOpen(${JSON.stringify(D)})`);
   ok('A5 다시 열었다(새 근태 창)', !!(await attachAttend(D, 20000)));
   vlog('근태 창 기록기:', await A.ev(INSTALL_A));
-  ok('A5 되살림 안내가 보인다("HH:MM 에 임시 저장된 글을 이어서 엽니다")', (await shown(A, 'atRestore')) && /^\d\d:\d\d 에 임시 저장된 글을 이어서 엽니다\.$/.test(await A.ev(`document.getElementById('atRestoreMsg').textContent`)));
+  ok('A5 되살림 안내 없이 연다(2026-10-29 사용자)', !(await A.ev(`!!document.getElementById('atRestore')`)));
   ok('A5 글이 되살아났다(자유 메모 칸)', (await A.ev(`ATE.memo === ${JSON.stringify(TXT4)} && document.querySelector('#atBlocks textarea[data-memo]').value === ${JSON.stringify(TXT4)}`)));
-  await click(A, 'atDiscard');
+  //  처음 상태로 되돌려 쓰면(메모를 비우면) 임시 저장이 지워진다
+  await A.ev(`(function(){ const t = document.querySelector('#atBlocks textarea[data-memo]'); t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); atDraftFlushNow(); return 1; })()`);
   await sleep(200);
-  ok('A5 버리고 처음 상태로: 키가 지워졌다(두 창)', (await storedIn(A, KEY)) === null && (await storedIn(M, KEY)) === null);
-  ok('A5 안내가 닫히고 처음 상태, 고친 것 없음', !(await shown(A, 'atRestore')) && (await A.ev(`ATE.memo === '' && !atDirty()`)));
+  ok('A5 처음 상태와 같아지면 키가 지워졌다(두 창)', (await storedIn(A, KEY)) === null && (await storedIn(M, KEY)) === null);
+  ok('A5 처음 상태, 고친 것 없음', await A.ev(`ATE.memo === '' && !atDirty()`));
   ok('A5 고친 것이 없으면 __winCloseRequest() = close(창은 호스트가 닫는다, 여기서는 묻기만)', (await A.ev('window.__winCloseRequest()')) === 'close');
 
   /* ── A6 날짜 이동 ── */
@@ -495,9 +509,9 @@ async function main() {
   ok('A6 메인 창이 attendNav 를 받아 12-03 payload 로 attendOpen', L6.some((x) => x.req === 'attendOpen' && x.date === D2 && !x.refresh && x.ok === true), JSON.stringify(L6.map((x) => [x.req, x.date || x.from, x.ok])));
   ok('A6 근태 창이 보낸 것은 attendNav(12-03, refresh 아님)', (await A.J(`__atLoopW.posts.filter(function(p){ return p.cmd === 'attendNav' && !p.refresh; }).map(function(p){ return p.date; })`)).includes(D2));
   ok('A6 머리 날짜와 문서 제목이 12-03', (await A.ev(`document.getElementById('atEdDate').textContent`)) === LAB[D2] && (await A.ev('document.title')) === '근태 보고 ' + LAB[D2]);
-  ok('A6 12-03 은 깨끗하다(되살림 없음, 키 없음), ‹ › 다시 쓸 수 있다', !(await shown(A, 'atRestore')) && (await storedIn(M, await keyIn(M, D2))) === null && (await A.ev(`!document.getElementById('atPrev').disabled && !document.getElementById('atNext').disabled`)));
+  ok('A6 12-03 은 깨끗하다(메모 없음, 키 없음), ‹ › 다시 쓸 수 있다', (await A.ev('ATE.memo')) === '' && (await storedIn(M, await keyIn(M, D2))) === null && (await A.ev(`!document.getElementById('atPrev').disabled && !document.getElementById('atNext').disabled`)));
   await click(A, 'atPrev');
-  ok('A6 ‹ 로 12-02 에 돌아오면 넘기기 전 글이 되살아난다', !!(await attachAttend(D, 20000)) && (await shown(A, 'atRestore')) && (await A.ev(`ATE.memo`)) === TXT6);
+  ok('A6 ‹ 로 12-02 에 돌아오면 넘기기 전 글이 되살아난다', !!(await attachAttend(D, 20000)) && (await A.ev(`ATE.memo`)) === TXT6);
 
   /* ── A7 보내기(가로채기) ── */
   head('A7 보내기: 실제로 보내지 않고 막기, payload 확인, 잠금, 연속 클릭, 실패 회신, 성공 회신으로 지우고 닫힘');
@@ -513,7 +527,9 @@ async function main() {
   ok('A7 보낼 블록 셋과 자유 메모를 만들었다(과제 추가 메뉴, 시간 칸, 내용 칸)', (await setBlocks(SEND_MEMO, sendBlocks(P))) === 'ok');
   ok('A7 근태 = 정근(1), 초과 없음', (await setSel('atStatus', '1')) === '1' && (await setSel('atOt', '0')) === '0');
   ok('A7 상태 줄 = 과제 3개, 합계 5.5시간', (await A.ev(`document.getElementById('atHours').textContent`)) === '과제 3개, 합계 5.5시간');
-  ok('A7 글로 보기 = 회사로 나갈 글', (await A.ev('atCompose(ATE.blocks, ATE.memo)')) === sendText(P));
+  await sleep(400);
+  ok('A7 조립 글과 미리보기 = 회사로 나갈 글(빨간 줄 없음)', (await A.ev('atCompose(ATE.blocks, ATE.memo)')) === sendText(P)
+    && (await A.ev(`(function(){ atPTabSet('pv', false); return document.getElementById('atPreview').textContent; })()`)) === sendText(P) && (await A.ev(`!document.querySelector('#atPreview .bad')`)));
   if (!(await interceptOkA())) throw new Error('전송 가로채기가 제자리에 없다. 실제 전송 위험이라 누르지 않는다');
   const n7 = await A.ev('__atLoopW.cap.length');
   const r7 = await A.J(`(function(){ const b = document.getElementById('atSend'); b.click(); const busy = { disabled: b.disabled, label: b.textContent, ta: document.querySelector('#atBlocks textarea[data-bt="0"]').disabled,
