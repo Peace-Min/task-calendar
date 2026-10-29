@@ -10825,17 +10825,15 @@ function renderGrid(){
   //    ★ 같은 그리기 함수를 달력마다 한 번씩 부른다 — 칸·칩·레인·「+N」 규칙이 두 달력에서 갈라질 수 없게(코드가 하나다).
   //    ★ 겹쳐 보기(기본)는 예전과 같은 호출 하나(pick 없음 · 할 일 · roving)라 #grid 출력이 바이트 단위로 같다(S11).
   const side = peerSide();
-  //  내 창은 주 단위 기간 막대(renderMonthBars, docs/PERSONAL-IMPROVE-PLAN.md 결정 1~4). 열람 창(PEER)은 칸별 칩 그대로다(계획 §3):
-  //  겹쳐 보기와 나란히 보기가 칸 안 칩 순서(내 묶음, 구분줄)에 기대고 있어 막대로 바꾸려면 따로 설계해야 한다.
-  if(PEER) renderMonthGrid($('#grid'), dens, side ? (e => !e._mine) : null, { todos: true, roving: true, sideOvl: side });
-  else renderMonthBars($('#grid'), dens);
+  //  내 창과 열람 창(PEER) 모두 주 단위 기간 막대(renderMonthBars, docs/PEER-RANGE-BARS.md 시안 B)로 그린다.
+  renderMonthBars($('#grid'), dens, side ? (e => !e._mine) : null, { todos: true, roving: true, sideOvl: side });
   const gm = document.getElementById('gridMine');
   if(gm){
-    if(side) renderMonthGrid(gm, dens, e => !!e._mine, { todos: false, roving: false, sideOvl: true });
+    if(side) renderMonthBars(gm, dens, e => !!e._mine, { todos: false, roving: false, sideOvl: true });
     else if(gm.firstChild) gm.innerHTML = '';   // 겹쳐 보기로 돌아오면 오른쪽 달력은 비운다(감춰진 채 남은 칩이 없게)
   }
   peerSyncRows();                      // S4 — 같은 주 줄 높이 맞춤(나란히 보기 · 좌우일 때만, 아니면 인라인 높이를 걷는다)
-  if(dens !== 'expand' || !PEER) fitChips();   // 펼침은 전부 표시(캡 없음) → fitChips 생략. 막대 달력은 펼침에서도 그리기 한도 밖 기록의 +N 을 단다(fitBars)
+  fitChips();                          // 막대 달력은 펼침에서도 그리기 한도 밖 기록의 +N 을 단다(fitBars)
 }
 //  달력 하나를 g 에 그린다. pick(e) = 이 달력에 실을 일정(없으면 전부) · opts.todos = 할 일 칩 · opts.roving = 키보드 roving tabindex(왼쪽 달력만, S11)
 //  · opts.sideOvl = 시간 겹침 점을 **두 달력의 기록을 합쳐** 판정한다(나란히 보기 S8 — 한 달력에는 한 사람 것뿐이라 칸 안 목록으로는 못 센다).
@@ -11055,18 +11053,21 @@ function pmFitWeek(items, weekH, extra){
   return { vis, cap, hiddenBy };
 }
 //  이 달 화면(startDs~endDs)에 그릴 기록: 일정 발생(반복 펼침)과 기한 있는 할 일. 거르는 규칙은 renderMonthGrid 와 같다.
-function pmMonthItems(startDs, endDs){
+function pmMonthItems(startDs, endDs, pick, opts){
   const out = [];
   for(const e of state.entries){
     if(!passFilter(e)) continue;
-    for(const occ of expandOccurrences(e, startDs, endDs)) out.push({ occ, s: occ._occStart, e: occ._occEnd, key: 'e:' + e.id + '|' + occ._occStart });
+    if(pick && !pick(e)) continue;
+    for(const occ of expandOccurrences(e, startDs, endDs)) out.push({ occ, s: occ._occStart, e: occ._occEnd, key: 'e:' + e.id + '|' + occ._occStart, mine: !!e._mine });
   }
-  for(const t of (state.todos || [])){
-    if(!t.due) continue;
-    if(filterCatId && t.categoryId !== filterCatId) continue;
-    const tEnd = (t.endDate && t.endDate > t.due) ? t.endDate : t.due;
-    if(tEnd < startDs || t.due > endDs) continue;
-    out.push({ todo: t, s: t.due, e: tEnd, key: 't:' + t.id });
+  if(!opts || opts.todos !== false){
+    for(const t of (state.todos || [])){
+      if(!t.due) continue;
+      if(filterCatId && t.categoryId !== filterCatId) continue;
+      const tEnd = (t.endDate && t.endDate > t.due) ? t.endDate : t.due;
+      if(tEnd < startDs || t.due > endDs) continue;
+      out.push({ todo: t, s: t.due, e: tEnd, key: 't:' + t.id, mine: false });
+    }
   }
   return out;
 }
@@ -11084,7 +11085,7 @@ function barChipHtml(it, pos){
     const star = (t.prio === 'high' && !t.done) ? ICON.starFill : '';
     const ring = it.cl ? '' : `<span class="todo-ring" style="border-color:${col}${t.done ? `;background:${col}` : ''}"></span>`;
     const span = it.multi ? `, ${t.due}~${x.e}` : '';
-    return `<div class="chip chip-todo chip-bar${t.done ? ' done' : ''}${edge}" draggable="true"
+    return `<div class="chip chip-todo chip-bar${t.done ? ' done' : ''}${edge}" draggable="${PEER ? 'false' : 'true'}"
     data-todo="${esc(t.id)}" data-occ="${esc(t.due)}" data-kind="todo"${geo}
     aria-label="할 일${t.done ? ' 완료' : ''}: ${esc(t.text)}"
     title="할 일${t.done ? ' (완료)' : ''}: ${esc(t.text)}${c ? ', ' + esc(c.name) : ''}${span}">${aL}${ring}<span class="txt">${star}${esc(t.text)}</span>${spanTxt}${aR}</div>`;
@@ -11093,33 +11094,47 @@ function barChipHtml(it, pos){
   const kind = e.recur ? 'recur' : ((e.endDate && e.endDate > e.date) ? 'range' : 'simple');
   const time = chipTime(e);
   const timed = (!!time && !it.multi);   // 하루 시간 일정 = 색 점 + 시각 + 제목(지금과 같은 모양)
+  const mine = !!e._mine;
+  const dot = (timed && !mine) ? `<span class="cdot" style="background:${col}"></span>` : '';   // 내 시간 칩은 점 대신 왼쪽 막대(O2)
   const label = `${e.recur ? ICON.repeat : ''}${esc(e.title)}`;
   const span = (e.endDate && e.endDate > e.date) ? `, ${e.date}~${e.endDate}` : '';
   const inner = timed
-    ? `<span class="cdot" style="background:${col}"></span><span class="chip-t">${esc(chipTimeShort(e))}</span><span class="ctitle">${label}</span>`
+    ? `${dot}<span class="chip-t">${esc(chipTimeShort(e))}</span><span class="ctitle">${label}</span>`
     : `${aL}${time ? `<span class="chip-t">${esc(time)}</span>` : ''}<span class="ctitle">${label}</span>${spanTxt}${aR}`;
-  //  _mine(열람 창의 내 겹)은 내 창에 올 수 없다(passFilter). 그래도 붙여 두면 그 계약이 깨졌을 때 시험(peer-overlay 변이⑥)이 내 창에서 겹을 센다.
-  return `<div class="chip chip-bar${timed ? ' chip-timed' : ''}${e._mine ? ' chip-mine' : ''}${edge}" draggable="${kind === 'recur' ? 'false' : 'true'}"
-    data-id="${esc(e.id)}" data-occ="${esc(e._occStart)}" data-kind="${kind}"${geo.replace('style="', `style="border-left-color:${col};background:${tint(col, it.multi ? 0.2 : undefined)};`)}
-    title="${time ? esc(time) + ' ' : ''}${esc(e.title)}${c ? ', ' + esc(c.name) : ''}${span}${e.recur ? ', ' + esc(recurLabel(e)) : ''}">${inner}</div>`;
+  //  ★ O2: 내 겹(mine)은 과제 색 인라인 style 을 안 붙인다(CSS 의 --mine-* 토큰이 칠한다).
+  const styleGeo = mine ? geo : geo.replace('style="', `style="border-left-color:${col};background:${tint(col, it.multi ? 0.2 : undefined)};`);
+  return `<div class="chip chip-bar${timed ? ' chip-timed' : ''}${mine ? ' chip-mine' : ''}${edge}" draggable="${(PEER || mine || kind === 'recur') ? 'false' : 'true'}"
+    data-id="${esc(e.id)}" data-occ="${esc(e._occStart)}" data-kind="${kind}"${styleGeo}
+    title="${mine ? '내 일정, ' : ''}${time ? esc(time) + ' ' : ''}${esc(e.title)}${c ? ', ' + esc(c.name) : ''}${span}${e.recur ? ', ' + esc(recurLabel(e)) : ''}">${inner}</div>`;
 }
-function renderMonthBars(g, dens){
+function renderMonthBars(g, dens, pick, opts){
+  const o = opts || { todos: true, roving: true, sideOvl: false };
   const first = new Date(view.y, view.m, 1);
   const startDs = ymd(new Date(view.y, view.m, 1 - first.getDay()));
   const weeks = Math.ceil((first.getDay() + new Date(view.y, view.m + 1, 0).getDate()) / 7);
   const endDs = addDays(startDs, weeks * 7 - 1);
   const tY = todayYmd();
-  const all = pmMonthItems(startDs, endDs);
+  const all = pmMonthItems(startDs, endDs, pick, o);
   let tabDs = focusDs || selectedDate;   // 키보드 포커스(roving tabindex) 대상 칸, renderMonthGrid 와 같은 규칙
   if(tabDs < startDs || tabDs > endDs) tabDs = (tY >= startDs && tY <= endDs) ? tY : startDs;
-  focusDs = tabDs;
+  if(o.roving !== false) focusDs = tabDs;
   const RCAP = dens === 'expand' ? 60 : 12;   // 그리는 차선 한도(성능). 넘는 기록은 그 칸의 +N 에 든다
   const DOW_K = ['일','월','화','수','목','금','토'];
   const cmp = (a, b) => entrySort(a.occ || a.todo, b.occ || b.todo);
+  const ovlDays = (o.sideOvl || (PEER && __peerOverlay)) ? peerOverlapDays(startDs, endDs) : null;
+  const mineItems = all.filter(x => x.mine);
   let html = '';
   for(let w = 0; w < weeks; w++){
     const from = addDays(startDs, w * 7);
-    const L = pmLayoutWeek(all, from, cmp);
+    let L;
+    //  시안 B(docs/PEER-RANGE-BARS.md): 겹쳐 보기에서 내 겹이 있으면 상대 차선(0..L0.lanes-1) 아래에 내 차선(L0.lanes..)을 따로 배치한다.
+    if(!mineItems.length || !all.some(x => !x.mine)){ L = pmLayoutWeek(all, from, cmp); }
+    else {
+      const L0 = pmLayoutWeek(all.filter(x => !x.mine), from, cmp);
+      const L1 = pmLayoutWeek(mineItems, from, cmp);
+      for(const it of L1.items) it.lane += L0.lanes;
+      L = { items: L0.items.concat(L1.items), lanes: L0.lanes + L1.lanes };
+    }
     const cnt = [0, 0, 0, 0, 0, 0, 0], extra = [0, 0, 0, 0, 0, 0, 0];
     for(const it of L.items) for(let c = it.c0; c <= it.c1; c++){ cnt[c]++; if(it.lane >= RCAP) extra[c]++; }
     const nL = Math.min(L.lanes, RCAP);
@@ -11134,10 +11149,12 @@ function renderMonthBars(g, dens){
       if(dow === 0) cls += ' wknd-sun'; else if(dow === 6) cls += ' wknd-sat';
       let numCls = 'num';
       if(dow === 0 || hol) numCls += ' sun'; else if(dow === 6) numCls += ' sat';
+      const ovl = !!(ovlDays && ovlDays.has(ds));
       const aria = `${d.getMonth()+1}월 ${d.getDate()}일 ${DOW_K[dow]}요일` + (hol ? `, ${hol}` : '') + (ds === tY ? ', 오늘' : '')
-        + (cnt[i] ? `, 기록 ${cnt[i]}건` : ', 기록 없음');
-      html += `<div class="${cls}" data-date="${ds}" role="gridcell" tabindex="${ds === tabDs ? 0 : -1}" aria-selected="${ds === selectedDate}" aria-label="${esc(aria)}" style="grid-column:${i + 1};grid-row:1 / -1">
-      <div class="cell-top"><span class="${numCls}">${d.getDate()}</span>${hol ? `<span class="hol">${esc(hol)}</span>` : ''}</div></div>`;
+        + (cnt[i] ? `, 기록 ${cnt[i]}건` : ', 기록 없음') + (ovl ? ', 시간이 겹치는 일정 있음' : '');
+      const ovlDot = ovl ? '<span class="ovl-dot" role="img" aria-label="시간이 겹치는 일정이 있습니다" title="시간이 겹치는 일정이 있습니다"></span>' : '';
+      html += `<div class="${cls}" data-date="${ds}" role="gridcell"${o.roving !== false ? ` tabindex="${ds === tabDs ? 0 : -1}"` : ''} aria-selected="${ds === selectedDate}" aria-label="${esc(aria)}" style="grid-column:${i + 1};grid-row:1 / -1">
+      <div class="cell-top"><span class="${numCls}">${d.getDate()}</span>${ovlDot}${hol ? `<span class="hol">${esc(hol)}</span>` : ''}</div></div>`;
     }
     for(const it of L.items) if(it.lane < RCAP) html += barChipHtml(it, `grid-column:${it.c0 + 1} / ${it.c1 + 2};grid-row:${it.lane + 2}`);
     html += '</div>';
@@ -11233,7 +11250,12 @@ function peerOverlapDays(startDs, endDs){
 let _fitRaf = 0;
 function fitChips(){
   const grid = document.getElementById('grid'); if(!grid) return;
-  if(grid.classList.contains('bars')){ fitBars(grid); return; }   // 내 창 막대 달력은 줄 단위로 접는다(칸 안 .chips 가 없다)
+  if(grid.classList.contains('bars')){
+    fitBars(grid);
+    const gm = document.getElementById('gridMine');
+    if(gm && gm.firstChild && gm.classList.contains('bars')) fitBars(gm);
+    return;
+  }   // 막대 달력은 줄 단위로 접는다(칸 안 .chips 가 없다). 나란히 보기면 오른쪽 달력(#gridMine)도 함께 접는다.
   //  나란히 보기의 오른쪽 달력(#gridMine)도 같은 규칙으로 접는다 — 평소엔 비어 있어 아무것도 안 돈다.
   document.querySelectorAll('#grid .cell, #gridMine .cell').forEach(cell => {
     const box = cell.querySelector('.chips'); if(!box) return;
@@ -11301,16 +11323,26 @@ function peerSyncRows(){
   const g1 = document.getElementById('grid'), g2 = document.getElementById('gridMine');
   if(!g1 || !g2) return;
   //  걷을 때는 style 속성까지 지운다 — 빈 style="" 이 남으면 겹쳐 보기·내 창의 #grid 가 예전과 바이트 단위로 달라진다(S11).
-  const clear = (g) => { if(g.getAttribute('style') === null) return; g.style.removeProperty('grid-template-rows'); if(!g.getAttribute('style')) g.removeAttribute('style'); };
+  const clear = (g) => {
+    g.querySelectorAll('.gridrow').forEach(r => { r.style.flex = ''; r.style.height = ''; });
+    if(g.getAttribute('style') === null) return;
+    g.style.removeProperty('grid-template-rows');
+    if(!g.getAttribute('style')) g.removeAttribute('style');
+  };
   clear(g1); clear(g2);
   if(!peerSideByRow() || !g2.firstChild) return;
-  const rowH = (g) => [...g.querySelectorAll('.gridrow')].map(r => { const c = r.querySelector('.cell'); return c ? c.getBoundingClientRect().height : 0; });
-  const h1 = rowH(g1), h2 = rowH(g2);
+  const r1 = [...g1.querySelectorAll('.gridrow')], r2 = [...g2.querySelectorAll('.gridrow')];
+  const rowH = (rs) => rs.map(r => { const c = r.querySelector('.cell'); return c ? c.getBoundingClientRect().height : 0; });
+  const h1 = rowH(r1), h2 = rowH(r2);
   if(!h1.length || h1.length !== h2.length) return;
   const rows = h1.map((h, i) => Math.max(h, h2[i]));
   if(rows.some(h => !(h > 0))) return;
-  const tpl = rows.map(h => (Math.ceil(h * 100) / 100) + 'px').join(' ');
+  const px = rows.map(h => (Math.ceil(h * 100) / 100) + 'px');
+  const tpl = px.join(' ');
   g1.style.gridTemplateRows = tpl; g2.style.gridTemplateRows = tpl;
+  if(g1.classList.contains('bars')){
+    px.forEach((p, i) => { r1[i].style.flex = 'none'; r1[i].style.height = p; r2[i].style.flex = 'none'; r2[i].style.height = p; });
+  }
 }
 //  두 격자의 세로 스크롤을 잇는다(나란히 보기 · 좌우일 때만). 되먹임(A→B→A…)은 「지금 맞추는 중」 표시(__peerScrollLock · 파일 앞 선언)로 끊는다.
 function peerScrollLink(from, to){
@@ -19921,11 +19953,17 @@ function bind(){
   const gm = $('#gridMine');
   if(gm){
     gm.addEventListener('click', ev => {
-      const cell = ev.target.closest('.cell');
-      if(!cell) return;
       const chip = ev.target.closest('.chip');
-      selectDate(cell.dataset.date);
-      if(chip && chip.dataset.id){ noteTab = 'detail'; flashTargetId = chip.dataset.id; renderPanel(); }
+      if(chip){
+        const chipDs = chipCellDate(chip, ev) || chip.dataset.occ || selectedDate;
+        selectDate(chipDs);
+        if(chip.dataset.id){ noteTab = 'detail'; flashTargetId = chip.dataset.id; renderPanel(); openSheetIfNarrow(); }
+        return;
+      }
+      const more = ev.target.closest('.more[data-more]');
+      if(more){ selectDate(more.dataset.more); return; }
+      const cell = ev.target.closest('.cell');
+      if(cell) selectDate(cell.dataset.date);
     });
     gm.addEventListener('dragstart', ev => ev.preventDefault());   // 칩은 이미 draggable=false — 그래도 끌기 시작 자체를 막는다
     gm.addEventListener('scroll', () => peerScrollLink(gm, grid), { passive: true });

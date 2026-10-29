@@ -178,8 +178,8 @@ if (!JSDOM) {
       assert.strictEqual(display(P, '#calMine'), 'none', '겹쳐 보기인데 오른쪽 달력 자리가 보인다');
       assert.strictEqual(display(P, '#calTabPeer'), 'none', '겹쳐 보기인데 이름 탭이 보인다');
       assert.strictEqual(P.ev('document.getElementById("grid").style.gridTemplateRows'), '', '겹쳐 보기 격자에 인라인 줄 높이가 박혔다');
-      // 겹쳐 보기 화면 그대로 — 칸 순서(남 → 구분 → 나)와 roving tabindex 한 칸
-      assert.ok(q(P, '#grid .chip.chip-mine') > 0 && q(P, '#grid .mine-sep') > 0, '겹쳐 보기의 내 겹이 사라졌다');
+      // 겹쳐 보기 화면 그대로 — 내 겹 막대와 roving tabindex 한 칸
+      assert.ok(q(P, '#grid .chip.chip-mine') > 0, '겹쳐 보기의 내 겹이 사라졌다');
       assert.strictEqual(q(P, '#grid .cell[tabindex="0"]'), 1);
       assert.strictEqual(q(P, '#grid .cell:not([tabindex])'), 0, '겹쳐 보기 칸에서 tabindex 가 빠졌다');
       assert.deepStrictEqual(P.posted, [], '열람 창은 호스트로 아무것도 안 보낸다');
@@ -211,20 +211,21 @@ if (!JSDOM) {
 
     test('(jsdom) R2/S3: 왼쪽에 _mine 칩 0 · 오른쪽에 _mine 아닌 칩 0 · 구분줄 없음 · 할 일은 왼쪽에만', () => {
       assert.strictEqual(q(P, '#grid .chip.chip-mine'), 0, '왼쪽(그 사람) 달력에 내 칩이 섞였다');
-      assert.ok(q(P, '#grid .chip') >= 6, '왼쪽에 그 사람 칩이 안 그려졌다');
+      assert.ok(q(P, '#grid .chip') >= 5, '왼쪽에 그 사람 칩이 안 그려졌다');
       assert.strictEqual(q(P, '#gridMine .chip:not(.chip-mine)'), 0, '오른쪽(내) 달력에 내 것 아닌 칩이 섞였다');
-      assert.ok(q(P, '#gridMine .chip.chip-mine') >= 6, '오른쪽에 내 칩이 안 그려졌다');
+      assert.ok(q(P, '#gridMine .chip.chip-mine') >= 5, '오른쪽에 내 칩이 안 그려졌다');
       assert.strictEqual(q(P, '#grid .mine-sep') + q(P, '#gridMine .mine-sep'), 0, '한 달력에 한 사람 — 남/내 구분줄은 없다');
       assert.strictEqual(q(P, '#grid .chip-todo'), 1, '그 사람 할 일이 왼쪽 달력에 없다');
       assert.strictEqual(q(P, '#gridMine .chip-todo'), 0, '오른쪽 달력에 할 일이 실렸다(내 겹은 일정만)');
       // 오른쪽 칩 = 겹쳐 보기의 내 칩과 같은 모양(과제 색 인라인 style 없음 · 끌 수 없음)
       const st = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#gridMine .chip"), function(c){ return [c.getAttribute("style"), c.getAttribute("draggable")]; })');
-      assert.ok(st.every(([s, d]) => s === null && d === 'false'), JSON.stringify(st));
-      // 내 기간 막대는 오른쪽에서 주 안에 같은 줄
-      const idx = P.evJSON(`['2026-09-16','2026-09-17','2026-09-18'].map(function(ds){
-        var kids = Array.prototype.slice.call(document.querySelectorAll('#gridMine .cell[data-date="' + ds + '"] .chips > *'));
-        return kids.findIndex(function(c){ return c.dataset && c.dataset.id === 'm-rng'; }); })`);
-      assert.deepStrictEqual(idx, [0, 0, 0], '오른쪽 달력의 내 기간 막대가 끊겼다');
+      assert.ok(st.every(([s, d]) => !/border-left-color|background/i.test(s || '') && d === 'false'), JSON.stringify(st));
+      // 내 기간 막대는 오른쪽에서 주 안에 하나의 연속 막대(.chip-bar.range)로 그려진다
+      const bar = P.evJSON(`(function(){
+        var b = document.querySelector('#gridMine .chip-bar[data-id="m-rng"]');
+        return b ? [Number(b.dataset.c0), Number(b.dataset.c1), Number(b.dataset.lane)] : null;
+      })()`);
+      assert.deepStrictEqual(bar, [3, 5, 0], '오른쪽 달력의 내 기간 막대가 연속 막대(9/16~9/18)로 그려지지 않았다');
     });
 
     test('(jsdom) S11: 과제 필터는 왼쪽(그 사람)에만 걸린다 — 오른쪽 내 칩 수는 그대로', () => {
@@ -297,8 +298,8 @@ if (!JSDOM) {
       clickLayout(P, 'side');
       assert.strictEqual(P.ev('__peerOverlay'), false, '나란히 보기로 바꾸면서 겹 토글 값을 건드렸다');
       assert.strictEqual(P.ev('localStorage.getItem("tc_peerOverlay")'), '0', '나란히 보기가 tc_peerOverlay 를 덮었다');
-      assert.ok(q(P, '#gridMine .chip.chip-mine') >= 6, '겹을 꺼 둔 사람의 오른쪽 달력이 비었다');
-      assert.strictEqual(display(P, '#gridMine .chip.chip-mine'), 'block', '「끈 상태」 CSS 가 오른쪽 달력의 내 칩을 감춘다');
+      assert.ok(q(P, '#gridMine .chip.chip-mine') >= 5, '겹을 꺼 둔 사람의 오른쪽 달력이 비었다');
+      assert.strictEqual(display(P, '#gridMine .chip.chip-mine'), 'flex', '「끈 상태」 CSS 가 오른쪽 달력의 내 칩을 감춘다');
       P.ev('selectedDate = "2026-09-08"; renderAll();');
       assert.strictEqual(q(P, '#dpBody .dp-sec'), 2, '겹을 꺼 두었어도 나란히 보기의 상세는 두 묶음이다(S7)');
       assert.strictEqual(display(P, '#dpBody .card.card-mine'), 'block', '「끈 상태」 CSS 가 시트의 내 카드를 감춘다');
@@ -405,7 +406,7 @@ if (!JSDOM) {
     }
 
     test('변이(왼쪽 거르기 빼기): 왼쪽 달력이 내 것까지 실으면 R2 판정이 잡는다', async () => {
-      await withMutated("renderMonthGrid($('#grid'), dens, side ? (e => !e._mine) : null,", "renderMonthGrid($('#grid'), dens, null,", async (m) => {
+      await withMutated("renderMonthBars($('#grid'), dens, side ? (e => !e._mine) : null,", "renderMonthBars($('#grid'), dens, null,", async (m) => {
         assert.strictEqual(m.ev('__peerLayout'), 'side', '사전조건: 나란히 보기');
         assert.ok(q(m, '#grid .chip.chip-mine') > 0, '변이했는데도 왼쪽에 내 칩이 없다 — 변이가 거르기에 닿지 않았다(앵커 재검토)');
       });

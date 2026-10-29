@@ -151,10 +151,10 @@ const statics = {
     assert.ok(!/openEntryModal|source/.test(b), '없앤 기록 창이나 작업일지 갈래가 되살아났다');
     assert.ok(!/recur/.test(b), '반복 일정을 기록 창으로 보내는 갈래가 남아 있다');
   },
-  //  결정 1~4 와 계획 §3: 내 창은 막대, 열람 창은 예전 칩. 할 일 막대 점선, 좁은 폭 숨김 규칙.
+  //  결정 1~4 와 PEER-RANGE-BARS: 내 창과 열람 창 모두 막대(renderMonthBars)로 그린다. 할 일 막대 점선, 좁은 폭 숨김 규칙.
   barsWiring(app) {
     const g = extractFunction(app, 'renderGrid');
-    assert.ok(/if\(PEER\) renderMonthGrid\(\$\('#grid'\)/.test(g) && /else renderMonthBars\(\$\('#grid'\), dens\);/.test(g), '내 창은 막대, 열람 창은 칸별 칩으로 그리지 않는다');
+    assert.ok(!/renderMonthGrid/.test(g) && /renderMonthBars\(\$\('#grid'\), dens/.test(g), '내 창과 열람 창을 모두 막대(renderMonthBars)로 그리지 않는다');
     assert.ok(/border-style:dashed/.test(rule(app, '.chip-todo.chip-bar.range{')), '기간 할 일 막대가 점선이 아니다(결정 4)');
     assert.ok(/@media \(max-width:760px\)\{ \.chip-span\{display:none\} \}/.test(app), '좁은 폭에서 기간 글자를 숨기지 않는다(과제 탭 규칙)');
     assert.ok(/@media \(max-width:560px\)\{[^@]*\.chip-arrow\{display:none\}/.test(app), '좁은 폭에서 ◂ ▸ 를 숨기지 않는다(과제 탭 규칙)');
@@ -166,8 +166,8 @@ test('정적①: 시각 칸(개인 폼, 과제 폼) 넷이 모두 앱 시각 칸
 test('정적②: 한 화면 폼에 옵션 더보기와 자세히 편집이 없고 모든 칸이 있으며 반복은 셋뿐이다(결정 6, 8)', () => statics.oneScreenForm(src));
 test('정적③: 좁은 창(440px 이하)은 아래 시트, 본문 스크롤, 저장 줄 고정(결정 9)', () => statics.narrowSheet(src));
 test('정적④: 모든 일정이 한 화면 폼으로, 반복 일정도 한 화면 폼으로(결정 10)', () => statics.editRouting(src));
-test('정적⑤: 내 창은 막대, 열람 창은 칩. 할 일 점선, 좁은 폭 숨김, 밀도 규칙(결정 1~4)', () => statics.barsWiring(src));
-test('변이S: type=time 부활, 앱 시각 칸 표시 빠짐, bind 배선 빠짐, 분 간격 1, 옵션 더보기 부활, 반복 세부 칸 부활, 시트 규칙 삭제, 반복을 다른 갈래로, PEER 갈래 삭제를 잡는다', () => {
+test('정적⑤: 내 창과 열람 창 모두 막대. 할 일 점선, 좁은 폭 숨김, 밀도 규칙(결정 1~4)', () => statics.barsWiring(src));
+test('변이S: type=time 부활, 앱 시각 칸 표시 빠짐, bind 배선 빠짐, 분 간격 1, 옵션 더보기 부활, 반복 세부 칸 부활, 시트 규칙 삭제, 반복을 다른 갈래로, 옛 칸별 칩 부활을 잡는다', () => {
   assert.throws(() => statics.timeStep(mutate('<input type="text" id="qaStart" data-time-field>', '<input type="time" id="qaStart" step="300">')), /type=time/);
   assert.throws(() => statics.timeStep(mutate('<input type="text" id="pcfET" data-time-field>', '<input type="text" id="pcfET">')), /data-time-field/);
   assert.throws(() => statics.timeStep(mutate('\n  timeFieldAll();   //', '\n  //')), /timeFieldAll/);
@@ -177,7 +177,7 @@ test('변이S: type=time 부활, 앱 시각 칸 표시 빠짐, bind 배선 빠�
   assert.throws(() => statics.oneScreenForm(mutate('<span class="qa-hint hidden" id="qaRecurHint" aria-live="polite"></span>', '<input type="number" id="qaRecurInterval"><span class="qa-hint hidden" id="qaRecurHint" aria-live="polite"></span>')), /세부 칸/);
   assert.throws(() => statics.narrowSheet(mutate('  .modal,.modal.wide,.qa-modal{width:100%;max-width:100%;max-height:88vh;border-radius:14px 14px 0 0}', '  .modal,.modal.wide{width:100%;max-width:100%;max-height:88vh;border-radius:14px 14px 0 0}')), /아래 시트/);
   assert.throws(() => statics.editRouting(mutate("  if(e) openQuickAdd(null, 'event', id);", "  if(e && !(e.recur && e.recur.freq)) openQuickAdd(null, 'event', id);")), /한 화면 폼|기록 창/);
-  assert.throws(() => statics.barsWiring(mutate("  if(PEER) renderMonthGrid($('#grid'), dens,", "  if(false) renderMonthGrid($('#grid'), dens,")), /열람 창/);
+  assert.throws(() => statics.barsWiring(mutate("  renderMonthBars($('#grid'), dens,", "  renderMonthGrid($('#grid'), dens,")), /막대/);
 });
 
 /* ── (R) 행동: jsdom 위젯 모드 ───────────────────────────────────────── */
@@ -451,16 +451,15 @@ if (!JSDOM) {
         assert.ok(ev.defaultPrevented && !store['text/plain'], '반복 일정을 끌 수 있다');
       });
     },
-    //  열람 창(PEER)은 예전 칸별 칩
+    //  열람 창(PEER)도 같은 주 단위 기간 막대(docs/PEER-RANGE-BARS.md 시안 B)
     async peer(source) {
       await withBoot(source, async (W) => {
         assert.strictEqual(W.ev('PEER'), true, '사전조건: ?peer=1 은 열람 창이다');
         W.show(2026, 9, '2026-10-15');
-        assert.ok(!W.$('#grid').classList.contains('bars'), '열람 창 달력이 막대 달력이 됐다(계획 §3: 칩 그대로)');
-        assert.strictEqual(W.$$('#grid .chip-bar').length, 0, '열람 창에 막대가 있다');
-        const segs = W.$$('#grid .cell .chips .chip[data-id="e-long"]');
-        assert.strictEqual(segs.length, 9, '열람 창의 기간 일정이 칸마다 한 조각(9칸)이 아니다: ' + segs.length);
-        assert.ok(segs[0].classList.contains('chip-start') && segs[8].classList.contains('chip-end'), '열람 창 조각 모양(chip-start/end)이 바뀌었다');
+        assert.ok(W.$('#grid').classList.contains('bars'), '열람 창 달력이 막대 달력(.bars)이 아니다');
+        const segs = W.$$('#grid .chip-bar[data-id="e-long"]');
+        assert.strictEqual(segs.length, 2, '열람 창의 10/5~10/13 기간 일정이 주 경계에서 두 막대로 나뉘지 않았다: ' + segs.length);
+        assert.ok(segs[0].classList.contains('cr') && segs[1].classList.contains('cl'), '열람 창 막대의 잘린 쪽(cl/cr) 표시가 없다');
         assert.ok(W.$$('#grid .chip').every((c) => c.getAttribute('draggable') === 'false'), '열람 창 칩을 끌 수 있다');
       }, 'https://tcapp.local/?peer=1', { peerName: '(예시) 상대', canWrite: false });
     },
@@ -649,7 +648,7 @@ if (!JSDOM) {
   test('R②: +N(넘친 칸만, 누르면 그 날짜)과 월 보기 밀도(고정, 촘촘히, 펼침)', () => R.moreAndDensity(src));
   test('R③: 막대를 누르면 누른 칸의 날짜, 패널 강조, 목록 창 없음, 좌표 없으면 그 조각 첫 칸, 키보드 이동 그대로', () => R.click(src));
   test('R④: 끌어 옮기기는 잡은 자리 기준(주와 달을 넘어도 길이 유지), 막대 위에 놓아도 아래 칸, 반복은 못 끈다, 저장', () => R.drag(src));
-  test('R⑤: 열람 창(PEER)은 예전 칸별 칩 그대로', () => R.peer(src));
+  test('R⑤: 열람 창(PEER)도 같은 주 단위 기간 막대로 그려지고 읽기 전용(draggable=false)이다', () => R.peer(src));
   test('R⑥: 한 화면 폼(일정과 할 일 칸, 옵션 더보기 없음, 저장 형식 그대로)', () => R.form(src));
   test('R⑦: 반복 세부 값 보존과 한 줄 요약, 종류를 바꾸면 기본값, 옛 작업일지 기록은 읽지 않는다', () => R.recur(src));
   test('R⑧: 5분 단위가 아닌 시각(11:38)이 그대로 보이고 저장된다(개인 폼, 과제 폼 검증)', () => R.oddTime(src));
@@ -664,8 +663,8 @@ if (!JSDOM) {
   test('변이R③: 끌기를 예전 시작일 기준으로 되돌리면 R④ 가 잡는다', async () => {
     await assert.rejects(() => R.drag(mutate('shiftByGrab(e.date, e.endDate, p.grab || p.occ || e.date, target)', 'shiftByGrab(e.date, e.endDate, p.occ || e.date, target)')), /잡은 자리/);
   });
-  test('변이R④: 열람 창도 막대로 그리면 R⑤ 가 잡는다', async () => {
-    await assert.rejects(() => R.peer(mutate("  if(PEER) renderMonthGrid($('#grid'), dens,", "  if(false) renderMonthGrid($('#grid'), dens,")), /열람 창/);
+  test('변이R④: 열람 창을 옛 칸별 칩으로 되돌리면 R⑤ 가 잡는다', async () => {
+    await assert.rejects(() => R.peer(mutate("  renderMonthBars($('#grid'), dens,", "  renderMonthGrid($('#grid'), dens,")), /열람 창/);
   });
   test('변이R⑤: 반복 세부 값을 버리면(늘 간격 1) R⑦ 이 잡는다', async () => {
     await assert.rejects(() => R.recur(mutate('  if(qaRecurOrig && qaRecurOrig.freq === f) return { freq:f, interval:qaRecurOrig.interval, until:qaRecurOrig.until, count:qaRecurOrig.count };', '')), /세부 값/);

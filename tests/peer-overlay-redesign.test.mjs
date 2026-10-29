@@ -264,9 +264,16 @@ if (!JSDOM) {
     m.ev('view = {y:2026, m:8}; selectedDate = "2026-09-08";');
     m.w.__applyState(JSON.stringify(data), { peerName: '홍길동', canWrite: false });
   }
-  // 칸 하나의 자식 순서 — 'p'(상대 칩) · 'm'(내 칩) · '|'(구분줄) · '_'(빈 칸)
-  const cellSeq = (m, ds) => m.ev(`Array.prototype.map.call(document.querySelectorAll('#grid .cell[data-date="${ds}"] .chips > *'), function(c){
-      return c.classList.contains('mine-sep') ? (c.classList.contains('blank') ? '.' : '|') : c.classList.contains('chip-spacer') ? '_' : c.classList.contains('chip-mine') ? 'm' : 'p'; }).join('')`);
+  // 칸 하나의 차선 순서 — 막대 달력(.grid.bars)에서 그 날(ds)을 덮는 .chip-bar 를 차선(lane) 오름차순으로 정렬해 'p'(상대) · 'm'(내 칩) 문자열로 만든다.
+  const cellSeq = (m, ds) => m.ev(`(function(){
+    var c = document.querySelector('#grid .cell[data-date="${ds}"]'); if(!c) return '';
+    var wk = c.closest('.gridrow[data-from]'); if(!wk) return '';
+    var col = Math.round((Date.parse('${ds}T00:00:00Z') - Date.parse(wk.dataset.from + 'T00:00:00Z')) / 86400000);
+    return Array.prototype.slice.call(wk.querySelectorAll('.chip-bar'))
+      .filter(function(b){ return Number(b.dataset.c0) <= col && Number(b.dataset.c1) >= col; })
+      .sort(function(a, b){ return Number(a.dataset.lane) - Number(b.dataset.lane); })
+      .map(function(b){ return b.classList.contains('chip-mine') ? 'm' : 'p'; }).join('');
+  })()`);
   const ordered = (seq) => !/m.*p/.test(seq.replace(/[|._]/g, ''));   // 내 것 뒤에 상대 것이 오면 섞인 것
   const pressed = (m) => m.ev('document.getElementById("peerOverlayToggle").getAttribute("aria-pressed")');
 
@@ -337,35 +344,44 @@ if (!JSDOM) {
     test('(jsdom) R1/O2: 내 칩은 과제 색 인라인 style 이 없고(토큰이 칠한다) 내 시간 칩에는 점이 없다', () => {
       const st = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#grid .chip.chip-mine"), function(c){ return c.getAttribute("style"); })');
       assert.ok(st.length >= 4, '내 칩이 그려지지 않았다');
-      assert.deepStrictEqual(st.filter(s => s !== null), [], '내 칩에 과제 색 style 이 박혔다: ' + JSON.stringify(st));
+      assert.deepStrictEqual(st.filter(s => /border-left-color|background/i.test(s || '')), [], '내 칩에 과제 색 style 이 박혔다: ' + JSON.stringify(st));
       assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip.chip-mine .cdot").length'), 0);
       assert.ok(P.ev('document.querySelectorAll("#grid .chip:not(.chip-mine)[style*=border-left-color]").length') > 0,
         '상대 칩 모양은 그대로여야 한다(과제 색 막대)');
     });
 
-    test('(jsdom) R3: 한 칸 안에서 상대 일정 먼저 · 내 일정은 그 아래 · 둘 다 있을 때만 구분줄', () => {
+    test('(jsdom) R3: 한 칸 안에서 상대 차선 먼저 · 내 일정은 그 아래 차선에 선다(docs/PEER-RANGE-BARS.md 시안 B)', () => {
       const s8 = cellSeq(P, '2026-09-08');
-      assert.strictEqual(s8, 'ppp|mm', '9/8 칸 순서: ' + s8);
+      assert.strictEqual(s8, 'pppmm', '9/8 칸 차선 순서: ' + s8);
       // 각 묶음 안의 순서는 그대로(종일 → 시간순)
-      const t8 = P.evJSON(`Array.prototype.map.call(document.querySelectorAll('#grid .cell[data-date="2026-09-08"] .chip'), function(c){ return c.dataset.id; })`);
+      const t8 = P.evJSON(`(function(){
+        var wk = document.querySelector('#grid .cell[data-date="2026-09-08"]').closest('.gridrow');
+        return Array.prototype.slice.call(wk.querySelectorAll('.chip-bar'))
+          .filter(function(b){ return Number(b.dataset.c0) <= 2 && Number(b.dataset.c1) >= 2; })
+          .sort(function(a, b){ return Number(a.dataset.lane) - Number(b.dataset.lane); })
+          .map(function(c){ return c.dataset.id; });
+      })()`);
       assert.deepStrictEqual(t8, ['p-all', 'p-10', 'p-14', 'm-all', 'm-1030']);
-      assert.strictEqual(cellSeq(P, '2026-09-09'), 'p|m');
-      assert.strictEqual(cellSeq(P, '2026-09-22'), 'm', '상대 것이 없는 날에는 구분줄이 없다');
-      assert.strictEqual(cellSeq(P, '2026-09-15'), 'p', '내 것이 없는 날에는 구분줄이 없다');
+      assert.strictEqual(cellSeq(P, '2026-09-09'), 'pm');
+      assert.strictEqual(cellSeq(P, '2026-09-22'), 'm', '상대 것이 없는 날에는 내 일정만');
+      assert.strictEqual(cellSeq(P, '2026-09-15'), 'p', '내 것이 없는 날에는 상대 일정만');
       for (const ds of ['2026-09-08', '2026-09-09', '2026-09-15', '2026-09-16', '2026-09-17', '2026-09-18']) {
         assert.ok(ordered(cellSeq(P, ds)), `${ds} 에서 내 일정 뒤에 상대 일정이 온다: ${cellSeq(P, ds)}`);
       }
     });
 
-    test('(jsdom) R3: 내 기간 막대는 한 주 안에서 같은 줄에 선다(상대 묶음을 빈 칸으로 맞춤)', () => {
-      const idx = P.evJSON(`['2026-09-16','2026-09-17','2026-09-18'].map(function(ds){
-        var kids = Array.prototype.slice.call(document.querySelectorAll('#grid .cell[data-date="' + ds + '"] .chips > *'));
-        return kids.findIndex(function(c){ return c.dataset && c.dataset.id === 'm-rng'; }); })`);
-      assert.ok(idx.every(i => i >= 0), '내 기간 막대가 안 그려졌다: ' + JSON.stringify(idx));
-      assert.strictEqual(new Set(idx).size, 1, '내 기간 막대의 줄이 칸마다 다르다(끊긴 막대): ' + JSON.stringify(idx));
-      assert.strictEqual(cellSeq(P, '2026-09-18'), '_.m', '상대 막대가 없는 날은 빈 칸 + 빈 구분 자리로 맞춘다');
-      assert.strictEqual(P.ev(`document.querySelector('#grid .cell[data-date="2026-09-18"] .chips').dataset.extra`), '0',
-        '빈 칸·구분 자리가 「+N」 에 섞였다');
+    test('(jsdom) R3: 내 기간 막대는 한 주 안에서 하나의 연속 막대(.chip-bar.range)로 상대 막대 아래 차선에 선다', () => {
+      const bar = P.evJSON(`(function(){
+        var b = document.querySelector('#grid .chip-bar[data-id="m-rng"]');
+        var p = document.querySelector('#grid .chip-bar[data-id="p-rng"]');
+        if(!b || !p) return null;
+        return { c0: Number(b.dataset.c0), c1: Number(b.dataset.c1), lane: Number(b.dataset.lane), pLane: Number(p.dataset.lane), span: (b.querySelector('.chip-span')||{}).textContent || '' };
+      })()`);
+      assert.ok(bar, '내 기간 막대가 안 그려졌다');
+      assert.strictEqual(bar.c0, 3, '9/16(수) 시작 열이 아니다');
+      assert.strictEqual(bar.c1, 5, '9/18(금) 끝 열이 아니다');
+      assert.ok(bar.lane > bar.pLane, '내 기간 막대가 상대 막대 아래 차선에 서지 않았다: ' + JSON.stringify(bar));
+      assert.strictEqual(bar.span, '9/16 ~ 9/18', '사흘 이상 내 기간 막대에 기간 글자가 없다');
     });
 
     test('(jsdom) R4: 상세 패널 = 두 묶음 「홍길동 님 일정 (3)」 · 「내 일정 (2)」, 카드는 제 묶음에만', () => {
@@ -407,11 +423,11 @@ if (!JSDOM) {
     }
 
     test('변이(순서 섞임): 묶음 나누기를 끄면 R3 판정이 섞인 순서를 잡는다', async () => {
-      await withMutated('    if(!mineItems.length){ cellLay[ds] =', '    if(true){ cellLay[ds] =', async (m) => {
+      await withMutated('    if(!mineItems.length || !all.some(x => !x.mine)){ L = pmLayoutWeek(all, from, cmp); }', '    if(true){ L = pmLayoutWeek(all, from, cmp); }', async (m) => {
         const s = cellSeq(m, '2026-09-08');
         assert.ok(s.includes('m'), '사전조건: 변이 앱에도 내 칩은 그려진다: ' + s);
         assert.strictEqual(ordered(s), false, '변이했는데도 순서가 남 → 나 다 — 변이가 배치에 닿지 않았다(앵커 재검토): ' + s);
-        assert.notStrictEqual(s, 'ppp|mm', 'R3 의 기대값이 변이를 통과시킨다');
+        assert.notStrictEqual(s, 'pppmm', 'R3 의 기대값이 변이를 통과시킨다');
       });
     });
 
