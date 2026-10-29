@@ -2778,6 +2778,7 @@ body:not(.at-on) #atView{display:none !important}
 .at-stat b{color:var(--text)}
 .at-saved{color:var(--ok)}
 .at-restore{display:flex;gap:10px;align-items:center;background:var(--ovl-bg);color:var(--ovl-ink);border:1px solid var(--ovl-dot);border-radius:var(--r-sm);padding:6px 10px;font-size:var(--fs-body);flex:none}
+.at-fmt{display:flex;gap:6px;flex-wrap:wrap}
 .at-lnk{border:0;background:none;color:var(--accent-2);cursor:pointer;font:inherit;font-size:var(--fs-meta);padding:0;text-decoration:underline;text-underline-offset:2px}
 .at-lnk:disabled{color:var(--faint-text);cursor:default}
 .at-restore .at-lnk{color:inherit;font-weight:600}
@@ -3156,6 +3157,7 @@ html[data-attendwin] #atBack{ display:none }
               <span class="at-lb">포함 항목</span><span><label class="at-ck"><input type="checkbox" id="atOEvent" checked> 일정</label><label class="at-ck"><input type="checkbox" id="atOTodo" checked> 할 일</label></span>
               <span class="at-lb">과제</span><span><label class="at-ck"><input type="checkbox" id="atOSkip" checked> 기록 없는 과제 제외</label></span>
               <span class="at-lb">표시</span><span><label class="at-ck"><input type="checkbox" id="atODesc" checked> 설명 포함</label></span>
+              <span class="at-lb">서식</span><span class="at-fmt"><select id="atOMk" class="at-sel" aria-label="머리기호" title="머리기호"></select><select id="atOInd" class="at-sel" aria-label="들여쓰기" title="들여쓰기"></select></span>
             </div>
             <div class="at-pick-row"><span class="at-pick" id="atPick"></span><span><button type="button" class="at-lnk" id="atAll">전체 선택</button> <button type="button" class="at-lnk" id="atNone">전체 해제</button></span></div>
             <div class="at-cards" id="atCards"></div>
@@ -16068,13 +16070,15 @@ function buildNetcusWeeklyText(parsed, flat){
 // 보고서 머리기호(index marker) — 표시+복사 전용. 순수 헬퍼(테스트 대상).
 // reportMarkerSpec(): state에서 유효 스펙 해석(custom 우선, 아니면 프리셋 테이블). state 의존.
 function reportMarkerSpec(){
+  const fmt = currentReportFormatPref();
+  return reportMarkerSpecFor((fmt && fmt.marker) || '-', (fmt && fmt.markerCustom) ? String(fmt.markerCustom) : '');
+}
+//  머리기호 키(#rptMarker 의 값)와 직접 입력으로 서식을 만든다. 순수(지금 설정을 읽지 않는다). 근태 창 가져오기 서식도 쓴다.
+function reportMarkerSpecFor(key, custom){
   const KO_GA = '가나다라마바사아자차카타파하';
   const KO_JA = 'ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ';
   const CIRCLE = '①②③④⑤⑥⑦⑧⑨⑩';
-  const fmt = currentReportFormatPref();
-  const custom = (fmt && fmt.markerCustom) ? String(fmt.markerCustom) : '';
-  if(custom) return { kind:'custom', ch:custom };
-  const key = (fmt && fmt.marker) || '-';
+  if(custom) return { kind:'custom', ch:String(custom) };
   const T = {
     '-':{kind:'const',ch:'-'}, '•':{kind:'const',ch:'•'}, '·':{kind:'const',ch:'·'},
     '*':{kind:'const',ch:'*'}, '▪':{kind:'const',ch:'▪'}, '◦':{kind:'const',ch:'◦'}, '–':{kind:'const',ch:'–'},
@@ -21029,6 +21033,7 @@ function setupGuideResize(){
  *    회사 보고와 DB 저장이 둘 다 성공하면(호스트의 성공 회신) 지운다. 읽기와 쓰기는 attDraft* 함수만 거친다(나중에 서버 저장으로 바꿀 때 여기만).
  *  ★ 열람 창(PEER)은 localStorage 를 부모 창과 같이 쓴다. 그래서 임시 저장을 읽지도 쓰지도 않는다(보고서 초안과 같은 규칙). */
 const AT_DRAFT_PREFIX = 'tc_attDraft:';   // 키 = tc_attDraft:<who>:<YYYY-MM-DD>. who 는 보고서 초안과 같은 규칙(rptDraftWho)
+const AT_FMT_PREFIX = 'tc_attFmt:';       // 키 = tc_attFmt:<who>. 근태 창 가져오기 서식(머리기호, 들여쓰기)
 const AT_DRAFT_KEEP_DAYS = 14;            // 보고 화면을 열 때 이보다 오래된 날짜의 임시 저장은 지운다
 const AT_DRAFT_DEBOUNCE_MS = 1000;        // 입력은 1초 모아서 쓴다. 날짜 이동, 닫기, 보내기 직전에는 바로 쓴다
 const AT_SRC_WAIT_MS = 15000;             // 다른 날짜의 캘린더 기록을 메인 창에 청하고 기다리는 시간(넘으면 못 가져왔다고 보인다)
@@ -21046,7 +21051,8 @@ const ATE = { p: null, date: '', base: null, intra: false, src: 'cal', srcDate: 
 const __attDraftMem = new Map();          // 저장소가 막혔거나 가득 찼을 때만 쓰는 메모리본(앱이 켜져 있는 동안은 남는다)
 let __atAskFn = null;                     // "작성 중인 내용이 있습니다" 에서 [닫기]를 누르면 할 일
 
-const atIsYmd = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
+//  꼴(YYYY-MM-DD)과 실제로 있는 날짜(2월 29일은 윤년만, 4, 6, 9, 11월은 30일까지)를 함께 본다.
+const atIsYmd = d => { if(!/^\d{4}-\d{2}-\d{2}$/.test(d || '')) return false; const [y, m, dd] = d.split('-').map(Number), t = new Date(y, m - 1, dd); return t.getFullYear() === y && t.getMonth() === m - 1 && t.getDate() === dd; };
 function atOn(){ return PCAL.tab === 'attend'; }
 function atOt(v){ const n = parseInt(v, 10); return (n >= 0 && n <= 11) ? n : 0; }
 //  회사 달력과 같은 근태 표시: 근태 이름 + 초과가 있으면 (+n시간). 미기록이면 이름 없이 초과만.
@@ -21397,8 +21403,42 @@ function atCalRows(){
   return out;
 }
 //  캘린더 과제 하나의 글 = 기존 보고서의 머리 줄 + 초안 본문(글 편집과 같은 보통 공백 들여쓰기).
+//  가져오기 서식(2026-10-29 사용자): 캘린더에서 불러올 때의 머리기호와 들여쓰기. 목록은 보고서 창 #rptMarker 와 같다(그 옵션을 복제한다).
+//    처음 값은 보고서 창의 일간 서식(payload source.fmt). 근태 창에서 고르면 이 PC에 사람별로 기억한다(보고서 창 설정은 바꾸지 않는다).
+function atFmtKeyOf(spec){
+  if(!spec || typeof spec !== 'object') return '-';
+  if(spec.kind === 'custom') return 'custom';
+  const js = JSON.stringify(spec);
+  const keys = [].map.call(document.querySelectorAll('#rptMarker option'), o => o.value);
+  return keys.find(k => JSON.stringify(reportMarkerSpecFor(k, '')) === js) || '-';
+}
+function atFmtLoad(){
+  const f = (ATE.p && ATE.p.source && ATE.p.source.fmt) || {}, clamp = n => Math.max(0, Math.min(6, n));
+  let v = null;
+  try{ v = JSON.parse(localStorage.getItem(AT_FMT_PREFIX + atWho()) || 'null'); }catch(_){ v = null; }
+  if(v && v.v === 1 && typeof v.mk === 'string' && Number.isInteger(v.indent)) ATE.fmt = { mk: v.mk, custom: String(v.custom || ''), indent: clamp(v.indent) };
+  else ATE.fmt = { mk: atFmtKeyOf(f.mkSpec), custom: (f.mkSpec && f.mkSpec.kind === 'custom') ? String(f.mkSpec.ch || '') : '', indent: Number.isInteger(f.indent) ? clamp(f.indent) : 2 };
+  if(ATE.fmt.mk === 'custom' && !ATE.fmt.custom) ATE.fmt.mk = '-';
+}
+function atFmt(){
+  const f = ATE.fmt || { mk: '-', custom: '', indent: 2 };
+  return { mkSpec: f.mk === 'custom' ? reportMarkerSpecFor('-', f.custom) : reportMarkerSpecFor(f.mk, ''), indent: f.indent };
+}
+function atFmtSave(){
+  try{ localStorage.setItem(AT_FMT_PREFIX + atWho(), JSON.stringify({ v: 1, mk: ATE.fmt.mk, custom: ATE.fmt.custom, indent: ATE.fmt.indent })); }catch(_){}
+}
+function atFmtRender(){
+  const mk = $('#atOMk'), ind = $('#atOInd'); if(!mk || !ind || !ATE.fmt) return;
+  if(!mk.querySelector('option[value="-"]')){ const src = document.getElementById('rptMarker'); if(src) mk.innerHTML = src.innerHTML; }
+  let c = mk.querySelector('option[value="custom"]');
+  if(ATE.fmt.mk === 'custom'){ if(!c){ c = document.createElement('option'); c.value = 'custom'; mk.appendChild(c); } c.textContent = ATE.fmt.custom + ' 직접 입력'; }
+  else if(c) c.remove();
+  mk.value = ATE.fmt.mk;
+  if(!ind.options.length) ind.innerHTML = Array.from({ length: 7 }, (_, i) => '<option value="' + i + '">' + i + '단</option>').join('');
+  ind.value = String(ATE.fmt.indent);
+}
 function atCalBlock(row){
-  const f = (atCalSource() || ATE.p.source).fmt;
+  const f = atFmt();
   const r = { key: row.key, name: row.name, titles: row.kept.map(x => x.text), titleMeta: row.kept.map(x => ({ details: ATE.opt.desc ? x.details : [] })) };
   const hmap = new Map(); if(row.hours != null) hmap.set(row.key, row.hours);
   const body = reportRowBodyText(r, ' ', f.mkSpec, f.indent);
@@ -21446,6 +21486,7 @@ function atEdOpen(raw){
   if(ATE.p) atDraftFlushNow();   // 날짜를 넘기기 전에 쓰던 글을 바로 임시 저장한다
   ATE.p = p; ATE.date = p.date; ATE.navPending = '';
   ATE.src = 'cal'; ATE.srcDate = p.date; ATE.opt = { event: true, todo: true, skip: true, desc: true };
+  atFmtLoad();
   atCalCancel();
   clearTimeout(ATE.timer); ATE.timer = null;
   atCheckAll();
@@ -21576,6 +21617,7 @@ function atPanelRender(){
   const opts = $('#atOpts'); if(opts) opts.classList.toggle('hidden', ATE.src !== 'cal');
   const ck = { atOEvent: 'event', atOTodo: 'todo', atOSkip: 'skip', atODesc: 'desc' };
   for(const id of Object.keys(ck)){ const e = document.getElementById(id); if(e) e.checked = !!ATE.opt[ck[id]]; }
+  atFmtRender();
   const items = atPanelItems(), o = ATE.opt, n = ATE.net, other = ATE.srcDate !== ATE.date;
   const retry = '<button type="button" class="at-lnk" data-atretry="1">다시 읽기</button>';
   let html = '';
@@ -21910,6 +21952,8 @@ function atInit(){
     });
     //  옵션은 패널 목록만 바로 바꾼다. 왼쪽은 [← 불러오기]를 눌러야 바뀐다. "기록 없는 과제 제외" 는 목록이 바뀌므로 체크를 다시 모두 켠다.
     const ck = { atOEvent: 'event', atOTodo: 'todo', atOSkip: 'skip', atODesc: 'desc' };
+    on('atOMk', 'change', ev => { if(!ATE.fmt) return; ATE.fmt.mk = ev.target.value; atFmtSave(); atPanelRender(); });
+    on('atOInd', 'change', ev => { if(!ATE.fmt) return; ATE.fmt.indent = Math.max(0, Math.min(6, parseInt(ev.target.value, 10) || 0)); atFmtSave(); atPanelRender(); });
     for(const id of Object.keys(ck)) on(id, 'change', ev => { ATE.opt[ck[id]] = !!ev.target.checked; if(id === 'atOSkip') atCheckAll(); atPanelRender(); });
     on('atCards', 'change', ev => {
       const c = ev.target.closest('input[data-atid]'); if(!c) return;

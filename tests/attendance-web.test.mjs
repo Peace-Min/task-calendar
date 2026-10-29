@@ -215,6 +215,37 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
+  test('(B) 가져오기 서식: 처음은 보고서 일간 서식, 머리기호와 들여쓰기를 고르면 불러오기에 쓰고 이 PC에 기억한다(보고서 설정은 그대로)', () => {
+    const X = bootBrowser();
+    try {
+      openB(X);
+      assert.strictEqual(X.$('#atOMk').value, X.ev('atFmtKeyOf(atDailyFmt().mkSpec)'), '처음 머리기호가 보고서 일간 서식이 아니다');
+      assert.strictEqual(X.$('#atOInd').value, String(X.ev('atDailyFmt().indent')), '처음 들여쓰기가 보고서 일간 서식이 아니다');
+      assert.strictEqual(X.$('#atOMk').options.length, X.$('#rptMarker').options.length, '머리기호 목록이 보고서 창과 다르다');
+      const before = X.ev('JSON.stringify(atDailyFmt())');
+      input(X, '#atOMk', '1.'); input(X, '#atOInd', '0');
+      X.$('#atLoad').click();
+      const t = X.$('#atText').value;
+      assert.ok(/^1\. /m.test(t) && /^2\. /m.test(t), '고른 머리기호(1. 2.)와 들여쓰기 0단으로 불러오지 않았다: ' + t);
+      const saved = JSON.parse(X.ev('localStorage.getItem(AT_FMT_PREFIX + atWho())'));
+      assert.deepStrictEqual([saved.mk, saved.indent], ['1.', 0], '고른 서식을 기억하지 않았다');
+      assert.strictEqual(X.ev('JSON.stringify(atDailyFmt())'), before, '보고서 창 서식 설정이 바뀌었다');
+      //  다른 날짜를 열어도 고른 서식을 쓴다
+      X.ev(`atShowEditor(atBuildPayload(addDays(todayYmd(), 3), null, false))`);
+      assert.deepStrictEqual([X.$('#atOMk').value, X.$('#atOInd').value], ['1.', '0'], '다시 열었는데 고른 서식이 아니다');
+      assert.deepStrictEqual(X.errors, []);
+    } finally { X.close(); }
+  });
+
+  test('(B) 날짜 검사: 꼴과 실제로 있는 날짜(달마다 다른 끝날, 윤년 2월 29일)', () => {
+    const X = bootBrowser();
+    try {
+      const ok = (d) => X.ev(`atIsYmd(${JSON.stringify(d)})`);
+      for (const d of ['2026-01-31', '2026-04-30', '2026-08-31', '2026-10-31', '2026-11-30', '2026-12-31', '2028-02-29', '2024-02-29', '2027-02-28']) assert.strictEqual(ok(d), true, d);
+      for (const d of ['2026-04-31', '2026-06-31', '2026-09-31', '2026-11-31', '2027-02-29', '2100-02-29', '2026-02-30', '2026-13-01', '2026-00-10', '2026-10-00', '2026-10-1', '']) assert.strictEqual(ok(d), false, d);
+    } finally { X.close(); }
+  });
+
   test('(B) 불러오기는 묻지 않고 왼쪽을 바로 바꾼다(덮어쓰기 확인 없음), 근태 미기록 없음(저장 값이 없으면 정근)', () => {
     const X = bootBrowser();
     try {

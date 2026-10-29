@@ -222,6 +222,11 @@ const checks = {
     assert.ok(!/SaveDailyReport|SaveWeeklyReport|NetcusSubmit|WeekFill|\.submit\(|requestSubmit|\.value\s*=(?!=)/.test(vm), '근태 달력 보기가 회사 사이트에 쓰거나 저장한다');
     assert.ok(vm.includes('pjm_work.jsp?y={y}&m={m}&id='), '근태 달력 보기가 그 달 pjm_work.jsp 를 열지 않는다');
     assert.ok(vm.includes('if (_ncBusy) { HostReply(reqId, new { ok = false, error = "busy"'), '근태 달력 보기가 다른 회사 사이트 작업과 겹친다');
+    //  없는 날짜(달마다 다른 끝날, 윤년)는 보내기와 달력 보기 전에 막는다. 보내기는 바쁨 확인보다 먼저 본다.
+    assert.ok(s.netcus.includes('internal static bool IsRealDate(int y, int m, int d) => y >= 2000 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= DateTime.DaysInMonth(y, m);'), '실제 날짜 검사가 없다');
+    const sub = member(s.netcus, 'private async Task NetcusSubmit(NetcusReq req)');
+    assert.ok(sub.indexOf('if (!IsRealDate(req.Y, req.M, req.D))') >= 0 && sub.indexOf('if (!IsRealDate(req.Y, req.M, req.D))') < sub.indexOf('if (_ncBusy)'), '일간 전송이 없는 날짜를 먼저 막지 않는다');
+    assert.ok(vm.includes('if (!IsRealDate(y, m, d))'), '근태 달력 보기가 없는 날짜를 막지 않는다');
     //  보고 성공이면 확인용 창을 닫는다(실패면 남긴다)
     assert.ok(member(s.netcus, 'private async Task NetcusSubmit(NetcusReq req)').includes('if (stored) { try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { } }'), '보고 성공 뒤 확인용 창을 닫지 않는다');
     assert.match(member(s.main, 'private void HostReply(string reqId, object payload)'), /ReplyCore\(reqId\)\?\.ExecuteScriptAsync\(call\)/, '회신이 보낸 창(ReplyCore)으로 가지 않는다');

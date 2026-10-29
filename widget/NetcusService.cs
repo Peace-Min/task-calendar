@@ -465,8 +465,13 @@ namespace TaskCalendarWidget
             return tcs.Task;
         }
 
+        //  실제로 있는 날짜인가(달마다 다른 끝날, 2월 29일은 윤년만). 회사 사이트가 없는 날짜를 다음 달로 넘겨 저장할 수 있어
+        //    보내기 전과 근태 달력 보기 전에 막는다. 웹도 같은 검사를 하지만(atIsYmd) 호스트가 마지막 문이다.
+        internal static bool IsRealDate(int y, int m, int d) => y >= 2000 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= DateTime.DaysInMonth(y, m);
+
         private async Task NetcusSubmit(NetcusReq req)
         {
+            if (!IsRealDate(req.Y, req.M, req.D)) { Log($"netcus 일간 전송 거부: 없는 날짜 {req.Y}-{req.M}-{req.D}"); NetcusResult(false, "날짜가 올바르지 않습니다. 다시 시도해 주세요."); return; }
             if (_ncBusy) { NetcusResult(false, "다른 netcus 작업이 진행 중입니다. 잠시 후 다시 시도하세요."); return; }
             _ncBusy = true; NetcusBusy(true);
             CoreWebView2? cw = null;
@@ -829,7 +834,7 @@ namespace TaskCalendarWidget
         private async Task NetcusViewMonth(string reqId, int y, int m, int d)
         {
             if (_ncBusy) { HostReply(reqId, new { ok = false, error = "busy", marked = false }); return; }
-            if (y < 2000 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) { HostReply(reqId, new { ok = false, error = "read", marked = false }); return; }
+            if (!IsRealDate(y, m, d)) { HostReply(reqId, new { ok = false, error = "read", marked = false }); return; }
             _ncBusy = true; NetcusBusy(true);
             Action? detach = null;
             try
