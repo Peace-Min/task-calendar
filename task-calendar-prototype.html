@@ -2786,7 +2786,6 @@ body:not(.at-on) #atView{display:none !important}
 .at-blk.bad .at-bh{background:var(--danger-soft)}
 .at-bh .at-dot{width:8px;height:8px}
 .at-bn{font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.at-lock{font-size:var(--fs-micro);opacity:.6;flex:none}
 .at-ed .at-bpick{min-width:0;max-width:260px;padding:2px 6px}
 .at-bhr{display:inline-flex;align-items:center;gap:4px;margin-left:auto;font-size:var(--fs-meta);color:var(--muted);flex:none}
 .at-ed .at-bhn{width:62px;text-align:right;font-variant-numeric:tabular-nums;padding:2px 6px;font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);color:var(--text);background:var(--panel)}
@@ -3184,7 +3183,7 @@ html[data-attendwin] #atBack{ display:none }
             <span class="spacer"></span>
             <button type="button" class="at-lnk" id="atReset" title="자유 메모와 과제 블록을 모두 지우고 근태를 정근, 초과시간을 없음으로 돌립니다">전체 초기화</button>
           </div>
-          <!-- 과제 블록(결정 12): 머리(색 점, 과제명 🔒, 시간 칸, ✕)와 자유 글 칸. atBlocksRender 가 채운다. 순서는 캘린더 과제 순서로 늘 정렬한다.
+          <!-- 과제 블록(결정 12): 머리(색 점, 과제명(입력 칸이 아닌 글자), 시간 칸, ✕)와 자유 글 칸. atBlocksRender 가 채운다. 순서는 캘린더 과제 순서로 늘 정렬한다.
                [+ 과제 추가]는 마지막 블록 바로 아래, 같은 스크롤 목록 안에 있다. -->
           <div class="at-sorthint">캘린더 과제 순서대로 정렬됩니다</div>
           <div class="at-list" id="atList">
@@ -21741,12 +21740,11 @@ function atBlocksRender(){
   //  맨 위 자유 메모: 과제와 상관없는 글(예: 외근 표시). 과제, 시간, ✕ 가 없고 비어 있어도 된다. 보낼 때 맨 앞에 붙는다.
   const memoHtml = '<div class="at-blk at-memo"><div class="at-bh"><span class="at-bn">자유 메모</span><small class="at-hint">과제와 상관없는 글, 보고 맨 앞에 붙습니다</small></div>'
     + '<textarea class="at-bt" data-memo="1" spellcheck="false" rows="1" aria-label="자유 메모" placeholder="과제와 상관없이 자유롭게 (예: * 대전 ADD 외근)"></textarea></div>';
-  //  머리 순서: [색 점] [과제명] [🔒] (오른쪽으로) [시간 칸] 시간 [✕]
+  //  머리 순서: [색 점] [과제명] (오른쪽으로) [시간 칸] 시간 [✕]. 과제명은 글자라 고칠 수 없다(자물쇠 표시는 번잡해서 뺐다, 2026-10-29 사용자)
   box.innerHTML = memoHtml + (n ? ATE.blocks.map((b, i) => {
     const pr = atBlockShowProblem(b), lab = b.name || '과제 미정';
     const head = b.name
       ? '<i class="at-dot" style="background:' + atProjColor(b.name) + '" aria-hidden="true"></i><span class="at-bn" title="과제명은 캘린더 과제에서만 정해집니다">' + esc(b.name) + '</span>'
-        + '<span class="at-lock" title="이 창에서는 과제명을 바꿀 수 없습니다" aria-hidden="true">🔒</span>'
       : '<select class="at-bpick" data-bpick="' + i + '" aria-label="과제 고르기"><option value="">과제를 고르세요</option>'
         + projs.filter(x => !used.has(x.name)).map(x => '<option value="' + esc(x.name) + '">' + esc(x.name) + '</option>').join('') + '</select>';
     return '<div class="at-blk' + (pr ? ' bad' : '') + '" data-bi="' + i + '">'

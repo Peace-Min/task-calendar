@@ -222,7 +222,7 @@ if (!JSDOM) {
       //  화면: 과제명은 표시(잠금, 입력 칸 아님), 시간은 숫자 칸(0~24, 0.5), 내용은 글 칸, 자유 메모가 맨 위
       const h0 = X.$('#atBlocks .at-blk[data-bi="0"] .at-bh');
       assert.strictEqual(h0.querySelector('.at-bn').textContent, '알파');
-      assert.ok(h0.querySelector('.at-lock'), '과제명 잠금 표시가 없다');
+      assert.ok(!h0.querySelector('.at-lock'), '자물쇠 표시가 남아 있다(2026-10-29 사용자: 번잡해서 뺀다)');
       assert.ok(!h0.querySelector('select, [contenteditable]') && h0.querySelectorAll('input').length === 1 && h0.querySelector('input[data-bh]'), '과제명을 고칠 수 있는 칸이 있다');
       const hn = X.$('#atBlocks input[data-bh="0"]');
       assert.deepStrictEqual([hn.type, hn.min, hn.max, hn.step, hn.value], ['number', '0', '24', '0.5', '2'], '시간 칸이 기본 숫자 칸(0~24, 0.5)이 아니다');
@@ -340,9 +340,9 @@ if (!JSDOM) {
       openB(X);
       assert.ok(!X.$('#atBlocks [data-bup], #atBlocks [data-bdn]'), '▲ ▼ 단추가 남아 있다');
       assert.ok(X.$('.at-sorthint') && X.$('.at-sorthint').textContent === '캘린더 과제 순서대로 정렬됩니다', '정렬 안내가 없다');
-      //  머리 순서: 점, 과제명, 🔒, 시간 칸, 시간, ✕(맨 끝)
+      //  머리 순서: 점, 과제명, 시간 칸, 시간, ✕(맨 끝)
       const h0 = X.$('#atBlocks .at-blk[data-bi="0"] .at-bh');
-      assert.deepStrictEqual([].map.call(h0.children, (e) => e.className.split(' ')[0]), ['at-dot', 'at-bn', 'at-lock', 'at-bhr', 'at-bx']);
+      assert.deepStrictEqual([].map.call(h0.children, (e) => e.className.split(' ')[0]), ['at-dot', 'at-bn', 'at-bhr', 'at-bx']);
       X.$('#atBlocks [data-bx="0"]').click();   // 알파 지우기 → 베타, 감마
       X.ev("ATE.blocks.push({ name: '', hours: 1, text: '옛 글', raw: '' }); atBlocksRender()");
       X.ev("atAddPick('알파')");

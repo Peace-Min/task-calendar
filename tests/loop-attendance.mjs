@@ -349,9 +349,9 @@ async function main() {
   vlog('처음 패널:', p3.cards, p3.pick, p3.none);
   const b3 = await curBlocks();
   ok('A3 처음 블록 = 처음 체크로 한 번 불러온 블록, 자유 메모는 비어 있다', same(b3.blocks, await A.J('atLoadBlocks().map(function(b){ return { name: b.name, hours: b.hours, text: b.text }; })')) && b3.memo === '');
-  ok('A3 블록이 보인다(과제명 잠금, 시간 글 칸, ▲ ▼ 없음, 자유 메모가 맨 위)', await A.ev(`(function(){ const n = ATE.blocks.length; if (n !== document.querySelectorAll('#atBlocks .at-blk[data-bi]').length) return false;
+  ok('A3 블록이 보인다(과제명은 글자, 자물쇠 없음, 시간 숫자 칸, ▲ ▼ 없음, 자유 메모가 맨 위)', await A.ev(`(function(){ const n = ATE.blocks.length; if (n !== document.querySelectorAll('#atBlocks .at-blk[data-bi]').length) return false;
     if (!n) return !!document.querySelector('#atBlocks textarea[data-memo]'); const h = document.querySelector('#atBlocks .at-blk[data-bi="0"]');
-    return !!h.querySelector('.at-lock') && h.querySelector('input[data-bh]').type === 'text' && !h.querySelector('[data-bup], [data-bdn]') && !!document.querySelector('#atBlocks').firstElementChild.querySelector('textarea[data-memo]'); })()`));
+    return !h.querySelector('.at-lock') && !!h.querySelector('.at-bn') && h.querySelector('input[data-bh]').type === 'number' && !h.querySelector('[data-bup], [data-bdn]') && !!document.querySelector('#atBlocks').firstElementChild.querySelector('textarea[data-memo]'); })()`));
   await A.ev(`(function(){ const c = document.getElementById('atOSkip'); c.click(); return c.checked; })()`);
   const p3b = await A.J(`({ cards: document.querySelectorAll('#atCards .at-card').length, checked: document.querySelectorAll('#atCards input[data-atid]:checked').length,
     pick: document.getElementById('atPick').textContent })`);
