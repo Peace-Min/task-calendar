@@ -3,7 +3,8 @@
 // 이 파일이 지키는 것(호스트 쪽만. 웹의 근태 화면은 웹 시험의 몫이다):
 //   ① 창 종류 WinKind.Attend 의 값(주소, 제목, 최소와 처음 크기, 'tw:' 머리, 준비 알림, 여는 함수, 앞으로 올 때 함수,
 //      목록 알림 안 받음, 닫기 전 확인, 자리 기억 키)과 등록(All), 설정의 Attend 자리.
-//   ② 근태 창 허용 목록 AttendWinCommands = {attendWinReady, attendNav, reportDailyList, netcusSubmit}. 웹 ATTENDWIN_CMD 와 같다.
+//   ② 근태 창 허용 목록 AttendWinCommands = {attendWinReady, attendNav, reportDailyList, netcusSubmit, attendSourceReq, netcusWeekMerge}.
+//      웹 ATTENDWIN_CMD 와 같다. attendSourcePush 는 메인 창만 보낸다(목록에 없다).
 //   ③ attendOpen 은 메인 창에서만 받는다. payload 가 객체가 아니면 열지 않는다. attendNav 는 근태 창에서만 받고 메인 창의
 //      __attendNavFromWin 을 부른다(날짜는 'YYYY-MM-DD' 만, 인자는 JSON 으로 싣는다).
 //   ④ reportDailyList: 사람은 세션에서, 기간은 엄격한 날짜 두 개와 상한, DB 는 UI 스레드 밖, 회신은 ReplyOnUi.
@@ -13,6 +14,9 @@
 //   ⑦ __netcusProgress, __netcusResult 는 메인 창과 근태 창 둘 다로 간다(메인 먼저).
 //   ⑧ __reportDailySaved 는 저장이 성공했을 때만, 두 창 모두로 간다.
 //   ⑨ 로그아웃과 계정 바뀜은 따로 뜨는 창을 종류 가리지 않고 모두 닫는다(근태 창 포함).
+//   ⑩ 가져오기 중계(2026-10-29): attendSourceReq 는 근태 창에서만 받아 날짜를 확인하고 메인 창 __attendSourceFor 를 부른다.
+//      attendSourcePush 는 메인 창에서만 받아 날짜와 source(객체)를 확인하고 {date, source} 를 JSON 으로 다시 써서 근태 창 __attendSource 로만 넘긴다.
+//      근태관리 읽기(netcusWeekMerge)는 회사 사이트를 읽기만 한다(제출, 값 넣기, 저장이 없다).
 //   ★ 검사는 함수로 묶고(checks.*), 아래 변이 시험이 같은 함수에 망가뜨린 소스를 넣어 실패를 확인한다.
 import { test, assert, loadAppSource, stripCsComments, extractCsMember, readText } from './harness.mjs';
 
@@ -34,11 +38,11 @@ function mutate(base, from, to) {
 }
 const member = (code, sig) => extractCsMember(code, sig);
 
-const ATTEND_CMDS = ['attendNav', 'attendWinReady', 'netcusSubmit', 'reportDailyList'];
+const ATTEND_CMDS = ['attendNav', 'attendSourceReq', 'attendWinReady', 'netcusSubmit', 'netcusWeekMerge', 'reportDailyList'];
 //  근태 창이 보내면 안 되는 것(내 달력 부팅과 저장, 창 열기, 관리, 창 조작, 주간 전송, 업데이트)
 const NEVER = ['ready', 'reloadState', 'saveState', 'replaceAllState', 'unsavedState', 'userLogin', 'userLogout',
   'attendOpen', 'adminOpen', 'peerOpen', 'peerSchedule', 'peerMine', 'membersGet', 'saveProject', 'netcusSaveCreds',
-  'netcusWeekSubmit', 'netcusWeekMerge', 'reminderSync', 'updateApply', 'updateCheck', 'close', 'hide', 'pin', '__dbFault'];
+  'netcusWeekSubmit', 'attendSourcePush', 'netcusWeeklyRangeRead', 'reminderSync', 'updateApply', 'updateCheck', 'close', 'hide', 'pin', '__dbFault'];
 
 function hostSet(cs, name) {
   const m = new RegExp(`internal static readonly HashSet<string> ${name} = new\\(StringComparer\\.Ordinal\\)\\s*\\{([^}]*)\\}`).exec(stripCsComments(cs));
@@ -193,6 +197,28 @@ const checks = {
     assert.strictEqual((all.match(/__reportDailySaved\(/g) || []).length, 1, '__reportDailySaved 를 보내는 곳이 하나가 아니다');
   },
 
+  // ⑩ 가져오기 중계와 근태관리 읽기
+  sourceRelay(s) {
+    const d = onWeb(s);
+    assert.match(d, /case "attendSourceReq":[^\n]*\n\s*if \(fromWin == WinKind\.Attend\) AttendSourceToMain\(GetStr\(doc, "date"\)\);/, '가져오기 청하기를 근태 창에서만 받지 않는다');
+    assert.match(d, /case "attendSourcePush":[^\n]*\n\s*if \(fromWin == null\) AttendSourceToWin\(doc\);/, '가져오기 회신을 메인 창에서만 받지 않는다');
+    const a = member(s.main, 'private void AttendSourceToMain(string date)');
+    assert.match(a, /if \(!ReportDb\.TryParseYmd\(date, out _\)\)[^\n]*return;/, '가져오기 청하기가 날짜 형식을 보지 않는다');
+    assert.match(a, /JsCall\("window\.__attendSourceFor && window\.__attendSourceFor\(" \+ JsonSerializer\.Serialize\(date\) \+ "\)"\);/, '메인 창 __attendSourceFor 를 JSON 인자로 부르지 않는다');
+    const b = member(s.main, 'private void AttendSourceToWin(JsonDocument doc)');
+    assert.match(b, /if \(!ReportDb\.TryParseYmd\(date, out _\)\)[^\n]*return;/, '가져오기 회신이 날짜 형식을 보지 않는다');
+    assert.match(b, /TryGetProperty\("source", out var src\) \|\| src\.ValueKind != JsonValueKind\.Object\) return;/, '가져오기 회신이 source 가 객체인지 보지 않는다');
+    assert.match(b, /var core = WinOf\(WinKind\.Attend\)\?\.Core;/, '가져오기 회신을 근태 창으로 보내지 않는다');
+    assert.match(b, /"window\.__attendSource && window\.__attendSource\(" \+ JsonSerializer\.Serialize\(new \{ date, source = src \}\) \+ "\)"/, '가져오기 회신을 JSON 으로 다시 쓰지 않는다(받은 글자를 그대로 이어 붙인다)');
+    assert.ok(!/JsCall\(|ReportPush\(|GetRawText\(\)/.test(b), '가져오기 회신이 메인 창으로 되돌아가거나 받은 글자를 그대로 쓴다');
+    //  근태관리 읽기: 근태 창 회신은 'tw:' 번호로 그 창에 간다(HostReply 의 ReplyCore). 회사 사이트에는 읽기만 한다.
+    assert.match(d, /case "netcusWeekMerge":[\s\S]{0,400}_ = _netcus\.WeekMerge\(reqId, from, to\);/, 'netcusWeekMerge 가 배선되지 않았다');
+    const m = stripCsComments(member(s.netcus, 'private async Task NetcusWeekMerge(string reqId, string from, string to)'));
+    assert.ok(!/SaveDailyReport|SaveWeeklyReport|NetcusSubmit|WeekFill|\.submit\(|requestSubmit|\.value\s*=(?!=)/.test(m), '근태관리 읽기가 회사 사이트에 쓰거나 저장한다');
+    assert.match(m, /if \(\(dTo - dFrom\)\.TotalDays > 31\)/, '근태관리 읽기의 기간 상한이 없다');
+    assert.match(member(s.main, 'private void HostReply(string reqId, object payload)'), /ReplyCore\(reqId\)\?\.ExecuteScriptAsync\(call\)/, '회신이 보낸 창(ReplyCore)으로 가지 않는다');
+  },
+
   // ⑨ 로그아웃과 계정 바뀜에 근태 창도 닫힌다
   closeOnLogout(s) {
     const c = member(s.main, 'private void CloseSubWindows()');
@@ -204,7 +230,7 @@ const checks = {
 
 // ══ 계약 ═══════════════════════════════════════════════════════════════
 test('근태①: WinKind.Attend 의 값과 등록(주소, 제목, 크기, tw:, 준비 알림, 웹 함수, 닫기 확인, 자리 키)', () => checks.registry(src));
-test('근태②: 근태 창 허용 목록이 넷이고 웹 ATTENDWIN_CMD 와 같다', () => checks.whitelist(src));
+test('근태②: 근태 창 허용 목록이 여섯이고 웹 ATTENDWIN_CMD 와 같다', () => checks.whitelist(src));
 test('근태③: attendOpen 은 메인 창만, attendNav 는 근태 창만 받아 메인 창 __attendNavFromWin 을 부른다', () => checks.routing(src));
 test('근태④: reportDailyList 는 세션의 사람과 엄격한 기간으로 읽고 SELECT 는 파라미터로 묶는다', () => checks.dailyList(src));
 test('결정9⑤: vr==1 에서 저장을 기다린 뒤 결과를 알리고 실패는 공통 안내다', () => checks.decision9(src));
@@ -212,6 +238,7 @@ test('결정9⑥: 일간 백그라운드 재시도가 없다(주간은 그대로
 test('알림⑦: __netcusProgress, __netcusResult 가 메인 창과 근태 창으로 간다(메인 먼저)', () => checks.notifyBoth(src));
 test('알림⑧: __reportDailySaved 는 저장 성공 뒤에만 두 창으로 간다', () => checks.savedNotice(src));
 test('닫기⑨: 로그아웃과 계정 바뀜은 근태 창도 닫는다', () => checks.closeOnLogout(src));
+test('가져오기⑩: attendSourceReq 는 근태 창만, attendSourcePush 는 메인 창만 받아 날짜와 source 를 확인하고 JSON 으로 다시 써서 넘긴다, 근태관리는 읽기만', () => checks.sourceRelay(src));
 
 // ══ 변이: 검사가 실제로 무는가 ═════════════════════════════════════════
 test('변이①: 근태 창의 처음 높이를 바꾸면 근태① 이 실패한다', () => {
@@ -278,4 +305,28 @@ test('변이⑦b: ReportPush 에서 근태 창을 빼면 알림⑦ 이 실패한
 test('변이⑧: __reportDailySaved 를 성공 확인 밖으로 빼면 알림⑧ 이 실패한다', () => {
   const bad = mutate(src.main, '            if (ok)\n            {\n                string date', '            {\n                string date');
   assert.throws(() => checks.savedNotice(with_('main', bad)), /저장 성공\(if \(ok\)\) 안에 있지 않다/);
+});
+
+test('변이⑩: attendSourcePush 의 메인 창 가드를 빼면 가져오기⑩ 이 실패한다', () => {
+  const bad = mutate(src.main, 'if (fromWin == null) AttendSourceToWin(doc);', 'AttendSourceToWin(doc);');
+  assert.throws(() => checks.sourceRelay(with_('main', bad)), /메인 창에서만 받지 않는다/);
+});
+
+test('변이⑩b: 가져오기 회신이 받은 글자를 그대로 이어 붙이면 가져오기⑩ 이 실패한다', () => {
+  const bad = mutate(src.main, 'JsonSerializer.Serialize(new { date, source = src })', 'src.GetRawText()');
+  assert.throws(() => checks.sourceRelay(with_('main', bad)), /JSON 으로 다시 쓰지 않는다|그대로 쓴다/);
+});
+
+test('변이⑩c: 가져오기 회신의 날짜 확인을 빼면 가져오기⑩ 이 실패한다', () => {
+  const b = member(src.main, 'private void AttendSourceToWin(JsonDocument doc)');
+  const line = b.split('\n').find((l) => l.includes('ReportDb.TryParseYmd(date, out _)'));
+  assert.ok(line, '변이 앵커를 찾지 못했다');
+  const bad = mutate(src.main, line + '\n', '');
+  assert.throws(() => checks.sourceRelay(with_('main', bad)), /날짜 형식을 보지 않는다/);
+});
+
+test('변이⑩d: 근태관리 읽기에 값 넣기가 섞이면 가져오기⑩ 이 실패한다', () => {
+  const bad = mutate(src.netcus, `raw = await cw.ExecuteScriptAsync("(function(){var c=document.getElementsByName('content')[0];return c?c.value:null;})()");`,
+    `raw = await cw.ExecuteScriptAsync("(function(){var c=document.getElementsByName('content')[0];c.value='x';return c?c.value:null;})()");`);
+  assert.throws(() => checks.sourceRelay(with_('netcus', bad)), /쓰거나 저장한다/);
 });

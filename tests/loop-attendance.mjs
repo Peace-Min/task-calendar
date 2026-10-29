@@ -10,21 +10,28 @@
  *    A1   근태 탭: pcSetTab('attend') 로 달력이 보이고, 이번 달을 실제 reportDailyList 로 읽어 그린다(읽기만). 미보고 표시는 없다
  *    A2   열기: 근태 달력을 2099-12 로 옮겨 2099-12-02 칸을 누른다. 근태 창 대상이 뜨고 제목과 머리가 근태 보고와 그 날짜,
  *         보고 화면이 보이고, 내 달력은 부팅하지 않았다
- *    A3   불러오기 패널: payload 과제가 있고, 옵션은 패널만 바꾸고, 불러오기가 왼쪽을 채우고, 고친 뒤 불러오기는 덮어쓰기를 묻는다
+ *    A3   가져오기 패널: payload 과제가 있고, 옵션은 패널만 바꾸고, 불러오기가 왼쪽을 채우고, 고친 뒤 불러오기도 묻지 않고 바로 바꾼다.
+ *         근태에 미기록이 없고, 회사 달력 표시 미리 보기가 없다
+ *    A3b  가져오기 캘린더(다른 날짜 = 오늘): attendSourceReq, 호스트, 메인 창 __attendSourceFor, attendSourcePush, 근태 창 __attendSource 중계로
+ *         메인 창이 만든 그날 기록이 오고 카드와 불러오기가 그 기록이다
+ *    A3c  가져오기 근태관리(어제): netcusWeekMerge 로 회사 근태관리 일간보고를 읽기만 한다(오류 없음, 글이면 머리 줄 카드, 읽는 동안 보내기 잠금)
  *    A4   임시 저장: 입력 뒤 2초 안에 tc_attDraft:<who>:2099-12-02 가 근태 창 저장소에 생기고 메인 창에서도 보인다(같은 출처).
  *         메인 근태 달력의 그 칸에 ✎ 작성 중
  *    A5   닫기 지키기: __winCloseRequest() = 'ask' 와 묻는 창. 계속 쓰기면 남고, 닫기면 창이 닫힌다(키는 남는다).
  *         다시 열면 되살림 안내와 글, 버리고 처음 상태로는 키를 지운다
  *    A6   날짜 이동: › 가 호스트와 메인 창을 거쳐 같은 창에 2099-12-03 으로 돌아온다. 넘기기 전에 12-02 글을 바로 임시 저장한다
- *    A7   보내기(가로채기, 실제 전송 없음): payload(kind, date, &nbsp; 들여쓰기, 머리 줄 시간, status null 또는 코드), 잠금, 연속 클릭 한 번,
- *         실패 회신 흉내 = 공통 안내와 창, 키 유지. 다시 보내고 __reportDailySaved 와 성공 회신 흉내 = 키 삭제와 창 닫힘
+ *    A7   보내기(가로채기, 실제 전송 없음): payload(kind, date, &nbsp; 들여쓰기, 머리 줄 시간, status 코드), 잠금, 연속 클릭 한 번,
+ *         실패 회신 흉내 = 공통 안내와 창, 키 유지. 다시 보내고 __reportDailySaved 와 성공 회신 흉내 = 키 삭제, 창은 남고 보기 화면,
+ *         [수정]이면 보낸 글로 쓰기 화면, 닫기로 창 닫힘
  *    A8   메인 창 무시: 보고서 창이 보내지 않았을 때 __netcusResult 와 __netcusProgress 는 #rptSendStatus 와 토스트를 건드리지 않는다
+ *    A9   보기 화면: 이 달에 앱으로 보고한 날(DB, 읽기만)을 열면 보기 화면으로 먼저 뜨고 내용이 DB 와 같다. 없으면 건너뛴다
  *    정리 두 창의 2099 임시 저장 키 삭제, 근태 창 닫기, 탭과 탭 기억 되돌리기, 잔재 0 확인
  *
  *  ★ 실제로 회사에 보내지 않는다(두 겹, loop-report-edit 와 같은 방식): 근태 창의 Platform.report.submitDaily 를 가로채 payload 만 붙잡고,
  *    두 창의 hpost 를 감싸 'netcus' 로 시작하는 명령은 호스트로 넘기지 않고 기록만 한다. 회신은 __netcusResult 를 직접 불러 흉내 낸다.
+ *    예외는 근태 창의 netcusWeekMerge 하나다: 회사 근태관리를 읽기만 하는 명령이라 통과시킨다(A3c).
  *    __reportDailySaved 흉내는 근태 창에서만 부른다(메인 창에서 부르면 개인 캘린더의 근태를 고쳐 DB 에 쓴다).
- *  ★ DB 에 쓰지 않는다. 읽는 것은 reportDailyList(이번 달, 2099 날짜)뿐이다. 시험 날짜는 2099-12-02, 2099-12-03.
+ *  ★ DB 에 쓰지 않는다. 읽는 것은 reportDailyList(이번 달, 2099 날짜)뿐이다. 시험 날짜는 2099-12-02, 2099-12-03(가져오기는 오늘).
  *
  *  실행:
  *    TC_DEBUG_PORT=9222 로 위젯을 로그인된 채 띄운 뒤
@@ -183,7 +190,7 @@ const INSTALL_A = `(function(){
   if (window.__atLoopW) return 'already';
   const R = window.__atLoopW = { posts: [], blocked: [], cap: [], toasts: [], orig: { hpost: hpost, toast: toast, submitDaily: Platform.report.submitDaily } };
   hpost = function(o){ const c = String((o && o.cmd) || ''); R.posts.push({ t: Date.now(), cmd: c, date: o && o.date, refresh: o && o.refresh });
-    if (/^netcus/i.test(c)) { R.blocked.push(c); return; } return R.orig.hpost(o); };
+    if (/^netcus/i.test(c) && c !== 'netcusWeekMerge') { R.blocked.push(c); return; } return R.orig.hpost(o); };   // 근태관리 읽기(netcusWeekMerge)만 통과
   toast = function(m, k, a, ms){ R.toasts.push({ t: Date.now(), toast: String(m), kind: k }); return R.orig.toast(m, k, a, ms); };
   Platform.report.submitDaily = function(p){ R.cap.push(JSON.parse(JSON.stringify(p))); };
   return 'ok';
@@ -262,7 +269,7 @@ async function main() {
   /* ── A1 근태 탭 ── */
   head('A1 근태 탭: 달력이 보이고 이번 달을 실제로 읽어 그린다, 미보고 표시 없음');
   const m1 = await markM();
-  await M.ev(`pcSetTab('attend'); 1`);
+  await M.ev(`pcSetTab('attend', { force: true }); 1`);   // 위젯이 근태 탭을 기억해 근태 탭으로 떴어도 이번 달을 다시 읽게 한다
   ok('A1 탭 상태(at-on, 근태 탭 선택, 개인 달력 숨김)', await M.ev(`PCAL.tab === 'attend' && document.body.classList.contains('at-on') && document.getElementById('pcTabAttend').getAttribute('aria-selected') === 'true'
     && getComputedStyle(document.querySelector('main > .cal')).display === 'none'`));
   ok('A1 근태 화면(#atView, #atMonth)이 보이고 보고 화면은 숨김', (await shown(M, 'atView')) && (await shown(M, 'atMonth')) && !(await shown(M, 'atEd')));
@@ -333,12 +340,55 @@ async function main() {
   const edited3 = t3 + '\n- 루프가 고친 줄';
   await typeText(edited3);
   ok('A3 고친 뒤 불러오기를 눌렀다', (await click(A, 'atLoad')) === 'ok');
-  ok('A3 덮어쓰기 확인이 뜨고 글은 아직 그대로', (await shown(A, 'atConfirm')) && (await A.ev(`document.getElementById('atText').value`)) === edited3);
-  await click(A, 'atCfNo');
-  ok('A3 그만두기면 확인이 닫히고 고친 글 그대로', !(await shown(A, 'atConfirm')) && (await A.ev(`document.getElementById('atText').value`)) === edited3);
-  await click(A, 'atLoad');
-  await click(A, 'atCfYes');
-  ok('A3 덮어쓰기면 불러온 글로 바뀐다', !(await shown(A, 'atConfirm')) && (await A.ev(`document.getElementById('atText').value`)) === t3);
+  await sleep(150);
+  ok('A3 묻지 않고 바로 불러온 글로 바뀐다(덮어쓰기 확인 없음)', !(await A.ev(`!!document.getElementById('atConfirm')`)) && (await A.ev(`document.getElementById('atText').value`)) === t3);
+  ok('A3 근태 목록에 미기록이 없고 기본은 정근 또는 그날 근태', await A.ev(`(function(){ const o = [].map.call(document.getElementById('atStatus').options, function(x){ return x.value; }); return o.indexOf('') < 0 && o.length === ATTEND_STATUS.length && !!document.getElementById('atStatus').value; })()`));
+  ok('A3 회사 달력 표시 미리 보기가 없다', await A.ev(`!document.getElementById('atPv')`));
+
+  /* ── A3b 가져오기 캘린더(다른 날짜, 호스트와 메인 창을 거치는 중계) ── */
+  head('A3b 가져오기 캘린더: 다른 날짜를 고르면 attendSourceReq, 메인 창 __attendSourceFor, attendSourcePush, __attendSource 로 그날 기록이 온다');
+  const TD = await M.ev('todayYmd()');
+  ok('A3b 가져오기 머리, 출처 단추, 날짜 칸(처음 값 = 보는 날짜)', (await A.J(`({ h: document.querySelector('#atEd h3').textContent, src: [].map.call(document.querySelectorAll('[data-atsrc]'), function(b){ return b.textContent; }), d: document.getElementById('atSrcDate').value })`)).h === '가져오기'
+    && same((await A.J(`[].map.call(document.querySelectorAll('[data-atsrc]'), function(b){ return b.textContent; })`)), ['캘린더', '근태관리']) && (await A.ev(`document.getElementById('atSrcDate').value`)) === D);
+  const p3c = await A.ev('__atLoopW.posts.length');
+  await A.ev(`(function(){ const s = document.getElementById('atSrcDate'); s.value = ${JSON.stringify(TD)}; s.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
+  const got3c = await A.waitFor(`ATE.cal.date === ${JSON.stringify(TD)} && !ATE.cal.loading && !!ATE.cal.source`, 10000, 100);
+  ok('A3b 근태 창이 attendSourceReq(오늘)을 보냈다', (await A.J(`__atLoopW.posts.slice(${p3c}).map(function(p){ return p.cmd + ':' + (p.date || ''); })`)).includes('attendSourceReq:' + TD));
+  ok('A3b 중계 회신이 왔다(__attendSource, 10초 안)', got3c, JSON.stringify(await A.J(`({ date: ATE.cal.date, loading: ATE.cal.loading, err: ATE.cal.err })`)));
+  const srcM = await M.J(`(function(){ const s = atBuildSource(${JSON.stringify(TD)}); return { names: s.rows.map(function(r){ return r.name; }), hours: s.hours }; })()`);
+  const srcA = await A.J(`({ names: ATE.cal.source ? ATE.cal.source.rows.map(function(r){ return r.name; }) : null, hours: ATE.cal.source ? ATE.cal.source.hours : null })`);
+  ok('A3b 받은 기록 = 메인 창이 그 날짜로 만든 기록(과제 목록과 시간)', same(srcA, srcM), JSON.stringify({ a: srcA.names && srcA.names.slice(0, 3), m: srcM.names.slice(0, 3) }));
+  const c3c = await A.J(`({ cards: document.querySelectorAll('#atCards .at-card').length, items: atPanelItems().length, date: ATE.date })`);
+  ok('A3b 카드 = 그 날짜의 출처 과제, 보는 날짜는 그대로', c3c.cards === c3c.items && c3c.date === D, JSON.stringify(c3c));
+  if (c3c.items > 0) {
+    await click(A, 'atLoad'); await sleep(150);
+    ok('A3b 불러오기가 그 날짜의 글로 바로 바꾼다', (await A.ev(`document.getElementById('atText').value === atLoadText() && atLoadText().length > 0`)));
+  } else note('오늘 캘린더에 기록이 있는 과제가 없어 불러오기는 건너뛴다(카드 0)');
+
+  /* ── A3c 가져오기 근태관리(회사 사이트 읽기만, netcusWeekMerge) ── */
+  head('A3c 가져오기 근태관리: 어제 회사 근태관리 일간보고를 netcusWeekMerge 로 읽는다(쓰기 없음)');
+  const ND = await M.ev('addDays(todayYmd(), -1)');
+  await A.ev('(function(){ const s = document.getElementById("atSrcDate"); s.value = ' + JSON.stringify(ND) + '; s.dispatchEvent(new Event("change", { bubbles: true })); return 1; })()');
+  const p3n = await A.ev('__atLoopW.posts.length');
+  await A.ev(`(function(){ document.querySelector('[data-atsrc="net"]').click(); return 1; })()`);
+  ok('A3c 읽는 동안 안내와 보내기 잠금', (await A.ev(`ATE.net.loading === true && document.getElementById('atSend').disabled === true`)) || (await A.ev(`ATE.net.loading === false && ATE.net.date === ${JSON.stringify(ND)}`)));
+  const got3n = await A.waitFor(`!ATE.net.loading && ATE.net.date === ${JSON.stringify(ND)}`, 120000, 300);
+  const n3 = await A.J(`({ err: ATE.net.err, dayOk: ATE.net.dayOk, len: ATE.net.content.length, items: atPanelItems().length, cards: document.querySelectorAll('#atCards .at-card').length,
+    none: (document.querySelector('#atCards .at-none') || {}).textContent || '', send: document.getElementById('atSend').disabled })`);
+  const sent3n = await A.J(`__atLoopW.posts.slice(${p3n}).map(function(p){ return p.cmd; })`);
+  ok('A3c netcusWeekMerge 로 읽었다(netcusSubmit 은 없다)', sent3n.includes('netcusWeekMerge') && !sent3n.includes('netcusSubmit'), JSON.stringify(sent3n));
+  ok('A3c 회신이 왔고 오류가 없다', got3n && n3.err === '', JSON.stringify(n3));
+  ok('A3c 글이 있으면 머리 줄 카드, 없으면 빈 날 안내', n3.len > 0 ? (n3.items > 0 && n3.cards === n3.items) : /등록된 보고가 없습니다|읽지 못했습니다/.test(n3.none), JSON.stringify(n3));
+  ok('A3c 다 읽은 뒤 보내기 잠금이 풀린다', n3.send === false);
+  if (n3.items > 0) {
+    await click(A, 'atLoad'); await sleep(150);
+    ok('A3c 불러오기가 근태관리 글로 바로 바꾼다(&nbsp; 없이)', await A.ev(`(function(){ const v = document.getElementById('atText').value; return v === atLoadText() && v.length > 0 && v.indexOf('&nbsp;') < 0 && v.indexOf('\\u00a0') < 0; })()`));
+  }
+  note(`근태관리 어제 글 ${n3.len}자, 과제 묶음 ${n3.items}개`);
+  //  캘린더 출처, 보는 날짜로 되돌리고 처음 글로 돌려 둔다(다음 단계가 깨끗한 상태에서 시작한다)
+  await A.ev(`(function(){ document.querySelector('[data-atsrc="cal"]').click(); const s = document.getElementById('atSrcDate'); s.value = ${JSON.stringify(D)}; s.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
+  await typeText(text3);
+  ok('A3c 정리: 출처 캘린더, 날짜는 보는 날짜, 고친 것 없음', await A.ev(`ATE.src === 'cal' && ATE.srcDate === ${JSON.stringify(D)} && !atDirty()`));
 
   /* ── A4 임시 저장 ── */
   head('A4 임시 저장: 입력 뒤 2초 안에 키가 생기고 메인 창에서도 보인다');
@@ -408,7 +458,7 @@ async function main() {
   head('A7 보내기: 실제로 보내지 않고 payload 확인, 잠금, 연속 클릭, 실패 회신, 성공 회신으로 지우고 닫힘');
   ok('A7 근태 창 가로채기(submitDaily)와 netcus 차단(hpost)이 제자리', await interceptOkA());
   await typeText(SEND_TEXT);
-  ok('A7 근태 = 미기록(빈 값), 초과 없음', (await setSel('atStatus', '')) === '' && (await setSel('atOt', '0')) === '0');
+  ok('A7 근태 = 정근(1), 초과 없음', (await setSel('atStatus', '1')) === '1' && (await setSel('atOt', '0')) === '0');
   ok('A7 상태 줄 = 과제 3개, 합계 5.5시간(범위 밖 30 은 빼고)', (await A.ev(`document.getElementById('atHours').textContent`)) === '과제 3개, 합계 5.5시간');
   if (!(await interceptOkA())) throw new Error('전송 가로채기가 제자리에 없다. 실제 전송 위험이라 누르지 않는다');
   const n7 = await A.ev('__atLoopW.cap.length');
@@ -419,7 +469,7 @@ async function main() {
   ok('A7 연속 클릭과 다시 부르기에도 한 번만 붙잡았다', (await A.ev('__atLoopW.cap.length')) === n7 + 1, String((await A.ev('__atLoopW.cap.length')) - n7));
   const cap7 = await A.J('__atLoopW.cap[__atLoopW.cap.length - 1]');
   ok('A7 payload kind daily, 날짜, dryRun false', !!cap7 && cap7.kind === 'daily' && same(cap7.date, { y: 2099, m: 12, d: 2 }) && cap7.dryRun === false && cap7.__tc === 'netcus-report', JSON.stringify(cap7 && { kind: cap7.kind, date: cap7.date, dryRun: cap7.dryRun }));
-  ok('A7 status = null(미기록), overtime = 0', !!cap7 && cap7.fields.status === null && cap7.fields.overtime === 0, JSON.stringify(cap7 && cap7.fields.status));
+  ok('A7 status = "1"(정근, null 없음), overtime = 0', !!cap7 && cap7.fields.status === '1' && cap7.fields.overtime === 0, JSON.stringify(cap7 && cap7.fields.status));
   ok('A7 content 는 줄 앞 공백을 &nbsp; 로', !!cap7 && cap7.fields.content === SEND_CONTENT, JSON.stringify(cap7 && cap7.fields.content));
   ok('A7 hours = 머리 줄 두 형식에서 읽은 값(범위 밖 30 은 없다)', !!cap7 && same(cap7.hours, SEND_HOURS), JSON.stringify(cap7 && cap7.hours));
   ok('A7 netcus 명령은 하나도 호스트로 나가지 않았다(두 창)', same(await A.J('__atLoopW.blocked'), []) && same(await M.J('__atLoop.blocked'), []), JSON.stringify([await A.J('__atLoopW.blocked'), await M.J('__atLoop.blocked')]));
@@ -435,21 +485,34 @@ async function main() {
   ok('A7 실패해도 창은 남고 임시 저장도 남는다', (await attendTargets()).length === 1 && ((await storedIn(M, KEY)) || {}).text === SEND_TEXT);
   //  다시 보내기: 근태 코드와 초과시간
   ok('A7 근태 = 야근(2), 초과 +2시간', (await setSel('atStatus', '2')) === '2' && (await setSel('atOt', '2')) === '2');
-  ok('A7 회사 달력 표시 미리 보기 = 야근(+2시간)', (await A.ev(`document.getElementById('atPv').textContent`)) === '회사 달력 표시: 야근(+2시간)');
   if (!(await interceptOkA())) throw new Error('전송 가로채기가 제자리에 없다. 실제 전송 위험이라 누르지 않는다');
   await click(A, 'atSend');
   await sleep(150);
   const cap7b = await A.J('__atLoopW.cap[__atLoopW.cap.length - 1]');
   ok('A7 다시 보내기 payload status = "2", overtime = 2, 글 같음', (await A.ev('__atLoopW.cap.length')) === n7 + 2 && cap7b.fields.status === '2' && cap7b.fields.overtime === 2 && cap7b.fields.content === SEND_CONTENT, JSON.stringify(cap7b && cap7b.fields.status));
   ok('A7 메인 창은 근태 창이 보낸 것에 묶이지 않았다(보고서 창 대기 표지 없음)', (await M.ev('__rptSendArmed')) === false && (await M.ev('ATE.armed')) === false);
-  //  호스트의 DB 저장 알림 흉내(근태 창에서만): "보고한 날짜" 목록을 다음에 다시 읽게 비운다. 창은 남는다.
-  await A.ev(`(function(){ ATE.rep.list = []; return 1; })()`);
+  //  호스트의 DB 저장 알림 흉내(근태 창에서만): 그날 근태관리 글 기억을 비운다(다음에 고르면 다시 읽는다). 창은 남는다.
+  await A.ev(`(function(){ ATE.net.date = ${JSON.stringify(D)}; ATE.net.loading = false; return 1; })()`);
   await A.ev(`window.__reportDailySaved({ date: ${JSON.stringify(D)}, status: '2', overtime: 2 }); 1`);
-  ok('A7 __reportDailySaved 흉내: 보고한 날짜 목록을 비우고 창은 남는다', (await A.ev('ATE.rep.list === null && ATE.sending === true')) && (await attendTargets()).length === 1);
-  await A.ev(`window.__netcusResult(true, '시험 회신(루프, 실제 전송 아님)'); 1`).catch(() => 0);
-  const gone7 = await waitAttendTarget({ gone: true, timeout: 8000 });
-  ok('A7 성공 회신 흉내 = 근태 창이 닫혔다', gone7);
+  ok('A7 __reportDailySaved 흉내: 그날 근태관리 글 기억을 비우고 창은 남는다', (await A.ev(`ATE.net.date === '' && ATE.sending === true`)) && (await attendTargets()).length === 1);
+  await A.ev(`window.__netcusResult(true, '시험 회신(루프, 실제 전송 아님)'); 1`);
+  await sleep(300);
+  ok('A7 성공 회신 흉내 = 근태 창은 닫히지 않는다', (await attendTargets()).length === 1 && !A.closed);
   ok('A7 성공 회신 = 임시 저장이 지워졌다', (await storedIn(M, KEY)) === null);
+  const v7 = await A.J(`({ mode: ATE.mode, title: document.getElementById('atEdTitle').textContent, date: document.getElementById('atEdDate').textContent,
+    st: document.getElementById('atVwStatus').textContent, text: document.getElementById('atVwText').textContent, sent: document.getElementById('atVwSent').textContent,
+    msg: document.getElementById('atMsg').textContent })`);
+  ok('A7 보기 화면으로 바뀌었다(머리 근태 보기, 날짜에 보고함)', v7.mode === 'view' && v7.title === '근태 보기' && v7.date === LAB[D] + ', 보고함', JSON.stringify(v7));
+  ok('A7 보기 화면이 보이고 쓰기 화면은 숨김, [수정] [닫기]', (await shown(A, 'atVw')) && !(await shown(A, 'atEdBody')) && !(await shown(A, 'atSend')) && (await shown(A, 'atVwEdit')) && (await shown(A, 'atVwClose')));
+  ok('A7 보기 내용: 근태 야근(+2시간), 보낸 글(공백 되돌림), 보낸 시각', v7.st === '야근(+2시간)' && v7.text === SEND_TEXT && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(v7.sent), JSON.stringify(v7));
+  ok('A7 성공 문구', v7.msg === '시험 회신(루프, 실제 전송 아님)');
+  ok('A7 보기 화면은 고친 것이 없다(__winCloseRequest = close)', (await A.ev('window.__winCloseRequest()')) === 'close');
+  ok('A7 [수정]을 눌렀다', (await click(A, 'atVwEdit')) === 'ok');
+  ok('A7 [수정]이면 보낸 글과 근태로 쓰기 화면, 가져오기 패널이 보인다', await A.ev(`ATE.mode === 'edit' && document.getElementById('atText').value === ${JSON.stringify(SEND_TEXT)} && document.getElementById('atStatus').value === '2' && document.getElementById('atOt').value === '2' && !atDirty()`)
+    && (await shown(A, 'atPanel')) && (await shown(A, 'atSend')));
+  ok('A7 [수정] 뒤 고친 것이 없으면 닫기 단추가 창을 닫는다', (await click(A, 'atClose').catch(() => 'closed')) !== 'disabled');
+  const gone7 = await waitAttendTarget({ gone: true, timeout: 8000 });
+  ok('A7 근태 창이 닫혔다', gone7);
   ok('A7 메인 창으로는 netcus 명령이 나가지 않았다', same(await M.J('__atLoop.blocked'), []));
 
   /* ── A8 메인 창 무시 ── */
@@ -467,6 +530,25 @@ async function main() {
   ok('A8 #rptSendStatus 문구와 모양이 그대로(표지 문구 유지)', same(s8b, { t: '루프 표지 문구', c: 'rpt-send-status' }), JSON.stringify(s8b));
   const toasts8 = (await sinceM(m8)).filter((x) => x.toast);
   ok('A8 보고서 토스트가 뜨지 않았다', !toasts8.length, JSON.stringify(toasts8));
+
+  /* ── A9 보기 화면(실제로 보고한 날, 읽기만) ── */
+  head('A9 보기 화면: 이 달에 앱으로 보고한 날을 열면 보기 화면으로 먼저 뜬다');
+  await M.ev(`(async function(){ ATT.anchor = todayYmd(); await atLoadMonth(); return 1; })()`);
+  const R9 = await M.J(`(function(){ const a = Array.from(ATT.rows.values()).filter(function(r){ return atDecode(r.content).trim() && attDraftGet(r.date) == null; });
+    a.sort(function(x, y){ return x.date < y.date ? -1 : 1; }); const r = a[a.length - 1]; if (!r) return null;
+    return { date: r.date, label: atStatusLabel(r.status, r.overtime) || '근태 기록 없음', text: atDecode(r.content).replace(/\\s+$/, ''), sent: atSentLabel(r.sentAt) || '기록 없음' }; })()`);
+  if (!R9) note('이 달에 앱으로 보고한 날(임시 저장 없는 날)이 없어 보기 화면 실제 확인을 건너뛴다');
+  else {
+    await M.ev(`atOpen(${JSON.stringify(R9.date)}); 1`);
+    ok('A9 근태 창이 그 날짜로 열렸다', !!(await attachAttend(R9.date, 20000)), R9.date);
+    const v9 = await A.J(`({ mode: ATE.mode, st: document.getElementById('atVwStatus').textContent, text: document.getElementById('atVwText').textContent, sent: document.getElementById('atVwSent').textContent,
+      title: document.getElementById('atEdTitle').textContent })`);
+    ok('A9 보기 화면(근태 보기)으로 먼저 열렸다', v9.mode === 'view' && v9.title === '근태 보기' && (await shown(A, 'atVw')) && !(await shown(A, 'atEdBody')), JSON.stringify({ mode: v9.mode, title: v9.title }));
+    ok('A9 보기 내용 = DB 의 그날 보고(근태 표시, 글, 보낸 시각)', v9.st === R9.label && v9.text === R9.text && v9.sent === R9.sent, JSON.stringify({ st: [v9.st, R9.label], sent: [v9.sent, R9.sent] }));
+    ok('A9 보기 화면 닫기 요청 = close', (await A.ev('window.__winCloseRequest()')) === 'close');
+    await click(A, 'atVwClose').catch(() => 'closed');
+    ok('A9 [닫기]로 근태 창이 닫혔다', await waitAttendTarget({ gone: true, timeout: 8000 }));
+  }
 }
 
 let aborted = null;

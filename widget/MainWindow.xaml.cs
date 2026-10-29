@@ -479,6 +479,7 @@ namespace TaskCalendarWidget
         internal static readonly HashSet<string> AttendWinCommands = new(StringComparer.Ordinal)
         {
             "attendWinReady", "attendNav", "reportDailyList", "netcusSubmit",
+            "attendSourceReq", "netcusWeekMerge",   // 가져오기(2026-10-29): 다른 날짜 캘린더 기록 청하기, 회사 근태관리 읽기만. attendSourcePush 는 메인 창만 보낸다
         };
         //  요청 번호의 머리. 회신은 이 표시를 보고 그 창으로 간다(ReplyCore). 창끼리 번호가 겹치지 않는다.
         internal const string PeerReqPrefix = "pw:";
@@ -897,6 +898,12 @@ namespace TaskCalendarWidget
                         break;
                     case "attendNav":        // 근태 창의 날짜 이동(‹ ›)과 앞으로 올 때의 새로 읽기. payload 는 메인 창이 다시 만들어 attendOpen 으로 보낸다
                         if (fromWin == WinKind.Attend) AttendNavToMain(GetStr(doc, "date"), GetBool(doc, "refresh"));
+                        break;
+                    case "attendSourceReq":  // 근태 창의 가져오기(캘린더, 다른 날짜). 메인 창의 __attendSourceFor 로 넘긴다(메인 창이 attendSourcePush 로 돌려준다)
+                        if (fromWin == WinKind.Attend) AttendSourceToMain(GetStr(doc, "date"));
+                        break;
+                    case "attendSourcePush": // 메인 창이 만든 그 날짜의 캘린더 기록. 근태 창의 __attendSource 로 넘긴다
+                        if (fromWin == null) AttendSourceToWin(doc);
                         break;
                     case "reportDailyList":  // 그 기간에 이 앱으로 보낸 일간 보고(cal_report_daily). 메인 창과 근태 창이 읽는다. 사람은 세션에서 읽는다
                         _ = RunReportDailyListAsync(rq, GetStr(doc, "from"), GetStr(doc, "to"));
@@ -1919,6 +1926,26 @@ namespace TaskCalendarWidget
         {
             if (!ReportDb.TryParseYmd(date, out _)) { Log("근태 창 날짜 이동 거부: 날짜 형식이 아님"); return; }
             JsCall("window.__attendNavFromWin && window.__attendNavFromWin(" + JsonSerializer.Serialize(date) + "," + (refresh ? "true" : "false") + ")");
+        }
+
+        //  가져오기 중계 1(근태 창 → 메인 창). 날짜는 'YYYY-MM-DD' 만 받고 JSON 인자로 싣는다.
+        private void AttendSourceToMain(string date)
+        {
+            if (!ReportDb.TryParseYmd(date, out _)) { Log("근태 창 가져오기 거부: 날짜 형식이 아님"); return; }
+            JsCall("window.__attendSourceFor && window.__attendSourceFor(" + JsonSerializer.Serialize(date) + ")");
+        }
+
+        //  가져오기 중계 2(메인 창 → 근태 창). 날짜를 다시 확인하고 source 가 객체일 때만 {date, source} 를 JSON 으로 다시 써서 넘긴다
+        //  (받은 글자를 그대로 이어 붙이지 않는다). 근태 창이 없으면 버린다.
+        private void AttendSourceToWin(JsonDocument doc)
+        {
+            string date = GetStr(doc, "date");
+            if (!ReportDb.TryParseYmd(date, out _)) { Log("근태 창 가져오기 회신 거부: 날짜 형식이 아님"); return; }
+            if (!doc.RootElement.TryGetProperty("source", out var src) || src.ValueKind != JsonValueKind.Object) return;
+            var core = WinOf(WinKind.Attend)?.Core;
+            if (core == null) return;
+            string js = "window.__attendSource && window.__attendSource(" + JsonSerializer.Serialize(new { date, source = src }) + ")";
+            try { _ = core.ExecuteScriptAsync(js); } catch { }
         }
 
         //  그 기간에 이 앱으로 보낸 일간 보고 목록. 사람은 세션에서 읽는다(웹이 정하지 않는다).
