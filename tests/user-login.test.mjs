@@ -643,13 +643,13 @@ test('D1: LoginVerify는 nav 대기를 4000ms로 줄인다 — 실패가 15초 �
     '로그인 결과 로그에 소요시간(초)이 없다 — 회귀를 로그로 볼 수 없다');
 });
 
-test('D1: 기존 NetcusLoginVerify 호출 6곳은 인자 없이 그대로다(동작 무변경)', () => {
-  // 기존 호출부 6곳 = 자격검증 · 일간제출 · 주간채움 · 주간병합 · 범위읽기 · 구조캡처.
+test('D1: 기존 NetcusLoginVerify 호출 7곳은 인자 없이 그대로다(동작 무변경)', () => {
+  // 기존 호출부 7곳 = 자격검증, 일간제출, 주간채움, 주간병합, 범위읽기, 구조캡처, 근태 달력 보기(2026-10-29).
   const calls = [...codeOnly(netcus).matchAll(/NetcusLoginVerify\(cw, id, pw([^)]*)\)/g)].map(m => m[1].trim());
-  assert.strictEqual(calls.length, 7, `NetcusLoginVerify 호출이 ${calls.length}곳이다(로그인 1 + 기존 6 = 7이어야 한다)`);
+  assert.strictEqual(calls.length, 8, `NetcusLoginVerify 호출이 ${calls.length}곳이다(로그인 1 + 기존 7 = 8이어야 한다)`);
   const withArg = calls.filter(a => a !== '');
   assert.deepStrictEqual(withArg, [', 4000'],
-    `타임아웃을 넘기는 호출부가 로그인 하나가 아니다: ${JSON.stringify(withArg)} — 나머지 6곳은 15000 그대로여야 한다`);
+    `타임아웃을 넘기는 호출부가 로그인 하나가 아니다: ${JSON.stringify(withArg)} — 나머지 7곳은 15000 그대로여야 한다`);
 });
 
 test('D2: EnsureW2 background 분기는 작업표시줄에서도 화면에서도 사라진다', () => {
@@ -884,7 +884,7 @@ test('E6: 비밀번호는 반환값·로그 어디에도 실리지 않는다', (
   }
 });
 
-test('E7: 판정 폴링·판정 기준·NavTo/NavOnce·공유 호출부 6곳은 무변경', () => {
+test('E7: 판정 폴링, 판정 기준, NavTo/NavOnce, 공유 호출부 7곳은 무변경', () => {
   const h = helper();
   assert.ok(/for \(int i = 0; i < 16; i\+\+\)/.test(h) && /Task\.Delay\(250\)/.test(h), '판정 폴링(16회×250ms)이 바뀌었다');
   assert.ok(/getElementsByName\('content'\)\[0\]/.test(h) && /querySelector\('input\[type=password\]'\)/.test(h),
@@ -895,9 +895,9 @@ test('E7: 판정 폴링·판정 기준·NavTo/NavOnce·공유 호출부 6곳은 
   const navOnce = bare(netcus, 'private Task<bool> NavOnce(CoreWebView2 cw, int timeoutMs)');
   assert.ok(/Task\.Delay\(timeoutMs\)/.test(navOnce) && /cw\.NavigationCompleted -= H/.test(navOnce),
     'NavOnce가 상한에 스스로 핸들러를 떼지 않는다 — 즉시반환 경로에서 버린 리스너가 누수된다');
-  // 6개 공유 호출부(자격검증·일간제출·주간채움·주간병합·범위읽기·구조캡처)는 인자 없이 그대로.
+  // 7개 공유 호출부(자격검증, 일간제출, 주간채움, 주간병합, 범위읽기, 구조캡처, 근태 달력 보기)는 인자 없이 그대로.
   const calls = [...codeOnly(netcus).matchAll(/NetcusLoginVerify\(cw, id, pw([^)]*)\)/g)].map(m => m[1].trim());
-  assert.strictEqual(calls.length, 7, `NetcusLoginVerify 호출이 ${calls.length}곳이다(로그인 1 + 공유 6 = 7)`);
+  assert.strictEqual(calls.length, 8, `NetcusLoginVerify 호출이 ${calls.length}곳이다(로그인 1 + 공유 7 = 8)`);
   assert.deepStrictEqual(calls.filter(a => a !== ''), [', 4000'], '타임아웃을 넘기는 호출부가 로그인 하나가 아니다');
 });
 
