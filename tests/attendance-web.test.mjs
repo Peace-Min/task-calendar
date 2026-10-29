@@ -6,15 +6,15 @@
 //       'tw:' 번호 머리, SUBWIN 에 근태 창이 들어간다, 탭 줄에 근태 탭이 있다, UI 문구에 금지 기호가 없다.
 //   (U) 순수: 근태 표시 문구(야근(+2시간)), 머리 줄 시간 읽기(두 형식, 0 초과 24 이하), 같은 이름 더하기, 상태 줄.
 //   (B) jsdom 브라우저(HOST=false): 탭 세 값과 기억, payload 로 초안 만들기(옵션 넷), 근태에 미기록 없음(기본 정근), 불러오기는 묻지 않고 바꾼다,
-//       가져오기(다른 날짜 캘린더는 그 자리에서, 근태관리는 위젯 전용 안내), 보기 화면([수정], ← 근태 달력, Esc), 임시 저장(쓰기, 되살리기, 버리기,
+//       가져오기(다른 날짜 캘린더는 그 자리에서, 인트라넷은 위젯 전용 안내), 보고한 날도 바로 쓰기 화면(보낸 시각, 머리 × 없음), 임시 저장(쓰기, 되살리기, 버리기,
 //       14일 정리), 화면 전환과 떠날 때 확인(탭 이동, ← 근태 달력, Esc), 브라우저 보내기는 잠그지 않고 임시 저장도 지우지 않는다.
 //   (W) jsdom 위젯 메인 창: 근태 달력 그리기(목록 회신 흉내, 근태 표시, 글, 작성 중, 요약, 미보고 표시 없음), 날짜를 누르면 attendOpen
 //       payload(§3.3, saved.sentAt), __attendNavFromWin, __attendSourceFor 가 attendSourcePush 로 같은 source 를 보낸다,
 //       __reportDailySaved 가 개인 캘린더 근태를 고친다, 보고서 창은 자기가 보내지 않은 회신에 반응하지 않는다.
-//   (A) jsdom 근태 창(?win=attend): 내 달력을 부팅하지 않는다(준비 알림 하나), 봉인, 보고한 날은 보기 화면([수정]), 가져오기 캘린더(attendSourceReq 와
-//       __attendSource 중계), 가져오기 근태관리(netcusWeekMerge 회신을 머리 줄로 나누기, 오류와 빈 날), 보내기 payload(&nbsp;, hours, 고른 근태 코드),
-//       처리 중 잠금과 연속 클릭(한 번만), 성공이면 임시 저장을 지우고 창은 닫지 않고 보기 화면, 실패면 공통 안내와 함께 남긴다, 닫기 지키기(__winCloseRequest).
-//   (M) 변이: 봉인 빼기, 성공 시 임시 저장 지우기 빼기, 닫기 전 확인 빼기, 성공 뒤 보기 화면 빼기, 보기 화면의 고침 없음 빼기, 다른 날짜 회신 거르기 빼기를 같은 검사가 잡는다.
+//   (A) jsdom 근태 창(?win=attend): 내 달력을 부팅하지 않는다(준비 알림 하나), 봉인, 보고한 날도 바로 쓰기 화면, 가져오기 캘린더(attendSourceReq 와
+//       __attendSource 중계), 가져오기 인트라넷(netcusWeekMerge 회신을 머리 줄로 나누기, 오류와 빈 날), 보내기 payload(&nbsp;, hours, 고른 근태 코드),
+//       처리 중 잠금과 연속 클릭(한 번만), 성공이면 임시 저장을 지우고 창은 닫지 않고 보낸 글이 새 처음 상태, 실패면 공통 안내와 함께 남긴다, 닫기 지키기(__winCloseRequest, Esc 는 닫기와 같다).
+//   (M) 변이: 봉인 빼기, 성공 시 임시 저장 지우기 빼기, 닫기 전 확인 빼기, 성공 뒤 처음 상태 바꾸기 빼기, Esc 의 닫기 빼기, 다른 날짜 회신 거르기 빼기를 같은 검사가 잡는다.
 // ★ 회사 사이트에는 아무것도 보내지 않는다. Platform.report.submitDaily 와 chrome.webview.postMessage 를 가로채 보기만 한다.
 // 생략 규약: jsdom 이 없으면 (B)(W)(A)(M)은 등록되지 않고 skip(판정 없음)으로 계수된다.
 import { test, skip, assert, loadAppSource, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
@@ -177,7 +177,6 @@ if (!JSDOM) {
       assert.strictEqual(X.$('#atStatus').value, '6', '근태 기본값이 그날 개인 캘린더 근태(휴가)가 아니다');
       assert.ok(!X.$('#atPv'), '회사 달력 표시 미리 보기가 남아 있다');
       assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#atStatus option'), function(o){ return o.value; })"), X.evJSON('ATTEND_STATUS.map(function(s){ return s.v; })'), '근태 목록에 미기록(빈 값)이 있거나 목록이 다르다');
-      assert.strictEqual(X.ev("ATE.mode"), 'edit');
       assert.strictEqual(X.$('#atLines').textContent, t.split('\n').length + '줄');
       assert.ok(X.$('#atHours').textContent.includes('과제 3개') && X.$('#atHours').textContent.includes('3시간'));
       assert.deepStrictEqual(X.errors, []);
@@ -239,7 +238,7 @@ if (!JSDOM) {
       X.ev(`state.entries.push(${JSON.stringify(E({ id: 'e-y1', date: Y, title: '어제 일', categoryId: 'c-d' }))});`);
       openB(X);
       assert.strictEqual(X.$('#atEd h3').textContent, '가져오기');
-      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('[data-atsrc]'), function(b){ return b.dataset.atsrc + ':' + b.textContent; })"), ['cal:캘린더', 'net:근태관리']);
+      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('[data-atsrc]'), function(b){ return b.dataset.atsrc + ':' + b.textContent; })"), ['cal:캘린더', 'net:인트라넷']);
       assert.strictEqual(X.$('#atSrcDate').value, X.T, '가져올 날짜의 처음 값이 보는 날짜가 아니다');
       const sd = X.$('#atSrcDate'); sd.value = Y; sd.dispatchEvent(new X.w.Event('change', { bubbles: true }));
       assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#atCards .at-cnm'), function(x){ return x.textContent; })"), ['[델타]'], '고른 날짜의 캘린더 기록이 아니다');
@@ -257,43 +256,34 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(B) 보기 화면: 보고한 날은 읽기 전용으로 먼저 연다(근태, 내용, 보낸 시각), [수정]은 보고한 글로 쓰기, 보기는 고친 것이 아니다(Esc 와 ← 근태 달력)', () => {
+  test('(B) 보고한 날도 바로 쓰기 화면(보고한 글과 근태, 보낸 시각), 보기 화면 없음, 고친 것 없으면 Esc 와 ← 근태 달력은 묻지 않는다', () => {
     const X = bootBrowser();
     try {
       X.ev("pcSetTab('attend')");
       const sv = { status: '2', overtime: 3, content: '[알파] : 5\n&nbsp;&nbsp;- 납품 준비\n', sentAt: '2026-10-29T09:05:00.000Z' };
       X.ev(`atShowEditor(atBuildPayload(${JSON.stringify(X.T)}, ${JSON.stringify(sv)}, false))`);
-      assert.strictEqual(X.ev('ATE.mode'), 'view');
-      assert.ok(shown(X, '#atVw') && !shown(X, '#atEdBody') && !shown(X, '#atSend') && !shown(X, '#atCopy') && shown(X, '#atVwEdit') && shown(X, '#atVwClose'), '보기 화면이 아니다');
-      assert.ok(shown(X, '#atBack'), '브라우저 보기 화면에 ← 근태 달력이 없다');
-      assert.strictEqual(X.$('#atEdTitle').textContent, '근태 보기');
-      assert.strictEqual(X.$('#atVwStatus').textContent, '야근(+3시간)');
-      assert.strictEqual(X.$('#atVwText').textContent, '[알파] : 5\n  - 납품 준비');
-      assert.strictEqual(X.$('#atVwSent').textContent, X.ev(`atSentLabel(${JSON.stringify(sv.sentAt)})`));
-      assert.ok(/^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(X.$('#atVwSent').textContent));
-      assert.ok(X.$('#atEdDate').textContent.indexOf('보고함') < 0);
-      assert.strictEqual(X.ev('atDirty()'), false);
-      //  [수정] → 쓰기 화면, 보고한 글과 근태
-      X.$('#atVwEdit').click();
-      assert.strictEqual(X.ev('ATE.mode'), 'edit');
-      assert.ok(shown(X, '#atEdBody') && !shown(X, '#atVw') && shown(X, '#atSend') && shown(X, '#atPanel'));
+      assert.ok(!X.$('#atVw') && !X.$('#atVwEdit') && !X.$('#atX'), '보기 화면이나 머리의 × 가 남아 있다');
+      assert.ok(shown(X, '#atEdBody') && shown(X, '#atSend') && shown(X, '#atPanel') && shown(X, '#atBack'), '쓰기 화면이 아니다');
+      assert.strictEqual(X.$('#atEdTitle').textContent, '근태 보고');
       assert.strictEqual(X.$('#atText').value, '[알파] : 5\n  - 납품 준비');
       assert.strictEqual(X.$('#atStatus').value, '2'); assert.strictEqual(X.$('#atOt').value, '3');
-      assert.strictEqual(X.ev('atDirty()'), false, '[수정]만 눌렀는데 고친 것으로 본다');
-      //  보기 화면에서 Esc 는 달력으로(고친 것이 없다)
-      X.ev(`atShowEditor(atBuildPayload(addDays(todayYmd(), 9), ${JSON.stringify(sv)}, false))`);
-      assert.strictEqual(X.ev('ATE.mode'), 'view');
+      assert.strictEqual(X.$('#atSent').textContent, '보낸 시각 ' + X.ev(`atSentLabel(${JSON.stringify(sv.sentAt)})`));
+      assert.ok(X.$('#atEdDate').textContent.indexOf('보고함') < 0);
+      assert.strictEqual(X.ev('atDirty()'), false, '열기만 했는데 고친 것으로 본다');
+      //  고친 것이 없으면 Esc 는 달력으로
       esc(X);
-      assert.ok(!shown(X, '#atEd') && shown(X, '#atMonth'), '보기 화면에서 Esc 로 달력에 돌아가지 않았다');
+      assert.ok(!shown(X, '#atEd') && shown(X, '#atMonth'), 'Esc 로 달력에 돌아가지 않았다');
       //  ← 근태 달력도 묻지 않는다
       X.ev(`atShowEditor(atBuildPayload(addDays(todayYmd(), 9), ${JSON.stringify(sv)}, false))`);
       X.$('#atBack').click();
-      assert.ok(!shown(X, '#atAsk') && shown(X, '#atMonth'), '보기 화면에서 ← 근태 달력이 물었다');
-      //  임시 저장이 있으면 쓰기 화면과 되살림 안내로 연다
+      assert.ok(!shown(X, '#atAsk') && shown(X, '#atMonth'), '고친 것이 없는데 ← 근태 달력이 물었다');
+      //  보고하지 않은 날은 보낸 시각이 없다
+      X.ev(`atShowEditor(atBuildPayload(addDays(todayYmd(), 8), null, false))`);
+      assert.strictEqual(X.$('#atSent').textContent, '');
+      //  임시 저장이 있으면 되살림 안내와 그 글로 연다
       const D9 = X.ev('addDays(todayYmd(), 9)');
       X.ev(`localStorage.setItem('tc_attDraft:me:${D9}', JSON.stringify({ v:1, text:'쓰던 글', status:'2', overtime:0, savedAt:'' }))`);
       X.ev(`atShowEditor(atBuildPayload(${JSON.stringify(D9)}, ${JSON.stringify(sv)}, false))`);
-      assert.strictEqual(X.ev('ATE.mode'), 'edit', '임시 저장이 있는데 보기 화면으로 열었다');
       assert.ok(shown(X, '#atRestore') && X.$('#atText').value === '쓰던 글');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
@@ -352,9 +342,11 @@ if (!JSDOM) {
     try {
       openB(X);
       input(X, '#atText', '[알파] : 3\n- 고친 글');
-      //  Esc: 닫지 않는다
+      //  Esc: 닫기와 같다. 고친 글이 있으면 묻는다 → 계속 쓰기
       esc(X);
-      assert.ok(shown(X, '#atEd') && !shown(X, '#atAsk'), 'Esc 가 고친 글이 있는 보고 화면을 닫았다');
+      assert.ok(shown(X, '#atEd') && shown(X, '#atAsk'), 'Esc 가 고친 글이 있는데 묻지 않았다');
+      X.$('#atAskStay').click();
+      assert.ok(shown(X, '#atEd') && !shown(X, '#atAsk'));
       //  탭 이동: 묻는다 → 계속 쓰기
       X.$('#pcTabPersonal').click();
       assert.ok(shown(X, '#atAsk'), '탭 이동이 묻지 않았다');
@@ -367,7 +359,7 @@ if (!JSDOM) {
       X.$('#atAsk').dispatchEvent(new X.w.MouseEvent('click', { bubbles: true }));
       assert.ok(!shown(X, '#atAsk') && shown(X, '#atEd'), '바깥을 누르면 계속 쓰기여야 한다');
       //  Esc 로 묻는 창 닫기 = 계속 쓰기
-      X.$('#atX').click(); assert.ok(shown(X, '#atAsk'));
+      X.$('#atClose').click(); assert.ok(shown(X, '#atAsk'));
       esc(X);
       assert.ok(!shown(X, '#atAsk') && shown(X, '#atEd'));
       //  탭 이동 → [닫기]: 임시 저장을 쓰고 개인 탭으로
@@ -549,29 +541,23 @@ if (!JSDOM) {
     } finally { A.close(); }
   });
 
-  test('(A) 보고한 날은 보기 화면으로 열고, [수정]이면 보고한 글(&nbsp; 를 공백으로)과 근태, 같은 날짜 새로고침은 왼쪽 글을 건드리지 않는다', () => {
+  test('(A) 보고한 날도 바로 쓰기 화면(보고한 글, &nbsp; 를 공백으로, 근태), 고친 것 없으면 닫기를 막지 않는다, 같은 날짜 새로고침은 왼쪽 글을 건드리지 않는다', () => {
     const A = bootAttend();
     try {
       openA(A, { status: '2', overtime: 2, content: '[알파] : 5\n&nbsp;&nbsp;- 납품 준비\n', sentAt: '2026-10-29T09:00:00.000Z' });
-      assert.strictEqual(A.ev('ATE.mode'), 'view', '보고한 날인데 보기 화면이 아니다');
-      assert.ok(shown(A, '#atVw') && !shown(A, '#atEdBody') && shown(A, '#atVwEdit') && shown(A, '#atVwClose') && !shown(A, '#atSend'));
-      assert.strictEqual(A.$('#atVwStatus').textContent, '야근(+2시간)');
-      assert.strictEqual(A.$('#atVwText').textContent, '[알파] : 5\n  - 납품 준비');
-      assert.strictEqual(A.ev('__winCloseRequest()'), 'close', '보기 화면인데 닫기를 막았다');
-      //  보기 화면에서도 ‹ › 는 메인 창에 날짜를 청한다
+      assert.ok(shown(A, '#atEdBody') && shown(A, '#atSend') && !A.$('#atVw') && !A.$('#atX'), '보고한 날인데 쓰기 화면이 아니다');
+      assert.strictEqual(A.$('#atText').value, '[알파] : 5\n  - 납품 준비');
+      assert.strictEqual(A.$('#atStatus').value, '2'); assert.strictEqual(A.$('#atOt').value, '2');
+      assert.ok(A.$('#atSent').textContent.startsWith('보낸 시각 '), '보낸 시각이 없다');
+      assert.ok(A.$('#atEdDate').textContent.indexOf('보고함') < 0);
+      assert.strictEqual(A.ev('__winCloseRequest()'), 'close', '고친 것이 없는데 닫기를 막았다');
       A.$('#atNext').click();
       assert.deepStrictEqual(A.posted[A.posted.length - 1], { cmd: 'attendNav', date: A.ev('addDays(todayYmd(), 1)'), refresh: false });
       A.ev('ATE.navPending = ""; atSyncNav(); atMsg("")');
-      A.$('#atVwEdit').click();
-      assert.strictEqual(A.ev('ATE.mode'), 'edit');
-      assert.strictEqual(A.$('#atText').value, '[알파] : 5\n  - 납품 준비');
-      assert.strictEqual(A.$('#atStatus').value, '2'); assert.strictEqual(A.$('#atOt').value, '2');
-      assert.ok(A.$('#atEdDate').textContent.indexOf('보고함') < 0);
       input(A, '#atText', '고치는 중');
       const p = payloadFrom(A.T, { status: '2', overtime: 2, content: '[알파] : 5' }); p.refresh = true; p.source.rows = p.source.rows.slice(0, 1);
       A.ev('__attendWinOpen(' + JSON.stringify(p) + ')');
       assert.strictEqual(A.$('#atText').value, '고치는 중', '새로고침이 왼쪽 글을 바꿨다');
-      assert.strictEqual(A.ev('ATE.mode'), 'edit', '새로고침이 보기 화면으로 되돌렸다');
       assert.strictEqual(A.ev('ATE.p.source.rows.length'), 1, '새로고침이 패널 출처를 바꾸지 않았다');
       //  창이 앞으로 오면 attendNav refresh 를 청한다
       A.ev('__attendWinActivated()');
@@ -633,7 +619,7 @@ if (!JSDOM) {
       A.ev(`window.__netReply = function(p){ return { ok: true, error: '', days: [{ date: p.from, ok: true, content: '' }] }; }`);
       const Z = A.ev('addDays(todayYmd(), -2)');
       sd.value = Z; sd.dispatchEvent(new A.w.Event('change', { bubbles: true })); await tick();
-      assert.ok(A.$('#atCards').textContent.includes('등록된 보고가 없습니다'), '빈 날 안내가 없다');
+      assert.ok(A.$('#atCards').textContent.includes('등록된 일간보고가 없습니다'), '빈 날 안내가 없다');
       assert.strictEqual(A.$('#atLoad').disabled, true);
       //  오류(로그인), 다시 읽기
       A.ev(`window.__netReply = function(p){ return { ok: false, error: 'login', days: [] }; }`);
@@ -685,23 +671,17 @@ if (!JSDOM) {
     A.ev(`__reportDailySaved({ date: ${JSON.stringify(A.T)}, status: '2', overtime: 2 })`);
     A.ev("__netcusResult(true, '회사 일간보고 전송 완료')");
     assert.strictEqual(A.ev(`localStorage.getItem(${JSON.stringify(A.KEY)})`), null, '성공했는데 임시 저장이 남았다');
-    assert.strictEqual(A.w.__closeCalls, 0, '성공했는데 창을 닫았다(보기 화면으로 바꿔야 한다)');
-    assert.strictEqual(A.ev('ATE.mode'), 'view', '성공 뒤 보기 화면이 아니다');
-    assert.ok(shown(A, '#atVw') && !shown(A, '#atEdBody') && shown(A, '#atVwEdit') && shown(A, '#atVwClose'), '성공 뒤 보기 화면이 보이지 않는다');
-    assert.strictEqual(A.$('#atVwStatus').textContent, '야근(+2시간)');
-    assert.strictEqual(A.$('#atVwText').textContent, '[알파] : 5\n    - 납품 준비\n    - 탭 줄\n[베타] 3\n[범위 밖] : 30\n[없음]');
-    assert.ok(/^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(A.$('#atVwSent').textContent), '보낸 시각이 없다');
+    assert.strictEqual(A.w.__closeCalls, 0, '성공했는데 창을 닫았다');
+    assert.ok(shown(A, '#atEdBody') && shown(A, '#atSend') && !A.$('#atVw'), '성공 뒤 쓰기 화면이 아니다');
+    assert.ok(A.$('#atText').value.startsWith('[알파] : 5\n') && A.$('#atText').value.includes('- 납품 준비') && A.$('#atText').value.endsWith('[없음]'), '성공 뒤 보낸 글이 창에 남지 않았다');
+    assert.strictEqual(A.$('#atStatus').value, '2'); assert.strictEqual(A.$('#atOt').value, '2');
+    assert.ok(/^보낸 시각 \d{4}-\d\d-\d\d \d\d:\d\d$/.test(A.$('#atSent').textContent), '보낸 시각이 없다');
     assert.strictEqual(A.$('#atMsg').textContent, '회사 일간보고 전송 완료');
     assert.ok(A.$('#atEdDate').textContent.indexOf('보고함') < 0);
-    assert.strictEqual(A.ev('__winCloseRequest()'), 'close', '보기 화면인데 닫기를 막았다');
-    //  [수정]: 보낸 글과 근태로 쓰기 화면
-    A.$('#atVwEdit').click();
-    assert.strictEqual(A.ev('ATE.mode'), 'edit');
-    assert.ok(A.$('#atText').value.startsWith('[알파] : 5\n    - 납품 준비'));
-    assert.strictEqual(A.$('#atStatus').value, '2'); assert.strictEqual(A.$('#atOt').value, '2');
-    assert.strictEqual(A.ev('atDirty()'), false);
+    assert.strictEqual(A.ev('atDirty()'), false, '성공 뒤에도 고친 것으로 본다');
+    assert.strictEqual(A.ev('__winCloseRequest()'), 'close', '성공 뒤 닫기를 막았다');
   }
-  test('(A) 성공 회신: 임시 저장을 지우고 창은 닫지 않고 그날 보기 화면, [수정]은 보낸 글로 쓰기', () => {
+  test('(A) 성공 회신: 임시 저장을 지우고 창은 닫지 않고 쓰기 화면 그대로, 보낸 글이 새 처음 상태(고친 것 없음), 보낸 시각', () => {
     const A = bootAttend();
     try { successClears(A); } finally { A.close(); }
   });
@@ -735,14 +715,16 @@ if (!JSDOM) {
     A.$('#atAskStay').click();
     assert.strictEqual(A.w.__closeCalls, 0);
     esc(A);
-    assert.strictEqual(A.w.__closeCalls, 0, 'Esc 가 근태 창을 닫았다');
+    assert.ok(shown(A, '#atAsk'), 'Esc 가 고친 글이 있는데 묻지 않았다');
+    assert.strictEqual(A.w.__closeCalls, 0, 'Esc 가 묻지 않고 근태 창을 닫았다');
+    A.$('#atAskStay').click();
     A.$('#atClose').click();
     assert.ok(shown(A, '#atAsk'), '닫기 단추가 묻지 않았다');
     A.$('#atAskClose').click();
     assert.strictEqual(A.w.__closeCalls, 1, '[닫기]가 창을 닫지 않았다');
     assert.ok(A.ev(`localStorage.getItem(${JSON.stringify(A.KEY)})`).includes('고친 글'), '닫으며 임시 저장을 쓰지 않았다');
   }
-  test('(A) 닫기 지키기: __winCloseRequest 는 close / ask / busy, 계속 쓰기, Esc 로는 닫지 않음, [닫기]는 임시 저장 뒤 창 닫기', () => {
+  test('(A) 닫기 지키기: __winCloseRequest 는 close / ask / busy, 계속 쓰기, Esc 는 닫기와 같다, [닫기]는 임시 저장 뒤 창 닫기', () => {
     const A = bootAttend();
     try { closeGuard(A); } finally { A.close(); }
   });
@@ -781,25 +763,15 @@ if (!JSDOM) {
     const A = bootAttend(bad);
     try { assert.throws(() => closeGuard(A), /묻지 않았다/); } finally { A.close(); }
   });
-  test('변이 M4: 성공 뒤 보기 화면으로 바꾸기를 빼면 성공 검사가 잡는다', () => {
-    const bad = mutate(app, "    atDateRender();" + NL + "    atSetMode('view');" + NL, "    atDateRender();" + NL);
+  test('변이 M4: 성공 뒤 창 글을 보낸 글로 맞추기를 빼면 성공 검사가 잡는다', () => {
+    const bad = mutate(app, "    const ta = $('#atText'); if(ta) ta.value = ATE.base.text;", '');
     const A = bootAttend(bad);
-    try { assert.throws(() => successClears(A), /보기 화면이 아니다/); } finally { A.close(); }
+    try { assert.throws(() => successClears(A), /보낸 글이 창에 남지 않았다/); } finally { A.close(); }
   });
-  //  보기 화면은 고친 것이 아니다: 숨은 글 칸 값이 처음과 달라도 닫기는 묻지 않는다.
-  function viewNotDirty(A) {
-    openA(A, { status: '2', overtime: 2, content: '[알파] : 5', sentAt: '' });
-    A.ev("document.getElementById('atText').value = '숨은 칸이 바뀜'");
-    assert.strictEqual(A.ev('__winCloseRequest()'), 'close', '보기 화면인데 닫기를 막았다');
-  }
-  test('(A) 보기 화면은 고친 것으로 보지 않는다(닫기는 묻지 않는다)', () => {
-    const A = bootAttend();
-    try { viewNotDirty(A); } finally { A.close(); }
-  });
-  test('변이 M5: atDirty 에서 보기 화면 빼기를 없애면 보기 닫기 검사가 잡는다', () => {
-    const bad = mutate(app, "  if(!ATE.p || !ATE.base || ATE.mode === 'view') return false;", '  if(!ATE.p || !ATE.base) return false;');
+  test('변이 M5: Esc 의 닫기를 빼면 닫기 지키기 검사가 잡는다', () => {
+    const bad = mutate(app, "  if(!atEdShown()) return false;" + NL + "  atRequestClose();" + NL, "  if(!atEdShown()) return false;" + NL);
     const A = bootAttend(bad);
-    try { assert.throws(() => viewNotDirty(A), /보기 화면인데 닫기를 막았다/); } finally { A.close(); }
+    try { assert.throws(() => closeGuard(A), /Esc 가 고친 글이 있는데 묻지 않았다/); } finally { A.close(); }
   });
   test('변이 M6: 가져오기 회신의 날짜 거르기를 빼면 중계 검사가 잡는다', () => {
     const bad = mutate(app, "  if(ATE.cal.date !== o.date) return;   // 그 사이 다른 날짜를 골랐다" + NL, '');

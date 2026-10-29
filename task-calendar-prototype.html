@@ -2802,11 +2802,6 @@ body:not(.at-on) #atView{display:none !important}
 .at-panel-foot{padding:10px 14px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px;background:var(--panel);flex:none}
 .at-hint{font-size:var(--fs-meta);color:var(--muted)}
 /* 보기 화면(보고한 날) */
-.at-vw{flex:1;min-height:0;overflow:auto;padding:16px 20px}
-.at-vw-in{max-width:900px;display:flex;flex-direction:column;gap:12px}
-.at-vw-meta{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:baseline;font-size:var(--fs-body)}
-.at-vw-st{font-weight:700;color:var(--accent-2)}
-.at-vw-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--fs-emph);line-height:1.65;border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;background:var(--dim-bg);tab-size:4}
 .at-ed-foot{display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--line);flex:none;flex-wrap:wrap}
 .at-msg{font-size:var(--fs-body);color:var(--muted);min-width:0}
 .at-msg.ok{color:var(--ok)} .at-msg.err{color:var(--danger-text)}
@@ -3136,7 +3131,6 @@ html[data-attendwin] #atBack{ display:none }
         </span>
         <span class="spacer"></span>
         <button type="button" class="at-fold" id="atFold" aria-expanded="true" aria-controls="atPanel">가져오기 패널 접기 ›</button>
-        <button type="button" class="x" id="atX" title="닫기" aria-label="닫기">×</button>
       </div>
       <div class="at-ed-body" id="atEdBody">
         <div class="at-left">
@@ -3146,7 +3140,7 @@ html[data-attendwin] #atBack{ display:none }
           </div>
           <div class="at-restore hidden" id="atRestore"><span id="atRestoreMsg"></span><span class="spacer"></span><button type="button" class="at-lnk" id="atDiscard">버리고 처음 상태로</button></div>
           <textarea id="atText" class="at-text" spellcheck="false" aria-label="보고 내용" placeholder="[과제명] : 시간&#10;- 한 일&#10;  - 세부 내용"></textarea>
-          <div class="at-stat"><span id="atLines"></span><span id="atHours"></span><span class="at-saved" id="atSaved"></span></div>
+          <div class="at-stat"><span id="atLines"></span><span id="atHours"></span><span id="atSent"></span><span class="at-saved" id="atSaved"></span></div>
         </div>
         <aside class="at-panel" id="atPanel" aria-label="가져오기 패널">
           <div class="at-panel-in">
@@ -3154,7 +3148,7 @@ html[data-attendwin] #atBack{ display:none }
             <div class="at-row">
               <div class="seg" role="group" aria-label="가져올 곳">
                 <button type="button" class="seg-b active" data-atsrc="cal" aria-pressed="true">캘린더</button>
-                <button type="button" class="seg-b" data-atsrc="net" aria-pressed="false">근태관리</button>
+                <button type="button" class="seg-b" data-atsrc="net" aria-pressed="false">인트라넷</button>
               </div>
               <input type="date" id="atSrcDate" class="at-sel" aria-label="가져올 날짜" title="가져올 날짜">
             </div>
@@ -3171,25 +3165,12 @@ html[data-attendwin] #atBack{ display:none }
           </div>
         </aside>
       </div>
-      <!-- 보기 화면(보고한 날, 읽기 전용). 회사 근태관리의 하루 보기처럼 날짜, 근태, 보낸 시각, 내용. [수정]이면 위의 쓰기 화면으로 바뀐다. -->
-      <div class="at-vw hidden" id="atVw">
-        <div class="at-vw-in">
-          <div class="at-vw-meta">
-            <span class="at-lb">날짜</span><span id="atVwDate"></span>
-            <span class="at-lb">근태</span><span class="at-vw-st" id="atVwStatus"></span>
-            <span class="at-lb">보낸 시각</span><span id="atVwSent"></span>
-          </div>
-          <div class="at-vw-text" id="atVwText" aria-label="보고 내용"></div>
-        </div>
-      </div>
       <div class="at-ed-foot">
         <span class="at-msg" id="atMsg" role="status" aria-live="polite"></span>
         <span class="spacer"></span>
         <button type="button" class="btn" id="atCopy">복사</button>
         <button type="button" class="btn" id="atClose">닫기</button>
         <button type="button" class="btn primary" id="atSend">회사에 보고</button>
-        <button type="button" class="btn hidden" id="atVwClose">닫기</button>
-        <button type="button" class="btn primary hidden" id="atVwEdit">수정</button>
       </div>
       <div class="at-ask hidden" id="atAsk">
         <div class="at-ask-box" role="alertdialog" aria-modal="true" aria-labelledby="atAskT" aria-describedby="atAskM">
@@ -20904,7 +20885,7 @@ function bind(){
       }
       if(closedMenu) return;
       if(pcEscape()){ ev.preventDefault(); return; }   // 과제 탭의 그날 일정 목록과 좁은 창 과제 목록
-      if(atEscape()){ ev.preventDefault(); return; }   // 근태 보고 화면: 묻는 창을 닫는다. 쓰던 글이 있으면 Esc 로 닫지 않는다(§2.4)
+      if(atEscape()){ ev.preventDefault(); return; }   // 근태 보고 화면: 묻는 창을 닫거나, 닫기와 같다(쓰던 글이 있으면 묻는다, §2.4)
       if(panelSheetOpen){ closeSheet(); ev.preventDefault(); return; }          // 좁은 폭 하단 시트 먼저
       if(window.__big){ hpost({cmd:'focus'}); ev.preventDefault(); return; }   // 마지막에 맨 앞에 띄우기 해제
       return;
@@ -21054,10 +21035,10 @@ const AT_SEND_WATCHDOG_MS = 100000;       // 회신 없이 끝난 전송(호스�
 const AT_FAIL_MSG = '처리를 완료하지 못했습니다. 다시 시도해 주세요.';   // 결정 9 의 공통 안내(호스트가 문구를 주지 않았을 때)
 //  근태 달력(메인 창). rows = 날짜 → 보고 행. from, to 는 rows 를 읽은 범위(그 밖의 날짜는 캐시에 없다는 뜻).
 const ATT = { anchor: '', screen: 'month', rows: new Map(), from: '', to: '', loading: false, err: '', gen: 0 };
-//  보고 화면 상태. p = payload(§3.3), base = 처음 상태(고쳤는지 판단의 기준), mode = 'edit' 쓰기 | 'view' 보기(읽기 전용).
-//    가져오기: src = 'cal' 캘린더 | 'net' 근태관리, srcDate = 가져올 날짜(처음은 보는 날짜).
+//  보고 화면 상태. p = payload(§3.3), base = 처음 상태(고쳤는지 판단의 기준). 보고한 날도 바로 쓰기 화면으로 연다(보기는 근태 달력에서, 2026-10-29 사용자).
+//    가져오기: src = 'cal' 캘린더 | 'net' 인트라넷(회사 근태관리), srcDate = 가져올 날짜(처음은 보는 날짜).
 //    cal = 다른 날짜의 캘린더 기록(보는 날짜는 p.source 를 쓴다), net = 근태관리에서 읽은 그날 글. 둘 다 날짜 하나만 기억한다.
-const ATE = { p: null, date: '', base: null, mode: 'edit', src: 'cal', srcDate: '', opt: { event: true, todo: true, skip: true, desc: true },
+const ATE = { p: null, date: '', base: null, src: 'cal', srcDate: '', opt: { event: true, todo: true, skip: true, desc: true },
   checked: new Set(), cal: { date: '', source: null, loading: false, err: '', wd: null },
   net: { date: '', content: '', dayOk: false, loading: false, err: '', gen: 0 }, folded: false,
   sending: false, armed: false, timer: null, wd: null, savedAt: '', navPending: '', closeSent: false };
@@ -21384,9 +21365,9 @@ function atCur(){
   const ta = $('#atText'), st = $('#atStatus'), ot = $('#atOt');
   return { text: ta ? ta.value : '', status: st ? st.value : '', overtime: atOt(ot ? ot.value : 0) };
 }
-//  고친 내용이 있는가(처음 상태와 다른가): 글, 근태, 초과시간 중 하나라도. 보기 화면은 고칠 수 없으니 늘 아니다.
+//  고친 내용이 있는가(처음 상태와 다른가): 글, 근태, 초과시간 중 하나라도.
 function atDirty(){
-  if(!ATE.p || !ATE.base || ATE.mode === 'view') return false;
+  if(!ATE.p || !ATE.base) return false;
   const c = atCur();
   return c.text !== ATE.base.text || c.status !== ATE.base.status || c.overtime !== ATE.base.overtime;
 }
@@ -21446,7 +21427,8 @@ function atLoadText(){ return atPanelItems().filter(it => ATE.checked.has(it.id)
 function atCheckAll(){ ATE.checked = new Set(atPanelItems().map(it => it.id)); }
 
 //  payload 를 받아 보고 화면을 연다. 같은 날짜면(창이 앞으로 왔다, 메인 창에서 같은 날을 다시 눌렀다) 패널 출처만 바꾸고 왼쪽 글은 건드리지 않는다.
-//  보고한 날은 보기 화면으로 먼저 연다. 그날 임시 저장이 있으면 쓰기 화면과 되살림 안내로 연다.
+//  보고한 날도 바로 쓰기 화면으로 연다(회사 근태관리처럼, 2026-10-29 사용자). 고치지 않으면 보고한 글을 보는 것과 같다.
+//  그날 임시 저장이 있으면 되살림 안내와 함께 그 글로 연다.
 function atEdOpen(raw){
   const p = atNormPayload(raw); if(!p) return;
   if(ATE.p && ATE.date === p.date){
@@ -21485,47 +21467,15 @@ function atEdOpen(raw){
   atDateRender();
   if(ATTENDWIN) document.title = '근태 보고 ' + atDateLabel(p.date);
   atAskHide();
-  atSetMode(sv && !dr ? 'view' : 'edit');
   atPanelRender(); atSyncNav();
   atSetBusy(false); atMsg('');
   atOnEdit(false);
-  if(ATE.mode === 'view'){ const b = $('#atVwEdit'); if(b) try{ b.focus({ preventScroll: true }); }catch(_){} }
-  else if(ta) try{ ta.focus({ preventScroll: true }); ta.setSelectionRange(0, 0); ta.scrollTop = 0; }catch(_){}
+  if(ta) try{ ta.focus({ preventScroll: true }); ta.setSelectionRange(0, 0); ta.scrollTop = 0; }catch(_){}
 }
+//  날짜 머리와 보낸 시각(보고한 날만. 위젯 보고 기록의 마지막 보낸 시각).
 function atDateRender(){
   const de = $('#atEdDate'); if(de && ATE.p) de.textContent = atDateLabel(ATE.date);
-}
-//  쓰기와 보기 화면 바꾸기. 보기는 보고한 날(payload.saved)만 된다.
-function atSetMode(mode){
-  const v = mode === 'view' && !!(ATE.p && ATE.p.saved);
-  ATE.mode = v ? 'view' : 'edit';
-  const tg = (id, hide) => { const e = document.getElementById(id); if(e) e.classList.toggle('hidden', hide); };
-  tg('atEdBody', v); tg('atFold', v); tg('atCopy', v); tg('atClose', v); tg('atSend', v);
-  tg('atVw', !v); tg('atVwEdit', !v); tg('atVwClose', !v);
-  const ed = $('#atEd'); if(ed) ed.classList.toggle('viewing', v);
-  const h = $('#atEdTitle'); if(h) h.textContent = v ? '근태 보기' : '근태 보고';
-  if(v) atViewRender();
-}
-//  보기 화면: 회사 근태관리의 하루 보기처럼 날짜, 근태, 보낸 시각, 글(&nbsp; 는 공백으로).
-function atViewRender(){
-  const sv = ATE.p && ATE.p.saved; if(!sv) return;
-  const set = (id, t) => { const e = document.getElementById(id); if(e) e.textContent = t; };
-  set('atVwDate', atDateLabel(ATE.date));
-  set('atVwStatus', atStatusLabel(sv.status, sv.overtime) || '근태 기록 없음');
-  set('atVwSent', atSentLabel(sv.sentAt) || '기록 없음');
-  set('atVwText', atDecode(sv.content).replace(/\s+$/, '') || '(내용 없음)');
-}
-//  [수정]: 보기에서 쓰기로. 보고한 글과 근태로 채운다(처음 상태). 가져오기 패널도 쓸 수 있다.
-function atEnterEdit(){
-  if(!ATE.p || ATE.sending || ATE.mode !== 'view') return;
-  atFillSelects(ATE.base.status, ATE.base.overtime);
-  const ta = $('#atText'); if(ta) ta.value = ATE.base.text;
-  const rs = $('#atRestore'); if(rs) rs.classList.add('hidden');
-  atSetMode('edit');
-  atPanelRender(); atSyncNav();
-  atMsg('');
-  atOnEdit(false);
-  if(ta) try{ ta.focus({ preventScroll: true }); ta.setSelectionRange(0, 0); ta.scrollTop = 0; }catch(_){}
+  const se = $('#atSent'); if(se){ const sv = ATE.p && ATE.p.saved, t = sv ? atSentLabel(sv.sentAt) : ''; se.textContent = t ? '보낸 시각 ' + t : ''; }
 }
 //  근태(ATTEND_STATUS 그대로, 기본 정근)와 초과시간(없음, +1~+11시간). 값이 목록에 없으면 정근.
 //    이 화면에는 미기록이 없다(2026-10-29 사용자). 보고서 창 레일의 미기록은 그대로다.
@@ -21543,16 +21493,16 @@ function atOnEdit(save){
   const st = atTextStats(atCur().text);
   const L = $('#atLines'); if(L) L.textContent = st.lines + '줄';
   const H = $('#atHours'); if(H) H.innerHTML = '과제 ' + st.heads + '개, 합계 <b>' + st.hours + '</b>시간';
-  if(save === false || ATE.mode === 'view'){ atSavedRender(); return; }
+  if(save === false){ atSavedRender(); return; }
   clearTimeout(ATE.timer); ATE.timer = null;
   if(!atDirty()){ attDraftDel(ATE.date); ATE.savedAt = ''; atSavedRender(); return; }
   ATE.timer = setTimeout(() => atDraftFlushNow(), AT_DRAFT_DEBOUNCE_MS);
   const s = $('#atSaved'); if(s && !ATE.savedAt) s.textContent = '';
 }
-//  모아 둔 입력을 바로 쓴다(날짜 이동, 닫기, 탭 이동, pagehide). force = 보내기 직전(처음 상태와 같아도 쓴다). 보기 화면에서는 아무것도 하지 않는다.
+//  모아 둔 입력을 바로 쓴다(날짜 이동, 닫기, 탭 이동, pagehide). force = 보내기 직전(처음 상태와 같아도 쓴다).
 function atDraftFlushNow(force){
   clearTimeout(ATE.timer); ATE.timer = null;
-  if(!ATE.p || PEER || ATE.mode === 'view') return;
+  if(!ATE.p || PEER) return;
   if(!force && !atDirty()){ attDraftDel(ATE.date); ATE.savedAt = ''; atSavedRender(); return; }
   const v = attDraftPut(ATE.date, atCur());
   ATE.savedAt = v ? v.savedAt : '';
@@ -21591,7 +21541,7 @@ function atNetErrText(err){
     : err === 'login' ? '회사 사이트 로그인에 실패했습니다. 설정에서 로그인 정보를 확인하세요.'
     : err === 'busy' ? '회사 사이트에서 다른 작업을 하는 중입니다. 잠시 뒤 다시 읽으세요.'
     : err === 'session' ? '회사 사이트 세션이 만료되어 읽지 못했습니다. 다시 읽으세요.'
-    : '근태관리에서 읽지 못했습니다. 다시 읽으세요.';
+    : '인트라넷에서 읽지 못했습니다. 다시 읽으세요.';
 }
 function atPanelRender(){
   const ed = $('#atEd'); if(!ed || !ATE.p) return;
@@ -21606,13 +21556,13 @@ function atPanelRender(){
   let html = '';
   if(ATE.src === 'cal' && other && ATE.cal.date === ATE.srcDate && ATE.cal.loading) html = '<div class="at-none">캘린더 기록을 가져오는 중입니다.</div>';
   else if(ATE.src === 'cal' && other && !atCalSource()) html = '<div class="at-none">' + esc(ATE.cal.date === ATE.srcDate && ATE.cal.err ? ATE.cal.err : '캘린더 기록을 가져오지 못했습니다.') + ' ' + retry + '</div>';
-  else if(ATE.src === 'net' && !HOST) html = '<div class="at-none">근태관리는 서버에 연결된 위젯에서만 읽을 수 있습니다.</div>';
-  else if(ATE.src === 'net' && n.loading) html = '<div class="at-none">근태관리에서 읽는 중입니다. 회사 사이트에 로그인하느라 몇 초 걸립니다.</div>';
+  else if(ATE.src === 'net' && !HOST) html = '<div class="at-none">인트라넷은 서버에 연결된 위젯에서만 읽을 수 있습니다.</div>';
+  else if(ATE.src === 'net' && n.loading) html = '<div class="at-none">인트라넷에서 읽는 중입니다. 로그인하느라 몇 초 걸립니다.</div>';
   else if(ATE.src === 'net' && n.date === ATE.srcDate && n.err) html = '<div class="at-none err" role="alert">' + esc(n.err) + ' ' + retry + '</div>';
-  else if(ATE.src === 'net' && n.date !== ATE.srcDate) html = '<div class="at-none">근태관리에서 읽지 않았습니다. ' + retry + '</div>';
+  else if(ATE.src === 'net' && n.date !== ATE.srcDate) html = '<div class="at-none">인트라넷에서 읽지 않았습니다. ' + retry + '</div>';
   else if(!items.length) html = '<div class="at-none">' + (ATE.src === 'cal'
       ? (o.skip ? '이날 기록이 있는 과제가 없습니다. "기록 없는 과제 제외" 를 끄면 내 과제가 모두 나옵니다.' : '내 과제가 없습니다.')
-      : (n.dayOk ? '이날 근태관리에 등록된 보고가 없습니다.' : '이날 근태관리 화면을 읽지 못했습니다. ' + retry)) + '</div>';
+      : (n.dayOk ? '이날 인트라넷에 등록된 일간보고가 없습니다.' : '이날 인트라넷 근태관리 화면을 읽지 못했습니다. ' + retry)) + '</div>';
   else html = items.map(it => {
     const on = ATE.checked.has(it.id), idA = esc(it.id);
     if(it.row){
@@ -21709,7 +21659,7 @@ async function atNetLoad(date, force){
 }
 //  [← 불러오기]: 체크한 과제로 왼쪽을 바로 바꾼다(묻지 않는다, 2026-10-29 사용자). 바뀌기 전 글은 임시 저장 흐름 그대로다.
 function atLoadClick(){
-  if(!ATE.p || ATE.sending || ATE.mode === 'view') return;
+  if(!ATE.p || ATE.sending) return;
   const ta = $('#atText'); if(!ta) return;
   ta.value = atLoadText();
   atOnEdit();
@@ -21766,10 +21716,10 @@ function atBuildSubmit(){
            hours: atHoursOf(c.text), dryRun: false };
 }
 function atSubmit(){
-  if(!ATE.p || ATE.sending || ATE.mode === 'view') return;
+  if(!ATE.p || ATE.sending) return;
   const c = atCur();
   if(!c.text.trim()){ atMsg('보낼 내용을 입력하세요', 'err'); const ta = $('#atText'); if(ta) try{ ta.focus(); }catch(_){} return; }
-  if(ATE.net.loading){ atMsg('근태관리에서 읽는 중입니다. 끝난 뒤에 보내세요', 'err'); return; }
+  if(ATE.net.loading){ atMsg('인트라넷에서 읽는 중입니다. 끝난 뒤에 보내세요', 'err'); return; }
   const payload = atBuildSubmit();
   atDraftFlushNow(true);
   if(!Platform.caps.reportAuto){
@@ -21799,18 +21749,19 @@ function atOnNetcusResult(ok, msg, extra){
   if(!ATE.armed) return false;
   ATE.armed = false; ATE.sending = false; clearTimeout(ATE.wd);
   if(ok === true){
-    //  회사 보고와 DB 저장이 둘 다 성공했다(결정 9): 임시 저장을 지우고 창은 닫지 않고 그날 보기 화면으로 바꾼다(2026-10-29 사용자).
+    //  회사 보고와 DB 저장이 둘 다 성공했다(결정 9): 임시 저장을 지우고 창은 그대로 둔다. 보낸 글이 새 처음 상태가 된다(고치지 않으면 보는 것과 같다).
     clearTimeout(ATE.timer); ATE.timer = null;
     attDraftDel(ATE.date);
     const c = atCur(), st = ATTEND_STATUS_SET.has(c.status) ? c.status : '1', content = reportEditedBodyOut(c.text, '&nbsp;');
     ATE.p.saved = { date: ATE.date, status: st, overtime: c.overtime, content, sentAt: new Date().toISOString() };
-    ATE.base = { text: atDecode(content).replace(/\s+$/, ''), status: st, overtime: c.overtime }; ATE.savedAt = '';   // [수정]은 보낸 글로 연다(다시 열 때와 같다)
+    ATE.base = { text: atDecode(content).replace(/\s+$/, ''), status: st, overtime: c.overtime }; ATE.savedAt = '';
+    const ta = $('#atText'); if(ta) ta.value = ATE.base.text;   // 창에는 보낸 그대로(앞뒤 빈 줄 정리)를 둔다. 다시 열 때와 같다
     if(ATE.net.date === ATE.date) ATE.net.date = '';   // 그날 근태관리 글이 바뀌었다
     atSetBusy(false);
     atDateRender();
-    atSetMode('view');
+    atFillSelects(st, c.overtime);
+    atOnEdit(false);
     atMsg(String(msg || '보고했습니다'), 'ok');
-    const b = $('#atVwEdit'); if(b) try{ b.focus({ preventScroll: true }); }catch(_){}
     return true;
   }
   atSetBusy(false);
@@ -21859,13 +21810,11 @@ function atWinCloseNow(){
   if(!ATE.sending && atDirty()) atDraftFlushNow();
   try{ window.close(); }catch(_){}
 }
-//  전역 Esc: 묻는 창을 닫는다. 쓰던 글이 있거나 보내는 중이면 보고 화면을 닫지 않는다. 근태 창은 Esc 로 창을 닫지 않는다.
+//  전역 Esc: 묻는 창이 떠 있으면 그것만 닫는다. 아니면 닫기 단추와 같다(쓰던 글이 있으면 묻고, 보내는 중이면 닫지 않는다).
 function atEscape(){
   if(atAskOpen()){ atAskDone(false); return true; }
   if(!atEdShown()) return false;
-  if(ATTENDWIN || ATE.sending || atDirty()) return true;
-  atDraftFlushNow();
-  atShowMonth();
+  atRequestClose();
   return true;
 }
 
@@ -21883,7 +21832,7 @@ function atShowEditor(payload){
 }
 function atCloseEditor(){
   atAskHide(); clearTimeout(ATE.timer); ATE.timer = null;
-  ATE.p = null; ATE.date = ''; ATE.base = null; ATE.navPending = ''; ATE.mode = 'edit';
+  ATE.p = null; ATE.date = ''; ATE.base = null; ATE.navPending = '';
   atCalCancel();
   ATT.screen = 'month'; atSyncScreen();
 }
@@ -21919,13 +21868,10 @@ function atInit(){
     on('atPrev', 'click', () => atNav(-1));
     on('atNext', 'click', () => atNav(1));
     on('atBack', 'click', atRequestClose);
-    on('atX', 'click', atRequestClose);
     on('atClose', 'click', atRequestClose);
     on('atCopy', 'click', atCopy);
     on('atSend', 'click', atSubmit);
     on('atLoad', 'click', atLoadClick);
-    on('atVwEdit', 'click', atEnterEdit);
-    on('atVwClose', 'click', atRequestClose);
     on('atSrcDate', 'change', ev => atSetSrcDate(ev.target.value));
     on('atAll', 'click', () => { atCheckAll(); atPanelRender(); });
     on('atNone', 'click', () => { ATE.checked = new Set(); atPanelRender(); });

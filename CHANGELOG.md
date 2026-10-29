@@ -16,6 +16,7 @@
 - 보고서 모달은 자기가 보낸 전송일 때만(`__rptSendArmed`) 회신 문구와 토스트를 낸다.
 - 시험: `attendance-web`, `attendance-host` 추가, 실제 위젯 루프 `tests/loop-attendance.mjs`.
 - **사용자 피드백 반영(같은 날)**: 근태 칸의 미기록을 빼고(기본 정근, 이 화면은 `status` null 을 보내지 않는다), 불러오기의 덮어쓰기 확인을 없앴다. 오른쪽 패널은 **가져오기**(출처 캘린더, 근태관리와 날짜 칸)로 바꾸고 "보고한 날짜" 출처를 지웠다. 근태 창의 다른 날짜 캘린더는 새 중계 `attendSourceReq`(근태 창) → 메인 창 `__attendSourceFor` → `attendSourcePush`(메인 창만) → 근태 창 `__attendSource` 로 받는다(호스트가 날짜를 확인하고 `{date, source}` 를 JSON 으로 다시 쓴다). 근태관리는 `netcusWeekMerge`(읽기만)로 그날 회사 일간보고를 읽는다. 근태 창 허용 목록은 여섯(`attendSourceReq`, `netcusWeekMerge` 추가). "회사 달력 표시" 미리 보기를 없앴다. 보고 성공 뒤 창을 닫지 않고 보기 화면으로 바꾸고, 보고한 날은 보기 화면으로 먼저 연다([수정], [닫기]). 기획 §8.
+- **사용자 피드백 반영(둘째)**: 보기 화면을 없애고 날짜를 누르면 보고한 날도 바로 쓰기 화면(보낸 시각은 상태 줄), 가져오기 출처 이름 `[캘린더] [인트라넷]`, 머리의 × 제거, Esc 는 닫기와 같다(고친 글이 있으면 묻는다). [docs/ATTENDANCE-PLAN.md](docs/ATTENDANCE-PLAN.md) §9.
 
 ## 🆕 2026-10-26 (다음 판, 번호는 배포 때): 구성원 소속별 편집과 순서 조정
 

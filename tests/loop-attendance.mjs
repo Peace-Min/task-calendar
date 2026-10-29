@@ -21,10 +21,10 @@
  *         다시 열면 되살림 안내와 글, 버리고 처음 상태로는 키를 지운다
  *    A6   날짜 이동: › 가 호스트와 메인 창을 거쳐 같은 창에 2099-12-03 으로 돌아온다. 넘기기 전에 12-02 글을 바로 임시 저장한다
  *    A7   보내기(가로채기, 실제 전송 없음): payload(kind, date, &nbsp; 들여쓰기, 머리 줄 시간, status 코드), 잠금, 연속 클릭 한 번,
- *         실패 회신 흉내 = 공통 안내와 창, 키 유지. 다시 보내고 __reportDailySaved 와 성공 회신 흉내 = 키 삭제, 창은 남고 보기 화면,
- *         [수정]이면 보낸 글로 쓰기 화면, 닫기로 창 닫힘
+ *         실패 회신 흉내 = 공통 안내와 창, 키 유지. 다시 보내고 __reportDailySaved 와 성공 회신 흉내 = 키 삭제, 창은 남고 쓰기 화면에 보낸 글,
+ *         고친 것이 없으니 닫기로 창 닫힘
  *    A8   메인 창 무시: 보고서 창이 보내지 않았을 때 __netcusResult 와 __netcusProgress 는 #rptSendStatus 와 토스트를 건드리지 않는다
- *    A9   보기 화면: 이 달에 앱으로 보고한 날(DB, 읽기만)을 열면 보기 화면으로 먼저 뜨고 내용이 DB 와 같다. 없으면 건너뛴다
+ *    A9   보고한 날: 이 달에 앱으로 보고한 날(DB, 읽기만)을 열면 바로 쓰기 화면에 DB 와 같은 글이 뜨고, 고치지 않았으면 Esc 로 닫힌다. 없으면 건너뛴다
  *    정리 두 창의 2099 임시 저장 키 삭제, 근태 창 닫기, 탭과 탭 기억 되돌리기, 잔재 0 확인
  *
  *  ★ 실제로 회사에 보내지 않는다(두 겹, loop-report-edit 와 같은 방식): 근태 창의 Platform.report.submitDaily 를 가로채 payload 만 붙잡고,
@@ -349,7 +349,7 @@ async function main() {
   head('A3b 가져오기 캘린더: 다른 날짜를 고르면 attendSourceReq, 메인 창 __attendSourceFor, attendSourcePush, __attendSource 로 그날 기록이 온다');
   const TD = await M.ev('todayYmd()');
   ok('A3b 가져오기 머리, 출처 단추, 날짜 칸(처음 값 = 보는 날짜)', (await A.J(`({ h: document.querySelector('#atEd h3').textContent, src: [].map.call(document.querySelectorAll('[data-atsrc]'), function(b){ return b.textContent; }), d: document.getElementById('atSrcDate').value })`)).h === '가져오기'
-    && same((await A.J(`[].map.call(document.querySelectorAll('[data-atsrc]'), function(b){ return b.textContent; })`)), ['캘린더', '근태관리']) && (await A.ev(`document.getElementById('atSrcDate').value`)) === D);
+    && same((await A.J(`[].map.call(document.querySelectorAll('[data-atsrc]'), function(b){ return b.textContent; })`)), ['캘린더', '인트라넷']) && (await A.ev(`document.getElementById('atSrcDate').value`)) === D);
   const p3c = await A.ev('__atLoopW.posts.length');
   await A.ev(`(function(){ const s = document.getElementById('atSrcDate'); s.value = ${JSON.stringify(TD)}; s.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
   const got3c = await A.waitFor(`ATE.cal.date === ${JSON.stringify(TD)} && !ATE.cal.loading && !!ATE.cal.source`, 10000, 100);
@@ -499,18 +499,15 @@ async function main() {
   await sleep(300);
   ok('A7 성공 회신 흉내 = 근태 창은 닫히지 않는다', (await attendTargets()).length === 1 && !A.closed);
   ok('A7 성공 회신 = 임시 저장이 지워졌다', (await storedIn(M, KEY)) === null);
-  const v7 = await A.J(`({ mode: ATE.mode, title: document.getElementById('atEdTitle').textContent, date: document.getElementById('atEdDate').textContent,
-    st: document.getElementById('atVwStatus').textContent, text: document.getElementById('atVwText').textContent, sent: document.getElementById('atVwSent').textContent,
-    msg: document.getElementById('atMsg').textContent })`);
-  ok('A7 보기 화면으로 바뀌었다(머리 근태 보기, 날짜만)', v7.mode === 'view' && v7.title === '근태 보기' && v7.date === LAB[D], JSON.stringify(v7));
-  ok('A7 보기 화면이 보이고 쓰기 화면은 숨김, [수정] [닫기]', (await shown(A, 'atVw')) && !(await shown(A, 'atEdBody')) && !(await shown(A, 'atSend')) && (await shown(A, 'atVwEdit')) && (await shown(A, 'atVwClose')));
-  ok('A7 보기 내용: 근태 야근(+2시간), 보낸 글(공백 되돌림), 보낸 시각', v7.st === '야근(+2시간)' && v7.text === SEND_TEXT && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(v7.sent), JSON.stringify(v7));
+  const v7 = await A.J(`({ title: document.getElementById('atEdTitle').textContent, date: document.getElementById('atEdDate').textContent,
+    text: document.getElementById('atText').value, st: document.getElementById('atStatus').value, ot: document.getElementById('atOt').value,
+    sent: document.getElementById('atSent').textContent, msg: document.getElementById('atMsg').textContent, dirty: atDirty(), vw: !!document.getElementById('atVw') })`);
+  ok('A7 쓰기 화면 그대로(머리 근태 보고, 날짜만, 보기 화면 없음)', v7.title === '근태 보고' && v7.date === LAB[D] && !v7.vw, JSON.stringify(v7));
+  ok('A7 쓰기 화면과 가져오기 패널이 보인다', (await shown(A, 'atEdBody')) && (await shown(A, 'atSend')) && (await shown(A, 'atPanel')));
+  ok('A7 창의 글과 근태 = 보낸 글(공백 되돌림), 야근 +2, 보낸 시각', v7.text === SEND_TEXT && v7.st === '2' && v7.ot === '2' && /^보낸 시각 \d{4}-\d\d-\d\d \d\d:\d\d$/.test(v7.sent), JSON.stringify(v7));
   ok('A7 성공 문구', v7.msg === '시험 회신(루프, 실제 전송 아님)');
-  ok('A7 보기 화면은 고친 것이 없다(__winCloseRequest = close)', (await A.ev('window.__winCloseRequest()')) === 'close');
-  ok('A7 [수정]을 눌렀다', (await click(A, 'atVwEdit')) === 'ok');
-  ok('A7 [수정]이면 보낸 글과 근태로 쓰기 화면, 가져오기 패널이 보인다', await A.ev(`ATE.mode === 'edit' && document.getElementById('atText').value === ${JSON.stringify(SEND_TEXT)} && document.getElementById('atStatus').value === '2' && document.getElementById('atOt').value === '2' && !atDirty()`)
-    && (await shown(A, 'atPanel')) && (await shown(A, 'atSend')));
-  ok('A7 [수정] 뒤 고친 것이 없으면 닫기 단추가 창을 닫는다', (await click(A, 'atClose').catch(() => 'closed')) !== 'disabled');
+  ok('A7 성공 뒤 고친 것이 없다(__winCloseRequest = close)', !v7.dirty && (await A.ev('window.__winCloseRequest()')) === 'close');
+  ok('A7 고친 것이 없으면 닫기 단추가 창을 닫는다', (await click(A, 'atClose').catch(() => 'closed')) !== 'disabled');
   const gone7 = await waitAttendTarget({ gone: true, timeout: 8000 });
   ok('A7 근태 창이 닫혔다', gone7);
   ok('A7 메인 창으로는 netcus 명령이 나가지 않았다', same(await M.J('__atLoop.blocked'), []));
@@ -531,23 +528,23 @@ async function main() {
   const toasts8 = (await sinceM(m8)).filter((x) => x.toast);
   ok('A8 보고서 토스트가 뜨지 않았다', !toasts8.length, JSON.stringify(toasts8));
 
-  /* ── A9 보기 화면(실제로 보고한 날, 읽기만) ── */
-  head('A9 보기 화면: 이 달에 앱으로 보고한 날을 열면 보기 화면으로 먼저 뜬다');
+  /* ── A9 보고한 날(실제, 읽기만): 바로 쓰기 화면, 고치지 않았으면 Esc 로 닫힌다 ── */
+  head('A9 보고한 날: 이 달에 앱으로 보고한 날을 열면 바로 쓰기 화면에 보고한 글이 뜨고, Esc 로 닫힌다');
   await M.ev(`(async function(){ ATT.anchor = todayYmd(); await atLoadMonth(); return 1; })()`);
   const R9 = await M.J(`(function(){ const a = Array.from(ATT.rows.values()).filter(function(r){ return atDecode(r.content).trim() && attDraftGet(r.date) == null; });
     a.sort(function(x, y){ return x.date < y.date ? -1 : 1; }); const r = a[a.length - 1]; if (!r) return null;
-    return { date: r.date, label: atStatusLabel(r.status, r.overtime) || '근태 기록 없음', text: atDecode(r.content).replace(/\\s+$/, ''), sent: atSentLabel(r.sentAt) || '기록 없음' }; })()`);
-  if (!R9) note('이 달에 앱으로 보고한 날(임시 저장 없는 날)이 없어 보기 화면 실제 확인을 건너뛴다');
+    return { date: r.date, status: r.status || '1', overtime: String(r.overtime || 0), text: atDecode(r.content).replace(/\s+$/, ''), sent: atSentLabel(r.sentAt) }; })()`);
+  if (!R9) note('이 달에 앱으로 보고한 날(임시 저장 없는 날)이 없어 보고한 날 실제 확인을 건너뛴다');
   else {
     await M.ev(`atOpen(${JSON.stringify(R9.date)}); 1`);
     ok('A9 근태 창이 그 날짜로 열렸다', !!(await attachAttend(R9.date, 20000)), R9.date);
-    const v9 = await A.J(`({ mode: ATE.mode, st: document.getElementById('atVwStatus').textContent, text: document.getElementById('atVwText').textContent, sent: document.getElementById('atVwSent').textContent,
-      title: document.getElementById('atEdTitle').textContent })`);
-    ok('A9 보기 화면(근태 보기)으로 먼저 열렸다', v9.mode === 'view' && v9.title === '근태 보기' && (await shown(A, 'atVw')) && !(await shown(A, 'atEdBody')), JSON.stringify({ mode: v9.mode, title: v9.title }));
-    ok('A9 보기 내용 = DB 의 그날 보고(근태 표시, 글, 보낸 시각)', v9.st === R9.label && v9.text === R9.text && v9.sent === R9.sent, JSON.stringify({ st: [v9.st, R9.label], sent: [v9.sent, R9.sent] }));
-    ok('A9 보기 화면 닫기 요청 = close', (await A.ev('window.__winCloseRequest()')) === 'close');
-    await click(A, 'atVwClose').catch(() => 'closed');
-    ok('A9 [닫기]로 근태 창이 닫혔다', await waitAttendTarget({ gone: true, timeout: 8000 }));
+    const v9 = await A.J(`({ text: document.getElementById('atText').value, st: document.getElementById('atStatus').value, ot: document.getElementById('atOt').value,
+      sent: document.getElementById('atSent').textContent, title: document.getElementById('atEdTitle').textContent, dirty: atDirty() })`);
+    ok('A9 바로 쓰기 화면(근태 보고)으로 열렸다', v9.title === '근태 보고' && (await shown(A, 'atEdBody')) && (await shown(A, 'atSend')), JSON.stringify({ title: v9.title }));
+    ok('A9 내용 = DB 의 그날 보고(글, 근태, 보낸 시각), 고친 것 없음', v9.text === R9.text && v9.st === R9.status && v9.ot === R9.overtime && v9.sent === (R9.sent ? '보낸 시각 ' + R9.sent : '') && !v9.dirty,
+      JSON.stringify({ st: [v9.st, R9.status], ot: [v9.ot, R9.overtime], sent: [v9.sent, R9.sent] }));
+    await A.ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); 1`).catch(() => 0);
+    ok('A9 고친 것이 없으면 Esc 로 근태 창이 닫혔다', await waitAttendTarget({ gone: true, timeout: 8000 }));
   }
 }
 
