@@ -232,7 +232,7 @@ if (!JSDOM) {
       assert.strictEqual(X.$('#atBlocks textarea[data-memo]').value, '', '처음 자유 메모가 비어 있지 않다');
       assert.strictEqual(X.$('#atStatus').value, '6', '근태 기본값이 그날 개인 캘린더 근태(휴가)가 아니다');
       assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#atStatus option'), function(o){ return o.value; })"), X.evJSON('ATTEND_STATUS.map(function(s){ return s.v; })'), '근태 목록에 미기록(빈 값)이 있거나 목록이 다르다');
-      assert.strictEqual(X.$('#atHours').textContent, '과제 3개, 합계 3시간');
+      assert.strictEqual(X.$('#atHours').textContent, '합계 3시간');
       assert.strictEqual(X.$('#atSend').textContent, '보고', '보내기 단추 이름이 보고가 아니다');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
@@ -320,7 +320,7 @@ if (!JSDOM) {
       assert.deepStrictEqual(blk(X)[3], { name: '델타', hours: 0, text: '' }, '새 블록이 0시간 빈 블록이 아니다');
       assert.ok(!shown(X, '#atAddMenu'), '고른 뒤 메뉴가 닫히지 않았다');
       assert.strictEqual(X.doc.activeElement, X.$('#atBlocks textarea[data-bt="3"]'), '새 블록 내용 칸으로 가지 않았다');
-      assert.strictEqual(X.$('#atHours').textContent, '과제 4개, 합계 3시간');
+      assert.strictEqual(X.$('#atHours').textContent, '합계 3시간');
       X.$('#atAdd').click();
       assert.deepStrictEqual(items(), ['알파:x', '베타:x', '감마:x', '델타:x']);
       esc(X);
@@ -340,7 +340,11 @@ if (!JSDOM) {
     try {
       openB(X);
       assert.ok(!X.$('#atBlocks [data-bup], #atBlocks [data-bdn]'), '▲ ▼ 단추가 남아 있다');
-      assert.ok(X.$('.at-sorthint') && X.$('.at-sorthint').textContent === '캘린더 과제 순서대로 정렬됩니다', '정렬 안내가 없다');
+      //  화면에 보이는 것을 되풀이하는 안내 글은 두지 않는다(2026-10-29 UI 검토): 정렬 안내, 자유 메모 머리 안내, 불러오기 옆 안내, 미리보기 줄 수와 글자 수
+      assert.ok(!X.$('.at-sorthint'), '정렬 안내가 남아 있다');
+      assert.ok(!X.$('#atBlocks .at-memo .at-hint') && X.$('#atBlocks textarea[data-memo]').placeholder === '예: * 대전 ADD 외근', '자유 메모 안내가 남았거나 예시가 다르다');
+      assert.ok(!X.$('#atImpFoot .at-hint') && !X.$('#atPvStat') && !X.$('#atPvFoot'), '불러오기 옆 안내나 미리보기 줄 수가 남아 있다');
+      assert.strictEqual(X.$('#atBlocks textarea[data-bt="0"]').placeholder, '', '블록 내용 칸에 (자유롭게) 안내가 남아 있다');
       //  머리 순서: 점, 과제명, 시간 칸, 시간, ✕(맨 끝)
       const h0 = X.$('#atBlocks .at-blk[data-bi="0"] .at-bh');
       assert.deepStrictEqual([].map.call(h0.children, (e) => e.className.split(' ')[0]), ['at-dot', 'at-bn', 'at-bhr', 'at-bx']);
@@ -419,7 +423,7 @@ if (!JSDOM) {
       assert.ok(!X.$('#atAsText'), '[글로 보기]가 남아 있다');
       assert.strictEqual(X.ev('atDirty()'), false);
       setHours(X, 1, '1.5');
-      assert.strictEqual(X.$('#atHours').textContent, '과제 3개, 합계 4.5시간');
+      assert.strictEqual(X.$('#atHours').textContent, '합계 4.5시간');
       assert.strictEqual(X.ev('atDirty()'), true);
       setHours(X, 1, '0');
       assert.strictEqual(X.ev('atDirty()'), false);
@@ -432,13 +436,13 @@ if (!JSDOM) {
       input(X, '#atStatus', '6');
       X.$('#atBlocks [data-bx="1"]').click();
       assert.deepStrictEqual(names(X), ['알파', '감마']);
-      assert.strictEqual(X.$('#atHours').textContent, '과제 2개, 합계 3시간');
+      assert.strictEqual(X.$('#atHours').textContent, '합계 3시간');
       assert.ok(X.$('#atList').lastElementChild === X.$('#atAddWrap') && X.$('#atBlocks').nextElementSibling === X.$('#atAddWrap'), '[+ 과제 추가]가 마지막 블록 바로 아래(같은 스크롤 목록)가 아니다');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });
 
-  test('(B) 미리보기 탭: 보낼 때와 같은 조립 글(읽기만), 0.2초 뒤 따라가고, 막는 블록 줄은 빨갛다, n줄 n자와 복사, 탭 기억과 처음 탭 규칙, 접힘 이름', async () => {
+  test('(B) 미리보기 탭: 인트라넷 근태관리 폼 모양(이름, ID, 일자, 근태, 내용, --nf 토큰), 내용 칸 = 보낼 글(읽기만), 0.2초 뒤 따라간다, 탭 기억과 처음 탭 규칙, 접힘 이름', async () => {
     const X = bootBrowser();
     try {
       openB(X);
@@ -446,14 +450,25 @@ if (!JSDOM) {
       const tabs = X.evJSON("[].map.call(document.querySelectorAll('#atPanel [data-attab]'), function(b){ return b.dataset.attab + ':' + b.textContent; })");
       assert.deepStrictEqual(tabs, ['pv:미리보기', 'imp:가져오기']);
       assert.strictEqual(X.ev('ATE.ptab'), 'pv', '블록이 있는 날인데 처음 탭이 미리보기가 아니다');
-      assert.ok(shown(X, '#atPreview') && !shown(X, '#atImp') && shown(X, '#atPvFoot') && !shown(X, '#atImpFoot'));
-      const pv = () => X.$('#atPreview');
-      assert.strictEqual(pv().textContent, X.ev('atCompose(ATE.blocks, ATE.memo)'), '미리보기가 보낼 글과 다르다');
-      assert.ok(!pv().matches('textarea, input, [contenteditable]'), '미리보기를 고칠 수 있다');
+      assert.ok(shown(X, '#atPreview') && !shown(X, '#atImp') && !shown(X, '#atImpFoot'));
+      const pv = () => X.$('#atPreview .nf-box[data-nf="내용"]');
+      //  폼 모양: 항목칸(이름, ID, 일자, 근태, 내용), 고른 근태와 초과시간, 일자. 이름과 ID 는 로그인한 사람(브라우저 시험은 없다 = 빈 칸)
+      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#atPreview .nf-t th'), function(t){ return t.textContent; })"), ['이름', 'ID', '일자', '근태', '내용']);
+      const [yy, mm, dd] = X.T.split('-');
+      assert.strictEqual(X.$('#atPreview .nf-t tr:nth-child(3) .nf-in').textContent, yy + '년 ' + mm + '월 ' + dd + '일');
+      assert.strictEqual(X.$('#atPreview .nf-sel[data-nf="근태"]').textContent, X.evJSON("ATTEND_STATUS.find(function(s){ return s.v === document.getElementById('atStatus').value; }).label"));
+      assert.strictEqual(X.$('#atPreview .nf-sel[data-nf="초과시간"]').textContent, '선택', '초과 없음이 "선택" 이 아니다');
+      assert.ok(X.$('#atPreview > .nf'), '미리보기가 .nf(인트라넷 폼, --nf-* 토큰) 모양이 아니다');
+      assert.strictEqual(pv().textContent, X.ev('atCompose(ATE.blocks, ATE.memo)'), '미리보기 내용 칸이 보낼 글과 다르다');
+      assert.ok(!X.$('#atPreview textarea, #atPreview input, #atPreview select, #atPreview [contenteditable]'), '미리보기를 고칠 수 있다');
       //  미리보기는 색 표시가 없다(베타는 내용이 있는데 0시간이지만 빨갛지 않다, 2026-10-29 사용자)
-      assert.strictEqual(X.$('#atPreview .bad, #atPreview span'), null, '미리보기에 색 표시가 남아 있다');
+      assert.strictEqual(X.$('#atPreview .bad'), null, '미리보기에 색 표시가 남아 있다');
       const t0 = pv().textContent;
-      assert.strictEqual(X.$('#atPvStat').textContent, t0.split('\n').length + '줄, ' + t0.length + '자');
+      //  근태와 초과시간을 바꾸면 미리보기의 선택 칸이 따라간다
+      input(X, '#atOt', '2');
+      await tick(260);
+      assert.strictEqual(X.$('#atPreview .nf-sel[data-nf="초과시간"]').textContent, '+2시간');
+      input(X, '#atOt', '0'); await tick(260);
       typeMemo(X, '* 외근');
       assert.strictEqual(pv().textContent, t0, '0.2초 전에 다시 그렸다');
       await tick(260);
@@ -462,7 +477,7 @@ if (!JSDOM) {
       assert.ok(!X.$('#atCopy') && !X.$('#atPvCopy'), '복사 단추가 남아 있다');
       //  탭 기억: 가져오기를 고르면 기억하고, 블록이 있는 다른 날은 기억한 탭, 블록이 없는 날은 가져오기
       X.$('#atPanel [data-attab="imp"]').click();
-      assert.ok(!shown(X, '#atPreview') && shown(X, '#atImp') && shown(X, '#atImpFoot') && !shown(X, '#atPvFoot'));
+      assert.ok(!shown(X, '#atPreview') && shown(X, '#atImp') && shown(X, '#atImpFoot'));
       assert.strictEqual(X.ev(`localStorage.getItem('tc_attPanelTab')`), 'imp');
       X.ev(`atShowEditor(atBuildPayload(${JSON.stringify(X.T)}, null, false))`);
       X.ev(`localStorage.setItem('tc_attPanelTab', 'pv')`);
@@ -1155,6 +1170,28 @@ if (!JSDOM) {
       A.ev('__attendWinOpen(' + JSON.stringify(payloadFrom(N)) + ')');
       assert.strictEqual(A.ev('ATE.date'), N);
       assert.strictEqual(A.$('#atNext').disabled, false);
+    } finally { A.close(); }
+  });
+
+  test('(A) 미리보기 = 인트라넷 근태관리 폼: 이름과 ID 는 payload 의 나, 고른 근태와 초과시간, 내용 칸 = 보낼 글, 색은 --nf 토큰(테마와 상관없다)', async () => {
+    const A = bootAttend();
+    try {
+      openA(A);
+      A.ev("atPTabSet('pv', false)");
+      const cell = (i) => A.$(`#atPreview .nf-t tr:nth-child(${i}) td`).textContent;
+      assert.deepStrictEqual(A.evJSON("[].map.call(document.querySelectorAll('#atPreview .nf-t th'), function(t){ return t.textContent; })"), ['이름', 'ID', '일자', '근태', '내용']);
+      assert.deepStrictEqual([A.$('#atPreview .nf-who').textContent, cell(1), cell(2)], ['시험자', '시험자', 'tester'], '이름과 ID 가 payload 의 나가 아니다');
+      input(A, '#atStatus', '2'); input(A, '#atOt', '3');
+      await tick(260);
+      assert.strictEqual(A.$('#atPreview .nf-sel[data-nf="근태"]').textContent, '야근');
+      assert.strictEqual(A.$('#atPreview .nf-sel[data-nf="초과시간"]').textContent, '+3시간');
+      assert.strictEqual(A.$('#atPreview .nf-box[data-nf="내용"]').textContent, A.ev('atCompose(ATE.blocks, ATE.memo)'));
+      //  색은 토큰만(인트라넷 화면과 같은 흰 바탕, 회색 항목칸, 파란 테두리. 테마의 색을 쓰지 않는다)
+      for (const sel of ['.nf{', '.nf-sel{']) {
+        const a = app.indexOf('\n' + sel), rule = app.slice(a, app.indexOf('}', a));
+        assert.ok(a > 0 && !/#[0-9a-f]{3,6}\b/i.test(rule) && !/var\(--(?!nf-)/.test(rule), `${sel} 가 --nf 토큰 밖의 색을 쓴다: ${rule}`);
+      }
+      assert.deepStrictEqual(A.errors, []);
     } finally { A.close(); }
   });
 

@@ -258,7 +258,7 @@ console.log(`근태 탭과 근태 보고 창 실동작 루프, 포트 ${OPT.port
 console.log('═'.repeat(74));
 
 let started = false, healthyAtEnd = null, cleaned = null, notReady = false;
-let tab0 = 'personal', pcalKey = '', pcalRaw0 = undefined;
+let tab0 = 'personal', pcalKey = '', pcalRaw0 = undefined, kind0 = 'day';
 
 async function main() {
   let mt;
@@ -279,6 +279,7 @@ async function main() {
   }
   ok('O0 로그인, conn ok, bootOk, 메인 창은 근태 창이 아니다', (await M.ev('ATTENDWIN')) === false, `login=${user}`);
   tab0 = await M.ev('PCAL.tab');
+  kind0 = await M.ev("ATT.kind || 'day'");   // 근태 탭 [일간][주간] 기억(결정 13). 일간 루프는 [일간]에서 돌리고 끝나면 되돌린다
   pcalKey = await M.ev('pcPrefsKey()');
   pcalRaw0 = await M.ev(`(function(){ try { return localStorage.getItem(${JSON.stringify(pcalKey)}); } catch (_) { return null; } })()`);
   vlog('기록기:', await M.ev(INSTALL_M));
@@ -295,6 +296,7 @@ async function main() {
   /* ── A1 근태 탭 ── */
   head('A1 근태 탭: 달력이 보이고 이번 달을 실제로 읽어 그린다, 미보고 표시 없음');
   const m1 = await markM();
+  await M.ev(`(function(){ if (ATT.screen === 'wedit') ATT.screen = 'month'; ATT.kind = 'day'; return 1; })()`);
   await M.ev(`pcSetTab('attend', { force: true }); 1`);   // 위젯이 근태 탭을 기억해 근태 탭으로 떴어도 이번 달을 다시 읽게 한다
   ok('A1 탭 상태(at-on, 근태 탭 선택, 개인 달력 숨김)', await M.ev(`PCAL.tab === 'attend' && document.body.classList.contains('at-on') && document.getElementById('pcTabAttend').getAttribute('aria-selected') === 'true'
     && getComputedStyle(document.querySelector('main > .cal')).display === 'none'`));
@@ -390,9 +392,11 @@ async function main() {
   await A.ev(`(function(){ document.querySelector('#atPanel [data-attab="pv"]').click(); return 1; })()`);
   await typeMemo('* 루프 미리보기');
   await sleep(400);
-  ok('A3 미리보기 탭 = 조립 결과(자유 메모 먼저), 블록은 그대로 보인다', (await shown(A, 'atPreview')) && (await shown(A, 'atBlocks'))
-    && (await A.ev(`document.getElementById('atPreview').textContent === atCompose(ATE.blocks, ATE.memo) && document.getElementById('atPreview').textContent.indexOf('* 루프 미리보기') === 0`)));
-  ok('A3 미리보기 아래 n줄, n자', await A.ev(`(function(){ const t = atCompose(ATE.blocks, ATE.memo); return document.getElementById('atPvStat').textContent === (t ? t.split('\\n').length : 0) + '줄, ' + t.length + '자'; })()`));
+  ok('A3 미리보기 탭 = 인트라넷 근태관리 폼 모양(이름, ID, 일자, 근태, 내용), 내용 칸 = 조립 결과(자유 메모 먼저), 블록은 그대로 보인다', (await shown(A, 'atPreview')) && (await shown(A, 'atBlocks'))
+    && (await A.ev(`(function(){ const b = document.querySelector('#atPreview .nf-box[data-nf="내용"]'); const th = [].map.call(document.querySelectorAll('#atPreview .nf-t th'), function(t){ return t.textContent; }).join(',');
+      return !!document.querySelector('#atPreview > .nf') && th === '이름,ID,일자,근태,내용' && !!b && b.textContent === atCompose(ATE.blocks, ATE.memo) && b.textContent.indexOf('* 루프 미리보기') === 0; })()`)));
+  ok('A3 미리보기의 이름과 ID = payload 의 나, 줄 수 안내는 없다', await A.ev(`(function(){ const td = document.querySelectorAll('#atPreview .nf-t td'); return td[0].textContent === ATE.p.me.name && td[1].textContent === ATE.p.me.loginId && !document.getElementById('atPvStat'); })()`));
+  ok('A3 보이는 것을 되풀이하는 안내 글이 없다(정렬 안내, 자유 메모 머리 안내, 불러오기 옆 안내)', await A.ev(`!document.querySelector('.at-sorthint') && !document.querySelector('#atBlocks .at-memo .at-hint') && !document.querySelector('#atImpFoot .at-hint')`));
   //  전체 초기화: 묻지 않고 지운다(정근, 초과 없음). 안내도 되돌리기도 없다(2026-10-29 사용자)
   ok('A3 전체 초기화를 눌렀다', (await click(A, 'atReset')) === 'ok');
   ok('A3 전체 초기화 = 메모와 블록이 비고 정근, 초과 없음, 묻지 않고 되돌리기 없음', await A.ev(`ATE.memo === '' && ATE.blocks.length === 0 && document.getElementById('atStatus').value === '1' && document.getElementById('atOt').value === '0'
@@ -526,10 +530,10 @@ async function main() {
   ok('A7 내용 있는 0시간이면 보내지 않고 빨간 블록과 안내', (await A.ev('__atLoopW.cap.length')) === n7a && (await A.ev(`document.querySelector('#atBlocks .at-blk[data-bi="0"]').classList.contains('bad') && /고칠 과제가 1개/.test(document.getElementById('atMsg').textContent) && !ATE.sending`)));
   ok('A7 보낼 블록 셋과 자유 메모를 만들었다(과제 추가 메뉴, 시간 칸, 내용 칸)', (await setBlocks(SEND_MEMO, sendBlocks(P))) === 'ok');
   ok('A7 근태 = 정근(1), 초과 없음', (await setSel('atStatus', '1')) === '1' && (await setSel('atOt', '0')) === '0');
-  ok('A7 상태 줄 = 과제 3개, 합계 5.5시간', (await A.ev(`document.getElementById('atHours').textContent`)) === '과제 3개, 합계 5.5시간');
+  ok('A7 상태 줄 = 합계 5.5시간(과제 수는 쓰지 않는다)', (await A.ev(`document.getElementById('atHours').textContent`)) === '합계 5.5시간');
   await sleep(400);
   ok('A7 조립 글과 미리보기 = 회사로 나갈 글(빨간 줄 없음)', (await A.ev('atCompose(ATE.blocks, ATE.memo)')) === sendText(P)
-    && (await A.ev(`(function(){ atPTabSet('pv', false); return document.getElementById('atPreview').textContent; })()`)) === sendText(P) && (await A.ev(`!document.querySelector('#atPreview .bad')`)));
+    && (await A.ev(`(function(){ atPTabSet('pv', false); return document.querySelector('#atPreview .nf-box[data-nf="내용"]').textContent; })()`)) === sendText(P) && (await A.ev(`!document.querySelector('#atPreview .bad')`)));
   if (!(await interceptOkA())) throw new Error('전송 가로채기가 제자리에 없다. 실제 전송 위험이라 누르지 않는다');
   const n7 = await A.ev('__atLoopW.cap.length');
   const r7 = await A.J(`(function(){ const b = document.getElementById('atSend'); b.click(); const busy = { disabled: b.disabled, label: b.textContent, ta: document.querySelector('#atBlocks textarea[data-bt="0"]').disabled,
@@ -641,6 +645,7 @@ try {
       if (M.closed) throw new Error('메인 창 연결이 끊겼다');
       await dropLoopKeys(M);
       await M.ev(`(function(){ try { ATT.anchor = todayYmd(); } catch (_) {} return 1; })()`);
+      await M.ev(`(function(){ ATT.kind = ${JSON.stringify(kind0)}; try { localStorage.setItem(ATT_KIND_KEY, ${JSON.stringify(kind0)}); } catch (_) {} return 1; })()`);
       await M.ev(`pcSetTab(${JSON.stringify(tab0)}); 1`);
       if (pcalKey && pcalRaw0 !== undefined) await M.ev(`(function(){ try { const v = ${JSON.stringify(pcalRaw0)}; if (v == null) localStorage.removeItem(${JSON.stringify(pcalKey)}); else localStorage.setItem(${JSON.stringify(pcalKey)}, v); } catch (_) {} return 1; })()`);
       healthyAtEnd = await M.waitFor(isHealthy, 20000, 300);

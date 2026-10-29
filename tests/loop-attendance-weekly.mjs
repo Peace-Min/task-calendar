@@ -15,7 +15,7 @@
  *    W5   이동: › 는 그 주 기록을 읽어 2099-12-14 를 열고(넘기기 전에 임시 저장), ‹ 로 돌아오면 글이 되살아난다. 주 고르기 달력이 그 달 줄을 보인다
  *    W6   보내기(가로채기, 실제 전송 없음): 진행사항 없음은 막고, payload(기간, 제목, 네 칸, resultwork, &nbsp;), 잠금, 연속 클릭 한 번,
  *         실패 회신 흉내 = 공통 안내, 성공 회신 흉내 = 처음 상태(임시 저장은 남음), 저장 알림 흉내 = 임시 저장 지움
- *    W7   창 안 목록: ← 주간 목록이 창 안의 목록(reportWeeklyList)을 보이고 [일간][주간]은 없다. [작성]은 이번 주를 그 자리에서 연다
+ *    W7   창 안 목록: [‹ 목록]이 창 안의 목록(reportWeeklyList)을 보이고 [일간][주간]은 없다. [작성]은 이번 주를 그 자리에서 연다
  *    W8   닫기 지키기: 고친 글이 있으면 __winCloseRequest() = ask, [닫기]면 창이 닫히고 키는 남는다
  *    정리 근태 창 닫기, 두 창의 2099 주간 임시 저장 키 삭제, 탭과 [일간][주간] 기억 되돌리기, 잔재 0 확인
  *
@@ -272,6 +272,7 @@ async function main() {
   const L1 = (await sinceM(m1)).filter((x) => x.req === 'reportWeeklyList');
   ok('W1 reportWeeklyList(52주)를 성공으로 읽었다', got1 && L1.some((x) => x.ok === true) && (await M.ev('AWL.err')) === '', JSON.stringify(L1));
   ok('W1 목록 줄 = 기록과 임시 저장의 주(번호, 제목, 기간, 상태, 날짜 다섯 칸)', await M.ev(`(function(){ const r = document.querySelectorAll('#awList tr.aw-row'); return r.length === awListItems().length && [].every.call(r, function(x){ return x.cells.length === 5; }); })()`));
+  ok('W1 목록 아래 안내 줄이 없고 그 말은 [작성] 의 title, [작성]은 작은 단추', await M.ev(`(function(){ const b = document.querySelector('#awList [data-awact="new"]'); return !document.querySelector('#awList .aw-lnote') && !!b && b.classList.contains('sm') && b.title.indexOf('이 앱으로 쓴 주만') === 0; })()`));
 
   /* ── W2 열기 ── */
   head('W2 열기: awOpen(2099-12-07) 이 근태 창을 주간 모드로 연다. 처음 여는 주라 두 가져오기를 해 둔다');
@@ -284,12 +285,15 @@ async function main() {
   ok('W2 메인 창이 그 주 기록을 읽고(reportWeeklyList 하루) attendOpen(kind week)', L2.some((x) => x.req === 'reportWeeklyList' && x.from === W && x.to === W && x.ok) && L2.some((x) => x.req === 'attendOpen' && x.kind === 'week' && x.mon === W && x.ok),
     JSON.stringify(L2.map((x) => [x.req, x.from || x.mon, x.ok])));
   vlog('근태 창 기록기:', await A.ev(INSTALL_A));
-  const v2 = await A.J(`({ view: ATW.view, title: document.title, head: document.getElementById('awTitle').textContent, subj: document.getElementById('awSubj').value,
-    msg: document.getElementById('awMsg').textContent, dirty: awDirty(), back: document.getElementById('awBack').textContent, seg: !!document.querySelector('#awEd [data-atkind]') })`);
+  const v2 = await A.J(`({ view: ATW.view, title: document.title, head: document.getElementById('awTitle').textContent, h2: document.getElementById('awHead').textContent, subj: document.getElementById('awSubj').value,
+    msg: document.getElementById('awMsg').textContent, msgCls: document.getElementById('awMsg').className, imp: document.getElementById('awImpMsg').textContent, dirty: awDirty(),
+    back: document.getElementById('awBack').textContent, backIc: !!document.querySelector('#awBack svg.ic'), seg: !!document.querySelector('#awEd [data-atkind]'),
+    resetInMeta: document.getElementById('awReset').parentElement === document.querySelector('#awEd .aw-meta'), how: !!document.getElementById('awSubjHow') || !!document.getElementById('awStat') || !!document.getElementById('awPvStat') })`);
   ok('W2 주간 편집만 보인다(일간 보고 화면과 목록은 숨김)', (await shown(A, 'awEd')) && !(await shown(A, 'atEd')) && !(await shown(A, 'awList')) && v2.view === 'wedit');
   ok('W2 제목 = 월요일이 든 달 기준(12월 둘째주), 머리에 기간, 문서 제목', v2.subj === '12월 둘째주' && v2.head === '12월 둘째주 (12/7~12/13)' && v2.title === '주간보고 12월 둘째주 (12/7~12/13)', JSON.stringify(v2));
-  ok('W2 [← 주간 목록] 단추가 있다', v2.back === '← 주간 목록');
-  ok('W2 처음 여는 주의 두 가져오기 결과 안내(2099 라 기록 없음), 고친 것 없음', /일간 보고가 없습니다/.test(v2.msg) && /지난주에 이 앱으로 쓴 주간보고가 없습니다/.test(v2.msg) && !v2.dirty, v2.msg);
+  ok('W2 머리 = [‹ 목록](아이콘) | 주간 보고 ‹ 제목 (기간) ›, [전체 초기화]는 기간, 제목 줄 끝', v2.back === '목록' && v2.backIc && v2.h2 === '주간 보고' && v2.resetInMeta, JSON.stringify({ back: v2.back, h2: v2.h2 }));
+  ok('W2 보이는 것을 되풀이하는 안내 글이 없다(제목 기준, 개수, 미리보기 줄 수)', !v2.how);
+  ok('W2 처음 여는 주의 가져오기 결과: 바닥은 한 문장(흐린 색), 지난주 없음은 가져오기 패널, 고친 것 없음', v2.msg === '이번 주 일간 보고가 없습니다.' && v2.msgCls === 'at-msg' && v2.imp === '지난주 주간보고가 없습니다.' && !v2.dirty, JSON.stringify({ msg: v2.msg, imp: v2.imp }));
 
   /* ── W3 편집 ── */
   head('W3 편집: 과제 추가, 과제투입시간이 진행사항을 따라감, 합계, 회의내용, 미리보기(인트라넷 폼 모양)');
@@ -373,9 +377,9 @@ async function main() {
   ok('W6 저장 알림 흉내 = 보낸 모양 그대로인 임시 저장을 지웠다, 작성한 시각', (await storedIn(M, KEY)) === null && /^작성한 시각 /.test(await A.ev(`document.getElementById('awSent').textContent`)));
 
   /* ── W7 창 안 목록 ── */
-  head('W7 창 안 목록: ← 주간 목록, [작성]은 이번 주를 그 자리에서');
+  head('W7 창 안 목록: [‹ 목록], [작성]은 이번 주를 그 자리에서');
   const n7 = (await A.J('__awLoopW.log')).length;
-  ok('W7 ← 주간 목록을 눌렀다(고친 것 없음, 묻지 않는다)', (await click(A, 'awBack')) === 'ok' && !(await shown(A, 'awAsk')));
+  ok('W7 [‹ 목록]을 눌렀다(고친 것 없음, 묻지 않는다)', (await click(A, 'awBack')) === 'ok' && !(await shown(A, 'awAsk')));
   const got7 = await A.waitFor(`ATW.view === 'wlist' && !AWL.loading && !!AWL.from`, 15000);
   ok('W7 창 안의 목록이 보이고 reportWeeklyList 를 읽었다', got7 && (await shown(A, 'awList')) && (await A.J('__awLoopW.log')).slice(n7).some((x) => x.req === 'reportWeeklyList' && x.ok));
   ok('W7 근태 창 목록에는 [일간][주간]이 없다', !(await A.ev(`!!document.querySelector('#awList [data-atkind]')`)));

@@ -8,7 +8,9 @@
 //       일간 모으기(같은 줄은 한 번, 시간 합계, 시간만 있는 과제, 과제 미정은 넣지 않음), 막는 규칙.
 //   (B) jsdom 브라우저: [일간][주간] 전환과 기억, 목록(작성 중, 최근이 위, 번호), [작성]은 이번 주이고 화면 전환, 편집 네 칸,
 //       과제투입시간이 진행사항을 따라감과 합계, 시간 칸 범위, 주 고르기 달력과 제목, 미리보기가 인트라넷 폼 모양이고 보낼 글과 같음,
-//       막는 규칙(진행사항 없음, 과제 미정), 임시 저장(안내 없이 되살리기)과 [전체 초기화], ← 주간 목록과 묻기, 브라우저 보내기는 잠그지 않는다.
+//       막는 규칙(진행사항 없음, 과제 미정), 임시 저장(안내 없이 되살리기)과 [전체 초기화], [‹ 목록]과 묻기, 브라우저 보내기는 잠그지 않는다.
+//       화면에 보이는 것을 되풀이하는 안내 글이 없다(2026-10-29 UI 검토): 목록 아래 안내 줄, 제목 기준 표시, 진행사항과 차주계획 수,
+//       빈 블록 안내, 회의내용 (자유롭게), 미리보기 줄 수. 머리는 [‹ 목록] | 주간 보고 ‹ 제목 (기간) › 이고 [전체 초기화]는 기간, 제목 줄 끝.
 //   (W) jsdom 위젯 메인 창: 목록이 reportWeeklyList 회신과 임시 저장을 합친다, 행과 [작성]은 attendOpen(kind 'week') 하나, __reportWeeklySaved 는 목록을 다시 읽는다.
 //   (A) jsdom 근태 창: 주간 payload 는 주간 편집을 보이고 일간 화면을 숨긴다, 처음 여는 주는 두 가져오기(reportDailyList 그 주 7일, reportWeeklyList 지난주)로
 //       채우고 그것이 처음 상태다, 완료한 주는 DB 기록으로 연다, 가져오기 단추, 보내기(netcusWeekSubmit 의 네 칸과 resultwork, &nbsp;, 잠금),
@@ -225,6 +227,10 @@ if (!JSDOM) {
       const per = (m) => X.ev(`awPeriodLabel('${m}')`);
       assert.deepStrictEqual(rows, [['2', '손 제목', per(W1), '작성 중', '2026-10-29'], ['1', '앞 제목', per(W2), '작성 중', '2026-10-23']], '목록 줄이 다르다');
       assert.strictEqual(X.$('#awList .aw-cnt').textContent, '2건');
+      //  목록 아래 안내 줄은 없고 그 말은 [작성] 의 title 에 있다. [작성]은 작은 단추(머리 세그와 같은 높이)
+      assert.ok(!X.$('#awList .aw-lnote'), '목록 안내 줄이 남아 있다');
+      const nb = X.$('#awList [data-awact="new"]');
+      assert.ok(nb.classList.contains('sm') && nb.classList.contains('primary') && nb.title.includes('이 앱으로 쓴 주만 보입니다'), '[작성] 이 btn sm primary 가 아니거나 title 에 안내가 없다');
       X.$('#awList [data-awact="new"]').click();
       const mon = TM;
       assert.ok(shown(X, '#awEd') && !shown(X, '#awList') && !shown(X, '#atMonth'), '[작성]이 편집 화면으로 바뀌지 않았다');
@@ -233,7 +239,18 @@ if (!JSDOM) {
       assert.ok(X.$('#awTitle').textContent.startsWith(X.ev(`weekSubjectGuess('${mon}')`)), '제목이 월요일이 든 달 기준이 아니다');
       //  편집 화면: 표 네 줄과 단추들
       assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#awEd .aw-k'), function(k){ return k.textContent; })"), ['진행사항', '과제투입시간', '차주계획', '회의내용']);
-      assert.strictEqual(X.$('#awBack').textContent, '← 주간 목록');
+      //  머리: [‹ 목록](앱의 ‹ 아이콘) | 주간 보고 ‹ 제목 (기간) ›, [전체 초기화]는 기간, 제목 줄 끝
+      assert.strictEqual(X.$('#awBack').textContent, '목록');
+      assert.ok(X.$('#awBack svg.ic') && X.$('#awBack').classList.contains('btn') && X.$('#awBack').classList.contains('sm'), '목록 단추에 ‹ 아이콘이 없다');
+      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelector('#awEd .at-ed-head').children, function(e){ return e.id || e.className; })"), ['awBack', 'aw-sep', 'awHead', 'at-ed-nav']);
+      assert.strictEqual(X.$('#awHead').textContent, '주간 보고');
+      assert.ok(X.$('#awTitle').classList.contains('at-ed-date') && X.$('#awTitle').parentElement.classList.contains('at-ed-nav'), '제목 (기간) 이 ‹ › 사이(at-ed-nav)에 있지 않다');
+      assert.strictEqual(X.$('#awReset').parentElement, X.$('#awEd .aw-meta'), '[전체 초기화]가 기간, 제목 줄에 있지 않다');
+      //  화면에 보이는 것을 되풀이하는 안내 글이 없다
+      assert.ok(!X.$('#awSubjHow') && !X.$('#awStat') && !X.$('#awPvStat') && !X.$('#awPvFoot'), '제목 기준, 개수, 미리보기 줄 수 안내가 남아 있다');
+      assert.strictEqual(X.$('#awMeet').placeholder, '', '회의내용 (자유롭게) 안내가 남아 있다');
+      assert.strictEqual(X.$('#awProg').textContent, '', '빈 진행사항에 안내 글이 있다(단추만 보인다)');
+      assert.strictEqual(X.$('#awPlan').textContent, '', '빈 차주계획에 안내 글이 있다');
       assert.deepStrictEqual([X.$('#awClose').textContent, X.$('#awSend').textContent], ['닫기', '보고']);
       assert.ok(!X.$('#awEd [id*="Copy"], #awEd [data-copy]'), '복사 단추가 있다');
       assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#awPanel [data-awtab]'), function(b){ return b.textContent; })"), ['미리보기', '가져오기']);
@@ -243,7 +260,7 @@ if (!JSDOM) {
       assert.ok(shown(X, '#awList'), '← 주간 목록이 목록으로 돌아가지 않았다');
       X.$(`#awList tr[data-awmon="${W1}"]`).click();
       assert.strictEqual(X.ev('AWE.mon'), W1);
-      assert.deepStrictEqual([X.$('#awSubj').value, X.$('#awMeet').value, X.$('#awSubjHow').textContent], ['손 제목', 'x', '직접 고침'], '임시 저장으로 열리지 않았다');
+      assert.deepStrictEqual([X.$('#awSubj').value, X.$('#awMeet').value, X.ev('AWE.subjAuto')], ['손 제목', 'x', false], '임시 저장으로 열리지 않았다');
       assert.strictEqual(X.$('#awMsg').textContent, '', '임시 저장을 이어서 열며 안내를 띄웠다(일간처럼 안내 없이)');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
@@ -255,7 +272,7 @@ if (!JSDOM) {
     const X = bootBrowser();
     try {
       openWeekB(X);
-      assert.ok(X.$('#awHours').textContent.includes('진행사항에 과제를 넣으면'), '빈 과제투입시간 안내가 없다');
+      assert.strictEqual(X.$('#awHours').textContent.trim(), '', '빈 과제투입시간에 설명 문구가 남아 있다(2026-10-29 사용자: 설명 문구를 두지 않는다)');
       addBlock(X, 'prog', '감마'); addBlock(X, 'prog', '알파');
       assert.deepStrictEqual(blocks(X, 'prog').map((b) => b.name), ['알파', '감마'], '캘린더 순서로 정렬하지 않았다');
       X.$('#awEd [data-awadd="prog"]').click();
@@ -305,7 +322,6 @@ if (!JSDOM) {
       assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#awNf .nf-in'), function(e){ return e.textContent; })"), [MON, '2026-11-01', '10월 다섯째주']);
       //  테마와 상관없는 흰 바탕: 클래스가 토큰만 쓴다(정적 시험이 토큰 값을 본다)
       assert.ok(X.$('#awNf').classList.contains('nf'));
-      assert.ok(X.$('#awPvStat').textContent.startsWith('인트라넷에 이렇게 들어갑니다.'));
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });
@@ -325,7 +341,7 @@ if (!JSDOM) {
       assert.ok(!shown(X, '#awWCal'), '고른 뒤 달력이 닫히지 않았다');
       assert.strictEqual(X.ev('AWE.mon'), '2026-09-28');
       assert.strictEqual(X.$('#awSubj').value, '9월 다섯째주', '9월 달력의 마지막 줄 제목이 아니다');
-      assert.strictEqual(X.$('#awSubjHow').textContent, '달력에서 고른 달 기준');
+      assert.strictEqual(X.ev('AWE.picked'), '9월 다섯째주');
       //  같은 주를 10월 달력의 첫 줄로 고르면 10월 첫째주
       X.$('#awWeekBtn').click();
       X.$('#awWCal [data-awcm="1"]').click();
@@ -527,7 +543,10 @@ if (!JSDOM) {
       assert.deepStrictEqual(blocks(A, 'plan'), [{ name: '베타', text: '- 다음 일' }, { name: '', text: '[모름]\n- 무엇' }], '지난주 차주계획이 블록이 아니다(모르는 이름은 미정)');
       assert.strictEqual(A.ev('awDirty()'), false, '가져온 결과가 처음 상태가 아니다');
       assert.strictEqual(A.ev(`localStorage.getItem('${KEYA}')`), null, '가져오기만으로 임시 저장을 썼다');
-      assert.ok(A.$('#awMsg').textContent.includes('일간 보고 2일에서 과제 3개'), '가져온 안내가 없다: ' + A.$('#awMsg').textContent);
+      //  바닥 안내는 한 문장, 흐린 색(초록은 보고 성공만). 지난주 기록이 없다는 말은 가져오기 패널의 단추 곁에
+      assert.strictEqual(A.$('#awMsg').textContent, '일간 보고 2일에서 과제 3개를 가져왔습니다.');
+      assert.strictEqual(A.$('#awMsg').className, 'at-msg', '가져오기 안내가 초록(ok)이다');
+      assert.strictEqual(A.$('#awImpMsg').textContent, '', '지난주 기록이 있는데 패널 안내가 있다');
       assert.strictEqual(A.$('#awSend').disabled, false);
       assert.ok(A.doc.title.startsWith('주간보고 '));
       //  진행사항에 과제를 더하면 시간 칸이 그 주 일간 합계로 생긴다
@@ -691,6 +710,23 @@ if (!JSDOM) {
       A.ev('__attendWinOpen(' + JSON.stringify(wpayload()) + ')'); await tick(40);
       assert.ok(shown(A, '#awEd') && !shown(A, '#atEd'));
       assert.strictEqual(A.$('#awMeet').value, '주간 글', '주간으로 돌아왔는데 임시 저장으로 열지 않았다');
+      assert.deepStrictEqual(A.errors, []);
+    } finally { A.close(); }
+  });
+
+  test('(A) 빈 목록과 지난주 기록 없음: 목록은 "작성한 주간보고가 없습니다." 한 줄, 지난주 기록이 없다는 말은 가져오기 패널(바닥은 일간 결과 한 문장)', async () => {
+    const A = boot(app, ATTEND_URL, true);
+    try {
+      clearDrafts(A);
+      stubHost(A, `{ reportDailyList: { ok: true, rows: [] }, reportWeeklyList: { ok: true, rows: [] } }`);
+      await openNewA(A);
+      assert.strictEqual(A.$('#awMsg').textContent, '이번 주 일간 보고가 없습니다.');
+      assert.strictEqual(A.$('#awMsg').className, 'at-msg');
+      assert.strictEqual(A.$('#awImpMsg').textContent, '지난주 주간보고가 없습니다.');
+      assert.ok(A.$('#awImpMsg').previousElementSibling === A.$('#awImpPlan'), '안내가 지난주 차주계획 단추 곁에 있지 않다');
+      A.$('#awBack').click(); await tick(40);
+      assert.strictEqual(A.$('#awList .aw-lempty').textContent, '작성한 주간보고가 없습니다.');
+      assert.ok(!A.$('#awList .aw-tblwrap'), '빈 목록에 표 상자가 있다');
       assert.deepStrictEqual(A.errors, []);
     } finally { A.close(); }
   });

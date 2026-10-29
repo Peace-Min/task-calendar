@@ -2776,7 +2776,6 @@ body:not(.at-on) #atView{display:none !important}
 .at-ed select:disabled,.at-ed textarea:disabled,.at-ed input[type=date]:disabled,.at-ed input[type=number]:disabled{opacity:.6}
 /* 과제 블록(결정 12, 2026-10-29 사용자 2차). 머리는 표시(과제명은 고칠 수 없다), 시간은 글 칸(↑ ↓ 로 0.5씩), 내용 칸은 쓰는 만큼 늘어난다(atGrow).
    순서는 캘린더 과제 순서로 늘 정렬한다(▲ ▼ 없음). [+ 과제 추가]는 마지막 블록 바로 아래, 같은 스크롤 목록 안이다. */
-.at-sorthint{font-size:var(--fs-micro);color:var(--faint-text);flex:none;margin-bottom:-4px}
 .at-list{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;padding-right:2px}
 .at-blocks{display:flex;flex-direction:column;gap:8px;flex:none}
 .at-blk{border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--panel);flex:none;transition:background-color .3s}
@@ -2801,7 +2800,6 @@ body:not(.at-on) #atView{display:none !important}
 .at-bmsg{display:flex;align-items:center;gap:6px;padding:0 12px 6px;color:var(--danger-text);font-size:var(--fs-meta)}
 .at-bmsg-i{flex:none;width:16px;height:16px;border-radius:50%;background:var(--danger);color:var(--on-accent);font-weight:700;font-size:11px;line-height:16px;text-align:center}
 .at-bempty{padding:16px 4px}
-.at-memo .at-hint{margin-left:auto;font-weight:400}
 .at-ed .at-memo .at-bt{min-height:36px}
 .at-add{position:relative;flex:none}
 .at-addb{width:100%;border-style:dashed}
@@ -2815,8 +2813,11 @@ body:not(.at-on) #atView{display:none !important}
 .at-mnew{border-top:1px solid var(--line);border-radius:0;padding-top:7px;color:var(--accent-2)}
 /* 오른쪽 패널: [미리보기][가져오기] 탭. 미리보기는 회사로 나갈 글(본문 글꼴, 읽기만). 색 표시는 하지 않는다. */
 .at-ptabs{margin:12px 14px 0;flex:none;align-self:flex-start}
-.at-preview{flex:1;min-height:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:10px 14px;padding:10px 12px;border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--panel);font:inherit;font-size:var(--fs-body);line-height:1.6;tab-size:4}
-.at-pvfoot .at-hint{font-variant-numeric:tabular-nums}
+/* 미리보기: 인트라넷 근태관리 일간 폼 모양(주간 미리보기와 같은 .nf 와 --nf-* 토큰, 테마와 상관없다. 2026-10-29 사용자: 믿고 보내려면 회사 화면과 같아야 한다) */
+.at-preview{flex:1;min-height:0;overflow:auto;margin:10px 14px}
+.nf-sel{display:inline-block;min-width:72px;padding:1px 18px 1px 5px;border:1px solid var(--nf-box);background:var(--nf-td);color:var(--nf-ink);font:11px/1.5 Gulim,'굴림',sans-serif;position:relative}
+.nf-sel::after{content:'▾';position:absolute;right:4px;top:0}
+.nf-lab{font-size:11px;margin:0 6px}
 .at-pick-row .at-lnk{color:var(--accent-2)}
 .at-pick-row .at-lnk:disabled{color:var(--accent-2);opacity:.45}
 .at-stat{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:var(--fs-meta);color:var(--muted);flex:none}
@@ -2865,9 +2866,9 @@ html[data-attendwin] #atBack{ display:none }
 .aw-listv{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:10px 12px 8px}
 .aw-ltitle{font-size:var(--fs-title);padding:0 4px}
 .aw-cnt{font-size:var(--fs-meta);color:var(--muted)}
-.aw-lnote{flex:none;font-size:var(--fs-micro);color:var(--faint-text);margin:0 0 6px}
-.aw-lempty{padding:16px 4px}
-.aw-tblwrap{flex:1;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:var(--r-md)}
+.aw-lempty{text-align:center;padding:48px 0}
+/* 표 상자는 행만큼만(빈 테두리 상자를 늘이지 않는다). 행이 많으면 그 안에서 스크롤 */
+.aw-tblwrap{flex:0 1 auto;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:var(--r-md)}
 .aw-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-body)}
 .aw-tbl th{position:sticky;top:0;background:var(--dim-bg);color:var(--muted);font-weight:600;text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
 .aw-tbl td{padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel)}
@@ -2884,8 +2885,10 @@ html[data-attendwin] #atBack{ display:none }
 .aw-badge.done{color:var(--ok);border-color:var(--ok)}
 .aw-badge.draft{color:var(--warn-text);border-color:var(--warn-text)}
 /* [← 주간 목록]: 머리 맨 앞의 잘 보이는 단추(사용자 요청 §13.1) */
-.btn.aw-back{font-weight:700;border-color:var(--accent);color:var(--accent-2);background:var(--accent-soft)}
-.aw-title{margin:0;font-size:var(--fs-h2);white-space:nowrap}
+.btn.aw-back{display:inline-flex;align-items:center;gap:4px;padding:4px 10px 4px 6px;font-weight:600;color:var(--text);border-color:var(--line-2);background:transparent}
+.btn.aw-back:hover{border-color:var(--accent);color:var(--accent-2)}
+.aw-back .ic{width:14px;height:14px}
+.aw-sep{flex:none;width:1px;height:18px;background:var(--line-2)}
 .aw-meta{flex:none}
 .aw-ed input[type=text]{font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 8px;color:var(--text);background:var(--panel)}
 .aw-ed input[type=text]:disabled{opacity:.6}
@@ -2911,9 +2914,11 @@ html[data-attendwin] #atBack{ display:none }
 .aw-blk .at-bx{margin-left:auto}
 .aw-flash{animation:aw-fl .6s}
 @keyframes aw-fl{from{background:var(--accent-soft)}to{background:transparent}}
-.aw-hours{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px}
+/* 과제투입시간: 칸 폭을 정해 두고 숫자 칸을 이름 바로 뒤에 둔다(과제가 하나여도 가운데로 떠 보이지 않게) */
+.aw-hours{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,280px));gap:4px 24px}
 .aw-hr{display:flex;align-items:center;gap:8px;min-width:0}
-.aw-hn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aw-hn{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.at-ed .aw-hr .at-bhn{width:64px;flex:none}
 .aw-hsum{color:var(--muted);font-size:var(--fs-meta)}
 .aw-hsum b{color:var(--text)}
 .at-ed .aw-meet{display:block;width:100%;min-height:52px;resize:none;overflow:hidden;line-height:1.65;white-space:pre-wrap}
@@ -2936,7 +2941,7 @@ html[data-attendwin] #atBack{ display:none }
 .nf-in{background:var(--nf-paper);color:var(--nf-ink);border:1px solid var(--nf-box);padding:1px 5px;display:inline-block;min-width:90px;font:11px/1.5 Gulim,'굴림',sans-serif}
 .nf-in.nf-subj{min-width:70%}
 html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
-@media (max-width:760px){ .aw-hours{grid-template-columns:minmax(0,1fr)} .aw-form{grid-template-columns:72px minmax(0,1fr)} }
+@media (max-width:760px){ .aw-form{grid-template-columns:72px minmax(0,1fr)} }
 @media (max-width:760px){
   .at-ed-body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(320px,1fr) auto;overflow:auto}
   .at-panel{border-left:0;border-top:1px solid var(--line)}
@@ -3266,7 +3271,6 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
           </div>
           <!-- 과제 블록(결정 12): 머리(색 점, 과제명(입력 칸이 아닌 글자), 시간 칸, ✕)와 자유 글 칸. atBlocksRender 가 채운다. 순서는 캘린더 과제 순서로 늘 정렬한다.
                [+ 과제 추가]는 마지막 블록 바로 아래, 같은 스크롤 목록 안에 있다. -->
-          <div class="at-sorthint">캘린더 과제 순서대로 정렬됩니다</div>
           <div class="at-list" id="atList">
           <div class="at-blocks" id="atBlocks" aria-label="과제 블록"></div>
           <div class="at-add" id="atAddWrap">
@@ -3285,8 +3289,8 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
             <button type="button" class="seg-b" role="tab" data-attab="pv" aria-selected="false">미리보기</button>
             <button type="button" class="seg-b" role="tab" data-attab="imp" aria-selected="false">가져오기</button>
           </div>
-          <!-- 미리보기: 회사로 나갈 글(보낼 때와 같은 조립 함수, 읽기만). 막는 블록의 줄은 빨갛다. -->
-          <div class="at-preview hidden" id="atPreview" tabindex="0" role="tabpanel" aria-label="회사로 나갈 글(읽기만)"></div>
+          <!-- 미리보기: 인트라넷 근태관리 일간 폼 모양(읽기만). 내용 칸은 보낼 때와 같은 조립 함수의 글이다. atPvRender 가 채운다. -->
+          <div class="at-preview hidden" id="atPreview" tabindex="0" role="tabpanel" aria-label="인트라넷 근태관리 폼에 들어갈 모양(읽기만)"></div>
           <div class="at-panel-in" id="atImp" role="tabpanel">
             <div class="at-row">
               <div class="seg" role="group" aria-label="가져올 곳">
@@ -3304,9 +3308,8 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
             <div class="at-pick-row"><span class="at-pick" id="atPick"></span><span><button type="button" class="at-lnk" id="atAll">전체 선택</button> <button type="button" class="at-lnk" id="atNone">전체 해제</button></span></div>
             <div class="at-cards" id="atCards"></div>
           </div>
-          <div class="at-panel-foot">
-            <div class="at-row" id="atImpFoot"><button type="button" class="btn primary" id="atLoad">← 불러오기</button><span class="at-hint">체크한 과제로 왼쪽 블록을 바꿉니다</span></div>
-            <div class="at-row at-pvfoot hidden" id="atPvFoot"><span class="at-hint" id="atPvStat"></span></div>
+          <div class="at-panel-foot" id="atImpFoot">
+            <div class="at-row"><button type="button" class="btn primary" id="atLoad">← 불러오기</button></div>
           </div>
         </aside>
       </div>
@@ -3327,16 +3330,17 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
     </div>
     <!-- 주간보고 편집 화면(docs/ATTENDANCE-PLAN.md §13, 결정 13). 위젯은 근태 창의 주간 모드, 브라우저는 근태 탭 안의 화면 전환이다.
          표 네 칸(진행사항, 과제투입시간, 차주계획, 회의내용)은 awRender 가 채운다. 오른쪽 미리보기는 인트라넷 주간보고 폼 모양 그대로다. -->
-    <div class="at-ed aw-ed hidden" id="awEd" role="region" aria-labelledby="awTitle">
+    <div class="at-ed aw-ed hidden" id="awEd" role="region" aria-labelledby="awHead awTitle">
+      <!-- 머리: [‹ 목록] | 주간 보고 ‹ 제목 (기간) ›. 일간 보고 화면 머리와 같은 틀(.at-ed-nav). 목록 단추의 화살 아이콘은 awInit 이 ICON.prev 로 넣는다 -->
       <div class="at-ed-head">
-        <button type="button" class="btn sm aw-back" id="awBack" title="주간보고 목록으로 돌아갑니다">← 주간 목록</button>
+        <button type="button" class="btn sm aw-back" id="awBack" title="주간보고 목록"><span>목록</span></button>
+        <span class="aw-sep" aria-hidden="true"></span>
+        <h2 id="awHead">주간 보고</h2>
         <span class="at-ed-nav">
           <button type="button" class="btn icon sm" id="awPrev" title="지난주" aria-label="지난주">‹</button>
-          <h2 class="aw-title" id="awTitle" aria-live="polite">주간보고</h2>
+          <span class="at-ed-date" id="awTitle" aria-live="polite"></span>
           <button type="button" class="btn icon sm" id="awNext" title="다음 주" aria-label="다음 주">›</button>
         </span>
-        <span class="spacer"></span>
-        <button type="button" class="at-lnk" id="awReset" title="진행사항, 과제투입시간, 차주계획, 회의내용을 모두 비웁니다(기간과 제목은 그대로)">전체 초기화</button>
       </div>
       <div class="at-ed-body" id="awBody">
         <div class="at-left">
@@ -3345,7 +3349,8 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
             <span class="aw-wpick"><button type="button" class="btn sm" id="awWeekBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="awWCal" title="달력에서 주를 고릅니다(월요일 시작 줄)"></button>
               <div class="aw-wcal hidden" id="awWCal" role="dialog" aria-label="주 고르기"></div></span>
             <label class="at-lb" for="awSubj">제목</label><input type="text" id="awSubj" class="aw-subj" maxlength="200" autocomplete="off" spellcheck="false">
-            <span class="at-hint" id="awSubjHow"></span>
+            <span class="spacer"></span>
+            <button type="button" class="at-lnk" id="awReset" title="진행사항, 과제투입시간, 차주계획, 회의내용을 모두 비웁니다(기간과 제목은 그대로)">전체 초기화</button>
           </div>
           <div class="at-list" id="awScroll">
             <div class="aw-form">
@@ -3363,10 +3368,10 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
               <div class="aw-v"><div class="at-blocks" id="awPlan" aria-label="차주계획 과제 블록"></div>
                 <div class="at-add" data-awaddwrap="plan"><button type="button" class="btn at-addb" data-awadd="plan" aria-expanded="false" aria-controls="awAddMenu">+ 과제 추가</button></div></div>
               <div class="aw-k">회의내용</div>
-              <div class="aw-v"><textarea class="aw-meet" id="awMeet" spellcheck="false" rows="2" aria-label="회의내용" placeholder="자유롭게"></textarea></div>
+              <div class="aw-v"><textarea class="aw-meet" id="awMeet" spellcheck="false" rows="2" aria-label="회의내용"></textarea></div>
             </div>
           </div>
-          <div class="at-stat"><span id="awStat"></span><span id="awSent"></span><span class="at-saved" id="awSaved"></span></div>
+          <div class="at-stat"><span id="awSent"></span><span class="at-saved" id="awSaved"></span></div>
         </div>
         <aside class="at-panel" id="awPanel" aria-label="미리보기와 가져오기 패널">
           <div class="seg at-ptabs" role="tablist" aria-label="오른쪽 패널">
@@ -3379,7 +3384,6 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
             <button type="button" class="aw-ibtn" id="awImpPlan"><b>← 지난주 차주계획</b><span>차주계획</span></button>
             <div class="at-none" id="awImpMsg" role="status"></div>
           </div>
-          <div class="at-panel-foot" id="awPvFoot"><span class="at-hint" id="awPvStat"></span></div>
         </aside>
       </div>
       <div class="at-ed-foot">
@@ -21901,8 +21905,8 @@ function atBlocksRender(){
   const ae = document.activeElement, keep = (ae && box.contains(ae)) ? atFocusKey(ae) : null;
   const projs = atProjects(), used = new Set(ATE.blocks.map(b => b.name).filter(Boolean)), n = ATE.blocks.length;
   //  맨 위 자유 메모: 과제와 상관없는 글(예: 외근 표시). 과제, 시간, ✕ 가 없고 비어 있어도 된다. 보낼 때 맨 앞에 붙는다.
-  const memoHtml = '<div class="at-blk at-memo"><div class="at-bh"><span class="at-bn">자유 메모</span><small class="at-hint">과제와 상관없는 글, 보고 맨 앞에 붙습니다</small></div>'
-    + '<textarea class="at-bt" data-memo="1" spellcheck="false" rows="1" aria-label="자유 메모" placeholder="과제와 상관없이 자유롭게 (예: * 대전 ADD 외근)"></textarea></div>';
+  const memoHtml = '<div class="at-blk at-memo"><div class="at-bh"><span class="at-bn">자유 메모</span></div>'
+    + '<textarea class="at-bt" data-memo="1" spellcheck="false" rows="1" aria-label="자유 메모" placeholder="예: * 대전 ADD 외근"></textarea></div>';
   //  머리 순서: [색 점] [과제명] (오른쪽으로) [시간 칸] 시간 [✕]. 과제명은 글자라 고칠 수 없다(자물쇠 표시는 번잡해서 뺐다, 2026-10-29 사용자)
   box.innerHTML = memoHtml + (n ? ATE.blocks.map((b, i) => {
     const pr = atBlockShowProblem(b), lab = b.name || '과제 미정';
@@ -21915,7 +21919,7 @@ function atBlocksRender(){
       + '<span class="at-bhr"><input type="number" min="0" max="24" step="0.5" class="at-bhn' + (atHoursBad(b) ? ' bad' : '') + '" data-bh="' + i + '" inputmode="decimal" autocomplete="off" value="' + esc(atHoursText(b.hours)) + '"'
       + ' title="숫자를 쓰거나 칸 안 오른쪽 화살표로 0.5시간씩" aria-label="' + esc(lab) + ' 시간">시간</span>'
       + '<button type="button" class="at-bx" data-bx="' + i + '" title="블록 지우기" aria-label="' + esc(lab) + ' 블록 지우기">✕</button></div>'
-      + '<textarea class="at-bt" data-bt="' + i + '" spellcheck="false" rows="2" aria-label="' + esc(lab) + ' 내용" placeholder="한 일(자유롭게)"></textarea>'
+      + '<textarea class="at-bt" data-bt="' + i + '" spellcheck="false" rows="2" aria-label="' + esc(lab) + ' 내용"></textarea>'
       + '<div class="at-bmsg' + (pr ? '' : ' hidden') + '" data-bmsg="' + i + '" role="alert"><span class="at-bmsg-i" aria-hidden="true">!</span><span data-bmsgt>' + esc(pr) + '</span></div></div>';
   }).join('') : '<div class="at-none at-bempty">과제가 없습니다. 아래 [+ 과제 추가]나 오른쪽 가져오기로 채우세요.</div>');
   //  내용은 value 로 넣는다(textarea 안에 글을 넣으면 맨 앞 줄바꿈 하나를 HTML 이 먹는다).
@@ -21954,10 +21958,10 @@ function atBlockMark(i){
   const h = el.querySelector('[data-bh]'); if(h) h.classList.toggle('bad', atHoursBad(b));
   const m = el.querySelector('[data-bmsg]'); if(m){ const t = m.querySelector('[data-bmsgt]'); if(t) t.textContent = pr; m.classList.toggle('hidden', !pr); }
 }
-//  상태 줄: 과제 수와 합계 시간(범위 밖 시간은 세지 않는다). 합계 검사와 색은 하지 않는다(2026-10-29 사용자).
+//  상태 줄: 합계 시간(범위 밖 시간은 세지 않는다). 과제 수는 블록이 보이니 쓰지 않는다. 합계 검사와 색은 하지 않는다(2026-10-29 사용자).
 function atStatRender(){
   const sum = ATE.blocks.reduce((a, b) => a + (atHoursOk(b.hours) ? b.hours : 0), 0);
-  const H = $('#atHours'); if(H) H.innerHTML = '과제 ' + ATE.blocks.length + '개, 합계 <b>' + (Math.round(sum * 100) / 100) + '</b>시간';
+  const H = $('#atHours'); if(H) H.innerHTML = '합계 <b>' + (Math.round(sum * 100) / 100) + '</b>시간';
   atPvSchedule();
   atResetSync();
 }
@@ -22071,16 +22075,34 @@ function atPTabSet(tab, remember){
   const pv = ATE.ptab === 'pv';
   document.querySelectorAll('#atPanel [data-attab]').forEach(b => { const on = b.dataset.attab === ATE.ptab; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); });
   const tog = (id, show) => { const e = document.getElementById(id); if(e) e.classList.toggle('hidden', !show); };
-  tog('atPreview', pv); tog('atPvFoot', pv); tog('atImp', !pv); tog('atImpFoot', !pv);
+  tog('atPreview', pv); tog('atImp', !pv); tog('atImpFoot', !pv);
   if(pv) atPvRender();
 }
 function atPvSchedule(){ clearTimeout(ATE.pvT); ATE.pvT = setTimeout(atPvRender, AT_PV_DEBOUNCE_MS); }
+//  미리보기: 인트라넷 근태관리 일간 폼 모양(이름, ID, 일자, 근태와 초과시간, 내용). 테마와 상관없이 주간 미리보기와 같은 .nf 모양이다.
+//    이름과 ID 는 근태 창이면 payload 의 me, 브라우저면 지금 로그인한 사람(없으면 빈 칸). 근태와 초과시간은 고른 값을 막힌 선택 칸처럼 보인다.
+//    내용 칸은 보낼 때와 같은 조립 글이다(색 표시 없이, 유효성 표시는 기준이 정해지면 다시, 2026-10-29 사용자).
+function atPvMe(){
+  const me = ATE.p && ATE.p.me;
+  if(me && (me.name || me.loginId)) return { name: String(me.name || ''), loginId: String(me.loginId || '') };
+  try{ if(currentUser) return { name: String(currentUser.name || ''), loginId: String(currentUser.loginId || '') }; }catch(_){}
+  return { name: '', loginId: '' };
+}
 function atPvRender(){
   clearTimeout(ATE.pvT); ATE.pvT = null;
-  const pv = $('#atPreview'); if(!pv) return;
-  const parts = atComposeParts(ATE.blocks, ATE.memo), text = parts.map(p => p.text).join('\n\n');
-  pv.textContent = text;   // 색 표시 없이 나갈 글 그대로(유효성 표시는 기준이 정해지면 다시, 2026-10-29 사용자)
-  const st = $('#atPvStat'); if(st) st.textContent = (text ? text.split('\n').length : 0) + '줄, ' + text.length + '자';
+  const pv = $('#atPreview'); if(!pv || !ATE.p) return;
+  const text = atCompose(ATE.blocks, ATE.memo), me = atPvMe();
+  const st = $('#atStatus'), ot = $('#atOt'), stv = st ? st.value : '1', otv = atOt(ot ? ot.value : 0);
+  const sl = (ATTEND_STATUS.find(x => x.v === stv) || {}).label || '';
+  const [y, m, d] = ATE.date.split('-');
+  const row = (k, v) => '<tr><th>' + k + '</th><td>' + v + '</td></tr>';
+  pv.innerHTML = '<div class="nf"><div class="nf-who">' + esc(me.name) + '</div><table class="nf-t">'
+    + row('이름', '<span class="nf-in">' + esc(me.name) + '</span>')
+    + row('ID', '<span class="nf-in">' + esc(me.loginId) + '</span>')
+    + row('일자', '<span class="nf-in">' + y + '년 ' + m + '월 ' + d + '일</span>')
+    + row('근태', '<span class="nf-sel" data-nf="근태">' + esc(sl) + '</span><span class="nf-lab">초과시간</span><span class="nf-sel" data-nf="초과시간">' + (otv ? '+' + otv + '시간' : '선택') + '</span>')
+    + row('내용', '<div class="nf-box' + (text ? '' : ' empty') + '" data-nf="내용">' + esc(text) + '</div>')
+    + '</table></div>';
 }
 /* ── [전체 초기화]: 자유 메모와 블록을 모두 지우고 근태 정근, 초과시간 없음. 묻지 않고 되돌리기도 두지 않는다(2026-10-29 사용자) ──
  *  지운 상태도 보통 고침처럼 임시 저장 흐름을 탄다. */
@@ -22836,11 +22858,12 @@ function awListRender(){
   const note = (!HOST ? '<div class="at-note">보고 기록은 서버에 연결된 위젯에서만 보입니다. 여기에는 이 PC에 임시 저장한 주만 보입니다.</div>'
     : AWL.err ? '<div class="at-note err" role="alert">' + esc(AWL.err) + '</div>'
     : (AWL.loading && !AWL.from) ? '<div class="at-note">주간보고 기록을 읽는 중입니다.</div>' : '');
+  //  [작성] 의 title: 목록에 무엇이 있는지(이 앱으로 쓴 주만). 화면에 늘 띄우는 안내 줄은 두지 않는다(2026-10-29 UI 검토).
   let html = '<div class="at-bar">' + (ATTENDWIN ? '' : atKindSeg())
     + '<b class="aw-ltitle">주간보고</b><span class="aw-cnt">' + items.length + '건</span><span class="spacer"></span>'
-    + '<button type="button" class="btn primary" data-awact="new" title="이번 주 주간보고를 엽니다(이미 있으면 그 주)">작성</button></div>'
-    + note + '<div class="aw-lnote">이 앱으로 쓴 주만 보입니다. 인트라넷에 직접 쓴 주는 인트라넷에서 확인하세요.</div>';
-  if(!items.length) html += '<div class="at-none aw-lempty">이 앱으로 쓴 주간보고가 없습니다. [작성]으로 이번 주를 쓰세요.</div>';
+    + '<button type="button" class="btn sm primary" data-awact="new" title="이 앱으로 쓴 주만 보입니다. 인트라넷에 직접 쓴 주는 인트라넷에서 확인하세요.">작성</button></div>'
+    + note;
+  if(!items.length) html += '<div class="at-none aw-lempty">작성한 주간보고가 없습니다.</div>';
   else html += '<div class="aw-tblwrap"><table class="aw-tbl"><thead><tr><th>번호</th><th>제목</th><th>기간</th><th>상태</th><th>날짜</th></tr></thead><tbody>'
     + items.map(it => '<tr class="aw-row" data-awmon="' + it.mon + '" tabindex="0" aria-label="' + esc(it.title) + ', ' + awPeriodLabel(it.mon) + ', ' + (it.status === 'done' ? '완료' : '작성 중') + '">'
       + '<td class="aw-no">' + it.no + '</td><td class="aw-ttl">' + esc(it.title) + '</td><td class="aw-per">' + awPeriodLabel(it.mon) + '</td>'
@@ -22977,7 +23000,7 @@ async function awAutoImport(){
   AWE.base = awCur();   // 처음 여는 주는 가져온 결과가 처음 상태다(임시 저장은 사람이 고친 뒤부터)
   awSetBusy(false);
   awRender(); awOnEdit(false);
-  awMsg([a, b].filter(Boolean).join(' '), 'ok');
+  awMsg(a || b);
 }
 //  ← 이번 주 일간 보고: 진행사항과 과제투입시간을 바꾼다(묻지 않는다, 일간 불러오기와 같다). 돌려주는 값 = 안내 글.
 async function awImpDaily(auto){
@@ -22992,10 +23015,10 @@ async function awImpDaily(auto){
   else {
     const c = awDailyCollect(rows, awProjNames());
     AWE.prog = c.prog; AWE.hours = c.hours;
-    t = !rows.length ? '이번 주에 이 앱으로 보낸 일간 보고가 없습니다.'
-      : '일간 보고 ' + c.days + '일에서 과제 ' + c.prog.length + '개를 가져왔습니다.' + (c.skipped ? ' 과제를 알 수 없는 글 ' + c.skipped + '곳은 넣지 않았습니다.' : '');
+    t = !rows.length ? '이번 주 일간 보고가 없습니다.'
+      : '일간 보고 ' + c.days + '일에서 과제 ' + c.prog.length + '개를 가져왔습니다.';
   }
-  if(!auto){ awSetBusy(false); awRender(); awFlash('awProg'); awFlash('awHours'); awOnEdit(); awMsg(t, rows ? 'ok' : 'err'); }
+  if(!auto){ awSetBusy(false); awRender(); awFlash('awProg'); awFlash('awHours'); awOnEdit(); awMsg(t, rows ? '' : 'err'); }
   return t;
 }
 //  ← 지난주 차주계획: 지난주(월요일 - 7) 이 앱 주간 기록의 차주계획을 차주계획 블록으로(캘린더에 없는 이름은 과제 미정 블록).
@@ -23011,10 +23034,10 @@ async function awImpPlan(auto){
   if(!r || r.ok !== true || !Array.isArray(r.rows)){ t = '지난주 주간보고를 읽지 못했습니다.'; ok = false; }
   else {
     const row = r.rows.map(awRowNorm).find(x => x && x.periodStart === last);
-    if(!row) t = '지난주에 이 앱으로 쓴 주간보고가 없습니다.';
-    else { AWE.plan = atSortedCopy(awParseBlocks(row.plan, awProjNames()), awProjNames()); t = '지난주 차주계획에서 과제 ' + AWE.plan.length + '개를 가져왔습니다.'; }
+    if(!row){ t = ''; awImpMsg('지난주 주간보고가 없습니다.'); }
+    else { AWE.plan = atSortedCopy(awParseBlocks(row.plan, awProjNames()), awProjNames()); awImpMsg(''); t = '지난주 차주계획에서 과제 ' + AWE.plan.length + '개를 가져왔습니다.'; }
   }
-  if(!auto){ awSetBusy(false); awRender(); awFlash('awPlan'); awOnEdit(); awMsg(t, ok ? 'ok' : 'err'); }
+  if(!auto){ awSetBusy(false); awRender(); awFlash('awPlan'); awOnEdit(); awMsg(t, ok ? '' : 'err'); }
   return t;
 }
 
@@ -23025,7 +23048,6 @@ function awRender(){
   const t = $('#awTitle'); if(t) t.textContent = awTitleText();
   const wb = $('#awWeekBtn'); if(wb) wb.textContent = AWE.mon + ' ~ ' + addDays(AWE.mon, 6) + ' ▾';
   const sj = $('#awSubj'); if(sj && sj.value !== AWE.subj) sj.value = AWE.subj;
-  const how = $('#awSubjHow'); if(how) how.textContent = !AWE.subjAuto ? '직접 고침' : AWE.picked ? '달력에서 고른 달 기준' : '월요일이 든 달 기준';
   if(ATTENDWIN) document.title = '주간보고 ' + awTitleText();
   awBlocksRender('prog'); awBlocksRender('plan');
   awHoursRender();
@@ -23046,9 +23068,9 @@ function awBlocksRender(kind){
         + projs.filter(x => !used.has(x.name)).map(x => '<option value="' + esc(x.name) + '">' + esc(x.name) + '</option>').join('') + '</select>';
     return '<div class="at-blk aw-blk' + (bad ? ' bad' : '') + '" data-wk="' + key + '">'
       + '<div class="at-bh">' + head + '<button type="button" class="at-bx" data-wx="' + key + '" title="블록 지우기" aria-label="' + esc(lab) + ' 블록 지우기">✕</button></div>'
-      + '<textarea class="at-bt" data-wt="' + key + '" spellcheck="false" rows="2" aria-label="' + esc(lab) + ' 내용" placeholder="자유롭게"></textarea>'
+      + '<textarea class="at-bt" data-wt="' + key + '" spellcheck="false" rows="2" aria-label="' + esc(lab) + ' 내용"></textarea>'
       + (bad ? '<div class="at-bmsg" role="alert"><span class="at-bmsg-i" aria-hidden="true">!</span><span>과제를 고르세요. 캘린더 과제로 나누지 못한 글입니다.</span></div>' : '') + '</div>';
-  }).join('') : '<div class="at-none">' + (kind === 'prog' ? '과제가 없습니다. [+ 과제 추가]나 가져오기로 채우세요.' : '과제가 없습니다.') + '</div>';
+  }).join('') : '';   // 블록이 없으면 [+ 과제 추가] 단추만 보인다
   box.querySelectorAll('textarea[data-wt]').forEach(t => { const [, i] = t.dataset.wt.split(':'); t.value = list[Number(i)].text; atGrow(t); });
   if(AWE.sending || AWE.busy) box.querySelectorAll('select, textarea, button').forEach(e => { e.disabled = true; });
 }
@@ -23058,13 +23080,12 @@ function awHoursRender(){
   const names = awProgNames(AWE.prog);
   box.innerHTML = names.length ? names.map((n, i) => '<label class="aw-hr"><i class="at-dot" style="background:' + awProjColor(n) + '" aria-hidden="true"></i><span class="aw-hn" title="' + esc(n) + '">' + esc(n) + '</span>'
       + '<input type="number" min="0" max="' + AW_HOURS_MAX + '" step="0.5" class="at-bhn" data-wh="' + i + '" inputmode="decimal" autocomplete="off" value="' + esc(atHoursText(awHoursVal(AWE.hours[n]))) + '" aria-label="' + esc(n) + ' 투입시간"></label>').join('')
-    : '<span class="at-none">진행사항에 과제를 넣으면 여기에 시간 칸이 생깁니다.</span>';
+    : '';   // 빈 칸이면 아무것도 쓰지 않는다(설명 문구를 두지 않는다, 2026-10-29 사용자)
   if(AWE.sending || AWE.busy) box.querySelectorAll('input').forEach(e => { e.disabled = true; });
   awHSumRender();
 }
 function awHSumRender(){ const s = $('#awHSum'); if(s) s.innerHTML = awProgNames(AWE.prog).length ? '합계 <b>' + atHoursText(awHoursTotal(AWE.prog, AWE.hours)) + '</b>시간' : ''; }
 function awStatRender(){
-  const st = $('#awStat'); if(st) st.textContent = '진행사항 ' + awProgNames(AWE.prog).length + '개, 차주계획 ' + awProgNames(AWE.plan).length + '개';
   awHSumRender();
   awPvSchedule();
   awResetSync();
@@ -23230,7 +23251,7 @@ function awPTabSet(tab, remember){
   const pv = AWE.ptab === 'pv';
   document.querySelectorAll('#awPanel [data-awtab]').forEach(b => { const on = b.dataset.awtab === AWE.ptab; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); });
   const tog = (id, show) => { const e = document.getElementById(id); if(e) e.classList.toggle('hidden', !show); };
-  tog('awPv', pv); tog('awPvFoot', pv); tog('awImp', !pv);
+  tog('awPv', pv); tog('awImp', !pv);
   if(pv) awPvRender();
 }
 function awPvSchedule(){ clearTimeout(AWE.pvT); AWE.pvT = setTimeout(awPvRender, AT_PV_DEBOUNCE_MS); }
@@ -23246,8 +23267,6 @@ function awPvRender(){
     + '<tr><th>제목</th><td><span class="nf-in nf-subj">' + esc(s.subj || weekSubjectGuess(AWE.mon)) + '</span></td></tr>'
     + cell('진행사항', c.endwork) + cell('과제<br>투입시간', c.content) + cell('미처리사항', '') + cell('차주계획', c.planwork)
     + cell('문제점 및<br>건의사항', '') + cell('회의내용', c.resultwork) + '</table>';
-  const all = [c.endwork, c.content, c.planwork, c.resultwork].filter(Boolean).join('\n');
-  const st = $('#awPvStat'); if(st) st.textContent = '인트라넷에 이렇게 들어갑니다. ' + (all ? all.split('\n').length : 0) + '줄';
 }
 
 /* ── [전체 초기화]: 진행사항, 과제투입시간, 차주계획, 회의내용을 비운다(기간과 제목은 그대로). 묻지 않는다(일간 12.8 과 같다) ── */
@@ -23464,6 +23483,7 @@ function awFromRefresh(o){
 /* ── 배선(atInit 이 부른다) ── */
 function awInit(){
   const ed = document.getElementById('awEd');
+  { const b = document.getElementById('awBack'); if(b && !b.querySelector('svg')) b.insertAdjacentHTML('afterbegin', ICON.prev); }
   if(ed){
     const on = (id, ev, fn) => { const e = document.getElementById(id); if(e) e.addEventListener(ev, fn); };
     ed.addEventListener('input', ev => {
@@ -23471,7 +23491,7 @@ function awInit(){
       if(d.wt != null){ const [k, i] = d.wt.split(':'), b = awList(k)[Number(i)]; if(!b) return; b.text = t.value; atGrow(t); awOnEdit(); return; }
       if(d.wh != null){ awHoursInput(t); return; }
       if(t.id === 'awMeet'){ AWE.meet = t.value; atGrow(t); awOnEdit(); return; }
-      if(t.id === 'awSubj'){ AWE.subj = t.value; AWE.subjAuto = false; const tt = $('#awTitle'); if(tt) tt.textContent = awTitleText(); const h = $('#awSubjHow'); if(h) h.textContent = '직접 고침'; awOnEdit(); return; }
+      if(t.id === 'awSubj'){ AWE.subj = t.value; AWE.subjAuto = false; const tt = $('#awTitle'); if(tt) tt.textContent = awTitleText(); awOnEdit(); return; }
       if(t.id === 'awAddQ') awAddRender();
     });
     //  제목을 비우고 떠나면 규칙대로 다시 정한다(빈 제목은 회사 폼이 받지 않는다).
