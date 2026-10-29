@@ -1,6 +1,6 @@
 # 타인 일정 고르기 개선 기획: 조직도 본인 표시와 최근 본 사람 삭제
 
-정한 날: 2026-10-29(사용자). 상태: 진행 중.
+정한 날: 2026-10-29(사용자). 상태: 구현 완료(2026-10-29, a19cbed).
 앞 단계: [`PEER-PICKER.md`](PEER-PICKER.md), [`PEER-PICKER-ORG.md`](PEER-PICKER-ORG.md).
 
 ## 1. 배경
@@ -28,9 +28,9 @@
   - 명부에 있는 사람(`!r.gone`)의 행 오른쪽에 기존 `☆`(즐겨찾기 추가) 단추와 함께 **`✕`(목록에서 지우기) 단추**(`.pk-del`, `data-act="forget"`, `data-kind="Recent"`, `data-login="<id>"`)를 나란히 둔다.
   - `✕` 단추의 `title`은 `목록에서 지우기`, `aria-label`은 `목록에서 지우기: <이름>`으로 한다(명부에 없는 사람의 지우기 단추와 동일).
   - 누르면 기존 `pkForget('Recent', loginId)`가 `localStorage`의 `tc_peerRecent:<내 login_id>`에서 해당 사람을 빼고 팝오버를 다시 그리며, 포커스는 검색 칸(`#pkSearch`)으로 돌려준다.
-- **최근 본 사람 머리말 전체 지우기(`pkSection`, `pkClearRecent`)**:
+- **최근 본 사람 머리말 전체 지우기(`pkSection`, `pkForget`)**:
   - '최근 본 사람' 묶음 머리말(`.pk-sec-h.pk-sec-x`) 오른쪽에 **`전체 지우기` 단추**(`.pk-more`, `data-act="clear-recent"`)를 둔다.
-  - 누르면 `pkClearRecent()`가 `tc_peerRecent:<내 login_id>`를 비우고 팝오버를 다시 그리며, 포커스는 검색 칸(`#pkSearch`)으로 돌려준다.
+  - 누르면 `pkForget('Recent', '')`이 `tc_peerRecent:<내 login_id>`를 비우고 팝오버를 다시 그리며, 포커스는 검색 칸(`#pkSearch`)으로 돌려준다.
 
 ## 3. 하지 않는 것
 
@@ -47,6 +47,6 @@
 ## 5. 순서
 
 1. 기획 확정(이 문서).
-2. 개발: `task-calendar-prototype.html`의 `pkModel`, `pkOrgIndex`, `pkDirRow`, `pkRowEl`, `pkSection`, `pkClearRecent`, `pkOnClick` 수정.
+2. 개발: `task-calendar-prototype.html`의 `pkModel`, `pkOrgIndex`, `pkDirRow`, `pkRowEl`, `pkSection`, `pkForget`, `pkOnClick` 수정.
 3. QA: `tests/peer-picker.test.mjs`, `tests/peer-picker-org.test.mjs` 갱신 및 변이 시험 추가, 전체 strict(`TC_TEST_STRICT=1 node tests/run-tests.mjs`), 위젯 빌드 확인.
 4. 위키 및 문서: `docs/wiki/다른-사람-일정-보기.md`, `docs/PEER-PICKER.md`, `docs/PEER-PICKER-ORG.md`, `CHANGELOG.md`, 인계 보고(`docs/handoff/2026-10-29-peer-org-recent.md`) 작성.
