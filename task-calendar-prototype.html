@@ -3225,7 +3225,7 @@ html[data-attendwin] #atBack{ display:none }
           </div>
           <div class="at-panel-foot">
             <div class="at-row" id="atImpFoot"><button type="button" class="btn primary" id="atLoad">← 불러오기</button><span class="at-hint">체크한 과제로 왼쪽 블록을 바꿉니다</span></div>
-            <div class="at-row at-pvfoot hidden" id="atPvFoot"><span class="at-hint" id="atPvStat"></span><span class="spacer"></span><button type="button" class="btn sm" id="atPvCopy">복사</button></div>
+            <div class="at-row at-pvfoot hidden" id="atPvFoot"><span class="at-hint" id="atPvStat"></span></div>
           </div>
         </aside>
       </div>
@@ -3233,7 +3233,6 @@ html[data-attendwin] #atBack{ display:none }
         <span class="at-msg" id="atMsg" role="status" aria-live="polite"></span>
         <button type="button" class="at-lnk" id="atIntra" hidden title="인트라넷 근태관리 달력에서 이 날짜를 엽니다(읽기만)">인트라넷에서 확인</button>
         <span class="spacer"></span>
-        <button type="button" class="btn" id="atCopy">복사</button>
         <button type="button" class="btn" id="atClose">닫기</button>
         <button type="button" class="btn primary" id="atSend">보고</button>
       </div>
@@ -22127,17 +22126,6 @@ function atWinRefresh(){
   if(!ATTENDWIN || !ATE.date || ATE.sending || ATE.navPending) return;
   hpost({ cmd: 'attendNav', date: ATE.date, refresh: true });
 }
-async function atCopy(){
-  const text = reportEditedBodyOut(atCompose(ATE.blocks, ATE.memo), ' ');   // 복사 = 회사로 나갈 조립 결과(글로 보기와 같은 글)
-  if(!text){ toast('복사할 내용이 없습니다', 'warn'); return; }
-  try{ await navigator.clipboard.writeText(text); atMsg('복사했습니다', 'ok'); return; }catch(_){}
-  try{
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'absolute'; ta.style.left = '-9999px';
-    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
-    atMsg('복사했습니다', 'ok');
-  }catch(e){ toast('복사에 실패했습니다. 다시 시도해 주세요', 'error'); }
-}
 //  보내기(§2.5, 결정 12): 막을 블록이 있으면 보내지 않고 빨갛게 보인다. 보내기 직전에 임시 저장을 쓴 뒤, 처리 중에는 입력과 단추를 잠근다. 결과는 __netcusResult 가 알린다.
 //    content = 블록 조립(atCompose)의 줄 앞 공백을 &nbsp; 로(기존 buildReportText('&nbsp;') 와 같은 규칙), hours = 블록의 시간(0 초과만),
 //    status = 고른 근태 코드(이 화면은 늘 하나를 고른다).
@@ -22174,7 +22162,7 @@ function atSubmit(){
   if(!Platform.caps.reportAuto){
     //  브라우저는 회사 전송을 못 한다(결정 11). 회신이 없으므로 잠그지 않고 임시 저장도 지우지 않는다.
     Platform.report.submitDaily(payload);
-    atMsg('브라우저에서는 회사에 자동으로 보낼 수 없습니다. 복사해서 회사 사이트에 직접 입력하세요.', 'err');
+    atMsg('브라우저에서는 회사에 자동으로 보낼 수 없습니다. 미리보기 글을 드래그해 복사한 뒤 회사 사이트에 직접 입력하세요.', 'err');
     return;
   }
   ATE.sending = true; ATE.armed = true;
@@ -22338,7 +22326,6 @@ function atInit(){
     on('atAddList', 'click', ev => { const it = ev.target.closest && ev.target.closest('[data-addname]'); if(it && !it.disabled) atAddPick(it.dataset.addname); });
     on('atAddNew', 'click', atCatNew);
     on('atReset', 'click', atReset);
-    on('atPvCopy', 'click', atCopy);
     on('atPanel', 'click', ev => { const b = ev.target.closest && ev.target.closest('[data-attab]'); if(b && !b.disabled) atPTabSet(b.dataset.attab, true); });
     //  메뉴 바깥을 누르면 닫는다
     document.addEventListener('mousedown', ev => { if(atAddShown() && !(ev.target.closest && ev.target.closest('#atAddWrap'))) atAddOpen(false); });
@@ -22350,7 +22337,6 @@ function atInit(){
     on('atNext', 'click', () => atNav(1));
     on('atBack', 'click', atRequestClose);
     on('atClose', 'click', atRequestClose);
-    on('atCopy', 'click', atCopy);
     on('atIntra', 'click', atIntraClick);
     on('atSend', 'click', atSubmit);
     on('atLoad', 'click', atLoadClick);

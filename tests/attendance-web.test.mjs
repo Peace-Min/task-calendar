@@ -457,10 +457,8 @@ if (!JSDOM) {
       assert.strictEqual(pv().textContent, t0, '0.2초 전에 다시 그렸다');
       await tick(260);
       assert.strictEqual(pv().textContent, '* 외근\n\n' + t0, '입력 뒤 미리보기가 따라가지 않았다');
-      //  복사(같은 함수)
-      X.ev('window.__clip = null; navigator.clipboard = { writeText: function(t){ window.__clip = t; return Promise.resolve(); } };');
-      X.$('#atPvCopy').click(); await tick();
-      assert.strictEqual(X.ev('__clip'), X.ev("reportEditedBodyOut(atCompose(ATE.blocks, ATE.memo), ' ')"), '패널의 복사가 아래 복사와 같은 글이 아니다');
+      //  복사 단추는 없다(미리보기 글을 드래그해 복사한다, 2026-10-29 사용자)
+      assert.ok(!X.$('#atCopy') && !X.$('#atPvCopy'), '복사 단추가 남아 있다');
       //  탭 기억: 가져오기를 고르면 기억하고, 블록이 있는 다른 날은 기억한 탭, 블록이 없는 날은 가져오기
       X.$('#atPanel [data-attab="imp"]').click();
       assert.ok(!shown(X, '#atPreview') && shown(X, '#atImp') && shown(X, '#atImpFoot') && !shown(X, '#atPvFoot'));
