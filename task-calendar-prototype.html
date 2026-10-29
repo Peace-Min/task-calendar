@@ -2771,9 +2771,40 @@ body:not(.at-on) #atView{display:none !important}
 .at-left{display:flex;flex-direction:column;gap:10px;padding:14px 16px;min-height:0;min-width:0}
 .at-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .at-lb{font-size:var(--fs-meta);color:var(--muted);font-weight:600}
-.at-ed select,.at-ed textarea,.at-ed input[type=date]{font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 8px;color:var(--text);background:var(--panel)}
-.at-ed select:disabled,.at-ed textarea:disabled,.at-ed input[type=date]:disabled{opacity:.6}
-.at-ed .at-text{flex:1;min-height:220px;width:100%;resize:none;font-size:var(--fs-emph);line-height:1.65;padding:10px 12px;white-space:pre-wrap;tab-size:4}
+.at-ed select,.at-ed textarea,.at-ed input[type=date],.at-ed input[type=number],.at-ed input[type=search]{font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 8px;color:var(--text);background:var(--panel)}
+.at-ed select:disabled,.at-ed textarea:disabled,.at-ed input[type=date]:disabled,.at-ed input[type=number]:disabled{opacity:.6}
+/* 과제 블록(결정 12). 머리는 표시(과제명은 고칠 수 없다), 시간은 숫자 칸, 내용 칸은 쓰는 만큼 늘어난다(atGrow). */
+.at-blocks{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;padding-right:2px}
+.at-blk{border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--panel);flex:none}
+.at-blk:focus-within{border-color:var(--accent)}
+.at-blk.bad{border-color:var(--danger);background:var(--danger-soft)}
+.at-bh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--dim-bg);border-radius:var(--r-md) var(--r-md) 0 0}
+.at-blk.bad .at-bh{background:transparent}
+.at-bn{font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.at-lock{font-size:var(--fs-micro);opacity:.6}
+.at-ed .at-bpick{min-width:200px;max-width:100%}
+.at-bhr{display:inline-flex;align-items:center;gap:4px;margin-left:auto;font-size:var(--fs-meta);color:var(--muted)}
+.at-ed .at-bhn{width:76px;text-align:right}
+.at-bmv{border:0;background:none;color:var(--muted);cursor:pointer;font:inherit;font-size:var(--fs-meta);padding:2px 5px;border-radius:var(--r-sm)}
+.at-bmv:hover{background:var(--hover-bg);color:var(--text)}
+.at-bmv:disabled{opacity:.4;cursor:default;background:none}
+.at-ed .at-bt{display:block;width:100%;min-height:52px;border:0;border-radius:0 0 var(--r-md) var(--r-md);background:transparent;resize:none;overflow:hidden;padding:8px 12px;font-size:var(--fs-emph);line-height:1.65;white-space:pre-wrap;tab-size:4}
+.at-ed .at-bt:focus{outline:none}
+.at-bmsg{padding:0 12px 6px;color:var(--danger-text);font-size:var(--fs-meta)}
+.at-bempty{padding:16px 4px}
+.at-memo .at-hint{margin-left:auto;font-weight:400}
+.at-ed .at-memo .at-bt{min-height:36px}
+.at-add{position:relative;flex:none}
+.at-addb{width:100%;border-style:dashed}
+.at-menu{position:absolute;left:0;bottom:calc(100% + 4px);width:min(380px,100%);max-height:340px;display:flex;flex-direction:column;gap:6px;background:var(--panel);border:1px solid var(--accent);border-radius:var(--r-md);box-shadow:var(--shadow);padding:6px;z-index:6}
+.at-ed .at-menu input{width:100%}
+.at-mlist{overflow:auto;min-height:0;display:flex;flex-direction:column}
+.at-mi{display:flex;gap:8px;align-items:center;width:100%;border:0;background:none;color:var(--text);font:inherit;font-size:var(--fs-body);text-align:left;padding:5px 8px;border-radius:var(--r-sm);cursor:pointer}
+.at-mi:hover,.at-mi:focus-visible{background:var(--hover-bg)}
+.at-mi:disabled{color:var(--faint-text);cursor:default;background:none}
+.at-mi small{margin-left:auto;color:var(--faint-text)}
+.at-mnew{border-top:1px solid var(--line);border-radius:0;padding-top:7px;color:var(--accent-2)}
+.at-preview{flex:1;min-height:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid var(--line-2);border-radius:var(--r-md);padding:10px 12px;background:var(--dim-bg);font-size:var(--fs-emph);line-height:1.65;tab-size:4}
 .at-stat{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:var(--fs-meta);color:var(--muted);flex:none}
 .at-stat b{color:var(--text)}
 .at-saved{color:var(--ok)}
@@ -3138,10 +3169,22 @@ html[data-attendwin] #atBack{ display:none }
           <div class="at-row">
             <label class="at-lb" for="atStatus">근태</label><select id="atStatus" class="at-sel"></select>
             <label class="at-lb" for="atOt">초과시간</label><select id="atOt" class="at-sel"></select>
+            <span class="spacer"></span>
+            <button type="button" class="at-lnk" id="atAsText" aria-pressed="false" title="회사로 나갈 글을 한 칸으로 봅니다(읽기만)">글로 보기</button>
           </div>
           <div class="at-restore hidden" id="atRestore"><span id="atRestoreMsg"></span><span class="spacer"></span><button type="button" class="at-lnk" id="atDiscard">버리고 처음 상태로</button></div>
-          <textarea id="atText" class="at-text" spellcheck="false" aria-label="보고 내용" placeholder="[과제명] : 시간&#10;- 한 일&#10;  - 세부 내용"></textarea>
-          <div class="at-stat"><span id="atLines"></span><span id="atHours"></span><span id="atSent"></span><span class="at-saved" id="atSaved"></span></div>
+          <!-- 과제 블록(결정 12): 머리(색 점, 과제명 🔒, 시간 숫자 칸, ▲ ▼ ✕)와 자유 글 칸. atBlocksRender 가 채운다. -->
+          <div class="at-blocks" id="atBlocks" aria-label="과제 블록"></div>
+          <div class="at-preview hidden" id="atPreview" tabindex="0" aria-label="회사로 나갈 글(읽기만)"></div>
+          <div class="at-add" id="atAddWrap">
+            <button type="button" class="btn at-addb" id="atAdd" aria-expanded="false" aria-controls="atAddMenu">+ 과제 추가</button>
+            <div class="at-menu hidden" id="atAddMenu" role="dialog" aria-label="과제 추가">
+              <input type="search" id="atAddQ" class="at-sel" placeholder="과제 검색" aria-label="과제 검색" autocomplete="off">
+              <div class="at-mlist" id="atAddList"></div>
+              <button type="button" class="at-mi at-mnew" id="atAddNew">+ 캘린더에 새 과제 만들기</button>
+            </div>
+          </div>
+          <div class="at-stat"><span id="atHours"></span><span id="atSent"></span><span class="at-saved" id="atSaved"></span></div>
         </div>
         <aside class="at-panel" id="atPanel" aria-label="가져오기 패널">
           <div class="at-panel-in">
@@ -3149,7 +3192,7 @@ html[data-attendwin] #atBack{ display:none }
             <div class="at-row">
               <div class="seg" role="group" aria-label="가져올 곳">
                 <button type="button" class="seg-b active" data-atsrc="cal" aria-pressed="true">캘린더</button>
-                <button type="button" class="seg-b" data-atsrc="net" aria-pressed="false">인트라넷</button>
+                <button type="button" class="seg-b" data-atsrc="prev" aria-pressed="false">이전 보고</button>
               </div>
               <input type="date" id="atSrcDate" class="at-sel" aria-label="가져올 날짜" title="가져올 날짜">
             </div>
@@ -3163,7 +3206,7 @@ html[data-attendwin] #atBack{ display:none }
             <div class="at-cards" id="atCards"></div>
           </div>
           <div class="at-panel-foot">
-            <div class="at-row"><button type="button" class="btn primary" id="atLoad">← 불러오기</button><span class="at-hint">체크한 과제로 왼쪽 내용을 바꿉니다</span></div>
+            <div class="at-row"><button type="button" class="btn primary" id="atLoad">← 불러오기</button><span class="at-hint">체크한 과제로 왼쪽 블록을 바꿉니다</span></div>
           </div>
         </aside>
       </div>
@@ -3173,7 +3216,7 @@ html[data-attendwin] #atBack{ display:none }
         <span class="spacer"></span>
         <button type="button" class="btn" id="atCopy">복사</button>
         <button type="button" class="btn" id="atClose">닫기</button>
-        <button type="button" class="btn primary" id="atSend">회사에 보고</button>
+        <button type="button" class="btn primary" id="atSend">보고</button>
       </div>
       <div class="at-ask hidden" id="atAsk">
         <div class="at-ask-box" role="alertdialog" aria-modal="true" aria-labelledby="atAskT" aria-describedby="atAskM">
@@ -5222,7 +5265,8 @@ if(ADMINWIN){ try{ document.documentElement.dataset.adminwin = '1'; }catch(_){} 
  *  ★ html[data-attendwin] 은 CSS 스위치다(보고 화면과 그 위에 뜨는 것만 보인다). */
 const ATTENDWIN = (() => { try { return HOST && !PEER && new URLSearchParams(location.search).get('win') === 'attend'; }
                            catch (_) { return false; } })();
-const ATTENDWIN_CMD = new Set(['attendWinReady','attendNav','reportDailyList','netcusSubmit','attendSourceReq','netcusWeekMerge','netcusViewMonth']);   // 호스트의 AttendWinCommands 와 같은 목록(tests/attendance-web.test.mjs)
+//  과제 블록(결정 12): 인트라넷 불러오기(netcusWeekMerge)는 이 창에서 뺐다. attendCatNew = 메인 창의 과제 창 열기(새 과제 만들기).
+const ATTENDWIN_CMD = new Set(['attendWinReady','attendNav','reportDailyList','netcusSubmit','attendSourceReq','netcusViewMonth','attendCatNew']);   // 호스트의 AttendWinCommands 와 같은 목록(tests/attendance-web.test.mjs)
 if(ATTENDWIN){ try{ document.documentElement.dataset.attendwin = '1'; }catch(_){} }
 //  따로 뜨는 창(열람 창, 관리 창, 근태 창). 버전 관문 카드의 작은 변형, 창 제목, 테마 따라가기 같은 공통 규칙이 이것을 본다.
 const SUBWIN = PEERWIN || ADMINWIN || ATTENDWIN;
@@ -21023,12 +21067,13 @@ function setupGuideResize(){
  *    그래서 빨간 "미보고" 표시는 하지 않는다(앱을 막 쓰기 시작한 사람에게 거짓 경고가 된다, §2.2).
  *  ★ 보고 화면(#atEd)은 하나다. 위젯은 따로 뜬 근태 창(?win=attend)이 담고, 브라우저는 근태 탭 안에서 달력과 자리를 바꾼다(결정 11).
  *    어느 쪽이든 내용은 메인 창이 만든 payload(§3.3) 하나로 그린다: 근태 창은 내 달력 데이터를 읽지 않는다.
- *  ★ 글은 회사 양식처럼 한 칸이다(결정 10). 오른쪽 가져오기 패널은 체크한 과제를 [← 불러오기]로 왼쪽에 바로 채울 뿐이고(묻지 않고 바꾼다), 그 뒤로는 왼쪽에서 고친다.
- *    머리 줄 `[과제명] : 시간` 과 줄 서식은 기존 보고서 함수(reportRowHead, reportRowBodyText)와 일간 서식 설정을 그대로 쓴다.
- *  ★ 가져오기(2026-10-29 사용자 피드백): 아무 날짜나 골라 그날의 캘린더 기록이나 회사 근태관리에 등록된 일간보고(읽기만)를 가져온다.
+ *  ★ 왼쪽은 과제 블록이다(결정 12, 결정 10 의 한 칸 글을 바꿨다). 블록 머리의 과제명은 내 캘린더 과제(payload.projects)에서만 고르고 이 화면에서는 고칠 수 없다.
+ *    시간은 숫자 칸, 내용은 블록마다 자유 글이다. 회사로는 `[과제명] : 시간` 과 내용을 조립해 보낸다(atCompose). 기계가 읽을 것(과제명, 시간)만 칸으로 받는다.
+ *    오른쪽 가져오기 패널은 체크한 과제를 [← 불러오기]로 왼쪽 블록에 바로 채울 뿐이고(묻지 않고 바꾼다), 그 뒤로는 왼쪽에서 고친다.
+ *  ★ 가져오기: 아무 날짜나 골라 그날의 캘린더 기록이나 이 앱으로 보낸 이전 보고(reportDailyList, 위젯만)를 가져온다. 인트라넷 불러오기는 없앴다(결정 12).
  *    근태 창은 내 달력이 없으므로 다른 날짜의 캘린더 기록은 메인 창에 청한다(attendSourceReq, 호스트가 메인 창 __attendSourceFor 로 넘기고
- *    메인 창이 attendSourcePush 로 돌려준 것을 호스트가 근태 창 __attendSource 로 넘긴다). 근태관리는 주간보고 병합과 같은 netcusWeekMerge 로 읽는다.
- *  ★ 보고한 날(payload.saved)은 보기 화면으로 먼저 연다(임시 저장이 있으면 쓰기 화면). 보내기가 성공하면 창을 닫지 않고 보기 화면으로 바꾼다.
+ *    메인 창이 attendSourcePush 로 돌려준 것을 호스트가 근태 창 __attendSource 로 넘긴다).
+ *  ★ 보고한 날(payload.saved)도 바로 쓰기 화면으로 연다(보낸 글을 블록으로 되살린다). 보내기가 성공하면 창을 닫지 않고 보낸 그대로를 새 처음 상태로 둔다.
  *  ★ 작성 중인 글은 이 PC(localStorage)에 임시 저장한다(결정 9 보완). 잃어도 되는 임시본이고 아무것도 자동으로 보내지 않는다.
  *    회사 보고와 DB 저장이 둘 다 성공하면(호스트의 성공 회신) 지운다. 읽기와 쓰기는 attDraft* 함수만 거친다(나중에 서버 저장으로 바꿀 때 여기만).
  *  ★ 열람 창(PEER)은 localStorage 를 부모 창과 같이 쓴다. 그래서 임시 저장을 읽지도 쓰지도 않는다(보고서 초안과 같은 규칙). */
@@ -21041,12 +21086,14 @@ const AT_SEND_WATCHDOG_MS = 100000;       // 회신 없이 끝난 전송(호스�
 const AT_FAIL_MSG = '처리를 완료하지 못했습니다. 다시 시도해 주세요.';   // 결정 9 의 공통 안내(호스트가 문구를 주지 않았을 때)
 //  근태 달력(메인 창). rows = 날짜 → 보고 행. from, to 는 rows 를 읽은 범위(그 밖의 날짜는 캐시에 없다는 뜻).
 const ATT = { anchor: '', screen: 'month', rows: new Map(), from: '', to: '', loading: false, err: '', gen: 0 };
-//  보고 화면 상태. p = payload(§3.3), base = 처음 상태(고쳤는지 판단의 기준). 보고한 날도 바로 쓰기 화면으로 연다(보기는 근태 달력에서, 2026-10-29 사용자).
-//    가져오기: src = 'cal' 캘린더 | 'net' 인트라넷(회사 근태관리), srcDate = 가져올 날짜(처음은 보는 날짜).
-//    cal = 다른 날짜의 캘린더 기록(보는 날짜는 p.source 를 쓴다), net = 근태관리에서 읽은 그날 글. 둘 다 날짜 하나만 기억한다.
-const ATE = { p: null, date: '', base: null, intra: false, src: 'cal', srcDate: '', opt: { event: true, todo: true, skip: true, desc: true },
+//  보고 화면 상태. p = payload(§3.3), base = 처음 상태 { blocks, status, overtime }(고쳤는지 판단의 기준). 보고한 날도 바로 쓰기 화면으로 연다.
+//    memo = 맨 위 자유 메모(과제와 상관없는 글, 시간 없음), blocks = 왼쪽 과제 블록(결정 12), showErr = 보내기를 막은 뒤(빨간 블록을 보인다), asText = [글로 보기] 중.
+//    가져오기: src = 'cal' 캘린더 | 'prev' 이전 보고(이 앱으로 보낸 그날 보고), srcDate = 가져올 날짜(처음은 보는 날짜).
+//    cal = 다른 날짜의 캘린더 기록(보는 날짜는 p.source 를 쓴다), prev = 읽은 그날 보고(content null = 그날 보고 없음). 둘 다 날짜 하나만 기억한다.
+const ATE = { p: null, date: '', base: null, memo: '', blocks: [], showErr: false, asText: false, intra: false, src: 'cal', srcDate: '',
+  opt: { event: true, todo: true, skip: true, desc: true },
   checked: new Set(), cal: { date: '', source: null, loading: false, err: '', wd: null },
-  net: { date: '', content: '', dayOk: false, loading: false, err: '', gen: 0 }, folded: false,
+  prev: { date: '', content: null, loading: false, err: '', gen: 0 }, folded: false,
   sending: false, armed: false, timer: null, wd: null, savedAt: '', navPending: '', closeSent: false };
 const __attDraftMem = new Map();          // 저장소가 막혔거나 가득 찼을 때만 쓰는 메모리본(앱이 켜져 있는 동안은 남는다)
 let __atAskFn = null;                     // "작성 중인 내용이 있습니다" 에서 [닫기]를 누르면 할 일
@@ -21075,32 +21122,97 @@ function atRowNorm(x){
            content: String(x.content == null ? '' : x.content), sentAt: String(x.sentAt || '') };
 }
 
-/* ── 머리 줄 읽기(결정 10) ──
- *  `[과제명] : 5` 와 `[과제명] 5` 를 둘 다 받는다(전각 콜론, 뒤의 "시간" 도). 시간은 0 초과 24 이하만 기록한다.
- *  cal_report_hours 는 과제명을 글자 그대로 저장하므로 내 과제에 없는 이름도 그대로 나간다. 같은 이름이 두 번 나오면 시간을 더한다. */
-const AT_HEAD_RE = /^\s*\[\s*(.+?)\s*\]\s*(?:[:：]\s*)?(\d+(?:\.\d+)?)?\s*(?:시간|h|H)?\s*$/;
-function atParseHead(line){
-  const m = AT_HEAD_RE.exec(String(line == null ? '' : line));
-  if(!m || !m[1].trim()) return null;
-  const n = m[2] != null ? Number(m[2]) : null;
-  return { name: m[1].trim(), num: n, hours: (n != null && n > 0 && n <= 24) ? n : null };
+/* ── 과제 블록(결정 12) ──
+ *  블록 = { name, hours, text, raw }. name 은 내 캘린더 과제명('' = 과제 미정, 머리에 과제 고르기 칸이 뜬다). 한 과제에 블록 하나다.
+ *  raw = 미정 블록이 된 원래 머리 줄(캘린더에 없는 이름). 과제를 고르면 그 줄이 내용 첫 줄일 때 지운다.
+ *  ★ 글에서 과제 머리를 읽는 것은 되살릴 때(이전 보고, 보고한 날, 옛 임시 저장)뿐이고, 줄이 정확히 `[이름] : 숫자` 이고 이름이 캘린더 과제명일 때만 머리로 본다.
+ *    `[일정]`, `◈ 과제`, `[과제] 5` 처럼 사람마다 다르게 쓴 줄은 추측하지 않고 내용으로 둔다(결정 12 의 까닭). */
+const AT_EXACT_HEAD_RE = /^\[(.+)\] : (\d+(?:\.\d+)?)[ \t]*$/;
+const AT_BARE_HEAD_RE = /^\[(.+)\][ \t]*$/;   // 시간 없는 머리. 이름이 캘린더 과제명일 때만 머리로 본다
+function atHoursOk(h){ return typeof h === 'number' && isFinite(h) && h >= 0 && h <= 24; }
+//  시간 표기: 정수는 정수(6), 소수는 그대로(2.5).
+function atHoursText(h){ return String(Math.round(Number(h) * 100) / 100); }
+//  내용 정리: 앞의 빈 줄과 끝 공백만 뺀다(첫 줄의 들여쓰기는 둔다).
+function atBodyNorm(t){ return String(t == null ? '' : t).replace(/\r\n?/g, '\n').replace(/^(?:[ \t ]*\n)+/, '').replace(/\s+$/, ''); }
+function atBlockNorm(b){
+  const o = b && typeof b === 'object' ? b : {}, h = Number(o.hours);
+  return { name: typeof o.name === 'string' ? o.name : '', hours: isFinite(h) ? h : 0, text: typeof o.text === 'string' ? o.text : '', raw: typeof o.raw === 'string' ? o.raw : '' };
 }
-function atHoursOf(text){
-  const out = [], at = new Map();
-  for(const ln of String(text || '').split('\n')){
-    const h = atParseHead(ln); if(!h || h.hours == null) continue;
-    if(at.has(h.name)){ const o = out[at.get(h.name)]; o.hours = Math.round((o.hours + h.hours) * 100) / 100; }
-    else { at.set(h.name, out.length); out.push({ name: h.name, hours: h.hours }); }
+//  회사로 나갈 글: 블록 순서대로 `[과제명] : 시간` + (내용이 있으면) 줄바꿈 + 내용, 블록 사이 빈 줄 하나. 빈 과제는 `[과제명] : 0`.
+//    자유 메모(과제와 상관없는 글)가 있으면 맨 앞에 두고 빈 줄 하나 뒤에 블록이 온다. 줄 앞 공백을 &nbsp; 로 바꾸는 것은 부르는 쪽(reportEditedBodyOut)이 한다.
+function atCompose(blocks, memo){
+  const m = atBodyNorm(memo);
+  const parts = (blocks || []).filter(b => b && b.name).map(b => {
+    const body = atBodyNorm(b.text);
+    return '[' + b.name + '] : ' + atHoursText(atHoursOk(b.hours) ? b.hours : 0) + (body.trim() ? '\n' + body : '');
+  });
+  if(m.trim()) parts.unshift(m);
+  return parts.join('\n\n');
+}
+//  보고 기록용 과제별 시간(cal_report_hours): 글에서 읽지 않고 블록에서 바로 만든다. 0 은 남기지 않는다(호스트 HoursInDomain 과 같다).
+function atHoursPayload(blocks){
+  return (blocks || []).filter(b => b && b.name && atHoursOk(b.hours) && b.hours > 0).map(b => ({ name: b.name, hours: Math.round(b.hours * 100) / 100 }));
+}
+//  보내기를 막는 까닭(없으면 ''). 블록이 하나도 없는 것은 atSubmit 이 따로 본다. 합계 검사(정근 8 등)는 하지 않는다.
+function atBlockProblem(b){
+  if(!b.name) return '과제를 고르세요. 캘린더 과제로 나누지 못한 글입니다.';
+  if(!atHoursOk(b.hours)) return '시간은 0 이상 24 이하로 적으세요.';
+  if(String(b.text || '').trim() && b.hours === 0) return '내용이 있는데 0시간입니다. 시간을 적으세요.';
+  return '';
+}
+//  글을 자유 메모와 블록으로 되살린다(이전 보고, 보고한 날, 옛 임시 저장 v1). names = 내 캘린더 과제명. 돌려주는 값 { memo, blocks }.
+//    머리 줄: 정확히 `[이름] : 숫자` 이거나, 이름이 캘린더 과제명이면 시간 없는 `[이름]`(0시간, 블록 이전에 쓰던 꼴)도 받는다.
+//    캘린더 과제명이면 블록, 정확한 꼴인데 캘린더에 없는 이름(같은 과제의 두 번째 머리도)은 과제 미정 블록이다. `[일정]` 처럼 과제명이 아닌 `[...]` 는 내용이다.
+//    첫 머리 앞의 글은 자유 메모(과제와 상관없는 글, 예: `* 대전 ADD 외근`), 그 밖은 앞 블록의 내용이다.
+function atParseReport(content, names){
+  const known = new Set(names || []), used = new Set(), blocks = [];
+  let memo = '', cur = null;
+  for(const ln of atDecode(content).split('\n')){
+    const m = AT_EXACT_HEAD_RE.exec(ln), bare = m ? null : AT_BARE_HEAD_RE.exec(ln);
+    const name = m ? m[1] : (bare && known.has(bare[1]) ? bare[1] : null);
+    if(name != null){
+      const h = m ? Number(m[2]) : 0;
+      if(known.has(name) && !used.has(name)){ used.add(name); cur = { name, hours: h, text: '', raw: '' }; }
+      else cur = { name: '', hours: h, text: ln, raw: ln };
+      blocks.push(cur); continue;
+    }
+    if(!cur){ memo += (memo ? '\n' : '') + ln; continue; }
+    cur.text += (cur.text ? '\n' : '') + ln;
+  }
+  for(const b of blocks) b.text = atBodyNorm(b.text);
+  return { memo: atBodyNorm(memo), blocks };
+}
+//  임시 저장(v2)의 블록을 지금 과제 목록에 맞춘다: 캘린더에 없는 이름(이름을 바꿨거나 다른 PC)과 같은 과제의 두 번째 블록은 미정 블록으로(머리 줄을 내용 첫 줄에 둔다).
+function atBlocksKnown(blocks, names){
+  const known = new Set(names || []), used = new Set();
+  return (blocks || []).map(atBlockNorm).map(b => {
+    if(!b.name) return b;
+    if(known.has(b.name) && !used.has(b.name)){ used.add(b.name); return Object.assign(b, { raw: '' }); }
+    const raw = '[' + b.name + '] : ' + atHoursText(b.hours), body = atBodyNorm(b.text);
+    return { name: '', hours: b.hours, text: raw + (body ? '\n' + body : ''), raw };
+  });
+}
+//  고침 판단과 같은 상태 비교: 자유 메모, 블록(과제명, 시간, 내용)과 근태, 초과시간. raw 는 보지 않는다.
+function atBlocksSig(blocks){ return JSON.stringify((blocks || []).map(b => [b.name, Number(b.hours), String(b.text)])); }
+function atSame(a, b){ return !!a && !!b && String(a.memo || '') === String(b.memo || '') && atBlocksSig(a.blocks) === atBlocksSig(b.blocks) && a.status === b.status && a.overtime === b.overtime; }
+//  내 캘린더 과제 목록(과제 추가 메뉴와 미정 블록의 고르기 칸). 근태 창은 payload 의 것, 브라우저는 지금 내 달력(과제 창에서 막 만든 과제도 바로 나온다).
+function atBuildProjects(){ return (state.categories || []).map(c => ({ key: String(c.id), name: String(c.name), color: validColor(c.color) })); }
+function atNormProjects(list){
+  const out = [], seen = new Set();
+  for(const x of (Array.isArray(list) ? list : [])){
+    if(!x || typeof x !== 'object' || x.name == null) continue;
+    const name = String(x.name);
+    if(!name.trim() || seen.has(name)) continue;
+    seen.add(name); out.push({ key: String(x.key == null ? '' : x.key), name, color: validColor(x.color) });
   }
   return out;
 }
-//  상태 줄: 줄 수, 과제 수(머리 줄 수)와 합계 시간(머리 줄에서 읽은 값).
-function atTextStats(text){
-  const t = String(text || '');
-  let heads = 0, sum = 0;
-  for(const ln of t.split('\n')){ const h = atParseHead(ln); if(!h) continue; heads++; if(h.hours != null) sum += h.hours; }
-  return { lines: t ? t.split('\n').length : 0, heads, hours: Math.round(sum * 100) / 100 };
+function atProjects(){
+  if(!ATTENDWIN){ try{ return atNormProjects(atBuildProjects()); }catch(_){} }
+  return (ATE.p && ATE.p.projects) || [];
 }
+function atProjNames(){ return atProjects().map(x => x.name); }
+function atProjColor(name){ const x = atProjects().find(p => p.name === name); return x ? x.color : validColor(''); }
 
 /* ── 임시 저장(§2.4). 읽기와 쓰기는 이 다섯 함수만 거친다 ── */
 //  계정: 메인 창과 브라우저는 보고서 초안과 같은 rptDraftWho. 근태 창은 내 신원을 부팅하지 않으므로 payload.me 로 같은 순서를 밟는다.
@@ -21114,9 +21226,14 @@ function atWho(){
   return rptDraftWho();
 }
 function attDraftKey(date){ return AT_DRAFT_PREFIX + atWho() + ':' + date; }
+//  v2 = 과제 블록 { v:2, memo, blocks:[{name, hours, text}], status, overtime, savedAt }(결정 12). 과제는 이름으로 저장한다. memo = 자유 메모.
+//    v1 = 블록 이전의 한 칸 글 { v:1, text, ... }. 그대로 읽어 두고 열 때 이전 보고와 같은 규칙으로 블록으로 바꾼다(atEdOpen).
 function attDraftNorm(o){
-  if(!o || typeof o !== 'object' || o.v !== 1 || typeof o.text !== 'string') return null;
-  return { v: 1, text: o.text, status: typeof o.status === 'string' ? o.status : '', overtime: atOt(o.overtime), savedAt: typeof o.savedAt === 'string' ? o.savedAt : '' };
+  if(!o || typeof o !== 'object') return null;
+  const st = typeof o.status === 'string' ? o.status : '', ot = atOt(o.overtime), sa = typeof o.savedAt === 'string' ? o.savedAt : '';
+  if(o.v === 2 && Array.isArray(o.blocks)) return { v: 2, memo: typeof o.memo === 'string' ? o.memo : '', blocks: o.blocks.filter(b => b && typeof b === 'object').map(atBlockNorm), status: st, overtime: ot, savedAt: sa };
+  if(o.v === 1 && typeof o.text === 'string') return { v: 1, text: o.text, status: st, overtime: ot, savedAt: sa };
+  return null;
 }
 function attDraftGet(date){
   if(PEER || !atIsYmd(date)) return null;
@@ -21128,7 +21245,9 @@ function attDraftGet(date){
 function attDraftPut(date, d){
   if(PEER || !atIsYmd(date) || !d) return null;
   const k = attDraftKey(date);
-  const v = { v: 1, text: String(d.text == null ? '' : d.text), status: String(d.status == null ? '' : d.status), overtime: atOt(d.overtime), savedAt: new Date().toISOString() };
+  //  미정 블록은 원래 머리 줄(raw)도 둔다(되살린 뒤 과제를 고르면 그 줄을 지울 수 있게). 이름 있는 블록은 {name, hours, text} 만.
+  const blocks = (Array.isArray(d.blocks) ? d.blocks : []).map(atBlockNorm).map(b => (!b.name && b.raw) ? { name: '', hours: b.hours, text: b.text, raw: b.raw } : { name: b.name, hours: b.hours, text: b.text });
+  const v = { v: 2, memo: String(d.memo == null ? '' : d.memo), blocks, status: String(d.status == null ? '' : d.status), overtime: atOt(d.overtime), savedAt: new Date().toISOString() };
   try{ localStorage.setItem(k, JSON.stringify(v)); __attDraftMem.delete(k); return v; }
   catch(_){ __attDraftMem.set(k, v); return null; }
 }
@@ -21181,6 +21300,8 @@ function atBuildPayload(date, saved, refresh){
     saved: saved ? { status: saved.status, overtime: saved.overtime, content: saved.content, sentAt: String(saved.sentAt || '') } : null,
     attend: at.status || '', attendOt: at.overtime || 0,   // attendOt: 그날 개인 캘린더의 초과시간(보고가 없을 때 처음 값)
     source: atBuildSource(date),
+    //  내 캘린더 과제(보고서와 같은 state.categories, 목록 순서). 근태 창의 과제 추가와 과제명 확인은 이것만 쓴다(결정 12, 근태 창은 내 달력이 없다).
+    projects: atBuildProjects(),
     refresh: !!refresh,
   };
 }
@@ -21217,9 +21338,15 @@ window.__attendSourceFor = function(date){
 };
 //  호스트: 회사 보고와 DB 저장이 둘 다 성공했다(두 창 모두에 온다). 메인 창은 개인 캘린더의 그날 근태와 근태 달력을 고친다.
 //    미기록(null)으로 보냈으면 개인 캘린더의 근태는 지우지 않는다(미기록 = 회사의 기존 근태를 그대로 둔다는 뜻이다).
+//  근태 창의 [+ 캘린더에 새 과제 만들기](결정 12): 호스트가 메인 창을 앞으로 가져오고 이 함수를 부른다. 메인 창의 과제 창을 연다.
+//    만든 과제는 근태 창이 다시 앞으로 올 때(attendNav refresh) 새 payload 의 과제 목록으로 넘어간다.
+window.__attendCatNew = function(){
+  if(!HOST || PEER || SUBWIN) return;
+  try{ openCatModal(); }catch(_){}
+};
 window.__reportDailySaved = function(o){
   if(PEER || !o || typeof o !== 'object' || !atIsYmd(o.date)) return;
-  if(ATTENDWIN){ if(ATE.net.date === o.date && !ATE.net.loading) ATE.net.date = ''; return; }   // 그날 근태관리 글이 바뀌었다. 다음에 고르면 다시 읽는다
+  if(ATTENDWIN){ if(ATE.prev.date === o.date && !ATE.prev.loading) ATE.prev.date = ''; return; }   // 그날 보고가 바뀌었다. 이전 보고로 다시 고르면 다시 읽는다
   if(!HOST || SUBWIN) return;
   const st = String(o.status == null ? '' : o.status);
   if(ATTEND_STATUS_SET.has(st)){
@@ -21347,9 +21474,10 @@ function atNormPayload(o){
   if(!o || typeof o !== 'object' || !atIsYmd(o.date)) return null;
   const sv = o.saved && typeof o.saved === 'object' ? atRowNorm(Object.assign({}, o.saved, { date: o.date })) : null;
   const me = o.me && typeof o.me === 'object' ? { userId: o.me.userId == null ? null : o.me.userId, loginId: String(o.me.loginId || ''), name: String(o.me.name || '') } : null;
-  const at = String(o.attend == null ? '' : o.attend);
+  const at = String(o.attend == null ? '' : o.attend), source = atNormSource(o.source);
+  //  과제 목록이 없는 payload(옛 메인 창)는 출처 행(같은 state.categories)으로 대신한다.
   return { v: 1, date: o.date, me, saved: sv, attend: ATTEND_STATUS_SET.has(at) ? at : '', attendOt: atOt(o.attendOt),
-           source: atNormSource(o.source), refresh: o.refresh === true };
+           source, projects: atNormProjects(Array.isArray(o.projects) ? o.projects : source.rows), refresh: o.refresh === true };
 }
 //  캘린더 기록(payload.source, 가져오기 중계)을 고쳐 읽는다.
 function atNormSource(s0){
@@ -21369,14 +21497,13 @@ function atNormSource(s0){
 }
 function atEdShown(){ return ATTENDWIN ? !!ATE.p : (ATT.screen === 'edit' && !!ATE.p); }
 function atCur(){
-  const ta = $('#atText'), st = $('#atStatus'), ot = $('#atOt');
-  return { text: ta ? ta.value : '', status: st ? st.value : '', overtime: atOt(ot ? ot.value : 0) };
+  const st = $('#atStatus'), ot = $('#atOt');
+  return { memo: ATE.memo, blocks: ATE.blocks.map(b => ({ name: b.name, hours: b.hours, text: b.text, raw: b.raw || '' })), status: st ? st.value : '', overtime: atOt(ot ? ot.value : 0) };
 }
-//  고친 내용이 있는가(처음 상태와 다른가): 글, 근태, 초과시간 중 하나라도.
+//  고친 내용이 있는가(처음 상태와 다른가): 블록(순서, 과제, 시간, 내용), 근태, 초과시간 중 하나라도.
 function atDirty(){
   if(!ATE.p || !ATE.base) return false;
-  const c = atCur();
-  return c.text !== ATE.base.text || c.status !== ATE.base.status || c.overtime !== ATE.base.overtime;
+  return !atSame(atCur(), ATE.base);
 }
 //  가져오기 캘린더 출처의 기록. 보는 날짜면 payload 의 것, 다른 날짜면 가져와 둔 것(아직이면 null).
 function atCalSource(){
@@ -21437,52 +21564,45 @@ function atFmtRender(){
   if(!ind.options.length) ind.innerHTML = Array.from({ length: 7 }, (_, i) => '<option value="' + i + '">' + i + '단</option>').join('');
   ind.value = String(ATE.fmt.indent);
 }
-function atCalBlock(row){
+//  캘린더 과제 하나의 블록 내용 = 기존 보고서의 초안 본문(머리 줄 아래 줄들, 가져오기 서식 적용, 글 편집과 같은 보통 공백 들여쓰기).
+//    머리 줄은 블록 머리(과제명, 시간 칸)가 맡는다. 시간 칸은 그날 공수표 값(없으면 0).
+function atCalBody(row){
   const f = atFmt();
   const r = { key: row.key, name: row.name, titles: row.kept.map(x => x.text), titleMeta: row.kept.map(x => ({ details: ATE.opt.desc ? x.details : [] })) };
-  const hmap = new Map(); if(row.hours != null) hmap.set(row.key, row.hours);
-  const body = reportRowBodyText(r, ' ', f.mkSpec, f.indent);
-  return reportRowHead(r, hmap) + (body ? '\n' + body : '');
+  return reportRowBodyText(r, ' ', f.mkSpec, f.indent);
 }
-//  근태관리에서 읽은 글을 과제 묶음으로 나눈다(머리 줄 `[과제명] ...` 기준, 주간보고 병합 parseNetcusWeek 의 머리표와 같은 규칙).
-//    줄 앞 들여쓰기는 그대로 둔다(왼쪽에 그대로 채운다). 첫 머리 줄 앞의 글은 이름 없는 묶음 하나로 둔다.
-function atRepBlocks(content){
-  const blocks = []; let cur = null;
-  for(const ln of atDecode(content).split('\n')){
-    const h = atParseHead(ln);
-    if(h){ cur = { name: h.name, num: h.num, head: ln.trim(), lines: [] }; blocks.push(cur); continue; }
-    if(!cur){ if(!ln.trim()) continue; cur = { name: '', num: null, head: '', lines: [] }; blocks.push(cur); }
-    cur.lines.push(ln.replace(/\s+$/, ''));
-  }
-  for(const b of blocks) while(b.lines.length && !b.lines[b.lines.length - 1].trim()) b.lines.pop();
-  return blocks;
-}
-//  패널의 과제 목록(지금 출처와 날짜). id 는 체크 상태의 열쇠, text 는 불러올 글.
+//  패널의 과제 목록(지금 출처와 날짜). id 는 체크 상태의 열쇠, blk 는 불러올 블록.
+//    이전 보고는 그날 보낸 글을 되살린 것(atParseReport)이라 과제 미정 블록이 섞일 수 있고, 첫 머리 앞의 글은 자유 메모 카드(memo)가 된다.
 function atPanelItems(){
-  if(ATE.src === 'cal') return atCalRows().map(r => ({ id: 'c:' + r.key, row: r, text: atCalBlock(r) }));
-  const n = ATE.net;
-  if(n.loading || n.err || n.date !== ATE.srcDate) return [];
-  return atRepBlocks(n.content).map((b, i) => ({ id: 'n:' + i, blk: b, text: [b.head].concat(b.lines).filter((x, j) => j > 0 || x).join('\n') }));
+  if(ATE.src === 'cal') return atCalRows().map(r => ({ id: 'c:' + r.key, row: r, blk: { name: r.name, hours: r.hours != null ? r.hours : 0, text: atCalBody(r), raw: '' } }));
+  const v = ATE.prev;
+  if(v.loading || v.err || v.date !== ATE.srcDate || v.content == null) return [];
+  const r = atParseReport(v.content, atProjNames());
+  return (r.memo.trim() ? [{ id: 'p:memo', memo: r.memo }] : []).concat(r.blocks.map((b, i) => ({ id: 'p:' + i, blk: b })));
 }
-function atLoadText(){ return atPanelItems().filter(it => ATE.checked.has(it.id)).map(it => it.text).join('\n\n'); }
+//  불러올 것: 체크한 과제의 블록. 자유 메모는 이전 보고의 메모 카드를 체크했을 때만 바꾼다(캘린더 불러오기는 사람이 쓴 메모를 건드리지 않는다).
+function atLoadBlocks(){ return atPanelItems().filter(it => it.blk && ATE.checked.has(it.id)).map(it => Object.assign({}, it.blk)); }
+function atLoadMemo(){ const it = atPanelItems().find(x => x.memo != null && ATE.checked.has(x.id)); return it ? it.memo : null; }
 function atCheckAll(){ ATE.checked = new Set(atPanelItems().map(it => it.id)); }
 
-//  payload 를 받아 보고 화면을 연다. 같은 날짜면(창이 앞으로 왔다, 메인 창에서 같은 날을 다시 눌렀다) 패널 출처만 바꾸고 왼쪽 글은 건드리지 않는다.
-//  보고한 날도 바로 쓰기 화면으로 연다(회사 근태관리처럼, 2026-10-29 사용자). 고치지 않으면 보고한 글을 보는 것과 같다.
-//  그날 임시 저장이 있으면 되살림 안내와 함께 그 글로 연다.
+//  payload 를 받아 보고 화면을 연다. 같은 날짜면(창이 앞으로 왔다, 메인 창에서 같은 날을 다시 눌렀다) 패널 출처와 과제 목록만 바꾸고 왼쪽 블록은 건드리지 않는다.
+//  보고한 날도 바로 쓰기 화면으로 연다(회사 근태관리처럼, 2026-10-29 사용자). 보고한 글은 블록으로 되살린다. 고치지 않으면 보고한 글을 보는 것과 같다.
+//  그날 임시 저장이 있으면 되살림 안내와 함께 그것으로 연다(v1 글 임시 저장은 블록으로 바꿔 연다).
 function atEdOpen(raw){
   const p = atNormPayload(raw); if(!p) return;
   if(ATE.p && ATE.date === p.date){
     const before = new Set(atPanelItems().map(it => it.id));
-    ATE.p.source = p.source; if(p.me) ATE.p.me = p.me;
+    ATE.p.source = p.source; ATE.p.projects = p.projects; if(p.me) ATE.p.me = p.me;
     ATE.navPending = '';
     if(ATE.src === 'cal' && ATE.srcDate === ATE.date) for(const it of atPanelItems()) if(!before.has(it.id)) ATE.checked.add(it.id);   // 새로 생긴 과제만 체크해 둔다(사람이 끈 체크는 그대로)
     atPanelRender(); atSyncNav();
+    //  과제 목록이 바뀌었을 수 있다(메인 창에서 새 과제를 만들고 돌아왔다). 블록 내용은 그대로 두고 고르기 칸과 추가 메뉴, 색만 다시 그린다.
+    atBlocksRender(); if(atAddShown()) atAddRender();
     if(!ATE.sending) atMsg('');
     return;
   }
   if(p.refresh) return;   // 다른 날짜의 늦은 새로고침 회신: 지금 보는 날짜를 바꾸지 않는다
-  if(ATE.sending){ toast('회사에 보고하는 중입니다. 끝난 뒤에 다른 날짜를 여세요', 'warn'); return; }
+  if(ATE.sending){ toast('보고하는 중입니다. 끝난 뒤에 다른 날짜를 여세요', 'warn'); return; }
   if(ATE.p) atDraftFlushNow();   // 날짜를 넘기기 전에 쓰던 글을 바로 임시 저장한다
   ATE.p = p; ATE.date = p.date; ATE.navPending = '';
   ATE.src = 'cal'; ATE.srcDate = p.date; ATE.opt = { event: true, todo: true, skip: true, desc: true };
@@ -21491,15 +21611,18 @@ function atEdOpen(raw){
   clearTimeout(ATE.timer); ATE.timer = null;
   atCheckAll();
   attDraftPrune();
-  //  처음 상태: 보고한 날은 보고한 글과 근태, 아니면 캘린더 기본 체크로 한 번 불러온 글과 그날 개인 캘린더 근태(없으면 정근).
-  const sv = p.saved;
-  ATE.base = sv ? { text: atDecode(sv.content).replace(/\s+$/, ''), status: sv.status || '1', overtime: atOt(sv.overtime) }
-               : { text: atLoadText(), status: p.attend || '1', overtime: atOt(p.attendOt) };
+  ATE.showErr = false; atAddOpen(false); atAsTextSet(false);
+  //  처음 상태: 보고한 날은 보고한 글(블록으로 되살린다)과 근태, 아니면 캘린더 기본 체크로 한 번 불러온 블록과 그날 개인 캘린더 근태(없으면 정근).
+  const sv = p.saved, names = p.projects.map(x => x.name), svr = sv ? atParseReport(sv.content, names) : null;
+  ATE.base = svr ? { memo: svr.memo, blocks: svr.blocks, status: sv.status || '1', overtime: atOt(sv.overtime) }
+                 : { memo: '', blocks: atLoadBlocks(), status: p.attend || '1', overtime: atOt(p.attendOt) };
   let dr = attDraftGet(p.date);
-  if(dr && dr.text === ATE.base.text && dr.status === ATE.base.status && dr.overtime === ATE.base.overtime){ attDraftDel(p.date); dr = null; }   // 처음 상태와 같은 임시 저장은 남길 까닭이 없다
+  if(dr) dr = Object.assign({}, dr, dr.v === 1 ? atParseReport(dr.text, names) : { memo: dr.memo, blocks: atBlocksKnown(dr.blocks, names) });
+  if(dr && atSame(dr, ATE.base)){ attDraftDel(p.date); dr = null; }   // 처음 상태와 같은 임시 저장은 남길 까닭이 없다
   const cur = dr || ATE.base;
   atFillSelects(cur.status, cur.overtime);
-  const ta = $('#atText'); if(ta) ta.value = cur.text;
+  ATE.memo = cur.memo || '';
+  ATE.blocks = cur.blocks.map(b => Object.assign({}, b));
   ATE.savedAt = dr ? dr.savedAt : '';
   const rs = $('#atRestore');
   if(rs){
@@ -21511,8 +21634,10 @@ function atEdOpen(raw){
   atAskHide();
   atPanelRender(); atSyncNav();
   atSetBusy(false); atMsg('');
+  atBlocksRender();
   atOnEdit(false);
-  if(ta) try{ ta.focus({ preventScroll: true }); ta.setSelectionRange(0, 0); ta.scrollTop = 0; }catch(_){}
+  const bx = $('#atBlocks'); if(bx) bx.scrollTop = 0;
+  atFocusFirst();
 }
 //  날짜 머리와 보낸 시각(보고한 날만. 위젯 보고 기록의 마지막 보낸 시각).
 function atDateRender(){
@@ -21524,7 +21649,6 @@ function atDateRender(){
 //    회사 쪽 창은 호스트가 띄운다. 이 창은 여는 동안 단추만 잠그고 결과가 실패면 안내한다.
 async function atIntraClick(){
   if(!HOST || !ATE.p || !ATE.p.saved || ATE.sending || ATE.intra) return;
-  if(ATE.net.loading){ atMsg('인트라넷에서 읽는 중입니다. 끝난 뒤에 누르세요', 'err'); return; }
   const date = ATE.date, [y, m, d] = date.split('-').map(Number);
   ATE.intra = true; atIntraRender();
   let r = null;
@@ -21533,7 +21657,9 @@ async function atIntraClick(){
   if(r && r.ok) return;
   const e = r && typeof r.error === 'string' ? r.error : '';
   atMsg(e === 'busy' ? '회사 사이트에서 다른 작업을 하는 중입니다. 잠시 뒤 다시 누르세요.'
-    : (e === 'no-creds' || e === 'unverified' || e === 'login') ? atNetErrText(e).replace('다시 읽으세요', '다시 누르세요')
+    : e === 'no-creds' ? '회사 사이트 로그인 정보가 없습니다. 설정에서 저장한 뒤 다시 누르세요.'
+    : e === 'unverified' ? '회사 사이트 로그인 정보가 확인되지 않았습니다. 설정에서 확인한 뒤 다시 누르세요.'
+    : e === 'login' ? '회사 사이트 로그인에 실패했습니다. 설정에서 로그인 정보를 확인하세요.'
     : '인트라넷 화면을 열지 못했습니다. 다시 누르세요.', 'err');
 }
 function atIntraRender(){
@@ -21552,12 +21678,155 @@ function atFillSelects(status, overtime){
   ot.innerHTML = Array.from({ length: 12 }, (_, i) => '<option value="' + i + '"' + (i === n ? ' selected' : '') + '>' + (i === 0 ? '없음' : '+' + i + '시간') + '</option>').join('');
   st.value = sv; ot.value = String(n);
 }
+/* ── 과제 블록 그리기와 고치기(결정 12) ──
+ *  구조가 바뀔 때(열기, 추가, 지우기, 순서, 과제 고르기, 불러오기)만 통째로 다시 그린다. 글과 시간 입력은 모델만 고치고(포커스와 커서를 지킨다)
+ *  그 블록의 빨간 표시와 상태 줄만 고친다. 사람이 적은 글(과제명, 내용)은 esc 와 value 로만 넣는다. */
+function atGrow(t){ if(!t) return; t.style.height = 'auto'; const h = t.scrollHeight; if(h > 0) t.style.height = h + 'px'; }
+function atGrowAll(){ document.querySelectorAll('#atBlocks textarea[data-bt], #atBlocks textarea[data-memo]').forEach(atGrow); }
+//  빨간 블록: 과제 미정은 늘, 그 밖은 보내기를 한 번 막은 뒤부터 보인다(쓰는 중에 시간 0 을 나무라지 않는다).
+function atBlockShowProblem(b){ return (!b.name || ATE.showErr) ? atBlockProblem(b) : ''; }
+function atBlocksRender(){
+  const box = $('#atBlocks'); if(!box) return;
+  const ae = document.activeElement, keep = (ae && box.contains(ae)) ? atFocusKey(ae) : null;
+  const projs = atProjects(), used = new Set(ATE.blocks.map(b => b.name).filter(Boolean)), n = ATE.blocks.length;
+  //  맨 위 자유 메모: 과제와 상관없는 글(예: 외근 표시). 과제, 시간, ▲ ▼ ✕ 가 없고 비어 있어도 된다. 보낼 때 맨 앞에 붙는다.
+  const memoHtml = '<div class="at-blk at-memo"><div class="at-bh"><span class="at-bn">자유 메모</span><small class="at-hint">과제와 상관없는 글, 보고 맨 앞에 붙습니다</small></div>'
+    + '<textarea class="at-bt" data-memo="1" spellcheck="false" rows="1" aria-label="자유 메모" placeholder="과제와 상관없이 자유롭게 (예: * 대전 ADD 외근)"></textarea></div>';
+  box.innerHTML = memoHtml + (n ? ATE.blocks.map((b, i) => {
+    const pr = atBlockShowProblem(b), lab = b.name || '과제 미정';
+    const head = b.name
+      ? '<i class="at-dot" style="background:' + atProjColor(b.name) + '" aria-hidden="true"></i><span class="at-bn" title="과제명은 캘린더 과제에서만 정해집니다">' + esc(b.name) + '</span>'
+        + '<span class="at-lock" title="이 창에서는 과제명을 바꿀 수 없습니다" aria-hidden="true">🔒</span>'
+      : '<select class="at-bpick" data-bpick="' + i + '" aria-label="과제 고르기"><option value="">과제를 고르세요</option>'
+        + projs.filter(x => !used.has(x.name)).map(x => '<option value="' + esc(x.name) + '">' + esc(x.name) + '</option>').join('') + '</select>';
+    return '<div class="at-blk' + (pr ? ' bad' : '') + '" data-bi="' + i + '">'
+      + '<div class="at-bh">' + head
+      + '<span class="at-bhr"><input type="number" class="at-bhn" data-bh="' + i + '" min="0" max="24" step="0.5" inputmode="decimal" value="' + esc(String(b.hours)) + '" aria-label="' + esc(lab) + ' 시간">시간</span>'
+      + '<button type="button" class="at-bmv" data-bup="' + i + '" title="위로" aria-label="' + esc(lab) + ' 위로"' + (i === 0 ? ' disabled' : '') + '>▲</button>'
+      + '<button type="button" class="at-bmv" data-bdn="' + i + '" title="아래로" aria-label="' + esc(lab) + ' 아래로"' + (i === n - 1 ? ' disabled' : '') + '>▼</button>'
+      + '<button type="button" class="at-bmv" data-bx="' + i + '" title="블록 지우기" aria-label="' + esc(lab) + ' 블록 지우기">✕</button></div>'
+      + '<textarea class="at-bt" data-bt="' + i + '" spellcheck="false" rows="2" aria-label="' + esc(lab) + ' 내용" placeholder="한 일(자유롭게)"></textarea>'
+      + '<div class="at-bmsg' + (pr ? '' : ' hidden') + '" data-bmsg="' + i + '" role="alert">' + esc(pr) + '</div></div>';
+  }).join('') : '<div class="at-none at-bempty">과제가 없습니다. 아래 [+ 과제 추가]나 오른쪽 가져오기로 채우세요.</div>');
+  //  내용은 value 로 넣는다(textarea 안에 글을 넣으면 맨 앞 줄바꿈 하나를 HTML 이 먹는다).
+  box.querySelectorAll('textarea[data-bt]').forEach(t => { t.value = ATE.blocks[Number(t.dataset.bt)].text; atGrow(t); });
+  const mt = box.querySelector('textarea[data-memo]'); if(mt){ mt.value = ATE.memo; atGrow(mt); }
+  if(ATE.sending) box.querySelectorAll('input, select, textarea, button').forEach(e => { e.disabled = true; });
+  if(keep) atFocusRestore(keep);
+  atStatRender();
+}
+//  다시 그린 뒤 포커스를 같은 자리로(같은 블록의 같은 칸, 글이면 커서까지).
+function atFocusKey(el){
+  for(const k of ['bt', 'memo', 'bh', 'bpick', 'bup', 'bdn', 'bx']) if(el.dataset && el.dataset[k] != null) return { k, i: el.dataset[k], s: el.selectionStart, e: el.selectionEnd };
+  return null;
+}
+function atFocusRestore(f){
+  const attr = { bt: 'data-bt', memo: 'data-memo', bh: 'data-bh', bpick: 'data-bpick', bup: 'data-bup', bdn: 'data-bdn', bx: 'data-bx' }[f.k];
+  const el = document.querySelector('#atBlocks [' + attr + '="' + f.i + '"]');
+  if(!el || el.disabled) return;
+  try{ el.focus({ preventScroll: true }); if((f.k === 'bt' || f.k === 'memo') && f.s != null) el.setSelectionRange(f.s, f.e); }catch(_){}
+}
+//  블록 i 의 첫 칸(미정이면 고르기 칸, 아니면 what = 'text' 내용 칸 | 'hours' 시간 칸).
+function atFocusBlock(i, what){
+  const sel = document.querySelector('#atBlocks [data-bpick="' + i + '"]')
+    || document.querySelector('#atBlocks [' + (what === 'hours' ? 'data-bh' : 'data-bt') + '="' + i + '"]');
+  if(sel) try{ sel.focus(); }catch(_){}
+}
+function atFocusFirst(){
+  const t = document.querySelector('#atBlocks textarea[data-bt], #atBlocks select[data-bpick]');
+  try{ if(t){ t.focus({ preventScroll: true }); if(t.setSelectionRange) t.setSelectionRange(0, 0); } else { const a = $('#atAdd'); if(a) a.focus({ preventScroll: true }); } }catch(_){}
+}
+//  블록 하나의 빨간 표시와 안내만 고친다(입력 중에는 통째로 다시 그리지 않는다).
+function atBlockMark(i){
+  const b = ATE.blocks[i], el = document.querySelector('#atBlocks .at-blk[data-bi="' + i + '"]'); if(!b || !el) return;
+  const pr = atBlockShowProblem(b);
+  el.classList.toggle('bad', !!pr);
+  const m = el.querySelector('[data-bmsg]'); if(m){ m.textContent = pr; m.classList.toggle('hidden', !pr); }
+}
+//  상태 줄: 과제 수와 합계 시간(범위 밖 시간은 세지 않는다).
+function atStatRender(){
+  const sum = ATE.blocks.reduce((a, b) => a + (atHoursOk(b.hours) ? b.hours : 0), 0);
+  const H = $('#atHours'); if(H) H.innerHTML = '과제 ' + ATE.blocks.length + '개, 합계 <b>' + (Math.round(sum * 100) / 100) + '</b>시간';
+}
+function atBlockMove(i, d){
+  const j = i + d;
+  if(ATE.sending || i < 0 || j < 0 || i >= ATE.blocks.length || j >= ATE.blocks.length) return;
+  const t = ATE.blocks[i]; ATE.blocks[i] = ATE.blocks[j]; ATE.blocks[j] = t;
+  atBlocksRender();
+  const b = document.querySelector('#atBlocks [' + (d < 0 ? 'data-bup' : 'data-bdn') + '="' + j + '"]');
+  try{ (b && !b.disabled ? b : document.querySelector('#atBlocks [data-bt="' + j + '"]')).focus(); }catch(_){}
+  atOnEdit();
+}
+function atBlockRemove(i){
+  if(ATE.sending || !ATE.blocks[i]) return;
+  ATE.blocks.splice(i, 1);
+  atBlocksRender();
+  if(ATE.blocks.length) atFocusBlock(Math.min(i, ATE.blocks.length - 1)); else { const a = $('#atAdd'); if(a) try{ a.focus(); }catch(_){} }
+  atOnEdit();
+}
+//  과제 미정 블록에 과제를 고른다. 원래 머리 줄(캘린더에 없던 이름)이 내용 첫 줄이면 지운다. 이미 블록이 있는 과제는 고를 수 없다.
+function atBlockPick(i, name){
+  const b = ATE.blocks[i];
+  if(ATE.sending || !b || b.name || !name || ATE.blocks.some(x => x.name === name) || !atProjNames().includes(name)) return;
+  b.name = name;
+  if(b.raw){ const ls = b.text.split('\n'); if(ls[0] === b.raw) b.text = atBodyNorm(ls.slice(1).join('\n')); }
+  b.raw = '';
+  atBlocksRender();
+  atFocusBlock(i, b.text.trim() && b.hours === 0 ? 'hours' : 'text');
+  atOnEdit();
+}
+/* ── [+ 과제 추가] 메뉴: 내 캘린더 과제에서 검색해 고른다(이미 있는 과제는 흐림). 맨 아래는 캘린더에 새 과제 만들기 ── */
+function atAddShown(){ const m = $('#atAddMenu'); return !!m && !m.classList.contains('hidden'); }
+function atAddOpen(on){
+  const m = $('#atAddMenu'), b = $('#atAdd'); if(!m) return;
+  if(on && (ATE.sending || !ATE.p)) return;
+  m.classList.toggle('hidden', !on);
+  if(b) b.setAttribute('aria-expanded', String(!!on));
+  if(!on) return;
+  const q = $('#atAddQ'); if(q) q.value = '';
+  atAddRender();
+  if(q) try{ q.focus(); }catch(_){}
+}
+function atAddRender(){
+  const L = $('#atAddList'); if(!L) return;
+  const qe = $('#atAddQ'), q = (qe ? qe.value : '').trim().toLowerCase();
+  const used = new Set(ATE.blocks.map(b => b.name).filter(Boolean));
+  const list = atProjects().filter(x => !q || x.name.toLowerCase().includes(q));
+  L.innerHTML = list.length ? list.map(x => '<button type="button" class="at-mi" data-addname="' + esc(x.name) + '"' + (used.has(x.name) ? ' disabled' : '') + '>'
+      + '<i class="at-dot" style="background:' + x.color + '" aria-hidden="true"></i><span>' + esc(x.name) + '</span>' + (used.has(x.name) ? '<small>이미 있음</small>' : '') + '</button>').join('')
+    : '<div class="at-none">' + (atProjects().length ? '맞는 과제가 없습니다.' : '내 과제가 없습니다.') + '</div>';
+}
+function atAddPick(name){
+  if(ATE.sending || !ATE.p || !name || ATE.blocks.some(b => b.name === name) || !atProjNames().includes(name)) return;
+  ATE.blocks.push({ name, hours: 0, text: '', raw: '' });
+  atAddOpen(false);
+  if(ATE.asText) atAsTextSet(false);
+  atBlocksRender();
+  const t = document.querySelector('#atBlocks [data-bt="' + (ATE.blocks.length - 1) + '"]');
+  if(t) try{ t.focus(); t.scrollIntoView({ block: 'nearest' }); }catch(_){}
+  atOnEdit();
+}
+//  [+ 캘린더에 새 과제 만들기]: 근태 창은 메인 창의 과제 창을 연다(attendCatNew, 호스트가 메인 창을 앞으로 가져온다).
+//    만들고 이 창으로 돌아오면 새로고침(attendNav refresh)이 과제 목록을 바꾼다. 브라우저는 같은 화면에서 과제 창을 연다.
+function atCatNew(){
+  atAddOpen(false);
+  if(ATTENDWIN){ hpost({ cmd: 'attendCatNew' }); atMsg('메인 창에서 과제를 만든 뒤 이 창으로 돌아오면 과제 목록에 나옵니다.'); return; }
+  if(typeof openCatModal === 'function') openCatModal();
+}
+//  [글로 보기]: 회사로 나갈 조립 결과를 읽기 전용 한 칸으로 보인다(줄 앞 공백은 보통 공백). 다시 누르면 블록으로.
+function atAsTextSet(on){
+  ATE.asText = !!on;
+  const bx = $('#atBlocks'), aw = $('#atAddWrap'), pv = $('#atPreview'), b = $('#atAsText');
+  if(bx) bx.classList.toggle('hidden', ATE.asText);
+  if(aw) aw.classList.toggle('hidden', ATE.asText);
+  if(pv){ pv.classList.toggle('hidden', !ATE.asText); pv.textContent = ATE.asText ? (atCompose(ATE.blocks, ATE.memo) || '(내용 없음)') : ''; }
+  if(b){ b.textContent = ATE.asText ? '블록으로 돌아가기' : '글로 보기'; b.setAttribute('aria-pressed', String(ATE.asText)); }
+  if(ATE.asText) atAddOpen(false); else atGrowAll();
+}
 //  입력마다: 상태 줄을 고치고, 1초 모아서 임시 저장한다. 처음 상태와 같아지면 임시 저장을 지운다.
 function atOnEdit(save){
   if(!ATE.p) return;
-  const st = atTextStats(atCur().text);
-  const L = $('#atLines'); if(L) L.textContent = st.lines + '줄';
-  const H = $('#atHours'); if(H) H.innerHTML = '과제 ' + st.heads + '개, 합계 <b>' + st.hours + '</b>시간';
+  atStatRender();
   if(save === false){ atSavedRender(); return; }
   clearTimeout(ATE.timer); ATE.timer = null;
   if(!atDirty()){ attDraftDel(ATE.date); ATE.savedAt = ''; atSavedRender(); return; }
@@ -21585,10 +21854,11 @@ function atMsg(t, kind){
 //  처리 중에는 입력과 단추를 모두 잠근다(연속 클릭으로 두 번 보내지 않게, 결정 9).
 function atSetBusy(on){
   const ed = $('#atEd'); if(!ed) return;
+  if(on) atAddOpen(false);
   ed.querySelectorAll('input, select, textarea, button').forEach(e => { e.disabled = !!on; });
-  const b = $('#atSend'); if(b) b.textContent = on ? '회사에 보고하는 중…' : '회사에 보고';
+  const b = $('#atSend'); if(b) b.textContent = on ? '보고하는 중…' : '보고';
   ed.classList.toggle('busy', !!on);
-  if(!on){ atSyncNav(); atPanelRender(); }
+  if(!on){ atSyncNav(); atPanelRender(); atBlocksRender(); }   // 블록의 ▲ ▼ 끝 단추 잠금을 되살린다
   atIntraRender();
 }
 function atSyncNav(){
@@ -21597,39 +21867,28 @@ function atSyncNav(){
   if(pv) pv.disabled = off; if(nx) nx.disabled = off;
   if(ATE.sending) return;
   const ld = $('#atLoad'); if(ld) ld.disabled = !ATE.p || !atPanelItems().some(it => ATE.checked.has(it.id));
-  //  근태관리를 읽는 동안은 회사 사이트 작업이 겹치지 않게 보내기를 잠근다(호스트는 한 번에 하나만 한다).
-  const sd = $('#atSend'); if(sd) sd.disabled = !ATE.p || ATE.net.loading;
-}
-//  근태관리 읽기 실패의 안내(netcusWeekMerge 의 error 코드, 주간보고 병합과 같은 갈래).
-function atNetErrText(err){
-  return err === 'no-creds' ? '회사 사이트 로그인 정보가 없습니다. 설정에서 저장한 뒤 다시 읽으세요.'
-    : err === 'unverified' ? '회사 사이트 로그인 정보가 확인되지 않았습니다. 설정에서 확인한 뒤 다시 읽으세요.'
-    : err === 'login' ? '회사 사이트 로그인에 실패했습니다. 설정에서 로그인 정보를 확인하세요.'
-    : err === 'busy' ? '회사 사이트에서 다른 작업을 하는 중입니다. 잠시 뒤 다시 읽으세요.'
-    : err === 'session' ? '회사 사이트 세션이 만료되어 읽지 못했습니다. 다시 읽으세요.'
-    : '인트라넷에서 읽지 못했습니다. 다시 읽으세요.';
+  const sd = $('#atSend'); if(sd) sd.disabled = !ATE.p;
 }
 function atPanelRender(){
   const ed = $('#atEd'); if(!ed || !ATE.p) return;
-  const busy = ATE.sending, netBusy = ATE.net.loading;
-  ed.querySelectorAll('[data-atsrc]').forEach(b => { const on = b.dataset.atsrc === ATE.src; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); if(!busy) b.disabled = netBusy; });
-  const sd = $('#atSrcDate'); if(sd){ if(sd.value !== ATE.srcDate) sd.value = ATE.srcDate; if(!busy) sd.disabled = netBusy; }
+  ed.querySelectorAll('[data-atsrc]').forEach(b => { const on = b.dataset.atsrc === ATE.src; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
+  const sd = $('#atSrcDate'); if(sd && sd.value !== ATE.srcDate) sd.value = ATE.srcDate;
   const opts = $('#atOpts'); if(opts) opts.classList.toggle('hidden', ATE.src !== 'cal');
   const ck = { atOEvent: 'event', atOTodo: 'todo', atOSkip: 'skip', atODesc: 'desc' };
   for(const id of Object.keys(ck)){ const e = document.getElementById(id); if(e) e.checked = !!ATE.opt[ck[id]]; }
   atFmtRender();
-  const items = atPanelItems(), o = ATE.opt, n = ATE.net, other = ATE.srcDate !== ATE.date;
+  const items = atPanelItems(), o = ATE.opt, v = ATE.prev, other = ATE.srcDate !== ATE.date;
   const retry = '<button type="button" class="at-lnk" data-atretry="1">다시 읽기</button>';
   let html = '';
   if(ATE.src === 'cal' && other && ATE.cal.date === ATE.srcDate && ATE.cal.loading) html = '<div class="at-none">캘린더 기록을 가져오는 중입니다.</div>';
   else if(ATE.src === 'cal' && other && !atCalSource()) html = '<div class="at-none">' + esc(ATE.cal.date === ATE.srcDate && ATE.cal.err ? ATE.cal.err : '캘린더 기록을 가져오지 못했습니다.') + ' ' + retry + '</div>';
-  else if(ATE.src === 'net' && !HOST) html = '<div class="at-none">인트라넷은 서버에 연결된 위젯에서만 읽을 수 있습니다.</div>';
-  else if(ATE.src === 'net' && n.loading) html = '<div class="at-none">인트라넷에서 읽는 중입니다. 로그인하느라 몇 초 걸립니다.</div>';
-  else if(ATE.src === 'net' && n.date === ATE.srcDate && n.err) html = '<div class="at-none err" role="alert">' + esc(n.err) + ' ' + retry + '</div>';
-  else if(ATE.src === 'net' && n.date !== ATE.srcDate) html = '<div class="at-none">인트라넷에서 읽지 않았습니다. ' + retry + '</div>';
+  else if(ATE.src === 'prev' && !HOST) html = '<div class="at-none">이전 보고는 서버에 연결된 위젯에서만 가져올 수 있습니다.</div>';
+  else if(ATE.src === 'prev' && v.date === ATE.srcDate && v.loading) html = '<div class="at-none">이전 보고를 읽는 중입니다.</div>';
+  else if(ATE.src === 'prev' && v.date === ATE.srcDate && v.err) html = '<div class="at-none err" role="alert">' + esc(v.err) + ' ' + retry + '</div>';
+  else if(ATE.src === 'prev' && v.date !== ATE.srcDate) html = '<div class="at-none">이전 보고를 읽지 않았습니다. ' + retry + '</div>';
   else if(!items.length) html = '<div class="at-none">' + (ATE.src === 'cal'
       ? (o.skip ? '이날 기록이 있는 과제가 없습니다. "기록 없는 과제 제외" 를 끄면 내 과제가 모두 나옵니다.' : '내 과제가 없습니다.')
-      : (n.dayOk ? '이날 인트라넷에 등록된 일간보고가 없습니다.' : '이날 인트라넷 근태관리 화면을 읽지 못했습니다. ' + retry)) + '</div>';
+      : (v.content == null ? '이날 이 앱으로 보낸 보고가 없습니다.' : '이날 보고에 내용이 없습니다.')) + '</div>';
   else html = items.map(it => {
     const on = ATE.checked.has(it.id), idA = esc(it.id);
     if(it.row){
@@ -21642,28 +21901,32 @@ function atPanelRender(){
       return '<div class="at-card' + (on ? '' : ' off') + '"><label class="at-card-h"><input type="checkbox" data-atid="' + idA + '"' + (on ? ' checked' : '') + '>'
         + '<i class="at-dot" style="background:' + r.color + '" aria-hidden="true"></i><span class="at-cnm">[' + esc(r.name) + ']</span>' + (meta ? '<small>' + esc(meta) + '</small>' : '') + '</label>' + body + '</div>';
     }
-    const b = it.blk;
+    if(it.memo != null) return '<div class="at-card' + (on ? '' : ' off') + '"><label class="at-card-h"><input type="checkbox" data-atid="' + idA + '"' + (on ? ' checked' : '') + '>'
+      + '<span class="at-cnm">자유 메모</span></label><ul class="at-recs">' + it.memo.split('\n').map(l => '<li>' + esc(l) + '</li>').join('') + '</ul></div>';
+    //  이전 보고의 블록. 과제 미정(캘린더에 없는 이름이나 머리 없는 글)은 불러오면 왼쪽에서 과제를 고른다.
+    const b = it.blk, lines = b.text ? b.text.split('\n') : [];
     return '<div class="at-card' + (on ? '' : ' off') + '"><label class="at-card-h"><input type="checkbox" data-atid="' + idA + '"' + (on ? ' checked' : '') + '>'
-      + '<span class="at-cnm">' + (b.name ? '[' + esc(b.name) + ']' : '머리 줄 없는 글') + '</span>' + (b.num != null ? '<small>' + esc(String(b.num)) + '시간</small>' : '') + '</label>'
-      + (b.lines.length ? '<ul class="at-recs">' + b.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '<div class="at-none">세부 줄 없음</div>') + '</div>';
+      + (b.name ? '<i class="at-dot" style="background:' + atProjColor(b.name) + '" aria-hidden="true"></i>' : '')
+      + '<span class="at-cnm">' + (b.name ? '[' + esc(b.name) + ']' : '과제 미정') + '</span><small>' + esc(atHoursText(b.hours)) + '시간</small></label>'
+      + (lines.length ? '<ul class="at-recs">' + lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '<div class="at-none">내용 없음</div>') + '</div>';
   }).join('');
   const cards = $('#atCards'); if(cards) cards.innerHTML = html;
   const k = items.filter(it => ATE.checked.has(it.id)).length;
   const pk = $('#atPick'); if(pk) pk.textContent = '과제 ' + k + ' / ' + items.length + '개 선택';
-  if(!busy){
+  if(!ATE.sending){
     const all = $('#atAll'), none = $('#atNone');
     if(all) all.disabled = k === items.length; if(none) none.disabled = k === 0;
   }
   atSyncNav();
 }
-//  가져올 곳(캘린더, 근태관리)과 날짜. 바꾸면 그 출처를 읽고(필요할 때만) 카드를 모두 체크한다.
+//  가져올 곳(캘린더, 이전 보고)과 날짜. 바꾸면 그 출처를 읽고(필요할 때만) 카드를 모두 체크한다.
 function atSetSrc(src){
-  if((src !== 'cal' && src !== 'net') || ATE.net.loading) return;
+  if(src !== 'cal' && src !== 'prev') return;
   ATE.src = src;
   atSrcLoad();
 }
 function atSetSrcDate(date){
-  if(!atIsYmd(date) || ATE.net.loading) { atPanelRender(); return; }
+  if(!atIsYmd(date)) { atPanelRender(); return; }
   ATE.srcDate = date;
   atSrcLoad();
 }
@@ -21671,7 +21934,7 @@ function atSrcLoad(force){
   if(!ATE.p) return;
   const d = ATE.srcDate || ATE.date;
   if(ATE.src === 'cal') atCalLoad(d, force);
-  else atNetLoad(d, force);
+  else atPrevLoad(d, force);
   atCheckAll(); atPanelRender();
 }
 //  다른 날짜의 캘린더 기록. 근태 창은 메인 창에 청하고(attendSourceReq), 그 밖(브라우저)은 이 창의 달력에서 바로 만든다.
@@ -21701,50 +21964,52 @@ window.__attendSource = function(o){
   ATE.cal = { date: o.date, source: atNormSource(o.source), loading: false, err: '', wd: null };
   if(ATE.src === 'cal' && ATE.srcDate === o.date){ atCheckAll(); atPanelRender(); }
 };
-//  근태관리(회사 사이트)에 등록된 그날 일간보고를 읽는다. 읽기만 한다(주간보고 병합과 같은 netcusWeekMerge, 하루짜리 기간).
-//    회신 { ok, error, days:[{date, content, ok}] }. 날짜 하나만 기억하고 다시 고르면 다시 읽지 않는다(실패했으면 다시 읽는다).
-async function atNetLoad(date, force){
+//  이전 보고: 고른 날짜에 이 앱으로 보낸 보고(DB cal_report_daily, reportDailyList 하루). 위젯만(브라우저는 안내). 글은 atPanelItems 가 블록으로 되살린다.
+//    날짜 하나만 기억하고 다시 고르면 다시 읽지 않는다(실패했거나 그날 보고가 성공하면 다시 읽는다). gen 으로 늦게 온 옛 회신을 버린다.
+async function atPrevLoad(date, force){
   if(!HOST) return;
-  const n = ATE.net;
-  if(n.loading) return;
-  if(!force && n.date === date && !n.err) return;
-  const g = ++n.gen;
-  ATE.net = { date, content: '', dayOk: false, loading: true, err: '', gen: g };
+  const v = ATE.prev;
+  if(v.loading && v.date === date) return;
+  if(!force && v.date === date && !v.err) return;
+  const g = v.gen + 1;
+  ATE.prev = { date, content: null, loading: true, err: '', gen: g };
   let r = null;
-  try{ r = await hostRequest('netcusWeekMerge', { from: date, to: date }, 120000); }catch(_){ r = null; }
-  if(ATE.net.gen !== g) return;
-  ATE.net.loading = false;
-  if(!r || r.ok !== true){ ATE.net.err = atNetErrText(r && r.error); }
-  else {
-    const days = Array.isArray(r.days) ? r.days : [];
-    const d = days.find(x => x && x.date === date) || null;
-    ATE.net.content = d && d.content != null ? String(d.content) : '';
-    ATE.net.dayOk = !!(d && d.ok);
-  }
-  if(ATE.p && ATE.src === 'net' && ATE.srcDate === date) atCheckAll();
+  try{ r = await hostRequest('reportDailyList', { from: date, to: date }); }catch(_){ r = null; }
+  if(ATE.prev.gen !== g) return;
+  ATE.prev.loading = false;
+  if(!r || r.ok !== true || !Array.isArray(r.rows)) ATE.prev.err = '이전 보고를 읽지 못했습니다.';
+  else { const row = r.rows.map(atRowNorm).find(x => x && x.date === date); ATE.prev.content = row ? row.content : null; }
+  if(ATE.p && ATE.src === 'prev' && ATE.srcDate === date) atCheckAll();
   if(ATE.p) atPanelRender();
 }
-//  [← 불러오기]: 체크한 과제로 왼쪽을 바로 바꾼다(묻지 않는다, 2026-10-29 사용자). 바뀌기 전 글은 임시 저장 흐름 그대로다.
+//  [← 불러오기]: 체크한 과제로 왼쪽 블록을 바로 바꾼다(묻지 않는다, 2026-10-29 사용자). 바뀌기 전 블록은 임시 저장 흐름 그대로다.
 function atLoadClick(){
   if(!ATE.p || ATE.sending) return;
-  const ta = $('#atText'); if(!ta) return;
-  ta.value = atLoadText();
+  const memo = atLoadMemo();
+  ATE.blocks = atLoadBlocks();
+  if(memo != null) ATE.memo = memo;
+  if(ATE.asText) atAsTextSet(false);
+  atBlocksRender();
   atOnEdit();
-  try{ ta.focus(); }catch(_){}
+  atFocusFirst();
 }
-//  "버리고 처음 상태로": 임시 저장을 지우고 처음 상태(보고한 글 또는 캘린더 기본 글)로 돌린다.
+//  "버리고 처음 상태로": 임시 저장을 지우고 처음 상태(보고한 글 또는 캘린더 기본 블록)로 돌린다.
 function atDiscard(){
   if(!ATE.p || ATE.sending) return;
   attDraftDel(ATE.date); clearTimeout(ATE.timer); ATE.timer = null; ATE.savedAt = '';
   atFillSelects(ATE.base.status, ATE.base.overtime);
-  const ta = $('#atText'); if(ta) ta.value = ATE.base.text;
+  ATE.memo = ATE.base.memo || '';
+  ATE.blocks = ATE.base.blocks.map(b => Object.assign({}, b));
   const rs = $('#atRestore'); if(rs) rs.classList.add('hidden');
+  atBlocksRender();
+  if(ATE.asText) atAsTextSet(true);
   atOnEdit(false);
 }
 function atToggleFold(){
   ATE.folded = !ATE.folded;
   const b = $('#atEdBody'); if(b) b.classList.toggle('folded', ATE.folded);
   const f = $('#atFold'); if(f){ f.textContent = ATE.folded ? '‹ 가져오기 패널 펼치기' : '가져오기 패널 접기 ›'; f.setAttribute('aria-expanded', String(!ATE.folded)); }
+  atGrowAll();   // 폭이 바뀌어 내용 칸의 줄 수가 달라진다
 }
 //  ‹ › 날짜 이동(쓰기, 보기 모두): 쓰던 글은 먼저 임시 저장한다. 근태 창은 메인 창에 그 날짜의 payload 를 청하고(attendNav), 브라우저는 그 자리에서 다시 만든다.
 function atNav(delta){
@@ -21764,7 +22029,7 @@ function atWinRefresh(){
   hpost({ cmd: 'attendNav', date: ATE.date, refresh: true });
 }
 async function atCopy(){
-  const text = reportEditedBodyOut($('#atText') ? $('#atText').value : '', ' ');   // 복사는 U+00A0 들여쓰기(보고서 복사와 같다)
+  const text = reportEditedBodyOut(atCompose(ATE.blocks, ATE.memo), ' ');   // 복사 = 회사로 나갈 조립 결과(글로 보기와 같은 글)
   if(!text){ toast('복사할 내용이 없습니다', 'warn'); return; }
   try{ await navigator.clipboard.writeText(text); atMsg('복사했습니다', 'ok'); return; }catch(_){}
   try{
@@ -21774,19 +22039,38 @@ async function atCopy(){
     atMsg('복사했습니다', 'ok');
   }catch(e){ toast('복사에 실패했습니다. 다시 시도해 주세요', 'error'); }
 }
-//  보내기(§2.5): 내용이 비면 막고, 보내기 직전에 임시 저장을 쓴 뒤, 처리 중에는 입력과 단추를 잠근다. 결과는 __netcusResult 가 알린다.
-//    content = 줄 앞 공백을 &nbsp; 로(기존 buildReportText('&nbsp;') 와 같은 규칙), hours = 머리 줄에서 읽은 값, status = 고른 근태 코드(이 화면은 늘 하나를 고른다).
+//  보내기(§2.5, 결정 12): 막을 블록이 있으면 보내지 않고 빨갛게 보인다. 보내기 직전에 임시 저장을 쓴 뒤, 처리 중에는 입력과 단추를 잠근다. 결과는 __netcusResult 가 알린다.
+//    content = 블록 조립(atCompose)의 줄 앞 공백을 &nbsp; 로(기존 buildReportText('&nbsp;') 와 같은 규칙), hours = 블록의 시간(0 초과만),
+//    status = 고른 근태 코드(이 화면은 늘 하나를 고른다).
 function atBuildSubmit(){
   const c = atCur(), p = ATE.date.split('-').map(Number);
   return { __tc: 'netcus-report', v: 1, kind: 'daily', date: { y: p[0], m: p[1], d: p[2] },
-           fields: { status: ATTEND_STATUS_SET.has(c.status) ? c.status : '1', overtime: c.overtime, content: reportEditedBodyOut(c.text, '&nbsp;') },
-           hours: atHoursOf(c.text), dryRun: false };
+           fields: { status: ATTEND_STATUS_SET.has(c.status) ? c.status : '1', overtime: c.overtime, content: reportEditedBodyOut(atCompose(c.blocks, c.memo), '&nbsp;') },
+           hours: atHoursPayload(c.blocks), dryRun: false };
+}
+//  막는 것: 블록이 하나도 없음, 과제 미정, 시간이 범위 밖, 내용이 있는데 0시간. 빈 과제(내용 없음, 0시간)는 `[과제명] : 0` 으로 보낸다.
+//    막으면 그 블록들을 빨갛게 하고 첫 블록으로 옮긴다. 이 뒤로는 고치는 동안 빨간 표시가 바로 따라간다(showErr).
+function atSubmitBlocked(){
+  if(!ATE.blocks.length){
+    if(ATE.asText) atAsTextSet(false);
+    atMsg('보낼 과제가 없습니다. [+ 과제 추가]나 가져오기로 채우세요.', 'err');
+    const a = $('#atAdd'); if(a) try{ a.focus(); }catch(_){}
+    return true;
+  }
+  const bad = ATE.blocks.map((b, i) => atBlockProblem(b) ? i : -1).filter(i => i >= 0);
+  if(!bad.length) return false;
+  ATE.showErr = true;
+  if(ATE.asText) atAsTextSet(false);
+  atBlocksRender();
+  const el = document.querySelector('#atBlocks .at-blk[data-bi="' + bad[0] + '"]');
+  if(el) try{ el.scrollIntoView({ block: 'center' }); }catch(_){}
+  atFocusBlock(bad[0], ATE.blocks[bad[0]].name ? 'hours' : 'text');
+  atMsg('보내지 않았습니다. 고칠 과제가 ' + bad.length + '개 있습니다(빨간 블록).', 'err');
+  return true;
 }
 function atSubmit(){
   if(!ATE.p || ATE.sending) return;
-  const c = atCur();
-  if(!c.text.trim()){ atMsg('보낼 내용을 입력하세요', 'err'); const ta = $('#atText'); if(ta) try{ ta.focus(); }catch(_){} return; }
-  if(ATE.net.loading){ atMsg('인트라넷에서 읽는 중입니다. 끝난 뒤에 보내세요', 'err'); return; }
+  if(atSubmitBlocked()) return;
   const payload = atBuildSubmit();
   atDraftFlushNow(true);
   if(!Platform.caps.reportAuto){
@@ -21796,7 +22080,7 @@ function atSubmit(){
     return;
   }
   ATE.sending = true; ATE.armed = true;
-  atSetBusy(true); atMsg('회사에 보고하는 중…', 'busy');
+  atSetBusy(true); atMsg('보고하는 중…', 'busy');
   clearTimeout(ATE.wd);
   ATE.wd = setTimeout(() => {
     if(!ATE.armed) return;
@@ -21819,11 +22103,12 @@ function atOnNetcusResult(ok, msg, extra){
     //  회사 보고와 DB 저장이 둘 다 성공했다(결정 9): 임시 저장을 지우고 창은 그대로 둔다. 보낸 글이 새 처음 상태가 된다(고치지 않으면 보는 것과 같다).
     clearTimeout(ATE.timer); ATE.timer = null;
     attDraftDel(ATE.date);
-    const c = atCur(), st = ATTEND_STATUS_SET.has(c.status) ? c.status : '1', content = reportEditedBodyOut(c.text, '&nbsp;');
+    const c = atCur(), st = ATTEND_STATUS_SET.has(c.status) ? c.status : '1', content = reportEditedBodyOut(atCompose(c.blocks, c.memo), '&nbsp;');
     ATE.p.saved = { date: ATE.date, status: st, overtime: c.overtime, content, sentAt: new Date().toISOString() };
-    ATE.base = { text: atDecode(content).replace(/\s+$/, ''), status: st, overtime: c.overtime }; ATE.savedAt = '';
-    const ta = $('#atText'); if(ta) ta.value = ATE.base.text;   // 창에는 보낸 그대로(앞뒤 빈 줄 정리)를 둔다. 다시 열 때와 같다
-    if(ATE.net.date === ATE.date) ATE.net.date = '';   // 그날 근태관리 글이 바뀌었다
+    const sent = c.blocks.filter(b => b.name).map(b => ({ name: b.name, hours: b.hours, text: atBodyNorm(b.text), raw: '' })), sentMemo = atBodyNorm(c.memo);
+    ATE.base = { memo: sentMemo, blocks: sent, status: st, overtime: c.overtime }; ATE.savedAt = '';
+    ATE.memo = sentMemo; ATE.blocks = sent.map(b => Object.assign({}, b));   // 창에는 보낸 그대로(내용 앞뒤 빈 줄 정리)를 둔다. 다시 열 때와 같다
+    if(ATE.prev.date === ATE.date) ATE.prev.date = '';   // 그날 보고가 바뀌었다(이전 보고로 다시 고르면 다시 읽는다)
     atSetBusy(false);
     atDateRender();
     atFillSelects(st, c.overtime);
@@ -21852,7 +22137,7 @@ function atAskHide(){ __atAskFn = null; const a = $('#atAsk'); if(a) a.classList
 function atAskDone(close){
   const fn = __atAskFn; atAskHide();
   if(close){ atDraftFlushNow(); if(fn) fn(); return; }
-  const ta = $('#atText'); if(ta) try{ ta.focus(); }catch(_){}
+  if(!ATE.asText) atFocusFirst();
 }
 //  닫기, × 단추. 근태 창은 창을 닫고, 브라우저는 근태 달력으로 돌아간다. 고친 내용이 있으면 먼저 묻는다.
 function atRequestClose(){
@@ -21864,7 +22149,7 @@ function atRequestClose(){
 }
 //  닫아도 되는가(호스트 __winCloseRequest 와 닫기 단추). 'close' 닫아도 된다, 'ask' 묻는 창을 띄웠다([닫기]면 창을 닫는다), 'busy' 보내는 중.
 function atWinCloseCheck(){
-  if(ATE.sending){ toast('회사에 보고하는 중입니다. 끝난 뒤에 닫으세요', 'warn'); return 'busy'; }
+  if(ATE.sending){ toast('보고하는 중입니다. 끝난 뒤에 닫으세요', 'warn'); return 'busy'; }
   if(atAskOpen()) return 'ask';
   if(atDirty()){ atAsk(() => atWinCloseNow()); return 'ask'; }
   atDraftFlushNow();
@@ -21881,6 +22166,7 @@ function atWinCloseNow(){
 function atEscape(){
   if(atAskOpen()){ atAskDone(false); return true; }
   if(!atEdShown()) return false;
+  if(atAddShown()){ atAddOpen(false); const a = $('#atAdd'); if(a) try{ a.focus(); }catch(_){} return true; }   // 과제 추가 메뉴만 닫는다
   atRequestClose();
   return true;
 }
@@ -21899,8 +22185,8 @@ function atShowEditor(payload){
 }
 function atCloseEditor(){
   atAskHide(); clearTimeout(ATE.timer); ATE.timer = null;
-  ATE.p = null; ATE.date = ''; ATE.base = null; ATE.navPending = '';
-  atCalCancel();
+  ATE.p = null; ATE.date = ''; ATE.base = null; ATE.navPending = ''; ATE.memo = ''; ATE.blocks = [];
+  atAddOpen(false); atCalCancel();
   ATT.screen = 'month'; atSyncScreen();
 }
 function atShowMonth(){
@@ -21927,7 +22213,33 @@ function atInit(){
   const ed = document.getElementById('atEd');
   if(ed){
     const on = (id, ev, fn) => { const e = document.getElementById(id); if(e) e.addEventListener(ev, fn); };
-    on('atText', 'input', () => atOnEdit());
+    //  과제 블록(결정 12): 글과 시간 입력은 모델만 고친다(다시 그리지 않아 커서가 그대로다). 구조가 바뀌는 것(고르기, ▲ ▼ ✕)만 다시 그린다.
+    on('atBlocks', 'input', ev => {
+      const t = ev.target, d = t.dataset || {};
+      if(d.memo != null){ ATE.memo = t.value; atGrow(t); atOnEdit(); return; }
+      if(d.bt != null){ const i = Number(d.bt); if(!ATE.blocks[i]) return; ATE.blocks[i].text = t.value; atGrow(t); atBlockMark(i); atOnEdit(); return; }
+      if(d.bh != null){ const i = Number(d.bh); if(!ATE.blocks[i]) return; ATE.blocks[i].hours = t.value === '' ? 0 : Number(t.value); atBlockMark(i); atOnEdit(); }
+    });
+    on('atBlocks', 'change', ev => { const t = ev.target; if(t.dataset && t.dataset.bpick != null) atBlockPick(Number(t.dataset.bpick), t.value); });
+    on('atBlocks', 'click', ev => {
+      const b = ev.target.closest && ev.target.closest('button.at-bmv'); if(!b || b.disabled) return;
+      if(b.dataset.bup != null) atBlockMove(Number(b.dataset.bup), -1);
+      else if(b.dataset.bdn != null) atBlockMove(Number(b.dataset.bdn), 1);
+      else if(b.dataset.bx != null) atBlockRemove(Number(b.dataset.bx));
+    });
+    on('atAdd', 'click', () => atAddOpen(!atAddShown()));
+    on('atAddQ', 'input', atAddRender);
+    on('atAddQ', 'keydown', ev => {   // Enter = 맞는 과제 중 첫 번째(이미 있는 과제는 건너뛴다)
+      if(ev.key !== 'Enter') return;
+      ev.preventDefault();
+      const it = document.querySelector('#atAddList [data-addname]:not([disabled])'); if(it) atAddPick(it.dataset.addname);
+    });
+    on('atAddList', 'click', ev => { const it = ev.target.closest && ev.target.closest('[data-addname]'); if(it && !it.disabled) atAddPick(it.dataset.addname); });
+    on('atAddNew', 'click', atCatNew);
+    on('atAsText', 'click', () => atAsTextSet(!ATE.asText));
+    //  메뉴 바깥을 누르면 닫는다
+    document.addEventListener('mousedown', ev => { if(atAddShown() && !(ev.target.closest && ev.target.closest('#atAddWrap'))) atAddOpen(false); });
+    window.addEventListener('resize', () => { if(atEdShown() && !ATE.asText) atGrowAll(); });
     on('atStatus', 'change', () => atOnEdit());
     on('atOt', 'change', () => atOnEdit());
     on('atDiscard', 'click', atDiscard);

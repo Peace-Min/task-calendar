@@ -476,10 +476,12 @@ namespace TaskCalendarWidget
         };
         //  근태 창(ATTENDANCE-PLAN §3.2): 준비 알림, 날짜 이동 요청(메인 창이 payload 를 다시 만든다), 보고한 날 목록, 회사 보고 전송.
         //  ★ 웹의 ATTENDWIN_CMD 와 같아야 한다(tests/attendance-host.test.mjs). 근태 창은 내 달력을 읽거나 저장하지 않는다.
+        //  과제 블록(결정 12, 2026-10-29): 인트라넷 불러오기(netcusWeekMerge)를 근태 창에서 뺐다(주간보고 병합은 메인 창에서 그대로 쓴다).
+        //    attendCatNew 는 [+ 캘린더에 새 과제 만들기]: 메인 창의 과제 창을 연다(근태 창은 내 과제를 만들 수 없다).
         internal static readonly HashSet<string> AttendWinCommands = new(StringComparer.Ordinal)
         {
             "attendWinReady", "attendNav", "reportDailyList", "netcusSubmit",
-            "attendSourceReq", "netcusWeekMerge", "netcusViewMonth",   // 가져오기(2026-10-29): 다른 날짜 캘린더 기록 청하기, 회사 근태관리 읽기만. attendSourcePush 는 메인 창만 보낸다
+            "attendSourceReq", "netcusViewMonth", "attendCatNew",   // 가져오기(다른 날짜 캘린더 기록 청하기), 인트라넷 달력 보기(읽기만), 새 과제. attendSourcePush 는 메인 창만 보낸다
         };
         //  요청 번호의 머리. 회신은 이 표시를 보고 그 창으로 간다(ReplyCore). 창끼리 번호가 겹치지 않는다.
         internal const string PeerReqPrefix = "pw:";
@@ -901,6 +903,9 @@ namespace TaskCalendarWidget
                         break;
                     case "attendSourceReq":  // 근태 창의 가져오기(캘린더, 다른 날짜). 메인 창의 __attendSourceFor 로 넘긴다(메인 창이 attendSourcePush 로 돌려준다)
                         if (fromWin == WinKind.Attend) AttendSourceToMain(GetStr(doc, "date"));
+                        break;
+                    case "attendCatNew":     // 근태 창의 [+ 캘린더에 새 과제 만들기]. 메인 창을 앞으로 가져와 과제 창(openCatModal)을 연다
+                        if (fromWin == WinKind.Attend) AttendCatNewToMain();
                         break;
                     case "attendSourcePush": // 메인 창이 만든 그 날짜의 캘린더 기록. 근태 창의 __attendSource 로 넘긴다
                         if (fromWin == null) AttendSourceToWin(doc);
@@ -1932,6 +1937,14 @@ namespace TaskCalendarWidget
         {
             if (!ReportDb.TryParseYmd(date, out _)) { Log("근태 창 날짜 이동 거부: 날짜 형식이 아님"); return; }
             JsCall("window.__attendNavFromWin && window.__attendNavFromWin(" + JsonSerializer.Serialize(date) + "," + (refresh ? "true" : "false") + ")");
+        }
+
+        //  근태 창의 새 과제 만들기(결정 12): 메인 창을 앞으로 가져오고 과제 창을 연다. 인자는 없다(근태 창이 보낸 값을 싣지 않는다).
+        //    만든 과제는 근태 창이 다시 앞으로 올 때(__attendWinActivated, attendNav refresh) 새 payload 의 과제 목록으로 들어간다.
+        private void AttendCatNewToMain()
+        {
+            SummonToFront();
+            JsCall("window.__attendCatNew && window.__attendCatNew()");
         }
 
         //  가져오기 중계 1(근태 창 → 메인 창). 날짜는 'YYYY-MM-DD' 만 받고 JSON 인자로 싣는다.

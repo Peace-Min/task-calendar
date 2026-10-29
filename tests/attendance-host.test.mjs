@@ -3,8 +3,8 @@
 // 이 파일이 지키는 것(호스트 쪽만. 웹의 근태 화면은 웹 시험의 몫이다):
 //   ① 창 종류 WinKind.Attend 의 값(주소, 제목, 최소와 처음 크기, 'tw:' 머리, 준비 알림, 여는 함수, 앞으로 올 때 함수,
 //      목록 알림 안 받음, 닫기 전 확인, 자리 기억 키)과 등록(All), 설정의 Attend 자리.
-//   ② 근태 창 허용 목록 AttendWinCommands = {attendWinReady, attendNav, reportDailyList, netcusSubmit, attendSourceReq, netcusWeekMerge, netcusViewMonth}.
-//      웹 ATTENDWIN_CMD 와 같다. attendSourcePush 는 메인 창만 보낸다(목록에 없다).
+//   ② 근태 창 허용 목록 AttendWinCommands = {attendWinReady, attendNav, reportDailyList, netcusSubmit, attendSourceReq, netcusViewMonth, attendCatNew}.
+//      웹 ATTENDWIN_CMD 와 같다. attendSourcePush 는 메인 창만 보낸다(목록에 없다). netcusWeekMerge(인트라넷 불러오기)는 과제 블록(결정 12)에서 뺐다.
 //   ③ attendOpen 은 메인 창에서만 받는다. payload 가 객체가 아니면 열지 않는다. attendNav 는 근태 창에서만 받고 메인 창의
 //      __attendNavFromWin 을 부른다(날짜는 'YYYY-MM-DD' 만, 인자는 JSON 으로 싣는다).
 //   ④ reportDailyList: 사람은 세션에서, 기간은 엄격한 날짜 두 개와 상한, DB 는 UI 스레드 밖, 회신은 ReplyOnUi.
@@ -16,7 +16,8 @@
 //   ⑨ 로그아웃과 계정 바뀜은 따로 뜨는 창을 종류 가리지 않고 모두 닫는다(근태 창 포함).
 //   ⑩ 가져오기 중계(2026-10-29): attendSourceReq 는 근태 창에서만 받아 날짜를 확인하고 메인 창 __attendSourceFor 를 부른다.
 //      attendSourcePush 는 메인 창에서만 받아 날짜와 source(객체)를 확인하고 {date, source} 를 JSON 으로 다시 써서 근태 창 __attendSource 로만 넘긴다.
-//      근태관리 읽기(netcusWeekMerge)는 회사 사이트를 읽기만 한다(제출, 값 넣기, 저장이 없다).
+//      근태관리 읽기(netcusWeekMerge, 이제 메인 창의 주간보고 병합만 쓴다)는 회사 사이트를 읽기만 한다(제출, 값 넣기, 저장이 없다).
+//   ⑪ 새 과제 만들기(결정 12): attendCatNew 는 근태 창에서만 받아 메인 창을 앞으로 가져오고 메인 창 __attendCatNew 를 부른다(인자 없음).
 //   ★ 검사는 함수로 묶고(checks.*), 아래 변이 시험이 같은 함수에 망가뜨린 소스를 넣어 실패를 확인한다.
 import { test, assert, loadAppSource, stripCsComments, extractCsMember, readText } from './harness.mjs';
 
@@ -38,11 +39,11 @@ function mutate(base, from, to) {
 }
 const member = (code, sig) => extractCsMember(code, sig);
 
-const ATTEND_CMDS = ['attendNav', 'attendSourceReq', 'attendWinReady', 'netcusSubmit', 'netcusViewMonth', 'netcusWeekMerge', 'reportDailyList'];
+const ATTEND_CMDS = ['attendCatNew', 'attendNav', 'attendSourceReq', 'attendWinReady', 'netcusSubmit', 'netcusViewMonth', 'reportDailyList'];
 //  근태 창이 보내면 안 되는 것(내 달력 부팅과 저장, 창 열기, 관리, 창 조작, 주간 전송, 업데이트)
 const NEVER = ['ready', 'reloadState', 'saveState', 'replaceAllState', 'unsavedState', 'userLogin', 'userLogout',
   'attendOpen', 'adminOpen', 'peerOpen', 'peerSchedule', 'peerMine', 'membersGet', 'saveProject', 'netcusSaveCreds',
-  'netcusWeekSubmit', 'attendSourcePush', 'netcusWeeklyRangeRead', 'reminderSync', 'updateApply', 'updateCheck', 'close', 'hide', 'pin', '__dbFault'];
+  'netcusWeekSubmit', 'netcusWeekMerge', 'attendSourcePush', 'netcusWeeklyRangeRead', 'reminderSync', 'updateApply', 'updateCheck', 'close', 'hide', 'pin', '__dbFault'];
 
 function hostSet(cs, name) {
   const m = new RegExp(`internal static readonly HashSet<string> ${name} = new\\(StringComparer\\.Ordinal\\)\\s*\\{([^}]*)\\}`).exec(stripCsComments(cs));
@@ -232,6 +233,19 @@ const checks = {
     assert.match(member(s.main, 'private void HostReply(string reqId, object payload)'), /ReplyCore\(reqId\)\?\.ExecuteScriptAsync\(call\)/, '회신이 보낸 창(ReplyCore)으로 가지 않는다');
   },
 
+  // ⑪ 새 과제 만들기: 근태 창만 받고, 메인 창을 앞으로 가져온 뒤 메인 창(JsCall)의 __attendCatNew 를 인자 없이 부른다
+  catNew(s) {
+    const d = onWeb(s);
+    assert.match(d, /case "attendCatNew":[^\n]*\n\s*if \(fromWin == WinKind\.Attend\) AttendCatNewToMain\(\);/, '새 과제 만들기를 근태 창에서만 받지 않는다');
+    const m = member(s.main, 'private void AttendCatNewToMain()');
+    const front = m.indexOf('SummonToFront();'), call = m.indexOf('JsCall("window.__attendCatNew && window.__attendCatNew()");');
+    assert.ok(front > 0, '메인 창을 앞으로 가져오지 않는다(과제 창이 근태 창 뒤에 뜬다)');
+    assert.ok(call > 0, '메인 창의 __attendCatNew 를 부르지 않는다');
+    assert.ok(front < call, '과제 창을 연 뒤에 메인 창을 가져온다');
+    assert.ok(!/GetStr|GetRawText|doc/.test(m), '새 과제 만들기가 근태 창이 보낸 값을 싣는다');
+    assert.match(s.app, /window\.__attendCatNew = function\(\)\{\s*if\(!HOST \|\| PEER \|\| SUBWIN\) return;\s*try\{ openCatModal\(\); \}catch\(_\)\{\}/,'웹 메인 창의 __attendCatNew 가 과제 창을 열지 않거나 다른 창에서도 연다');
+  },
+
   // ⑨ 로그아웃과 계정 바뀜에 근태 창도 닫힌다
   closeOnLogout(s) {
     const c = member(s.main, 'private void CloseSubWindows()');
@@ -243,7 +257,7 @@ const checks = {
 
 // ══ 계약 ═══════════════════════════════════════════════════════════════
 test('근태①: WinKind.Attend 의 값과 등록(주소, 제목, 크기, tw:, 준비 알림, 웹 함수, 닫기 확인, 자리 키)', () => checks.registry(src));
-test('근태②: 근태 창 허용 목록이 일곱이고 웹 ATTENDWIN_CMD 와 같다', () => checks.whitelist(src));
+test('근태②: 근태 창 허용 목록이 일곱이고(netcusWeekMerge 없음, attendCatNew 있음) 웹 ATTENDWIN_CMD 와 같다', () => checks.whitelist(src));
 test('근태③: attendOpen 은 메인 창만, attendNav 는 근태 창만 받아 메인 창 __attendNavFromWin 을 부른다', () => checks.routing(src));
 test('근태④: reportDailyList 는 세션의 사람과 엄격한 기간으로 읽고 SELECT 는 파라미터로 묶는다', () => checks.dailyList(src));
 test('결정9⑤: vr==1 에서 저장을 기다린 뒤 결과를 알리고 실패는 공통 안내다', () => checks.decision9(src));
@@ -251,6 +265,7 @@ test('결정9⑥: 일간 백그라운드 재시도가 없다(주간은 그대로
 test('알림⑦: __netcusProgress, __netcusResult 가 메인 창과 근태 창으로 간다(메인 먼저)', () => checks.notifyBoth(src));
 test('알림⑧: __reportDailySaved 는 저장 성공 뒤에만 두 창으로 간다', () => checks.savedNotice(src));
 test('닫기⑨: 로그아웃과 계정 바뀜은 근태 창도 닫는다', () => checks.closeOnLogout(src));
+test('새 과제⑪: attendCatNew 는 근태 창만 받아 메인 창을 앞으로 가져오고 __attendCatNew(과제 창)를 부른다', () => checks.catNew(src));
 test('가져오기⑩: attendSourceReq 는 근태 창만, attendSourcePush 는 메인 창만 받아 날짜와 source 를 확인하고 JSON 으로 다시 써서 넘긴다, 근태관리는 읽기만', () => checks.sourceRelay(src));
 
 // ══ 변이: 검사가 실제로 무는가 ═════════════════════════════════════════
@@ -262,6 +277,21 @@ test('변이①: 근태 창의 처음 높이를 바꾸면 근태① 이 실패�
 test('변이②: 근태 창 목록에 saveState 를 넣으면 근태② 가 실패한다', () => {
   const bad = mutate(src.main, '"attendWinReady", "attendNav", "reportDailyList", "netcusSubmit",', '"attendWinReady", "attendNav", "reportDailyList", "netcusSubmit", "saveState",');
   assert.throws(() => checks.whitelist(with_('main', bad)), /기획\(§3\.2\)과 다르다/);
+});
+
+test('변이②c: 근태 창 목록에 netcusWeekMerge 를 되살리면 근태② 가 실패한다', () => {
+  const bad = mutate(src.main, '"attendSourceReq", "netcusViewMonth", "attendCatNew",', '"attendSourceReq", "netcusViewMonth", "attendCatNew", "netcusWeekMerge",');
+  assert.throws(() => checks.whitelist(with_('main', bad)), /기획\(§3\.2\)과 다르다|보내면 안 되는/);
+});
+
+test('변이⑪: attendCatNew 의 근태 창 가드를 빼면 새 과제⑪ 이 실패한다', () => {
+  const bad = mutate(src.main, 'if (fromWin == WinKind.Attend) AttendCatNewToMain();', 'AttendCatNewToMain();');
+  assert.throws(() => checks.catNew(with_('main', bad)), /근태 창에서만 받지 않는다/);
+});
+
+test('변이⑪b: 메인 창을 앞으로 가져오지 않으면 새 과제⑪ 이 실패한다', () => {
+  const bad = mutate(src.main, '            SummonToFront();\n            JsCall("window.__attendCatNew', '            JsCall("window.__attendCatNew');
+  assert.throws(() => checks.catNew(with_('main', bad)), /앞으로 가져오지 않는다/);
 });
 
 test('변이②b: 웹 목록이 하나 빠지면 근태② 가 실패한다', () => {
