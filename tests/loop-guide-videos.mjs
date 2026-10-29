@@ -76,7 +76,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let ws, id = 0; const pend = new Map();
 async function connect() {
   let list; try { list = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json(); } catch { return false; }
-  const p = list.find((x) => x.type === 'page' && /tcapp\.local/.test(x.url || '') && !/peerwin=1|[?&]win=admin/.test(x.url || ''));
+  const p = list.find((x) => x.type === 'page' && /tcapp\.local/.test(x.url || '') && !/peerwin=1|[?&]win=(admin|attend)/.test(x.url || ''));
   if (!p) return false;
   ws = new WebSocket(p.webSocketDebuggerUrl);
   await new Promise((r, j) => { ws.addEventListener('open', r, { once: true }); ws.addEventListener('error', j, { once: true }); });

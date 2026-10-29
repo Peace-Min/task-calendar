@@ -7,6 +7,15 @@
 
 ---
 
+## 🆕 2026-10-29 (다음 판, 번호는 배포 때): 근태 탭과 근태 보고 창, 일간 전송은 기록 저장까지 기다린다
+
+상단 탭에 근태를 더했다. 이 앱으로 보낸 일간 보고(`cal_report_daily`)를 달력으로 보여 주고, 날짜를 누르면 위젯에서는 따로 뜨는 근태 창(`WinKind.Attend`, `?win=attend`), 브라우저에서는 근태 탭 안 화면 전환으로 보고 화면이 열린다. 내용은 회사 양식처럼 한 칸이고 오른쪽 패널에서 캘린더나 보고한 날짜를 과제별로 불러온다. 작성 중 글은 이 PC 에 임시 저장한다(`tc_attDraft:<who>:<날짜>`). DB 구조와 버전은 바꾸지 않는다(구조 19). 기획 [docs/ATTENDANCE-PLAN.md](docs/ATTENDANCE-PLAN.md), 결정 9 보완, 10, 11.
+
+- **계약 개정(결정 9)**: 일간 전송은 회사 되읽기 확인(vr==1) 뒤 `cal_report_daily` 와 `cal_report_hours` 저장을 기다리고, 커밋돼야 성공(`__netcusResult(true)`)을 알린다. 실패는 "처리를 완료하지 못했습니다. 다시 시도해 주세요." 이다. `INetcusHost.SaveDailyReport` 는 `Task<bool>` 이 됐고 일간의 백그라운드 재시도(10, 30, 60초)와 일간 `__reportRecordFailed` 는 없어졌다. 주간은 그대로다. 보고서 모달의 일간 전송도 같은 길이다.
+- 호스트 명령: `attendOpen`(메인 창만), `attendWinReady`, `attendNav`(근태 창에서 메인 창으로), `reportDailyList`(`ReportDb.ListDailyAsync`, 400일 상한). 알림 `__netcusProgress`, `__netcusResult` 는 메인 창과 근태 창 모두로 가고, 커밋 뒤 `__reportDailySaved` 를 보낸다. 근태 창 허용 목록은 웹 `ATTENDWIN_CMD` 와 호스트 `AttendWinCommands` 가 같아야 한다(시험).
+- 보고서 모달은 자기가 보낸 전송일 때만(`__rptSendArmed`) 회신 문구와 토스트를 낸다.
+- 시험: `attendance-web`, `attendance-host` 추가, 실제 위젯 루프 `tests/loop-attendance.mjs`.
+
 ## 🆕 2026-10-26 (다음 판, 번호는 배포 때): 구성원 소속별 편집과 순서 조정
 
 구성원 편집에 조직 트리를 추가했다. 전체, 조직(하위 포함), 소속 없음에서 구성원을 찾고 수정한다. 순서 편집은 선택한 목록 안에서 이동하되 전체 명부 하나의 순서를 사용한다. 다른 조직 구성원의 자리는 유지하며, 저장은 기존 전체 명부 검증과 관리자 관문을 사용한다. DB 구조와 버전은 바꾸지 않는다. 기획: [docs/MEMBER-ORG-ORDER.md](docs/MEMBER-ORG-ORDER.md).
