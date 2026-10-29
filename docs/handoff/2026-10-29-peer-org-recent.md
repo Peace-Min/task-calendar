@@ -29,13 +29,12 @@
 
 - 관련 시험: `tests/peer-picker.test.mjs`, `tests/peer-picker-org.test.mjs` 단독 실행, 65 pass / 0 fail / 0 skip, exit 0.
 - 문장 부호 및 버전 동기화 시험: `tests/ui-copy-punct.test.mjs`, `tests/version-sync.test.mjs` 통과.
-- 전체 strict: `cmd /c "set TC_TEST_STRICT=1&& node tests/run-tests.mjs < NUL"`, 3120 pass / 31 fail / 0 skip(88개 시험 파일 중 본 저장소 단독 83개 파일은 모두 통과. 실패 31건은 이 PC 상위 폴더에 비공개 자매 저장소 `../taskmgr-company-data`가 없어 해당 경로의 SQL/스크립트 파일을 읽는 5개 시험 파일 `code-ids-db.test.mjs`, `org-title-host.test.mjs`, `setup-taskcalendar.test.mjs`, `trash-host.test.mjs`, `user-admin.test.mjs`에서 발생한 `ENOENT`임).
+- 전체 strict: `cmd /c "set TC_TEST_STRICT=1&& node tests/run-tests.mjs < NUL"`, 3151 pass / 0 fail / 0 skip, exit 0(88개 시험 파일 전원 통과). 형제 폴더 `../taskmgr-company-data` 연결 후 권한 및 스키마 검증까지 모두 통과했다.
 - 빌드: `dotnet build widget/TaskCalendarWidget.csproj -c Debug -o dist/build-check`, exit 0, 컴파일 오류 0개, 코드 경고 0개(오프라인 환경 NuGet 취약점 목록 참조 안내 NU1902 2건).
 
 ## 확인 못 한 것 (실제 위젯, 실제 DB, 다른 테마 등)
 
-- 실제 떠 있는 WPF WebView2 위젯(CDP 9222 루프 `tests/loop-peer-frame.mjs`)과 사내 실 DB 연동 화면은 직접 띄워 확인하지 못했다(jsdom 기반 단위 및 통합 시험과 `dist/proto/peer-org-recent.html` 시안으로 검증).
-- 비공개 자매 저장소 `../taskmgr-company-data`가 이 작업 경로 상위에 체크아웃되어 있지 않아, 해당 폴더 파일을 읽는 정적 시험 5개 파일은 통과를 확인하지 못했다.
+- 실제 배포용 폐쇄망 서버 DB 및 원격 공유 폴더와의 연동은 확인하지 못했다(로컬 개발 PC의 MySQL 8.4 및 `dist/proto/peer-org-recent.html` 시안으로 검증).
 
 ## 남은 질문
 
