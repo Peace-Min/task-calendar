@@ -20,13 +20,15 @@ namespace TaskCalendarWidget
         CoreWebView2Environment? Env { get; }         // 초기화 후 할당되므로 라이브 getter(프로퍼티)
         string DataDir { get; }
         void Eval(string js);                          // 메인 웹뷰 ExecuteScriptAsync(dispatcher 마샬 + try/catch)
+        void EvalReport(string js);                    // 보고 진행과 결과 알림. 메인 창 먼저, 근태 창이 떠 있으면 거기에도(ATTENDANCE-PLAN §3.2)
         void Reply(string reqId, object payload);      // window.__hostReply(reqId, payload)
         void Log(string msg);
 
-        //  보고 기록 저장(설계 §5.9). 반환값이 없는 이유 — 이 시점에는 **이미 사이트로 보고서가 나갔다**.
-        //  저장 실패로 전송을 실패처럼 보이게 하면 사용자가 재전송하게 되고 그게 더 큰 사고다.
-        //  실패는 ReportDb 안에서 잡아 로그로 남는다(조용히 삼키는 것이 아니다).
-        void SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson);
+        //  일간 보고 기록 저장(설계 §5.9, 결정 9). 회사 보고가 되읽기로 확인된 뒤(vr==1)에만 부르고 호출자가 결과를 기다린다.
+        //  true = cal_report_daily 1행과 cal_report_hours N행을 한 트랜잭션으로 커밋했다. false 면 호출자가 공통 실패 안내를 띄운다
+        //  (재시도는 회사 보고부터 다시 한다. DB 만 다시 저장하는 길은 없다). 예외는 던지지 않고 false 로 돌려준다.
+        Task<bool> SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson);
+        //  주간 보고 기록 저장. 반환값이 없다: 주간은 폼 채우기까지만 하고, 기록은 호스트가 뒤에서 10, 30, 60초 재시도한다(OfflineHost.cs S10).
         void SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork);
 
         //  버전 관문 확인(VERSION-GATE §2.4). 관문으로 DB 연결을 한 번 열고 닫는다. false = 막혔다.
@@ -371,9 +373,9 @@ namespace TaskCalendarWidget
             JsCall("window.__netcusCreds && window.__netcusCreds(" + JsonSerializer.Serialize(id) + "," + (string.IsNullOrEmpty(pw) ? "false" : "true") + ")");
         }
 
-        // ----- 진행/결과 보고(메인 웹뷰로) -----
-        private void NetcusProgress(string msg) { Log("netcus: " + msg); JsCall("window.__netcusProgress && window.__netcusProgress(" + JsonSerializer.Serialize(msg) + ")"); }
-        private void NetcusResult(bool ok, string msg) { Log("netcus result: " + ok + " / " + msg); JsCall("window.__netcusResult && window.__netcusResult(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(msg) + ")"); }
+        // ----- 진행/결과 보고(메인 창과 근태 창으로. 어느 창의 요청인지는 각 웹이 가린다) -----
+        private void NetcusProgress(string msg) { Log("netcus: " + msg); _host.EvalReport("window.__netcusProgress && window.__netcusProgress(" + JsonSerializer.Serialize(msg) + ")"); }
+        private void NetcusResult(bool ok, string msg) { Log("netcus result: " + ok + " / " + msg); _host.EvalReport("window.__netcusResult && window.__netcusResult(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(msg) + ")"); }
         //  관문이 막아 사이트에 접속하지 않았다. 셋째 인자로 kind 'gate' 와 관문 정보를 싣는다(옛 웹은 무시한다).
         //  화면 전환은 호스트가 이미 민 __versionGate 가 한다.
         private void NetcusGateBlocked()
@@ -383,7 +385,7 @@ namespace TaskCalendarWidget
             string extra = g == null ? JsonSerializer.Serialize(new { kind = DbErrorKind.Gate })
                                      : JsonSerializer.Serialize(new { kind = DbErrorKind.Gate, gate = DbGate.ReplyGate(g) });
             Log("netcus result: false / " + m + " (버전 관문)");
-            JsCall("window.__netcusResult && window.__netcusResult(false," + JsonSerializer.Serialize(m) + "," + extra + ")");
+            _host.EvalReport("window.__netcusResult && window.__netcusResult(false," + JsonSerializer.Serialize(m) + "," + extra + ")");
         }
 
         // ----- 진행 프로토콜(진행바용 — JS 렌더는 다음 Phase). 텍스트 NetcusProgress와 병행(제거 안 함). -----
@@ -596,11 +598,12 @@ namespace TaskCalendarWidget
                 if (vr == -1) NetcusResult(false, "세션이 만료됐거나 로그인이 필요합니다. 자격증명을 확인하세요.");
                 else if (vr == 1)
                 {
-                    NetcusResult(true, "회사 일간보고 전송 완료(한글까지 정상 저장 확인). netcus 사이트에서도 확인하세요.");
-                    //  ★ 결과를 먼저 알리고 그 다음 기록한다 — 사용자가 보는 진실은 '전송됐다'이고,
-                    //    DB 저장은 그걸 바꾸지 못한다. vr==1(되읽어 검증됨)일 때만 부른다 —
-                    //    실패한 전송을 기록하면 표가 거짓말을 하게 된다.
-                    _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.HoursJson);
+                    //  ★ 결정 9(ATTENDANCE-PLAN §3.4): 회사 보고가 되읽기로 확인됐다. 그 내용 그대로 DB 에 저장하고,
+                    //    커밋을 확인한 뒤에만 성공을 알린다. 저장이 실패하면 공통 실패 안내를 띄운다(창과 입력은 웹이 그대로 둔다).
+                    //    vr==1 일 때만 부른다. 확인되지 않은 전송을 기록하면 표가 거짓말을 하게 된다.
+                    NetcusProgress("기록 저장 중…");
+                    bool stored = await _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.HoursJson);
+                    NetcusResult(stored, stored ? "회사 보고와 기록 저장을 완료했습니다." : "처리를 완료하지 못했습니다. 다시 시도해 주세요.");
                 }
                 else if (vr == 2) NetcusResult(false, "저장은 됐으나 한글이 깨졌을 수 있습니다(되읽기 대조 불일치). netcus에서 확인하세요.");
                 else NetcusResult(false, "저장 확인 실패(내용이 비어 있음). 열린 창에서 직접 확인하세요.");

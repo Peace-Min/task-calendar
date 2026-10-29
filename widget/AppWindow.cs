@@ -12,9 +12,10 @@ using Microsoft.Web.WebView2.Wpf;
 namespace TaskCalendarWidget
 {
     // ============ 따로 뜨는 창의 종류(WINDOW-UI §4, ADMIN-WINDOW §3) ============
-    //  메인 창 밖에 따로 뜨는 창은 종류마다 하나다(MainWindow._wins). 지금 종류는 둘이다.
+    //  메인 창 밖에 따로 뜨는 창은 종류마다 하나다(MainWindow._wins). 지금 종류는 셋이다.
     //    열람 창(Peer): 다른 사람 일정 보기. 같은 HTML 을 ?peerwin=1 로 띄운다.
     //    관리 창(Admin): ⚙ 관리 허브. 같은 HTML 을 ?win=admin 으로 띄운다.
+    //    근태 창(Attend): 근태 보고 작성(ATTENDANCE-PLAN §3.1). 같은 HTML 을 ?win=attend 로 띄운다.
     //  종류가 정하는 것: 웹 주소(같은 HTML 의 모드), 창 제목, 최소 크기, 처음 크기, 크기 기억 자리(widget.settings.json),
     //  명령 허용 목록(웹과 호스트 양쪽에서 거른다. 판정은 호스트의 MainWindow.OnWebMessage), 회신 번호 머리,
     //  번호 없이 받는 명령, 목록 갱신 알림을 받는지, 닫기 전에 웹에 묻는지.
@@ -59,14 +60,25 @@ namespace TaskCalendarWidget
             GetsCatalog = true, AskBeforeClose = true,
             GetBounds = s => s.Admin, SetBounds = (s, b) => s.Admin = b,
         };
+        //  근태 창(ATTENDANCE-PLAN §3.1). 대상(payload)은 메인 창이 만들어 attendOpen 으로 넘긴다. 내 달력은 읽지 않는다.
+        //  회신 없는 명령(attendNav, netcusSubmit)도 번호 없이 오므로 AnyCmdWithoutReq 를 켠다. 작성 중 글이 있으면 닫기 전에 묻는다.
+        public static readonly WinKind Attend = new()
+        {
+            Id = "attend", Name = "근태 창", Url = "https://tcapp.local/index.html?win=attend", Title = "근태 보고",
+            TitleFollowsDocument = false, MinWidth = 720, MinHeight = 520, DefaultWidth = 1200, DefaultHeight = 860,
+            ReqPrefix = MainWindow.AttendReqPrefix, ReadyCmd = "attendWinReady", AnyCmdWithoutReq = true,
+            Commands = MainWindow.AttendWinCommands, OpenFn = "__attendWinOpen", ActivatedFn = "__attendWinActivated",
+            GetsCatalog = false, AskBeforeClose = true,
+            GetBounds = s => s.Attend, SetBounds = (s, b) => s.Attend = b,
+        };
         //  종류 등록. 새 종류는 여기에 더한다(번호 머리가 서로 겹치지 않아야 한다).
-        public static readonly IReadOnlyList<WinKind> All = new[] { Peer, Admin };
+        public static readonly IReadOnlyList<WinKind> All = new[] { Peer, Admin, Attend };
 
         //  요청 번호의 머리로 종류를 찾는다. 메인 창의 번호(머리 없음)면 null.
         public static WinKind? OfReq(string reqId) =>
             string.IsNullOrEmpty(reqId) ? null : All.FirstOrDefault(k => reqId.StartsWith(k.ReqPrefix, StringComparison.Ordinal));
 
-        //  번호 없이 받아도 되는 명령인가. 열람 창은 준비 알림 하나, 관리 창은 허용 목록 전부(회신 없는 명령이 있다).
+        //  번호 없이 받아도 되는 명령인가. 열람 창은 준비 알림 하나, 관리 창과 근태 창은 허용 목록 전부(회신 없는 명령이 있다).
         public bool AcceptsWithoutReq(string cmd) => AnyCmdWithoutReq || cmd == ReadyCmd;
     }
 
@@ -80,7 +92,7 @@ namespace TaskCalendarWidget
     //  - 같은 HTML 을 종류의 모드(?peerwin=1, ?win=admin)로 띄운다. 그 모드는 자기 화면만 그리고 내 달력을 부팅하지 않는다.
     //  - 웹 메시지는 메인 창과 같은 처리기(MainWindow.OnWebMessage)로 간다. 거기서 그 종류의 허용 목록만 받는다.
     //    사람(보는 사람, 관리자)은 그 처리기가 요청마다 호스트 세션에서 읽는다(웹이 정하지 않는다).
-    //  - 크기와 위치는 종류마다 PC 에 하나 기억한다(widget.settings.json 의 Peer, Admin). 닫을 때 MainWindow.RememberWinBounds 로 넘긴다.
+    //  - 크기와 위치는 종류마다 PC 에 하나 기억한다(widget.settings.json 의 Peer, Admin, Attend). 닫을 때 MainWindow.RememberWinBounds 로 넘긴다.
     internal sealed class AppWindow : Window
     {
         private readonly MainWindow _host;
@@ -134,7 +146,7 @@ namespace TaskCalendarWidget
             Activated += (_, _) => { if (Kind.ActivatedFn.Length > 0) Js("window." + Kind.ActivatedFn + " && window." + Kind.ActivatedFn + "()"); };
             Closing += (_, e) =>
             {
-                //  관리 창: 창 테두리의 ✕, Alt+F4, 작업 표시줄의 닫기는 먼저 웹에 묻는다(저장 안 한 입력, ADMIN-WINDOW §2.2).
+                //  관리 창과 근태 창: 창 테두리의 ✕, Alt+F4, 작업 표시줄의 닫기는 먼저 웹에 묻는다(저장 안 한 입력, ADMIN-WINDOW §2.2, ATTENDANCE-PLAN §2.4).
                 //  웹이 아직 뜨지 않았으면 물을 곳이 없으니 그냥 닫는다.
                 if (Kind.AskBeforeClose && !_closeOk && _ready && Core != null)
                 {
@@ -236,7 +248,7 @@ namespace TaskCalendarWidget
             try { Close(); } catch { }
         }
 
-        //  대상을 넘긴다(JSON. 열람 창: {loginId, name, me}, 관리 창: {item, me}). 웹이 아직 준비 전이면 준비될 때 넘긴다.
+        //  대상을 넘긴다(JSON. 열람 창: {loginId, name, me}, 관리 창: {item, me}, 근태 창: 메인 창이 만든 payload). 웹이 아직 준비 전이면 준비될 때 넘긴다.
         public void ShowTarget(string json)
         {
             _pending = json;

@@ -2724,6 +2724,103 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
   .pc-tab{padding:7px 14px}
   .pcm-modal{height:88vh}
 }
+/* ===== 근태 탭과 근태 보고 화면(docs/ATTENDANCE-PLAN.md §2). 새 규칙은 모두 .at- 와 #at* 다 =====
+   ★ 근태 탭에서는 개인 화면(필터바, 월 칸, 오른쪽 패널)을 지우지 않고 숨긴다(과제 탭 body.pc-on 과 같은 방식). 상단바의 달 이동과
+     개인 화면 단추도 숨긴다. 근태 화면이 자기 달 이동 줄을 가진다.
+   ★ 보고 화면(#atEd)은 하나다. 브라우저에서는 근태 탭 안에서 달력과 자리를 바꾸고, 위젯의 근태 창(html[data-attendwin])에서는
+     창 전체를 채운다. 색은 모두 토큰이라 다크 테마도 그대로 따른다. */
+body.at-on #filterbar,body.at-on main > .cal,body.at-on main > .splitter,body.at-on #dayPanel,body.at-on #bootSkeleton,
+body.at-on .topbar .nav,body.at-on #btnSearch,body.at-on #btnPeerPick,body.at-on #btnReportTop,body.at-on #btnNew,
+body.at-on .mm-fold-rp,body.at-on .mm-fold-pk,body.at-on #btnSearchFold{display:none !important}
+body:not(.at-on) #atView{display:none !important}
+.at-view{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
+.at-month{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:10px 12px 8px}
+.at-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:none;margin-bottom:8px}
+.at-range{font-size:var(--fs-title);font-weight:700;padding:0 4px;white-space:nowrap}
+.at-sum{display:flex;gap:14px;flex-wrap:wrap;font-size:var(--fs-meta);color:var(--muted)}
+.at-sum b{color:var(--text);font-size:var(--fs-body)}
+.at-note{flex:none;margin:0 0 8px;padding:7px 10px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--dim-bg);color:var(--muted);font-size:var(--fs-meta)}
+.at-note.err{border-color:var(--danger);background:var(--danger-soft);color:var(--danger-text)}
+.at-gridwrap{flex:1;min-height:0;overflow:auto}
+.at-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:minmax(112px,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;min-height:100%}
+.at-day{background:var(--panel);padding:3px 6px 5px;cursor:pointer;display:flex;flex-direction:column;gap:2px;min-width:0;min-height:0;overflow:hidden}
+.at-day:hover{background:var(--hover-bg)}
+.at-day.dim{background:var(--dim-bg)} .at-day.dim .num{color:var(--faint-text)}
+.at-day.wknd-sat:not(.dim):not(:hover){background:var(--wknd-sat-bg)}
+.at-day.wknd-sun:not(.dim):not(:hover){background:var(--wknd-sun-bg)}
+.at-day.today .num{background:var(--accent-fill);color:var(--on-accent);font-weight:700}
+.at-day:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.at-day .cell-top{min-width:0}
+.at-st{font-size:var(--fs-micro);font-weight:700;color:var(--accent-2);line-height:var(--lh-tight)}
+.at-txt{font-size:var(--fs-micro);line-height:1.45;color:var(--text);white-space:pre-wrap;overflow:hidden;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;min-height:0}
+.at-drf{font-size:var(--fs-micro);font-weight:600;color:var(--warn-text)}
+.at-tip{position:fixed;z-index:60;max-width:360px;max-height:70vh;overflow:hidden;background:var(--panel);color:var(--text);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:var(--shadow);padding:10px 12px;font-size:var(--fs-meta);white-space:pre-wrap;line-height:1.55;pointer-events:none}
+.at-tip b{color:var(--accent-2)}
+/* 보고 화면 */
+.at-ed{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--panel);position:relative}
+.at-ed-head{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap}
+.at-ed-head h2{margin:0;font-size:var(--fs-h2)}
+.at-ed-nav{display:inline-flex;align-items:center;gap:6px}
+.at-ed-nav .btn.icon{padding:3px 10px}
+.at-ed-date{font-size:var(--fs-emph);font-weight:600;white-space:nowrap}
+.at-fold{border:0;background:none;color:var(--muted);cursor:pointer;font:inherit;font-size:var(--fs-meta);padding:4px 8px;border-radius:var(--r-sm)}
+.at-fold:hover{background:var(--hover-bg);color:var(--text)}
+.at-ed-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 360px}
+.at-ed-body.folded{grid-template-columns:minmax(0,1fr)}
+.at-ed-body.folded .at-panel{display:none}
+.at-left{display:flex;flex-direction:column;gap:10px;padding:14px 16px;min-height:0;min-width:0}
+.at-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.at-lb{font-size:var(--fs-meta);color:var(--muted);font-weight:600}
+.at-ed select,.at-ed textarea{font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 8px;color:var(--text);background:var(--panel)}
+.at-ed select:disabled,.at-ed textarea:disabled{opacity:.6}
+.at-pv{font-size:var(--fs-meta);color:var(--muted)}
+.at-ed .at-text{flex:1;min-height:220px;width:100%;resize:none;font-size:var(--fs-emph);line-height:1.65;padding:10px 12px;white-space:pre-wrap;tab-size:4}
+.at-stat{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:var(--fs-meta);color:var(--muted);flex:none}
+.at-stat b{color:var(--text)}
+.at-saved{color:var(--ok)}
+.at-restore{display:flex;gap:10px;align-items:center;background:var(--ovl-bg);color:var(--ovl-ink);border:1px solid var(--ovl-dot);border-radius:var(--r-sm);padding:6px 10px;font-size:var(--fs-body);flex:none}
+.at-lnk{border:0;background:none;color:var(--accent-2);cursor:pointer;font:inherit;font-size:var(--fs-meta);padding:0;text-decoration:underline;text-underline-offset:2px}
+.at-lnk:disabled{color:var(--faint-text);cursor:default}
+.at-restore .at-lnk{color:inherit;font-weight:600}
+.at-panel{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--dim-bg)}
+.at-panel-in{flex:1;min-height:0;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.at-panel h3{margin:0;font-size:var(--fs-body)}
+.at-opt{display:grid;grid-template-columns:auto 1fr;gap:5px 10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:8px 10px;font-size:var(--fs-body)}
+.at-ck{display:inline-flex;gap:5px;align-items:center;cursor:pointer;margin-right:10px}
+.at-pick-row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-meta);color:var(--muted)}
+.at-cards{display:flex;flex-direction:column;gap:6px}
+.at-card{border:1px solid var(--line);border-radius:var(--r-md);padding:7px 10px;background:var(--panel);min-width:0}
+.at-card.off{background:transparent} .at-card.off .at-recs{opacity:.55}
+.at-card-h{display:flex;align-items:center;gap:7px;font-weight:700;font-size:var(--fs-body);cursor:pointer;min-width:0}
+.at-card-h .at-cnm{min-width:0;overflow-wrap:anywhere}
+.at-card-h small{margin-left:auto;font-weight:400;color:var(--muted);white-space:nowrap}
+.at-dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex:none}
+.at-recs{list-style:none;margin:4px 0 0;padding:0 0 0 22px;font-size:var(--fs-meta);line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.at-recs li.skip{color:var(--faint-text);text-decoration:line-through}
+.at-recs small{color:var(--muted)}
+.at-none{font-size:var(--fs-meta);color:var(--faint-text);padding:4px 0}
+.at-panel-foot{padding:10px 14px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px;background:var(--panel);flex:none}
+.at-hint{font-size:var(--fs-meta);color:var(--muted)}
+.at-confirm{font-size:var(--fs-meta);color:var(--danger-text);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.at-ed-foot{display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--line);flex:none;flex-wrap:wrap}
+.at-msg{font-size:var(--fs-body);color:var(--muted);min-width:0}
+.at-msg.ok{color:var(--ok)} .at-msg.err{color:var(--danger-text)}
+.at-ask{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(18,23,42,.3);z-index:5;padding:16px}
+.at-ask-box{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:18px 20px;width:min(400px,100%);display:flex;flex-direction:column;gap:12px;font-size:var(--fs-body);line-height:1.6}
+.at-ask-box b{font-size:var(--fs-emph)}
+.at-ask-btns{display:flex;gap:8px;justify-content:flex-end}
+/* 근태 창(위젯, ?win=attend): 보고 화면이 문서 전체다. 보고 화면, 확인 창, 토스트, 버전 관문 카드만 보인다(allowlist).
+   ★ 브라우저로 돌아가는 단추(← 근태 달력)는 없다. 창 테두리의 닫기와 닫기 단추가 그 일을 한다(쓰던 글이 있으면 먼저 묻는다). */
+html[data-attendwin] body > :not(#atEd):not(#confirmModal):not(#toastWrap):not(#vgGate){ display:none !important }
+html[data-attendwin] body{ overflow:hidden; background:var(--panel) }
+html[data-attendwin] #atEd{ height:100% }
+html[data-attendwin] #atBack{ display:none }
+@media (max-width:760px){
+  .at-ed-body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(320px,1fr) auto;overflow:auto}
+  .at-panel{border-left:0;border-top:1px solid var(--line)}
+  .at-grid{grid-auto-rows:minmax(84px,1fr)}
+  .at-day{padding:2px 3px}
+}
 /* ===== 월간 보고 탭(docs/MONTHLY-REPORT-PLAN.md §5). 새 규칙은 모두 .rptm- 와 #rptm* 다 =====
    2026-10-23 결정: 이 탭은 모으기와 미리 보기만 한다(고치는 칸 없음). 개발 일정 그림은 과제 고르기 줄에서 다룬다.
    이 탭이면 보고 모달에 .rptm-on 이 붙는다(setReportMode). 레일의 탭 줄만 남기고 레일 칸, 미리보기, 보내기와 복사 버튼을 숨긴다.
@@ -2976,6 +3073,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
 <div class="pc-tabs" id="pcTabs" role="tablist" aria-label="캘린더 종류">
   <button type="button" class="pc-tab on" role="tab" id="pcTabPersonal" aria-selected="true" aria-controls="filterbar" data-pctab="personal">개인</button>
   <button type="button" class="pc-tab" role="tab" id="pcTabProject" aria-selected="false" aria-controls="pcView" tabindex="-1" data-pctab="project">과제</button>
+  <button type="button" class="pc-tab" role="tab" id="pcTabAttend" aria-selected="false" aria-controls="atView" tabindex="-1" data-pctab="attend">근태</button>
 </div>
 
 <div class="filterbar ovf-scroll" id="filterbar"></div>
@@ -3017,6 +3115,75 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
   </aside>
   <!-- 과제 탭 화면(pcRender 가 채운다). 과제 탭에서는 위의 개인 달력과 패널을 숨기고 이것만 보인다. -->
   <section class="pc-view" id="pcView" role="tabpanel" aria-labelledby="pcTabProject"></section>
+  <!-- 근태 탭 화면(docs/ATTENDANCE-PLAN.md §2.2~§2.5). 달력(#atMonth, atRenderMonth 가 채운다)과 보고 화면(#atEd)이 같은 자리를 나눠 쓴다.
+       브라우저에서는 날짜를 누르면 달력이 보고 화면으로 바뀐다. 위젯은 보고 화면을 따로 뜬 근태 창(?win=attend)에서 연다:
+       그 창은 attendWinBoot 가 #atEd 를 body 바로 아래로 옮겨 창 전체에 편다(보고 화면 내용은 하나, 담는 그릇만 다르다). -->
+  <section class="at-view" id="atView" role="tabpanel" aria-labelledby="pcTabAttend">
+    <div class="at-month" id="atMonth"></div>
+    <div class="at-ed hidden" id="atEd" role="region" aria-labelledby="atEdTitle">
+      <div class="at-ed-head">
+        <button type="button" class="btn sm" id="atBack">← 근태 달력</button>
+        <h2 id="atEdTitle">근태 보고</h2>
+        <span class="at-ed-nav">
+          <button type="button" class="btn icon sm" id="atPrev" title="전날" aria-label="전날">‹</button>
+          <span class="at-ed-date" id="atEdDate" aria-live="polite"></span>
+          <button type="button" class="btn icon sm" id="atNext" title="다음날" aria-label="다음날">›</button>
+        </span>
+        <span class="spacer"></span>
+        <button type="button" class="at-fold" id="atFold" aria-expanded="true" aria-controls="atPanel">불러오기 패널 접기 ›</button>
+        <button type="button" class="x" id="atX" title="닫기" aria-label="닫기">×</button>
+      </div>
+      <div class="at-ed-body" id="atEdBody">
+        <div class="at-left">
+          <div class="at-row">
+            <label class="at-lb" for="atStatus">근태</label><select id="atStatus" class="at-sel"></select>
+            <label class="at-lb" for="atOt">초과시간</label><select id="atOt" class="at-sel"></select>
+            <span class="at-pv" id="atPv"></span>
+          </div>
+          <div class="at-restore hidden" id="atRestore"><span id="atRestoreMsg"></span><span class="spacer"></span><button type="button" class="at-lnk" id="atDiscard">버리고 처음 상태로</button></div>
+          <textarea id="atText" class="at-text" spellcheck="false" aria-label="보고 내용" placeholder="[과제명] : 시간&#10;- 한 일&#10;  - 세부 내용"></textarea>
+          <div class="at-stat"><span id="atLines"></span><span id="atHours"></span><span class="at-saved" id="atSaved"></span></div>
+        </div>
+        <aside class="at-panel" id="atPanel" aria-label="불러오기 패널">
+          <div class="at-panel-in">
+            <h3>불러오기</h3>
+            <div class="at-row">
+              <div class="seg" role="group" aria-label="불러오기 출처">
+                <button type="button" class="seg-b active" data-atsrc="cal" aria-pressed="true">캘린더</button>
+                <button type="button" class="seg-b" data-atsrc="rep" aria-pressed="false">보고한 날짜</button>
+              </div>
+              <select id="atRepDate" class="at-sel hidden" aria-label="보고한 날짜"></select>
+            </div>
+            <div class="at-opt" id="atOpts">
+              <span class="at-lb">포함 항목</span><span><label class="at-ck"><input type="checkbox" id="atOEvent" checked> 일정</label><label class="at-ck"><input type="checkbox" id="atOTodo" checked> 할 일</label></span>
+              <span class="at-lb">과제</span><span><label class="at-ck"><input type="checkbox" id="atOSkip" checked> 기록 없는 과제 제외</label></span>
+              <span class="at-lb">표시</span><span><label class="at-ck"><input type="checkbox" id="atODesc" checked> 설명 포함</label></span>
+            </div>
+            <div class="at-pick-row"><span class="at-pick" id="atPick"></span><span><button type="button" class="at-lnk" id="atAll">전체 선택</button> <button type="button" class="at-lnk" id="atNone">전체 해제</button></span></div>
+            <div class="at-cards" id="atCards"></div>
+          </div>
+          <div class="at-panel-foot">
+            <div class="at-row"><button type="button" class="btn primary" id="atLoad">← 불러오기</button><span class="at-hint">체크한 과제를 왼쪽 내용에 채웁니다</span></div>
+            <div class="at-confirm hidden" id="atConfirm" role="alert">왼쪽에서 고친 내용이 지워집니다. <button type="button" class="btn sm" id="atCfYes">덮어쓰기</button><button type="button" class="at-lnk" id="atCfNo">그만두기</button></div>
+          </div>
+        </aside>
+      </div>
+      <div class="at-ed-foot">
+        <span class="at-msg" id="atMsg" role="status" aria-live="polite"></span>
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="atCopy">복사</button>
+        <button type="button" class="btn" id="atClose">닫기</button>
+        <button type="button" class="btn primary" id="atSend">회사에 보고</button>
+      </div>
+      <div class="at-ask hidden" id="atAsk">
+        <div class="at-ask-box" role="alertdialog" aria-modal="true" aria-labelledby="atAskT" aria-describedby="atAskM">
+          <b id="atAskT">작성 중인 내용이 있습니다</b>
+          <span id="atAskM">닫아도 이 PC 에 임시 저장되어 있어 다시 열면 이어서 쓸 수 있습니다.</span>
+          <span class="at-ask-btns"><button type="button" class="btn" id="atAskStay">계속 쓰기</button><button type="button" class="btn primary" id="atAskClose">닫기</button></span>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
 
 </div><!-- /#appSurface -->
@@ -5047,8 +5214,18 @@ const ADMINWIN_CMD = new Set(['adminWinReady','userInfoGet','gateRecheck',
   'unitAdd','unitRename','unitSetActive','unitMove','unitReorder',
   'trashGet','trashRestore','trashDelete']);   // 호스트의 AdminWinCommands 와 같은 목록(tests/admin-window.test.mjs 가 맞춰 본다)
 if(ADMINWIN){ try{ document.documentElement.dataset.adminwin = '1'; }catch(_){} }
-//  따로 뜨는 창(열람 창, 관리 창). 버전 관문 카드의 작은 변형, 창 제목, 테마 따라가기 같은 공통 규칙이 이것을 본다.
-const SUBWIN = PEERWIN || ADMINWIN;
+/*  ATTENDANCE-PLAN(2026-10-29) 결정 11. 근태 보고 독립 창(호스트 AppWindow, WinKind.Attend)이 이 파일을 ?win=attend 로 띄운 쪽이다.
+ *  ★ 이 창이 그리는 것은 근태 보고 화면(#atEd) 하나다. 내 달력은 부팅하지 않는다(ready, 세션 조회, 로그인 화면이 없다).
+ *    그날의 캘린더 기록, 보고한 글, 내 신원은 메인 창이 payload 로 만들어 호스트가 __attendWinOpen 으로 넘긴다(§3.3).
+ *  ★ 호스트로 나가는 것은 ATTENDWIN_CMD 뿐이다(hpost 가 나머지를 버린다). 호스트도 같은 목록(AttendWinCommands)으로 한 번 더 거른다.
+ *  ★ 회신 번호에 'tw:' 와 창마다 다른 소금을 붙인다(hostRequest). 닫기는 호스트가 __winCloseRequest 로 먼저 묻는다(atWinCloseCheck).
+ *  ★ html[data-attendwin] 은 CSS 스위치다(보고 화면과 그 위에 뜨는 것만 보인다). */
+const ATTENDWIN = (() => { try { return HOST && !PEER && new URLSearchParams(location.search).get('win') === 'attend'; }
+                           catch (_) { return false; } })();
+const ATTENDWIN_CMD = new Set(['attendWinReady','attendNav','reportDailyList','netcusSubmit']);   // 호스트의 AttendWinCommands 와 같은 목록(tests/attendance-web.test.mjs)
+if(ATTENDWIN){ try{ document.documentElement.dataset.attendwin = '1'; }catch(_){} }
+//  따로 뜨는 창(열람 창, 관리 창, 근태 창). 버전 관문 카드의 작은 변형, 창 제목, 테마 따라가기 같은 공통 규칙이 이것을 본다.
+const SUBWIN = PEERWIN || ADMINWIN || ATTENDWIN;
 /*  C4.1 — 열람 창에 얹은 **내 일정 겹**의 on/off.
  *  ★ 열람 창 **안에서만** 도는 상태다 — 부모와 통신하지 않는다(문을 늘리지 않는다).
  *  ★ 저장은 localStorage 다. 열람 창은 부모와 **같은 출처**라(같은 파일을 iframe 으로 띄운다)
@@ -6552,6 +6729,7 @@ function vgRender(){
   } else if(st === 'needUpdate'){
     title = '새 버전이 필요합니다';
     body = peer ? (ADMINWIN ? '서버가 갱신되어 이 버전으로는 관리 화면을 쓸 수 없습니다. 메인 창에서 업데이트해 주세요.'
+                 : ATTENDWIN ? '서버가 갱신되어 이 버전으로는 근태 보고를 쓸 수 없습니다. 메인 창에서 업데이트해 주세요.'
                             : '서버가 갱신되어 이 버전으로는 일정을 볼 수 없습니다. 메인 창에서 업데이트해 주세요.')
                 : '서버가 새 구조로 갱신되어 지금 버전으로는 일정을 읽거나 저장할 수 없습니다. 업데이트하면 바로 이어서 쓸 수 있습니다.';
     if(!peer){
@@ -6564,6 +6742,7 @@ function vgRender(){
     title = '업데이트를 마치지 못했습니다';
     const retry = vgHasUpdateButton(st);
     body = peer ? (ADMINWIN ? '업데이트를 마치지 못해 이 버전으로는 관리 화면을 쓸 수 없습니다. 메인 창에서 업데이트해 주세요.'
+                 : ATTENDWIN ? '업데이트를 마치지 못해 이 버전으로는 근태 보고를 쓸 수 없습니다. 메인 창에서 업데이트해 주세요.'
                             : '업데이트를 마치지 못해 이 버전으로는 일정을 볼 수 없습니다. 메인 창에서 업데이트해 주세요.')
                 : '설치가 끝나지 않아 아직 ' + (cur ? cur + ' 버전입니다. ' : '이전 버전입니다. ') + (retry ? '다시 시도하거나 아래 경로에서 직접 설치해 주세요.' : '아래 경로에서 직접 설치해 주세요.');
     if(!peer){
@@ -6777,6 +6956,8 @@ function vgRecover(){
   if(PEERWIN){ if(__pv && __pv.loginId != null) openPeerSchedule(__pv.loginId, __pv.name, { carry: pvFrameView() }); return; }
   //  관리 창: 목록을 다시 받고 보던 항목을 다시 연다(그 화면이 호스트에 다시 묻는다).
   if(ADMINWIN){ adminWinReload(); return; }
+  //  근태 창: 보던 날짜의 불러오기 출처를 메인 창에 다시 청한다(왼쪽 글은 건드리지 않는다).
+  if(ATTENDWIN){ atWinRefresh(); return; }
   if(!HOST || PEER) return;
   connSyncUi();
   //  로그인 게이트를 걷고 카드를 띄웠다면 로그인부터 다시 한다. 로그인이 성공하면 connAfterLogin 이 다시 읽는다.
@@ -11991,7 +12172,7 @@ function adminWinCloseNow(){
 }
 function adminWinRequestClose(){ if(adminWinCloseCheck() === 'close') adminWinCloseNow(); }
 //  호스트가 창 테두리의 ✕(Alt+F4, 작업 표시줄의 닫기)를 받으면 먼저 이것을 묻는다(AppWindow.AskCloseAsync).
-window.__winCloseRequest = function(){ return ADMINWIN ? adminWinCloseCheck() : 'close'; };
+window.__winCloseRequest = function(){ return ADMINWIN ? adminWinCloseCheck() : ATTENDWIN ? atWinCloseCheck() : 'close'; };   // 근태 창은 쓰던 글을 먼저 지킨다(ATTENDANCE-PLAN §2.4)
 
 /* ── 배선 — bind() 가 한 번 부른다 ── */
 function setupAdminHub(){
@@ -12700,17 +12881,26 @@ function setRptSendText(el, html){
 //  전송 모드(미제출 테스트 / 실제 제출)는 없앴다 — 회사 전송은 늘 실제 제출이다(UI-CLARITY U3 · 2026-10-01).
 //  예전에 저장된 모드 값은 읽지 않는다(남아 있어도 아무 데도 쓰이지 않는다).
 // (netcus 자격증명 표시·저장 콜백은 제거됐다 — 자격의 출처가 로그인 하나가 되면서 설정창에 표시할 상태가 없다.)
+//  ATTENDANCE-PLAN §3.2: 호스트는 진행과 결과 알림을 메인 창과 근태 창 둘 다에 보낸다. 각 창은 자기가 보낸 요청일 때만 반응한다.
+//    근태 보고가 보낸 것이면(atOwnsSend) 그쪽이 받고, 보고서 창은 보고서 창이 보낸 것(__rptSendArmed)일 때만 문구와 토스트를 낸다.
+//    근태 창에는 보고서 창이 없으므로 자기 것이 아니면 아무것도 하지 않는다.
+let __rptSendArmed = false;   // 보고서 창이 위젯 전송(일간, 주간)을 보냈고 회신을 기다린다(armRptSendWatchdog 가 세우고 회신과 워치독이 거둔다)
 window.__netcusProgress = function(msg){
+  if(atOnNetcusProgress(msg)) return;
+  if(ATTENDWIN || !__rptSendArmed) return;
   const s = $('#rptSendStatus'); if(s){ setRptSendText(s, ICON.spinner + ' ' + esc(msg)); s.className = 'rpt-send-status busy'; }
 };
 //  extra = { kind:'gate', gate:{...} } — 버전 관문이 막아 회사 사이트에 접속하지 않았다(VERSION-GATE §2.4). 토스트 없이 차단 카드로 간다.
 window.__netcusResult = function(ok, msg, extra){
+  if(atOnNetcusResult(ok, msg, extra)) return;   // 근태 보고가 보낸 것(이 창에서). 보고서 창의 문구, 토스트, 임시 저장은 건드리지 않는다
+  if(ATTENDWIN) return;
+  const mine = __rptSendArmed; __rptSendArmed = false;
   clearTimeout(Netcus.watchdog);   // 결과 도착 → 전송 워치독 해제(영구잠김 방지)
   const gate = !ok && !!extra && extra.kind === 'gate';
-  const s = $('#rptSendStatus'); if(s){ setRptSendText(s, (ok ? ICON.check : ICON.alert) + ' ' + esc(msg)); s.className = 'rpt-send-status ' + (ok ? 'ok' : 'err'); }
+  const s = $('#rptSendStatus'); if(s && mine){ setRptSendText(s, (ok ? ICON.check : ICON.alert) + ' ' + esc(msg)); s.className = 'rpt-send-status ' + (ok ? 'ok' : 'err'); }
   const b = $('#btnRptSend'); if(b) b.disabled = false;
   if(gate) vgFromReply(extra);
-  else toast(msg, ok ? 'success' : 'error');   // netcus 전송 실패 = 회사 보고가 안 올라간 것 → 경고가 아니라 오류
+  else if(mine) toast(msg, ok ? 'success' : 'error');   // netcus 전송 실패 = 회사 보고가 안 올라간 것 → 경고가 아니라 오류
   rptDraftOnSendResult(ok, msg);   // 일간 전송 대기 표지가 있고 성공일 때만 그 날짜의 임시 저장을 지운다(실패, 바쁨, 주간 채우기 회신은 지우지 않는다)
 };
 window.__netcusProbeResult = function(ok, msg){
@@ -12741,7 +12931,8 @@ window.__netcusStatus = function(s){
 // 전송 워치독 — fire-and-forget 전송이 결과(__netcusResult) 없이 끝나면(호스트 크래시 등) 100초 뒤 버튼 복구 + 안내(영구잠김 방지).
 function armRptSendWatchdog(){
   clearTimeout(Netcus.watchdog);
-  Netcus.watchdog = setTimeout(function(){ rptDraftDisarmSend(); const b = $('#btnRptSend'); if(b) b.disabled = false; const st = $('#rptSendStatus'); if(st){ setRptSendText(st, ICON.alert + ' 전송 결과를 받지 못했습니다. 다시 시도하세요'); st.className = 'rpt-send-status err'; } }, 100000);
+  __rptSendArmed = true;   // 이 창의 보고서가 보낸 것: 회신 문구와 토스트를 이 창이 낸다(근태 창이 보낸 회신은 받지 않는다)
+  Netcus.watchdog = setTimeout(function(){ __rptSendArmed = false; rptDraftDisarmSend(); const b = $('#btnRptSend'); if(b) b.disabled = false; const st = $('#rptSendStatus'); if(st){ setRptSendText(st, ICON.alert + ' 전송 결과를 받지 못했습니다. 다시 시도하세요'); st.className = 'rpt-send-status err'; } }, 100000);
 }
 
 /* ===== 자동 업데이트 — 호스트(WPF)가 확인/다운로드/설치 담당. JS는 배너 + 설정 필드만 ===== */
@@ -20697,6 +20888,7 @@ function bind(){
       }
       if(closedMenu) return;
       if(pcEscape()){ ev.preventDefault(); return; }   // 과제 탭의 그날 일정 목록과 좁은 창 과제 목록
+      if(atEscape()){ ev.preventDefault(); return; }   // 근태 보고 화면: 묻는 창을 닫는다. 쓰던 글이 있으면 Esc 로 닫지 않는다(§2.4)
       if(panelSheetOpen){ closeSheet(); ev.preventDefault(); return; }          // 좁은 폭 하단 시트 먼저
       if(window.__big){ hpost({cmd:'focus'}); ev.preventDefault(); return; }   // 마지막에 맨 앞에 띄우기 해제
       return;
@@ -20705,6 +20897,7 @@ function bind(){
     if(modalOpen) return;
     if(/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
     if(pcOn()){ pcKeyNav(ev.key); return; }   // 과제 탭: 같은 단축키가 과제 달력을 움직인다
+    if(atOn()){ atKeyNav(ev.key); return; }   // 근태 탭: 같은 단축키가 근태 달력을 움직인다(보고 화면이면 아무것도 하지 않는다)
     if(ev.key === 'ArrowLeft' || ev.key === 'PageUp') moveMonth(-1);     // PageUp/Down도 월 이동(예측 가능한 단축키)
     else if(ev.key === 'ArrowRight' || ev.key === 'PageDown') moveMonth(1);
     else if(ev.key === 'Home') goToday();
@@ -20823,6 +21016,821 @@ function setupGuideResize(){
   });
 }
 
+/* ===== 근태 탭과 근태 보고 화면(docs/ATTENDANCE-PLAN.md, 2026-10-29 결정 9 보완, 10, 11) =====
+ *  ★ 근태 달력(탭 화면, #atMonth)은 이 앱으로 보낸 보고(DB cal_report_daily)만 보인다. 회사 사이트에서 직접 쓴 보고는 여기 없다.
+ *    그래서 빨간 "미보고" 표시는 하지 않는다(앱을 막 쓰기 시작한 사람에게 거짓 경고가 된다, §2.2).
+ *  ★ 보고 화면(#atEd)은 하나다. 위젯은 따로 뜬 근태 창(?win=attend)이 담고, 브라우저는 근태 탭 안에서 달력과 자리를 바꾼다(결정 11).
+ *    어느 쪽이든 내용은 메인 창이 만든 payload(§3.3) 하나로 그린다: 근태 창은 내 달력 데이터를 읽지 않는다.
+ *  ★ 글은 회사 양식처럼 한 칸이다(결정 10). 오른쪽 불러오기 패널은 체크한 과제를 [← 불러오기]로 왼쪽에 채울 뿐이고, 그 뒤로는 왼쪽에서 고친다.
+ *    머리 줄 `[과제명] : 시간` 과 줄 서식은 기존 보고서 함수(reportRowHead, reportRowBodyText)와 일간 서식 설정을 그대로 쓴다.
+ *  ★ 작성 중인 글은 이 PC(localStorage)에 임시 저장한다(결정 9 보완). 잃어도 되는 임시본이고 아무것도 자동으로 보내지 않는다.
+ *    회사 보고와 DB 저장이 둘 다 성공하면(호스트의 성공 회신) 지운다. 읽기와 쓰기는 attDraft* 함수만 거친다(나중에 서버 저장으로 바꿀 때 여기만).
+ *  ★ 열람 창(PEER)은 localStorage 를 부모 창과 같이 쓴다. 그래서 임시 저장을 읽지도 쓰지도 않는다(보고서 초안과 같은 규칙). */
+const AT_DRAFT_PREFIX = 'tc_attDraft:';   // 키 = tc_attDraft:<who>:<YYYY-MM-DD>. who 는 보고서 초안과 같은 규칙(rptDraftWho)
+const AT_DRAFT_KEEP_DAYS = 14;            // 보고 화면을 열 때 이보다 오래된 날짜의 임시 저장은 지운다
+const AT_DRAFT_DEBOUNCE_MS = 1000;        // 입력은 1초 모아서 쓴다. 날짜 이동, 닫기, 보내기 직전에는 바로 쓴다
+const AT_REP_DAYS = 60;                   // "보고한 날짜" 출처는 최근 60일 안의 보고
+const AT_SEND_WATCHDOG_MS = 100000;       // 회신 없이 끝난 전송(호스트 이상)에서 잠금을 푸는 시간(보고서 창의 워치독과 같다)
+const AT_FAIL_MSG = '처리를 완료하지 못했습니다. 다시 시도해 주세요.';   // 결정 9 의 공통 안내(호스트가 문구를 주지 않았을 때)
+//  근태 달력(메인 창). rows = 날짜 → 보고 행. from, to 는 rows 를 읽은 범위(그 밖의 날짜는 캐시에 없다는 뜻).
+const ATT = { anchor: '', screen: 'month', rows: new Map(), from: '', to: '', loading: false, err: '', gen: 0 };
+//  보고 화면 상태. p = payload(§3.3), base = 처음 상태(고쳤는지 판단의 기준), loaded = 마지막으로 불러온 글(덮어쓰기 확인의 기준).
+const ATE = { p: null, date: '', base: null, loaded: '', src: 'cal', opt: { event: true, todo: true, skip: true, desc: true },
+  checked: new Set(), rep: { list: null, loading: false, err: '', date: '', gen: 0 }, folded: false,
+  sending: false, armed: false, timer: null, wd: null, savedAt: '', navPending: '', closeSent: false };
+const __attDraftMem = new Map();          // 저장소가 막혔거나 가득 찼을 때만 쓰는 메모리본(앱이 켜져 있는 동안은 남는다)
+let __atAskFn = null;                     // "작성 중인 내용이 있습니다" 에서 [닫기]를 누르면 할 일
+
+const atIsYmd = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
+function atOn(){ return PCAL.tab === 'attend'; }
+function atOt(v){ const n = parseInt(v, 10); return (n >= 0 && n <= 11) ? n : 0; }
+//  회사 달력과 같은 근태 표시: 근태 이름 + 초과가 있으면 (+n시간). 미기록이면 이름 없이 초과만.
+function atStatusLabel(status, overtime){
+  const s = ATTEND_STATUS.find(x => x.v === String(status == null ? '' : status));
+  const n = atOt(overtime);
+  return (s ? s.label : '') + (n > 0 ? '(+' + n + '시간)' : '');
+}
+//  보고한 글을 다시 열 때: 보낼 때 줄 앞 공백을 &nbsp; 로 바꿨으니 공백으로 되돌린다(§2.5).
+function atDecode(content){ return String(content == null ? '' : content).replace(/&nbsp;/gi, ' ').replace(/\r\n?/g, '\n'); }
+function atDateLabel(date){ const d = parseYmd(date); return d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + WEEKDAYS[d.getDay()] + ')'; }
+function atHHMM(iso){ const d = iso ? new Date(iso) : null; return (d && !isNaN(d)) ? pad(d.getHours()) + ':' + pad(d.getMinutes()) : ''; }
+function atRowNorm(x){
+  if(!x || typeof x !== 'object' || !atIsYmd(String(x.date || '').slice(0, 10))) return null;
+  const st = String(x.status == null ? '' : x.status);
+  return { date: String(x.date).slice(0, 10), status: ATTEND_STATUS_SET.has(st) ? st : null, overtime: atOt(x.overtime),
+           content: String(x.content == null ? '' : x.content), sentAt: String(x.sentAt || '') };
+}
+
+/* ── 머리 줄 읽기(결정 10) ──
+ *  `[과제명] : 5` 와 `[과제명] 5` 를 둘 다 받는다(전각 콜론, 뒤의 "시간" 도). 시간은 0 초과 24 이하만 기록한다.
+ *  cal_report_hours 는 과제명을 글자 그대로 저장하므로 내 과제에 없는 이름도 그대로 나간다. 같은 이름이 두 번 나오면 시간을 더한다. */
+const AT_HEAD_RE = /^\s*\[\s*(.+?)\s*\]\s*(?:[:：]\s*)?(\d+(?:\.\d+)?)?\s*(?:시간|h|H)?\s*$/;
+function atParseHead(line){
+  const m = AT_HEAD_RE.exec(String(line == null ? '' : line));
+  if(!m || !m[1].trim()) return null;
+  const n = m[2] != null ? Number(m[2]) : null;
+  return { name: m[1].trim(), num: n, hours: (n != null && n > 0 && n <= 24) ? n : null };
+}
+function atHoursOf(text){
+  const out = [], at = new Map();
+  for(const ln of String(text || '').split('\n')){
+    const h = atParseHead(ln); if(!h || h.hours == null) continue;
+    if(at.has(h.name)){ const o = out[at.get(h.name)]; o.hours = Math.round((o.hours + h.hours) * 100) / 100; }
+    else { at.set(h.name, out.length); out.push({ name: h.name, hours: h.hours }); }
+  }
+  return out;
+}
+//  상태 줄: 줄 수, 과제 수(머리 줄 수)와 합계 시간(머리 줄에서 읽은 값).
+function atTextStats(text){
+  const t = String(text || '');
+  let heads = 0, sum = 0;
+  for(const ln of t.split('\n')){ const h = atParseHead(ln); if(!h) continue; heads++; if(h.hours != null) sum += h.hours; }
+  return { lines: t ? t.split('\n').length : 0, heads, hours: Math.round(sum * 100) / 100 };
+}
+
+/* ── 임시 저장(§2.4). 읽기와 쓰기는 이 다섯 함수만 거친다 ── */
+//  계정: 메인 창과 브라우저는 보고서 초안과 같은 rptDraftWho. 근태 창은 내 신원을 부팅하지 않으므로 payload.me 로 같은 순서를 밟는다.
+function atWho(){
+  if(ATTENDWIN){
+    const me = ATE.p && ATE.p.me;
+    if(me && me.userId != null && String(me.userId) !== '') return String(me.userId);
+    if(me && me.loginId) return String(me.loginId);
+    return 'me';
+  }
+  return rptDraftWho();
+}
+function attDraftKey(date){ return AT_DRAFT_PREFIX + atWho() + ':' + date; }
+function attDraftNorm(o){
+  if(!o || typeof o !== 'object' || o.v !== 1 || typeof o.text !== 'string') return null;
+  return { v: 1, text: o.text, status: typeof o.status === 'string' ? o.status : '', overtime: atOt(o.overtime), savedAt: typeof o.savedAt === 'string' ? o.savedAt : '' };
+}
+function attDraftGet(date){
+  if(PEER || !atIsYmd(date)) return null;
+  const k = attDraftKey(date);
+  if(__attDraftMem.has(k)) return attDraftNorm(__attDraftMem.get(k));
+  try{ const raw = localStorage.getItem(k); return raw == null ? null : attDraftNorm(JSON.parse(raw)); }catch(_){ return null; }
+}
+//  돌려주는 값: 저장소에 썼으면 그 값, 메모리에만 남았으면 null(그때는 "임시 저장됨" 을 보이지 않는다).
+function attDraftPut(date, d){
+  if(PEER || !atIsYmd(date) || !d) return null;
+  const k = attDraftKey(date);
+  const v = { v: 1, text: String(d.text == null ? '' : d.text), status: String(d.status == null ? '' : d.status), overtime: atOt(d.overtime), savedAt: new Date().toISOString() };
+  try{ localStorage.setItem(k, JSON.stringify(v)); __attDraftMem.delete(k); return v; }
+  catch(_){ __attDraftMem.set(k, v); return null; }
+}
+function attDraftDel(date){
+  if(PEER || !atIsYmd(date)) return;
+  const k = attDraftKey(date);
+  __attDraftMem.delete(k);
+  try{ localStorage.removeItem(k); }catch(_){}
+}
+//  보고 화면을 열 때: 이 계정의 14일 지난 임시 저장을 지운다(키의 날짜로 판단, 14일째 키는 남는다. 날짜 꼴이 아닌 키는 건드리지 않는다).
+function attDraftPrune(){
+  if(PEER) return;
+  const pre = AT_DRAFT_PREFIX + atWho() + ':', cut = addDays(todayYmd(), -AT_DRAFT_KEEP_DAYS);
+  const old = k => { const d = String(k).slice(pre.length); return String(k).startsWith(pre) && atIsYmd(d) && d.length === 10 && d < cut; };
+  let keys = [];
+  try{ for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && old(k)) keys.push(k); } }catch(_){ keys = []; }
+  for(const k of [...__attDraftMem.keys()]) if(old(k) && !keys.includes(k)) keys.push(k);
+  for(const k of keys){ __attDraftMem.delete(k); try{ localStorage.removeItem(k); }catch(_){} }
+}
+
+/* ── 메인 창: payload 만들기(§3.3)와 열기 ── */
+//  일간 서식(머리기호, 들여쓰기). 보고서 창이 주간 탭에 있어도 일간 설정을 읽는다(reportMarkerSpec 은 지금 보고 모드를 본다).
+function atDailyFmt(){
+  const was = reportMode;
+  try{
+    reportMode = 'daily';
+    const f = currentReportFormatPref();
+    return { mkSpec: reportMarkerSpec(), indent: Math.max(0, Math.min(6, f.indent != null ? f.indent : 2)) };
+  } finally {
+    reportMode = was;
+    try{ currentReportFormatPref(); }catch(_){}   // 옛 서식 칸(state.reportMarker 등)을 지금 모드로 다시 맞춘다
+  }
+}
+function atBuildPayload(date, saved, refresh){
+  const rows = collectReportData(date, date, { event: true, todo: true, desc: true }).rows;
+  const hours = {};
+  for(const x of reportDailyHours(rows, date)) hours[x.key] = x.hours;
+  const at = getAttendance(date), m = __bootMeta || {};
+  return {
+    v: 1, date,
+    me: { userId: (m.userId != null && String(m.userId) !== '') ? m.userId : null,
+          loginId: (currentUser && currentUser.loginId) ? String(currentUser.loginId) : '',
+          name: (currentUser && currentUser.name) ? String(currentUser.name) : '' },
+    saved: saved ? { status: saved.status, overtime: saved.overtime, content: saved.content } : null,
+    attend: at.status || '', attendOt: at.overtime || 0,   // attendOt: 그날 개인 캘린더의 초과시간(보고가 없을 때 처음 값)
+    source: { rows: rows.map(r => ({ key: r.key, name: r.name, color: validColor(r.color), titles: r.titles.slice(),
+                titleMeta: r.titles.map((_, i) => { const t = r.titleMeta[i] || {}; return { kind: t.kind || null, details: reportMetaDetails(t) }; }) })),
+              hours, fmt: atDailyFmt() },
+    refresh: !!refresh,
+  };
+}
+//  달력 캐시에 그 날짜가 있으면 그 행(없으면 null), 읽은 범위 밖이면 undefined.
+function atSavedFromCache(date){
+  if(!ATT.from || date < ATT.from || date > ATT.to) return undefined;
+  return ATT.rows.get(date) || null;
+}
+//  날짜를 누르거나 근태 창이 날짜를 넘겼다(attendNav). 위젯은 근태 창을 열고(attendOpen), 브라우저는 그 자리에서 보고 화면으로 바꾼다.
+async function atOpen(date, opt){
+  if(PEER || SUBWIN || !atIsYmd(date)) return;
+  const refresh = !!(opt && opt.refresh);
+  if(!HOST){ atShowEditor(atBuildPayload(date, null, refresh)); return; }
+  let saved = atSavedFromCache(date);
+  if(saved === undefined){
+    const r = await hostRequest('reportDailyList', { from: date, to: date });
+    saved = (r && r.ok && Array.isArray(r.rows)) ? (r.rows.map(atRowNorm).find(x => x && x.date === date) || null) : null;
+  }
+  const r = await hostRequest('attendOpen', { payload: atBuildPayload(date, saved, refresh) }, 20000);
+  if(!(r && r.ok) && !refresh) toast((r && typeof r.error === 'string' && r.error) || '근태 보고 창을 열지 못했습니다', 'warn');
+}
+//  근태 창이 날짜를 넘기거나(‹ ›) 앞으로 왔다(refresh). 메인 창이 그 날짜의 payload 를 다시 만들어 attendOpen 으로 보낸다(§3.2).
+window.__attendNavFromWin = function(date, refresh){
+  if(!HOST || PEER || SUBWIN || !atIsYmd(date)) return;
+  atOpen(date, { refresh: !!refresh });
+};
+//  호스트: 회사 보고와 DB 저장이 둘 다 성공했다(두 창 모두에 온다). 메인 창은 개인 캘린더의 그날 근태와 근태 달력을 고친다.
+//    미기록(null)으로 보냈으면 개인 캘린더의 근태는 지우지 않는다(미기록 = 회사의 기존 근태를 그대로 둔다는 뜻이다).
+window.__reportDailySaved = function(o){
+  if(PEER || !o || typeof o !== 'object' || !atIsYmd(o.date)) return;
+  if(ATTENDWIN){ ATE.rep.list = null; ATE.rep.gen++; return; }   // 다음에 "보고한 날짜" 를 고르면 다시 읽는다
+  if(!HOST || SUBWIN) return;
+  const st = String(o.status == null ? '' : o.status);
+  if(ATTEND_STATUS_SET.has(st)){
+    const cur = getAttendance(o.date);
+    if(cur.status !== st || cur.overtime !== atOt(o.overtime)){ try{ setAttendance(o.date, st, atOt(o.overtime)); }catch(_){} }
+  }
+  if(ATT.from && o.date >= ATT.from && o.date <= ATT.to){
+    const prev = ATT.rows.get(o.date);
+    ATT.rows.set(o.date, Object.assign({ date: o.date, content: prev ? prev.content : '', sentAt: '' }, prev || {}, { status: ATTEND_STATUS_SET.has(st) ? st : null, overtime: atOt(o.overtime) }));
+  }
+  if(atOn() && ATT.screen === 'month') atLoadMonth();   // 글까지 다시 읽는다(알림에는 글이 없다)
+};
+
+/* ── 근태 달력(탭 화면, §2.2) ── */
+function atEnterTab(){
+  if(!ATT.anchor) ATT.anchor = todayYmd();
+  if(ATT.screen === 'edit' && ATE.p){ atSyncScreen(); return; }
+  ATT.screen = 'month';
+  atSyncScreen();
+  atLoadMonth();
+}
+//  근태 탭을 떠난다(pcSetTab). 브라우저의 보고 화면이 열려 있으면 임시 저장을 바로 쓰고 달력으로 돌린다(묻기는 atLeaveGuard 가 먼저 했다).
+function atLeaveTab(){
+  atHideTip();
+  if(ATT.screen === 'edit'){ atDraftFlushNow(); atCloseEditor(); }
+}
+//  탭을 옮기기 전: 브라우저의 보고 화면에 쓰던 글이 있으면 묻는다. [닫기]면 임시 저장을 쓰고 옮긴다.
+function atLeaveGuard(tab, go){
+  if(tab !== 'attend' && atOn() && ATT.screen === 'edit' && ATE.p && atDirty()){ atAsk(go); return; }
+  go();
+}
+async function atLoadMonth(){
+  if(!ATT.anchor) ATT.anchor = todayYmd();
+  if(!HOST || PEER || SUBWIN){ atRenderMonth(); return; }
+  const R = pcMonthRange(ATT.anchor), g = ++ATT.gen;
+  ATT.loading = true; atRenderMonth();
+  const r = await hostRequest('reportDailyList', { from: R.from, to: R.to });
+  if(g !== ATT.gen) return;   // 그 사이 달을 옮겼다. 옛 회신은 버린다
+  ATT.loading = false;
+  if(!r || !r.ok){
+    const e = r && (typeof r.error === 'string' ? r.error : (r.error ? pcErrText(r.error) : (typeof r.msg === 'string' ? r.msg : '')));
+    ATT.err = '보고 기록을 읽지 못했습니다.' + (e ? ' ' + e : '');
+    atRenderMonth(); return;
+  }
+  ATT.err = ''; ATT.rows = new Map(); ATT.from = R.from; ATT.to = R.to;
+  for(const x of (Array.isArray(r.rows) ? r.rows : [])){ const n = atRowNorm(x); if(n && n.date >= R.from && n.date <= R.to) ATT.rows.set(n.date, n); }
+  atRenderMonth();
+}
+function atMove(delta){
+  const d = parseYmd(ATT.anchor || todayYmd());
+  ATT.anchor = ymd(new Date(d.getFullYear(), d.getMonth() + delta, 1));
+  atLoadMonth();
+}
+function atToday(){ ATT.anchor = todayYmd(); atLoadMonth(); }
+function atKeyNav(key){
+  if(ATT.screen !== 'month') return;
+  if(key === 'ArrowLeft' || key === 'PageUp') atMove(-1);
+  else if(key === 'ArrowRight' || key === 'PageDown') atMove(1);
+  else if(key === 'Home') atToday();
+}
+function atRenderMonth(){
+  const box = document.getElementById('atMonth'); if(!box) return;
+  if(!ATT.anchor) ATT.anchor = todayYmd();
+  const R = pcMonthRange(ATT.anchor), today = todayYmd(), mp = R.y + '-' + pad(R.m + 1) + '-';
+  let nRep = 0, otSum = 0;
+  for(const [d, r] of ATT.rows) if(d.startsWith(mp)){ nRep++; otSum += atOt(r.overtime); }
+  const note = !HOST ? '<div class="at-note">보고 기록은 서버에 연결된 위젯에서만 보입니다. 날짜를 누르면 보고 화면을 열 수 있습니다(회사 전송은 직접 입력).</div>'
+    : ATT.err ? '<div class="at-note err" role="alert">' + esc(ATT.err) + '</div>'
+    : (ATT.loading && !ATT.from) ? '<div class="at-note">보고 기록을 읽는 중입니다.</div>' : '';
+  let html = '<div class="at-bar"><div class="nav">'
+    + '<button type="button" class="btn icon" data-atact="prev" aria-label="이전 달" title="이전 달">' + ICON.prev + '</button>'
+    + '<button type="button" class="btn" data-atact="today">오늘</button>'
+    + '<button type="button" class="btn icon" data-atact="next" aria-label="다음 달" title="다음 달">' + ICON.next + '</button>'
+    + '<span class="at-range" aria-live="polite">' + R.y + '년 ' + (R.m + 1) + '월</span></div>'
+    + '<span class="spacer"></span>'
+    + '<span class="at-sum" id="atSum" title="이 앱으로 보낸 보고만 셉니다. 회사 사이트에서 직접 쓴 보고는 여기 없습니다.">'
+    + '<span>이 달 앱으로 보고 <b>' + nRep + '</b>일</span><span>초과 합계 <b>' + otSum + '</b>시간</span></span></div>'
+    + note
+    + '<div class="weekdays" role="presentation">' + WEEKDAYS.map((w, i) => '<div class="' + (i === 0 ? 'sun' : i === 6 ? 'sat' : '') + '">' + w + '</div>').join('') + '</div>'
+    + '<div class="at-gridwrap"><div class="at-grid" id="atGrid" role="grid" aria-label="근태 월 달력(날짜를 누르면 근태 보고)">';
+  for(let i = 0; i < R.weeks * 7; i++){
+    const ds = addDays(R.from, i), d = parseYmd(ds), dw = d.getDay(), hol = holidayOn(ds) || '';
+    const row = ATT.rows.get(ds) || null, dr = attDraftGet(ds);
+    let cls = 'at-day';
+    if(d.getMonth() !== R.m) cls += ' dim';
+    if(ds === today) cls += ' today';
+    if(dw === 0) cls += ' wknd-sun'; else if(dw === 6) cls += ' wknd-sat';
+    const lab = row ? atStatusLabel(row.status, row.overtime) : '';
+    const txt = row ? atDecode(row.content).replace(/\s+$/, '') : '';
+    html += '<div class="' + cls + '" role="gridcell" tabindex="' + (ds === today ? 0 : -1) + '" data-date="' + ds + '"' + (row ? ' data-has="1"' : '')
+      + ' aria-label="' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + WEEKDAYS[dw] + '요일' + (hol ? ', ' + esc(hol) : '') + (ds === today ? ', 오늘' : '')
+      + (row ? ', 보고함' + (lab ? ', ' + esc(lab) : '') : '') + (dr ? ', 작성 중' : '') + '">'
+      + '<div class="cell-top"><span class="num' + ((dw === 0 || hol) ? ' sun' : dw === 6 ? ' sat' : '') + '">' + d.getDate() + '</span>' + (hol ? '<span class="hol">' + esc(hol) + '</span>' : '') + '</div>'
+      + (lab ? '<span class="at-st">' + esc(lab) + '</span>' : '')
+      + (txt ? '<div class="at-txt">' + esc(txt) + '</div>' : '')
+      + (dr ? '<span class="at-drf">✎ 작성 중</span>' : '')
+      + '</div>';
+  }
+  html += '</div></div>';
+  box.innerHTML = html;
+}
+//  칸 전체 보기: 6줄에서 자른 글을 마우스를 올리면 다 보인다.
+function atShowTip(ev, cell){
+  const row = ATT.rows.get(cell.dataset.date); if(!row) return;
+  let t = document.getElementById('atTip');
+  if(!t){ t = document.createElement('div'); t.id = 'atTip'; t.className = 'at-tip'; t.setAttribute('role', 'tooltip'); document.body.appendChild(t); }
+  const lab = atStatusLabel(row.status, row.overtime);
+  t.innerHTML = (lab ? '<b>' + esc(lab) + '</b>\n' : '') + esc(atDecode(row.content).replace(/\s+$/, ''));
+  t.classList.remove('hidden');
+  atMoveTip(ev);
+}
+function atMoveTip(ev){
+  const t = document.getElementById('atTip'); if(!t || t.classList.contains('hidden')) return;
+  const w = t.offsetWidth, h = t.offsetHeight;
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if(x + w > innerWidth - 8) x = Math.max(8, ev.clientX - w - 14);
+  if(y + h > innerHeight - 8) y = Math.max(8, innerHeight - h - 8);
+  t.style.left = x + 'px'; t.style.top = y + 'px';
+}
+function atHideTip(){ const t = document.getElementById('atTip'); if(t) t.classList.add('hidden'); }
+
+/* ── 보고 화면(§2.3~§2.5) ── */
+//  payload 를 고쳐 읽는다(근태 창은 호스트를 거쳐 받은 값이라 모양을 믿지 않는다).
+function atNormPayload(o){
+  if(!o || typeof o !== 'object' || !atIsYmd(o.date)) return null;
+  const s = o.source && typeof o.source === 'object' ? o.source : {};
+  const rows = (Array.isArray(s.rows) ? s.rows : []).filter(r => r && typeof r === 'object' && r.name != null).map(r => {
+    const titles = (Array.isArray(r.titles) ? r.titles : []).map(t => String(t == null ? '' : t));
+    const tm = Array.isArray(r.titleMeta) ? r.titleMeta : [];
+    return { key: String(r.key == null ? '' : r.key), name: String(r.name), color: validColor(r.color), titles,
+      titleMeta: titles.map((_, i) => { const m = tm[i] && typeof tm[i] === 'object' ? tm[i] : {}; return { kind: (m.kind === 'event' || m.kind === 'todo') ? m.kind : null, details: reportMetaDetails(m).map(String) }; }) };
+  });
+  const hours = {};
+  if(s.hours && typeof s.hours === 'object') for(const k of Object.keys(s.hours)){ const n = Number(s.hours[k]); if(n > 0) hours[k] = n; }
+  const f = s.fmt && typeof s.fmt === 'object' ? s.fmt : {};
+  const mk = (f.mkSpec && typeof f.mkSpec === 'object' && typeof f.mkSpec.kind === 'string') ? f.mkSpec : { kind: 'const', ch: '-' };
+  const ind = Number.isInteger(f.indent) ? Math.max(0, Math.min(6, f.indent)) : 2;
+  const sv = o.saved && typeof o.saved === 'object' ? atRowNorm(Object.assign({}, o.saved, { date: o.date })) : null;
+  const me = o.me && typeof o.me === 'object' ? { userId: o.me.userId == null ? null : o.me.userId, loginId: String(o.me.loginId || ''), name: String(o.me.name || '') } : null;
+  const at = String(o.attend == null ? '' : o.attend);
+  return { v: 1, date: o.date, me, saved: sv, attend: ATTEND_STATUS_SET.has(at) ? at : '', attendOt: atOt(o.attendOt),
+           source: { rows, hours, fmt: { mkSpec: mk, indent: ind } }, refresh: o.refresh === true };
+}
+function atEdShown(){ return ATTENDWIN ? !!ATE.p : (ATT.screen === 'edit' && !!ATE.p); }
+function atCur(){
+  const ta = $('#atText'), st = $('#atStatus'), ot = $('#atOt');
+  return { text: ta ? ta.value : '', status: st ? st.value : '', overtime: atOt(ot ? ot.value : 0) };
+}
+//  고친 내용이 있는가(처음 상태와 다른가): 글, 근태, 초과시간 중 하나라도.
+function atDirty(){
+  if(!ATE.p || !ATE.base) return false;
+  const c = atCur();
+  return c.text !== ATE.base.text || c.status !== ATE.base.status || c.overtime !== ATE.base.overtime;
+}
+//  캘린더 출처의 과제(옵션으로 거른다). 기록 없는 과제 제외 = 남은 항목도 시간도 없는 과제를 뺀다(collectReportData 의 skipEmpty 와 같은 뜻).
+function atCalRows(){
+  const src = (ATE.p && ATE.p.source) || { rows: [], hours: {} }, o = ATE.opt;
+  const out = [];
+  for(const r of src.rows){
+    const all = r.titles.map((t, i) => {
+      const m = r.titleMeta[i] || {}, kind = m.kind || null;
+      const keep = kind === 'event' ? o.event : kind === 'todo' ? o.todo : (o.event || o.todo);   // 출처가 겹쳐 종류를 잃은 제목은 둘 중 하나라도 켜져 있으면
+      return { text: t, kind, details: m.details || [], keep };
+    });
+    const kept = all.filter(x => x.keep);
+    const hours = Number(src.hours[r.key]) > 0 ? Number(src.hours[r.key]) : null;
+    if(o.skip && !kept.length && hours == null) continue;
+    out.push({ key: r.key, name: r.name, color: r.color, all, kept, hours });
+  }
+  return out;
+}
+//  캘린더 과제 하나의 글 = 기존 보고서의 머리 줄 + 초안 본문(글 편집과 같은 보통 공백 들여쓰기).
+function atCalBlock(row){
+  const f = ATE.p.source.fmt;
+  const r = { key: row.key, name: row.name, titles: row.kept.map(x => x.text), titleMeta: row.kept.map(x => ({ details: ATE.opt.desc ? x.details : [] })) };
+  const hmap = new Map(); if(row.hours != null) hmap.set(row.key, row.hours);
+  const body = reportRowBodyText(r, ' ', f.mkSpec, f.indent);
+  return reportRowHead(r, hmap) + (body ? '\n' + body : '');
+}
+//  보고한 글을 과제 묶음으로 나눈다(머리 줄 기준). 첫 머리 줄 앞의 글은 이름 없는 묶음 하나로 둔다.
+function atRepBlocks(content){
+  const blocks = []; let cur = null;
+  for(const ln of atDecode(content).split('\n')){
+    const h = atParseHead(ln);
+    if(h){ cur = { name: h.name, num: h.num, head: ln.trim(), lines: [] }; blocks.push(cur); continue; }
+    if(!cur){ if(!ln.trim()) continue; cur = { name: '', num: null, head: '', lines: [] }; blocks.push(cur); }
+    cur.lines.push(ln.replace(/\s+$/, ''));
+  }
+  for(const b of blocks) while(b.lines.length && !b.lines[b.lines.length - 1].trim()) b.lines.pop();
+  return blocks;
+}
+function atRepRow(){ const L = ATE.rep.list || []; return L.find(x => x.date === ATE.rep.date) || null; }
+//  패널의 과제 목록(지금 출처). id 는 체크 상태의 열쇠, text 는 불러올 글.
+function atPanelItems(){
+  if(ATE.src === 'cal') return atCalRows().map(r => ({ id: 'c:' + r.key, row: r, text: atCalBlock(r) }));
+  const rr = atRepRow();
+  return rr ? atRepBlocks(rr.content).map((b, i) => ({ id: 'r:' + i, blk: b, text: [b.head].concat(b.lines).filter((x, j) => j > 0 || x).join('\n') })) : [];
+}
+function atLoadText(){ return atPanelItems().filter(it => ATE.checked.has(it.id)).map(it => it.text).join('\n\n'); }
+function atCheckAll(){ ATE.checked = new Set(atPanelItems().map(it => it.id)); }
+
+//  payload 를 받아 보고 화면을 연다. 같은 날짜면(창이 앞으로 왔다, 메인 창에서 같은 날을 다시 눌렀다) 패널 출처만 바꾸고 왼쪽 글은 건드리지 않는다.
+function atEdOpen(raw){
+  const p = atNormPayload(raw); if(!p) return;
+  if(ATE.p && ATE.date === p.date){
+    const before = new Set(atPanelItems().map(it => it.id));
+    ATE.p.source = p.source; if(p.me) ATE.p.me = p.me;
+    ATE.navPending = '';
+    if(ATE.src === 'cal') for(const it of atPanelItems()) if(!before.has(it.id)) ATE.checked.add(it.id);   // 새로 생긴 과제만 체크해 둔다(사람이 끈 체크는 그대로)
+    atPanelRender(); atSyncNav();
+    if(!ATE.sending) atMsg('');
+    return;
+  }
+  if(p.refresh) return;   // 다른 날짜의 늦은 새로고침 회신: 지금 보는 날짜를 바꾸지 않는다
+  if(ATE.sending){ toast('회사에 보고하는 중입니다. 끝난 뒤에 다른 날짜를 여세요', 'warn'); return; }
+  if(ATE.p) atDraftFlushNow();   // 날짜를 넘기기 전에 쓰던 글을 바로 임시 저장한다
+  ATE.p = p; ATE.date = p.date; ATE.navPending = '';
+  ATE.src = 'cal'; ATE.opt = { event: true, todo: true, skip: true, desc: true };
+  ATE.rep = { list: null, loading: false, err: '', date: '', gen: ATE.rep.gen + 1 };
+  clearTimeout(ATE.timer); ATE.timer = null;
+  atCheckAll();
+  attDraftPrune();
+  //  처음 상태: 보고한 날은 보고한 글과 근태, 아니면 캘린더 기본 체크로 한 번 불러온 글과 그날 개인 캘린더 근태(없으면 정근).
+  const sv = p.saved;
+  ATE.base = sv ? { text: atDecode(sv.content).replace(/\s+$/, ''), status: sv.status || '', overtime: atOt(sv.overtime) }
+               : { text: atLoadText(), status: p.attend || '1', overtime: atOt(p.attendOt) };
+  ATE.loaded = ATE.base.text;
+  let dr = attDraftGet(p.date);
+  if(dr && dr.text === ATE.base.text && dr.status === ATE.base.status && dr.overtime === ATE.base.overtime){ attDraftDel(p.date); dr = null; }   // 처음 상태와 같은 임시 저장은 남길 까닭이 없다
+  const cur = dr || ATE.base;
+  atFillSelects(cur.status, cur.overtime);
+  const ta = $('#atText'); if(ta) ta.value = cur.text;
+  ATE.savedAt = dr ? dr.savedAt : '';
+  const rs = $('#atRestore');
+  if(rs){
+    rs.classList.toggle('hidden', !dr);
+    const m = $('#atRestoreMsg'); if(m) m.textContent = dr ? ((atHHMM(dr.savedAt) ? atHHMM(dr.savedAt) + ' 에 ' : '') + '임시 저장된 글을 이어서 엽니다.') : '';
+  }
+  const de = $('#atEdDate'); if(de) de.textContent = atDateLabel(p.date) + (sv ? ', 보고함' : '');
+  if(ATTENDWIN) document.title = '근태 보고 ' + atDateLabel(p.date);
+  const cf = $('#atConfirm'); if(cf) cf.classList.add('hidden');
+  atAskHide();
+  atPanelRender(); atSyncNav();
+  atSetBusy(false); atMsg('');
+  atOnEdit(false);
+  if(ta) try{ ta.focus({ preventScroll: true }); ta.setSelectionRange(0, 0); ta.scrollTop = 0; }catch(_){}
+}
+//  근태(ATTEND_STATUS 그대로 + 미기록)와 초과시간(없음, +1~+11시간). 값이 목록에 없으면 미기록.
+function atFillSelects(status, overtime){
+  const st = $('#atStatus'), ot = $('#atOt'); if(!st || !ot) return;
+  const sv = ATTEND_STATUS_SET.has(String(status)) ? String(status) : '';
+  st.innerHTML = '<option value=""' + (sv ? '' : ' selected') + '>(미기록)</option>'
+    + ATTEND_STATUS.map(s => '<option value="' + s.v + '"' + (s.v === sv ? ' selected' : '') + '>' + esc(s.label) + '</option>').join('');
+  const n = atOt(overtime);
+  ot.innerHTML = Array.from({ length: 12 }, (_, i) => '<option value="' + i + '"' + (i === n ? ' selected' : '') + '>' + (i === 0 ? '없음' : '+' + i + '시간') + '</option>').join('');
+  st.value = sv; ot.value = String(n);
+}
+function atSyncPv(){
+  const pv = $('#atPv'); if(!pv) return;
+  const c = atCur();
+  pv.textContent = c.status ? '회사 달력 표시: ' + atStatusLabel(c.status, c.overtime) : '미기록이면 회사 시스템의 기존 근태를 그대로 둡니다';
+}
+//  입력마다: 미리 보기와 상태 줄을 고치고, 1초 모아서 임시 저장한다. 처음 상태와 같아지면 임시 저장을 지운다.
+function atOnEdit(save){
+  if(!ATE.p) return;
+  atSyncPv();
+  const st = atTextStats(atCur().text);
+  const L = $('#atLines'); if(L) L.textContent = st.lines + '줄';
+  const H = $('#atHours'); if(H) H.innerHTML = '과제 ' + st.heads + '개, 합계 <b>' + st.hours + '</b>시간';
+  if(save === false){ atSavedRender(); return; }
+  clearTimeout(ATE.timer); ATE.timer = null;
+  if(!atDirty()){ attDraftDel(ATE.date); ATE.savedAt = ''; atSavedRender(); return; }
+  ATE.timer = setTimeout(() => atDraftFlushNow(), AT_DRAFT_DEBOUNCE_MS);
+  const s = $('#atSaved'); if(s && !ATE.savedAt) s.textContent = '';
+}
+//  모아 둔 입력을 바로 쓴다(날짜 이동, 닫기, 탭 이동, pagehide). force = 보내기 직전(처음 상태와 같아도 쓴다).
+function atDraftFlushNow(force){
+  clearTimeout(ATE.timer); ATE.timer = null;
+  if(!ATE.p || PEER) return;
+  if(!force && !atDirty()){ attDraftDel(ATE.date); ATE.savedAt = ''; atSavedRender(); return; }
+  const v = attDraftPut(ATE.date, atCur());
+  ATE.savedAt = v ? v.savedAt : '';
+  atSavedRender();
+}
+function atSavedRender(){
+  const s = $('#atSaved'); if(!s) return;
+  const t = atHHMM(ATE.savedAt);
+  s.textContent = (ATE.savedAt && t) ? '이 PC에 임시 저장됨 ' + t : '';
+}
+function atMsg(t, kind){
+  const m = $('#atMsg'); if(!m) return;
+  m.textContent = t || ''; m.className = 'at-msg' + (kind ? ' ' + kind : ''); m.removeAttribute('title');
+}
+//  처리 중에는 입력과 단추를 모두 잠근다(연속 클릭으로 두 번 보내지 않게, 결정 9).
+function atSetBusy(on){
+  const ed = $('#atEd'); if(!ed) return;
+  ed.querySelectorAll('input, select, textarea, button').forEach(e => { e.disabled = !!on; });
+  const b = $('#atSend'); if(b) b.textContent = on ? '회사에 보고하는 중…' : '회사에 보고';
+  ed.classList.toggle('busy', !!on);
+  if(!on) atSyncNav();
+}
+function atSyncNav(){
+  const pv = $('#atPrev'), nx = $('#atNext');
+  const off = !ATE.p || ATE.sending || !!ATE.navPending;
+  if(pv) pv.disabled = off; if(nx) nx.disabled = off;
+  const ld = $('#atLoad'); if(ld && !ATE.sending) ld.disabled = !ATE.p || !atPanelItems().some(it => ATE.checked.has(it.id));
+}
+function atPanelRender(){
+  const ed = $('#atEd'); if(!ed || !ATE.p) return;
+  ed.querySelectorAll('[data-atsrc]').forEach(b => { const on = b.dataset.atsrc === ATE.src; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
+  const opts = $('#atOpts'); if(opts) opts.classList.toggle('hidden', ATE.src !== 'cal');
+  const ck = { atOEvent: 'event', atOTodo: 'todo', atOSkip: 'skip', atODesc: 'desc' };
+  for(const id of Object.keys(ck)){ const e = document.getElementById(id); if(e) e.checked = !!ATE.opt[ck[id]]; }
+  const sel = $('#atRepDate');
+  if(sel){
+    sel.classList.toggle('hidden', ATE.src !== 'rep' || !(ATE.rep.list && ATE.rep.list.length));
+    const L = ATE.rep.list || [];
+    sel.innerHTML = L.map(x => { const d = parseYmd(x.date), lab = atStatusLabel(x.status, x.overtime);
+      return '<option value="' + x.date + '"' + (x.date === ATE.rep.date ? ' selected' : '') + '>' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + WEEKDAYS[d.getDay()] + ')' + (lab ? ' ' + esc(lab) : '') + '</option>'; }).join('');
+  }
+  const items = atPanelItems(), o = ATE.opt;
+  let html = '';
+  if(ATE.src === 'rep' && !HOST) html = '<div class="at-none">보고한 날짜는 서버에 연결된 위젯에서만 읽을 수 있습니다.</div>';
+  else if(ATE.src === 'rep' && ATE.rep.loading) html = '<div class="at-none">보고한 날짜를 읽는 중입니다.</div>';
+  else if(ATE.src === 'rep' && ATE.rep.err) html = '<div class="at-none">' + esc(ATE.rep.err) + '</div>';
+  else if(!items.length) html = '<div class="at-none">' + (ATE.src === 'cal'
+      ? (o.skip ? '이날 기록이 있는 과제가 없습니다. "기록 없는 과제 제외" 를 끄면 내 과제가 모두 나옵니다.' : '내 과제가 없습니다.')
+      : (ATE.rep.list && ATE.rep.list.length ? '고른 날짜의 보고에 글이 없습니다.' : '최근 ' + AT_REP_DAYS + '일 안에 이 앱으로 보고한 날이 없습니다.')) + '</div>';
+  else html = items.map(it => {
+    const on = ATE.checked.has(it.id), idA = esc(it.id);
+    if(it.row){
+      const r = it.row;
+      const meta = [r.kept.length ? r.kept.length + '건' : '', r.hours != null ? r.hours + '시간' : ''].filter(Boolean).join(', ');
+      const body = r.all.length
+        ? '<ul class="at-recs">' + r.all.map(x => '<li class="' + (x.keep ? '' : 'skip') + '">' + esc(x.text) + ' <small>' + (x.kind === 'event' ? '일정' : x.kind === 'todo' ? '할 일' : '기록')
+            + (o.desc && x.details.length ? ', ' + esc(x.details.join(', ')) : '') + '</small></li>').join('') + '</ul>'
+        : '<div class="at-none">이날 기록 없음(머리 줄만 들어갑니다)</div>';
+      return '<div class="at-card' + (on ? '' : ' off') + '"><label class="at-card-h"><input type="checkbox" data-atid="' + idA + '"' + (on ? ' checked' : '') + '>'
+        + '<i class="at-dot" style="background:' + r.color + '" aria-hidden="true"></i><span class="at-cnm">[' + esc(r.name) + ']</span>' + (meta ? '<small>' + esc(meta) + '</small>' : '') + '</label>' + body + '</div>';
+    }
+    const b = it.blk;
+    return '<div class="at-card' + (on ? '' : ' off') + '"><label class="at-card-h"><input type="checkbox" data-atid="' + idA + '"' + (on ? ' checked' : '') + '>'
+      + '<span class="at-cnm">' + (b.name ? '[' + esc(b.name) + ']' : '머리 줄 없는 글') + '</span>' + (b.num != null ? '<small>' + esc(String(b.num)) + '시간</small>' : '') + '</label>'
+      + (b.lines.length ? '<ul class="at-recs">' + b.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '<div class="at-none">세부 줄 없음</div>') + '</div>';
+  }).join('');
+  const cards = $('#atCards'); if(cards) cards.innerHTML = html;
+  const n = items.filter(it => ATE.checked.has(it.id)).length;
+  const pk = $('#atPick'); if(pk) pk.textContent = '과제 ' + n + ' / ' + items.length + '개 선택';
+  if(!ATE.sending){
+    const all = $('#atAll'), none = $('#atNone');
+    if(all) all.disabled = n === items.length; if(none) none.disabled = n === 0;
+  }
+  atSyncNav();
+}
+function atSetSrc(src){
+  if(src !== 'cal' && src !== 'rep') return;
+  ATE.src = src;
+  if(src === 'rep'){ atRepLoad(); }
+  atCheckAll(); atPanelRender();
+}
+//  "보고한 날짜" 출처: 근태 창(또는 메인 창)이 reportDailyList 로 직접 읽는다(§3.3). 최근 60일, 가장 최근이 기본(보는 날짜는 뒤로).
+async function atRepLoad(){
+  if(!HOST || ATE.rep.list || ATE.rep.loading || !ATE.p) return;
+  const date = ATE.date, today = todayYmd(), lo = date < today ? date : today, hi = date > today ? date : today;
+  const g = ++ATE.rep.gen;
+  ATE.rep.loading = true; ATE.rep.err = '';
+  const r = await hostRequest('reportDailyList', { from: addDays(lo, -AT_REP_DAYS), to: hi });
+  if(g !== ATE.rep.gen || date !== ATE.date) return;
+  ATE.rep.loading = false;
+  if(!r || !r.ok){ ATE.rep.err = '보고한 날짜를 읽지 못했습니다. 잠시 뒤 다시 고르세요.'; ATE.rep.gen++; atPanelRender(); return; }
+  const list = (Array.isArray(r.rows) ? r.rows : []).map(atRowNorm).filter(x => x && atDecode(x.content).trim()).sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+  ATE.rep.list = list;
+  ATE.rep.date = (list.find(x => x.date !== date) || list[0] || { date: '' }).date;
+  if(ATE.src === 'rep'){ atCheckAll(); atPanelRender(); }
+}
+//  [← 불러오기]: 체크한 과제를 왼쪽에 채운다. 왼쪽을 고친 뒤면(마지막으로 불러온 글과 다르면) 덮어쓸지 먼저 묻는다.
+function atLoadClick(){
+  if(!ATE.p || ATE.sending) return;
+  const ta = $('#atText'); if(!ta) return;
+  if(ta.value !== ATE.loaded && ta.value.trim()){ const cf = $('#atConfirm'); if(cf){ cf.classList.remove('hidden'); const y = $('#atCfYes'); if(y) try{ y.focus(); }catch(_){} } return; }
+  atDoLoad();
+}
+function atDoLoad(){
+  const ta = $('#atText'); if(!ta) return;
+  const t = atLoadText();
+  ta.value = t; ATE.loaded = t;
+  const cf = $('#atConfirm'); if(cf) cf.classList.add('hidden');
+  atOnEdit();
+  try{ ta.focus(); }catch(_){}
+}
+//  "버리고 처음 상태로": 임시 저장을 지우고 처음 상태(보고한 글 또는 캘린더 기본 글)로 돌린다.
+function atDiscard(){
+  if(!ATE.p || ATE.sending) return;
+  attDraftDel(ATE.date); clearTimeout(ATE.timer); ATE.timer = null; ATE.savedAt = '';
+  atFillSelects(ATE.base.status, ATE.base.overtime);
+  const ta = $('#atText'); if(ta) ta.value = ATE.base.text;
+  ATE.loaded = ATE.base.text;
+  const rs = $('#atRestore'); if(rs) rs.classList.add('hidden');
+  atOnEdit(false);
+}
+function atToggleFold(){
+  ATE.folded = !ATE.folded;
+  const b = $('#atEdBody'); if(b) b.classList.toggle('folded', ATE.folded);
+  const f = $('#atFold'); if(f){ f.textContent = ATE.folded ? '‹ 불러오기 패널 펼치기' : '불러오기 패널 접기 ›'; f.setAttribute('aria-expanded', String(!ATE.folded)); }
+}
+//  ‹ › 날짜 이동: 쓰던 글은 먼저 임시 저장한다. 근태 창은 메인 창에 그 날짜의 payload 를 청하고(attendNav), 브라우저는 그 자리에서 다시 만든다.
+function atNav(delta){
+  if(!ATE.p || ATE.sending || ATE.navPending) return;
+  const next = addDays(ATE.date, delta);
+  atDraftFlushNow();
+  if(ATTENDWIN){
+    ATE.navPending = next; atSyncNav(); atMsg('불러오는 중입니다…');
+    hpost({ cmd: 'attendNav', date: next, refresh: false });
+    return;
+  }
+  if(!HOST) atEdOpen(atBuildPayload(next, null, false));
+}
+//  근태 창이 앞으로 왔다(호스트 ActivatedFn), 관문이 풀렸다: 보던 날짜의 패널 출처만 새로 청한다(왼쪽 글은 그대로, §3.3 refresh).
+function atWinRefresh(){
+  if(!ATTENDWIN || !ATE.date || ATE.sending || ATE.navPending) return;
+  hpost({ cmd: 'attendNav', date: ATE.date, refresh: true });
+}
+async function atCopy(){
+  const text = reportEditedBodyOut($('#atText') ? $('#atText').value : '', ' ');   // 복사는 U+00A0 들여쓰기(보고서 복사와 같다)
+  if(!text){ toast('복사할 내용이 없습니다', 'warn'); return; }
+  try{ await navigator.clipboard.writeText(text); atMsg('복사했습니다', 'ok'); return; }catch(_){}
+  try{
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'absolute'; ta.style.left = '-9999px';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    atMsg('복사했습니다', 'ok');
+  }catch(e){ toast('복사에 실패했습니다. 다시 시도해 주세요', 'error'); }
+}
+//  보내기(§2.5): 내용이 비면 막고, 보내기 직전에 임시 저장을 쓴 뒤, 처리 중에는 입력과 단추를 잠근다. 결과는 __netcusResult 가 알린다.
+//    content = 줄 앞 공백을 &nbsp; 로(기존 buildReportText('&nbsp;') 와 같은 규칙), hours = 머리 줄에서 읽은 값, status 빈 값 = null(미기록).
+function atBuildSubmit(){
+  const c = atCur(), p = ATE.date.split('-').map(Number);
+  return { __tc: 'netcus-report', v: 1, kind: 'daily', date: { y: p[0], m: p[1], d: p[2] },
+           fields: { status: ATTEND_STATUS_SET.has(c.status) ? c.status : null, overtime: c.overtime, content: reportEditedBodyOut(c.text, '&nbsp;') },
+           hours: atHoursOf(c.text), dryRun: false };
+}
+function atSubmit(){
+  if(!ATE.p || ATE.sending) return;
+  const c = atCur();
+  if(!c.text.trim()){ atMsg('보낼 내용을 입력하세요', 'err'); const ta = $('#atText'); if(ta) try{ ta.focus(); }catch(_){} return; }
+  const payload = atBuildSubmit();
+  atDraftFlushNow(true);
+  if(!Platform.caps.reportAuto){
+    //  브라우저는 회사 전송을 못 한다(결정 11). 회신이 없으므로 잠그지 않고 임시 저장도 지우지 않는다.
+    Platform.report.submitDaily(payload);
+    atMsg('브라우저에서는 회사에 자동으로 보낼 수 없습니다. 복사해서 회사 사이트에 직접 입력하세요.', 'err');
+    return;
+  }
+  ATE.sending = true; ATE.armed = true;
+  atSetBusy(true); atMsg('회사에 보고하는 중…', 'busy');
+  clearTimeout(ATE.wd);
+  ATE.wd = setTimeout(() => {
+    if(!ATE.armed) return;
+    ATE.armed = false; ATE.sending = false; atSetBusy(false);
+    atMsg(AT_FAIL_MSG, 'err');   // 결과를 모르는 것도 결정 9 의 공통 안내 하나로 보인다
+    const m = $('#atMsg'); if(m) m.title = '보고 결과를 받지 못했습니다. 회사 사이트에서 확인한 뒤 다시 시도해 주세요.';
+  }, AT_SEND_WATCHDOG_MS);
+  Platform.report.submitDaily(payload);
+}
+//  호스트 알림(두 창 모두에 온다): 이 창의 보고 화면이 보낸 것일 때만 받는다(armed). 받았으면 true.
+function atOnNetcusProgress(msg){
+  if(!ATE.armed) return false;
+  atMsg(String(msg || ''), 'busy');
+  return true;
+}
+function atOnNetcusResult(ok, msg, extra){
+  if(!ATE.armed) return false;
+  ATE.armed = false; ATE.sending = false; clearTimeout(ATE.wd);
+  if(ok === true){
+    //  회사 보고와 DB 저장이 둘 다 성공했다(결정 9): 임시 저장을 지우고 창을 닫는다(브라우저는 달력으로).
+    clearTimeout(ATE.timer); ATE.timer = null;
+    attDraftDel(ATE.date);
+    ATE.base = atCur(); ATE.savedAt = '';
+    atSetBusy(false);
+    if(ATTENDWIN){ atMsg(String(msg || '보고했습니다'), 'ok'); atWinCloseNow(); return true; }
+    toast(String(msg || '보고했습니다'), 'success');
+    atShowMonth();
+    return true;
+  }
+  atSetBusy(false);
+  if(!ok && extra && extra.kind === 'gate') vgFromReply(extra);
+  //  실패는 어떤 갈래든 결정 9 의 공통 안내 하나로 보인다. 호스트의 원래 문구(세션 만료, 바쁨 등)는 상태 줄의 title 로만 둔다.
+  atMsg(AT_FAIL_MSG, 'err');   // 창과 입력, 임시 저장은 그대로 둔다(다시 보내면 회사 보고부터 다시 한다)
+  const m = $('#atMsg'); if(m && msg && String(msg) !== AT_FAIL_MSG) m.title = String(msg);
+  return true;
+}
+
+/* ── 글 지키기(§2.4) ── */
+function atAsk(onClose){
+  __atAskFn = onClose;
+  const a = $('#atAsk'); if(!a){ if(onClose) onClose(); return; }
+  a.classList.remove('hidden');
+  const s = $('#atAskStay'); if(s) try{ s.focus(); }catch(_){}
+}
+function atAskOpen(){ const a = $('#atAsk'); return !!a && !a.classList.contains('hidden'); }
+function atAskHide(){ __atAskFn = null; const a = $('#atAsk'); if(a) a.classList.add('hidden'); }
+//  close = [닫기]: 임시 저장을 바로 쓰고 맡긴 일을 한다. 아니면(계속 쓰기, 바깥, Esc) 그대로 글로 돌아간다.
+function atAskDone(close){
+  const fn = __atAskFn; atAskHide();
+  if(close){ atDraftFlushNow(); if(fn) fn(); return; }
+  const ta = $('#atText'); if(ta) try{ ta.focus(); }catch(_){}
+}
+//  닫기, × 단추. 근태 창은 창을 닫고, 브라우저는 근태 달력으로 돌아간다. 고친 내용이 있으면 먼저 묻는다.
+function atRequestClose(){
+  if(ATE.sending) return;
+  if(ATTENDWIN){ if(atWinCloseCheck() === 'close') atWinCloseNow(); return; }
+  if(atDirty()){ atAsk(() => atShowMonth()); return; }
+  atDraftFlushNow();
+  atShowMonth();
+}
+//  닫아도 되는가(호스트 __winCloseRequest 와 닫기 단추). 'close' 닫아도 된다, 'ask' 묻는 창을 띄웠다([닫기]면 창을 닫는다), 'busy' 보내는 중.
+function atWinCloseCheck(){
+  if(ATE.sending){ toast('회사에 보고하는 중입니다. 끝난 뒤에 닫으세요', 'warn'); return 'busy'; }
+  if(atAskOpen()) return 'ask';
+  if(atDirty()){ atAsk(() => atWinCloseNow()); return 'ask'; }
+  atDraftFlushNow();
+  return 'close';
+}
+//  호스트(AppWindow 의 WindowCloseRequested)가 묻지 않고 닫는다. 같은 누름이 두 길을 지나도 한 번만 보낸다.
+function atWinCloseNow(){
+  if(ATE.closeSent) return;
+  ATE.closeSent = true; setTimeout(() => { ATE.closeSent = false; }, 0);
+  if(!ATE.sending && atDirty()) atDraftFlushNow();
+  try{ window.close(); }catch(_){}
+}
+//  전역 Esc: 묻는 창과 덮어쓰기 확인을 닫는다. 쓰던 글이 있거나 보내는 중이면 보고 화면을 닫지 않는다. 근태 창은 Esc 로 창을 닫지 않는다.
+function atEscape(){
+  if(atAskOpen()){ atAskDone(false); return true; }
+  const cf = $('#atConfirm'); if(cf && !cf.classList.contains('hidden') && atEdShown()){ cf.classList.add('hidden'); return true; }
+  if(!atEdShown()) return false;
+  if(ATTENDWIN || ATE.sending || atDirty()) return true;
+  atDraftFlushNow();
+  atShowMonth();
+  return true;
+}
+
+/* ── 그릇: 브라우저의 화면 전환과 근태 창 ── */
+function atSyncScreen(){
+  const mo = $('#atMonth'), ed = $('#atEd');
+  if(mo) mo.classList.toggle('hidden', ATT.screen === 'edit');
+  if(ed) ed.classList.toggle('hidden', ATT.screen !== 'edit');
+}
+function atShowEditor(payload){
+  if(ATTENDWIN) return;
+  atHideTip();
+  ATT.screen = 'edit'; atSyncScreen();
+  atEdOpen(payload);
+}
+function atCloseEditor(){
+  atAskHide(); clearTimeout(ATE.timer); ATE.timer = null;
+  ATE.p = null; ATE.date = ''; ATE.base = null; ATE.navPending = '';
+  ATT.screen = 'month'; atSyncScreen();
+}
+function atShowMonth(){
+  if(ATTENDWIN) return;
+  atCloseEditor();
+  if(atOn()) atLoadMonth(); else atRenderMonth();
+}
+//  ATTENDANCE-PLAN 결정 11. 근태 창(?win=attend)의 부팅: 보고 화면을 창 전체로 옮기고 준비만 알린다(내 달력, 세션, 목록을 읽지 않는다).
+function attendWinBoot(){
+  document.title = '근태 보고';
+  const ed = document.getElementById('atEd');
+  if(ed){ document.body.appendChild(ed); ed.classList.remove('hidden'); }
+  atSetBusy(true); atMsg('불러오는 중입니다…');   // payload 가 오기 전에는 쓸 것이 없다
+  hpost({ cmd: 'attendWinReady' });
+}
+window.__attendWinOpen = function(o){
+  if(!ATTENDWIN || !o || typeof o !== 'object') return;
+  atEdOpen(o);
+};
+window.__attendWinActivated = function(){ if(ATTENDWIN) atWinRefresh(); };
+
+/* ── 배선. 시작 때 한 번(pcInit 다음) ── */
+function atInit(){
+  const ed = document.getElementById('atEd');
+  if(ed){
+    const on = (id, ev, fn) => { const e = document.getElementById(id); if(e) e.addEventListener(ev, fn); };
+    on('atText', 'input', () => atOnEdit());
+    on('atStatus', 'change', () => atOnEdit());
+    on('atOt', 'change', () => atOnEdit());
+    on('atDiscard', 'click', atDiscard);
+    on('atFold', 'click', atToggleFold);
+    on('atPrev', 'click', () => atNav(-1));
+    on('atNext', 'click', () => atNav(1));
+    on('atBack', 'click', atRequestClose);
+    on('atX', 'click', atRequestClose);
+    on('atClose', 'click', atRequestClose);
+    on('atCopy', 'click', atCopy);
+    on('atSend', 'click', atSubmit);
+    on('atLoad', 'click', atLoadClick);
+    on('atCfYes', 'click', atDoLoad);
+    on('atCfNo', 'click', () => { const cf = $('#atConfirm'); if(cf) cf.classList.add('hidden'); });
+    on('atAll', 'click', () => { atCheckAll(); atPanelRender(); });
+    on('atNone', 'click', () => { ATE.checked = new Set(); atPanelRender(); });
+    on('atAskStay', 'click', () => atAskDone(false));
+    on('atAskClose', 'click', () => atAskDone(true));
+    on('atAsk', 'click', ev => { if(ev.target && ev.target.id === 'atAsk') atAskDone(false); });   // 바깥(묻는 창의 배경)을 누르면 계속 쓰기
+    on('atRepDate', 'change', ev => { ATE.rep.date = ev.target.value; atCheckAll(); atPanelRender(); });
+    ed.addEventListener('click', ev => { const b = ev.target.closest('[data-atsrc]'); if(b && !b.disabled) atSetSrc(b.dataset.atsrc); });
+    //  옵션은 패널 목록만 바로 바꾼다. 왼쪽은 [← 불러오기]를 눌러야 바뀐다. "기록 없는 과제 제외" 는 목록이 바뀌므로 체크를 다시 모두 켠다.
+    const ck = { atOEvent: 'event', atOTodo: 'todo', atOSkip: 'skip', atODesc: 'desc' };
+    for(const id of Object.keys(ck)) on(id, 'change', ev => { ATE.opt[ck[id]] = !!ev.target.checked; if(id === 'atOSkip') atCheckAll(); atPanelRender(); });
+    on('atCards', 'change', ev => {
+      const c = ev.target.closest('input[data-atid]'); if(!c) return;
+      if(c.checked) ATE.checked.add(c.dataset.atid); else ATE.checked.delete(c.dataset.atid);
+      atPanelRender();
+    });
+  }
+  window.addEventListener('pagehide', () => { try{ atDraftFlushNow(); }catch(_){} });
+  if(PEER || SUBWIN) return;
+  const mo = document.getElementById('atMonth');
+  if(mo){
+    mo.addEventListener('click', ev => {
+      const a = ev.target.closest('[data-atact]');
+      if(a){ if(a.dataset.atact === 'prev') atMove(-1); else if(a.dataset.atact === 'next') atMove(1); else atToday(); return; }
+      const c = ev.target.closest('.at-day[data-date]'); if(c){ atHideTip(); atOpen(c.dataset.date); }
+    });
+    mo.addEventListener('keydown', ev => {
+      const c = ev.target.closest && ev.target.closest('.at-day[data-date]');
+      if(c && (ev.key === 'Enter' || ev.key === ' ')){ ev.preventDefault(); ev.stopPropagation(); atOpen(c.dataset.date); }
+    });
+    mo.addEventListener('mouseover', ev => { const c = ev.target.closest('.at-day[data-has]'); if(c) atShowTip(ev, c); else atHideTip(); });
+    mo.addEventListener('mousemove', atMoveTip);
+    mo.addEventListener('mouseleave', atHideTip);
+  }
+  //  다른 창(근태 창)이 임시 저장을 쓰거나 지우면 "작성 중" 표시를 다시 그린다(같은 출처라 저장소를 같이 쓴다).
+  window.addEventListener('storage', ev => {
+    if(ev && String(ev.key || '').startsWith(AT_DRAFT_PREFIX) && atOn() && ATT.screen === 'month') atRenderMonth();
+  });
+  window.addEventListener('focus', () => { if(atOn() && ATT.screen === 'month') atRenderMonth(); });
+}
+
 /* ================================================================================
  *  과제 공용 캘린더: 과제 탭(docs/PROJECT-CALENDAR-PLAN.md §5.4 ~ §6.6, 시안 docs/prototypes/project-calendar.html 2차)
  * ================================================================================
@@ -20925,7 +21933,7 @@ function pcPrefsNorm(raw){
   try{ o = (typeof raw === 'string') ? JSON.parse(raw) : raw; }catch(_){ o = null; }
   if(!o || typeof o !== 'object' || Array.isArray(o)) o = {};
   const ids = a => Array.isArray(a) ? [...new Set(a.filter(x => typeof x === 'string' && x))] : null;
-  return { tab: o.tab === 'project' ? 'project' : 'personal', view: o.view === 'week' ? 'week' : 'month',
+  return { tab: (o.tab === 'project' || o.tab === 'attend') ? o.tab : 'personal', view: o.view === 'week' ? 'week' : 'month',
     sel: ids(o.sel), known: ids(o.known) || [], memo: o.memo === true };
 }
 //  부트스트랩 목록에 맞춘 표시 선택. 설정이 없으면 전체, 있으면 그대로 두되 새로 내 과제에 넣은 과제는 켜고 빠진 과제는 정리한다(기획 §6.2).
@@ -21088,16 +22096,18 @@ function pcResetFor(user){
 }
 
 /* ── 탭 ─────────────────────────────────────────────────────── */
+//  탭은 셋이다: 개인, 과제, 근태(ATTENDANCE-PLAN §2.1). 근태 탭은 body.at-on 으로 근태 화면(#atView)을 보이고 개인 화면을 숨긴다(pc-on 과 같은 방식).
+const PC_TABS = [['personal', 'pcTabPersonal'], ['project', 'pcTabProject'], ['attend', 'pcTabAttend']];
 function pcSetTab(tab, opt){
-  tab = tab === 'project' ? 'project' : 'personal';
+  tab = (tab === 'project' || tab === 'attend') ? tab : 'personal';
   const was = PCAL.tab;
+  if(was === 'attend' && tab !== 'attend') atLeaveTab();   // 근태 보고 화면(브라우저)이 열려 있으면 임시 저장을 바로 쓰고 달력으로 돌린다
   PCAL.tab = tab;
   document.body.classList.toggle('pc-on', tab === 'project');
-  const tp = document.getElementById('pcTabPersonal'), tj = document.getElementById('pcTabProject');
-  if(tp && tj){
-    tp.classList.toggle('on', tab === 'personal'); tj.classList.toggle('on', tab === 'project');
-    tp.setAttribute('aria-selected', String(tab === 'personal')); tj.setAttribute('aria-selected', String(tab === 'project'));
-    tp.tabIndex = tab === 'personal' ? 0 : -1; tj.tabIndex = tab === 'project' ? 0 : -1;
+  document.body.classList.toggle('at-on', tab === 'attend');
+  for(const [t, id] of PC_TABS){
+    const b = document.getElementById(id); if(!b) continue;
+    b.classList.toggle('on', tab === t); b.setAttribute('aria-selected', String(tab === t)); b.tabIndex = tab === t ? 0 : -1;
   }
   pcClosePop(true);
   if(!(opt && opt.quiet)) pcPrefsSave();
@@ -21105,7 +22115,10 @@ function pcSetTab(tab, opt){
     try{ if(panelSheetOpen) closeSheet(); }catch(_){}
     pcRender();
     if(was !== 'project' || (opt && opt.force)) pcRefresh(true);
-  } else if(was === 'project'){
+  } else if(tab === 'attend'){
+    try{ if(panelSheetOpen) closeSheet(); }catch(_){}
+    if(was !== 'attend' || (opt && opt.force)) atEnterTab();
+  } else if(was === 'project' || was === 'attend'){
     //  숨겨진 동안 그린 개인 달력은 칸 높이를 재지 못했다(fitChips). 돌아오면 다시 그린다.
     try{ renderAll(); }catch(_){}
   }
@@ -21179,8 +22192,8 @@ function pcOnBootApplied(){
   const me = pkMe();
   if(!me || me === PCAL.user) return;
   const p = pcResetFor(me);
-  if(p.tab === 'project') pcSetTab('project', { quiet: true, force: true });
-  else if(pcOn()) pcSetTab('personal', { quiet: true });
+  if(p.tab === 'project' || p.tab === 'attend') pcSetTab(p.tab, { quiet: true, force: true });
+  else if(PCAL.tab !== 'personal') pcSetTab('personal', { quiet: true });
 }
 
 /* ── 그리기 ─────────────────────────────────────────────────── */
@@ -21959,13 +22972,17 @@ function pcInit(){
   //  열람 창과 따로 뜬 창(관리 창, 열람 창 껍데기)에는 탭이 없다. 노드째 지운다(장애 띠 자리도 상단바로 돌아간다).
   if(PEER || SUBWIN){ if(tabs) tabs.remove(); return; }
   if(tabs){
-    tabs.addEventListener('click', ev => { const b = ev.target.closest('[data-pctab]'); if(b) pcSetTab(b.dataset.pctab); });
+    //  근태 보고 화면(브라우저)에서 쓰던 글이 있으면 탭을 옮기기 전에 묻는다(ATTENDANCE-PLAN §2.4, atLeaveGuard).
+    tabs.addEventListener('click', ev => { const b = ev.target.closest('[data-pctab]'); if(b) atLeaveGuard(b.dataset.pctab, () => pcSetTab(b.dataset.pctab)); });
     tabs.addEventListener('keydown', ev => {
       if(ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight' && ev.key !== 'Home' && ev.key !== 'End') return;
       ev.preventDefault(); ev.stopPropagation();
-      const next = (ev.key === 'Home') ? 'personal' : (ev.key === 'End') ? 'project' : (PCAL.tab === 'personal' ? 'project' : 'personal');
-      pcSetTab(next);
-      const f = document.getElementById(next === 'project' ? 'pcTabProject' : 'pcTabPersonal'); if(f) try{ f.focus(); }catch(_){}
+      const i = PC_TABS.findIndex(x => x[0] === PCAL.tab), n = PC_TABS.length;
+      const next = PC_TABS[(ev.key === 'Home') ? 0 : (ev.key === 'End') ? n - 1 : (ev.key === 'ArrowRight' ? (i + 1) % n : (i + n - 1) % n)];
+      atLeaveGuard(next[0], () => {
+        pcSetTab(next[0]);
+        const f = document.getElementById(next[1]); if(f) try{ f.focus(); }catch(_){}
+      });
     });
   }
   const v = document.getElementById('pcView');
@@ -22046,14 +23063,14 @@ function pcInit(){
     PCAL.resizeT = setTimeout(() => { if(pcOn() && !openOverlays().length && !PCAL.pop) pcRender(); }, 150);
   });
   //  브라우저 단독: 계정이 없으니 이 PC 의 설정(tc_pcal:local)을 쓴다. 과제 탭은 안내 한 장이다.
-  if(!HOST){ const p = pcResetFor(''); if(p.tab === 'project') pcSetTab('project', { quiet: true }); }
+  if(!HOST){ const p = pcResetFor(''); if(p.tab === 'project' || p.tab === 'attend') pcSetTab(p.tab, { quiet: true }); }
 }
 
 /* 호스트(WPF) 비동기 요청/응답 브리지 — reqId로 Promise를 매칭 */
 let __reqSeq = 0;
 //  따로 뜨는 창(열람 창 'pw:', 관리 창 'aw:')의 번호에는 창마다 다른 소금을 붙인다. __reqSeq 는 페이지마다 0 부터 다시 세므로, 창을 닫았다 다시 열거나
 //  다시 읽으면 같은 번호가 또 나온다. 옛 창에 가야 할 늦은 회신이 새 창의 같은 번호를 풀지 않게 한다(호스트도 보낸 창을 따로 본다).
-const __reqPfx = PEERWIN ? 'pw:' : ADMINWIN ? 'aw:' : '';   // 호스트의 WinKind.ReqPrefix 와 같다
+const __reqPfx = PEERWIN ? 'pw:' : ADMINWIN ? 'aw:' : ATTENDWIN ? 'tw:' : '';   // 호스트의 WinKind.ReqPrefix 와 같다(근태 창 'tw:')
 const __reqSalt = __reqPfx ? Date.now().toString(36) + Math.random().toString(36).slice(2, 8) : '';
 const __hostPending = {};
 function hostRequest(cmd, params, timeoutMs){
@@ -22081,6 +23098,7 @@ renderWeekdays();
 bind();
 setupModalA11y();
 pcInit();                 // 과제 탭(개인 / 과제 탭 줄, 과제 화면, 모달 배선). 모달 접근성 감시가 선 다음
+atInit();                 // 근태 탭 달력과 근태 보고 화면 배선(ATTENDANCE-PLAN). 근태 창에서도 보고 화면 배선은 돈다
 setupSplitter();
 // 창 폭이 바뀌면 넘침 여부도 바뀐다(위젯은 8방향 리사이즈라 자주 일어남)
 window.addEventListener('resize', syncOverflowFade);
@@ -22090,6 +23108,8 @@ renderAll();
 if(PEERWIN) peerWinBoot();
 //  ADMIN-WINDOW. 관리 창(?win=admin)도 내 달력을 부팅하지 않는다. 준비를 알리고 목록만 받아 온다(허브는 __adminWinOpen 이 연다).
 else if(ADMINWIN) adminWinBoot();
+//  ATTENDANCE-PLAN 결정 11. 근태 창(?win=attend)도 내 달력을 부팅하지 않는다. 보고 화면만 펴고 준비를 알린다(내용은 __attendWinOpen 이 연다).
+else if(ATTENDWIN) attendWinBoot();
 else if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫기) 구성 + 준비 신호
   buildHostBar();
   // ★ 로그인 게이트를 '지금' 올린다 — 이 함수는 첫 줄에서 동기적으로 화면을 덮고 그 다음에 세션을 물어본다.
@@ -22149,6 +23169,8 @@ function hpost(o){
   if(PEERWIN && !PEERWIN_CMD.has(String((o && o.cmd) || ''))) return;
   //  ADMIN-WINDOW. 관리 창은 관리 화면이 쓰는 명령(ADMINWIN_CMD)만 보낸다. 나머지(부팅의 자동 전송, 알림 동기화 등)는 조용히 버린다.
   if(ADMINWIN && !ADMINWIN_CMD.has(String((o && o.cmd) || ''))) return;
+  //  근태 창(ATTENDANCE-PLAN §3.2)은 보고 화면이 쓰는 넷(준비, 날짜 이동, 보고 기록 읽기, 회사 보고)만 보낸다. 나머지는 조용히 버린다.
+  if(ATTENDWIN && !ATTENDWIN_CMD.has(String((o && o.cmd) || ''))) return;
   try{ window.chrome.webview.postMessage(JSON.stringify(o)); }catch(e){}
 }
 

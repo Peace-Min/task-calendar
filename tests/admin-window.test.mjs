@@ -79,7 +79,8 @@ const S = {
     assert.match(k, /GetsCatalog = true, AskBeforeClose = true,/, '관리 창이 목록 알림을 받지 않거나 닫기 전에 묻지 않는다');
     assert.match(k, /GetBounds = s => s\.Admin, SetBounds = \(s, b\) => s\.Admin = b,/, '관리 창 자리가 열람 창과 따로 기억되지 않는다');
     assert.match(kindBody(aw, 'Peer'), /GetsCatalog = false, AskBeforeClose = false,/, '열람 창의 동작이 바뀌었다(목록 알림, 닫기 확인)');
-    assert.match(aw, /public static readonly IReadOnlyList<WinKind> All = new\[\] \{ Peer, Admin \};/, '창 종류 등록이 열람 창과 관리 창이 아니다');
+    //  2026-10-29 근태 창(Attend)이 셋째로 붙었다. 그 값은 tests/attendance-host.test.mjs 가 잠근다.
+    assert.match(aw, /public static readonly IReadOnlyList<WinKind> All = new\[\] \{ Peer, Admin, Attend \};/, '창 종류 등록이 열람 창, 관리 창, 근태 창이 아니다');
     assert.match(cs, /internal const string PeerReqPrefix = "pw:";\s*internal const string AdminReqPrefix = "aw:";/, '번호 머리가 pw:, aw: 가 아니다');
     assert.match(cs, /public PeerWindowBounds\? Admin \{ get; set; \}/, '설정에 관리 창 자리가 없다');
     assert.match(aw, /public static WinKind\? OfReq\(string reqId\) =>\s*string\.IsNullOrEmpty\(reqId\) \? null : All\.FirstOrDefault\(k => reqId\.StartsWith\(k\.ReqPrefix, StringComparison\.Ordinal\)\);/, '번호 머리로 창 종류를 찾지 않는다');

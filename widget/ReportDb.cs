@@ -31,6 +31,7 @@ namespace TaskCalendarWidget
 
     // ================================================================================
     //  ReportDb — 보고 기록 쓰기 (설계 §5.9)
+    //  (2026-10-29 부터 일간 보고 목록 읽기도 여기 있다. ATTENDANCE-PLAN §3.2, 아래 공개 API 3)
     // ================================================================================
     //  【이 클래스가 담는 것 / 담지 않는 것】
     //    담는다:      "캘린더가 8/29 에 무엇을 보고했나"       항상 참. 과거는 안 바뀐다
@@ -50,6 +51,8 @@ namespace TaskCalendarWidget
     //    사용자에게 실패로 보이면 "안 보내졌나?" 하고 다시 보내게 되고, 그게 더 큰 사고다.
     //    그래서 모든 실패를 안에서 잡아 로그로 남기고 false 를 돌려준다.
     //    ★ 조용히 삼키는 것이 아니다 — 로그에 원인과 대상 날짜가 남는다. 그걸 지우지 말 것.
+    //    ★ 2026-10-29 결정 9: 일간은 호출자(NetcusService)가 이 false 를 기다려 받아 "처리를 완료하지 못했습니다" 로
+    //      알린다. 사용자는 회사 보고부터 다시 하고, 회사 쪽은 같은 날짜를 덮어쓴다. 주간은 예전처럼 뒤에서 재시도한다.
     // ================================================================================
     internal sealed class ReportDb
     {
@@ -98,10 +101,17 @@ namespace TaskCalendarWidget
             "SESSION time_zone='+00:00', " +                    // 시각 컬럼 규약 — 서버 함수가 섞여도 9시간 안 어긋나게
             "SESSION transaction_isolation='READ-COMMITTED'";
 
+        //  읽기 프리앰블(목록 읽기 한 문장). 쓰기 프리앰블과 따로 둔다(위 주석). 시각 규약(+00:00)은 같다.
+        private const string ReadPreambleSql =
+            "SET SESSION innodb_lock_wait_timeout=5, " +
+            "SESSION time_zone='+00:00', " +
+            "SESSION transaction_isolation='REPEATABLE-READ'";
+
         // ================================================================================
         //  공개 API 1 — 일간보고 저장
         // ================================================================================
         //   부르는 자리: NetcusService 의 전송 성공 확인 직후(vr == 1). 실패한 전송은 저장하지 않는다.
+        //   호출자는 이 결과를 기다렸다가 성공이나 실패를 알린다(결정 9). false 면 사용자에게 실패로 보인다.
         //   cal_report_daily 1행 + cal_report_hours N행을 **한 트랜잭션**으로 쓴다.
         //   시간줄은 그 날짜를 DELETE 후 재삽입한다 — 재전송 시 줄 구성 자체가 바뀔 수 있어서
         //   행 단위 UPSERT 로는 '사라진 줄'이 남는다.
@@ -207,9 +217,9 @@ namespace TaskCalendarWidget
             }
             catch (Exception ex)
             {
-                // 전송은 이미 성공했다. 여기서 던지면 사용자가 재전송하게 되고 그게 더 큰 사고다(클래스 주석).
+                // 던지지 않고 false 로 알린다. 호출자가 공통 실패 안내를 띄운다(결정 9, 클래스 주석).
                 _log("보고 기록 저장 실패(전송은 성공했다) — 일간 " + ds + ": " + ex.Message);
-                LastFailure = DbErrors.Observe(ex, _log).detail;   // 재시도 대상 표시(S10) — 건너뜀과 구분한다
+                LastFailure = DbErrors.Observe(ex, _log).detail;   // 실패 원인 표시. 건너뜀과 구분한다
                 return false;
             }
         }
@@ -267,6 +277,65 @@ namespace TaskCalendarWidget
             }
         }
 
+        // ================================================================================
+        //  공개 API 3: 일간 보고 목록 읽기 (ATTENDANCE-PLAN §2.2, §3.2)
+        // ================================================================================
+        //   근태 달력과 근태 창의 "보고한 날짜" 출처가 쓴다. 이 앱으로 보낸 보고만 있다(회사 사이트에서 직접 쓴 보고는 없다).
+        //   사람(loginId)은 호스트가 세션에서 읽어 넘긴다. 기간은 from 이상 to 이하, ListMaxDays 일까지(달력 한 달, 출처 60일이면 넉넉하다).
+        //   반환: [{date:'YYYY-MM-DD', status, overtime, content, sentAt:'yyyy-MM-ddTHH:mm:ss.fffZ'}] (날짜 순) / 실패나 잘못된 인자는 null.
+        //   ★ sent_at 은 UTC 로 쓴다(쓰기 프리앰블 time_zone='+00:00', DateTime.UtcNow). 그래서 읽을 때 Z 를 붙인다.
+        internal const int ListMaxDays = 400;
+
+        public async Task<List<Dictionary<string, object?>>?> ListDailyAsync(string? loginId, DateTime from, DateTime to)
+        {
+            from = from.Date; to = to.Date;
+            if (string.IsNullOrEmpty(loginId)) { _log("보고 기록 목록 건너뜀: 로그인 사용자를 모른다"); return null; }
+            if (from > to || (to - from).TotalDays > ListMaxDays) { _log("보고 기록 목록 건너뜀: 기간이 올바르지 않다"); return null; }
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await using var conn = await OpenReadAsync(cts.Token);
+                int userId = await ResolveUserIdAsync(conn, loginId, cts.Token);
+
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText =
+                    "SELECT work_date, status, overtime, content, sent_at FROM cal_report_daily " +
+                    "WHERE user_id=@u AND work_date BETWEEN @f AND @t ORDER BY work_date";
+                cmd.Parameters.AddWithValue("@u", userId);
+                cmd.Parameters.AddWithValue("@f", from);
+                cmd.Parameters.AddWithValue("@t", to);
+                var rows = new List<Dictionary<string, object?>>();
+                await using (var r = await cmd.ExecuteReaderAsync(cts.Token))
+                {
+                    while (await r.ReadAsync(cts.Token))
+                    {
+                        var sent = r.IsDBNull(4) ? (DateTime?)null : r.GetDateTime(4);
+                        rows.Add(new Dictionary<string, object?>
+                        {
+                            ["date"] = r.GetDateTime(0).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                            ["status"] = r.IsDBNull(1) ? "" : r.GetString(1),
+                            ["overtime"] = r.IsDBNull(2) ? 0 : Convert.ToInt32(r.GetValue(2), CultureInfo.InvariantCulture),
+                            ["content"] = r.IsDBNull(3) ? "" : r.GetString(3),
+                            ["sentAt"] = sent == null ? "" : sent.Value.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture),
+                        });
+                    }
+                }
+                _log("보고 기록 목록: " + from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " ~ " +
+                     to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " (user_id=" + userId + ", " + rows.Count + "건)");
+                return rows;
+            }
+            catch (Exception ex)
+            {
+                _log("보고 기록 목록 읽기 실패: " + ex.Message);
+                DbErrors.Observe(ex, _log);   // 연결 끊김 알림과 실패 분류(OFFLINE-RESILIENCE S12)
+                return null;
+            }
+        }
+
+        //  웹이 보내는 날짜 'YYYY-MM-DD' 를 엄격하게 읽는다(근태 창의 날짜 이동, 목록 기간). 그 밖의 모양은 false.
+        internal static bool TryParseYmd(string? s, out DateTime d) =>
+            DateTime.TryParseExact(s ?? "", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out d);
+
         // ── 내부 ─────────────────────────────────────────────────────────────────
         //  연결은 버전 관문(DbGate)이 연다(장애 주입, 열기 실패 정리, 구조 번호 판정).
         //  ★ 프리앰블이 실패하면 연결을 닫고 원인을 그대로 던진다. 예전에는 열린 연결을 흘렸다.
@@ -277,6 +346,20 @@ namespace TaskCalendarWidget
             {
                 await using var pre = conn.CreateCommand();
                 pre.CommandText = WritePreambleSql;      // 프리앰블은 연 연결마다 — 예외를 두면 그 자리가 규약 밖이 된다
+                await pre.ExecuteNonQueryAsync(ct);
+            }
+            catch { await conn.DisposeAsync(); throw; }
+            return conn;
+        }
+
+        //  읽기용 연결(목록 읽기). 쓰기와 같은 관문(DbGate)으로 열고 읽기 프리앰블을 건다. 실패는 그대로 던진다.
+        private static async Task<MySqlConnection> OpenReadAsync(CancellationToken ct)
+        {
+            var conn = await DbGate.OpenAsync(BuildConnString(), ct);
+            try
+            {
+                await using var pre = conn.CreateCommand();
+                pre.CommandText = ReadPreambleSql;
                 await pre.ExecuteNonQueryAsync(ct);
             }
             catch { await conn.DisposeAsync(); throw; }
