@@ -1015,7 +1015,8 @@ try {
     //    (2026-10-02 첫 실행: 깨진 이름이 트리에서 안 찾아져 이 라운드가 통째로 실패했다).
     const TU_UNIT = Buffer.from(String(one(`SELECT HEX(name) FROM org_unit WHERE org_id=${TU_ORG}`) || ''), 'hex').toString('utf8');
     const meQ = me.replace(/'/g, "''");
-    const dbDirect = num(`SELECT COUNT(*) FROM app_user WHERE org_id=${TU_ORG} AND is_active=1 AND login_id<>'${meQ}'`);
+    const dbDirect = num(`SELECT COUNT(*) FROM app_user WHERE org_id=${TU_ORG} AND is_active=1`);
+    const meInTargetOrg = num(`SELECT COUNT(*) FROM app_user WHERE org_id=${TU_ORG} AND is_active=1 AND login_id='${meQ}'`) > 0;
     ok('R10(조직도) 대상의 조직을 DB 에서 읽었다', !!TU_UNIT && TU_ORG > 0, `org_id=${TU_ORG} name=${TU_UNIT}`);
     await main.ev(`document.getElementById("btnPeerPick").click()`);
     let s = await pkWait(main);
@@ -1048,8 +1049,11 @@ try {
     s = await pkState(main);
     const tr = s.rows.find((x) => x.id === TU);
     ok('R10(조직도) 오른쪽 목록에 대상 행이 있다 · 열 수 있다(회색 아님)', !!tr && tr.sec === 'Unit' && !tr.off, JSON.stringify(tr || s.rows.slice(0, 5)));
-    ok('R10(조직도) 직속 사람 행 수 = DB 의 그 조직 활성 인원(나 제외)', nav.unitRows === dbDirect, `화면 ${nav.unitRows} · DB ${dbDirect}`);
-    ok('R10(조직도) 나 자신은 조직도 목록에 없다', !s.rows.some((x) => x.id === me), JSON.stringify(s.rows.filter((x) => x.id === me)));
+    ok('R10(조직도) 직속 사람 행 수 = DB 의 그 조직 활성 인원(본인 포함)', nav.unitRows === dbDirect, `화면 ${nav.unitRows} · DB ${dbDirect}`);
+    if (meInTargetOrg) {
+      const meRow = s.rows.find((x) => x.id === me);
+      ok('R10(조직도) 내 소속 조직이면 나 자신이 (나) 비활성으로 보인다', !!meRow && meRow.off && /\(나\)/.test(meRow.text), JSON.stringify(meRow));
+    }
     //  열기 — 팝오버가 닫히고 그 사람 열람 창(지금 보던 사람이 둘째 대상이라 첫 대상으로 바뀐다)
     await pkClickRow(main, TU);
     await sleep(400);

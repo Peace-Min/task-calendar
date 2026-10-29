@@ -545,23 +545,37 @@ if (!JSDOM) {
   });
 
   // ── R6 ──
-  test('(R6) 명부에 없는 사람(퇴사 등): 회색 「명부에 없음」 + ✕ 로 지운다(즐겨찾기·최근 각각)', async () => {
+  test('(R6) 명부에 없는 사람(퇴사 등)과 최근 본 사람 지우기: 재직 중인 최근 행에도 ✕ · 전체 지우기 단추 · 포커스는 검색 칸으로', async () => {
     await reset(B);
     setLS(B, keyF(), [{ loginId: 'gone1', name: '퇴사자' }, { loginId: 'wblee', name: '이웅빈' }]);
-    setLS(B, keyR(), [{ loginId: 'gone2', name: '전출자' }]);
+    setLS(B, keyR(), [{ loginId: 'gone2', name: '전출자' }, { loginId: 'ihyoon', name: '윤인환' }, { loginId: 'g00', name: '김시험00' }]);
     await openTop(B);
     const f = sec(B, 'Fav'), r = sec(B, 'Recent');
-    assert.deepStrictEqual(f.map((x) => [x.id, x.off, x.del]), [['gone1', true, true], ['wblee', false, false]]);
+    assert.deepStrictEqual(f.map((x) => [x.id, x.off, x.star, x.del]), [['gone1', true, null, true], ['wblee', false, 'true:★', false]]);
     assert.ok(/퇴사자 \(명부에 없음\)/.test(f[0].text), f[0].text);
-    assert.deepStrictEqual(r.map((x) => [x.id, x.off, x.del]), [['gone2', true, true]]);
+    assert.deepStrictEqual(r.map((x) => [x.id, x.off, x.star, x.del]), [
+      ['gone2', true, null, true],
+      ['ihyoon', false, 'false:☆', true],
+      ['g00', false, 'false:☆', true],
+    ], '최근 본 사람 행에는 재직자도 ☆ 와 ✕ 가 함께 있어야 한다');
+    const clrBtn = B.doc.querySelector('#pkBody [data-act="clear-recent"]');
+    assert.ok(clrBtn && clrBtn.textContent === '전체 지우기', '최근 본 사람 머리말에 전체 지우기 단추가 없다');
     B.ev('__calls.length = 0');
     openBtn(B, 'gone1').click();
     assert.deepStrictEqual(calls(B), [], '명부에 없는 사람을 눌렀더니 조회가 나갔다');
     B.doc.querySelector('#pkBody [data-act="forget"][data-login="gone1"]').click();
     assert.deepStrictEqual(list(B, keyF()), ['wblee']);
     B.doc.querySelector('#pkBody [data-act="forget"][data-login="gone2"]').click();
+    assert.deepStrictEqual(list(B, keyR()), ['ihyoon', 'g00']);
+    //  재직 중인 최근 본 사람도 ✕ 로 지운다
+    B.doc.querySelector('#pkBody [data-act="forget"][data-login="ihyoon"]').click();
+    assert.deepStrictEqual(list(B, keyR()), ['g00']);
+    assert.deepStrictEqual(sec(B, 'Recent').map((x) => x.id), ['g00']);
+    //  전체 지우기로 남은 최근 목록을 한 번에 비운다
+    B.doc.querySelector('#pkBody [data-act="clear-recent"]').click();
     assert.deepStrictEqual(list(B, keyR()), []);
-    assert.strictEqual(active(B), 'pkSearch', '✕ 뒤 포커스가 사라졌다');
+    assert.deepStrictEqual(sec(B, 'Recent'), []);
+    assert.strictEqual(active(B), 'pkSearch', '✕/전체 지우기 뒤 포커스가 사라졌다');
   });
 
   // ── R7 ──
@@ -678,8 +692,10 @@ if (!JSDOM) {
     const inp = B.doc.getElementById('pkSearch');
     key(B, inp, 'ArrowDown'); assert.strictEqual(active(B), 'pk-open:wblee');
     key(B, B.doc.activeElement, 'ArrowDown'); assert.strictEqual(active(B), 'pk-open:ihyoon');
+    key(B, B.doc.activeElement, 'ArrowDown'); assert.strictEqual(active(B), 'pk-open:phmin', '최근 다음은 내 부서의 본인 행이다');
     key(B, B.doc.activeElement, 'ArrowDown'); assert.strictEqual(active(B), 'pkSearch', '끝에서 ↓ 가 검색 칸으로 돌아오지 않았다');
-    key(B, inp, 'ArrowUp'); assert.strictEqual(active(B), 'pk-open:ihyoon');
+    key(B, inp, 'ArrowUp'); assert.strictEqual(active(B), 'pk-open:phmin');
+    key(B, B.doc.activeElement, 'ArrowUp'); assert.strictEqual(active(B), 'pk-open:ihyoon');
     key(B, B.doc.activeElement, 'ArrowUp'); assert.strictEqual(active(B), 'pk-open:wblee');
     key(B, B.doc.activeElement, 'ArrowUp'); assert.strictEqual(active(B), 'pkSearch');
     //  ☆ 버튼에서도 ↓/↑ 는 행 단위로 움직인다
@@ -774,5 +790,12 @@ if (!JSDOM) {
   test('(변이) K11: Esc 캡처의 stopImmediatePropagation 을 빼면 팝오버의 Esc 가 전역 Esc(맨 앞에 띄우기 해제)로 새어 잡힌다', async () => {
     const bad = mutate(app, "    ev.preventDefault(); ev.stopImmediatePropagation();\n    pkClose(true);", '    pkClose(true);');
     await assert.rejects(() => escKeepsOthers(bad), /전역 Esc 로 샜다/);
+  });
+  test('(변이) R6: 최근 본 사람 행의 ✕ 단추 추가 줄을 빼면 잡힌다', () => {
+    const bad = mutate(app, "    if(kind === 'Recent') row.appendChild(mkDel());\n", '');
+    const dom = new JSDOM('<!doctype html><html><body></body></html>');
+    const pkRowEl = new Function('document', extractFunction(bad, 'pkRowEl') + '\nreturn pkRowEl;')(dom.window.document);
+    const el = pkRowEl({ loginId: 'wblee', name: '이웅빈', title: '선임', org: 'SW 2팀', gone: false, canView: true, viewing: false, isMe: false, fav: false }, 'Recent');
+    assert.strictEqual(el.querySelector('.pk-del'), null, '전제: 변이가 최근 행의 ✕ 단추를 지운다');
   });
 }

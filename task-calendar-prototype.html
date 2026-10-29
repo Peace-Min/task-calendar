@@ -7564,11 +7564,11 @@ function pkToggleFav(id, name){
   if(__pk) pkRender();
   return r;
 }
-//  K4 — 명부에서 사라진 사람(퇴사 등)을 그 목록에서 지운다(✕).
+//  K4 — 명부에서 사라진 사람(퇴사 등)이나 최근 본 사람을 그 목록에서 지운다(✕, id 가 비면 전체 비우기).
 function pkForget(kind, id){
   if(kind !== 'Fav' && kind !== 'Recent') return;
   const lid = String(id == null ? '' : id);
-  pkSave(kind, pkList(kind).filter(x => x.loginId !== lid));
+  pkSave(kind, lid ? pkList(kind).filter(x => x.loginId !== lid) : []);
   pvSyncFav();
   if(__pk) pkRender();
 }
@@ -7609,10 +7609,11 @@ function pkModel(o){
   if(dir) for(const m of dir){ const id = (m && m.loginId != null) ? String(m.loginId) : ''; if(id && !byId.has(id)) byId.set(id, m); }
   const favIds = new Set((o.favs || []).map(x => x.loginId));
   const row = (id, cached) => {
+    const isMe = !!me && id === me;
     const m = byId.get(id);
     if(m) return { loginId:id, name:String(m.name || cached || id), title:String(m.title || ''), org:String(m.orgUnit || ''),
-                   gone:false, canView:!!m.canViewSchedule, viewing:id === viewing, fav:favIds.has(id) };
-    return { loginId:id, name:String(cached || id), title:'', org:'', gone:!!dir, canView:!dir, viewing:id === viewing, fav:favIds.has(id) };
+                   gone:false, canView:!!m.canViewSchedule, viewing:id === viewing, isMe, fav:favIds.has(id) };
+    return { loginId:id, name:String(cached || id), title:'', org:'', gone:!!dir, canView:!dir, viewing:id === viewing, isMe, fav:favIds.has(id) };
   };
   const shown = new Set(), fav = [], recent = [];
   for(const x of (o.favs || [])){
@@ -7629,21 +7630,20 @@ function pkModel(o){
   if(q && dir){
     const all = [];
     for(const id of byId.keys()){
-      if(id === me || shown.has(id)) continue;                  // K4 — 나 자신은 목록에 없다
+      if(id === me || shown.has(id)) continue;                  // K4 — 나 자신은 검색 결과에 없다
       const r = row(id, ''); if(pkMatch(r, q)) all.push(r);
     }
     all.sort((a, b) => Number(b.canView) - Number(a.canView));  // 열 수 있는 사람 먼저(안정 정렬 — 명부 순서는 그대로)
     results = all.slice(0, PK_RESULT_MAX); more = all.length - results.length;
   }
-  //  G2 — 「내 부서」(검색어가 없을 때만): o.myUnit 에 **직속**한 사람 · 명부 순서 그대로.
-  //    mineCount = 나를 뺀 그 조직 직속 인원(머리말 「N명」 — 위에 이미 나온 사람도 센다) · mine = 그중 즐겨찾기/최근에 아직 안 나온 사람.
-  //    ★ o.myUnit 은 부르는 쪽이 「트리에 있는 조직」일 때만 준다(G9 — 없거나 모르는 조직이면 '' → 묶음 자체가 없다).
+  //  G2 — 내 부서(검색어가 없을 때만): o.myUnit 에 직속한 사람(본인 포함, 명부 순서 그대로).
+  //    mineCount = 그 조직 직속 인원(머리말 N명, 본인 포함, 위에 이미 나온 사람도 센다). mine = 그중 즐겨찾기/최근에 아직 안 나온 사람.
+  //    ★ o.myUnit 은 부르는 쪽이 트리에 있는 조직일 때만 준다(G9, 없거나 모르는 조직이면 '' 이 되어 묶음 자체가 없다).
   let mine = [], mineCount = 0;
   const myUnit = String(o.myUnit || '');
   if(!q && dir && myUnit){
     for(const [id, m] of byId){
       if(String(m.orgUnit || '') !== myUnit) continue;
-      if(id === me) continue;          // G2 — 나는 내 부서 목록에 없다
       mineCount++;
       if(shown.has(id)) continue;      // G2 — 즐겨찾기·최근에 이미 나온 사람은 다시 안 그린다(같은 사람 두 줄 금지)
       mine.push(row(id, ''));
@@ -7651,13 +7651,12 @@ function pkModel(o){
   }
   return { fav, recent, results, more, mine, mineCount };
 }
-//  순수 — 조직도 색인(G4·G5·G9). 「구성원 보기」와 같은 규칙: 순서 mbCmp(sortOrder → 이름) · 부모가 없거나 목록에 없으면 루트 ·
+//  순수 — 조직도 색인(G4, G5, G9). 구성원 보기와 같은 규칙: 순서 mbCmp(sortOrder 다음 이름), 부모가 없거나 목록에 없으면 루트,
 //    parent 순환은 방문 가드로 멈춘다(루트에서 닿지 않는 조직은 트리에 없다 = renderUnitTree 와 같다).
-//    반환 { roots:[이름], kids:Map(이름→[하위 이름, 정렬됨]), parent:Map(이름→부모), direct:Map(이름→[명부 행 · 나 제외 · 명부 순서]),
-//           count:Map(이름→그 조직 + 하위 전체 인원 · 나 제외), has(이름) }
+//    반환 { roots:[이름], kids:Map(이름→[하위 이름, 정렬됨]), parent:Map(이름→부모), direct:Map(이름→[명부 행, 본인 포함, 명부 순서]),
+//           count:Map(이름→그 조직 + 하위 전체 인원, 본인 포함), has(이름) }
 //  ★ 같은 login_id 가 두 번 와도 한 번만 센다(pkModel 의 byId 와 같은 규칙).
 function pkOrgIndex(units, members, me){
-  const meId = String(me || '');
   const byName = new Map();
   for(const u of (Array.isArray(units) ? units : [])){
     const n = (u && u.name != null) ? String(u.name) : '';
@@ -7684,7 +7683,6 @@ function pkOrgIndex(units, members, me){
     const id = (m && m.loginId != null) ? String(m.loginId) : '';
     if(!id || seen.has(id)) continue;
     seen.add(id);
-    if(id === meId) continue;          // G4 — 인원 수·목록에서 나를 뺀다
     const ou = String(m.orgUnit || '');
     if(!reach.has(ou)) continue;
     if(!direct.has(ou)) direct.set(ou, []);
@@ -7702,45 +7700,49 @@ function pkOrgPath(ix, name){
   while(c && ix && ix.has(c) && !seen.has(c)){ seen.add(c); out.unshift(c); c = ix.parent.get(c) || ''; }
   return out;
 }
-//  명부 한 사람 → 행 모델(pkModel 의 행과 같은 모양 — pkRowEl 이 그린다). 조직도 목록에서 쓴다.
-function pkDirRow(m, favIds, viewing){
+//  명부 한 사람 → 행 모델(pkModel 의 행과 같은 모양, pkRowEl 이 그린다). 조직도 목록에서 쓴다.
+function pkDirRow(m, favIds, viewing, me){
   const id = String(m.loginId);
   return { loginId:id, name:String(m.name || id), title:String(m.title || ''), org:String(m.orgUnit || ''),
-           gone:false, canView:!!m.canViewSchedule, viewing:id === viewing, fav:favIds.has(id) };
+           gone:false, canView:!!m.canViewSchedule, viewing:id === viewing, isMe:!!me && id === String(me), fav:favIds.has(id) };
 }
 
-//  한 행 — [이름 · 직급 / 조직 (꼬리표)] + 오른쪽 ☆/★(aria-pressed) 또는 ✕(명부에 없음).
-//  ★ 행 안에 버튼을 또 넣지 않는다(무효 마크업) — 여는 버튼과 ☆ 버튼을 형제로 두고 .pk-row 가 한 줄로 묶는다(.mba-line 과 같은 관례).
-//  ★ 누를 수 없는 행도 <button aria-disabled="true"> 다 — 포커스·화면낭독기로 「왜 안 되는지」 를 읽을 수 있게(disabled 면 건너뛴다).
+//  한 행 — [이름, 직급 / 조직 (꼬리표)] + 오른쪽 ☆/★(aria-pressed) 및 ✕(최근 본 사람, 명부에 없음).
+//  ★ 행 안에 버튼을 또 넣지 않는다(무효 마크업), 여는 버튼과 ☆, ✕ 버튼을 형제로 두고 .pk-row 가 한 줄로 묶는다(.mba-line 과 같은 관례).
+//  ★ 누를 수 없는 행도 <button aria-disabled="true"> 다, 포커스와 화면낭독기로 왜 안 되는지를 읽을 수 있게(disabled 면 건너뛴다).
 function pkRowEl(r, kind){
   const row = document.createElement('div');
   row.className = 'pk-row';
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'pk-open';
   b.dataset.act = 'open'; b.dataset.login = r.loginId; b.dataset.name = r.name;
-  const off = r.gone || !r.canView || r.viewing;
+  const off = r.isMe || r.gone || !r.canView || r.viewing;
   if(off) b.setAttribute('aria-disabled', 'true');
-  b.title = r.viewing ? '지금 보고 있는 사람입니다'
+  b.title = r.isMe ? '나 자신입니다'
+          : r.viewing ? '지금 보고 있는 사람입니다'
           : r.gone ? '명부에 없습니다(퇴사·이동 등). ✕ 로 목록에서 지울 수 있습니다'
           : !r.canView ? '일정 열람 범위 밖입니다'
           : (r.name || r.loginId) + ' 님의 일정 보기(읽기 전용)';
   const line = document.createElement('span'); line.className = 'pk-line';
   const nm = document.createElement('b'); nm.textContent = r.name || r.loginId; line.appendChild(nm);
   if(r.title){ const t = document.createElement('span'); t.className = 'git-opt'; t.textContent = ' ' + r.title; line.appendChild(t); }
-  const tag = r.viewing ? ' (보는 중)' : r.gone ? ' (명부에 없음)' : '';
+  const tag = r.isMe ? ' (나)' : r.viewing ? ' (보는 중)' : r.gone ? ' (명부에 없음)' : '';
   if(tag){ const s = document.createElement('span'); s.className = 'pk-tag'; s.textContent = tag; line.appendChild(s); }
-  if(!r.gone && !r.canView){ const s = document.createElement('span'); s.className = 'sr-only'; s.textContent = ' (일정 열람 범위 밖)'; line.appendChild(s); }
+  if(!r.isMe && !r.gone && !r.canView){ const s = document.createElement('span'); s.className = 'sr-only'; s.textContent = ' (일정 열람 범위 밖)'; line.appendChild(s); }
   b.appendChild(line);
   if(r.org){ const o = document.createElement('span'); o.className = 'pk-org'; o.textContent = r.org; b.appendChild(o); }
   row.appendChild(b);
-  if(r.gone){
-    if(kind){
-      const x = document.createElement('button');
-      x.type = 'button'; x.className = 'pk-del'; x.dataset.act = 'forget'; x.dataset.kind = kind; x.dataset.login = r.loginId;
-      x.textContent = '✕'; x.title = '목록에서 지우기';
-      x.setAttribute('aria-label', '목록에서 지우기: ' + (r.name || r.loginId));
-      row.appendChild(x);
-    }
+  const mkDel = () => {
+    const x = document.createElement('button');
+    x.type = 'button'; x.className = 'pk-del'; x.dataset.act = 'forget'; x.dataset.kind = kind; x.dataset.login = r.loginId;
+    x.textContent = '✕'; x.title = '목록에서 지우기';
+    x.setAttribute('aria-label', '목록에서 지우기: ' + (r.name || r.loginId));
+    return x;
+  };
+  if(r.isMe){
+    // 본인 행에는 즐겨찾기, 지우기 단추를 두지 않는다
+  }else if(r.gone){
+    if(kind) row.appendChild(mkDel());
   }else{
     const s = document.createElement('button');
     s.type = 'button'; s.className = 'pk-star'; s.dataset.act = 'star'; s.dataset.login = r.loginId; s.dataset.name = r.name;
@@ -7749,6 +7751,7 @@ function pkRowEl(r, kind){
     s.title = r.fav ? '즐겨찾기에서 빼기' : '즐겨찾기에 추가';
     s.setAttribute('aria-label', s.title + ': ' + (r.name || r.loginId));
     row.appendChild(s);
+    if(kind === 'Recent') row.appendChild(mkDel());
   }
   return row;
 }
@@ -7775,7 +7778,17 @@ function quoteKeep(el, text){
 }
 function pkSection(body, title, rows, kind){
   if(!rows.length) return;
-  const h = document.createElement('div'); h.className = 'pk-sec-h'; h.textContent = title;
+  const h = document.createElement('div');
+  if(kind === 'Recent'){
+    h.className = 'pk-sec-h pk-sec-x';
+    const t = document.createElement('span'); t.textContent = title; h.appendChild(t);
+    const clr = document.createElement('button');
+    clr.type = 'button'; clr.className = 'pk-more'; clr.dataset.act = 'clear-recent'; clr.textContent = '전체 지우기';
+    clr.title = '최근 본 사람 목록 비우기';
+    h.appendChild(clr);
+  }else{
+    h.className = 'pk-sec-h'; h.textContent = title;
+  }
   const g = document.createElement('div'); g.setAttribute('role', 'group'); g.setAttribute('aria-label', title.replace(/^★\s*/, ''));
   g.dataset.sec = kind || 'Result';
   for(const r of rows) g.appendChild(pkRowEl(r, kind));
@@ -7900,9 +7913,10 @@ function pkUnitListEl(ix, unit){
   if(ms.length){
     const favIds = new Set(pkList('Fav').map(x => x.loginId));
     const viewing = (__pk.mode === 'modal' && __pv) ? String(__pv.loginId) : '';   // K9 — 조직도 목록에서도 「보는 중」 회색(G7)
+    const me = pkMe();
     const g = document.createElement('div'); g.setAttribute('role', 'group'); g.setAttribute('aria-label', unit + ' 사람');
     g.dataset.sec = 'Unit';
-    for(const m of ms) g.appendChild(pkRowEl(pkDirRow(m, favIds, viewing), null));
+    for(const m of ms) g.appendChild(pkRowEl(pkDirRow(m, favIds, viewing, me), null));
     box.appendChild(g);
   }else if(!ks.length){
     box.appendChild(pkNote('이 조직에는 사람이 없습니다'));
@@ -8175,7 +8189,7 @@ function pkClose(focusBack){
 //  고르기(K5 · K9) — 툴바면 팝오버를 닫고 지금의 열람 창을 연다. 열람 창 안이면 **창을 닫지 않고** 그 자리에서 사람만 바꾼다
 //    (보던 달은 pvFrameView → meta.view 로 잇고, 보기 방식·밀도·겹은 저장값이라 새 프레임이 그대로 읽는다).
 function pkPick(id, name){
-  if(!__pk || !id) return;
+  if(!__pk || !id || id === pkMe()) return;
   if(__pk.mode === 'modal'){
     if(__pv && String(__pv.loginId) === id) return;   // 「보는 중」 — 누를 수 없음
     const carry = pvFrameView();
@@ -8199,6 +8213,9 @@ function pkOnClick(ev){
     pkToggleFav(id, nm);
   }else if(act === 'forget'){
     pkForget(b.dataset.kind, id);
+    const s = document.getElementById('pkSearch'); if(s) try{ s.focus(); }catch(_){}
+  }else if(act === 'clear-recent'){
+    pkForget('Recent', '');
     const s = document.getElementById('pkSearch'); if(s) try{ s.focus(); }catch(_){}
   }else if(act === 'retry'){
     const s = document.getElementById('pkSearch'); if(s) try{ s.focus(); }catch(_){}
