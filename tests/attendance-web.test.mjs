@@ -559,7 +559,7 @@ if (!JSDOM) {
       assert.deepStrictEqual(s.hours, [{ name: '알파', hours: 2 }, { name: '베타', hours: 1 }]);
       //  블록 없음
       for (let i = 0; i < 3; i++) X.$('#atBlocks [data-bx="0"]').click();
-      assert.ok(X.$('#atBlocks .at-bempty'), '블록이 없을 때 안내가 없다');
+      assert.ok(!X.$('#atBlocks .at-bempty') && !/과제가 없습니다/.test(X.$('#atBlocks').textContent), '블록이 없을 때 설명 문구가 남아 있다');
       X.$('#atSend').click();
       assert.strictEqual(cap(), 1, '블록이 없는데 보냈다');
       assert.ok(X.$('#atMsg').textContent.includes('보낼 과제가 없습니다'));

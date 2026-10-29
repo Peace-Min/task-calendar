@@ -2799,7 +2799,6 @@ body:not(.at-on) #atView{display:none !important}
 .at-ed .at-bt:focus{outline:none}
 .at-bmsg{display:flex;align-items:center;gap:6px;padding:0 12px 6px;color:var(--danger-text);font-size:var(--fs-meta)}
 .at-bmsg-i{flex:none;width:16px;height:16px;border-radius:50%;background:var(--danger);color:var(--on-accent);font-weight:700;font-size:11px;line-height:16px;text-align:center}
-.at-bempty{padding:16px 4px}
 .at-ed .at-memo .at-bt{min-height:36px}
 .at-add{position:relative;flex:none}
 .at-addb{width:100%;border-style:dashed}
@@ -21921,7 +21920,7 @@ function atBlocksRender(){
       + '<button type="button" class="at-bx" data-bx="' + i + '" title="블록 지우기" aria-label="' + esc(lab) + ' 블록 지우기">✕</button></div>'
       + '<textarea class="at-bt" data-bt="' + i + '" spellcheck="false" rows="2" aria-label="' + esc(lab) + ' 내용"></textarea>'
       + '<div class="at-bmsg' + (pr ? '' : ' hidden') + '" data-bmsg="' + i + '" role="alert"><span class="at-bmsg-i" aria-hidden="true">!</span><span data-bmsgt>' + esc(pr) + '</span></div></div>';
-  }).join('') : '<div class="at-none at-bempty">과제가 없습니다. 아래 [+ 과제 추가]나 오른쪽 가져오기로 채우세요.</div>');
+  }).join('') : '');   // 블록이 없으면 아무것도 쓰지 않는다([+ 과제 추가]가 바로 아래에 있다, 2026-10-29 사용자)
   //  내용은 value 로 넣는다(textarea 안에 글을 넣으면 맨 앞 줄바꿈 하나를 HTML 이 먹는다).
   box.querySelectorAll('textarea[data-bt]').forEach(t => { t.value = ATE.blocks[Number(t.dataset.bt)].text; atGrow(t); });
   const mt = box.querySelector('textarea[data-memo]'); if(mt){ mt.value = ATE.memo; atGrow(mt); }
