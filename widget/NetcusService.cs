@@ -69,6 +69,7 @@ namespace TaskCalendarWidget
             => NetcusWeekFill(new NetcusWeekReq { Sdate = sdate, Edate = edate, Subject = subject, Content = content, Endwork = endwork, Planwork = planwork });
 
         public Task WeekMerge(string reqId, string from, string to) => NetcusWeekMerge(reqId, from, to);
+        public Task ViewMonth(string reqId, int y, int m, int d) => NetcusViewMonth(reqId, y, m, d);
         public Task WeeklyRangeRead(string reqId, string from, string to) => NetcusWeeklyRangeRead(reqId, from, to);
         public Task Probe() => NetcusProbeStart();
         public void SaveCreds(string id, string pw) => NetcusSaveCreds(id, pw);
@@ -480,6 +481,7 @@ namespace TaskCalendarWidget
 
                 NetcusProgress("창 준비 중…");
                 await EnsureW2();
+                try { Dispatcher.Invoke(() => { if (_w2win != null) _w2win.Title = "회사 일간보고 전송 (확인용)"; }); } catch { }   // 근태 달력 보기가 바꿔 둔 제목을 되돌린다
                 cw = _w2!.CoreWebView2;
                 detach = AttachDialogAutoAccept(cw, "submit");
 
@@ -604,6 +606,8 @@ namespace TaskCalendarWidget
                     NetcusProgress("기록 저장 중…");
                     bool stored = await _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.HoursJson);
                     NetcusResult(stored, stored ? "회사 보고와 기록 저장을 완료했습니다." : "처리를 완료하지 못했습니다. 다시 시도해 주세요.");
+                    //  성공이면 확인용 창을 닫는다(2026-10-29 사용자). 눈으로 보려면 근태 창의 [인트라넷에서 확인]으로 그 달 달력을 연다. 실패면 남긴다.
+                    if (stored) { try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { } }
                 }
                 else if (vr == 2) NetcusResult(false, "저장은 됐으나 한글이 깨졌을 수 있습니다(되읽기 대조 불일치). netcus에서 확인하세요.");
                 else NetcusResult(false, "저장 확인 실패(내용이 비어 있음). 열린 창에서 직접 확인하세요.");
@@ -815,6 +819,75 @@ namespace TaskCalendarWidget
                 bool disposed = (ex.Message ?? "").Contains("disposed");
                 NetcusResult(false, disposed ? "확인 창이 닫혀 중단되었습니다. 다시 시도하세요." : ("주간보고 작성 오류: " + ex.Message));
             }
+            finally { detach?.Invoke(); _ncBusy = false; NetcusBusy(false); }
+        }
+
+        // 인트라넷 근태관리 달력 보기(읽기만, 2026-10-29 사용자). 로그인 → pjm_work.jsp?y&m&id(그 달 달력) → 그 날짜 칸을 찾아
+        //   화면 가운데로 스크롤하고 테두리로 강조한다. 창은 사용자가 보도록 남긴다. 제출, 수정은 하지 않는다.
+        //   날짜 칸은 그 칸의 링크 pjm_work_view.jsp?y=Y&m=M&d=D& 로 찾는다. 못 찾으면 달력 맨 위를 그대로 보인다(marked:false).
+        // 회신 계약: { ok:bool, error:""|"busy"|"no-creds"|"unverified"|"login"|"read", marked:bool }
+        private async Task NetcusViewMonth(string reqId, int y, int m, int d)
+        {
+            if (_ncBusy) { HostReply(reqId, new { ok = false, error = "busy", marked = false }); return; }
+            if (y < 2000 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) { HostReply(reqId, new { ok = false, error = "read", marked = false }); return; }
+            _ncBusy = true; NetcusBusy(true);
+            Action? detach = null;
+            try
+            {
+                var (id, pw) = NetcusLoadCreds();
+                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { HostReply(reqId, new { ok = false, error = "no-creds", marked = false }); return; }
+                if (NetcusCredsValid() == false) { HostReply(reqId, new { ok = false, error = "unverified", marked = false }); return; }
+
+                Log($"netcus 근태 달력 보기: {y}-{m:D2}-{d:D2}");
+                await EnsureW2();
+                try
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (_w2win == null) return;
+                        _w2win.Title = "인트라넷 근태관리 (확인용)";
+                        //  주간병합 읽기 창(화면 밖, 최소화)이 남아 있었다면 사용자 화면으로 데려온다.
+                        if (_w2win.Left < -10000 || _w2win.Top < -10000)
+                        {
+                            var wa = SystemParameters.WorkArea;
+                            _w2win.Left = wa.Left + Math.Max(0, (wa.Width - _w2win.Width) / 2);
+                            _w2win.Top = wa.Top + Math.Max(0, (wa.Height - _w2win.Height) / 2);
+                        }
+                        _w2win.ShowInTaskbar = true;
+                        if (_w2win.WindowState == WindowState.Minimized) _w2win.WindowState = WindowState.Normal;
+                        _w2win.Activate();
+                    });
+                }
+                catch { }
+                var cw = _w2!.CoreWebView2;
+                detach = AttachDialogAutoAccept(cw, "view");
+                if (!await NetcusLoginVerify(cw, id, pw))
+                {
+                    try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
+                    HostReply(reqId, new { ok = false, error = "login", marked = false });
+                    return;
+                }
+                //  여기서 로드되는 달력 문서는 사용자에게 넘긴다. 자동수락은 로드 전에 끈다(NetcusSubmit 의 되읽기와 같은 까닭).
+                detach?.Invoke(); detach = null;
+                await NavTo(cw, $"https://www.netcus.com/pjm/pjm_work.jsp?y={y}&m={m}&id={Uri.EscapeDataString(id)}");
+                string key = $"pjm_work_view.jsp?y={y}&m={m}&d={d}&";
+                string mark = "(function(){try{var as=document.getElementsByTagName('a');"
+                    + $"for(var i=0;i<as.length;i++){{var h=as[i].getAttribute('href')||'';if(h.indexOf({J(key)})<0)continue;"
+                    + "var td=as[i];while(td&&td.tagName!=='TD')td=td.parentNode;if(!td)return 0;"
+                    + "td.style.outline='3px solid #e5484d';td.style.outlineOffset='-3px';td.style.backgroundColor='#FDFFEE';"
+                    + "td.scrollIntoView({block:'center',inline:'center'});return 1;}"
+                    + "return 0;}catch(e){return -1;}})()";
+                string r = "0";
+                for (int i = 0; i < 10; i++)
+                {
+                    r = (await cw.ExecuteScriptAsync(mark) ?? "").Trim('"');
+                    if (r == "1") break;
+                    await Task.Delay(300);
+                }
+                Log("netcus 근태 달력 보기 표시: " + r);
+                HostReply(reqId, new { ok = true, error = "", marked = r == "1" });
+            }
+            catch (Exception ex) { Log("netcus 근태 달력 보기 예외: " + ex); HostReply(reqId, new { ok = false, error = "read", marked = false }); }
             finally { detach?.Invoke(); _ncBusy = false; NetcusBusy(false); }
         }
 

@@ -479,7 +479,7 @@ namespace TaskCalendarWidget
         internal static readonly HashSet<string> AttendWinCommands = new(StringComparer.Ordinal)
         {
             "attendWinReady", "attendNav", "reportDailyList", "netcusSubmit",
-            "attendSourceReq", "netcusWeekMerge",   // 가져오기(2026-10-29): 다른 날짜 캘린더 기록 청하기, 회사 근태관리 읽기만. attendSourcePush 는 메인 창만 보낸다
+            "attendSourceReq", "netcusWeekMerge", "netcusViewMonth",   // 가져오기(2026-10-29): 다른 날짜 캘린더 기록 청하기, 회사 근태관리 읽기만. attendSourcePush 는 메인 창만 보낸다
         };
         //  요청 번호의 머리. 회신은 이 표시를 보고 그 창으로 간다(ReplyCore). 창끼리 번호가 겹치지 않는다.
         internal const string PeerReqPrefix = "pw:";
@@ -920,6 +920,12 @@ namespace TaskCalendarWidget
                     {
                         string reqId = GetStr(doc, "reqId"), from = GetStr(doc, "from"), to = GetStr(doc, "to");
                         _ = _netcus.WeekMerge(reqId, from, to);   // async — days 배열을 __hostReply(reqId, ...)로 회신
+                        break;
+                    }
+                    case "netcusViewMonth":   // 인트라넷 근태관리 달력을 그 날짜로 열어 보이기(읽기만, 근태 창의 [인트라넷에서 확인])
+                    {
+                        string reqId = GetStr(doc, "reqId");
+                        _ = _netcus.ViewMonth(reqId, GetInt(doc, "y"), GetInt(doc, "m"), GetInt(doc, "d"));   // async, { ok, error, marked } 를 __hostReply(reqId, ...)로 회신
                         break;
                     }
                     case "netcusWeeklyRangeRead":   // 주간보고 범위 읽기(Phase2) — 기간에 걸치는 netcus 주간보고들을 '읽기만' 해서 reqId로 회신

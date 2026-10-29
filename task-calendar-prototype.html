@@ -3167,6 +3167,7 @@ html[data-attendwin] #atBack{ display:none }
       </div>
       <div class="at-ed-foot">
         <span class="at-msg" id="atMsg" role="status" aria-live="polite"></span>
+        <button type="button" class="at-lnk" id="atIntra" hidden title="인트라넷 근태관리 달력에서 이 날짜를 엽니다(읽기만)">인트라넷에서 확인</button>
         <span class="spacer"></span>
         <button type="button" class="btn" id="atCopy">복사</button>
         <button type="button" class="btn" id="atClose">닫기</button>
@@ -5219,7 +5220,7 @@ if(ADMINWIN){ try{ document.documentElement.dataset.adminwin = '1'; }catch(_){} 
  *  ★ html[data-attendwin] 은 CSS 스위치다(보고 화면과 그 위에 뜨는 것만 보인다). */
 const ATTENDWIN = (() => { try { return HOST && !PEER && new URLSearchParams(location.search).get('win') === 'attend'; }
                            catch (_) { return false; } })();
-const ATTENDWIN_CMD = new Set(['attendWinReady','attendNav','reportDailyList','netcusSubmit','attendSourceReq','netcusWeekMerge']);   // 호스트의 AttendWinCommands 와 같은 목록(tests/attendance-web.test.mjs)
+const ATTENDWIN_CMD = new Set(['attendWinReady','attendNav','reportDailyList','netcusSubmit','attendSourceReq','netcusWeekMerge','netcusViewMonth']);   // 호스트의 AttendWinCommands 와 같은 목록(tests/attendance-web.test.mjs)
 if(ATTENDWIN){ try{ document.documentElement.dataset.attendwin = '1'; }catch(_){} }
 //  따로 뜨는 창(열람 창, 관리 창, 근태 창). 버전 관문 카드의 작은 변형, 창 제목, 테마 따라가기 같은 공통 규칙이 이것을 본다.
 const SUBWIN = PEERWIN || ADMINWIN || ATTENDWIN;
@@ -21038,7 +21039,7 @@ const ATT = { anchor: '', screen: 'month', rows: new Map(), from: '', to: '', lo
 //  보고 화면 상태. p = payload(§3.3), base = 처음 상태(고쳤는지 판단의 기준). 보고한 날도 바로 쓰기 화면으로 연다(보기는 근태 달력에서, 2026-10-29 사용자).
 //    가져오기: src = 'cal' 캘린더 | 'net' 인트라넷(회사 근태관리), srcDate = 가져올 날짜(처음은 보는 날짜).
 //    cal = 다른 날짜의 캘린더 기록(보는 날짜는 p.source 를 쓴다), net = 근태관리에서 읽은 그날 글. 둘 다 날짜 하나만 기억한다.
-const ATE = { p: null, date: '', base: null, src: 'cal', srcDate: '', opt: { event: true, todo: true, skip: true, desc: true },
+const ATE = { p: null, date: '', base: null, intra: false, src: 'cal', srcDate: '', opt: { event: true, todo: true, skip: true, desc: true },
   checked: new Set(), cal: { date: '', source: null, loading: false, err: '', wd: null },
   net: { date: '', content: '', dayOk: false, loading: false, err: '', gen: 0 }, folded: false,
   sending: false, armed: false, timer: null, wd: null, savedAt: '', navPending: '', closeSent: false };
@@ -21476,6 +21477,29 @@ function atEdOpen(raw){
 function atDateRender(){
   const de = $('#atEdDate'); if(de && ATE.p) de.textContent = atDateLabel(ATE.date);
   const se = $('#atSent'); if(se){ const sv = ATE.p && ATE.p.saved, t = sv ? atSentLabel(sv.sentAt) : ''; se.textContent = t ? '보낸 시각 ' + t : ''; }
+  atIntraRender();
+}
+//  [인트라넷에서 확인](보고한 날, 위젯만): 호스트가 인트라넷에 로그인해 그 달 근태관리 달력을 열고 그 날짜 칸으로 스크롤해 강조한다(읽기만).
+//    회사 쪽 창은 호스트가 띄운다. 이 창은 여는 동안 단추만 잠그고 결과가 실패면 안내한다.
+async function atIntraClick(){
+  if(!HOST || !ATE.p || !ATE.p.saved || ATE.sending || ATE.intra) return;
+  if(ATE.net.loading){ atMsg('인트라넷에서 읽는 중입니다. 끝난 뒤에 누르세요', 'err'); return; }
+  const date = ATE.date, [y, m, d] = date.split('-').map(Number);
+  ATE.intra = true; atIntraRender();
+  let r = null;
+  try{ r = await hostRequest('netcusViewMonth', { y, m, d }, 90000); }catch(_){ r = null; }
+  ATE.intra = false; atIntraRender();
+  if(r && r.ok) return;
+  const e = r && typeof r.error === 'string' ? r.error : '';
+  atMsg(e === 'busy' ? '회사 사이트에서 다른 작업을 하는 중입니다. 잠시 뒤 다시 누르세요.'
+    : (e === 'no-creds' || e === 'unverified' || e === 'login') ? atNetErrText(e).replace('다시 읽으세요', '다시 누르세요')
+    : '인트라넷 화면을 열지 못했습니다. 다시 누르세요.', 'err');
+}
+function atIntraRender(){
+  const b = $('#atIntra'); if(!b) return;
+  b.hidden = !(HOST && ATE.p && ATE.p.saved);
+  b.disabled = !!(ATE.intra || ATE.sending);
+  b.textContent = ATE.intra ? '인트라넷 여는 중…' : '인트라넷에서 확인';
 }
 //  근태(ATTEND_STATUS 그대로, 기본 정근)와 초과시간(없음, +1~+11시간). 값이 목록에 없으면 정근.
 //    이 화면에는 미기록이 없다(2026-10-29 사용자). 보고서 창 레일의 미기록은 그대로다.
@@ -21524,6 +21548,7 @@ function atSetBusy(on){
   const b = $('#atSend'); if(b) b.textContent = on ? '회사에 보고하는 중…' : '회사에 보고';
   ed.classList.toggle('busy', !!on);
   if(!on){ atSyncNav(); atPanelRender(); }
+  atIntraRender();
 }
 function atSyncNav(){
   const pv = $('#atPrev'), nx = $('#atNext');
@@ -21870,6 +21895,7 @@ function atInit(){
     on('atBack', 'click', atRequestClose);
     on('atClose', 'click', atRequestClose);
     on('atCopy', 'click', atCopy);
+    on('atIntra', 'click', atIntraClick);
     on('atSend', 'click', atSubmit);
     on('atLoad', 'click', atLoadClick);
     on('atSrcDate', 'change', ev => atSetSrcDate(ev.target.value));

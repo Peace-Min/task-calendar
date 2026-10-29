@@ -1,7 +1,7 @@
 // 근태 탭과 근태 보고 창(docs/ATTENDANCE-PLAN.md, 2026-10-29), §5 웹 시험.
 //
 // 이 파일이 지키는 것:
-//   (S) 정적: 근태 창 허용 목록(ATTENDWIN_CMD)이 여섯(attendWinReady, attendNav, reportDailyList, netcusSubmit, attendSourceReq, netcusWeekMerge)이고
+//   (S) 정적: 근태 창 허용 목록(ATTENDWIN_CMD)이 일곱(attendWinReady, attendNav, reportDailyList, netcusSubmit, attendSourceReq, netcusWeekMerge, netcusViewMonth)이고
 //       hpost 가 그 밖을 버린다(attendSourcePush 는 메인 창만).
 //       'tw:' 번호 머리, SUBWIN 에 근태 창이 들어간다, 탭 줄에 근태 탭이 있다, UI 문구에 금지 기호가 없다.
 //   (U) 순수: 근태 표시 문구(야근(+2시간)), 머리 줄 시간 읽기(두 형식, 0 초과 24 이하), 같은 이름 더하기, 상태 줄.
@@ -29,7 +29,7 @@ function mutate(text, find, repl) {
 }
 
 // ══ (S) 정적 ══════════════════════════════════════════════════════════
-const ATTEND_CMDS = ['attendNav', 'attendSourceReq', 'attendWinReady', 'netcusSubmit', 'netcusWeekMerge', 'reportDailyList'];
+const ATTEND_CMDS = ['attendNav', 'attendSourceReq', 'attendWinReady', 'netcusSubmit', 'netcusViewMonth', 'netcusWeekMerge', 'reportDailyList'];
 function webAttendSet(src) {
   const m = /const ATTENDWIN_CMD = new Set\(\[([\s\S]*?)\]\);/.exec(src);
   assert.ok(m, 'ATTENDWIN_CMD 를 찾지 못했다');
@@ -562,6 +562,34 @@ if (!JSDOM) {
       //  창이 앞으로 오면 attendNav refresh 를 청한다
       A.ev('__attendWinActivated()');
       assert.deepStrictEqual(A.posted[A.posted.length - 1], { cmd: 'attendNav', date: A.T, refresh: true });
+    } finally { A.close(); }
+  });
+
+  test('(A) [인트라넷에서 확인]: 보고한 날만 보이고, 누르면 netcusViewMonth(y, m, d)를 청하고 여는 동안 잠근다, 실패면 안내', async () => {
+    const A = bootAttend();
+    try {
+      A.ev('__attendWinOpen(' + JSON.stringify(payloadFrom(A.ev('addDays(todayYmd(), 1)'))) + ')');
+      assert.strictEqual(A.$('#atIntra').hidden, true, '보고하지 않은 날인데 인트라넷 확인 링크가 보인다');
+      stubHost(A, `{ netcusViewMonth: function(p){ return window.__vmReply; } }`);
+      A.ev(`window.__vmReply = { ok: true, error: '', marked: true }`);
+      openA(A, { status: '1', overtime: 0, content: '[알파] : 8', sentAt: '2026-10-29T09:00:00.000Z' });
+      const b = A.$('#atIntra');
+      assert.ok(!b.hidden && !b.disabled && b.textContent === '인트라넷에서 확인', '보고한 날인데 링크가 없다');
+      b.click();
+      assert.strictEqual(b.disabled, true, '여는 동안 잠그지 않았다');
+      assert.strictEqual(b.textContent, '인트라넷 여는 중…');
+      await tick();
+      const [y, m, d] = A.T.split('-').map(Number);
+      assert.deepStrictEqual(A.evJSON("__calls.filter(function(c){ return c[0] === 'netcusViewMonth'; })"), [['netcusViewMonth', { y, m, d }]]);
+      assert.ok(!b.disabled && b.textContent === '인트라넷에서 확인');
+      assert.strictEqual(A.$('#atMsg').textContent, '', '성공했는데 안내를 띄웠다');
+      A.ev(`window.__vmReply = { ok: false, error: 'busy', marked: false }`);
+      b.click(); await tick();
+      assert.ok(A.$('#atMsg').textContent.includes('다른 작업'), '바쁨 안내가 없다');
+      A.ev(`window.__vmReply = { ok: false, error: 'login', marked: false }`);
+      b.click(); await tick();
+      assert.ok(A.$('#atMsg').textContent.includes('로그인에 실패'), '로그인 실패 안내가 없다');
+      assert.deepStrictEqual(A.errors, []);
     } finally { A.close(); }
   });
 

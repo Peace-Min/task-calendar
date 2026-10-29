@@ -3,7 +3,7 @@
 // 이 파일이 지키는 것(호스트 쪽만. 웹의 근태 화면은 웹 시험의 몫이다):
 //   ① 창 종류 WinKind.Attend 의 값(주소, 제목, 최소와 처음 크기, 'tw:' 머리, 준비 알림, 여는 함수, 앞으로 올 때 함수,
 //      목록 알림 안 받음, 닫기 전 확인, 자리 기억 키)과 등록(All), 설정의 Attend 자리.
-//   ② 근태 창 허용 목록 AttendWinCommands = {attendWinReady, attendNav, reportDailyList, netcusSubmit, attendSourceReq, netcusWeekMerge}.
+//   ② 근태 창 허용 목록 AttendWinCommands = {attendWinReady, attendNav, reportDailyList, netcusSubmit, attendSourceReq, netcusWeekMerge, netcusViewMonth}.
 //      웹 ATTENDWIN_CMD 와 같다. attendSourcePush 는 메인 창만 보낸다(목록에 없다).
 //   ③ attendOpen 은 메인 창에서만 받는다. payload 가 객체가 아니면 열지 않는다. attendNav 는 근태 창에서만 받고 메인 창의
 //      __attendNavFromWin 을 부른다(날짜는 'YYYY-MM-DD' 만, 인자는 JSON 으로 싣는다).
@@ -38,7 +38,7 @@ function mutate(base, from, to) {
 }
 const member = (code, sig) => extractCsMember(code, sig);
 
-const ATTEND_CMDS = ['attendNav', 'attendSourceReq', 'attendWinReady', 'netcusSubmit', 'netcusWeekMerge', 'reportDailyList'];
+const ATTEND_CMDS = ['attendNav', 'attendSourceReq', 'attendWinReady', 'netcusSubmit', 'netcusViewMonth', 'netcusWeekMerge', 'reportDailyList'];
 //  근태 창이 보내면 안 되는 것(내 달력 부팅과 저장, 창 열기, 관리, 창 조작, 주간 전송, 업데이트)
 const NEVER = ['ready', 'reloadState', 'saveState', 'replaceAllState', 'unsavedState', 'userLogin', 'userLogout',
   'attendOpen', 'adminOpen', 'peerOpen', 'peerSchedule', 'peerMine', 'membersGet', 'saveProject', 'netcusSaveCreds',
@@ -216,6 +216,14 @@ const checks = {
     const m = stripCsComments(member(s.netcus, 'private async Task NetcusWeekMerge(string reqId, string from, string to)'));
     assert.ok(!/SaveDailyReport|SaveWeeklyReport|NetcusSubmit|WeekFill|\.submit\(|requestSubmit|\.value\s*=(?!=)/.test(m), '근태관리 읽기가 회사 사이트에 쓰거나 저장한다');
     assert.match(m, /if \(\(dTo - dFrom\)\.TotalDays > 31\)/, '근태관리 읽기의 기간 상한이 없다');
+    //  인트라넷 근태관리 달력 보기: 읽기만 하고(제출, 저장, 값 넣기 없음) 그 달 pjm_work.jsp 를 연다. 회신은 같은 HostReply.
+    assert.match(d, /case "netcusViewMonth":[\s\S]{0,400}_ = _netcus\.ViewMonth\(reqId, GetInt\(doc, "y"\), GetInt\(doc, "m"\), GetInt\(doc, "d"\)\);/, 'netcusViewMonth 가 배선되지 않았다');
+    const vm = stripCsComments(member(s.netcus, 'private async Task NetcusViewMonth(string reqId, int y, int m, int d)'));
+    assert.ok(!/SaveDailyReport|SaveWeeklyReport|NetcusSubmit|WeekFill|\.submit\(|requestSubmit|\.value\s*=(?!=)/.test(vm), '근태 달력 보기가 회사 사이트에 쓰거나 저장한다');
+    assert.ok(vm.includes('pjm_work.jsp?y={y}&m={m}&id='), '근태 달력 보기가 그 달 pjm_work.jsp 를 열지 않는다');
+    assert.ok(vm.includes('if (_ncBusy) { HostReply(reqId, new { ok = false, error = "busy"'), '근태 달력 보기가 다른 회사 사이트 작업과 겹친다');
+    //  보고 성공이면 확인용 창을 닫는다(실패면 남긴다)
+    assert.ok(member(s.netcus, 'private async Task NetcusSubmit(NetcusReq req)').includes('if (stored) { try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { } }'), '보고 성공 뒤 확인용 창을 닫지 않는다');
     assert.match(member(s.main, 'private void HostReply(string reqId, object payload)'), /ReplyCore\(reqId\)\?\.ExecuteScriptAsync\(call\)/, '회신이 보낸 창(ReplyCore)으로 가지 않는다');
   },
 
@@ -230,7 +238,7 @@ const checks = {
 
 // ══ 계약 ═══════════════════════════════════════════════════════════════
 test('근태①: WinKind.Attend 의 값과 등록(주소, 제목, 크기, tw:, 준비 알림, 웹 함수, 닫기 확인, 자리 키)', () => checks.registry(src));
-test('근태②: 근태 창 허용 목록이 여섯이고 웹 ATTENDWIN_CMD 와 같다', () => checks.whitelist(src));
+test('근태②: 근태 창 허용 목록이 일곱이고 웹 ATTENDWIN_CMD 와 같다', () => checks.whitelist(src));
 test('근태③: attendOpen 은 메인 창만, attendNav 는 근태 창만 받아 메인 창 __attendNavFromWin 을 부른다', () => checks.routing(src));
 test('근태④: reportDailyList 는 세션의 사람과 엄격한 기간으로 읽고 SELECT 는 파라미터로 묶는다', () => checks.dailyList(src));
 test('결정9⑤: vr==1 에서 저장을 기다린 뒤 결과를 알리고 실패는 공통 안내다', () => checks.decision9(src));
