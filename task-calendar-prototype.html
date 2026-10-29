@@ -158,6 +158,7 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .brand h1{font-size:var(--fs-title);font-weight:700;line-height:1.15}
 .brand .sub{font-size:var(--fs-micro);color:var(--muted)}
 .nav{display:flex;align-items:center;gap:6px;position:relative}
+#calViewSeg .seg-b{padding:4px 9px}
 .title-btn{
   border:none;background:transparent;font-size:var(--fs-display);font-weight:700;color:var(--text);line-height:1.15;
   padding:5px 10px;border-radius:var(--r-sm);cursor:pointer;min-width:120px;letter-spacing:-.01em;
@@ -351,6 +352,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .grid.bars > .gridrow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));column-gap:1px;row-gap:2px;background:var(--line);flex:1 1 0;min-height:0;overflow:hidden}
 .grid.bars.dense > .gridrow{flex:none;height:176px}
 .grid.bars.expand > .gridrow{flex:1 0 auto;min-height:74px}
+.grid.bars.week > .gridrow{flex:1 0 auto;min-height:100%}
 .grid.bars .cell:focus-visible{z-index:0}   /* 칸이 막대 위로 올라와 막대를 덮지 않게(포커스 링은 막대 사이로 보인다) */
 .chip.chip-bar{position:relative;z-index:1;height:19px;line-height:15px;margin:0 4px;min-width:0;display:flex;align-items:center;gap:4px}
 .chip-bar .ctitle,.chip-bar .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
@@ -2202,8 +2204,10 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
   /* P0② 세로 공간 회수 — 크롬을 압축해 그리드 셀을 키운다(밀도 반전 해소) */
   .topbar{gap:6px 8px;padding:8px 12px}
   .topbar .spacer{display:none}
-  .nav{flex:1 1 100%;gap:8px}
-  .title-btn{min-width:0;font-size:var(--fs-head);padding:4px 6px}   /* 좁은 폭에서 display(22px) → head(18px) 한 단계만 강등 */
+  .nav{flex:1 1 100%;gap:6px;min-width:0}
+  .title-btn{min-width:0;font-size:var(--fs-head);padding:4px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}   /* 좁은 폭에서 display(22px) -> head(18px) 한 단계만 강등 */
+  #calViewSeg{margin-left:auto;flex:none}
+  #calViewSeg .seg-b{padding:4px 7px;min-height:32px}
   .actions{flex:1 1 100%;flex-wrap:nowrap;justify-content:flex-start;gap:8px;min-width:0}
   .actions > .btn{flex:0 0 auto;padding:5px 9px}
   /* 터치 위젯: 아이콘 버튼 히트영역 40px + 간격 8px(인접 오탭 방지). 아이콘 시각 크기는 .ic가 유지 */
@@ -2885,6 +2889,10 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
     <button class="btn icon" id="btnNext" title="다음 달 (→)" aria-label="다음 달">▶</button>
     <button class="title-btn" id="btnTitle" title="연·월 바로 이동" aria-label="연·월 바로 이동"></button>
     <input type="month" id="jumpMonth" class="jump hidden" aria-label="연·월 선택">
+    <div class="seg seg-auto" id="calViewSeg" role="group" aria-label="보기 방식">
+      <button type="button" class="seg-b active" id="btnCalViewMonth" data-calview="month" aria-pressed="true">월간</button>
+      <button type="button" class="seg-b" id="btnCalViewWeek" data-calview="week" aria-pressed="false">주간</button>
+    </div>
   </div>
   <div class="spacer"></div>
   <div class="actions">
@@ -10701,8 +10709,10 @@ let flashTodoId = null;   // 할 일 칩 클릭 reveal 시 그 행 강조(일정
 function renderAll(){ renderFilterbar(); renderGrid(); renderDayPanel(); }
 
 function renderWeekdays(){
-  $('#weekdays').innerHTML = WEEKDAYS.map((w,i) =>
-    `<div class="${i===0?'sun':i===6?'sat':''}" aria-hidden="true">${w}</div>`).join('');
+  const wk = calView() === 'week';
+  const days = wk ? ['월','화','수','목','금','토','일'] : WEEKDAYS;
+  $('#weekdays').innerHTML = days.map((w,i) =>
+    `<div class="${wk ? (i===6?'sun':i===5?'sat':'') : (i===0?'sun':i===6?'sat':'')}" aria-hidden="true">${w}</div>`).join('');
   //  S2 — 나란히 보기의 오른쪽 달력도 제 요일 머리줄을 가진다(평소엔 감춰진 자리 · 같은 마크업).
   const wm = document.getElementById('weekdaysMine');
   if(wm) wm.innerHTML = $('#weekdays').innerHTML;
@@ -10817,9 +10827,61 @@ function peerDensityHtml(){
     + opts.map(([v, t]) => `<label class="check"><input type="radio" name="peerDensity" value="${v}"${cur === v ? ' checked' : ''}> ${t}</label>`).join('')
     + '</span>';
 }
+// 월간/주간 보기(docs/PERSONAL-PEER-WEEK-VIEW.md): 내 창(tc_calView)과 열람 창(tc_peerView)을 따로 기억한다(기본 월간).
+// 주간 보기는 과제 탭(pcWeekRange)과 같이 월요일부터 일요일까지 1주(7일)를 한 줄에 펼친다.
+function calViewKey(){ return PEER ? 'tc_peerView' : 'tc_calView'; }
+function calViewDefault(){ return 'month'; }
+function calView(){
+  try{ const v = localStorage.getItem(calViewKey()); return (v === 'month' || v === 'week') ? v : calViewDefault(); }
+  catch(_){ return calViewDefault(); }
+}
+function calWeekRange(anchor){
+  const ds = /^\d{4}-\d{2}-\d{2}$/.test(anchor || '') ? anchor : todayYmd();
+  const from = addDays(ds, -((parseYmd(ds).getDay() + 6) % 7));
+  return { from, to: addDays(from, 6), weeks: 1 };
+}
+function calTitleLabel(){
+  if(calView() !== 'week') return `${view.y}년 ${view.m+1}월`;
+  const r = calWeekRange(selectedDate), a = parseYmd(r.from), b = parseYmd(r.to);
+  if(a.getFullYear() !== b.getFullYear()) return `${a.getFullYear()}.${a.getMonth()+1}.${a.getDate()} ~ ${b.getFullYear()}.${b.getMonth()+1}.${b.getDate()}`;
+  if(a.getMonth() === b.getMonth()) return `${a.getFullYear()}년 ${a.getMonth()+1}월 ${a.getDate()}일 ~ ${b.getDate()}일`;
+  return `${a.getFullYear()}년 ${a.getMonth()+1}월 ${a.getDate()}일 ~ ${b.getMonth()+1}월 ${b.getDate()}일`;
+}
+function syncCalViewSeg(){
+  const wk = calView() === 'week';
+  document.body.classList.toggle('cal-week', wk);
+  document.querySelectorAll('#calViewSeg [data-calview]').forEach(b => {
+    const on = b.dataset.calview === (wk ? 'week' : 'month');
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  const prev = document.getElementById('btnPrev'), next = document.getElementById('btnNext');
+  if(prev){ prev.title = wk ? '이전 주 (←)' : '이전 달 (←)'; prev.setAttribute('aria-label', wk ? '이전 주' : '이전 달'); }
+  if(next){ next.title = wk ? '다음 주 (→)' : '다음 달 (→)'; next.setAttribute('aria-label', wk ? '다음 주' : '다음 달'); }
+}
+function setCalView(v){
+  const val = (v === 'month' || v === 'week') ? v : calViewDefault();
+  try{ localStorage.setItem(calViewKey(), val); }catch(_){}
+  if(val === 'week'){
+    const sd = parseYmd(selectedDate);
+    if(sd.getFullYear() !== view.y || sd.getMonth() !== view.m){
+      const tY = todayYmd(), td = parseYmd(tY);
+      selectedDate = (td.getFullYear() === view.y && td.getMonth() === view.m) ? tY : `${view.y}-${pad(view.m + 1)}-01`;
+      focusDs = selectedDate;
+    }
+  } else {
+    const sd = parseYmd(selectedDate);
+    view = { y: sd.getFullYear(), m: sd.getMonth() };
+  }
+  renderWeekdays();
+  renderGrid();
+  renderPanel();
+}
 function renderGrid(){
   const dens = calDensity();
-  $('#btnTitle').textContent = `${view.y}년 ${view.m+1}월`;
+  syncCalViewSeg();
+  renderWeekdays();
+  $('#btnTitle').textContent = calTitleLabel();
   if(!SUBWIN) document.title = `수행과제 캘린더 (${view.y}년 ${view.m+1}월)`;   // 열람 창의 제목은 보는 사람 이름이다(openPeerSchedule). 관리 창은 adminWinBoot
   //  S2/S3 — 나란히 보기: 왼쪽(#grid) = 그 사람 기록만(일정·기간·반복·할 일) · 오른쪽(#gridMine) = 내 겹 일정만(할 일 없음).
   //    ★ 같은 그리기 함수를 달력마다 한 번씩 부른다 — 칸·칩·레인·「+N」 규칙이 두 달력에서 갈라질 수 없게(코드가 하나다).
@@ -11109,16 +11171,23 @@ function barChipHtml(it, pos){
 }
 function renderMonthBars(g, dens, pick, opts){
   const o = opts || { todos: true, roving: true, sideOvl: false };
-  const first = new Date(view.y, view.m, 1);
-  const startDs = ymd(new Date(view.y, view.m, 1 - first.getDay()));
-  const weeks = Math.ceil((first.getDay() + new Date(view.y, view.m + 1, 0).getDate()) / 7);
-  const endDs = addDays(startDs, weeks * 7 - 1);
+  const wkMode = calView() === 'week';
+  let startDs, weeks, endDs;
+  if(wkMode){
+    const wr = calWeekRange(selectedDate);
+    startDs = wr.from; weeks = 1; endDs = wr.to;
+  } else {
+    const first = new Date(view.y, view.m, 1);
+    startDs = ymd(new Date(view.y, view.m, 1 - first.getDay()));
+    weeks = Math.ceil((first.getDay() + new Date(view.y, view.m + 1, 0).getDate()) / 7);
+    endDs = addDays(startDs, weeks * 7 - 1);
+  }
   const tY = todayYmd();
   const all = pmMonthItems(startDs, endDs, pick, o);
   let tabDs = focusDs || selectedDate;   // 키보드 포커스(roving tabindex) 대상 칸, renderMonthGrid 와 같은 규칙
   if(tabDs < startDs || tabDs > endDs) tabDs = (tY >= startDs && tY <= endDs) ? tY : startDs;
   if(o.roving !== false) focusDs = tabDs;
-  const RCAP = dens === 'expand' ? 60 : 12;   // 그리는 차선 한도(성능). 넘는 기록은 그 칸의 +N 에 든다
+  const RCAP = (wkMode || dens === 'expand') ? 60 : 12;   // 그리는 차선 한도(성능). 넘는 기록은 그 칸의 +N 에 든다
   const DOW_K = ['일','월','화','수','목','금','토'];
   const cmp = (a, b) => entrySort(a.occ || a.todo, b.occ || b.todo);
   const ovlDays = (o.sideOvl || (PEER && __peerOverlay)) ? peerOverlapDays(startDs, endDs) : null;
@@ -11141,7 +11210,7 @@ function renderMonthBars(g, dens, pick, opts){
     html += `<div class="gridrow" role="row" data-from="${from}" data-lanes="${nL}" data-extra="${extra.join(',')}" style="grid-template-rows:${PM_HEAD}px${nL ? ` repeat(${nL}, 19px)` : ''} minmax(0,1fr)">`;
     for(let i = 0; i < 7; i++){
       const ds = addDays(from, i), d = parseYmd(ds);
-      const inMonth = d.getMonth() === view.m, dow = d.getDay(), hol = holidayOn(ds);
+      const inMonth = wkMode ? true : (d.getMonth() === view.m), dow = d.getDay(), hol = holidayOn(ds);
       let cls = 'cell';
       if(!inMonth) cls += ' dim';
       if(ds === tY) cls += ' today';
@@ -11161,8 +11230,9 @@ function renderMonthBars(g, dens, pick, opts){
   }
   g.innerHTML = html;
   g.classList.add('bars');
-  g.classList.toggle('dense', dens === 'dense');
-  g.classList.toggle('expand', dens === 'expand');
+  g.classList.toggle('week', wkMode);
+  g.classList.toggle('dense', !wkMode && dens === 'dense');
+  g.classList.toggle('expand', wkMode || dens === 'expand');
 }
 //  막대 달력의 +N: 줄 높이를 재서 칸마다 보이는 차선 수를 정하고(pmFitWeek) 넘친 기록을 숨긴 뒤, 그 칸의 다음 차선 자리에 +N 단추를 단다.
 //  펼침은 높이로 접지 않는다(그리기 한도 밖 기록만 +N). 누르면 그 날짜를 고른다(예전 칸 안 +N 과 같다, 오른쪽 패널에 그날 전부).
@@ -11469,7 +11539,26 @@ function renderDayPanel(){ renderPanel(); }   // 기존 호출부 호환(renderA
 function moveMonth(delta){
   const m = view.m + delta;
   view = {y: view.y + Math.floor(m/12), m: ((m%12)+12)%12};
+  if(calView() === 'week'){
+    const sd = parseYmd(selectedDate);
+    const dim = new Date(view.y, view.m + 1, 0).getDate();
+    selectedDate = ymd(new Date(view.y, view.m, Math.min(sd.getDate(), dim)));
+    focusDs = selectedDate;
+  }
   renderGrid();
+}
+function moveWeek(delta){
+  const nextDs = addDays(selectedDate, delta * 7);
+  selectedDate = nextDs;
+  focusDs = nextDs;
+  const d = parseYmd(nextDs);
+  view = { y: d.getFullYear(), m: d.getMonth() };
+  renderGrid();
+  renderPanel();
+}
+function stepCal(delta){
+  if(calView() === 'week') moveWeek(delta);
+  else moveMonth(delta);
 }
 function goToday(){
   const t = new Date();
@@ -11481,10 +11570,13 @@ function selectDate(ds){
   selectedDate = ds;
   focusDs = ds;              // 선택 시 키보드 포커스(roving)도 함께 이동
   const d = parseYmd(ds);
-  if(d.getFullYear() !== view.y || d.getMonth() !== view.m){
+  const wkMode = calView() === 'week';
+  const inRenderedWeek = wkMode && !!document.querySelector('#grid .cell[data-date="' + ds + '"]');
+  if(wkMode ? !inRenderedWeek : (d.getFullYear() !== view.y || d.getMonth() !== view.m)){
     view = {y:d.getFullYear(), m:d.getMonth()};
-    renderGrid();   // 다른 달로 이동할 때만 그리드 재생성
+    renderGrid();   // 다른 달(주간 모드에서는 다른 주)로 이동할 때만 그리드 재생성
   } else {
+    if(wkMode) view = {y:d.getFullYear(), m:d.getMonth()};
     // 같은 달이면 그리드를 다시 그리지 않고 선택 표시(.sel)만 갱신한다.
     // (단일 클릭이 매번 그리드를 재생성하면, 더블클릭의 첫 클릭에서 셀이 교체돼
     //  더블클릭이 안 잡히고 '새 기록' 창이 안 열린다 — 그 버그 방지)
@@ -11508,6 +11600,7 @@ function focusGridDate(ds){
   if(!cell){
     const d = parseYmd(ds);
     view = {y:d.getFullYear(), m:d.getMonth()};
+    if(calView() === 'week') selectedDate = ds;
     renderGrid();   // renderGrid가 focusDs 셀에 tabindex=0 부여
     cell = grid.querySelector('.cell[data-date="' + ds + '"]');
   } else {
@@ -19403,9 +19496,10 @@ function bind(){
   applyIcons();
   initTheme();
   /* 상단 내비 */
-  $('#btnPrev').addEventListener('click', () => moveMonth(-1));
-  $('#btnNext').addEventListener('click', () => moveMonth(1));
+  $('#btnPrev').addEventListener('click', () => stepCal(-1));
+  $('#btnNext').addEventListener('click', () => stepCal(1));
   $('#btnToday').addEventListener('click', goToday);
+  { const vs = $('#calViewSeg'); if(vs) vs.addEventListener('click', ev => { const b = ev.target.closest('[data-calview]'); if(b && b.dataset.calview !== calView()) setCalView(b.dataset.calview); }); }
   $('#btnNew').addEventListener('click', () => openQuickAdd(selectedDate));
   /* 일정과 할 일 입력(한 화면 폼) */
   $('#quickAdd .qa-tg').addEventListener('click', ev => { const b = ev.target.closest('[data-qatype]'); if(!b) return;
@@ -19557,7 +19651,16 @@ function bind(){
   });
   jump.addEventListener('change', () => {
     const m = /^(\d{4})-(\d{2})$/.exec(jump.value);
-    if(m){ view = {y:+m[1], m:+m[2]-1}; renderGrid(); }
+    if(m){
+      view = {y:+m[1], m:+m[2]-1};
+      if(calView() === 'week'){
+        const sd = parseYmd(selectedDate);
+        const dim = new Date(view.y, view.m + 1, 0).getDate();
+        selectedDate = ymd(new Date(view.y, view.m, Math.min(sd.getDate(), dim)));
+        focusDs = selectedDate;
+      }
+      renderGrid();
+    }
     jump.classList.add('hidden');
   });
 
@@ -19876,8 +19979,8 @@ function bind(){
       case 'ArrowUp':    target = addDays(ds, -7); break;
       case 'ArrowDown':  target = addDays(ds, 7);  break;
       case 'Home':       target = todayYmd();      break;
-      case 'PageUp':   { const d = parseYmd(ds); const dim = new Date(d.getFullYear(), d.getMonth(), 0).getDate();   target = ymd(new Date(d.getFullYear(), d.getMonth()-1, Math.min(d.getDate(), dim))); break; }
-      case 'PageDown': { const d = parseYmd(ds); const dim = new Date(d.getFullYear(), d.getMonth()+2, 0).getDate(); target = ymd(new Date(d.getFullYear(), d.getMonth()+1, Math.min(d.getDate(), dim))); break; }
+      case 'PageUp':   { if(calView() === 'week'){ target = addDays(ds, -7); break; } const d = parseYmd(ds); const dim = new Date(d.getFullYear(), d.getMonth(), 0).getDate();   target = ymd(new Date(d.getFullYear(), d.getMonth()-1, Math.min(d.getDate(), dim))); break; }
+      case 'PageDown': { if(calView() === 'week'){ target = addDays(ds, 7);  break; } const d = parseYmd(ds); const dim = new Date(d.getFullYear(), d.getMonth()+2, 0).getDate(); target = ymd(new Date(d.getFullYear(), d.getMonth()+1, Math.min(d.getDate(), dim))); break; }
       case 'Enter': case ' ': ev.preventDefault(); ev.stopPropagation(); selectDate(ds); return;
       default: return;
     }
@@ -20682,8 +20785,8 @@ function bind(){
     if(modalOpen) return;
     if(/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
     if(pcOn()){ pcKeyNav(ev.key); return; }   // 과제 탭: 같은 단축키가 과제 달력을 움직인다
-    if(ev.key === 'ArrowLeft' || ev.key === 'PageUp') moveMonth(-1);     // PageUp/Down도 월 이동(예측 가능한 단축키)
-    else if(ev.key === 'ArrowRight' || ev.key === 'PageDown') moveMonth(1);
+    if(ev.key === 'ArrowLeft' || ev.key === 'PageUp') stepCal(-1);     // PageUp/Down도 월/주 이동(예측 가능한 단축키)
+    else if(ev.key === 'ArrowRight' || ev.key === 'PageDown') stepCal(1);
     else if(ev.key === 'Home') goToday();
   });
 }

@@ -9,6 +9,7 @@
 - [보고서 회사 전송](보고서-회사-전송): 늘 실제로 제출하고, 제출 전에 한 번 확인합니다
 - [보고서 글 편집](보고서-글-편집): 일간, 주간보고에 상세 줄 쓰기, 이 보고서에서 빼기(×), 임시 저장, 보고서와 캘린더는 따로
 - [월간 보고](월간-보고): 보고서 창의 네 번째 탭, 회사 월간보고 양식 .docx 저장, 자동으로 채우는 칸(수행 실적, 기타)과 직접 쓰는 칸, 개발 일정 그림, 저장 위치, Word 와 한컴
+- [개인 및 타인 일정 월간/주간 모드](Person-Schedule): 상단 탐색줄의 [월간 | 주간] 전환, 월요일 시작 1주 확대 격자, ±7일 이동, 창별 보기 설정 분리 기억
 - [다른 사람 일정 보기](다른-사람-일정-보기): 툴바의 '👥 다른 사람 일정', 사람/조직도 탭, 즐겨찾기와 최근 본 사람, 사람 바꾸기, 보이는 것과 안 보이는 것, 밀도, 겹쳐 보기와 나란히 보기, 시간 겹침
 - [날짜 누르기와 기간 일정](날짜-누르기와-기간-일정): 여러 날 일정과 할 일의 막대 모양, 무엇을 누르면 어느 날짜가 선택되는지, 잡은 날 기준으로 끌어 옮기기
 - [일정 입력 창](일정-입력-창): 모든 칸이 보이는 한 화면 입력 창, 5분 단위 시각 칸, 반복(안 함, 매주, 매월)과 예전 세부 값 보존, 좁은 창의 아래 시트
@@ -43,6 +44,7 @@
 - 주간 글 편집 기획서: [`docs/WEEKLY-EDIT.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/WEEKLY-EDIT.md), 실 위젯 루프 `tests/loop-weekly-edit.mjs`
 - 버전 관문 기획서: [`docs/VERSION-GATE.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/VERSION-GATE.md), 운영 정본 [`docs/DB-RELEASE-OPS.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/DB-RELEASE-OPS.md), 실 위젯 루프 `tests/loop-schema-gate.mjs`
 - 개인 탭 개선 기획서: [`docs/PERSONAL-IMPROVE-PLAN.md`](https://github.com/Peace-Min/task-calendar/blob/feat/personal-improve/docs/PERSONAL-IMPROVE-PLAN.md), 화면 시험 `tests/personal-improve.test.mjs`, 실 위젯 루프 `tests/loop-personal-improve.mjs`
+- 개인 및 타인 일정 월간/주간 모드 기획서: [`docs/PERSONAL-PEER-WEEK-VIEW.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/PERSONAL-PEER-WEEK-VIEW.md), 화면 시험 `tests/personal-peer-week-view.test.mjs`
 - 과제 공용 캘린더 기획서: [`docs/PROJECT-CALENDAR-PLAN.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/PROJECT-CALENDAR-PLAN.md), 실 위젯 루프 `tests/loop-project-calendar.mjs`, DB 계약 `tests/db-project-calendar.mjs`
 - 월간보고 기획서: [`docs/MONTHLY-REPORT-PLAN.md`](https://github.com/Peace-Min/task-calendar/blob/feat/monthly-report-plan/docs/MONTHLY-REPORT-PLAN.md), 화면 시험 `tests/monthly-report.test.mjs`, 실 위젯 루프 `tests/loop-monthly-report.mjs`
 - 사용 영상 규칙과 구현 메모: [`docs/GUIDE-VIDEOS.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/GUIDE-VIDEOS.md), 화면 시험 `tests/guide-videos.test.mjs`, 실 위젯 루프 `tests/loop-guide-videos.mjs`
