@@ -2789,7 +2789,7 @@ body:not(.at-on) #atView{display:none !important}
 .at-lock{font-size:var(--fs-micro);opacity:.6;flex:none}
 .at-ed .at-bpick{min-width:0;max-width:260px;padding:2px 6px}
 .at-bhr{display:inline-flex;align-items:center;gap:4px;margin-left:auto;font-size:var(--fs-meta);color:var(--muted);flex:none}
-.at-ed .at-bhn{width:52px;text-align:right;font-variant-numeric:tabular-nums;padding:2px 6px;font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);color:var(--text);background:var(--panel)}
+.at-ed .at-bhn{width:62px;text-align:right;font-variant-numeric:tabular-nums;padding:2px 6px;font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);color:var(--text);background:var(--panel)}
 .at-ed .at-bhn.bad{border-color:var(--danger)}
 .at-ed .at-bhn:disabled{opacity:.6}
 .at-bx{flex:none;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:0;background:none;color:var(--muted);cursor:pointer;font:inherit;font-size:var(--fs-meta);border-radius:var(--r-sm);padding:0}
@@ -2812,10 +2812,9 @@ body:not(.at-on) #atView{display:none !important}
 .at-mi:disabled{color:var(--faint-text);cursor:default;background:none}
 .at-mi small{margin-left:auto;color:var(--faint-text)}
 .at-mnew{border-top:1px solid var(--line);border-radius:0;padding-top:7px;color:var(--accent-2)}
-/* 오른쪽 패널: [미리보기][가져오기] 탭. 미리보기는 회사로 나갈 글(본문 글꼴, 읽기만), 막는 블록의 줄은 빨갛다. */
+/* 오른쪽 패널: [미리보기][가져오기] 탭. 미리보기는 회사로 나갈 글(본문 글꼴, 읽기만). 색 표시는 하지 않는다. */
 .at-ptabs{margin:12px 14px 0;flex:none;align-self:flex-start}
 .at-preview{flex:1;min-height:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:10px 14px;padding:10px 12px;border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--panel);font:inherit;font-size:var(--fs-body);line-height:1.6;tab-size:4}
-.at-preview .bad{color:var(--danger-text)}
 .at-pvfoot .at-hint{font-variant-numeric:tabular-nums}
 .at-pick-row .at-lnk{color:var(--accent-2)}
 .at-pick-row .at-lnk:disabled{color:var(--accent-2);opacity:.45}
@@ -21751,8 +21750,8 @@ function atBlocksRender(){
         + projs.filter(x => !used.has(x.name)).map(x => '<option value="' + esc(x.name) + '">' + esc(x.name) + '</option>').join('') + '</select>';
     return '<div class="at-blk' + (pr ? ' bad' : '') + '" data-bi="' + i + '">'
       + '<div class="at-bh">' + head
-      + '<span class="at-bhr"><input type="text" class="at-bhn' + (atHoursBad(b) ? ' bad' : '') + '" data-bh="' + i + '" inputmode="decimal" autocomplete="off" spellcheck="false" value="' + esc(atHoursText(b.hours)) + '"'
-      + ' title="↑ ↓ 0.5시간씩, Shift 와 함께 1시간씩" aria-label="' + esc(lab) + ' 시간">시간</span>'
+      + '<span class="at-bhr"><input type="number" min="0" max="24" step="0.5" class="at-bhn' + (atHoursBad(b) ? ' bad' : '') + '" data-bh="' + i + '" inputmode="decimal" autocomplete="off" value="' + esc(atHoursText(b.hours)) + '"'
+      + ' title="숫자를 쓰거나 칸 안 오른쪽 화살표로 0.5시간씩" aria-label="' + esc(lab) + ' 시간">시간</span>'
       + '<button type="button" class="at-bx" data-bx="' + i + '" title="블록 지우기" aria-label="' + esc(lab) + ' 블록 지우기">✕</button></div>'
       + '<textarea class="at-bt" data-bt="' + i + '" spellcheck="false" rows="2" aria-label="' + esc(lab) + ' 내용" placeholder="한 일(자유롭게)"></textarea>'
       + '<div class="at-bmsg' + (pr ? '' : ' hidden') + '" data-bmsg="' + i + '" role="alert"><span class="at-bmsg-i" aria-hidden="true">!</span><span data-bmsgt>' + esc(pr) + '</span></div></div>';
@@ -21822,14 +21821,20 @@ function atHoursBlur(el){
   atBlockMark(i);
   if(changed) atOnEdit(); else atStatRender();
 }
+//  키보드 ↑ ↓ 로 시간 올리고 내리기(0.5 단위로 맞춘 뒤 0~24 로 묶는다). 마우스는 칸 안 화살표(기본 숫자 칸)를 쓴다.
+//    휠로는 바꾸지 않는다(목록을 스크롤하다 값이 바뀐다, 아래 wheel 처리기).
+function atHoursStep(i, d){
+  const b = ATE.blocks[i], el = document.querySelector('#atBlocks input[data-bh="' + i + '"]'); if(!b || ATE.sending) return;
+  const cur = el ? atHoursParse(el.value) : null, base = Math.round((cur == null ? b.hours : cur) * 2) / 2;
+  const h = Math.max(0, Math.min(24, base + d));
+  b.hours = h; if(el) el.value = atHoursText(h);
+  atBlockMark(i); atOnEdit();
+}
 function atHoursKey(el, ev){
   if(ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') return;
   ev.preventDefault();
-  const i = Number(el.dataset.bh), b = ATE.blocks[i]; if(!b || ATE.sending) return;
-  const cur = atHoursParse(el.value), base = Math.round((cur == null ? b.hours : cur) * 2) / 2, step = ev.shiftKey ? 1 : 0.5;
-  const h = Math.max(0, Math.min(24, base + (ev.key === 'ArrowUp' ? step : -step)));
-  b.hours = h; el.value = atHoursText(h);
-  atBlockMark(i); atOnEdit();
+  const step = ev.shiftKey ? 1 : 0.5;
+  atHoursStep(Number(el.dataset.bh), ev.key === 'ArrowUp' ? step : -step);
 }
 function atBlockRemove(i){
   if(ATE.sending || !ATE.blocks[i]) return;
@@ -21912,7 +21917,7 @@ function atPvRender(){
   clearTimeout(ATE.pvT); ATE.pvT = null;
   const pv = $('#atPreview'); if(!pv) return;
   const parts = atComposeParts(ATE.blocks, ATE.memo), text = parts.map(p => p.text).join('\n\n');
-  pv.innerHTML = parts.map(p => p.bad ? '<span class="bad">' + esc(p.text) + '</span>' : esc(p.text)).join('\n\n');
+  pv.textContent = text;   // 색 표시 없이 나갈 글 그대로(유효성 표시는 기준이 정해지면 다시, 2026-10-29 사용자)
   const st = $('#atPvStat'); if(st) st.textContent = (text ? text.split('\n').length : 0) + '줄, ' + text.length + '자';
 }
 /* ── [전체 초기화]: 자유 메모와 블록을 모두 지우고 근태 정근, 초과시간 없음. 묻지 않고 되돌리기도 두지 않는다(2026-10-29 사용자) ──
@@ -22314,7 +22319,9 @@ function atInit(){
       if(d.bt != null){ const i = Number(d.bt); if(!ATE.blocks[i]) return; ATE.blocks[i].text = t.value; atGrow(t); atBlockMark(i); atOnEdit(); return; }
       if(d.bh != null) atHoursInput(t);
     });
-    //  시간 칸: ↑ ↓ 0.5, Shift 1(0~24), 떠나면 0.5 단위로 맞춘다. 글 칸이라 휠로는 바뀌지 않는다.
+    //  시간 칸: 칸 안 화살표와 ↑ ↓ 0.5, Shift 1(0~24), 떠나면 0.5 단위로 맞춘다.
+    //    숫자 칸은 포커스가 있을 때 휠로 값이 바뀐다. 그때만 휠을 막는다(포커스가 없으면 목록은 그대로 스크롤된다).
+    { const bl = document.getElementById('atBlocks'); if(bl) bl.addEventListener('wheel', ev => { const t = ev.target; if(t && t.dataset && t.dataset.bh != null && t === document.activeElement) ev.preventDefault(); }, { passive: false }); }
     on('atBlocks', 'keydown', ev => { const t = ev.target; if(t.dataset && t.dataset.bh != null) atHoursKey(t, ev); });
     on('atBlocks', 'focusout', ev => { const t = ev.target; if(t.dataset && t.dataset.bh != null) atHoursBlur(t); });
     on('atBlocks', 'change', ev => { const t = ev.target; if(t.dataset && t.dataset.bpick != null) atBlockPick(Number(t.dataset.bpick), t.value); });

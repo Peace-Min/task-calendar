@@ -225,7 +225,7 @@ if (!JSDOM) {
       assert.ok(h0.querySelector('.at-lock'), '과제명 잠금 표시가 없다');
       assert.ok(!h0.querySelector('select, [contenteditable]') && h0.querySelectorAll('input').length === 1 && h0.querySelector('input[data-bh]'), '과제명을 고칠 수 있는 칸이 있다');
       const hn = X.$('#atBlocks input[data-bh="0"]');
-      assert.deepStrictEqual([hn.type, hn.getAttribute('inputmode'), hn.value], ['text', 'decimal', '2'], '시간 칸이 글 칸(inputmode decimal)이 아니다');
+      assert.deepStrictEqual([hn.type, hn.min, hn.max, hn.step, hn.value], ['number', '0', '24', '0.5', '2'], '시간 칸이 기본 숫자 칸(0~24, 0.5)이 아니다');
       assert.strictEqual(X.$('#atBlocks textarea[data-bt="0"]').value, b[0].text);
       assert.ok(X.$('#atBlocks').firstElementChild.querySelector('textarea[data-memo]'), '자유 메모가 맨 위에 없다');
       assert.strictEqual(X.$('#atBlocks textarea[data-memo]').value, '', '처음 자유 메모가 비어 있지 않다');
@@ -362,12 +362,12 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(B) 시간 칸: 글 칸(숫자 칸 아님), ↑ ↓ 0.5, Shift 1, 0~24 로 묶고, 휠로 바뀌지 않고, 떠나면 0.5 단위로 맞추며 숫자가 아니면 앞 값', () => {
+  test('(B) 시간 칸: 기본 숫자 칸(0~24, 0.5, 칸 안 화살표), ↑ ↓ 0.5, Shift 1, 0~24 로 묶고, 휠로 바뀌지 않고, 떠나면 0.5 단위로 맞추며 비우면 0', () => {
     const X = bootBrowser();
     try {
       openB(X);
       const hn = () => X.$('#atBlocks input[data-bh="0"]');
-      assert.deepStrictEqual([hn().type, hn().inputMode || hn().getAttribute('inputmode'), hn().value], ['text', 'decimal', '2']);
+      assert.deepStrictEqual([hn().type, hn().step, hn().value], ['number', '0.5', '2']);
       const key = (k, shift) => hn().dispatchEvent(new X.w.KeyboardEvent('keydown', { key: k, shiftKey: !!shift, bubbles: true, cancelable: true }));
       key('ArrowUp');
       assert.deepStrictEqual([hn().value, blk(X)[0].hours], ['2.5', 2.5]);
@@ -381,14 +381,25 @@ if (!JSDOM) {
       assert.strictEqual(blk(X)[0].hours, 0, '0 에서 멈추지 않았다');
       hn().dispatchEvent(new X.w.WheelEvent('wheel', { deltaY: -100, bubbles: true }));
       assert.strictEqual(blk(X)[0].hours, 0, '휠로 시간이 바뀌었다');
+      //  칸 밖 단추는 없다(화살표는 기본 숫자 칸 안에 있다, 2026-10-29 사용자). 포커스가 있을 때 휠은 막는다
+      assert.ok(!X.$('#atBlocks .at-bsb, #atBlocks [data-bsu], #atBlocks [data-bsd]'), '칸 밖 위아래 단추가 남아 있다');
+      hn().focus();
+      const we = new X.w.WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true });
+      hn().dispatchEvent(we);
+      assert.strictEqual(we.defaultPrevented, true, '포커스가 있는 시간 칸에서 휠을 막지 않았다');
+      hn().blur();
+      const we2 = new X.w.WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true });
+      hn().dispatchEvent(we2);
+      assert.strictEqual(we2.defaultPrevented, false, '포커스가 없는데 휠을 막아 목록 스크롤까지 막았다');
       const blur = () => hn().dispatchEvent(new X.w.FocusEvent('focusout', { bubbles: true }));
       setHours(X, 0, '7.3'); blur();
       assert.deepStrictEqual([hn().value, blk(X)[0].hours], ['7.5', 7.5], '떠날 때 0.5 단위로 맞추지 않았다');
       setHours(X, 0, '8.0'); blur();
       assert.deepStrictEqual([hn().value, blk(X)[0].hours], ['8', 8]);
-      setHours(X, 0, 'abc'); blur();
-      assert.deepStrictEqual([hn().value, blk(X)[0].hours], ['8', 8], '숫자가 아닌 글이면 앞 값으로 돌아가야 한다');
-      setHours(X, 0, '6,5'); blur();
+      //  숫자 칸은 글자를 받지 않는다(브라우저가 빈 값으로 바꾼다). 비우면 0시간
+      setHours(X, 0, ''); blur();
+      assert.deepStrictEqual([hn().value, blk(X)[0].hours], ['0', 0], '비운 시간 칸이 0 이 아니다');
+      setHours(X, 0, '6.5'); blur();
       assert.strictEqual(blk(X)[0].hours, 6.5);
       //  범위 밖은 그대로 두고(보내기에서 막는다) 빨간 시간 칸
       setHours(X, 0, '30'); blur();
@@ -438,16 +449,14 @@ if (!JSDOM) {
       const pv = () => X.$('#atPreview');
       assert.strictEqual(pv().textContent, X.ev('atCompose(ATE.blocks, ATE.memo)'), '미리보기가 보낼 글과 다르다');
       assert.ok(!pv().matches('textarea, input, [contenteditable]'), '미리보기를 고칠 수 있다');
-      //  베타는 내용이 있는데 0시간: 그 줄은 빨갛다(보내기 전에도)
-      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#atPreview .bad'), function(e){ return e.textContent.split('\\n')[0]; })"), ['[베타] : 0']);
+      //  미리보기는 색 표시가 없다(베타는 내용이 있는데 0시간이지만 빨갛지 않다, 2026-10-29 사용자)
+      assert.strictEqual(X.$('#atPreview .bad, #atPreview span'), null, '미리보기에 색 표시가 남아 있다');
       const t0 = pv().textContent;
       assert.strictEqual(X.$('#atPvStat').textContent, t0.split('\n').length + '줄, ' + t0.length + '자');
       typeMemo(X, '* 외근');
       assert.strictEqual(pv().textContent, t0, '0.2초 전에 다시 그렸다');
       await tick(260);
       assert.strictEqual(pv().textContent, '* 외근\n\n' + t0, '입력 뒤 미리보기가 따라가지 않았다');
-      setHours(X, 1, '1'); await tick(260);
-      assert.strictEqual(X.$('#atPreview .bad'), null, '고쳤는데 빨간 줄이 남았다');
       //  복사(같은 함수)
       X.ev('window.__clip = null; navigator.clipboard = { writeText: function(t){ window.__clip = t; return Promise.resolve(); } };');
       X.$('#atPvCopy').click(); await tick();
