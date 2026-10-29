@@ -3,8 +3,9 @@
 // 이 파일이 지키는 것(호스트 쪽만. 웹의 근태 화면은 웹 시험의 몫이다):
 //   ① 창 종류 WinKind.Attend 의 값(주소, 제목, 최소와 처음 크기, 'tw:' 머리, 준비 알림, 여는 함수, 앞으로 올 때 함수,
 //      목록 알림 안 받음, 닫기 전 확인, 자리 기억 키)과 등록(All), 설정의 Attend 자리.
-//   ② 근태 창 허용 목록 AttendWinCommands = {attendWinReady, attendNav, reportDailyList, netcusSubmit, attendSourceReq, netcusViewMonth, attendCatNew}.
-//      웹 ATTENDWIN_CMD 와 같다. attendSourcePush 는 메인 창만 보낸다(목록에 없다). netcusWeekMerge(인트라넷 불러오기)는 과제 블록(결정 12)에서 뺐다.
+//   ② 근태 창 허용 목록 AttendWinCommands = {attendWinReady, attendNav, reportDailyList, netcusSubmit, attendSourceReq, netcusViewMonth, attendCatNew,
+//      reportWeeklyList, netcusWeekSubmit}. 웹 ATTENDWIN_CMD 와 같다. attendSourcePush 는 메인 창만 보낸다(목록에 없다).
+//      netcusWeekMerge(인트라넷 불러오기)는 과제 블록(결정 12)에서 뺐다. 주간 두 명령은 주간보고(결정 13)가 더했다.
 //   ③ attendOpen 은 메인 창에서만 받는다. payload 가 객체가 아니면 열지 않는다. attendNav 는 근태 창에서만 받고 메인 창의
 //      __attendNavFromWin 을 부른다(날짜는 'YYYY-MM-DD' 만, 인자는 JSON 으로 싣는다).
 //   ④ reportDailyList: 사람은 세션에서, 기간은 엄격한 날짜 두 개와 상한, DB 는 UI 스레드 밖, 회신은 ReplyOnUi.
@@ -18,6 +19,9 @@
 //      attendSourcePush 는 메인 창에서만 받아 날짜와 source(객체)를 확인하고 {date, source} 를 JSON 으로 다시 써서 근태 창 __attendSource 로만 넘긴다.
 //      근태관리 읽기(netcusWeekMerge, 이제 메인 창의 주간보고 병합만 쓴다)는 회사 사이트를 읽기만 한다(제출, 값 넣기, 저장이 없다).
 //   ⑪ 새 과제 만들기(결정 12): attendCatNew 는 근태 창에서만 받아 메인 창을 앞으로 가져오고 메인 창 __attendCatNew 를 부른다(인자 없음).
+//   ⑫ 주간보고(결정 13, ATTENDANCE-PLAN §13.5): reportWeeklyList 는 세션의 사람과 엄격한 기간(상한)으로 읽고, SELECT 는 파라미터로 묶고
+//      회의내용(meeting)까지 돌려준다(NULL 은 빈 글). 회신은 ReplyOnUi. 주간 기록 저장(SaveWeeklyAsync)은 회의내용을 함께 쓰고(없으면 있던 값 그대로),
+//      저장이 성공해야 __reportWeeklySaved 를 두 창으로 보낸다. netcusWeekSubmit 의 resultwork 는 칸이 있을 때만 넘긴다.
 //   ★ 검사는 함수로 묶고(checks.*), 아래 변이 시험이 같은 함수에 망가뜨린 소스를 넣어 실패를 확인한다.
 import { test, assert, loadAppSource, stripCsComments, extractCsMember, readText } from './harness.mjs';
 
@@ -39,11 +43,11 @@ function mutate(base, from, to) {
 }
 const member = (code, sig) => extractCsMember(code, sig);
 
-const ATTEND_CMDS = ['attendCatNew', 'attendNav', 'attendSourceReq', 'attendWinReady', 'netcusSubmit', 'netcusViewMonth', 'reportDailyList'];
-//  근태 창이 보내면 안 되는 것(내 달력 부팅과 저장, 창 열기, 관리, 창 조작, 주간 전송, 업데이트)
+const ATTEND_CMDS = ['attendCatNew', 'attendNav', 'attendSourceReq', 'attendWinReady', 'netcusSubmit', 'netcusViewMonth', 'netcusWeekSubmit', 'reportDailyList', 'reportWeeklyList'];
+//  근태 창이 보내면 안 되는 것(내 달력 부팅과 저장, 창 열기, 관리, 창 조작, 주간 병합과 범위 읽기, 업데이트). 주간 폼 채우기는 결정 13 에서 근태 창으로 옮겼다
 const NEVER = ['ready', 'reloadState', 'saveState', 'replaceAllState', 'unsavedState', 'userLogin', 'userLogout',
   'attendOpen', 'adminOpen', 'peerOpen', 'peerSchedule', 'peerMine', 'membersGet', 'saveProject', 'netcusSaveCreds',
-  'netcusWeekSubmit', 'netcusWeekMerge', 'attendSourcePush', 'netcusWeeklyRangeRead', 'reminderSync', 'updateApply', 'updateCheck', 'close', 'hide', 'pin', '__dbFault'];
+  'netcusWeekMerge', 'attendSourcePush', 'netcusWeeklyRangeRead', 'reminderSync', 'updateApply', 'updateCheck', 'close', 'hide', 'pin', '__dbFault'];
 
 function hostSet(cs, name) {
   const m = new RegExp(`internal static readonly HashSet<string> ${name} = new\\(StringComparer\\.Ordinal\\)\\s*\\{([^}]*)\\}`).exec(stripCsComments(cs));
@@ -246,6 +250,54 @@ const checks = {
     assert.match(s.app, /window\.__attendCatNew = function\(\)\{\s*if\(!HOST \|\| PEER \|\| SUBWIN\) return;\s*try\{ openCatModal\(\); \}catch\(_\)\{\}/,'웹 메인 창의 __attendCatNew 가 과제 창을 열지 않거나 다른 창에서도 연다');
   },
 
+  // ⑫ 주간보고(결정 13): 목록 읽기, 회의내용 저장, 저장 성공 알림, 회의내용 넘기기
+  weekly(s) {
+    const d = onWeb(s);
+    assert.match(d, /case "reportWeeklyList":[^\n]*\n\s*_ = RunReportWeeklyListAsync\(rq, GetStr\(doc, "from"\), GetStr\(doc, "to"\)\);/, 'reportWeeklyList 가 배선되지 않았다');
+    const at = d.indexOf('case "reportWeeklyList":');
+    assert.ok(!/GetStr\(doc, "loginId"\)|GetStr\(doc, "userId"\)/.test(d.slice(at, at + 300)), '주간 목록 읽기가 웹이 보낸 사람을 쓴다');
+    const r = member(s.main, 'private async Task RunReportWeeklyListAsync(string reqId, string from, string to)');
+    assert.match(r, /!ReportDb\.TryParseYmd\(from, out var f\) \|\| !ReportDb\.TryParseYmd\(to, out var t\) \|\| f > t/, '기간 날짜를 엄격히 보지 않는다');
+    assert.match(r, /\(t - f\)\.TotalDays > ReportDb\.ListMaxDays/, '기간 상한을 보지 않는다');
+    assert.match(r, /string\? loginId = CurrentLoginId\(\);/, '사람을 세션에서 읽지 않는다');
+    assert.match(r, /await Task\.Run\(\(\) => db\.ListWeeklyAsync\(loginId, f, t\)\)/, 'DB 를 UI 스레드 밖에서 읽지 않는다');
+    assert.match(r, /ReplyOnUi\(reqId, new \{ ok = true, rows \}\);/, '성공 회신이 { ok, rows } 가 아니다');
+    assert.ok(!/HostReply\(/.test(r), '주간 목록 회신이 ReplyOnUi 를 거치지 않는다');
+    const l = member(s.rdb, 'public async Task<List<Dictionary<string, object?>>?> ListWeeklyAsync(string? loginId, DateTime from, DateTime to)');
+    assert.match(l, /OpenReadAsync\(cts\.Token\)/, '주간 목록이 읽기 연결이 아니다');
+    assert.match(l, /if \(from > to \|\| \(to - from\)\.TotalDays > ListMaxDays\)/, 'ReportDb 가 기간 상한을 다시 보지 않는다');
+    assert.ok(l.includes('"SELECT period_start, period_end, subject, content, endwork, plan, COALESCE(meeting, \'\') AS meeting, composed_at " +\n                    "FROM cal_report_weekly WHERE user_id=@u AND period_start BETWEEN @f AND @t ORDER BY period_start DESC";'),
+      '주간 SELECT 가 사람과 기간으로 거르지 않거나 회의내용을 읽지 않는다');
+    for (const p of ['@u", userId', '@f", from', '@t", to'])
+      assert.ok(l.includes('cmd.Parameters.AddWithValue("' + p + ')'), `파라미터 ${p.split('"')[0]} 를 묶지 않는다`);
+    const q = l.slice(l.indexOf('cmd.CommandText ='), l.indexOf('ORDER BY period_start DESC";'));
+    assert.ok(!/"\s*\+\s*(?:from|to|loginId|userId)\b/.test(q), 'SELECT 문에 값을 이어 붙인다');
+    for (const k of ['periodStart', 'periodEnd', 'subject', 'content', 'endwork', 'plan', 'meeting', 'composedAt'])
+      assert.ok(l.includes('["' + k + '"]'), `회신 행에 ${k} 가 없다`);
+    assert.ok(!/INSERT|UPDATE|DELETE/.test(stripCsComments(l)), '주간 목록 읽기가 쓴다');
+    //  저장: 회의내용 칸, 없으면(null) 있던 값 그대로
+    const w = member(s.rdb, 'public async Task<bool> SaveWeeklyAsync(');
+    assert.ok(w.includes('(user_id, period_start, period_end, subject, content, endwork, plan, meeting, composed_at)'), 'SaveWeeklyAsync 가 회의내용을 쓰지 않는다');
+    assert.ok(w.includes('meeting=COALESCE(VALUES(meeting), meeting)'), '회의내용이 없는 요청(옛 보고서 창)이 있던 회의내용을 지운다');
+    assert.ok(w.includes('cmd.Parameters.AddWithValue("@mt", (object?)meeting ?? DBNull.Value);'), '회의내용을 파라미터로 묶지 않는다');
+    //  저장 성공 뒤에만 __reportWeeklySaved(두 창)
+    const h = stripCsComments(member(s.main, 'void INetcusHost.SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork, string? meeting)'));
+    const save = h.indexOf('bool ok = await db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork, meeting);');
+    const push = h.indexOf('if (ok) ReportPush("window.__reportWeeklySaved && window.__reportWeeklySaved(" + JsonSerializer.Serialize(new { periodStart = sdate }) + ")");');
+    assert.ok(save > 0 && push > save, '__reportWeeklySaved 가 저장 성공 뒤에 두 창으로 가지 않는다');
+    assert.match(h, /SaveReportRecordWithRetryAsync\("weekly"/, '주간 기록 저장이 재시도 경로(S10)를 지나지 않는다');
+    //  netcusWeekSubmit: resultwork 는 문자열 칸이 있을 때만(없으면 null = 인트라넷의 회의내용을 건드리지 않는다)
+    const ws = d.slice(d.indexOf('case "netcusWeekSubmit":'), d.indexOf('break;', d.indexOf('case "netcusWeekSubmit":')));
+    assert.ok(ws.includes('doc.RootElement.TryGetProperty("resultwork", out var rw) && rw.ValueKind == JsonValueKind.String ? (rw.GetString() ?? "") : null'), 'resultwork 를 칸이 있을 때만 넘기지 않는다');
+    //  WeekFill 두 경로: 새 글은 resultwork 칸을 채우고(요청에 있을 때), 수정 화면은 네 칸 채우기(WeekModifyFillJs)에 회의내용을 넘긴다.
+    //    미처리사항(notendwork), 문제점(problem)은 어느 경로도 채우지 않는다. 두 경로 모두 회의내용까지 기록한다.
+    const wf = member(s.netcus, 'private async Task NetcusWeekFill(NetcusWeekReq req)');
+    assert.ok(wf.includes(`(req.Resultwork != null ? $"set('resultwork',{J(req.Resultwork)});" : "")`), '새 글 경로가 회의내용(resultwork)을 채우지 않는다');
+    assert.ok(wf.includes('WeekModifyFillJs(req.Endwork, req.Content, req.Planwork, req.Resultwork)'), '수정 경로가 회의내용을 넘기지 않는다');
+    assert.ok(!/set\('(notendwork|problem)'/.test(wf), '미처리사항이나 문제점을 채운다');
+    assert.strictEqual((wf.match(/_host\.SaveWeeklyReport\(req\.Sdate, req\.Edate, req\.Subject, req\.Content, req\.Endwork, req\.Planwork, req\.Resultwork\);/g) || []).length, 2, '두 경로가 회의내용까지 기록하지 않는다');
+  },
+
   // ⑨ 로그아웃과 계정 바뀜에 근태 창도 닫힌다
   closeOnLogout(s) {
     const c = member(s.main, 'private void CloseSubWindows()');
@@ -257,7 +309,8 @@ const checks = {
 
 // ══ 계약 ═══════════════════════════════════════════════════════════════
 test('근태①: WinKind.Attend 의 값과 등록(주소, 제목, 크기, tw:, 준비 알림, 웹 함수, 닫기 확인, 자리 키)', () => checks.registry(src));
-test('근태②: 근태 창 허용 목록이 일곱이고(netcusWeekMerge 없음, attendCatNew 있음) 웹 ATTENDWIN_CMD 와 같다', () => checks.whitelist(src));
+test('근태②: 근태 창 허용 목록이 아홉이고(netcusWeekMerge 없음, attendCatNew, reportWeeklyList, netcusWeekSubmit 있음) 웹 ATTENDWIN_CMD 와 같다', () => checks.whitelist(src));
+test('주간⑫: reportWeeklyList 는 세션의 사람과 엄격한 기간으로 읽고(회의내용 포함, 파라미터), 주간 저장은 회의내용을 쓰고 성공 뒤에만 __reportWeeklySaved', () => checks.weekly(src));
 test('근태③: attendOpen 은 메인 창만, attendNav 는 근태 창만 받아 메인 창 __attendNavFromWin 을 부른다', () => checks.routing(src));
 test('근태④: reportDailyList 는 세션의 사람과 엄격한 기간으로 읽고 SELECT 는 파라미터로 묶는다', () => checks.dailyList(src));
 test('결정9⑤: vr==1 에서 저장을 기다린 뒤 결과를 알리고 실패는 공통 안내다', () => checks.decision9(src));
@@ -318,7 +371,8 @@ test('변이④: SELECT 에서 사람 거르기를 빼면 근태④ 가 실패�
 });
 
 test('변이④b: 목록 회신을 백그라운드 HostReply 로 바꾸면 근태④ 가 실패한다', () => {
-  const bad = mutate(src.main, 'ReplyOnUi(reqId, new { ok = true, rows });', 'HostReply(reqId, new { ok = true, rows });');
+  const bad = mutate(src.main, 'error = "보고 기록을 불러오지 못했습니다." }); return; }\n                ReplyOnUi(reqId, new { ok = true, rows });',
+    'error = "보고 기록을 불러오지 못했습니다." }); return; }\n                HostReply(reqId, new { ok = true, rows });');
   assert.throws(() => checks.dailyList(with_('main', bad)), /성공 회신이|ReplyOnUi 를 거치지 않는다/);
 });
 
@@ -358,6 +412,23 @@ test('변이⑩: attendSourcePush 의 메인 창 가드를 빼면 가져오기�
 test('변이⑩b: 가져오기 회신이 받은 글자를 그대로 이어 붙이면 가져오기⑩ 이 실패한다', () => {
   const bad = mutate(src.main, 'JsonSerializer.Serialize(new { date, source = src })', 'src.GetRawText()');
   assert.throws(() => checks.sourceRelay(with_('main', bad)), /JSON 으로 다시 쓰지 않는다|그대로 쓴다/);
+});
+
+test('변이⑫: 주간 SELECT 에서 사람 거르기를 빼면 주간⑫ 가 실패한다', () => {
+  const bad = mutate(src.rdb, 'WHERE user_id=@u AND period_start BETWEEN @f AND @t ORDER BY period_start DESC', 'WHERE period_start BETWEEN @f AND @t ORDER BY period_start DESC');
+  assert.throws(() => checks.weekly(with_('rdb', bad)), /사람과 기간으로 거르지 않거나/);
+});
+test('변이⑫b: 회의내용 없는 요청이 있던 값을 지우게 하면 주간⑫ 가 실패한다', () => {
+  const bad = mutate(src.rdb, 'meeting=COALESCE(VALUES(meeting), meeting)', 'meeting=VALUES(meeting)');
+  assert.throws(() => checks.weekly(with_('rdb', bad)), /있던 회의내용을 지운다/);
+});
+test('변이⑫c: __reportWeeklySaved 를 성공 확인 밖으로 빼면 주간⑫ 가 실패한다', () => {
+  const bad = mutate(src.main, 'if (ok) ReportPush("window.__reportWeeklySaved', 'ReportPush("window.__reportWeeklySaved');
+  assert.throws(() => checks.weekly(with_('main', bad)), /저장 성공 뒤에/);
+});
+test('변이⑫d: resultwork 를 늘 빈 글로 넘기면(칸이 없어도) 주간⑫ 가 실패한다', () => {
+  const bad = mutate(src.main, '(rw.GetString() ?? "") : null', '(rw.GetString() ?? "") : ""');
+  assert.throws(() => checks.weekly(with_('main', bad)), /칸이 있을 때만/);
 });
 
 test('변이⑩c: 가져오기 회신의 날짜 확인을 빼면 가져오기⑩ 이 실패한다', () => {

@@ -1,7 +1,7 @@
 {
  "meta": {
   "db": "taskcalendar",
-  "schemaVersion": "19",
+  "schemaVersion": "20",
   "mysql": "8.4.9",
   "charset": [
    "utf8mb4",
@@ -1496,6 +1496,15 @@
      "name": "plan",
      "type": "mediumtext",
      "nullable": false,
+     "def": null,
+     "key": "",
+     "extra": "",
+     "comment": ""
+    },
+    {
+     "name": "meeting",
+     "type": "mediumtext",
+     "nullable": true,
      "def": null,
      "key": "",
      "extra": "",

@@ -161,8 +161,8 @@ footer p{margin:0 0 4px; max-width:none}
   <li>엔진 <b>MySQL 8.4.9 / InnoDB</b></li>
   <li>문자셋 <b>utf8mb4_0900_ai_ci</b></li>
   <li>표 <b>25</b> <span class="ko">과제 6, 사용자·조직 3, 캘린더 16</span></li>
-  <li>컬럼 <b>207</b>, 외래키 <b>28</b>, CHECK <b>52</b></li>
-  <li>db_structure_version <b>19</b></li>
+  <li>컬럼 <b>208</b>, 외래키 <b>28</b>, CHECK <b>52</b></li>
+  <li>db_structure_version <b>20</b></li>
   <li>기준 <b>2026-10-26</b></li>
 </ul>
 <!-- GEN:FACTS:END -->
@@ -825,6 +825,7 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">content</td><td class="type">MEDIUMTEXT</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
 <tr><td class="col">endwork</td><td class="type">MEDIUMTEXT</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
 <tr><td class="col">plan</td><td class="type">MEDIUMTEXT</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
+<tr><td class="col">meeting</td><td class="type">MEDIUMTEXT</td><td><span class="k">NULL 허용</span></td><td class="note auto">비워 둘 수 있습니다.</td></tr>
 <tr><td class="col">composed_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
 <tr class="audit"><td class="col">created_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 CURRENT_TIMESTAMP(3)</span></td><td class="note auto">필수입니다. 기본값은 <code>CURRENT_TIMESTAMP(3)</code>입니다.</td></tr>
 <tr class="audit"><td class="col">updated_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 CURRENT_TIMESTAMP(3)</span></td><td class="note auto">필수입니다. 기본값은 <code>CURRENT_TIMESTAMP(3)</code>입니다. 행을 고치면 자동으로 갱신됩니다.</td></tr>

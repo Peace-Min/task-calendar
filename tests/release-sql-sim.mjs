@@ -36,6 +36,10 @@
 //   ALTER TABLE ... COMMENT, information_schema.COLUMNS 의 COLUMN_TYPE 과 TABLES 의 TABLE_COMMENT 하위 질의,
 //   순서 채우기 UPDATE 한 문장(V19_FILL 과 글자까지 같아야 한다. 구분마다 표시 이름 순, 같으면 id 순으로 그 구분의 최댓값 뒤에),
 //   그리고 SELECT COUNT(*) INTO @x FROM project WHERE is_active = 1 AND sort_no IS NULL. 칸이 없으면 1054 로 멈춘다.
+//   주간보고 회의내용(v20 조각 migrations/v20-weekly-meeting.sql): cal_report_weekly 표의 열 순서와 형(weekly 옵션, 기본은 19 까지의 모양),
+//   ALTER TABLE cal_report_weekly ADD COLUMN meeting MEDIUMTEXT NULL AFTER ..., ALGORITHM=INSTANT(있는 행은 meeting = NULL 이 된다),
+//   information_schema.COLUMNS 의 이름, COLUMN_TYPE 과 NULL 허용, 바로 앞 칸 자리 하위 질의(project 와 같은 모양).
+//   행(tables.cal_report_weekly 의 user_id, period_start, 그리고 칸이 있으면 meeting)은 값이 바뀌지 않았는지 보려고만 둔다.
 //
 // ★ *.test.mjs 가 아니다(러너가 수집하지 않는다. ps-guard-lib.mjs 머리말과 같은 이유).
 
@@ -225,6 +229,21 @@ export const PROJECT_V19 = () => {
 };
 const colOf = (c) => { const [name, t] = c.split(':'); return { name, type: t.replace('?', ''), nullable: t.endsWith('?') }; };
 
+// ── 주간보고 표의 모양(v20): 열 순서, 형(COLUMN_TYPE 글자), NULL 허용 ─────────────────────
+//  정본 schema-calendar.sql 의 cal_report_weekly. 19 까지는 회의내용 칸이 없고, v20 이 plan 뒤에 meeting 을 넣는다.
+//  형은 v19 의 sort_no 처럼 COLUMN_TYPE 글자로 둔다(DATA_TYPE 은 첫 낱말).
+export const WEEKLY_V19 = () => ({
+  cols: ['user_id:smallint unsigned', 'period_start:date', 'period_end:date', 'subject:varchar(200)', 'content:mediumtext',
+    'endwork:mediumtext', 'plan:mediumtext', 'composed_at:datetime(3)', 'created_at:datetime(3)', 'updated_at:datetime(3)'],
+});
+export const WEEKLY_V20 = () => {
+  const w = WEEKLY_V19();
+  w.cols.splice(w.cols.indexOf('plan:mediumtext') + 1, 0, 'meeting:mediumtext?');
+  return w;
+};
+//  열 모양을 흉내 내는 표(이름 → FakeDb 의 모양 필드)
+const COL_SHAPED = { project: 'project', cal_report_weekly: 'weekly' };
+
 // ── 과제 순서(v19): 코드표 표 설명과 순서 채우기 ─────────────────────────────
 //  18 까지는 고정 번호 문구가 있다(2026-10-15 이관과 정본 13~18). 19 에서 지운다(정본 schema-structure.sql 과 같은 글자).
 export const CODES_V18 = () => ({
@@ -271,6 +290,8 @@ const ROW_KEY = {
   cal_entry_commit: (r) => `${r.user_id}:${r.entry_no}:${r.seq}`,
   //  과제: 번호, 구분, 보임. sort_no 는 칸이 있을 때만 행에 있다(없으면 '-' 도 붙이지 않는다).
   project: (r) => `${r.id}:${r.section_id}:${r.is_active}` + ('sort_no' in r ? `:${r.sort_no === null ? 'NULL' : r.sort_no}` : ''),
+  //  주간보고: 주인, 기간 시작. meeting 은 칸이 있을 때만 행에 있다.
+  cal_report_weekly: (r) => `${r.user_id}:${r.period_start}` + ('meeting' in r ? `:${r.meeting === null ? 'NULL' : r.meeting}` : ''),
 };
 
 // ── 흉내 DB ────────────────────────────────────────────────────────────
@@ -278,13 +299,14 @@ const ROW_KEY = {
 //  tables: { cal_room: [{ user_id, name }], room_code: [{ name, sort_order }] } 처럼 있는 표만 준다(없는 키 = 없는 표).
 //  표 바꾸기도 writes 에 'table:<이름>' 으로 남긴다(다시 돌렸을 때 바뀐 것이 없는지 보려고).
 export class FakeDb {
-  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {}, project = PROJECT_V16(), vcs = VCS_V17(), codes = CODES_V18() } = {}) {
+  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {}, project = PROJECT_V16(), vcs = VCS_V17(), codes = CODES_V18(), weekly = WEEKLY_V19() } = {}) {
     this.rows = new Map(Object.entries(meta).map(([k, v]) => [k, { v, at: 0 }]));
     this.tables = Object.fromEntries(Object.entries(tables).map(([n, rs]) => [n, rs.map((r) => ({ ...r }))]));
     this.defs = Object.fromEntries(Object.entries(defs).map(([n, d]) => [n, { ...d }]));   // 표 이름 → { cols, fks }(v16 검증용)
     this.project = { cols: [...project.cols], checks: [...project.checks] };                  // project 표 모양(v17 검증용)
     this.vcs = { cols: [...vcs.cols], checks: [...vcs.checks], prefComment: vcs.prefComment };  // 지울 칸, CHECK, 표 설명(v18 검증용)
     this.codes = { ...codes };                                                                   // 코드표 표 설명(v19 검증용)
+    this.weekly = { cols: [...weekly.cols] };                                                    // cal_report_weekly 모양(v20 검증용)
     this.tableExists = tableExists;
     this.schema = schema;
     this.comment = '';
@@ -299,8 +321,10 @@ export class FakeDb {
   snap() { if (!this.tx) this.visible.push(this.state()); }
   meta() { return Object.fromEntries([...this.rows].map(([k, r]) => [k, r.v])); }
   //  meta 에 회의실 표 모양('#tables')을 붙인 것. 앱에 보인 상태 비교와 실패 뒤 재실행 결과 비교에 쓴다.
-  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()), '#project': JSON.stringify(this.project), '#vcs': JSON.stringify(this.vcs), '#codes': JSON.stringify(this.codes) }; }
+  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()), '#project': JSON.stringify(this.project), '#vcs': JSON.stringify(this.vcs), '#codes': JSON.stringify(this.codes), '#weekly': JSON.stringify(this.weekly) }; }
   projectHasCol(c) { return this.project.cols.some((x) => colOf(x).name === c); }
+  //  열 모양을 흉내 내는 표의 열 목록(project, cal_report_weekly)
+  shapeCols(t) { return this[COL_SHAPED[t]].cols; }
   tableShape() {
     const out = {};
     for (const n of Object.keys(this.tables).sort()) {
@@ -359,24 +383,25 @@ export class FakeDb {
     }
     //  v17: project 의 칸(이름만, 또는 형과 NULL 허용까지), 바로 앞 칸 자리, CHECK 이름
     //  v17, v19: DATA_TYPE 은 형의 첫 낱말('int'), COLUMN_TYPE 은 형 글자 전체('int unsigned')와 비교한다.
-    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = 'project' AND COLUMN_NAME = '(\w+)'(?: AND (DATA_TYPE|COLUMN_TYPE) = '([\w ]+)' AND IS_NULLABLE = '(YES|NO)')?$/.exec(s);
+    //  v20: cal_report_weekly 도 같은 모양으로 묻는다.
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(project|cal_report_weekly)' AND COLUMN_NAME = '(\w+)'(?: AND (DATA_TYPE|COLUMN_TYPE) = '([\w ]+)' AND IS_NULLABLE = '(YES|NO)')?$/.exec(s);
     if (m) {
       if (!this.schema) return 0;
-      const c = this.project.cols.map(colOf).find((x) => x.name === m[1]);
+      const c = this.shapeCols(m[1]).map(colOf).find((x) => x.name === m[2]);
       if (!c) return 0;
-      if (m[2] === undefined) return 1;
-      const got = m[2] === 'DATA_TYPE' ? c.type.split(' ')[0] : c.type;
-      return got === m[3] && c.nullable === (m[4] === 'YES') ? 1 : 0;
+      if (m[3] === undefined) return 1;
+      const got = m[3] === 'DATA_TYPE' ? c.type.split(' ')[0] : c.type;
+      return got === m[4] && c.nullable === (m[5] === 'YES') ? 1 : 0;
     }
     //  v19: 코드표 표 설명(정확히 같은 글자일 때만 1)
     m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLES WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(section_code|status_code)' AND TABLE_COMMENT = '((?:[^']|'')*)'$/.exec(s);
     if (m) return this.schema && this.codes[m[1]] === m[2].replace(/''/g, "'") ? 1 : 0;
-    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS a JOIN information_schema\.COLUMNS b ON b\.TABLE_SCHEMA = a\.TABLE_SCHEMA AND b\.TABLE_NAME = a\.TABLE_NAME AND b\.ORDINAL_POSITION = a\.ORDINAL_POSITION \+ 1 WHERE a\.TABLE_SCHEMA = DATABASE\(\) AND a\.TABLE_NAME = 'project' AND a\.COLUMN_NAME = '(\w+)' AND b\.COLUMN_NAME = '(\w+)'$/.exec(s);
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS a JOIN information_schema\.COLUMNS b ON b\.TABLE_SCHEMA = a\.TABLE_SCHEMA AND b\.TABLE_NAME = a\.TABLE_NAME AND b\.ORDINAL_POSITION = a\.ORDINAL_POSITION \+ 1 WHERE a\.TABLE_SCHEMA = DATABASE\(\) AND a\.TABLE_NAME = '(project|cal_report_weekly)' AND a\.COLUMN_NAME = '(\w+)' AND b\.COLUMN_NAME = '(\w+)'$/.exec(s);
     if (m) {
       if (!this.schema) return 0;
-      const names = this.project.cols.map((c) => colOf(c).name);
-      const i = names.indexOf(m[1]);
-      return i >= 0 && names[i + 1] === m[2] ? 1 : 0;
+      const names = this.shapeCols(m[1]).map((c) => colOf(c).name);
+      const i = names.indexOf(m[2]);
+      return i >= 0 && names[i + 1] === m[3] ? 1 : 0;
     }
     m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = 'project' AND CONSTRAINT_NAME = '(\w+)' AND CONSTRAINT_TYPE = 'CHECK'$/.exec(s);
     if (m) return this.schema && this.project.checks.includes(m[1]) ? 1 : 0;
@@ -471,6 +496,19 @@ export class FakeDb {
       //  v19: 과제 행은 sort_no 만 흉내 낸다(새 칸은 NULL 로 생긴다).
       if (m[1] === 'sort_no' && this.hasTable('project')) for (const r of this.tables.project) r.sort_no = null;
       this.writes.push({ k: `col:project.${m[1]}`, v: 'add' });
+      return;
+    }
+    //  v20: cal_report_weekly 에 칸 하나(AFTER). 이미 있으면 MySQL 처럼 1060 으로 멈춘다. 있는 행은 새 칸이 NULL 로 생긴다(값 채우기 없음).
+    if ((m = /^ALTER TABLE cal_report_weekly ADD COLUMN (\w+) (MEDIUMTEXT) NULL AFTER (\w+), ALGORITHM=INSTANT$/.exec(q))) {
+      if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
+      this.mutating(s, opts);
+      const names = this.weekly.cols.map((c) => colOf(c).name);
+      if (names.includes(m[1])) throw new SqlStop(`1060 칸 ${m[1]} 이 이미 있다`);
+      const at = names.indexOf(m[3]);
+      if (at < 0) throw new SqlStop(`1054 칸 ${m[3]} 이 없다`);
+      this.weekly.cols.splice(at + 1, 0, `${m[1]}:${m[2].toLowerCase()}?`);
+      if (this.hasTable('cal_report_weekly')) for (const r of this.tables.cal_report_weekly) r[m[1]] = null;
+      this.writes.push({ k: `col:cal_report_weekly.${m[1]}`, v: 'add' });
       return;
     }
     if ((m = /^ALTER TABLE project ADD CONSTRAINT (\w+) CHECK \(.+\)$/.exec(q))) {

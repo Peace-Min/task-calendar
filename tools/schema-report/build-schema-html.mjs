@@ -180,6 +180,7 @@ const MIGRATIONS = [
   ['10-21', '회의실 공용화(v15)', '사람마다 두던 cal_room 을 지우고 회사 공용 room_code(번호 키, name UNIQUE)를 두었다. 모든 사용자의 이름을 모아(앞뒤 공백 정리, 중복 제거) 넣었다. 관리자만 고치고, 일정의 장소는 글자라 외래키가 없다. 이관 조각 db/deploy/migrations/v15-shared-rooms.sql.'],
   ['10-22', '과제 캘린더(v16)', '공식 과제마다 공용 캘린더를 두는 새 표 둘을 더했다: cal_project_event(과제 일정, 소프트 삭제, row_version), cal_project_change(바뀐 필드만 담는 지우지 않는 이력). 과제별 감시점 표는 없다(동시 수정은 일정의 row_version, 재시도는 이력의 mutation_uid UNIQUE). 개인 일정에 등록은 한 번 찍는 사본이라 대응표가 없다. 외래키는 번호(project.id, event_id)를 가리키고 사람은 이름 글자로만 남긴다. 두 표 모두 앱 계정에 DELETE 가 없다. 이관 조각 db/deploy/migrations/v16-project-calendar.sql.'],
   ['10-22', '월간보고(v17)', 'project 에 개발시작일(dev_start_date, end_date 와 dev_end_date 사이)과 개발 기간 순서 CHECK 를 더하고, 과제별 개발 일정 그림 표 project_schedule_image(바이트 MEDIUMBLOB, 과제 CASCADE, 등록자 RESTRICT)를 만들었다. 백업은 --hex-blob 으로 뜬다. 이관 조각 db/deploy/migrations/v17-monthly-report.sql.'],
+  ['10-29', '회의내용(v20)', 'cal_report_weekly 에 회의내용 칸 meeting(MEDIUMTEXT NULL, plan 뒤)을 더했다. 근태 창의 주간보고가 회사 폼의 회의내용도 채우게 되어 그 글을 함께 남긴다. 기존 행은 NULL 로 두고(이 칸이 생기기 전에 작성한 주) 앱은 빈 글로 읽는다. 이관 조각 db/deploy/migrations/v20-weekly-meeting.sql.'],
 ];
 
 const html = `<!DOCTYPE html>

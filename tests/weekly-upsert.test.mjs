@@ -84,6 +84,8 @@ namespace TaskCalendarWidget
                 o["goModify"] = GoModifyJs(S("viewNo"), S("id"));
                 o["override"] = WeekModifyOverrideJs(S("viewNo"), S("id"));
                 o["fill"] = WeekModifyFillJs(S("endwork"), S("content"), S("planwork"));
+                o["fill4"] = WeekModifyFillJs(S("endwork"), S("content"), S("planwork"), S("resultwork"));   // 회의내용까지(결정 13)
+                o["okMsgMeet"] = WeekModifyOkMsg(1, true);
                 o["probeJs"] = WeekModifyProbeJs;
                 o["listMarkJs"] = ListPageMarkJs;
                 o["cellJs"] = CellExtractJs;
@@ -173,6 +175,8 @@ const NEW = {
   content: '[가상과제A] : 10\n[가상과제B] : 2\n----------------------------\n합계 : 12',
   planwork: '[가상과제A]\n    - 다음 주 가상 계획',
 };
+//  회의내용(resultwork, 결정 13). 근태 탭 주간 편집만 싣는다(보고서 창의 옛 전송은 회의내용을 건드리지 않는다).
+const NEW_MEET = '- 가상 주간회의\n    - 따옴표 \' 확인';
 const PICKS = [
   { name: '하나가 기간이 정확히 같다', items: [['101', P]], sdate: SD, edate: ED, want: { viewNo: '101', matches: 1 } },
   { name: '시작만 같다(끝이 다르다)', items: [['101', '2026-09-28 ~ 2026-10-04']], sdate: SD, edate: ED, want: { viewNo: '', matches: 0 } },
@@ -191,7 +195,7 @@ const pickWant = (c) => ({ locked: 0, ...c.want });
 const PROBE_RAW_STATIC = [null, 'null', '"not json"', JSON.stringify(JSON.stringify({ sd: SD, ed: ED, wd: '2026/10/02 17:50' }))];
 const BASE_INPUT = {
   picks: PICKS.map(({ items, sdate, edate }) => ({ items: items.map((it) => (it.length === 3 ? it : [...it, true])), sdate, edate })),
-  js: { viewNo: '101', id: USER_ID, ...NEW },
+  js: { viewNo: '101', id: USER_ID, ...NEW, resultwork: NEW_MEET },
   msgs: [1, 2, 3],
   probeRaw: PROBE_RAW_STATIC,
 };
@@ -298,6 +302,9 @@ if (!dotnetOk) {
     assert.ok(/같은 기간 글이 3개 있어/.test(three), `3개 안내가 다르다: ${three}`);
     assert.ok(one.includes('진행사항, 과제투입시간, 차주계획 세 칸은 캘린더 내용으로 바뀌었습니다.'), `세 칸이 통째로 바뀐다는 말이 없다: ${one}`);
     assert.ok(one.includes('임시저장이나 제출을 누르세요.'), `무엇을 누를지 말하지 않는다: ${one}`);
+    const meet = base().okMsgMeet;
+    assert.ok(/^주간보고 /.test(meet) && meet.includes('진행사항, 과제투입시간, 차주계획, 회의내용 네 칸은 캘린더 내용으로 바뀌었습니다.'), `회의내용까지 채운 문구가 네 칸을 말하지 않는다: ${meet}`);
+    assert.ok(!/[—–「」]| · /.test(meet), '네 칸 문구에 금지 기호가 있다');
     assert.ok(/저장하지 않고 창을 닫으면 회사 글은 그대로입니다\.$/.test(one), `저장하지 않으면 회사 글이 그대로라는 말이 없다: ${one}`);
   });
 
@@ -351,6 +358,22 @@ if (!dotnetOk) {
       assert.strictEqual(after.endwork, NEW.endwork);
       assert.strictEqual(after.content, NEW.content);
       assert.strictEqual(after.planwork, NEW.planwork);
+    });
+
+    test('주간 고치기 B1b: 회의내용이 실린 채우기 JS 는 진행사항, 과제투입시간, 차주계획, 회의내용 넷만 바꾸고 미처리사항, 문제점은 그대로 둔다(결정 13)', () => {
+      const P1 = page();
+      const before = P1.snap();
+      assert.strictEqual(P1.run(base().fill4), 1, '네 칸 채우기 JS 가 1 을 돌려주지 않았다');
+      const after = P1.snap();
+      for (const n of KEEP.filter((k) => k !== 'resultwork')) assert.deepStrictEqual(after[n], before[n], `${n} 이(가) 바뀌었다`);
+      assert.deepStrictEqual([after.endwork, after.content, after.planwork, after.resultwork], [NEW.endwork, NEW.content, NEW.planwork, NEW_MEET]);
+      //  회의내용 칸이 없는 화면이면 아무것도 쓰지 않는다(넷이 다 있을 때만)
+      const P2 = page(MODIFY_FIXTURE.replace('<textarea name="resultwork">가상 회의 메모</textarea>', ''));
+      const b2 = P2.snap();
+      assert.strictEqual(P2.run(base().fill4), 0);
+      assert.deepStrictEqual(P2.snap(), b2);
+      //  회의내용이 없는 요청(옛 전송)의 채우기는 회의내용 칸을 읽지도 쓰지도 않는다
+      assert.ok(!base().fill.includes('resultwork'), '세 칸 채우기가 회의내용 칸을 건드린다');
     });
 
     test('주간 고치기 B2: 세 칸 중 하나라도 없으면 아무것도 쓰지 않고 0 을 돌려준다', () => {
@@ -491,14 +514,14 @@ if (!dotnetOk) {
       assert.strictEqual(V('<input type="button" value="목록" onclick="go_list(1)">'), '', '수정 단추가 없는 글(남의 글)에 표지가 섰다');
     });
 
-    test('주간 고치기 B12: 채우기 전 원래 길이 JS 는 세 칸의 글자 수(숫자)만 돌려준다(내용은 싣지 않는다)', () => {
+    test('주간 고치기 B12: 채우기 전 원래 길이 JS 는 네 칸(회의내용 포함, 결정 13)의 글자 수(숫자)만 돌려준다(내용은 싣지 않는다)', () => {
       const PL = page();
       const raw = PL.run(base().origLenJs);
       const o = JSON.parse(raw);
-      assert.deepStrictEqual(Object.keys(o).sort(), ['content', 'endwork', 'planwork']);
-      assert.deepStrictEqual(o, { endwork: PL.val('endwork').length, content: PL.val('content').length, planwork: PL.val('planwork').length });
-      assert.ok(!raw.includes('예전'), '원래 내용이 반환값에 섞였다');
-      assert.deepStrictEqual(JSON.parse(page(BLANK_FIXTURE, '').run(base().origLenJs)), { endwork: -1, content: -1, planwork: -1 });
+      assert.deepStrictEqual(Object.keys(o).sort(), ['content', 'endwork', 'planwork', 'resultwork']);
+      assert.deepStrictEqual(o, { endwork: PL.val('endwork').length, content: PL.val('content').length, planwork: PL.val('planwork').length, resultwork: PL.val('resultwork').length });
+      assert.ok(!raw.includes('예전') && !raw.includes('가상 회의'), '원래 내용이 반환값에 섞였다');
+      assert.deepStrictEqual(JSON.parse(page(BLANK_FIXTURE, '').run(base().origLenJs)), { endwork: -1, content: -1, planwork: -1, resultwork: -1 });
     });
   }
 }
@@ -547,35 +570,36 @@ const checks = {
   okMsgPrefix(cs, text) {
     const om = openModify(cs);
     const oks = [...om.matchAll(/NetcusResult\(true,\s*([^;]+)\);/g)].map((m) => m[1]);
-    assert.deepStrictEqual(oks, ['WeekModifyOkMsg(hit.Matches)'], `수정 경로의 성공 회신이 WeekModifyOkMsg 하나가 아니다: ${oks}`);
+    assert.deepStrictEqual(oks, ['WeekModifyOkMsg(hit.Matches, req.Resultwork != null)'], `수정 경로의 성공 회신이 WeekModifyOkMsg 하나가 아니다: ${oks}`);
     const body = extractCsMember(text, 'internal static string WeekModifyOkMsg(');
     const first = /"([^"]*)"/.exec(body);
     assert.ok(first && /^주간보고 /.test(first[1]), '수정 경로 성공 문구가 "주간보고 " 로 시작하지 않는다(웹이 일간 회신으로 오인한다)');
   },
 
-  //  C4. 수정 경로는 세 칸만 채운다: 새 글 경로의 채우기(기간, 제목까지 쓰는 fill)를 쓰지 않고, WeekModifyFillJs 는 세 칸 이름만 안다.
+  //  C4. 수정 경로는 세 칸(+ 요청에 있으면 회의내용, 결정 13)만 채운다: 새 글 경로의 채우기(기간, 제목까지 쓰는 fill)를 쓰지 않고,
+  //      WeekModifyFillJs 는 그 네 칸 이름만 안다.
   modifyFillsThreeOnly(cs, text) {
     const om = openModify(cs);
-    assert.ok(om.includes('WeekModifyFillJs(req.Endwork, req.Content, req.Planwork)'), '수정 경로가 세 칸 채우기(WeekModifyFillJs)를 쓰지 않는다');
+    assert.ok(om.includes('WeekModifyFillJs(req.Endwork, req.Content, req.Planwork, req.Resultwork)'), '수정 경로가 세 칸 채우기(WeekModifyFillJs)를 쓰지 않는다');
     assert.ok(!/ExecuteScriptAsync\(fill\)|set\('/.test(om), '수정 경로가 새 글 경로의 채우기(기간, 제목까지 쓰는 fill)를 쓴다');
-    for (const n of ['sdate', 'edate', 'subject', 'wdate', 'ndate', 'notendwork', 'problem', 'resultwork']) {
+    for (const n of ['sdate', 'edate', 'subject', 'wdate', 'ndate', 'notendwork', 'problem']) {
       assert.ok(!new RegExp(`req\\.(${n})\\b`, 'i').test(om.replace(/_host\.SaveWeeklyReport\([^;]*;/, '').replace(/NcDate\(req\.(Sdate|Edate)[^)]*\)/g, '')),
         `수정 경로가 ${n} 에 요청 값을 쓴다`);
     }
     const fill = extractCsMember(text, 'internal static string WeekModifyFillJs(');
-    const names = [...fill.matchAll(/getElementsByName\('([^']+)'\)/g)].map((m) => m[1]).sort();
-    assert.deepStrictEqual(names, ['content', 'endwork', 'planwork'], `수정 화면 채우기가 세 칸 밖을 건드린다: ${names}`);
-    assert.ok(!/\.value=/.test(fill.replace(/[ecp]\.value=/g, '')), '수정 화면 채우기가 세 칸 말고 다른 값을 쓴다');
+    const names = [...new Set([...fill.matchAll(/getElementsByName\('([^']+)'\)/g)].map((m) => m[1]))].sort();
+    assert.deepStrictEqual(names, ['content', 'endwork', 'planwork', 'resultwork'], `수정 화면 채우기가 세 칸 밖을 건드린다: ${names}`);
+    assert.ok(!/\.value=/.test(fill.replace(/[ecpr]\.value=/g, '')), '수정 화면 채우기가 세 칸 말고 다른 값을 쓴다');
   },
 
   //  C5. 수정 경로의 저장은 성공 통지 뒤에 한 번, 실패 경로들보다 뒤에 있다(새 글 경로는 report-wiring ④).
   modifySaveAfterSuccess(cs) {
     const om = openModify(cs);
-    const call = '_host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork);';
+    const call = '_host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork);';
     const at = om.indexOf(call);
     assert.ok(at > 0, '수정 경로에서 SaveWeeklyReport 호출을 찾지 못했다. 배선이 끊겼다');
     assert.strictEqual(om.split('_host.SaveWeeklyReport(').length - 1, 1, '수정 경로에서 저장을 두 번 이상 부른다');
-    const ok = om.indexOf('NetcusResult(true, WeekModifyOkMsg(hit.Matches));');
+    const ok = om.indexOf('NetcusResult(true, WeekModifyOkMsg(hit.Matches, req.Resultwork != null));');
     assert.ok(ok > 0 && at > ok, '수정 경로의 저장이 성공 통지보다 앞에 있다. 실패한 채우기도 기록된다');
     const lastFail = om.lastIndexOf('NetcusResult(false,');
     assert.ok(lastFail > 0 && at > lastFail, '수정 경로의 저장이 실패 분기보다 앞에 있다');
@@ -680,7 +704,7 @@ const checks = {
 test('주간 고치기 C1: 확인 실패(예외 포함)면 창을 닫고 멈춘다. 새 글 작성 화면은 찾기와 분기 뒤에만 열린다', () => checks.lookupFailStops(svc));
 test('주간 고치기 C2: 찾기는 세션 만료, 못 읽은 글, 못 읽은 목록, 상한 도달을 "없음" 이 아니라 실패로 본다', () => checks.lookupFailReasons(svc));
 test('주간 고치기 C3: 수정 경로 성공 문구는 "주간보고 " 로 시작하는 WeekModifyOkMsg 하나다', () => checks.okMsgPrefix(svc, txt));
-test('주간 고치기 C4: 수정 경로는 세 칸만 채운다(기간, 제목, 작성일, 미처리사항, 문제점, 회의내용은 건드리지 않는다)', () => checks.modifyFillsThreeOnly(svc, txt));
+test('주간 고치기 C4: 수정 경로는 세 칸(요청에 있으면 회의내용까지)만 채운다(기간, 제목, 작성일, 미처리사항, 문제점은 건드리지 않는다)', () => checks.modifyFillsThreeOnly(svc, txt));
 test('주간 고치기 C5: 수정 경로의 SaveWeeklyReport 는 성공 통지 뒤에 한 번 불린다', () => checks.modifySaveAfterSuccess(svc));
 test('주간 고치기 C6: Bmodify 안전판은 채우기 전에 끼우고, 못 끼우면 창을 닫고 멈춘다', () => checks.overrideBeforeFill(svc));
 test('주간 고치기 C7: 주간범위 읽기의 창, 상한, 오류 코드, 회신, 포함 규칙은 그대로다(공용 순회로 옮긴 뒤)', () => checks.rangeReadContract(svc));
@@ -723,23 +747,23 @@ test('주간 고치기 변이 CM7: 상한 도달 실패를 지우면 C2 가 잡�
 test('주간 고치기 변이 CM8: 성공 문구 머리를 바꾸면 C3 이 잡는다', () => {
   const bad = mutate(txt, 'string m = "주간보고 같은 기간에', 'string m = "같은 기간에');
   assert.throws(() => checks.okMsgPrefix(svc, bad), /"주간보고 " 로 시작하지 않는다/);
-  const bad2 = mutate(svc, 'NetcusResult(true, WeekModifyOkMsg(hit.Matches));', 'NetcusResult(true, "기존 글을 열었습니다.");');
+  const bad2 = mutate(svc, 'NetcusResult(true, WeekModifyOkMsg(hit.Matches, req.Resultwork != null));', 'NetcusResult(true, "기존 글을 열었습니다.");');
   assert.throws(() => checks.okMsgPrefix(bad2, txt), /WeekModifyOkMsg 하나가 아니다/);
 });
 test('주간 고치기 변이 CM9: 수정 화면 채우기가 기간이나 제목을 건드리면 C4 가 잡는다', () => {
   const bad = mutate(txt, "p=document.getElementsByName('planwork')[0];", "p=document.getElementsByName('planwork')[0],s=document.getElementsByName('subject')[0];");
   assert.throws(() => checks.modifyFillsThreeOnly(svc, bad), /세 칸 밖을 건드린다/);
-  const bad2 = mutate(svc, 'var mfilled = await wv.ExecuteScriptAsync(WeekModifyFillJs(req.Endwork, req.Content, req.Planwork));',
-    'var mfilled = await wv.ExecuteScriptAsync(WeekModifyFillJs(req.Endwork, req.Content, req.Planwork) + SetJs("subject", req.Subject));');
+  const bad2 = mutate(svc, 'var mfilled = await wv.ExecuteScriptAsync(WeekModifyFillJs(req.Endwork, req.Content, req.Planwork, req.Resultwork));',
+    'var mfilled = await wv.ExecuteScriptAsync(WeekModifyFillJs(req.Endwork, req.Content, req.Planwork, req.Resultwork) + SetJs("subject", req.Subject));');
   assert.throws(() => checks.modifyFillsThreeOnly(bad2, txt), /subject 에 요청 값을 쓴다/);
 });
 test('주간 고치기 변이 CM10: 수정 경로의 저장을 지우거나 성공 통지 앞으로 옮기면 C5 가 잡는다', () => {
-  const call = '                    _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork);';
+  const call = '                    _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork);';
   assert.ok(svc.includes(call), '수정 경로의 저장 호출(20칸 들여쓰기)을 찾지 못했다');
   const at = svc.lastIndexOf(call);
   const removed = svc.slice(0, at) + '                    // 지워짐' + svc.slice(at + call.length);
   assert.throws(() => checks.modifySaveAfterSuccess(removed), /배선이 끊겼다/);
-  const okLine = '                    NetcusResult(true, WeekModifyOkMsg(hit.Matches));';
+  const okLine = '                    NetcusResult(true, WeekModifyOkMsg(hit.Matches, req.Resultwork != null));';
   const moved = removed.replace('                    var mfilled = ', call + NL + '                    var mfilled = ');
   assert.notStrictEqual(moved, removed);
   assert.ok(moved.includes(okLine));

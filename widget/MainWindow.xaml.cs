@@ -478,10 +478,12 @@ namespace TaskCalendarWidget
         //  ★ 웹의 ATTENDWIN_CMD 와 같아야 한다(tests/attendance-host.test.mjs). 근태 창은 내 달력을 읽거나 저장하지 않는다.
         //  과제 블록(결정 12, 2026-10-29): 인트라넷 불러오기(netcusWeekMerge)를 근태 창에서 뺐다(주간보고 병합은 메인 창에서 그대로 쓴다).
         //    attendCatNew 는 [+ 캘린더에 새 과제 만들기]: 메인 창의 과제 창을 연다(근태 창은 내 과제를 만들 수 없다).
+        //  주간보고(결정 13, 2026-10-29): 근태 창의 주간 모드가 주간 기록을 읽고(reportWeeklyList) 회사 주간 폼을 채운다(netcusWeekSubmit).
         internal static readonly HashSet<string> AttendWinCommands = new(StringComparer.Ordinal)
         {
             "attendWinReady", "attendNav", "reportDailyList", "netcusSubmit",
             "attendSourceReq", "netcusViewMonth", "attendCatNew",   // 가져오기(다른 날짜 캘린더 기록 청하기), 인트라넷 달력 보기(읽기만), 새 과제. attendSourcePush 는 메인 창만 보낸다
+            "reportWeeklyList", "netcusWeekSubmit",                 // 주간 기록 읽기(읽기만), 주간 폼 채우기(제출은 사용자가 열린 창에서)
         };
         //  요청 번호의 머리. 회신은 이 표시를 보고 그 창으로 간다(ReplyCore). 창끼리 번호가 겹치지 않는다.
         internal const string PeerReqPrefix = "pw:";
@@ -913,13 +915,18 @@ namespace TaskCalendarWidget
                     case "reportDailyList":  // 그 기간에 이 앱으로 보낸 일간 보고(cal_report_daily). 메인 창과 근태 창이 읽는다. 사람은 세션에서 읽는다
                         _ = RunReportDailyListAsync(rq, GetStr(doc, "from"), GetStr(doc, "to"));
                         break;
+                    case "reportWeeklyList": // 그 기간에 이 앱으로 작성한 주간보고(cal_report_weekly, 결정 13). 읽기만. 사람은 세션에서 읽는다
+                        _ = RunReportWeeklyListAsync(rq, GetStr(doc, "from"), GetStr(doc, "to"));
+                        break;
                     case "peerMine":         // 열람 창의 내 일정 겹. 메인 창의 지금 상태를 물어 와 넘긴다(DB 를 다시 읽지 않는다)
                         _ = RunPeerMineAsync(rq);
                         break;
 
                     case "netcusWeekSubmit":
                         _ = _netcus.WeekFill(GetStr(doc, "sdate"), GetStr(doc, "edate"), GetStr(doc, "subject"),
-                            GetStr(doc, "content"), GetStr(doc, "endwork"), GetStr(doc, "planwork"));   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
+                            GetStr(doc, "content"), GetStr(doc, "endwork"), GetStr(doc, "planwork"),
+                            //  resultwork = 회의내용(결정 13). 칸이 없으면 null(보고서 창의 옛 전송): 인트라넷의 회의내용을 빈 값으로 덮지 않는다
+                            doc.RootElement.TryGetProperty("resultwork", out var rw) && rw.ValueKind == JsonValueKind.String ? (rw.GetString() ?? "") : null);   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
                         break;
                     case "netcusWeekMerge":   // 주간보고 병합(Phase2) — 기간 일간보고 content를 '읽기만' 해서 reqId로 회신
                     {
@@ -1992,6 +1999,31 @@ namespace TaskCalendarWidget
             }
         }
 
+        //  그 기간에 이 앱으로 작성한 주간보고 목록(결정 13, ATTENDANCE-PLAN §13.3). 일간 목록(RunReportDailyListAsync)과 같은 틀이다:
+        //  사람은 세션에서 읽고(웹이 정하지 않는다), 기간은 'YYYY-MM-DD' 두 개에 ReportDb.ListMaxDays 일까지, 회신은 ReplyOnUi.
+        //  기간은 period_start(월요일) 기준이다. 회신: { ok:true, rows:[{periodStart, periodEnd, subject, content, endwork, plan, meeting, composedAt}] } | { ok:false, error }
+        private async Task RunReportWeeklyListAsync(string reqId, string from, string to)
+        {
+            if (!ReportDb.TryParseYmd(from, out var f) || !ReportDb.TryParseYmd(to, out var t) || f > t)
+            { ReplyOnUi(reqId, new { ok = false, error = "기간이 올바르지 않습니다." }); return; }
+            if ((t - f).TotalDays > ReportDb.ListMaxDays)
+            { ReplyOnUi(reqId, new { ok = false, error = "기간은 " + ReportDb.ListMaxDays + "일까지 읽을 수 있습니다." }); return; }
+            string? loginId = CurrentLoginId();
+            if (string.IsNullOrEmpty(loginId)) { ReplyOnUi(reqId, new { ok = false, error = "로그인이 필요합니다." }); return; }
+            try
+            {
+                var db = new ReportDb(Log);
+                var rows = await Task.Run(() => db.ListWeeklyAsync(loginId, f, t));
+                if (rows == null) { ReplyOnUi(reqId, new { ok = false, error = "주간보고 기록을 불러오지 못했습니다." }); return; }
+                ReplyOnUi(reqId, new { ok = true, rows });
+            }
+            catch (Exception ex)
+            {
+                Log("주간보고 목록 예외: " + ex.Message);
+                ReplyOnUi(reqId, new { ok = false, error = "주간보고 기록을 불러오지 못했습니다." });
+            }
+        }
+
         //  userInfoGet 과 같은 읽기(LoadUserInfoJsonAsync)의 결과로 관리자인지. 웹의 ahProbe 와 같은 규칙이다
         //  (edit_role 이 admin 이고 is_active 가 0 이 아니다. is_active 가 비어 있으면 재직으로 본다). 읽지 못했으면 null.
         internal static bool? AdminFromUserInfo(string? json)
@@ -2452,12 +2484,19 @@ namespace TaskCalendarWidget
             return ok;
         }
 
-        void INetcusHost.SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork)
+        void INetcusHost.SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork, string? meeting)
         {
             string? loginId = CurrentLoginId();
             var db = new ReportDb(Log);
             _ = Task.Run(() => SaveReportRecordWithRetryAsync("weekly", sdate, db,   // 실패 시 10·30·60초 재시도(OfflineHost.cs · S10)
-                () => db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork)));
+                async () =>
+                {
+                    bool ok = await db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork, meeting);
+                    //  기록이 커밋된 뒤에만 알린다(결정 13): 웹은 그 주 임시 저장을 지우고 목록 상태를 완료로 바꾼다.
+                    //    폼 채우기 성공 회신만 보고 지우면, 기록이 끝내 실패했을 때 글이 어디에도 남지 않는다.
+                    if (ok) ReportPush("window.__reportWeeklySaved && window.__reportWeeklySaved(" + JsonSerializer.Serialize(new { periodStart = sdate }) + ")");
+                    return ok;
+                }));
         }
 
         // ================================================================================

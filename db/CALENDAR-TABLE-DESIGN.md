@@ -2375,6 +2375,12 @@ buildNetcusHoursText()      :7887  주간 = Σ hoursByDate   ← 파생값
 주간에는 사용자가 폼에서 보완한 내용(`notendwork`, `problem`, 차주계획 보완분)이 **담기지 않는다.**
 그건 캘린더가 만든 것이 아니기 때문이다. 화면도 그렇게 표시해야 한다.
 
+> **2026-10-29, 회의내용 칸(구조 20,** [`../docs/ATTENDANCE-PLAN.md`](../docs/ATTENDANCE-PLAN.md) **§13.4).**
+> 근태 창의 주간보고가 회사 폼의 회의내용(`resultwork`)도 채우게 되어, 그 글을 `meeting MEDIUMTEXT NULL`(`plan` 뒤)에 함께 남긴다.
+> 캘린더가 쓴 글이라 위 원칙(캘린더가 만든 것만 담는다)과 맞는다. `NULL` 은 이 칸이 생기기 전에 작성한 주이고, 앱은 빈 글로 읽는다.
+> 그래서 주간 표의 칸은 `user_id`, `period_start`, `period_end`, `subject`, `content`(과제투입시간), `endwork`(진행사항),
+> `plan`(차주계획), `meeting`(회의내용), `composed_at` 과 감사 칸 둘이다. 이관은 `db/deploy/migrations/v20-weekly-meeting.sql`.
+
 ### 5.9.6 `cat_no` 의 FK: 2026-09-09 판정 뒤집음
 
 **복합 FK `(user_id, cat_no)` → `cal_category`, `ON DELETE RESTRICT`** 를 걸었다(`fk_crh_cat`,
@@ -3329,6 +3335,9 @@ binlog 는 **변경 이력**이다. *"어느 상태에서 출발해 이 변경�
 ---
 
 ## 정정 이력
+
+- **2026-10-29, 주간보고 회의내용**([`../docs/ATTENDANCE-PLAN.md`](../docs/ATTENDANCE-PLAN.md) §13.4, 구조 번호 20).
+  - §5.9.5 에 `cal_report_weekly.meeting`(회의내용, NULL 허용)을 더했다는 주와 주간 표의 칸 목록을 적었다.
 
 - **2026-10-26, 과제 순서와 연결 규칙 삭제**([`../docs/PROJECT-ADMIN-UX.md`](../docs/PROJECT-ADMIN-UX.md), 구조 번호 19).
   - §5.6.3 판정표의 구분, 상태 근거 칸과 §5.6.3-a 머리에 묶인 동작과 보호를 지웠다는 주를 달았다. §5.6.3-a 본문은 기록으로 둔다.

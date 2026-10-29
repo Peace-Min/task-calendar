@@ -283,7 +283,9 @@ const checks = {
                        'public async Task<string?> LoadTrashJsonAsync(string loginId)', 'public async Task<string?> LoadOrgTitleJsonAsync(string loginId)'])
       assert.ok(/DbErrors\.Observe\(\w+, _log\);/.test(csMember(s.pdb, sig)), `${sig} 의 실패가 분류기에 닿지 않는다`);
     assert.ok(/DbErrors\.Observe\(ex, _log\);/.test(csMember(s.cdb, 'public async Task<string?> LoadPeerScheduleJsonAsync(')), '타인 일정 조회 실패가 분류기에 닿지 않는다');
-    assert.ok((stripCs(s.rdb).match(/DbErrors\.Observe\(ex, _log\)/g) || []).length === 3, '보고 기록 저장 실패(일간, 주간)와 일간 목록 읽기 실패가 분류기에 닿지 않는다');
+    //  2026-10-29 주간 목록 읽기(ListWeeklyAsync, 결정 13)가 더해져 넷이다.
+    assert.ok((stripCs(s.rdb).match(/DbErrors\.Observe\(ex, _log\)/g) || []).length === 4, '보고 기록 저장 실패(일간, 주간)와 일간, 주간 목록 읽기 실패가 분류기에 닿지 않는다');
+    assert.ok(/DbErrors\.Observe\(ex, _log\)/.test(csMember(s.rdb, 'public async Task<List<Dictionary<string, object?>>?> ListWeeklyAsync(')), '주간 목록 읽기 실패가 분류기에 닿지 않는다');
     assert.ok(/DbErrors\.Observe\(ex, _log\)/.test(csMember(s.rdb, 'public async Task<List<Dictionary<string, object?>>?> ListDailyAsync(')), '일간 목록 읽기 실패가 분류기에 닿지 않는다');
   },
 

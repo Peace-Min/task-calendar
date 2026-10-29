@@ -45,6 +45,7 @@
   --dim-bg:#fafbfd;                          /* 은은한 정적 wash — 다른달 셀 등(hover 아님) */
   --mark-bg:#ffe27a; --mark-ink:#1d2433;   /* 검색 강조(mark) — 노란 바탕 + 진한 잉크는 모든 테마에서 AA 이상 */
   --rptm-paper:#ffffff; --rptm-ink:#000000; --rptm-fa:#DBE5F1; --rptm-fb:#F2F2F2;   /* 월간보고 문서 미리 보기(회사 양식 색, DocxWriter 와 같은 값). 종이라 테마를 따르지 않는다 */
+  --nf-paper:#ffffff; --nf-ink:#000000; --nf-edge:#c9d1d6; --nf-th:#b8c3c9; --nf-td:#e5e9ec; --nf-box:#7f9db9;   /* 근태 주간보고 미리보기(인트라넷 주간보고 폼의 색: 흰 바탕, 회색 항목칸, 파란 테두리 칸). 회사 화면 그대로라 테마를 따르지 않는다 */
 }
 /* 진짜 투명도(데스크톱 위젯): 창·WebView2가 투명이라 html 배경도 투명 → 바탕화면이 비친다.
    background-image를 none이 아닌 값(투명 그라디언트)으로 둬 'body→canvas 배경 전파'를 차단한다.
@@ -2854,10 +2855,88 @@ body:not(.at-on) #atView{display:none !important}
 .at-ask-btns{display:flex;gap:8px;justify-content:flex-end}
 /* 근태 창(위젯, ?win=attend): 보고 화면이 문서 전체다. 보고 화면, 확인 창, 토스트, 버전 관문 카드만 보인다(allowlist).
    ★ 브라우저로 돌아가는 단추(← 근태 달력)는 없다. 창 테두리의 닫기와 닫기 단추가 그 일을 한다(쓰던 글이 있으면 먼저 묻는다). */
-html[data-attendwin] body > :not(#atEd):not(#confirmModal):not(#toastWrap):not(#vgGate){ display:none !important }
+html[data-attendwin] body > :not(#atEd):not(#awEd):not(#awList):not(#confirmModal):not(#toastWrap):not(#vgGate){ display:none !important }
 html[data-attendwin] body{ overflow:hidden; background:var(--panel) }
 html[data-attendwin] #atEd{ height:100% }
 html[data-attendwin] #atBack{ display:none }
+/* ===== 근태 주간보고(docs/ATTENDANCE-PLAN.md §13). 새 규칙은 .aw- 와 .nf 다 =====
+   목록(#awList)은 근태 달력 자리에, 편집 화면(#awEd)은 일간 보고 화면(.at-ed)의 틀을 그대로 쓴다(머리, 왼쪽, 오른쪽 패널, 바닥). */
+.at-kind{flex:none}
+.aw-listv{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:10px 12px 8px}
+.aw-ltitle{font-size:var(--fs-title);padding:0 4px}
+.aw-cnt{font-size:var(--fs-meta);color:var(--muted)}
+.aw-lnote{flex:none;font-size:var(--fs-micro);color:var(--faint-text);margin:0 0 6px}
+.aw-lempty{padding:16px 4px}
+.aw-tblwrap{flex:1;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:var(--r-md)}
+.aw-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-body)}
+.aw-tbl th{position:sticky;top:0;background:var(--dim-bg);color:var(--muted);font-weight:600;text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.aw-tbl td{padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel)}
+.aw-tbl tr:last-child td{border-bottom:0}
+.aw-tbl tr.aw-row{cursor:pointer}
+.aw-tbl tr.aw-row:hover td{background:var(--hover-bg)}
+.aw-tbl tr.aw-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.aw-tbl .aw-no{width:56px;color:var(--faint-text);font-variant-numeric:tabular-nums}
+.aw-tbl .aw-ttl{font-weight:700}
+.aw-tbl .aw-per{white-space:nowrap}
+.aw-tbl .aw-st{width:90px}
+.aw-tbl .aw-dt{width:110px;color:var(--muted);white-space:nowrap}
+.aw-badge{font-size:var(--fs-micro);padding:1px 8px;border-radius:999px;border:1px solid var(--line-2);color:var(--muted);white-space:nowrap}
+.aw-badge.done{color:var(--ok);border-color:var(--ok)}
+.aw-badge.draft{color:var(--warn-text);border-color:var(--warn-text)}
+/* [← 주간 목록]: 머리 맨 앞의 잘 보이는 단추(사용자 요청 §13.1) */
+.btn.aw-back{font-weight:700;border-color:var(--accent);color:var(--accent-2);background:var(--accent-soft)}
+.aw-title{margin:0;font-size:var(--fs-h2);white-space:nowrap}
+.aw-meta{flex:none}
+.aw-ed input[type=text]{font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 8px;color:var(--text);background:var(--panel)}
+.aw-ed input[type=text]:disabled{opacity:.6}
+.aw-subj{width:200px}
+.aw-wpick{position:relative;display:inline-block}
+.aw-wcal{position:absolute;left:0;top:calc(100% + 4px);z-index:7;width:300px;background:var(--panel);border:1px solid var(--accent);border-radius:var(--r-md);box-shadow:var(--shadow);padding:8px}
+.aw-cmh{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:var(--fs-body)}
+.aw-ct{width:100%;border-collapse:collapse;font-size:var(--fs-meta)}
+.aw-ct th{color:var(--faint-text);font-weight:400;padding:2px 0}
+.aw-ct td{text-align:center;padding:4px 0}
+.aw-ct td.o{color:var(--faint-text)}
+.aw-ct tr.aw-cw{cursor:pointer}
+.aw-ct tr.aw-cw:hover td,.aw-ct tr.aw-cw:focus-visible td{background:var(--accent-soft)}
+.aw-ct tr.aw-cw:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.aw-ct tr.aw-cw.sel td{background:var(--accent-fill);color:var(--on-accent)}
+.aw-ct td.aw-clab{text-align:left;padding-left:4px;color:var(--muted);width:58px}
+.aw-ct tr.aw-cw.sel td.aw-clab{color:var(--on-accent)}
+/* 표 네 줄: 왼쪽 항목명, 오른쪽 칸(회사 폼의 표 구조) */
+.aw-form{display:grid;grid-template-columns:96px minmax(0,1fr);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;flex:none}
+.aw-k{background:var(--dim-bg);color:var(--muted);font-weight:600;font-size:var(--fs-meta);padding:10px 8px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:center}
+.aw-v{padding:8px 10px;border-bottom:1px solid var(--line);min-width:0;display:flex;flex-direction:column;gap:6px}
+.aw-form > :nth-last-child(-n+2){border-bottom:0}
+.aw-blk .at-bx{margin-left:auto}
+.aw-flash{animation:aw-fl .6s}
+@keyframes aw-fl{from{background:var(--accent-soft)}to{background:transparent}}
+.aw-hours{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px}
+.aw-hr{display:flex;align-items:center;gap:8px;min-width:0}
+.aw-hn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aw-hsum{color:var(--muted);font-size:var(--fs-meta)}
+.aw-hsum b{color:var(--text)}
+.at-ed .aw-meet{display:block;width:100%;min-height:52px;resize:none;overflow:hidden;line-height:1.65;white-space:pre-wrap}
+.aw-pv{flex:1;min-height:0;overflow:auto;margin:10px 14px}
+#awImp{gap:8px}
+.aw-ibtn{display:block;width:100%;text-align:left;border:1px solid var(--line-2);background:var(--panel);color:var(--text);border-radius:var(--r-md);padding:9px 12px;cursor:pointer;font:inherit}
+.aw-ibtn:hover{border-color:var(--accent)}
+.aw-ibtn:disabled{opacity:.55;cursor:default;border-color:var(--line-2)}
+.aw-ibtn b{display:block;font-size:var(--fs-body)}
+.aw-ibtn span{color:var(--muted);font-size:var(--fs-meta)}
+/* 미리보기: 인트라넷 주간보고 폼 모양 그대로(테마와 상관없이 흰 바탕, 회색 항목칸, 파란 테두리 칸, 굴림체).
+   색은 :root 의 --nf-* 토큰이다(종이라 테마를 따르지 않는다. 월간보고 미리 보기의 --rptm-* 와 같은 까닭). */
+.nf{background:var(--nf-paper);color:var(--nf-ink);border:1px solid var(--nf-edge);padding:6px;font:12px/1.45 Gulim,'굴림','Malgun Gothic',sans-serif}
+.nf-who{text-align:center;font-size:11px;margin:2px 0 6px;min-height:1em}
+.nf-t{width:100%;border-collapse:separate;border-spacing:1px;background:var(--nf-paper)}
+.nf-t th{width:64px;background:var(--nf-th);color:var(--nf-ink);font-weight:400;font-size:11px;text-align:center;vertical-align:middle;padding:4px 2px}
+.nf-t td{background:var(--nf-td);padding:3px}
+.nf-box{background:var(--nf-paper);border:1px solid var(--nf-box);min-height:44px;padding:3px 5px;white-space:pre-wrap;font:11px/1.5 GulimChe,'굴림체',Consolas,monospace;color:var(--nf-ink);word-break:break-all}
+.nf-box.empty{min-height:30px}
+.nf-in{background:var(--nf-paper);color:var(--nf-ink);border:1px solid var(--nf-box);padding:1px 5px;display:inline-block;min-width:90px;font:11px/1.5 Gulim,'굴림',sans-serif}
+.nf-in.nf-subj{min-width:70%}
+html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
+@media (max-width:760px){ .aw-hours{grid-template-columns:minmax(0,1fr)} .aw-form{grid-template-columns:72px minmax(0,1fr)} }
 @media (max-width:760px){
   .at-ed-body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(320px,1fr) auto;overflow:auto}
   .at-panel{border-left:0;border-top:1px solid var(--line)}
@@ -3163,6 +3242,8 @@ html[data-attendwin] #atBack{ display:none }
        그 창은 attendWinBoot 가 #atEd 를 body 바로 아래로 옮겨 창 전체에 편다(보고 화면 내용은 하나, 담는 그릇만 다르다). -->
   <section class="at-view" id="atView" role="tabpanel" aria-labelledby="pcTabAttend">
     <div class="at-month" id="atMonth"></div>
+    <!-- 주간보고 목록(결정 13): 근태 탭 머리에서 [주간]을 고르면 달력 대신 이것이 보인다. awListRender 가 채운다. 근태 창에서는 창 안의 목록 화면이다. -->
+    <div class="aw-listv hidden" id="awList" role="region" aria-label="주간보고 목록"></div>
     <div class="at-ed hidden" id="atEd" role="region" aria-labelledby="atEdTitle">
       <div class="at-ed-head">
         <button type="button" class="btn sm" id="atBack">← 근태 달력</button>
@@ -3241,6 +3322,77 @@ html[data-attendwin] #atBack{ display:none }
           <b id="atAskT">작성 중인 내용이 있습니다</b>
           <span id="atAskM">닫아도 이 PC 에 임시 저장되어 있어 다시 열면 이어서 쓸 수 있습니다.</span>
           <span class="at-ask-btns"><button type="button" class="btn" id="atAskStay">계속 쓰기</button><button type="button" class="btn primary" id="atAskClose">닫기</button></span>
+        </div>
+      </div>
+    </div>
+    <!-- 주간보고 편집 화면(docs/ATTENDANCE-PLAN.md §13, 결정 13). 위젯은 근태 창의 주간 모드, 브라우저는 근태 탭 안의 화면 전환이다.
+         표 네 칸(진행사항, 과제투입시간, 차주계획, 회의내용)은 awRender 가 채운다. 오른쪽 미리보기는 인트라넷 주간보고 폼 모양 그대로다. -->
+    <div class="at-ed aw-ed hidden" id="awEd" role="region" aria-labelledby="awTitle">
+      <div class="at-ed-head">
+        <button type="button" class="btn sm aw-back" id="awBack" title="주간보고 목록으로 돌아갑니다">← 주간 목록</button>
+        <span class="at-ed-nav">
+          <button type="button" class="btn icon sm" id="awPrev" title="지난주" aria-label="지난주">‹</button>
+          <h2 class="aw-title" id="awTitle" aria-live="polite">주간보고</h2>
+          <button type="button" class="btn icon sm" id="awNext" title="다음 주" aria-label="다음 주">›</button>
+        </span>
+        <span class="spacer"></span>
+        <button type="button" class="at-lnk" id="awReset" title="진행사항, 과제투입시간, 차주계획, 회의내용을 모두 비웁니다(기간과 제목은 그대로)">전체 초기화</button>
+      </div>
+      <div class="at-ed-body" id="awBody">
+        <div class="at-left">
+          <div class="at-row aw-meta">
+            <span class="at-lb">기간</span>
+            <span class="aw-wpick"><button type="button" class="btn sm" id="awWeekBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="awWCal" title="달력에서 주를 고릅니다(월요일 시작 줄)"></button>
+              <div class="aw-wcal hidden" id="awWCal" role="dialog" aria-label="주 고르기"></div></span>
+            <label class="at-lb" for="awSubj">제목</label><input type="text" id="awSubj" class="aw-subj" maxlength="200" autocomplete="off" spellcheck="false">
+            <span class="at-hint" id="awSubjHow"></span>
+          </div>
+          <div class="at-list" id="awScroll">
+            <div class="aw-form">
+              <div class="aw-k">진행사항</div>
+              <div class="aw-v"><div class="at-blocks" id="awProg" aria-label="진행사항 과제 블록"></div>
+                <div class="at-add" data-awaddwrap="prog"><button type="button" class="btn at-addb" data-awadd="prog" aria-expanded="false" aria-controls="awAddMenu">+ 과제 추가</button>
+                  <div class="at-menu hidden" id="awAddMenu" role="dialog" aria-label="과제 추가">
+                    <input type="search" id="awAddQ" class="at-sel" placeholder="과제 검색" aria-label="과제 검색" autocomplete="off">
+                    <div class="at-mlist" id="awAddList"></div>
+                    <button type="button" class="at-mi at-mnew" id="awAddNew">+ 캘린더에 새 과제 만들기</button>
+                  </div></div></div>
+              <div class="aw-k">과제<br>투입시간</div>
+              <div class="aw-v"><div class="aw-hours" id="awHours"></div><div class="aw-hsum" id="awHSum"></div></div>
+              <div class="aw-k">차주계획</div>
+              <div class="aw-v"><div class="at-blocks" id="awPlan" aria-label="차주계획 과제 블록"></div>
+                <div class="at-add" data-awaddwrap="plan"><button type="button" class="btn at-addb" data-awadd="plan" aria-expanded="false" aria-controls="awAddMenu">+ 과제 추가</button></div></div>
+              <div class="aw-k">회의내용</div>
+              <div class="aw-v"><textarea class="aw-meet" id="awMeet" spellcheck="false" rows="2" aria-label="회의내용" placeholder="자유롭게"></textarea></div>
+            </div>
+          </div>
+          <div class="at-stat"><span id="awStat"></span><span id="awSent"></span><span class="at-saved" id="awSaved"></span></div>
+        </div>
+        <aside class="at-panel" id="awPanel" aria-label="미리보기와 가져오기 패널">
+          <div class="seg at-ptabs" role="tablist" aria-label="오른쪽 패널">
+            <button type="button" class="seg-b" role="tab" data-awtab="pv" aria-selected="false">미리보기</button>
+            <button type="button" class="seg-b" role="tab" data-awtab="imp" aria-selected="false">가져오기</button>
+          </div>
+          <div class="aw-pv" id="awPv" role="tabpanel" tabindex="0" aria-label="인트라넷 주간보고 폼에 들어갈 모양(읽기만)"><div class="nf" id="awNf"></div></div>
+          <div class="at-panel-in hidden" id="awImp" role="tabpanel">
+            <button type="button" class="aw-ibtn" id="awImpDaily"><b>← 이번 주 일간 보고</b><span>진행사항, 과제투입시간</span></button>
+            <button type="button" class="aw-ibtn" id="awImpPlan"><b>← 지난주 차주계획</b><span>차주계획</span></button>
+            <div class="at-none" id="awImpMsg" role="status"></div>
+          </div>
+          <div class="at-panel-foot" id="awPvFoot"><span class="at-hint" id="awPvStat"></span></div>
+        </aside>
+      </div>
+      <div class="at-ed-foot">
+        <span class="at-msg" id="awMsg" role="status" aria-live="polite"></span>
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="awClose">닫기</button>
+        <button type="button" class="btn primary" id="awSend" title="회사 주간보고 폼을 채워 엽니다. 제출은 그 창에서 직접 누릅니다">보고</button>
+      </div>
+      <div class="at-ask hidden" id="awAsk">
+        <div class="at-ask-box" role="alertdialog" aria-modal="true" aria-labelledby="awAskT" aria-describedby="awAskM">
+          <b id="awAskT">작성 중인 내용이 있습니다</b>
+          <span id="awAskM">닫아도 이 PC 에 임시 저장되어 있어 다시 열면 이어서 쓸 수 있습니다.</span>
+          <span class="at-ask-btns"><button type="button" class="btn" id="awAskStay">계속 쓰기</button><button type="button" class="btn primary" id="awAskClose">닫기</button></span>
         </div>
       </div>
     </div>
@@ -5284,7 +5436,8 @@ if(ADMINWIN){ try{ document.documentElement.dataset.adminwin = '1'; }catch(_){} 
 const ATTENDWIN = (() => { try { return HOST && !PEER && new URLSearchParams(location.search).get('win') === 'attend'; }
                            catch (_) { return false; } })();
 //  과제 블록(결정 12): 인트라넷 불러오기(netcusWeekMerge)는 이 창에서 뺐다. attendCatNew = 메인 창의 과제 창 열기(새 과제 만들기).
-const ATTENDWIN_CMD = new Set(['attendWinReady','attendNav','reportDailyList','netcusSubmit','attendSourceReq','netcusViewMonth','attendCatNew']);   // 호스트의 AttendWinCommands 와 같은 목록(tests/attendance-web.test.mjs)
+//  주간보고(결정 13): reportWeeklyList = 이 앱으로 쓴 주간 기록 읽기, netcusWeekSubmit = 회사 주간 폼 채우기(제출은 사용자가 그 창에서).
+const ATTENDWIN_CMD = new Set(['attendWinReady','attendNav','reportDailyList','netcusSubmit','attendSourceReq','netcusViewMonth','attendCatNew','reportWeeklyList','netcusWeekSubmit']);   // 호스트의 AttendWinCommands 와 같은 목록(tests/attendance-web.test.mjs)
 if(ATTENDWIN){ try{ document.documentElement.dataset.attendwin = '1'; }catch(_){} }
 //  따로 뜨는 창(열람 창, 관리 창, 근태 창). 버전 관문 카드의 작은 변형, 창 제목, 테마 따라가기 같은 공통 규칙이 이것을 본다.
 const SUBWIN = PEERWIN || ADMINWIN || ATTENDWIN;
@@ -5446,7 +5599,9 @@ const WidgetPlatform = {
   report: {
     // 위젯 경로는 기존 hpost 인자 구성과 바이트 단위로 동일해야 함(회귀 금지)
     submitDaily(p){ hpost({ cmd: 'netcusSubmit', y: p.date.y, m: p.date.m, d: p.date.d, status: p.fields.status, overtime: p.fields.overtime, content: p.fields.content, dryRun: p.dryRun, hours: p.hours || [] }); },   // hours: 보고 기록용(§5.9) — 전송 자체에는 안 쓰인다
-    submitWeekly(p){ hpost({ cmd: 'netcusWeekSubmit', sdate: p.fields.sdate, edate: p.fields.edate, subject: p.fields.subject, content: p.fields.content, endwork: p.fields.endwork, planwork: p.fields.planwork }); },
+    //  resultwork(회의내용, 결정 13)는 근태 탭 주간 편집만 싣는다. 없으면 호스트가 인트라넷의 회의내용을 건드리지 않는다(보고서 창의 옛 전송).
+    submitWeekly(p){ hpost(Object.assign({ cmd: 'netcusWeekSubmit', sdate: p.fields.sdate, edate: p.fields.edate, subject: p.fields.subject, content: p.fields.content, endwork: p.fields.endwork, planwork: p.fields.planwork },
+                                         typeof p.fields.resultwork === 'string' ? { resultwork: p.fields.resultwork } : {})); },
   },
 };
 const BrowserPlatform = {
@@ -12949,12 +13104,14 @@ function setRptSendText(el, html){
 let __rptSendArmed = false;   // 보고서 창이 위젯 전송(일간, 주간)을 보냈고 회신을 기다린다(armRptSendWatchdog 가 세우고 회신과 워치독이 거둔다)
 window.__netcusProgress = function(msg){
   if(atOnNetcusProgress(msg)) return;
+  if(awOnNetcusProgress(msg)) return;   // 근태 주간보고가 보낸 것
   if(ATTENDWIN || !__rptSendArmed) return;
   const s = $('#rptSendStatus'); if(s){ setRptSendText(s, ICON.spinner + ' ' + esc(msg)); s.className = 'rpt-send-status busy'; }
 };
 //  extra = { kind:'gate', gate:{...} } — 버전 관문이 막아 회사 사이트에 접속하지 않았다(VERSION-GATE §2.4). 토스트 없이 차단 카드로 간다.
 window.__netcusResult = function(ok, msg, extra){
   if(atOnNetcusResult(ok, msg, extra)) return;   // 근태 보고가 보낸 것(이 창에서). 보고서 창의 문구, 토스트, 임시 저장은 건드리지 않는다
+  if(awOnNetcusResult(ok, msg, extra)) return;   // 근태 주간보고가 보낸 것(결정 13). 위와 같은 규칙
   if(ATTENDWIN) return;
   const mine = __rptSendArmed; __rptSendArmed = false;
   clearTimeout(Netcus.watchdog);   // 결과 도착 → 전송 워치독 해제(영구잠김 방지)
@@ -21106,7 +21263,8 @@ const AT_PV_DEBOUNCE_MS = 200;            // 미리보기는 입력을 0.2초 �
 const AT_FLASH_MS = 600;                  // 추가되었거나 정렬로 자리가 바뀐 블록의 반짝임
 const AT_FAIL_MSG = '처리를 완료하지 못했습니다. 다시 시도해 주세요.';   // 결정 9 의 공통 안내(호스트가 문구를 주지 않았을 때)
 //  근태 달력(메인 창). rows = 날짜 → 보고 행. from, to 는 rows 를 읽은 범위(그 밖의 날짜는 캐시에 없다는 뜻).
-const ATT = { anchor: '', screen: 'month', rows: new Map(), from: '', to: '', loading: false, err: '', gen: 0 };
+//    screen = 'month' 달력이나 주간 목록 | 'edit' 일간 보고 화면 | 'wedit' 주간 편집 화면(브라우저). kind = 탭 머리 [일간][주간]('' = 아직 읽지 않음, 일간으로 본다).
+const ATT = { anchor: '', screen: 'month', kind: '', rows: new Map(), from: '', to: '', loading: false, err: '', gen: 0 };
 //  보고 화면 상태. p = payload(§3.3), base = 처음 상태 { blocks, status, overtime }(고쳤는지 판단의 기준). 보고한 날도 바로 쓰기 화면으로 연다.
 //    memo = 맨 위 자유 메모(과제와 상관없는 글, 시간 없음), blocks = 왼쪽 과제 블록(결정 12), showErr = 보내기를 막은 뒤(빨간 블록을 보인다).
 //    ptab = 오른쪽 패널 탭('pv' 미리보기 | 'imp' 가져오기), pvT = 미리보기 모아 그리기 타이머.
@@ -21387,7 +21545,9 @@ window.__reportDailySaved = function(o){
 /* ── 근태 달력(탭 화면, §2.2) ── */
 function atEnterTab(){
   if(!ATT.anchor) ATT.anchor = todayYmd();
+  if(!ATT.kind) ATT.kind = atKindLoad();   // 탭 머리 [일간][주간]의 마지막 선택(결정 13)
   if(ATT.screen === 'edit' && ATE.p){ atSyncScreen(); return; }
+  if(ATT.screen === 'wedit' && AWE.p){ atSyncScreen(); return; }
   ATT.screen = 'month';
   atSyncScreen();
   atLoadMonth();
@@ -21396,13 +21556,16 @@ function atEnterTab(){
 function atLeaveTab(){
   atHideTip();
   if(ATT.screen === 'edit'){ atDraftFlushNow(); atCloseEditor(); }
+  if(ATT.screen === 'wedit'){ awDraftFlushNow(); awCloseEditor(); ATT.screen = 'month'; atSyncScreen(); }   // 주간 편집(브라우저)도 같다
 }
 //  탭을 옮기기 전: 브라우저의 보고 화면에 쓰던 글이 있으면 묻는다. [닫기]면 임시 저장을 쓰고 옮긴다.
 function atLeaveGuard(tab, go){
   if(tab !== 'attend' && atOn() && ATT.screen === 'edit' && ATE.p && atDirty()){ atAsk(go); return; }
+  if(tab !== 'attend' && atOn() && ATT.screen === 'wedit' && AWE.p && awDirty()){ awAsk(go); return; }
   go();
 }
 async function atLoadMonth(){
+  if(ATT.kind === 'week'){ awListLoad(); return; }   // [주간]이면 달력 대신 주간 목록
   if(!ATT.anchor) ATT.anchor = todayYmd();
   if(!HOST || PEER || SUBWIN){ atRenderMonth(); return; }
   const R = pcMonthRange(ATT.anchor), g = ++ATT.gen;
@@ -21426,12 +21589,13 @@ function atMove(delta){
 }
 function atToday(){ ATT.anchor = todayYmd(); atLoadMonth(); }
 function atKeyNav(key){
-  if(ATT.screen !== 'month') return;
+  if(ATT.screen !== 'month' || ATT.kind === 'week') return;   // 주간 목록에는 달 이동이 없다
   if(key === 'ArrowLeft' || key === 'PageUp') atMove(-1);
   else if(key === 'ArrowRight' || key === 'PageDown') atMove(1);
   else if(key === 'Home') atToday();
 }
 function atRenderMonth(){
+  if(ATT.kind === 'week'){ awListRender(); return; }
   const box = document.getElementById('atMonth'); if(!box) return;
   if(!ATT.anchor) ATT.anchor = todayYmd();
   const R = pcMonthRange(ATT.anchor), today = todayYmd(), mp = R.y + '-' + pad(R.m + 1) + '-';
@@ -21440,7 +21604,7 @@ function atRenderMonth(){
   const note = !HOST ? '<div class="at-note">보고 기록은 서버에 연결된 위젯에서만 보입니다. 날짜를 누르면 보고 화면을 열 수 있습니다(회사 전송은 직접 입력).</div>'
     : ATT.err ? '<div class="at-note err" role="alert">' + esc(ATT.err) + '</div>'
     : (ATT.loading && !ATT.from) ? '<div class="at-note">보고 기록을 읽는 중입니다.</div>' : '';
-  let html = '<div class="at-bar"><div class="nav">'
+  let html = '<div class="at-bar">' + atKindSeg() + '<div class="nav">'
     + '<button type="button" class="btn icon" data-atact="prev" aria-label="이전 달" title="이전 달">' + ICON.prev + '</button>'
     + '<button type="button" class="btn" data-atact="today">오늘</button>'
     + '<button type="button" class="btn icon" data-atact="next" aria-label="다음 달" title="다음 달">' + ICON.next + '</button>'
@@ -22123,6 +22287,7 @@ function atNav(delta){
 }
 //  근태 창이 앞으로 왔다(호스트 ActivatedFn), 관문이 풀렸다: 보던 날짜의 패널 출처만 새로 청한다(왼쪽 글은 그대로, §3.3 refresh).
 function atWinRefresh(){
+  if(ATTENDWIN && ATW.view !== 'day'){ awWinRefresh(); return; }   // 주간 화면은 과제 목록만 새로 받는다
   if(!ATTENDWIN || !ATE.date || ATE.sending || ATE.navPending) return;
   hpost({ cmd: 'attendNav', date: ATE.date, refresh: true });
 }
@@ -22235,6 +22400,7 @@ function atRequestClose(){
 }
 //  닫아도 되는가(호스트 __winCloseRequest 와 닫기 단추). 'close' 닫아도 된다, 'ask' 묻는 창을 띄웠다([닫기]면 창을 닫는다), 'busy' 보내는 중.
 function atWinCloseCheck(){
+  if(ATW.view !== 'day') return awWinCloseCheck();   // 주간 화면(결정 13)은 주간 글을 지킨다
   if(ATE.sending){ toast('보고하는 중입니다. 끝난 뒤에 닫으세요', 'warn'); return 'busy'; }
   if(atAskOpen()) return 'ask';
   if(atDirty()){ atAsk(() => atWinCloseNow()); return 'ask'; }
@@ -22246,10 +22412,12 @@ function atWinCloseNow(){
   if(ATE.closeSent) return;
   ATE.closeSent = true; setTimeout(() => { ATE.closeSent = false; }, 0);
   if(!ATE.sending && atDirty()) atDraftFlushNow();
+  if(!AWE.sending && awDirty()) awDraftFlushNow();
   try{ window.close(); }catch(_){}
 }
 //  전역 Esc: 묻는 창이 떠 있으면 그것만 닫는다. 아니면 닫기 단추와 같다(쓰던 글이 있으면 묻고, 보내는 중이면 닫지 않는다).
 function atEscape(){
+  if(awEscape()) return true;   // 주간 화면(결정 13)
   if(atAskOpen()){ atAskDone(false); return true; }
   if(!atEdShown()) return false;
   if(atAddShown()){ atAddOpen(false); const a = $('#atAdd'); if(a) try{ a.focus(); }catch(_){} return true; }   // 과제 추가 메뉴만 닫는다
@@ -22259,9 +22427,12 @@ function atEscape(){
 
 /* ── 그릇: 브라우저의 화면 전환과 근태 창 ── */
 function atSyncScreen(){
-  const mo = $('#atMonth'), ed = $('#atEd');
-  if(mo) mo.classList.toggle('hidden', ATT.screen === 'edit');
+  if(ATTENDWIN){ atwSync(); return; }   // 근태 창은 창 안의 화면(일간, 주간 목록, 주간 편집) 하나만 보인다
+  const mo = $('#atMonth'), ed = $('#atEd'), wl = $('#awList'), we = $('#awEd'), wk = ATT.kind === 'week';
+  if(mo) mo.classList.toggle('hidden', ATT.screen !== 'month' || wk);
+  if(wl) wl.classList.toggle('hidden', ATT.screen !== 'month' || !wk);
   if(ed) ed.classList.toggle('hidden', ATT.screen !== 'edit');
+  if(we) we.classList.toggle('hidden', ATT.screen !== 'wedit');
 }
 function atShowEditor(payload){
   if(ATTENDWIN) return;
@@ -22285,17 +22456,27 @@ function attendWinBoot(){
   document.title = '근태 보고';
   const ed = document.getElementById('atEd');
   if(ed){ document.body.appendChild(ed); ed.classList.remove('hidden'); }
+  //  주간보고(결정 13)의 목록과 편집 화면도 창 전체로 옮긴다(주간 payload 가 오면 atwShow 가 그쪽을 보인다).
+  for(const id of ['awList', 'awEd']){ const e = document.getElementById(id); if(e){ document.body.appendChild(e); e.classList.add('hidden'); } }
   atSetBusy(true); atMsg('불러오는 중입니다…');   // payload 가 오기 전에는 쓸 것이 없다
   hpost({ cmd: 'attendWinReady' });
 }
+//  payload 의 kind 가 'week' 이면 주간보고 편집(결정 13), 아니면 일간 보고다. 주간 화면에서 일간 새로고침 회신이 오면 과제 목록만 받는다.
 window.__attendWinOpen = function(o){
   if(!ATTENDWIN || !o || typeof o !== 'object') return;
+  if(o.kind === 'week'){ awWinOpen(o); return; }
+  if(ATW.view !== 'day'){
+    if(o.refresh === true){ awFromRefresh(o); return; }
+    if(AWE.sending){ toast('주간보고를 보내는 중입니다. 끝난 뒤에 일간 보고를 여세요', 'warn'); return; }
+    awDraftFlushNow(); awCloseEditor(); atwShow('day');
+  }
   atEdOpen(o);
 };
 window.__attendWinActivated = function(){ if(ATTENDWIN) atWinRefresh(); };
 
 /* ── 배선. 시작 때 한 번(pcInit 다음) ── */
 function atInit(){
+  awInit();   // 주간보고(결정 13) 목록과 편집 화면 배선
   const ed = document.getElementById('atEd');
   if(ed){
     const on = (id, ev, fn) => { const e = document.getElementById(id); if(e) e.addEventListener(ev, fn); };
@@ -22366,6 +22547,7 @@ function atInit(){
   const mo = document.getElementById('atMonth');
   if(mo){
     mo.addEventListener('click', ev => {
+      const k = ev.target.closest('[data-atkind]'); if(k){ atKindSet(k.dataset.atkind); return; }   // 탭 머리 [일간][주간]
       const a = ev.target.closest('[data-atact]');
       if(a){ if(a.dataset.atact === 'prev') atMove(-1); else if(a.dataset.atact === 'next') atMove(1); else atToday(); return; }
       const c = ev.target.closest('.at-day[data-date]'); if(c){ atHideTip(); atOpen(c.dataset.date); }
@@ -22380,9 +22562,975 @@ function atInit(){
   }
   //  다른 창(근태 창)이 임시 저장을 쓰거나 지우면 "작성 중" 표시를 다시 그린다(같은 출처라 저장소를 같이 쓴다).
   window.addEventListener('storage', ev => {
-    if(ev && String(ev.key || '').startsWith(AT_DRAFT_PREFIX) && atOn() && ATT.screen === 'month') atRenderMonth();
+    const k = String((ev && ev.key) || '');
+    if((k.startsWith(AT_DRAFT_PREFIX) || k.startsWith(AW_DRAFT_PREFIX)) && atOn() && ATT.screen === 'month') atRenderMonth();   // 주간 목록이면 목록을 다시 그린다
   });
   window.addEventListener('focus', () => { if(atOn() && ATT.screen === 'month') atRenderMonth(); });
+}
+
+/* ===== 근태 주간보고(docs/ATTENDANCE-PLAN.md §13, 결정 13, 2026-10-29) =====
+ *  ★ 근태 탭 머리의 [일간][주간]으로 고른다(ATT.kind, 이 PC에 기억). 주간의 첫 화면은 인트라넷처럼 목록이고(#awList), 행이나 [작성]이 편집 화면(#awEd)을 연다.
+ *    위젯은 근태 창의 주간 모드(attendOpen payload 의 kind 'week'), 브라우저는 근태 탭 안의 화면 전환이다(결정 11 과 같다).
+ *  ★ 근태 창은 첫 payload 뒤로는 혼자 돈다: 목록은 reportWeeklyList, 주의 일간 글은 reportDailyList 로 읽고(둘 다 근태 창 허용 목록),
+ *    과제 목록과 내 신원은 받은 payload 의 것(ATW.ctx)을 쓴다. 새 과제를 만들고 돌아오면 일간과 같은 새로고침(attendNav refresh) 회신에서 과제 목록만 받는다.
+ *  ★ 편집 화면은 회사 폼에서 쓰는 네 칸만 둔다: 진행사항(과제 블록), 과제투입시간(진행사항 블록의 과제마다 숫자 칸), 차주계획(과제 블록), 회의내용(자유 글).
+ *    미처리사항, 문제점 및 건의사항은 미리보기에 빈칸으로만 보인다(보내지 않는다. 호스트도 그 칸을 건드리지 않는다).
+ *  ★ 과제명은 일간(결정 12)처럼 내 캘린더 과제에서만 고른다. 블록은 캘린더 과제 순서로 늘 정렬하고 과제 미정은 맨 끝이다(atSortedCopy).
+ *  ★ 작성 중인 글은 이 PC(localStorage)에 주(월요일)마다 임시 저장한다. 안내 없이 이어서 열고, 보고 기록이 DB 에 저장되면(__reportWeeklySaved) 지운다.
+ *  ★ 보내기는 일간과 다르다: 호스트가 회사 주간 폼을 채워 열고 제출은 사용자가 그 창에서 한다(WeekFill). 성공 회신은 "폼을 채웠다" 까지다. */
+const ATT_KIND_KEY = 'tc_attKind';         // 근태 탭의 [일간][주간] 마지막 선택(이 PC에 하나)
+const AW_DRAFT_PREFIX = 'tc_attWDraft:';   // 키 = tc_attWDraft:<who>:<월요일 YYYY-MM-DD>. who 는 일간 임시 저장과 같은 규칙
+const AW_DRAFT_KEEP_DAYS = 120;            // 편집 화면을 열 때 이보다 오래된 주의 임시 저장은 지운다(목록에 남은 옛 작성 중을 치운다)
+const AW_LIST_WEEKS = 52;                  // 목록 기간: 이번 주 월요일에서 52주 전부터 다음 주까지(371일, 호스트 상한 400일 안)
+const AW_HOURS_MAX = 168;                  // 과제투입시간 칸의 상한(한 주 = 168시간). 합계 검사는 하지 않는다
+const AW_ORD = ['첫째', '둘째', '셋째', '넷째', '다섯째', '여섯째'];   // weekSubjectGuess 와 같은 말
+const AW_PTAB_KEY = 'tc_attWPanelTab';      // 주간 편집 오른쪽 패널의 마지막 탭(미리보기 | 가져오기)
+//  목록(메인 창, 브라우저, 근태 창의 목록 화면). rows = 이 앱으로 작성한 주간보고 기록(DB), from, to = 읽은 범위.
+const AWL = { rows: [], from: '', to: '', loading: false, err: '', gen: 0 };
+//  편집 화면 상태. p = payload { kind:'week', mon, me, saved, projects }, base = 처음 상태(고쳤는지 판단의 기준).
+//    subj = 제목, subjAuto = 사람이 고치지 않았다(기간을 바꾸면 규칙대로 다시 정한다), picked = 주 고르기 달력에서 고른 제목.
+//    prog, plan = 진행사항, 차주계획 블록 { name, text, raw }(raw = 미정 블록이 된 원래 머리 줄), hours = 과제명 → 시간, meet = 회의내용.
+//    gen = 주를 바꿀 때마다 늘린다(늦게 온 가져오기 회신을 버린다). daily = 이번 주 일간 보고(진행사항 과제를 더할 때 시간 칸의 처음 값).
+const AWE = { p: null, mon: '', base: null, subj: '', subjAuto: true, picked: '', prog: [], plan: [], hours: {}, meet: '',
+  ptab: 'pv', pvT: null, sending: false, armed: false, timer: null, wd: null, savedAt: '', gen: 0, busy: false,
+  cal: { open: false, y: 0, m: 0 }, add: '', daily: { mon: '', rows: null }, nav: false, showErr: false };
+//  근태 창의 화면('day' 일간 보고 | 'wlist' 주간 목록 | 'wedit' 주간 편집)과 받은 신원, 과제 목록(주간 목록에서 다른 주를 열 때 쓴다).
+const ATW = { view: 'day', ctx: { me: null, projects: [] } };
+const __awDraftMem = new Map();            // 저장소가 막혔을 때만 쓰는 메모리본(일간 __attDraftMem 과 같다)
+const __awSentSig = new Map();             // 월요일 → 폼을 채워 보낸 상태의 모양. DB 저장 알림이 오면 이 모양 그대로인 임시 저장만 지운다
+let __awAskFn = null;
+
+//  날짜: 한 주 = 월요일 ~ 일요일(§13.2).
+function awMonOf(d){ const t = parseYmd(d); return addDays(d, -((t.getDay() + 6) % 7)); }
+function awIsMon(s){ return atIsYmd(s) && parseYmd(s).getDay() === 1; }
+function awMD(s){ return Number(s.slice(5, 7)) + '/' + Number(s.slice(8, 10)); }
+function awPeriodLabel(mon){ return awMD(mon) + ' ~ ' + awMD(addDays(mon, 6)); }
+//  주 고르기 달력의 줄(월요일 시작). 그달 1일이 든 줄부터, 월요일이 그달인 줄까지(9월 달력의 마지막 줄 = 10월 달력의 첫 줄일 수 있다).
+function awMonthRows(y, m){
+  const first = new Date(y, m, 1), start = addDays(ymd(first), -((first.getDay() + 6) % 7)), rows = [];
+  for(let r = 0; r < 6; r++){ const mon = addDays(start, r * 7); if(r > 0 && parseYmd(mon).getMonth() !== m) break; rows.push(mon); }
+  return rows;
+}
+//  달력에서 고른 제목: 그 달 달력의 몇째 줄(같은 주라도 9월 달력 마지막 줄 = 9월 다섯째주, 10월 달력 첫 줄 = 10월 첫째주, 결정 13).
+function awPickTitle(m, r){ return (m + 1) + '월 ' + (AW_ORD[r] || (r + 1) + '째') + '주'; }
+
+/* ── 순수: 블록, 조립, 되살리기(시험 대상) ── */
+function awBlockNorm(b){ const o = b && typeof b === 'object' ? b : {}; return { name: typeof o.name === 'string' ? o.name : '', text: typeof o.text === 'string' ? o.text : '', raw: typeof o.raw === 'string' ? o.raw : '' }; }
+function awProgNames(prog){ return (prog || []).filter(b => b && b.name).map(b => b.name); }
+function awHoursVal(v){ const n = Number(v); return isFinite(n) && n > 0 ? n : 0; }
+//  과제투입시간 목록 = 진행사항 블록의 과제(빼면 같이 빠진다). 값이 없으면 0.
+function awHoursFor(prog, hours){ const o = {}, h = hours || {}; for(const n of awProgNames(prog)) o[n] = awHoursVal(h[n]); return o; }
+function awHoursTotal(prog, hours){ const h = awHoursFor(prog, hours); return Math.round(Object.keys(h).reduce((a, n) => a + h[n], 0) * 100) / 100; }
+//  회사로: `[과제] : 시간` 줄들, `-----`, `합계 : n`(§13.2). 진행사항 과제가 없으면 빈 글.
+function awHoursText(prog, hours){
+  const h = awHoursFor(prog, hours), names = Object.keys(h);
+  if(!names.length) return '';
+  return names.map(n => '[' + n + '] : ' + atHoursText(h[n])).join('\n') + '\n-----\n합계 : ' + atHoursText(awHoursTotal(prog, hours));
+}
+//  진행사항, 차주계획: 블록마다 `[과제명]` 줄 + 내용(비면 `-`), 블록 사이 빈 줄 하나. 과제 미정 블록은 넣지 않는다(보내기를 막는다).
+function awBlocksText(blocks){
+  return (blocks || []).filter(b => b && b.name).map(b => { const body = atBodyNorm(b.text); return '[' + b.name + ']\n' + (body.trim() ? body : '-'); }).join('\n\n');
+}
+//  네 칸 조립(미리보기와 보내기가 같은 함수를 쓴다). 줄 앞 공백을 &nbsp; 로 바꾸는 것은 보내는 쪽(awBuildSubmit)이 한다.
+function awCompose(s){
+  return { content: awHoursText(s.prog, s.hours), endwork: awBlocksText(s.prog), planwork: awBlocksText(s.plan), resultwork: atBodyNorm(s.meet) };
+}
+//  `[과제명]` 머리로 나눈 글을 블록으로 되살린다(지난주 차주계획, 완료한 주의 진행사항과 차주계획). names = 내 캘린더 과제명.
+//    머리 줄은 정확히 `[이름]`(또는 일간 꼴 `[이름] : 숫자`). 캘린더 과제명이면 블록, 아니면(같은 과제의 두 번째 머리도) 과제 미정 블록이다.
+//    첫 머리 앞의 글도 과제 미정 블록이다. 내용이 `-` 하나뿐이면(조립이 빈 내용에 넣은 표시) 빈 내용으로 되살린다.
+function awParseBlocks(text, names){
+  const known = new Set(names || []), used = new Set(), out = [];
+  let cur = null, pre = '';
+  for(const ln of atDecode(text).split('\n')){
+    const m = AT_BARE_HEAD_RE.exec(ln) || AT_EXACT_HEAD_RE.exec(ln);
+    if(m){
+      const name = m[1];
+      if(known.has(name) && !used.has(name)){ used.add(name); cur = { name, body: '', raw: '' }; }
+      else cur = { name: '', body: '', raw: ln };
+      out.push(cur); continue;
+    }
+    if(!cur){ pre += (pre ? '\n' : '') + ln; continue; }
+    cur.body += (cur.body ? '\n' : '') + ln;
+  }
+  const blocks = out.map(b => {
+    let body = atBodyNorm(b.body); if(body.trim() === '-') body = '';
+    return { name: b.name, text: b.raw ? b.raw + (body ? '\n' + body : '') : body, raw: b.raw };
+  });
+  const p = atBodyNorm(pre);
+  if(p.trim() && p.trim() !== '-') blocks.unshift({ name: '', text: p, raw: '' });
+  return blocks;
+}
+//  과제투입시간 글에서 과제별 시간을 읽는다(`[과제] : 숫자` 줄만. `-----`, `합계 : n` 은 건너뛴다).
+function awParseHours(text){
+  const h = {};
+  for(const ln of atDecode(text).split('\n')){ const m = AT_EXACT_HEAD_RE.exec(ln); if(m && !(m[1] in h)) h[m[1]] = Number(m[2]); }
+  return h;
+}
+//  임시 저장의 블록을 지금 과제 목록에 맞춘다: 캘린더에 없는 이름과 같은 과제의 두 번째 블록은 과제 미정 블록(머리 줄을 내용 첫 줄에).
+function awBlocksKnown(blocks, names){
+  const known = new Set(names || []), used = new Set();
+  return (blocks || []).map(awBlockNorm).map(b => {
+    if(!b.name) return b;
+    if(known.has(b.name) && !used.has(b.name)){ used.add(b.name); return { name: b.name, text: b.text, raw: '' }; }
+    const raw = '[' + b.name + ']', body = atBodyNorm(b.text);
+    return { name: '', text: raw + (body ? '\n' + body : ''), raw };
+  });
+}
+//  이번 주 일간 보고(이 앱으로 보낸 것)를 진행사항과 과제투입시간으로 모은다(§13.2). rows = [{date, content}], names = 캘린더 과제명(순서).
+//    일간 글은 블록 규칙(atParseReport)으로 읽는다. 과제마다 내용 줄을 날짜 순서로 모으고 같은 줄은 한 번만, 시간은 과제별 합계.
+//    시간만 있는 과제(휴가 등)도 블록이 된다. 과제 미정으로 읽힌 글과 자유 메모는 넣지 않고 그 수만 센다(skipped).
+function awDailyCollect(rows, names){
+  const lines = new Map(), sum = {};
+  let skipped = 0, days = 0;
+  for(const r of (rows || []).slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0)){
+    days++;
+    const pr = atParseReport(r.content, names);
+    if(pr.memo.trim()) skipped++;
+    for(const b of pr.blocks){
+      if(!b.name){ skipped++; continue; }
+      if(atHoursOk(b.hours) && b.hours > 0) sum[b.name] = (sum[b.name] || 0) + b.hours;
+      if(!lines.has(b.name)) lines.set(b.name, []);
+      const L = lines.get(b.name);
+      for(const ln of String(b.text).split('\n')){ const t = ln.replace(/\s+$/, ''); if(t.trim() && !L.includes(t)) L.push(t); }
+    }
+  }
+  const prog = (names || []).filter(n => (lines.get(n) || []).length || sum[n] > 0).map(n => ({ name: n, text: (lines.get(n) || []).join('\n'), raw: '' }));
+  const hours = {};
+  for(const n of Object.keys(sum)) hours[n] = Math.round(sum[n] * 100) / 100;
+  return { prog, hours, skipped, days };
+}
+function awSig(s){
+  return JSON.stringify([String(s.subj || ''), (s.prog || []).map(b => [b.name, String(b.text)]), (s.plan || []).map(b => [b.name, String(b.text)]),
+    awHoursFor(s.prog, s.hours), String(s.meet || '')]);
+}
+//  보내기를 막는 까닭(§13.2): 진행사항 블록이 하나도 없음, 과제 미정 블록(진행사항, 차주계획). 시간 합계 검사는 하지 않는다.
+function awProblems(s){
+  const bad = [];
+  (s.prog || []).forEach((b, i) => { if(!b.name) bad.push({ kind: 'prog', i }); });
+  (s.plan || []).forEach((b, i) => { if(!b.name) bad.push({ kind: 'plan', i }); });
+  return { noProg: !awProgNames(s.prog).length, bad };
+}
+
+/* ── 신원, 과제, 임시 저장 ── */
+function awWho(){
+  if(ATTENDWIN){
+    const me = ATW.ctx.me;
+    if(me && me.userId != null && String(me.userId) !== '') return String(me.userId);
+    if(me && me.loginId) return String(me.loginId);
+    return 'me';
+  }
+  return rptDraftWho();
+}
+function awProjects(){
+  if(!ATTENDWIN){ try{ return atNormProjects(atBuildProjects()); }catch(_){} }
+  return ATW.ctx.projects || [];
+}
+function awProjNames(){ return awProjects().map(x => x.name); }
+function awProjColor(name){ const x = awProjects().find(p => p.name === name); return x ? x.color : validColor(''); }
+function awDraftKey(mon){ return AW_DRAFT_PREFIX + awWho() + ':' + mon; }
+//  v1 = { v:1, subj, subjAuto, picked, prog:[{name, text}], plan:[...], hours:{과제명: 시간}, meet, savedAt }. 과제는 이름으로 저장한다(일간 v2 와 같은 까닭).
+function awDraftNorm(o){
+  if(!o || typeof o !== 'object' || o.v !== 1) return null;
+  const bl = a => (Array.isArray(a) ? a : []).filter(b => b && typeof b === 'object').map(awBlockNorm);
+  const hours = {};
+  if(o.hours && typeof o.hours === 'object') for(const k of Object.keys(o.hours)){ const n = Number(o.hours[k]); if(isFinite(n)) hours[k] = n; }
+  return { v: 1, subj: String(o.subj == null ? '' : o.subj), subjAuto: o.subjAuto !== false, picked: String(o.picked || ''), prog: bl(o.prog), plan: bl(o.plan),
+           hours, meet: String(o.meet == null ? '' : o.meet), savedAt: typeof o.savedAt === 'string' ? o.savedAt : '' };
+}
+function awDraftGet(mon){
+  if(PEER || !awIsMon(mon)) return null;
+  const k = awDraftKey(mon);
+  if(__awDraftMem.has(k)) return awDraftNorm(__awDraftMem.get(k));
+  try{ const raw = localStorage.getItem(k); return raw == null ? null : awDraftNorm(JSON.parse(raw)); }catch(_){ return null; }
+}
+function awDraftPut(mon, s){
+  if(PEER || !awIsMon(mon) || !s) return null;
+  const k = awDraftKey(mon), bl = a => (a || []).map(awBlockNorm).map(b => (!b.name && b.raw) ? b : { name: b.name, text: b.text });
+  const v = { v: 1, subj: String(s.subj || ''), subjAuto: s.subjAuto !== false, picked: String(s.picked || ''), prog: bl(s.prog), plan: bl(s.plan),
+              hours: awHoursFor(s.prog, s.hours), meet: String(s.meet || ''), savedAt: new Date().toISOString() };
+  try{ localStorage.setItem(k, JSON.stringify(v)); __awDraftMem.delete(k); return v; }
+  catch(_){ __awDraftMem.set(k, v); return null; }
+}
+function awDraftDel(mon){
+  if(PEER || !awIsMon(mon)) return;
+  const k = awDraftKey(mon);
+  __awDraftMem.delete(k);
+  try{ localStorage.removeItem(k); }catch(_){}
+}
+//  이 계정의 주간 임시 저장 전부(목록의 작성 중). [{ mon, d }]
+function awDraftList(){
+  if(PEER) return [];
+  const pre = AW_DRAFT_PREFIX + awWho() + ':', out = new Map();
+  try{ for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && k.startsWith(pre)) out.set(k, null); } }catch(_){}
+  for(const k of __awDraftMem.keys()) if(k.startsWith(pre)) out.set(k, null);
+  const list = [];
+  for(const k of out.keys()){ const mon = k.slice(pre.length); if(!awIsMon(mon)) continue; const d = awDraftGet(mon); if(d) list.push({ mon, d }); }
+  return list;
+}
+function awDraftPrune(){
+  const cut = addDays(todayYmd(), -AW_DRAFT_KEEP_DAYS);
+  for(const x of awDraftList()) if(x.mon < cut) awDraftDel(x.mon);
+}
+
+/* ── 근태 탭 머리: [일간][주간](이 PC에 기억) ── */
+function atKindLoad(){ try{ return localStorage.getItem(ATT_KIND_KEY) === 'week' ? 'week' : 'day'; }catch(_){ return 'day'; } }
+function atKindSeg(){
+  const b = (k, t) => '<button type="button" class="seg-b' + (ATT.kind === k ? ' active' : '') + '" data-atkind="' + k + '" aria-pressed="' + (ATT.kind === k) + '">' + t + '</button>';
+  return '<div class="seg seg-auto at-kind" role="group" aria-label="일간 보고와 주간보고">' + b('day', '일간') + b('week', '주간') + '</div>';
+}
+function atKindSet(kind){
+  const k = kind === 'week' ? 'week' : 'day';
+  if(ATT.screen !== 'month') return;   // 편집 화면에서는 바꾸지 않는다(머리 단추는 목록과 달력에만 있다)
+  ATT.kind = k;
+  try{ localStorage.setItem(ATT_KIND_KEY, k); }catch(_){}
+  atSyncScreen();
+  atLoadMonth();
+}
+
+/* ── 주간 목록(§13.1) ── */
+function awRowNorm(x){
+  if(!x || typeof x !== 'object') return null;
+  const ps = String(x.periodStart || '').slice(0, 10);
+  if(!awIsMon(ps)) return null;   // 한 주 = 월~일. 월요일에 시작하지 않는 옛 기록(보고서 창의 아무 기간)은 이 목록에 넣지 않는다
+  const s = k => String(x[k] == null ? '' : x[k]);
+  return { periodStart: ps, periodEnd: atIsYmd(s('periodEnd').slice(0, 10)) ? s('periodEnd').slice(0, 10) : addDays(ps, 6),
+           subject: s('subject'), content: s('content'), endwork: s('endwork'), plan: s('plan'), meeting: s('meeting'), composedAt: s('composedAt') };
+}
+//  목록 줄: DB 기록과 이 PC 임시 저장을 주(월요일)로 합친다. 최근이 위, 번호는 아래에서부터 1.
+//    상태: 임시 저장이 있으면 작성 중(보낸 뒤 다시 고치는 중도 작성 중), 아니면 완료. 날짜: 보고한 날, 없으면 임시 저장 날.
+function awListItems(){
+  const map = new Map();
+  for(const r of AWL.rows) map.set(r.periodStart, { mon: r.periodStart, row: r, draft: null });
+  for(const x of awDraftList()){ const it = map.get(x.mon) || { mon: x.mon, row: null, draft: null }; it.draft = x.d; map.set(x.mon, it); }
+  const items = [...map.values()].sort((a, b) => a.mon < b.mon ? 1 : a.mon > b.mon ? -1 : 0);
+  items.forEach((it, i) => {
+    it.no = items.length - i;
+    it.title = (it.draft && it.draft.subj) || (it.row && it.row.subject) || weekSubjectGuess(it.mon);
+    it.status = it.draft ? 'draft' : 'done';
+    const at = it.row && it.row.composedAt ? new Date(it.row.composedAt) : (it.draft && it.draft.savedAt ? new Date(it.draft.savedAt) : null);
+    it.date = at && !isNaN(at) ? ymd(at) : '';
+  });
+  return items;
+}
+async function awListLoad(){
+  const mon = awMonOf(todayYmd()), from = addDays(mon, -7 * AW_LIST_WEEKS), to = addDays(mon, 7);
+  if(!HOST || PEER || (SUBWIN && !ATTENDWIN)){ awListRender(); return; }
+  const g = ++AWL.gen;
+  AWL.loading = true; awListRender();
+  let r = null;
+  try{ r = await hostRequest('reportWeeklyList', { from, to }); }catch(_){ r = null; }
+  if(g !== AWL.gen) return;   // 그 사이 다시 읽었다. 옛 회신은 버린다
+  AWL.loading = false;
+  if(!r || !r.ok){
+    const e = r && (typeof r.error === 'string' ? r.error : (r.error ? pcErrText(r.error) : ''));
+    AWL.err = '주간보고 기록을 읽지 못했습니다.' + (e ? ' ' + e : '');
+    awListRender(); return;
+  }
+  AWL.err = ''; AWL.from = from; AWL.to = to;
+  AWL.rows = (Array.isArray(r.rows) ? r.rows : []).map(awRowNorm).filter(Boolean);
+  awListRender();
+}
+function awListRender(){
+  const box = document.getElementById('awList'); if(!box) return;
+  const items = awListItems();
+  const note = (!HOST ? '<div class="at-note">보고 기록은 서버에 연결된 위젯에서만 보입니다. 여기에는 이 PC에 임시 저장한 주만 보입니다.</div>'
+    : AWL.err ? '<div class="at-note err" role="alert">' + esc(AWL.err) + '</div>'
+    : (AWL.loading && !AWL.from) ? '<div class="at-note">주간보고 기록을 읽는 중입니다.</div>' : '');
+  let html = '<div class="at-bar">' + (ATTENDWIN ? '' : atKindSeg())
+    + '<b class="aw-ltitle">주간보고</b><span class="aw-cnt">' + items.length + '건</span><span class="spacer"></span>'
+    + '<button type="button" class="btn primary" data-awact="new" title="이번 주 주간보고를 엽니다(이미 있으면 그 주)">작성</button></div>'
+    + note + '<div class="aw-lnote">이 앱으로 쓴 주만 보입니다. 인트라넷에 직접 쓴 주는 인트라넷에서 확인하세요.</div>';
+  if(!items.length) html += '<div class="at-none aw-lempty">이 앱으로 쓴 주간보고가 없습니다. [작성]으로 이번 주를 쓰세요.</div>';
+  else html += '<div class="aw-tblwrap"><table class="aw-tbl"><thead><tr><th>번호</th><th>제목</th><th>기간</th><th>상태</th><th>날짜</th></tr></thead><tbody>'
+    + items.map(it => '<tr class="aw-row" data-awmon="' + it.mon + '" tabindex="0" aria-label="' + esc(it.title) + ', ' + awPeriodLabel(it.mon) + ', ' + (it.status === 'done' ? '완료' : '작성 중') + '">'
+      + '<td class="aw-no">' + it.no + '</td><td class="aw-ttl">' + esc(it.title) + '</td><td class="aw-per">' + awPeriodLabel(it.mon) + '</td>'
+      + '<td class="aw-st"><span class="aw-badge ' + it.status + '">' + (it.status === 'done' ? '완료' : '작성 중') + '</span></td><td class="aw-dt">' + esc(it.date) + '</td></tr>').join('')
+    + '</tbody></table></div>';
+  box.innerHTML = html;
+}
+//  [작성] = 이번 주(이미 목록에 있으면 그 주를 연다. 같은 주 글을 두 번 만들지 않는다, §13.1).
+function awNewWeek(){ awOpen(awMonOf(todayYmd())); }
+//  목록의 행이나 [작성]. 위젯 메인 창은 근태 창을 주간 모드로 열고(attendOpen, kind 'week'), 브라우저와 근태 창은 그 자리에서 편집 화면으로 바꾼다.
+async function awOpen(mon){
+  if(PEER || (SUBWIN && !ATTENDWIN) || !awIsMon(mon)) return;
+  if(ATTENDWIN || !HOST){ awGoWeek(mon); return; }
+  let saved = awSavedFromCache(mon);
+  if(saved === undefined) saved = await awFetchSaved(mon);
+  const r = await hostRequest('attendOpen', { payload: awBuildPayload(mon, saved) }, 20000);
+  if(!(r && r.ok)) toast((r && typeof r.error === 'string' && r.error) || '근태 보고 창을 열지 못했습니다', 'warn');
+}
+//  목록 캐시에 그 주가 있으면 그 기록(없으면 null), 읽은 범위 밖이면 undefined.
+function awSavedFromCache(mon){
+  if(!AWL.from || mon < AWL.from || mon > AWL.to) return undefined;
+  return AWL.rows.find(r => r.periodStart === mon) || null;
+}
+async function awFetchSaved(mon){
+  if(!HOST) return null;
+  let r = null;
+  try{ r = await hostRequest('reportWeeklyList', { from: mon, to: mon }); }catch(_){ r = null; }
+  return (r && r.ok && Array.isArray(r.rows)) ? (r.rows.map(awRowNorm).find(x => x && x.periodStart === mon) || null) : null;
+}
+//  주간 payload. 메인 창과 브라우저는 내 달력의 과제 목록과 신원, 근태 창은 받아 둔 것(ATW.ctx)을 싣는다.
+function awBuildPayload(mon, saved){
+  let me = null, projects = [];
+  if(ATTENDWIN){ me = ATW.ctx.me; projects = ATW.ctx.projects; }
+  else {
+    const m = __bootMeta || {};
+    me = { userId: (m.userId != null && String(m.userId) !== '') ? m.userId : null,
+           loginId: (currentUser && currentUser.loginId) ? String(currentUser.loginId) : '', name: (currentUser && currentUser.name) ? String(currentUser.name) : '' };
+    projects = atBuildProjects();
+  }
+  return { v: 1, kind: 'week', mon, me, saved: saved || null, projects, refresh: false };
+}
+function awNormPayload(o){
+  if(!o || typeof o !== 'object' || o.kind !== 'week' || !awIsMon(String(o.mon || ''))) return null;
+  const me = o.me && typeof o.me === 'object' ? { userId: o.me.userId == null ? null : o.me.userId, loginId: String(o.me.loginId || ''), name: String(o.me.name || '') } : null;
+  const saved = o.saved && typeof o.saved === 'object' ? awRowNorm(Object.assign({}, o.saved, { periodStart: o.mon })) : null;
+  return { v: 1, kind: 'week', mon: o.mon, me, saved, projects: atNormProjects(o.projects), refresh: o.refresh === true };
+}
+
+/* ── 편집 화면 열기 ── */
+function awEmpty(mon, picked){ return { subj: picked || weekSubjectGuess(mon), subjAuto: true, picked: picked || '', prog: [], plan: [], hours: {}, meet: '' }; }
+//  완료한 주(DB 기록)를 편집 상태로 되살린다. 제목은 달력에서 막 고른 것이 있으면 그것, 아니면 기록의 제목.
+function awFromSaved(sv, names, mon, picked){
+  const guess = weekSubjectGuess(mon), subj = picked || sv.subject || guess;
+  return { subj, subjAuto: !!picked || !sv.subject || sv.subject === guess, picked: picked || '',
+           prog: awParseBlocks(sv.endwork, names), plan: awParseBlocks(sv.plan, names), hours: awParseHours(sv.content), meet: atDecode(sv.meeting).replace(/\s+$/, '') };
+}
+function awCur(){
+  const cp = a => a.map(b => ({ name: b.name, text: b.text, raw: b.raw || '' }));
+  return { subj: AWE.subj, subjAuto: AWE.subjAuto, picked: AWE.picked, prog: cp(AWE.prog), plan: cp(AWE.plan), hours: Object.assign({}, AWE.hours), meet: AWE.meet };
+}
+function awApply(s){
+  const names = awProjNames(), cp = a => (a || []).map(b => ({ name: b.name, text: b.text, raw: b.raw || '' }));
+  AWE.subj = String(s.subj || ''); AWE.subjAuto = s.subjAuto !== false; AWE.picked = String(s.picked || '');
+  AWE.prog = atSortedCopy(cp(s.prog), names); AWE.plan = atSortedCopy(cp(s.plan), names);
+  AWE.hours = Object.assign({}, s.hours || {}); AWE.meet = String(s.meet || '');
+}
+function awDirty(){ return !!AWE.p && !!AWE.base && awSig(awCur()) !== awSig(AWE.base); }
+function awShown(){ return ATTENDWIN ? ATW.view !== 'day' : (ATT.screen === 'wedit' && !!AWE.p); }
+//  payload 를 받아 편집 화면을 연다. 같은 주면 과제 목록만 바꾼다(왼쪽 글은 그대로).
+//    처음 상태: 완료한 주는 DB 기록, 아니면 빈 상태. 임시 저장이 있으면 안내 없이 그것으로 연다(일간 12.8 과 같다).
+//    임시 저장도 기록도 없는 주(처음 여는 주)는 두 가져오기를 한 번 해 두고 그 결과를 처음 상태로 삼는다(§13.2).
+//    opt.picked = 주 고르기 달력에서 고른 제목(그 달 달력의 몇째 줄).
+function awEdOpen(raw, opt){
+  const p = awNormPayload(raw); if(!p) return;
+  ATW.ctx = { me: p.me || ATW.ctx.me, projects: p.projects };
+  const picked = (opt && opt.picked) || '';
+  if(AWE.p && AWE.mon === p.mon && !picked){
+    AWE.p.projects = p.projects; if(p.me) AWE.p.me = p.me;
+    if(p.saved && !AWE.p.saved) AWE.p.saved = p.saved;
+    awRender(); if(AWE.add) awAddRender();
+    return;
+  }
+  if(p.refresh) return;
+  if(AWE.sending){ toast('보고하는 중입니다. 끝난 뒤에 다른 주를 여세요', 'warn'); return; }
+  if(AWE.p) awDraftFlushNow();
+  awDraftPrune();
+  const names = p.projects.map(x => x.name);
+  AWE.p = p; AWE.mon = p.mon; AWE.gen++; AWE.showErr = false; AWE.cal.open = false; AWE.nav = false;
+  awAddOpen('');
+  clearTimeout(AWE.timer); AWE.timer = null;
+  AWE.base = p.saved ? awFromSaved(p.saved, names, p.mon, picked) : awEmpty(p.mon, picked);
+  AWE.base.prog = atSortedCopy(AWE.base.prog, names); AWE.base.plan = atSortedCopy(AWE.base.plan, names);
+  let dr = awDraftGet(p.mon);
+  if(dr){
+    dr = Object.assign({}, dr, { prog: awBlocksKnown(dr.prog, names), plan: awBlocksKnown(dr.plan, names) });
+    if(picked && dr.subjAuto){ dr.subj = picked; dr.picked = picked; }
+  }
+  if(dr && awSig(dr) === awSig(AWE.base)){ awDraftDel(p.mon); dr = null; }   // 처음 상태와 같은 임시 저장은 남길 까닭이 없다
+  awApply(dr || AWE.base);
+  AWE.savedAt = dr ? dr.savedAt : '';
+  AWE.daily = { mon: p.mon, rows: null };
+  awAskHide();
+  awSetBusy(false); awMsg(''); awImpMsg('');
+  awPTabSet(awPTabLoad() || 'pv', false);
+  awRender();
+  awOnEdit(false);
+  const bx = $('#awScroll'); if(bx) bx.scrollTop = 0;
+  if(!dr && !p.saved) awAutoImport(); else awDailyLoad();
+}
+//  이번 주 일간 보고를 읽어 둔다(진행사항 과제를 더할 때 시간 칸의 처음 값 = 그 주 일간 합계). 위젯만.
+async function awDailyLoad(force){
+  if(!HOST || !AWE.p) return null;
+  const mon = AWE.mon, g = AWE.gen;
+  if(!force && AWE.daily.mon === mon && AWE.daily.rows) return AWE.daily.rows;
+  let r = null;
+  try{ r = await hostRequest('reportDailyList', { from: mon, to: addDays(mon, 6) }); }catch(_){ r = null; }
+  if(g !== AWE.gen) return null;
+  if(!r || r.ok !== true || !Array.isArray(r.rows)) return null;
+  const rows = r.rows.map(atRowNorm).filter(x => x && x.date >= mon && x.date <= addDays(mon, 6));
+  AWE.daily = { mon, rows };
+  return rows;
+}
+function awDailySum(name){
+  const rows = AWE.daily.mon === AWE.mon ? AWE.daily.rows : null;
+  if(!rows) return 0;
+  return awDailyCollect(rows, awProjNames()).hours[name] || 0;
+}
+async function awAutoImport(){
+  if(!HOST){ awImpMsg('가져오기는 서버에 연결된 위젯에서만 됩니다. 브라우저에서는 직접 쓰세요.'); return; }
+  const g = AWE.gen;
+  awSetBusy(true); awMsg('이번 주 일간 보고와 지난주 차주계획을 가져오는 중…', 'busy');
+  const a = await awImpDaily(true); if(g !== AWE.gen) return;
+  const b = await awImpPlan(true); if(g !== AWE.gen) return;
+  AWE.base = awCur();   // 처음 여는 주는 가져온 결과가 처음 상태다(임시 저장은 사람이 고친 뒤부터)
+  awSetBusy(false);
+  awRender(); awOnEdit(false);
+  awMsg([a, b].filter(Boolean).join(' '), 'ok');
+}
+//  ← 이번 주 일간 보고: 진행사항과 과제투입시간을 바꾼다(묻지 않는다, 일간 불러오기와 같다). 돌려주는 값 = 안내 글.
+async function awImpDaily(auto){
+  if(!AWE.p) return '';
+  if(!HOST){ awImpMsg('일간 보고 가져오기는 서버에 연결된 위젯에서만 됩니다.'); return ''; }
+  const g = AWE.gen;
+  if(!auto){ awSetBusy(true); awMsg('일간 보고를 읽는 중…', 'busy'); }
+  const rows = await awDailyLoad(true);
+  if(g !== AWE.gen) return '';
+  let t;
+  if(!rows) t = '이번 주 일간 보고를 읽지 못했습니다.';
+  else {
+    const c = awDailyCollect(rows, awProjNames());
+    AWE.prog = c.prog; AWE.hours = c.hours;
+    t = !rows.length ? '이번 주에 이 앱으로 보낸 일간 보고가 없습니다.'
+      : '일간 보고 ' + c.days + '일에서 과제 ' + c.prog.length + '개를 가져왔습니다.' + (c.skipped ? ' 과제를 알 수 없는 글 ' + c.skipped + '곳은 넣지 않았습니다.' : '');
+  }
+  if(!auto){ awSetBusy(false); awRender(); awFlash('awProg'); awFlash('awHours'); awOnEdit(); awMsg(t, rows ? 'ok' : 'err'); }
+  return t;
+}
+//  ← 지난주 차주계획: 지난주(월요일 - 7) 이 앱 주간 기록의 차주계획을 차주계획 블록으로(캘린더에 없는 이름은 과제 미정 블록).
+async function awImpPlan(auto){
+  if(!AWE.p) return '';
+  if(!HOST){ awImpMsg('지난주 차주계획 가져오기는 서버에 연결된 위젯에서만 됩니다.'); return ''; }
+  const g = AWE.gen, last = addDays(AWE.mon, -7);
+  if(!auto){ awSetBusy(true); awMsg('지난주 주간보고를 읽는 중…', 'busy'); }
+  let r = null;
+  try{ r = await hostRequest('reportWeeklyList', { from: last, to: last }); }catch(_){ r = null; }
+  if(g !== AWE.gen) return '';
+  let t, ok = true;
+  if(!r || r.ok !== true || !Array.isArray(r.rows)){ t = '지난주 주간보고를 읽지 못했습니다.'; ok = false; }
+  else {
+    const row = r.rows.map(awRowNorm).find(x => x && x.periodStart === last);
+    if(!row) t = '지난주에 이 앱으로 쓴 주간보고가 없습니다.';
+    else { AWE.plan = atSortedCopy(awParseBlocks(row.plan, awProjNames()), awProjNames()); t = '지난주 차주계획에서 과제 ' + AWE.plan.length + '개를 가져왔습니다.'; }
+  }
+  if(!auto){ awSetBusy(false); awRender(); awFlash('awPlan'); awOnEdit(); awMsg(t, ok ? 'ok' : 'err'); }
+  return t;
+}
+
+/* ── 그리기 ── */
+function awTitleText(){ return (AWE.subj || weekSubjectGuess(AWE.mon)) + ' (' + awMD(AWE.mon) + '~' + awMD(addDays(AWE.mon, 6)) + ')'; }
+function awRender(){
+  if(!AWE.p) return;
+  const t = $('#awTitle'); if(t) t.textContent = awTitleText();
+  const wb = $('#awWeekBtn'); if(wb) wb.textContent = AWE.mon + ' ~ ' + addDays(AWE.mon, 6) + ' ▾';
+  const sj = $('#awSubj'); if(sj && sj.value !== AWE.subj) sj.value = AWE.subj;
+  const how = $('#awSubjHow'); if(how) how.textContent = !AWE.subjAuto ? '직접 고침' : AWE.picked ? '달력에서 고른 달 기준' : '월요일이 든 달 기준';
+  if(ATTENDWIN) document.title = '주간보고 ' + awTitleText();
+  awBlocksRender('prog'); awBlocksRender('plan');
+  awHoursRender();
+  const mt = $('#awMeet'); if(mt){ if(mt.value !== AWE.meet) mt.value = AWE.meet; atGrow(mt); }
+  awCalRender();
+  awSentRender();
+  awStatRender();
+  awSyncNav();
+}
+function awBlocksRender(kind){
+  const box = document.getElementById(kind === 'prog' ? 'awProg' : 'awPlan'); if(!box) return;
+  const list = kind === 'prog' ? AWE.prog : AWE.plan, projs = awProjects(), used = new Set(list.map(b => b.name).filter(Boolean));
+  box.innerHTML = list.length ? list.map((b, i) => {
+    const key = kind + ':' + i, lab = b.name || '과제 미정', bad = !b.name;
+    const head = b.name
+      ? '<i class="at-dot" style="background:' + awProjColor(b.name) + '" aria-hidden="true"></i><span class="at-bn" title="과제명은 캘린더 과제에서만 정해집니다">' + esc(b.name) + '</span>'
+      : '<select class="at-bpick" data-wpick="' + key + '" aria-label="과제 고르기"><option value="">과제를 고르세요</option>'
+        + projs.filter(x => !used.has(x.name)).map(x => '<option value="' + esc(x.name) + '">' + esc(x.name) + '</option>').join('') + '</select>';
+    return '<div class="at-blk aw-blk' + (bad ? ' bad' : '') + '" data-wk="' + key + '">'
+      + '<div class="at-bh">' + head + '<button type="button" class="at-bx" data-wx="' + key + '" title="블록 지우기" aria-label="' + esc(lab) + ' 블록 지우기">✕</button></div>'
+      + '<textarea class="at-bt" data-wt="' + key + '" spellcheck="false" rows="2" aria-label="' + esc(lab) + ' 내용" placeholder="자유롭게"></textarea>'
+      + (bad ? '<div class="at-bmsg" role="alert"><span class="at-bmsg-i" aria-hidden="true">!</span><span>과제를 고르세요. 캘린더 과제로 나누지 못한 글입니다.</span></div>' : '') + '</div>';
+  }).join('') : '<div class="at-none">' + (kind === 'prog' ? '과제가 없습니다. [+ 과제 추가]나 가져오기로 채우세요.' : '과제가 없습니다.') + '</div>';
+  box.querySelectorAll('textarea[data-wt]').forEach(t => { const [, i] = t.dataset.wt.split(':'); t.value = list[Number(i)].text; atGrow(t); });
+  if(AWE.sending || AWE.busy) box.querySelectorAll('select, textarea, button').forEach(e => { e.disabled = true; });
+}
+//  과제투입시간: 진행사항 블록의 과제마다 숫자 칸(0~168, 0.5), 2열, 아래 합계(§13.1).
+function awHoursRender(){
+  const box = $('#awHours'); if(!box) return;
+  const names = awProgNames(AWE.prog);
+  box.innerHTML = names.length ? names.map((n, i) => '<label class="aw-hr"><i class="at-dot" style="background:' + awProjColor(n) + '" aria-hidden="true"></i><span class="aw-hn" title="' + esc(n) + '">' + esc(n) + '</span>'
+      + '<input type="number" min="0" max="' + AW_HOURS_MAX + '" step="0.5" class="at-bhn" data-wh="' + i + '" inputmode="decimal" autocomplete="off" value="' + esc(atHoursText(awHoursVal(AWE.hours[n]))) + '" aria-label="' + esc(n) + ' 투입시간"></label>').join('')
+    : '<span class="at-none">진행사항에 과제를 넣으면 여기에 시간 칸이 생깁니다.</span>';
+  if(AWE.sending || AWE.busy) box.querySelectorAll('input').forEach(e => { e.disabled = true; });
+  awHSumRender();
+}
+function awHSumRender(){ const s = $('#awHSum'); if(s) s.innerHTML = awProgNames(AWE.prog).length ? '합계 <b>' + atHoursText(awHoursTotal(AWE.prog, AWE.hours)) + '</b>시간' : ''; }
+function awStatRender(){
+  const st = $('#awStat'); if(st) st.textContent = '진행사항 ' + awProgNames(AWE.prog).length + '개, 차주계획 ' + awProgNames(AWE.plan).length + '개';
+  awHSumRender();
+  awPvSchedule();
+  awResetSync();
+}
+function awSentRender(){
+  const se = $('#awSent'); if(!se) return;
+  const sv = AWE.p && AWE.p.saved, t = sv ? atSentLabel(sv.composedAt) : '';
+  se.textContent = t ? '작성한 시각 ' + t : '';
+}
+function awSyncNav(){
+  const off = !AWE.p || AWE.sending || AWE.busy || AWE.nav;
+  ['#awPrev', '#awNext', '#awWeekBtn'].forEach(s => { const e = $(s); if(e) e.disabled = off; });
+  const sd = $('#awSend'); if(sd && !AWE.sending) sd.disabled = !AWE.p || AWE.busy;
+}
+function awFlash(id){ const e = document.getElementById(id); if(!e) return; e.classList.remove('aw-flash'); void e.offsetWidth; e.classList.add('aw-flash'); setTimeout(() => e.classList.remove('aw-flash'), AT_FLASH_MS); }
+function awMsg(t, kind){ const m = $('#awMsg'); if(!m) return; m.textContent = t || ''; m.className = 'at-msg' + (kind ? ' ' + kind : ''); m.removeAttribute('title'); }
+function awImpMsg(t){ const m = $('#awImpMsg'); if(m) m.textContent = t || ''; }
+//  처리 중(보내기, 가져오기)에는 입력과 단추를 모두 잠근다(두 번 보내지 않게).
+function awSetBusy(on){
+  AWE.busy = !!on;
+  const ed = $('#awEd'); if(!ed) return;
+  if(on){ awAddOpen(''); AWE.cal.open = false; awCalRender(); }
+  ed.querySelectorAll('input, select, textarea, button').forEach(e => { e.disabled = !!on; });
+  const b = $('#awSend'); if(b) b.textContent = AWE.sending ? '보고하는 중…' : '보고';
+  ed.classList.toggle('busy', !!on);
+  if(!on && AWE.p){ awRender(); }
+}
+
+/* ── 주 고르기 달력(§13.2): 월요일 시작 줄을 누르면 그 주. 제목 = 그 달 달력의 몇째 줄 ── */
+function awCalToggle(on){
+  if(on && (!AWE.p || AWE.sending || AWE.busy)) return;
+  AWE.cal.open = !!on;
+  if(on){ const d = parseYmd(AWE.mon); AWE.cal.y = d.getFullYear(); AWE.cal.m = d.getMonth(); }
+  awCalRender();
+  if(on){ const r = document.querySelector('#awWCal tr.aw-cw.sel') || document.querySelector('#awWCal tr.aw-cw'); if(r) try{ r.focus({ preventScroll: true }); }catch(_){} }
+}
+function awCalMove(d){ let m = AWE.cal.m + d, y = AWE.cal.y; if(m < 0){ m = 11; y--; } if(m > 11){ m = 0; y++; } AWE.cal.y = y; AWE.cal.m = m; awCalRender(); }
+function awCalRender(){
+  const box = $('#awWCal'), btn = $('#awWeekBtn'); if(!box) return;
+  box.classList.toggle('hidden', !AWE.cal.open);
+  if(btn) btn.setAttribute('aria-expanded', String(!!AWE.cal.open));
+  if(!AWE.cal.open){ box.innerHTML = ''; return; }
+  const { y, m } = AWE.cal, rows = awMonthRows(y, m);
+  box.innerHTML = '<div class="aw-cmh"><button type="button" class="btn icon sm" data-awcm="-1" aria-label="이전 달" title="이전 달">‹</button><b>' + y + '년 ' + (m + 1) + '월</b>'
+    + '<button type="button" class="btn icon sm" data-awcm="1" aria-label="다음 달" title="다음 달">›</button></div>'
+    + '<table class="aw-ct"><thead><tr><th></th>' + ['월', '화', '수', '목', '금', '토', '일'].map(w => '<th>' + w + '</th>').join('') + '</tr></thead><tbody>'
+    + rows.map((mon, r) => { const ttl = awPickTitle(m, r);
+        return '<tr class="aw-cw' + (mon === AWE.mon ? ' sel' : '') + '" data-awpick="' + mon + '" data-awttl="' + esc(ttl) + '" tabindex="0" aria-label="' + esc(ttl) + ', ' + awPeriodLabel(mon) + '">'
+          + '<td class="aw-clab">' + esc((AW_ORD[r] || '') + '주') + '</td>'
+          + [0, 1, 2, 3, 4, 5, 6].map(k => { const d = addDays(mon, k); return '<td' + (parseYmd(d).getMonth() !== m ? ' class="o"' : '') + '>' + Number(d.slice(8)) + '</td>'; }).join('') + '</tr>'; }).join('')
+    + '</tbody></table>';
+}
+//  달력에서 주를 골랐다. 같은 주면 제목만 그 달 기준으로 바꾸고(손으로 고친 제목도 바꾼다. 같은 주를 다시 고르는 것은 그 달 기준으로 하겠다는 뜻이다), 다른 주면 그 주를 연다(쓰던 글은 먼저 임시 저장).
+function awCalPick(mon, ttl){
+  AWE.cal.open = false; awCalRender();
+  if(!awIsMon(mon) || !ttl) return;
+  if(mon === AWE.mon){
+    AWE.subj = ttl; AWE.subjAuto = true; AWE.picked = ttl;
+    awRender(); awOnEdit();
+    return;
+  }
+  awGoWeek(mon, { picked: ttl });
+}
+//  다른 주로(‹ ›, 달력). 근태 창과 브라우저는 그 자리에서 연다. 위젯은 그 주의 기록을 먼저 읽는다(완료한 주는 기록으로 연다).
+async function awGoWeek(mon, opt){
+  if(!awIsMon(mon) || AWE.sending || AWE.busy || AWE.nav) return;
+  if(AWE.p) awDraftFlushNow();
+  //  브라우저는 기록이 없다(읽을 곳이 없다). 기다리지 않고 바로 연다(목록, ‹ › 이 한 번에 바뀐다).
+  let saved = HOST ? awSavedFromCache(mon) : null;
+  if(saved === undefined){
+    AWE.nav = true; awSyncNav(); if(AWE.p) awMsg('불러오는 중입니다…');
+    saved = await awFetchSaved(mon);
+    AWE.nav = false;
+  }
+  const p = awBuildPayload(mon, saved);
+  if(ATTENDWIN){ atwShow('wedit'); awEdOpen(p, opt); }
+  else awShowEditor(p, opt);
+}
+function awNav(delta){ if(AWE.p) awGoWeek(addDays(AWE.mon, 7 * delta)); }
+
+/* ── 블록 고치기 ── */
+function awList(kind){ return kind === 'plan' ? AWE.plan : AWE.prog; }
+function awBlockRemove(kind, i){
+  const L = awList(kind); if(AWE.sending || AWE.busy || !L[i]) return;
+  const b = L.splice(i, 1)[0];
+  if(kind === 'prog' && b.name) delete AWE.hours[b.name];   // 과제투입시간은 진행사항을 따라간다(빼면 같이 빠진다)
+  awRender(); awOnEdit();
+}
+function awBlockPick(kind, i, name){
+  const L = awList(kind), b = L[i];
+  if(AWE.sending || !b || b.name || !name || L.some(x => x.name === name) || !awProjNames().includes(name)) return;
+  b.name = name;
+  if(b.raw){ const ls = b.text.split('\n'); if(ls[0] === b.raw) b.text = atBodyNorm(ls.slice(1).join('\n')); }
+  b.raw = '';
+  if(kind === 'prog' && AWE.hours[name] == null) AWE.hours[name] = awDailySum(name);
+  if(kind === 'prog') AWE.prog = atSortedCopy(AWE.prog, awProjNames()); else AWE.plan = atSortedCopy(AWE.plan, awProjNames());
+  awRender(); awOnEdit();
+  const t = document.querySelector('#awEd textarea[data-wt="' + kind + ':' + awList(kind).indexOf(b) + '"]'); if(t) try{ t.focus(); }catch(_){}
+}
+//  [+ 과제 추가] 메뉴(진행사항, 차주계획 각각): 일간과 같은 검색 목록. 메뉴 하나를 누른 칸 아래로 옮겨 쓴다.
+function awAddOpen(kind){
+  const m = $('#awAddMenu'); if(!m) return;
+  if(kind && (AWE.sending || AWE.busy || !AWE.p)) return;
+  AWE.add = kind || '';
+  document.querySelectorAll('#awEd [data-awadd]').forEach(b => b.setAttribute('aria-expanded', String(b.dataset.awadd === AWE.add)));
+  if(!AWE.add){ m.classList.add('hidden'); return; }
+  const wrap = document.querySelector('#awEd [data-awaddwrap="' + kind + '"]'); if(wrap && m.parentElement !== wrap) wrap.appendChild(m);
+  m.classList.remove('hidden');
+  const q = $('#awAddQ'); if(q) q.value = '';
+  awAddRender();
+  try{ m.scrollIntoView({ block: 'nearest' }); }catch(_){}
+  if(q) try{ q.focus({ preventScroll: true }); }catch(_){}
+}
+function awAddRender(){
+  const L = $('#awAddList'); if(!L || !AWE.add) return;
+  const qe = $('#awAddQ'), q = (qe ? qe.value : '').trim().toLowerCase();
+  const used = new Set(awList(AWE.add).map(b => b.name).filter(Boolean)), all = awProjects();
+  const list = all.filter(x => !q || x.name.toLowerCase().includes(q));
+  L.innerHTML = list.length ? list.map(x => '<button type="button" class="at-mi" data-awaddname="' + esc(x.name) + '"' + (used.has(x.name) ? ' disabled' : '') + '>'
+      + '<i class="at-dot" style="background:' + x.color + '" aria-hidden="true"></i><span>' + esc(x.name) + '</span>' + (used.has(x.name) ? '<small>이미 있음</small>' : '') + '</button>').join('')
+    : '<div class="at-none">' + (all.length ? '맞는 과제가 없습니다.' : '내 과제가 없습니다.') + '</div>';
+}
+//  새 블록은 빈 블록이고 캘린더 순서 자리에 들어간다. 진행사항이면 과제투입시간 칸이 그 주 일간 합계로 생긴다(§13.2).
+function awAddPick(name){
+  const kind = AWE.add, L = kind ? awList(kind) : null;
+  if(!L || AWE.sending || !name || L.some(b => b.name === name) || !awProjNames().includes(name)) return;
+  const nb = { name, text: '', raw: '' };
+  L.push(nb);
+  if(kind === 'prog' && AWE.hours[name] == null) AWE.hours[name] = awDailySum(name);
+  if(kind === 'prog') AWE.prog = atSortedCopy(AWE.prog, awProjNames()); else AWE.plan = atSortedCopy(AWE.plan, awProjNames());
+  awAddOpen('');
+  awRender(); awOnEdit();
+  const i = awList(kind).indexOf(nb), el = document.querySelector('#awEd .at-blk[data-wk="' + kind + ':' + i + '"]');
+  if(el){ el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), AT_FLASH_MS); }
+  const t = document.querySelector('#awEd textarea[data-wt="' + kind + ':' + i + '"]'); if(t) try{ t.focus(); t.scrollIntoView({ block: 'nearest' }); }catch(_){}
+}
+function awCatNew(){
+  awAddOpen('');
+  if(ATTENDWIN){ hpost({ cmd: 'attendCatNew' }); awMsg('메인 창에서 과제를 만든 뒤 이 창으로 돌아오면 과제 목록에 나옵니다.'); return; }
+  if(typeof openCatModal === 'function') openCatModal();
+}
+function awHoursInput(el){
+  const n = awProgNames(AWE.prog)[Number(el.dataset.wh)]; if(n == null) return;
+  const v = atHoursParse(el.value);
+  if(v != null) AWE.hours[n] = v;
+  awOnEdit();
+}
+//  칸을 떠나면 0.5 단위로 맞추고 0~168 로 묶는다(숫자가 아니면 앞 값).
+function awHoursBlur(el){
+  const n = awProgNames(AWE.prog)[Number(el.dataset.wh)]; if(n == null) return;
+  const v = atHoursParse(el.value), prev = awHoursVal(AWE.hours[n]);
+  const h = v == null ? prev : Math.max(0, Math.min(AW_HOURS_MAX, Math.round(v * 2) / 2));
+  const changed = h !== AWE.hours[n];
+  AWE.hours[n] = h; el.value = atHoursText(h);
+  if(changed) awOnEdit(); else awStatRender();
+}
+
+/* ── 오른쪽 패널: [미리보기][가져오기] ── */
+function awPTabLoad(){ try{ const v = localStorage.getItem(AW_PTAB_KEY); return (v === 'pv' || v === 'imp') ? v : ''; }catch(_){ return ''; } }
+function awPTabSet(tab, remember){
+  AWE.ptab = tab === 'imp' ? 'imp' : 'pv';
+  if(remember){ try{ localStorage.setItem(AW_PTAB_KEY, AWE.ptab); }catch(_){} }
+  const pv = AWE.ptab === 'pv';
+  document.querySelectorAll('#awPanel [data-awtab]').forEach(b => { const on = b.dataset.awtab === AWE.ptab; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); });
+  const tog = (id, show) => { const e = document.getElementById(id); if(e) e.classList.toggle('hidden', !show); };
+  tog('awPv', pv); tog('awPvFoot', pv); tog('awImp', !pv);
+  if(pv) awPvRender();
+}
+function awPvSchedule(){ clearTimeout(AWE.pvT); AWE.pvT = setTimeout(awPvRender, AT_PV_DEBOUNCE_MS); }
+//  미리보기: 인트라넷 주간보고 폼 모양 그대로(테마와 상관없이 흰 바탕, 회색 항목칸, 파란 테두리 칸, 굴림체). 칸의 글은 보낼 때와 같은 조립(awCompose)이다.
+//    미처리사항, 문제점 및 건의사항은 이 앱이 쓰지 않는 칸이라 빈칸으로 보인다(회사 폼에서 사람이 쓴다).
+function awPvRender(){
+  clearTimeout(AWE.pvT); AWE.pvT = null;
+  const box = $('#awNf'); if(!box || !AWE.p) return;
+  const s = awCur(), c = awCompose(s), sun = addDays(AWE.mon, 6), me = (AWE.p && AWE.p.me) || ATW.ctx.me || null;
+  const cell = (k, v) => '<tr><th>' + k + '</th><td><div class="nf-box' + (v ? '' : ' empty') + '" data-nf="' + esc(k.replace(/<br>/g, '')) + '">' + esc(v) + '</div></td></tr>';
+  box.innerHTML = '<div class="nf-who">' + esc((me && me.name) || '') + '</div><table class="nf-t">'
+    + '<tr><th>기간</th><td><span class="nf-in">' + AWE.mon + '</span> ~ <span class="nf-in">' + sun + '</span></td></tr>'
+    + '<tr><th>제목</th><td><span class="nf-in nf-subj">' + esc(s.subj || weekSubjectGuess(AWE.mon)) + '</span></td></tr>'
+    + cell('진행사항', c.endwork) + cell('과제<br>투입시간', c.content) + cell('미처리사항', '') + cell('차주계획', c.planwork)
+    + cell('문제점 및<br>건의사항', '') + cell('회의내용', c.resultwork) + '</table>';
+  const all = [c.endwork, c.content, c.planwork, c.resultwork].filter(Boolean).join('\n');
+  const st = $('#awPvStat'); if(st) st.textContent = '인트라넷에 이렇게 들어갑니다. ' + (all ? all.split('\n').length : 0) + '줄';
+}
+
+/* ── [전체 초기화]: 진행사항, 과제투입시간, 차주계획, 회의내용을 비운다(기간과 제목은 그대로). 묻지 않는다(일간 12.8 과 같다) ── */
+function awIsEmpty(){ return !AWE.prog.length && !AWE.plan.length && !String(AWE.meet).trim(); }
+function awResetSync(){ const b = $('#awReset'); if(b) b.disabled = !AWE.p || AWE.sending || AWE.busy || awIsEmpty(); }
+function awReset(){
+  if(!AWE.p || AWE.sending || AWE.busy || awIsEmpty()) return;
+  AWE.prog = []; AWE.plan = []; AWE.hours = {}; AWE.meet = ''; AWE.showErr = false;
+  awAddOpen('');
+  awRender(); awOnEdit(); awMsg('');
+}
+
+/* ── 임시 저장 흐름(일간 atOnEdit 과 같다) ── */
+function awOnEdit(save){
+  if(!AWE.p) return;
+  awStatRender();
+  if(save === false){ awSavedRender(); return; }
+  clearTimeout(AWE.timer); AWE.timer = null;
+  if(!awDirty()){ awDraftDel(AWE.mon); AWE.savedAt = ''; awSavedRender(); return; }
+  AWE.timer = setTimeout(() => awDraftFlushNow(), AT_DRAFT_DEBOUNCE_MS);
+  const s = $('#awSaved'); if(s && !AWE.savedAt) s.textContent = '';
+}
+function awDraftFlushNow(force){
+  clearTimeout(AWE.timer); AWE.timer = null;
+  if(!AWE.p || PEER) return;
+  if(!force && !awDirty()){ awDraftDel(AWE.mon); AWE.savedAt = ''; awSavedRender(); return; }
+  const v = awDraftPut(AWE.mon, awCur());
+  AWE.savedAt = v ? v.savedAt : '';
+  awSavedRender();
+}
+function awSavedRender(){ const s = $('#awSaved'); if(!s) return; const t = atHHMM(AWE.savedAt); s.textContent = (AWE.savedAt && t) ? '이 PC에 임시 저장됨 ' + t : ''; }
+
+/* ── 보내기(§13.3): 회사 주간 폼을 채워 연다(netcusWeekSubmit). 제출은 사용자가 그 창에서 한다 ── */
+//  줄 앞 공백은 &nbsp; 로(일간과 같은 규칙). 과제투입시간은 줄 앞 공백이 없다. 회의내용(resultwork)은 결정 13 에서 더한 칸이다.
+function awBuildSubmit(){
+  const s = awCur(), c = awCompose(s);
+  return { __tc: 'netcus-report', v: 1, kind: 'weekly',
+           fields: { sdate: AWE.mon, edate: addDays(AWE.mon, 6), subject: s.subj.trim() || weekSubjectGuess(AWE.mon), content: c.content,
+                     endwork: reportEditedBodyOut(c.endwork, '&nbsp;'), planwork: reportEditedBodyOut(c.planwork, '&nbsp;'), resultwork: reportEditedBodyOut(c.resultwork, '&nbsp;') } };
+}
+//  막는 것(§13.2): 진행사항 블록이 하나도 없음, 과제 미정 블록. 막으면 첫 블록으로 옮긴다(미정 블록은 늘 빨갛다).
+function awSubmitBlocked(){
+  const pr = awProblems(awCur());
+  if(pr.bad.length){
+    const f = pr.bad[0], el = document.querySelector('#awEd .at-blk[data-wk="' + f.kind + ':' + f.i + '"]');
+    if(el) try{ el.scrollIntoView({ block: 'center' }); }catch(_){}
+    const sel = document.querySelector('#awEd [data-wpick="' + f.kind + ':' + f.i + '"]'); if(sel) try{ sel.focus(); }catch(_){}
+    awMsg('보내지 않았습니다. 과제를 고를 블록이 ' + pr.bad.length + '개 있습니다(빨간 블록).', 'err');
+    return true;
+  }
+  if(pr.noProg){
+    awMsg('보내지 않았습니다. 진행사항에 과제가 없습니다. [+ 과제 추가]나 가져오기로 채우세요.', 'err');
+    const a = document.querySelector('#awEd [data-awadd="prog"]'); if(a) try{ a.focus(); }catch(_){}
+    return true;
+  }
+  return false;
+}
+function awSubmit(){
+  if(!AWE.p || AWE.sending || AWE.busy) return;
+  if(awSubmitBlocked()) return;
+  const payload = awBuildSubmit();
+  awDraftFlushNow(true);
+  if(!Platform.caps.reportAuto){
+    //  브라우저는 회사 폼을 채울 수 없다(결정 11). 잠그지 않고 임시 저장도 그대로 둔다.
+    Platform.report.submitWeekly(payload);
+    awMsg('브라우저에서는 회사 폼을 채울 수 없습니다. 미리보기 글을 드래그해 복사한 뒤 회사 사이트에 직접 입력하세요.', 'err');
+    return;
+  }
+  AWE.sending = true; AWE.armed = true;
+  awSetBusy(true); awMsg('보고하는 중…', 'busy');
+  clearTimeout(AWE.wd);
+  AWE.wd = setTimeout(() => {
+    if(!AWE.armed) return;
+    AWE.armed = false; AWE.sending = false; awSetBusy(false);
+    awMsg(AT_FAIL_MSG, 'err');
+    const m = $('#awMsg'); if(m) m.title = '보고 결과를 받지 못했습니다. 회사 사이트에서 확인한 뒤 다시 시도해 주세요.';
+  }, AT_SEND_WATCHDOG_MS);
+  Platform.report.submitWeekly(payload);
+}
+function awOnNetcusProgress(msg){ if(!AWE.armed) return false; awMsg(String(msg || ''), 'busy'); return true; }
+//  호스트 회신(두 창 모두에 온다): 이 화면이 보낸 것일 때만 받는다(armed).
+//    성공 = 회사 폼을 채워 열었다. 보낸 상태가 새 처음 상태가 되고, 임시 저장은 보고 기록이 DB 에 저장됐다는 알림(__reportWeeklySaved)이 오면 지운다.
+//    폼 채우기 회신만 보고 지우면 기록 저장이 끝내 실패했을 때 글이 어디에도 남지 않는다.
+function awOnNetcusResult(ok, msg, extra){
+  if(!AWE.armed) return false;
+  AWE.armed = false; AWE.sending = false; clearTimeout(AWE.wd);
+  if(ok === true){
+    const s = awCur();
+    __awSentSig.set(AWE.mon, awSig(s));
+    AWE.base = s;
+    awSetBusy(false);
+    awOnEdit(false);
+    awMsg(String(msg || '주간보고 폼을 채웠습니다'), 'ok');
+    return true;
+  }
+  awSetBusy(false);
+  if(!ok && extra && extra.kind === 'gate') vgFromReply(extra);
+  awMsg(AT_FAIL_MSG, 'err');
+  const m = $('#awMsg'); if(m && msg && String(msg) !== AT_FAIL_MSG) m.title = String(msg);
+  return true;
+}
+//  호스트: 주간 보고 기록이 DB 에 저장됐다(SaveWeeklyAsync 성공 뒤, 두 창 모두에 온다).
+//    보낸 모양 그대로인 그 주 임시 저장을 지우고(보낸 뒤 고친 것은 남긴다), 목록이 보이면 다시 읽어 완료로 바꾼다.
+window.__reportWeeklySaved = function(o){
+  if(PEER || !o || typeof o !== 'object') return;
+  const mon = String(o.periodStart || '');
+  if(!awIsMon(mon)) return;
+  const sig = __awSentSig.get(mon), dr = awDraftGet(mon);
+  if(sig && dr && awSig(dr) === sig) awDraftDel(mon);
+  if(sig) __awSentSig.delete(mon);
+  if(AWE.p && AWE.mon === mon){
+    const c = awCompose(AWE.base || awCur());
+    AWE.p.saved = { periodStart: mon, periodEnd: addDays(mon, 6), subject: (AWE.base || awCur()).subj, content: c.content, endwork: c.endwork, plan: c.planwork, meeting: c.resultwork, composedAt: new Date().toISOString() };
+    if(!awDirty()){ AWE.savedAt = ''; awSavedRender(); }
+    awSentRender();
+  }
+  AWL.from = ''; AWL.to = '';   // 캐시를 버린다(다음에 열 때 그 주 기록을 다시 읽는다)
+  if((ATTENDWIN && ATW.view === 'wlist') || (!ATTENDWIN && atOn() && ATT.screen === 'month' && ATT.kind === 'week')) awListLoad();
+};
+
+/* ── 글 지키기, 닫기, 화면 전환 ── */
+function awAsk(onClose){
+  __awAskFn = onClose;
+  const a = $('#awAsk'); if(!a){ if(onClose) onClose(); return; }
+  a.classList.remove('hidden');
+  const s = $('#awAskStay'); if(s) try{ s.focus(); }catch(_){}
+}
+function awAskOpen(){ const a = $('#awAsk'); return !!a && !a.classList.contains('hidden'); }
+function awAskHide(){ __awAskFn = null; const a = $('#awAsk'); if(a) a.classList.add('hidden'); }
+function awAskDone(close){
+  const fn = __awAskFn; awAskHide();
+  if(close){ awDraftFlushNow(); if(fn) fn(); return; }
+  const t = $('#awSubj'); if(t) try{ t.focus(); }catch(_){}
+}
+//  [← 주간 목록]: 쓰던 글이 있으면 묻고(닫아도 임시 저장이 남는다), 목록으로 돌아간다(근태 창은 창 안의 목록, 브라우저는 근태 탭의 목록).
+function awToList(){
+  if(!AWE.p || AWE.sending) return;
+  if(awDirty()){ awAsk(() => awGoList()); return; }
+  awDraftFlushNow();
+  awGoList();
+}
+function awGoList(){
+  awCloseEditor();
+  if(ATTENDWIN){ atwShow('wlist'); document.title = '주간보고'; }
+  else { ATT.screen = 'month'; ATT.kind = 'week'; atSyncScreen(); }
+  awListLoad();
+}
+//  [닫기]: 근태 창은 창을 닫고(쓰던 글이 있으면 묻는다), 브라우저는 목록으로 돌아간다.
+function awRequestClose(){
+  if(AWE.sending) return;
+  if(ATTENDWIN){ if(atWinCloseCheck() === 'close') atWinCloseNow(); return; }
+  awToList();
+}
+//  근태 창의 닫기 묻기(주간 화면일 때). 'close' 닫아도 된다, 'ask' 묻는 창을 띄웠다, 'busy' 보내는 중.
+function awWinCloseCheck(){
+  if(AWE.sending){ toast('보고하는 중입니다. 끝난 뒤에 닫으세요', 'warn'); return 'busy'; }
+  if(awAskOpen()) return 'ask';
+  if(awDirty()){ awAsk(() => atWinCloseNow()); return 'ask'; }
+  awDraftFlushNow();
+  return 'close';
+}
+//  Esc: 묻는 창, 주 고르기 달력, 과제 추가 메뉴 차례로 닫고, 그 밖이면 닫기 단추와 같다(근태 창 목록이면 창 닫기).
+function awEscape(){
+  if(awAskOpen()){ awAskDone(false); return true; }
+  if(!awShown()) return false;
+  if(AWE.cal.open){ awCalToggle(false); const b = $('#awWeekBtn'); if(b) try{ b.focus(); }catch(_){} return true; }
+  if(AWE.add){ const k = AWE.add; awAddOpen(''); const b = document.querySelector('#awEd [data-awadd="' + k + '"]'); if(b) try{ b.focus(); }catch(_){} return true; }
+  if(ATTENDWIN && ATW.view === 'wlist'){ if(atWinCloseCheck() === 'close') atWinCloseNow(); return true; }
+  awRequestClose();
+  return true;
+}
+function awShowEditor(payload, opt){
+  if(ATTENDWIN) return;
+  atHideTip();
+  ATT.screen = 'wedit'; ATT.kind = 'week'; atSyncScreen();
+  awEdOpen(payload, opt);
+}
+function awCloseEditor(){
+  awAskHide(); clearTimeout(AWE.timer); AWE.timer = null;
+  AWE.p = null; AWE.mon = ''; AWE.base = null; AWE.prog = []; AWE.plan = []; AWE.hours = {}; AWE.meet = ''; AWE.gen++;
+  AWE.cal.open = false; awAddOpen('');
+}
+//  근태 창의 화면 바꾸기(일간 보고, 주간 목록, 주간 편집). 한 창에 하나만 보인다.
+function atwShow(view){
+  if(!ATTENDWIN) return;
+  ATW.view = view === 'wlist' || view === 'wedit' ? view : 'day';
+  atwSync();
+}
+function atwSync(){
+  const tog = (id, show) => { const e = document.getElementById(id); if(e) e.classList.toggle('hidden', !show); };
+  tog('atEd', ATW.view === 'day'); tog('awList', ATW.view === 'wlist'); tog('awEd', ATW.view === 'wedit');
+}
+//  근태 창이 주간 payload 를 받았다. 일간 보고를 쓰던 중이면 임시 저장을 쓰고 주간으로 바꾼다.
+function awWinOpen(o){
+  if(ATW.view === 'day' && ATE.p){
+    if(ATE.sending){ toast('근태 보고를 보내는 중입니다. 끝난 뒤에 주간보고를 여세요', 'warn'); return; }
+    atDraftFlushNow(); atCloseEditor();
+  }
+  atwShow('wedit');
+  awEdOpen(o);
+}
+//  주간 화면에서 일간과 같은 새로고침(attendNav refresh)을 청한다. 메인 창이 만든 일간 payload 의 과제 목록과 신원만 받는다(awFromRefresh).
+function awWinRefresh(){
+  if(!ATTENDWIN || AWE.sending) return;
+  hpost({ cmd: 'attendNav', date: AWE.mon || todayYmd(), refresh: true });
+  if(ATW.view === 'wlist') awListLoad();
+}
+function awFromRefresh(o){
+  const p = atNormPayload(o); if(!p) return;
+  ATW.ctx = { me: p.me || ATW.ctx.me, projects: p.projects };
+  if(AWE.p){ AWE.p.projects = p.projects; if(p.me) AWE.p.me = p.me; awRender(); if(AWE.add) awAddRender(); }
+}
+
+/* ── 배선(atInit 이 부른다) ── */
+function awInit(){
+  const ed = document.getElementById('awEd');
+  if(ed){
+    const on = (id, ev, fn) => { const e = document.getElementById(id); if(e) e.addEventListener(ev, fn); };
+    ed.addEventListener('input', ev => {
+      const t = ev.target, d = t.dataset || {};
+      if(d.wt != null){ const [k, i] = d.wt.split(':'), b = awList(k)[Number(i)]; if(!b) return; b.text = t.value; atGrow(t); awOnEdit(); return; }
+      if(d.wh != null){ awHoursInput(t); return; }
+      if(t.id === 'awMeet'){ AWE.meet = t.value; atGrow(t); awOnEdit(); return; }
+      if(t.id === 'awSubj'){ AWE.subj = t.value; AWE.subjAuto = false; const tt = $('#awTitle'); if(tt) tt.textContent = awTitleText(); const h = $('#awSubjHow'); if(h) h.textContent = '직접 고침'; awOnEdit(); return; }
+      if(t.id === 'awAddQ') awAddRender();
+    });
+    //  제목을 비우고 떠나면 규칙대로 다시 정한다(빈 제목은 회사 폼이 받지 않는다).
+    on('awSubj', 'change', ev => { if(!ev.target.value.trim()){ AWE.subjAuto = true; AWE.subj = AWE.picked || weekSubjectGuess(AWE.mon); awRender(); awOnEdit(); } });
+    ed.addEventListener('focusout', ev => { const t = ev.target; if(t.dataset && t.dataset.wh != null) awHoursBlur(t); });
+    ed.addEventListener('wheel', ev => { const t = ev.target; if(t && t.dataset && t.dataset.wh != null && t === document.activeElement) ev.preventDefault(); }, { passive: false });
+    ed.addEventListener('change', ev => { const t = ev.target; if(t.dataset && t.dataset.wpick != null){ const [k, i] = t.dataset.wpick.split(':'); awBlockPick(k, Number(i), t.value); } });
+    ed.addEventListener('keydown', ev => {
+      const t = ev.target;
+      if(t.id === 'awAddQ' && ev.key === 'Enter'){ ev.preventDefault(); const it = document.querySelector('#awAddList [data-awaddname]:not([disabled])'); if(it) awAddPick(it.dataset.awaddname); return; }
+      const r = t.closest && t.closest('tr[data-awpick]');
+      if(r && (ev.key === 'Enter' || ev.key === ' ')){ ev.preventDefault(); awCalPick(r.dataset.awpick, r.dataset.awttl); }
+    });
+    ed.addEventListener('click', ev => {
+      const T = ev.target, c = s => T.closest && T.closest(s);
+      let b;
+      if((b = c('button.at-bx[data-wx]')) && !b.disabled){ const [k, i] = b.dataset.wx.split(':'); awBlockRemove(k, Number(i)); return; }
+      if((b = c('[data-awadd]')) && !b.disabled){ awAddOpen(AWE.add === b.dataset.awadd ? '' : b.dataset.awadd); return; }
+      if((b = c('[data-awaddname]')) && !b.disabled){ awAddPick(b.dataset.awaddname); return; }
+      if((b = c('[data-awcm]'))){ awCalMove(Number(b.dataset.awcm)); return; }
+      if((b = c('tr[data-awpick]'))){ awCalPick(b.dataset.awpick, b.dataset.awttl); return; }
+      if((b = c('[data-awtab]')) && !b.disabled){ awPTabSet(b.dataset.awtab, true); return; }
+    });
+    on('awAddNew', 'click', awCatNew);
+    on('awWeekBtn', 'click', () => awCalToggle(!AWE.cal.open));
+    on('awPrev', 'click', () => awNav(-1));
+    on('awNext', 'click', () => awNav(1));
+    on('awBack', 'click', awToList);
+    on('awClose', 'click', awRequestClose);
+    on('awReset', 'click', awReset);
+    on('awSend', 'click', awSubmit);
+    on('awImpDaily', 'click', () => awImpDaily(false));
+    on('awImpPlan', 'click', () => awImpPlan(false));
+    on('awAskStay', 'click', () => awAskDone(false));
+    on('awAskClose', 'click', () => awAskDone(true));
+    on('awAsk', 'click', ev => { if(ev.target && ev.target.id === 'awAsk') awAskDone(false); });
+    //  달력과 과제 추가 메뉴는 바깥을 누르면 닫는다
+    document.addEventListener('mousedown', ev => {
+      const c = s => ev.target.closest && ev.target.closest(s);
+      if(AWE.cal.open && !c('.aw-wpick')) awCalToggle(false);
+      if(AWE.add && !c('#awAddMenu') && !c('[data-awadd]')) awAddOpen('');
+    });
+    window.addEventListener('resize', () => { if(awShown()) document.querySelectorAll('#awEd textarea').forEach(atGrow); });
+  }
+  const list = document.getElementById('awList');
+  if(list){
+    list.addEventListener('click', ev => {
+      const T = ev.target, c = s => T.closest && T.closest(s);
+      let b;
+      if((b = c('[data-atkind]'))){ atKindSet(b.dataset.atkind); return; }
+      if((b = c('[data-awact="new"]')) && !b.disabled){ awNewWeek(); return; }
+      if((b = c('tr[data-awmon]'))) awOpen(b.dataset.awmon);
+    });
+    list.addEventListener('keydown', ev => {
+      const r = ev.target.closest && ev.target.closest('tr[data-awmon]');
+      if(r && (ev.key === 'Enter' || ev.key === ' ')){ ev.preventDefault(); ev.stopPropagation(); awOpen(r.dataset.awmon); }
+    });
+  }
+  window.addEventListener('pagehide', () => { try{ awDraftFlushNow(); }catch(_){} });
 }
 
 /* ================================================================================

@@ -231,9 +231,12 @@ namespace TaskCalendarWidget
         //   위젯은 주간을 전송하지 않고 사용자가 열린 창에서 직접 제출한다(NetcusService.cs 의 WeekFill).
         //   그래서 우리가 아는 사실은 '작성했다'까지이고 컬럼 이름도 composed_at 이다(§5.9.5).
         //   사용자가 폼에서 보완한 내용(notendwork·problem·차주계획 보완분)은 여기 담기지 않는다.
+        //   meeting(회의내용, 구조 20, ATTENDANCE-PLAN §13.3): 남기지 않으면 완료한 주를 다시 열 때 빈칸이 되고,
+        //   그대로 다시 보내면 인트라넷의 회의내용을 빈칸으로 덮어쓴다(결정 13). 그래서 폼에 채운 값을 같이 남긴다.
         public async Task<bool> SaveWeeklyAsync(
             string? loginId, string? sdate, string? edate,
-            string? subject, string? content, string? endwork, string? plan)
+            string? subject, string? content, string? endwork, string? plan, string? meeting)
+            //  meeting null = 이 요청은 회의내용을 다루지 않았다(보고서 창의 옛 주간 전송). 새 행은 NULL, 있던 행은 그 값을 그대로 둔다.
         {
             LastFailure = null;
             var ps = ParseDate(sdate);
@@ -251,10 +254,10 @@ namespace TaskCalendarWidget
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText =
                     "INSERT INTO cal_report_weekly " +
-                    "(user_id, period_start, period_end, subject, content, endwork, plan, composed_at) " +
-                    "VALUES (@u, @s, @e, @sj, @c, @ew, @pl, @at) " +
+                    "(user_id, period_start, period_end, subject, content, endwork, plan, meeting, composed_at) " +
+                    "VALUES (@u, @s, @e, @sj, @c, @ew, @pl, @mt, @at) " +
                     "ON DUPLICATE KEY UPDATE period_end=VALUES(period_end), subject=VALUES(subject), " +
-                    "content=VALUES(content), endwork=VALUES(endwork), plan=VALUES(plan), composed_at=VALUES(composed_at)";
+                    "content=VALUES(content), endwork=VALUES(endwork), plan=VALUES(plan), meeting=COALESCE(VALUES(meeting), meeting), composed_at=VALUES(composed_at)";
                 cmd.Parameters.AddWithValue("@u", userId);
                 cmd.Parameters.AddWithValue("@s", ps.Value);
                 cmd.Parameters.AddWithValue("@e", pe.Value);
@@ -262,6 +265,7 @@ namespace TaskCalendarWidget
                 cmd.Parameters.AddWithValue("@c", content ?? "");
                 cmd.Parameters.AddWithValue("@ew", endwork ?? "");
                 cmd.Parameters.AddWithValue("@pl", plan ?? "");
+                cmd.Parameters.AddWithValue("@mt", (object?)meeting ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@at", DateTime.UtcNow);
                 await cmd.ExecuteNonQueryAsync(cts.Token);
 
@@ -328,6 +332,65 @@ namespace TaskCalendarWidget
             {
                 _log("보고 기록 목록 읽기 실패: " + ex.Message);
                 DbErrors.Observe(ex, _log);   // 연결 끊김 알림과 실패 분류(OFFLINE-RESILIENCE S12)
+                return null;
+            }
+        }
+
+        // ================================================================================
+        //  공개 API 4: 주간보고 목록 읽기 (ATTENDANCE-PLAN §13.1, §13.3)
+        // ================================================================================
+        //   근태 탭 주간 목록(상태 완료, 날짜)과 주간 편집(완료한 주 열기, 지난주 차주계획 가져오기)이 쓴다.
+        //   이 앱으로 작성한 주만 있다(인트라넷에 직접 쓴 주는 [인트라넷에서 확인]으로 본다).
+        //   사람은 호스트가 세션에서 읽어 넘긴다(payload 의 me 를 믿지 않는다). 기간은 period_start 기준 from 이상 to 이하,
+        //   ListMaxDays 일까지(일간과 같은 상한. 목록 한 해치면 넉넉하다).
+        //   반환: [{periodStart, periodEnd, subject, content, endwork, plan, meeting, composedAt}] (최근 주가 위) / 실패나 잘못된 인자는 null.
+        //   meeting 이 NULL 인 행(구조 20 전에 작성한 주)은 빈 글로 준다.
+        public async Task<List<Dictionary<string, object?>>?> ListWeeklyAsync(string? loginId, DateTime from, DateTime to)
+        {
+            from = from.Date; to = to.Date;
+            if (string.IsNullOrEmpty(loginId)) { _log("주간보고 목록 건너뜀: 로그인 사용자를 모른다"); return null; }
+            if (from > to || (to - from).TotalDays > ListMaxDays) { _log("주간보고 목록 건너뜀: 기간이 올바르지 않다"); return null; }
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await using var conn = await OpenReadAsync(cts.Token);
+                int userId = await ResolveUserIdAsync(conn, loginId, cts.Token);
+
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText =
+                    "SELECT period_start, period_end, subject, content, endwork, plan, COALESCE(meeting, '') AS meeting, composed_at " +
+                    "FROM cal_report_weekly WHERE user_id=@u AND period_start BETWEEN @f AND @t ORDER BY period_start DESC";
+                cmd.Parameters.AddWithValue("@u", userId);
+                cmd.Parameters.AddWithValue("@f", from);
+                cmd.Parameters.AddWithValue("@t", to);
+                var rows = new List<Dictionary<string, object?>>();
+                await using (var r = await cmd.ExecuteReaderAsync(cts.Token))
+                {
+                    while (await r.ReadAsync(cts.Token))
+                    {
+                        var at = r.IsDBNull(7) ? (DateTime?)null : r.GetDateTime(7);
+                        rows.Add(new Dictionary<string, object?>
+                        {
+                            ["periodStart"] = r.GetDateTime(0).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                            ["periodEnd"] = r.GetDateTime(1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                            ["subject"] = r.IsDBNull(2) ? "" : r.GetString(2),
+                            ["content"] = r.IsDBNull(3) ? "" : r.GetString(3),
+                            ["endwork"] = r.IsDBNull(4) ? "" : r.GetString(4),
+                            ["plan"] = r.IsDBNull(5) ? "" : r.GetString(5),
+                            ["meeting"] = r.IsDBNull(6) ? "" : r.GetString(6),
+                            //  composed_at 은 UTC 로 쓴다(쓰기 프리앰블, DateTime.UtcNow). 읽을 때 Z 를 붙인다(일간 sentAt 과 같다).
+                            ["composedAt"] = at == null ? "" : at.Value.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture),
+                        });
+                    }
+                }
+                _log("주간보고 목록: " + from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " ~ " +
+                     to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " (user_id=" + userId + ", " + rows.Count + "건)");
+                return rows;
+            }
+            catch (Exception ex)
+            {
+                _log("주간보고 목록 읽기 실패: " + ex.Message);
+                DbErrors.Observe(ex, _log);   // 연결 끊김 알림과 실패 분류(일간 목록과 같다)
                 return null;
             }
         }

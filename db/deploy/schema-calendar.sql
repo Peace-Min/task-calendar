@@ -1511,6 +1511,7 @@ CREATE TABLE cal_report_weekly (
   content      MEDIUMTEXT        NOT NULL,                                  -- 과제투입시간. 집계는 일간 원자로 한다(이중 계산 방지)
   endwork      MEDIUMTEXT        NOT NULL,                                  -- 진행사항
   plan         MEDIUMTEXT        NOT NULL,                                  -- 차주계획(캘린더가 만든 머리표)
+  meeting      MEDIUMTEXT        NULL,                                      -- 회의내용(구조 20, 2026-10-29). NULL = 이 칸이 생기기 전에 작성한 주
   composed_at  DATETIME(3)       NOT NULL,                                  -- 캘린더가 이 주간보고를 작성한 시각
   created_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
@@ -1757,9 +1758,12 @@ CREATE TABLE cal_schema_meta (
 --   - 19 (2026-10-26): 과제 순서(이관 조각 db/deploy/migrations/v19-project-order.sql, docs/PROJECT-ADMIN-UX.md).
 --       project.sort_no(그 구분 안의 순서, 정본 schema-structure.sql)를 더하고 section_code, status_code 의 표 설명에서
 --       고정 번호 문구를 지운다. 이 파일의 cal_* 는 바뀌지 않았다. 앱 상수는 DbGate.AppStructureVersion(19).
+--   - 20 (2026-10-29): 주간보고 회의내용(이관 조각 db/deploy/migrations/v20-weekly-meeting.sql, docs/ATTENDANCE-PLAN.md §13.4).
+--       cal_report_weekly.meeting(MEDIUMTEXT NULL, plan 뒤)을 더한다. 기존 행은 NULL 로 두고 앱은 빈 글로 읽는다.
+--       앱 상수는 DbGate.AppStructureVersion(20).
 --   ★ app_ 세 키는 빈 값으로 시딩한다(새 버전 없음). 배포 때 release-v<버전>.sql 이 채운다(DB-RELEASE-OPS §4).
 --   ★ 첫 줄(db_structure_version)의 모양을 바꾸지 말 것. setup-taskcalendar.ps1 과 시험이 이 줄에서 기대값을 읽는다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '19', UTC_TIMESTAMP(3)),
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '20', UTC_TIMESTAMP(3)),
   ('db_updating', '0', UTC_TIMESTAMP(3)),
   ('app_latest_version', '', UTC_TIMESTAMP(3)),
   ('app_installer_file', '', UTC_TIMESTAMP(3)),

@@ -340,7 +340,7 @@ test('변이③b: 일간 저장을 기다리지 않거나 결과를 고정 성�
 });
 
 test('변이④: 주간 저장을 채우기 성공 통지 앞으로 옮기면 배선④ 가 실패한다', () => {
-  const call = '                _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork);';
+  const call = '                _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork);';   // 회의내용(결정 13)까지
   const msg = '                NetcusResult(true, "주간보고 작성 폼을 채웠습니다';
   assert.ok(netcus.includes(call), '주간 저장 호출을 찾지 못했다');
   const bad = mutate(msg, call + '\n' + msg, netcus).replace(call + '\n', (m, off) => off > netcus.indexOf(msg) ? '' : m);
