@@ -629,35 +629,48 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
 .check{display:flex !important;align-items:center;gap:7px;font-size:var(--fs-body) !important;color:var(--text) !important;cursor:pointer}
 .check input{width:15px;height:15px;accent-color:var(--accent)}
 
-/* ---------- category modal (내 과제: 목록만, docs/TASK-ADD-UX.md D1~D5) ----------
-   줄 = ⠿ 손잡이, 색 점, 이름(그 아래 메모), 구분 열(공식, 기본, 일반), 건수, ⋯ 하나. 맨 위에 열 머리글(과제, 구분, 건수).
-   ★ 구분은 이름 옆 배지가 아니라 고정 폭 열이다(위아래로 훑어 가른다). 열 폭은 머리글과 줄이 한 규칙이다(두 벌이면 갈린다).
-   ★ 목록 칸(#catWrap)의 폭이 기준이다(container). 380px 미만이면 ⠿ 를 숨기고 순서는 ⋯ 메뉴로 바꾼다. */
-.cat-head-act{display:flex;align-items:center;gap:var(--sp-2);flex:none}
-.cat-wrap{container-type:inline-size}
-.cat-head,.cat-row{display:grid;grid-template-columns:16px 12px minmax(0,1fr) 46px 44px 30px;align-items:center;column-gap:10px}
-.cat-head{padding:0 9px 4px;font-size:var(--fs-micro);color:var(--faint-text)}
-.cat-head .ch-kind{text-align:center}
+/* ---------- category modal (내 과제: 목록만, docs/TASK-ADD-UX.md D1~D5, 목록 정리 2026-10-30) ----------
+   머리 = 제목과 ✕ 만. 목록은 테두리 하나짜리 한 상자(#catWrap)이고 줄은 1px 가로선으로 가른다.
+   줄 = ⠿ 손잡이, 색 점, 이름(공식이면 바로 뒤에 작은 '공식' 표, 그 아래 메모), 기록 수, ⋯ 하나. 상자 맨 위 줄이 열 머리글(과제, 기록).
+   ★ 열 폭은 머리글과 줄이 한 규칙이다(두 벌이면 갈린다). 추가는 상자 아래의 점선 단추 하나이고 본문이 스크롤돼도 아래에 붙는다(sticky).
+   ★ 목록 칸(#catWrap)의 폭이 기준이다(container). 380px 미만이면 ⠿ 를 숨기고 순서는 ⋯ 메뉴로 바꾼다.
+   ★ 상자에 overflow:hidden 을 걸지 않는다(줄 ⋯ 메뉴가 줄 아래로 뜨기 때문). 둥근 모서리는 첫 줄(머리글)과 마지막 줄이 직접 진다. */
+.cat-wrap{container-type:inline-size;border:1px solid var(--line);border-radius:var(--r-md)}
+.cat-head,.cat-row{display:grid;grid-template-columns:16px 12px minmax(0,1fr) 44px 30px;align-items:center;column-gap:10px}
+.cat-head{height:38px;padding:0 6px 0 8px;background:var(--bg);border-bottom:1px solid var(--line);border-radius:calc(var(--r-md) - 1px) calc(var(--r-md) - 1px) 0 0;font-size:var(--fs-meta);font-weight:600;color:var(--muted)}
 .cat-head .ch-count{text-align:right}
-.cat-row{position:relative;padding:8px;border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:6px;background:var(--panel);cursor:pointer}
+.cat-row{position:relative;min-height:40px;padding:6px 6px 6px 8px;cursor:pointer}
+.cat-row + .cat-row{border-top:1px solid var(--line)}
+.cat-row:last-child{border-radius:0 0 calc(var(--r-md) - 1px) calc(var(--r-md) - 1px)}
 .cat-row:hover{background:var(--hover-bg)}
 .cat-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .cat-grip{color:var(--faint);cursor:grab;user-select:none;text-align:center;font-size:16px;line-height:1;touch-action:none}
 .cat-row:hover .cat-grip{color:var(--muted)}
 .cat-dot{width:12px;height:12px;border-radius:50%;flex:none}
 .cat-main{min-width:0}
-.cat-name{font-weight:600;font-size:var(--fs-emph)}
+.cat-name{display:flex;align-items:center;gap:6px;min-width:0;font-weight:600;font-size:var(--fs-emph)}
 /* 긴 이름: 두 줄까지 그대로, 넘치면 앞부분 … 끝 8자(catFitNames, D14). 두 목록(내 과제, 추가 창 표)이 같은 칸 규칙을 쓴다 */
-.cat-nm{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:keep-all;overflow-wrap:anywhere;line-height:1.35}
+.cat-nm{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:keep-all;overflow-wrap:anywhere;line-height:1.35;min-width:0}
 .cat-desc{font-size:var(--fs-meta);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cat-kind{justify-self:center;width:46px;text-align:center;font-size:var(--fs-micro);font-weight:600;line-height:1.6;border-radius:999px;border:1px solid var(--line-2);color:var(--muted);white-space:nowrap}
-.cat-kind.official{border-color:var(--accent);color:var(--accent-2);background:var(--accent-soft)}
-.cat-kind.default{background:var(--dim-bg);color:var(--text)}
-.cat-kind.gone{border-color:var(--danger-line);color:var(--danger-text);background:var(--danger-soft)}
-.cat-count{text-align:right;font-size:var(--fs-meta);color:var(--muted);white-space:nowrap}
+.cat-tag{flex:none;font-size:var(--fs-micro);font-weight:600;line-height:1.5;padding:0 5px;border-radius:4px;color:var(--accent-2);background:var(--accent-soft);white-space:nowrap}
+.cat-tag.gone{color:var(--danger-text);background:var(--danger-soft)}
+.cat-count{text-align:right;font-size:var(--fs-meta);color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
+.cat-count.zero{color:var(--faint-text)}
 .cat-empty{padding:18px;text-align:center;color:var(--muted);font-size:var(--fs-body)}
 .cat-more{border:1px solid transparent;background:none;border-radius:var(--r-sm);width:30px;height:28px;padding:0;cursor:pointer;font-size:16px;line-height:1;color:var(--muted);font-family:inherit}
 .cat-more:hover,.cat-more[aria-expanded="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2)}
+/* 머리 ✕ — 아이콘 단추(32px) */
+.cat-x{display:inline-flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;margin-right:-6px;padding:0;border:1px solid transparent;border-radius:var(--r-sm);background:transparent;color:var(--muted);cursor:pointer}
+.cat-x:hover{background:var(--hover-bg);color:var(--text)}
+.cat-x:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.cat-x svg{width:16px;height:16px}
+/* 목록 아래 [+ 과제 추가] — 본문(.modal-body)이 스크롤되면 아래에 붙고, 위쪽은 패널색으로 흐려진다 */
+.cat-add{position:sticky;bottom:0;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:42px;margin-top:10px;padding:0;
+  border:1.5px dashed var(--accent);border-radius:var(--r-md);background:var(--panel);color:var(--accent-2);font:inherit;font-weight:700;cursor:pointer;
+  box-shadow:0 -10px 12px -8px var(--panel),0 24px 0 0 var(--panel)}   /* 위는 흐림, 아래는 본문 여백을 덮어 스크롤된 줄이 단추 밑으로 비치지 않게 */
+.cat-add:hover{background:var(--accent-soft);border-style:solid}
+.cat-add:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cat-add .cat-plus{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--on-accent);font-size:14px;line-height:1}
 /* ⋯ 메뉴: 그 줄 아래에 뜬다. 목록 칸 아래가 모자라면 위로 뜬다(.up, catMenuOpen 이 잰다) */
 .cat-menu{position:absolute;right:6px;top:calc(100% - 2px);z-index:8;min-width:220px;padding:4px;cursor:default;
   background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:var(--shadow)}
@@ -674,11 +687,11 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
 .cat-row.cat-drag-src{opacity:.45}
 .cat-row.cat-drop-before{box-shadow:0 -2px 0 var(--accent)}
 .cat-row.cat-drop-after{box-shadow:0 2px 0 var(--accent)}
-.cat-drag-ghost{position:fixed;z-index:60;margin:0;pointer-events:none;box-shadow:var(--shadow);opacity:.96}
+.cat-drag-ghost{position:fixed;z-index:60;margin:0;pointer-events:none;box-shadow:var(--shadow);opacity:.96;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md)}
 body.cat-dragging,body.cat-dragging *{cursor:grabbing!important;user-select:none}
 @container (max-width:379px){
-  .cat-head,.cat-row{grid-template-columns:12px minmax(0,1fr) 46px 40px 30px;column-gap:8px}
-  .cat-grip,.cat-head .ch-grip{display:none}
+  .cat-head,.cat-row{grid-template-columns:12px minmax(0,1fr) 40px 30px;column-gap:8px}
+  .cat-grip,.cat-head .ch-grip,.cat-head .ch-dot{display:none}
 }
 /* 과제 수정 창(#catEditModal, D4): 이름 칸은 한 줄에서 시작해 내용만큼 늘어난다(ceGrow). 손으로 늘이는 손잡이는 없다 */
 .modal textarea#ceName{resize:none;overflow:hidden;min-height:0;line-height:1.4;display:block}
@@ -806,10 +819,6 @@ body.cat-dragging,body.cat-dragging *{cursor:grabbing!important;user-select:none
    두 줄 경계에 걸려 한 버튼만 홀로 접혔다(2026-09-18 §3.2). 좁으면 전부 컴팩트로 내려 한 줄에 담고,
    그래도 넘치면 .modal-foot 의 flex-wrap 이 **가지런히** 접는다(줄 간격은 이미 gap:8px 이 겸한다). */
 @media (max-width:660px){ #officialModal .modal-foot .btn{padding:6px 8px;font-size:var(--fs-meta)} }   /* 500px 에서 0.2px 부족으로 접혔다(V3) — 9→8 */
-/* 과제 모달 푸터 = [🔗 공식 과제로 연결] [닫기] 두 개다(2026-10-30 TASK-ADD-UX: 입력 폼과 「수정 취소」「과제 추가」가 빠졌다).
-   예전 ≤440px 에서 연결 버튼 글자를 숨기던 규칙은 버튼 넷일 때의 것이라 없앴다(두 버튼은 380px 에서 한 줄에 든다).
-   320px 에서는 #officialModal 과 같은 컴팩트 버튼으로 내린다(2026-09-23 §3.4-A). */
-@media (max-width:360px){ #categoryModal .modal-foot .btn{padding:6px 8px;font-size:var(--fs-meta)} }
 /* 편집폼 라벨 옆의 '관리 열기' 링크(.off-ed-lbrow/.off-ed-mgr)는 2026-09-18 사용자 결정으로 없어졌다 —
    발주처·구분·상태 마스터는 공식 과제 화면 하단 줄의 **별도 버튼**이 연다(직급·소속과 같은 방식).
    편집 폼은 과제만 고친다: 고르기만 하고 마스터를 늘리지 않는다. */
@@ -2558,11 +2567,6 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
    ★ offSyncExportBtn 이 이 셋에 style.display 를 '' 로 비워 두므로(위젯) 이 CSS 가 이긴다 — 브라우저에서는 그 함수가 'none' 으로 둔다. */
 #officialModal:not(.docked) #offNew,#officialModal:not(.docked) .off-d-act{display:none}
 #officialModal #offCustMgr,#officialModal #offCodeMgr,#officialModal #offTrash{display:none}
-/* 「🏷️ 내 과제」 머리 — 제목 + 부제(H10) · 공식 과제 편집 지름길(H8 · 관리자) */
-.cat-title{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;min-width:0}
-.cat-sub{font-size:var(--fs-meta);color:var(--muted)}
-.cat-admin-row{display:flex;justify-content:flex-end;margin:-4px 0 10px}
-.cat-admin-row .btn{gap:6px}
 /* 좁은 창(H11) — 왼쪽 목록 → 묶음 버튼 아래 고르기 상자(그 묶음 항목만) · 묶음 버튼은 둘 다 한 줄(설명 줄 숨김 · 이름 줄바꿈 금지) */
 @media (max-width:720px){
   .ah-seg{padding:10px 12px}
@@ -3721,24 +3725,17 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
 <div class="overlay hidden" id="categoryModal">
   <div class="modal">
     <!-- H10: 툴바 「과제 관리」 → 「내 과제」: 이 창은 **내 캘린더의 과제 목록**이다(회사 과제 편집은 「⚙ 관리」).
-         TASK-ADD-UX D1~D3(2026-10-30): 목록만 보인다. 추가는 머리의 [＋ 과제 추가](#catAddModal), 수정은 줄을 누르면 뜨는 작은 창(#catEditModal)이다. -->
-    <div class="modal-head"><div class="cat-title"><h2>🏷️ 내 과제</h2><span class="cat-sub">내 캘린더에서 쓰는 과제(색, 순서)</span></div><div class="cat-head-act"><button type="button" class="btn sm primary" id="btnCatAdd">＋ 과제 추가</button><button class="x" data-close aria-label="닫기">×</button></div></div>
+         TASK-ADD-UX D1~D3(2026-10-30): 목록만 보인다. 추가는 목록 아래의 [+ 과제 추가](#catAddModal), 수정은 줄을 누르면 뜨는 작은 창(#catEditModal)이다. -->
+    <div class="modal-head"><h2>🏷️ 내 과제</h2><button type="button" class="cat-x" data-close aria-label="닫기" title="닫기"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div>
     <div class="modal-body">
-      <!-- H8: 관리자로 확인된 때만 보인다(ahSyncEntries). 누르면 이 창을 닫고 「⚙ 관리」의 공식 과제 항목을 연다(겹쳐 띄우지 않는다). -->
-      <div class="cat-admin-row hidden" id="catAdminRow"><button type="button" class="btn sm" id="btnCatAdmin">⚙ 공식 과제 편집은 관리에서 › <span class="ah-pill">관리자</span></button></div>
       <!-- 목록 칸이 열 줄이기의 기준이다(container). 좁으면(380px 미만) ⠿ 를 숨기고 순서는 ⋯ 메뉴로 바꾼다. -->
       <div class="cat-wrap" id="catWrap">
-        <div class="cat-head" id="catHead" aria-hidden="true"><span class="ch-grip"></span><span></span><span>과제</span><span class="ch-kind">구분</span><span class="ch-count">건수</span><span></span></div>
+        <div class="cat-head" id="catHead" aria-hidden="true"><span class="ch-grip"></span><span class="ch-dot"></span><span>과제</span><span class="ch-count">기록</span><span></span></div>
         <div id="catList" role="list" aria-label="내 과제 목록"></div>
       </div>
+      <button type="button" class="cat-add" id="btnCatAdd"><span class="cat-plus" aria-hidden="true">+</span>과제 추가</button>
       <!-- 순서 이동 낭독: 「<과제명>: 3번째에서 2번째로 옮겼습니다」(catAnnounce, 끌기와 ⋯ 메뉴의 순서 항목 한 번마다). -->
       <div class="sr-only" id="catLive" aria-live="polite"></div>
-    </div>
-    <div class="modal-foot">
-      <!-- 일반 과제 → 공식 과제 연결(P3.4, D8). 로컬 데이터만 바꾸므로 오프라인에서도 동작한다. 일반 과제가 없으면 숨는다(renderCatModal). -->
-      <button class="btn" type="button" id="btnRelinkOpen" title="공식 과제로 연결" aria-label="공식 과제로 연결">🔗<span class="btn-label"> 공식 과제로 연결</span></button>
-      <span class="spacer"></span>
-      <button class="btn" data-close>닫기</button>
     </div>
   </div>
 </div>
@@ -12804,11 +12801,10 @@ function ahProbe(){
 function ahRoleNow(){ const me = ahMe(); return (me && __ahRole.login === me && __ahRole.admin !== null) ? (__ahRole.admin === true) : null; }
 const AH_DENY_MSG = '관리자만 사용할 수 있습니다';
 function ahProbeIfUnknown(){ const me = ahMe(); if(me && __ahRole.login !== me) ahProbe(); }
-//  입구 ①③의 표시를 지금 값에 맞춘다(① ⋯ 메뉴 · ③ 내 과제 — ② 사용자 정보 카드는 J5 로 없앴다).
+//  입구 ①③의 표시를 지금 값에 맞춘다(① ⋯ 메뉴만 남는다. ② 사용자 정보 카드는 J5 로, ③ 내 과제 지름길은 2026-10-30 에 없앴다).
 function ahSyncEntries(){
   const on = ahIsAdmin();
   const mm = document.getElementById('mmAdmin'); if(mm) mm.classList.toggle('hidden', !on);          // ① ⋯ 메뉴(J1)
-  const row = document.getElementById('catAdminRow'); if(row) row.classList.toggle('hidden', !on);   // ③ 내 과제(H8·J4)
 }
 function ahPaintWho(){
   const w = document.getElementById('ahWho'); if(!w) return;
@@ -13434,18 +13430,17 @@ function catFitWatch(){
 // 줄 하나. 건수는 일정과 할 일 합계(catUsageCount, 빼기 관문과 같은 숫자)이고 title 에 나눠 적는다.
 //   공식 과제가 DB 에서 사라졌으면(dbGone) 구분 칸에 '삭제됨'(라벨 유지용으로만 남은 과제).
 function catRowHtml(c){
-  const kind = catKindOf(c), nm = esc(c.name), n = catDataCounts(c.id);
-  const kindCell = (kind === 'official' && c.dbGone)
-    ? `<span class="cat-kind gone" title="공식 과제 목록에서 사라진 과제입니다">삭제됨</span>`
-    : `<span class="cat-kind ${kind}">${CAT_KIND_LABEL[kind]}</span>`;
+  const kind = catKindOf(c), nm = esc(c.name), cnt = catUsageCount(c.id);
+  const tag = (kind === 'official' && c.dbGone)
+    ? `<span class="cat-tag gone" title="공식 과제 목록에서 사라진 과제입니다">삭제됨</span>`
+    : (kind === 'official' ? `<span class="cat-tag">${CAT_KIND_LABEL.official}</span>` : '');
   return `<div class="cat-row" role="listitem" tabindex="0" data-id="${esc(c.id)}" data-kind="${kind}"${kind === 'default' ? ' data-default="1"' : ''} aria-label="${nm} 수정">`
     + `<span class="cat-grip" data-catgrip aria-hidden="true" title="끌어서 순서 바꾸기">⠿</span>`
     + `<span class="cat-dot" style="background:${validColor(c.color)}"></span>`
-    + `<div class="cat-main"><div class="cat-name"><span class="cat-nm" data-full="${nm}" title="${nm}">${nm}</span></div>`
+    + `<div class="cat-main"><div class="cat-name"><span class="cat-nm" data-full="${nm}" title="${nm}">${nm}</span>${tag}</div>`
     +   (c.desc ? `<div class="cat-desc" title="${esc(c.desc)}">${esc(c.desc)}</div>` : '')
     + `</div>`
-    + kindCell
-    + `<span class="cat-count" title="일정 ${n.entries}건, 할 일 ${n.todos}건">${catUsageCount(c.id)}건</span>`
+    + `<span class="cat-count${cnt ? '' : ' zero'}" title="기록 ${cnt}개">${cnt}</span>`
     + `<button type="button" class="cat-more" data-catmore aria-haspopup="menu" aria-expanded="false" aria-label="${nm} 더 보기" title="더 보기">⋯</button>`
     + `</div>`;
 }
@@ -13504,8 +13499,6 @@ function renderCatModal(){
   // 실제 순서 그대로 한 줄로(개인·공식 섞임, R1). 이 순서가 보고서 행·필터 막대·과제 선택에 그대로 쓰인다(R4).
   list.innerHTML = has ? state.categories.map(c => catRowHtml(c)).join('') : `<div class="cat-empty">등록된 과제가 없습니다.</div>`;
   { const h = document.getElementById('catHead'); if(h) h.classList.toggle('hidden', !has); }
-  // 하단 [🔗 공식 과제로 연결] 은 일반 과제가 하나라도 있을 때만(D8)
-  { const b = document.getElementById('btnRelinkOpen'); if(b) b.classList.toggle('hidden', !state.categories.some(c => catKindOf(c) === 'personal')); }
   // 수정 창이 다루던 과제가 사라졌으면(빼기, 재연결, DB 재조회) 창을 닫는다. 남겨 두면 저장이 조용히 아무 일도 안 하는 유령 창이 된다.
   if(__catEditId && !state.categories.some(c => c.id === __catEditId)){ __catEditId = null; closeModal('#catEditModal'); }
   catFitNames(list);
@@ -14084,7 +14077,6 @@ function netcusManualGuide(){
 }
 function openCatModal(){
   renderCatModal();
-  ahSyncEntries();         // H8: 「⚙ 공식 과제 편집은 관리에서 ›」는 관리자로 확인된 때만
   openModal('#categoryModal');
 }
 
@@ -20989,8 +20981,7 @@ function bind(){
   { const b = $('#usPermReload'); if(b) b.addEventListener('click', loadUserPerm); }   // 관리자가 방금 역할을 바꿨을 때의 재조회 경로
   //  ★ 「구성원 보기」(openMembers)·「구성원 편집」(openUserAdmin)의 사용자 정보 입구는 없앴다(J5 · docs/ADMIN-HUB-2.md) — 두 함수는 남는다:
   //    구성원 편집은 「⚙ 관리」의 구성원 항목이 부르고, 구성원 보기 창은 다음 정리 때 시험과 함께 걷는다.
-  //  「⚙ 관리」 — 입구 ③ 내 과제의 공식 과제 편집 지름길(입구 창을 닫고 연다 — 겹치지 않는다). ① ⋯ 메뉴는 위 ⋯ 배선이 묶는다.
-  { const b = $('#btnCatAdmin'); if(b) b.addEventListener('click', () => openAdminHub('projects')); }
+  //  「⚙ 관리」 — 입구는 ⋯ 메뉴 하나다(내 과제 창의 지름길은 2026-10-30 에 없앴다).
   setupAdminHub();
   { const b = $('#mbSearch'); if(b) b.addEventListener('input', filterMembers); }
   //  ★ 검색은 **디바운스**한다(#sInput 과 같은 180ms · 2026-09-18) — 한 글자마다 목록을 통째로 다시
@@ -21717,8 +21708,7 @@ function bind(){
   { const sel = $('#otNewParent'); if(sel) sel.addEventListener('change', () => { const b = $('#otAddBtn'); if(b) b.disabled = otAddDisabled(); }); }
   { const box = $('#otList'); if(box) box.addEventListener('click', otListClick); }
 
-  /* 기존 과제 재연결(P3.4) — 로컬 전용(DB 쓰기 없음)이라 오프라인에서도 연다 */
-  { const b = $('#btnRelinkOpen'); if(b) b.addEventListener('click', openRelinkModal); }
+  /* 기존 과제 재연결(P3.4) — 로컬 전용(DB 쓰기 없음). 입구는 내 과제 줄 ⋯ 메뉴의 '공식 과제로 연결…'(일반 과제) 하나다 */
   // 재연결 목록: [공식 과제 선택…] → 팝업 / [해제] → 개인으로 유지
   { const box = $('#rlList'); if(box) box.addEventListener('click', ev => {
       const pk = ev.target.closest('[data-rlpick]'); if(pk){ openRelinkPick(pk.dataset.rlpick); return; }

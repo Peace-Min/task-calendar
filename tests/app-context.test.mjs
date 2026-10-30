@@ -2483,7 +2483,7 @@ if (!JSDOM) {
       // 과제 관리 행
       const row = ev("catRowHtml(state.categories.find(function(c){return c.id==='db-u1';}))");
       assert.ok(!/cat-desc/.test(row), '과제관리 행에 부제(cat-desc)가 남아 있다');
-      assert.ok(/통상u1/.test(row) && /<span class="cat-kind official">공식<\/span>/.test(row), '이름과 구분 열(공식)은 유지돼야 한다');
+      assert.ok(/통상u1/.test(row) && /<span class="cat-tag">공식<\/span>/.test(row), '이름과 공식 표는 유지돼야 한다');
       assert.ok(!/cat-badge|>DB</.test(row), '「DB」 배지가 남았다(TASK-ADD-UX D17: 구분 열의 「공식」)');
     });
 
@@ -2757,7 +2757,7 @@ if (!JSDOM) {
     test('소유권 분리: 공식 과제 줄이 메모를 표시하고 ⋯ 에 [수정]과 [내 캘린더에서 빼기]를 준다', () => {
       seedOfficialLocal();
       const row = ev("catRowHtml(state.categories.find(function(c){return c.id==='db-u1';}))");
-      assert.ok(row.includes('<span class="cat-kind official">공식</span>'), '구분 열에 「공식」이 없다(출처 표시)');
+      assert.ok(row.includes('<span class="cat-tag">공식</span>'), '이름 뒤 표에 「공식」이 없다(출처 표시)');
       assert.ok(row.includes('레이더 담당분'), '메모가 표시되지 않는다');
       assert.ok(!row.includes('cat-git') && !/Git:|SVN:/.test(row), '저장소 경로 표시가 남았다(Git 기능 삭제)');
       ev('openCatModal();');

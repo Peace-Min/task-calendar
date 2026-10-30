@@ -273,15 +273,14 @@ if (!JSDOM) {
         assert.strictEqual(denyCount(B), 1, `거절 토스트가 한 번이 아니다: ${JSON.stringify(B.evJSON('__toasts'))}`);
         assert.strictEqual(B.evJSON('__calls').filter((c) => c[0] === 'membersGet').length, 0, '열지 않았는데 구성원 조회가 나갔다');
         if (!known) assert.strictEqual(B.evJSON('__calls').filter((c) => c[0] === 'userInfoGet').length, 1, '모를 때 기존 확인(userInfoGet)을 한 번 묻지 않았다');
-        //  다른 입구도 같은 관문을 지난다 — 옛 id 별칭 · ⋯ · 내 과제 링크 · 도킹 길(H9)
+        //  다른 입구도 같은 관문을 지난다 — 옛 id 별칭 · ⋯ · 도킹 길(H9)
         B.ev("__toasts.length = 0; ahNoteRole(false)");
         B.ev("openAdminHub('orgtitle')"); await settle(60);
         B.ev("ahOpenFromMore()"); await settle(60);
-        B.ev("(function(){ var b = document.getElementById('btnCatAdmin'); if(b) b.click(); return 1; })()"); await settle(60);
         B.ev("openAdminHub(null, { dock: document.getElementById('customerModal') })"); await settle(60);
         B.ev("ahSelect('members')"); await settle(60);
-        assert.strictEqual(hubShown(B), false, '다른 입구(별칭 · ⋯ · 내 과제 · 도킹 · ahSelect)로 관리 화면이 열렸다');
-        assert.strictEqual(denyCount(B), 4, `입구마다 토스트 한 줄이 아니다: ${JSON.stringify(B.evJSON('__toasts'))}`);
+        assert.strictEqual(hubShown(B), false, '다른 입구(별칭 · ⋯ · 도킹 · ahSelect)로 관리 화면이 열렸다');
+        assert.strictEqual(denyCount(B), 3, `입구마다 토스트 한 줄이 아니다: ${JSON.stringify(B.evJSON('__toasts'))}`);
         assert.deepStrictEqual(B.errors, [], '페이지 오류');
       } finally { B.close(); }
     },

@@ -106,17 +106,13 @@ test('보고서 넓은 폭 격자는 flex-basis 로 높이를 받아 낮은 창�
     '보고서 본문이 flex 열이 아니다 — .rpt-body 의 flex-basis 가 먹지 않아 낮은 창에서 잘린다');
 });
 
-//  2026-10-30(TASK-ADD-UX D1, D8): 내 과제 창 푸터는 [🔗 공식 과제로 연결] [닫기] 둘뿐이다(입력 폼의 「수정 취소」「과제 추가」가 빠졌다).
-//  버튼 넷일 때 ≤440px 에서 연결 버튼 글자를 숨기던 규칙은 없앴다. 글자는 늘 보이고, 푸터에 버튼이 다시 늘면 이 시험이 잡는다.
-test('과제 모달 푸터는 연결 버튼과 닫기 둘이고 연결 버튼 글자가 보인다', () => {
-  const m = src.match(/<button[^>]*id="btnRelinkOpen"[^>]*>.*?<\/button>/);
-  assert.ok(m, '#btnRelinkOpen 마크업을 찾지 못함');
-  assert.ok(m[0].includes('<span class="btn-label"> 공식 과제로 연결</span>'), '연결 버튼 글자가 「공식 과제로 연결」이 아니다(D8)');
-  assert.ok(/aria-label="공식 과제로 연결"/.test(m[0]) && /title="공식 과제로 연결"/.test(m[0]), '연결 버튼의 aria-label, title 이 새 이름이 아니다');
-  assert.ok(!/#btnRelinkOpen \.btn-label\{display:none\}/.test(src), '연결 버튼 글자를 숨기는 규칙이 남았다 — 두 버튼 푸터에서 뜻이 아이콘만 남는다');
+//  2026-10-30(내 과제 목록 정리): 내 과제 창에는 푸터가 없다([🔗 공식 과제로 연결] 과 [닫기] 를 없앴다 — 연결은 줄 ⋯ 메뉴, 닫기는 머리 ✕).
+//  푸터에 버튼이 다시 생기면 좁은 폭(380px)에서 접힐 수 있어 이 시험이 잡는다.
+test('내 과제 창에는 푸터와 연결 단추가 없다', () => {
+  assert.ok(!/id="btnRelinkOpen"/.test(src), '#btnRelinkOpen 이 되살아났다');
   const i = src.indexOf('<div class="overlay hidden" id="categoryModal">');
-  const foot = src.slice(src.indexOf('<div class="modal-foot">', i), src.indexOf('<!-- ===== 다른 과제와 합치기', i));
-  assert.strictEqual((foot.match(/<button/g) || []).length, 2, '내 과제 창 푸터의 버튼이 둘이 아니다 — 좁은 폭(380px)에서 두 줄로 접힐 수 있다: ' + foot);
+  const modal = src.slice(i, src.indexOf('<!-- ===== 다른 과제와 합치기', i));
+  assert.ok(!modal.includes('modal-foot'), '내 과제 창에 푸터가 되살아났다');
 });
 
 test('미리알림 행은 ≤360px 에서 한 줄에 들어간다', () => {

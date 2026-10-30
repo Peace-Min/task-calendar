@@ -60,7 +60,7 @@ const MUT = {
     s),
   //  좁은 목록 폭(380px 미만)에서 ⠿ 를 숨기지 않는다(D2: 좁으면 순서는 ⋯ 메뉴로)
   noNarrowHide: (s) => mutate(
-    '  .cat-grip,.cat-head .ch-grip{display:none}\n',
+    '  .cat-grip,.cat-head .ch-grip,.cat-head .ch-dot{display:none}\n',
     '',
     s),
   //  끝 막기를 지운다 — 맨 위에서 위로 = 배열 밖(-1)으로 빠진다(메뉴 끝 항목 계약의 데이터 쪽 짝)
@@ -162,10 +162,10 @@ const statics = {
   //  jsdom 은 레이아웃을 재지 못하므로 규칙을 잠근다. 머리글과 줄은 한 규칙의 열 폭을 쓴다(두 벌이면 열이 어긋난다).
   narrowGrip(app) {
     const css = app.slice(0, app.indexOf('</style>'));
-    assert.ok(/\.cat-wrap\{container-type:inline-size\}/.test(css), '목록 칸(.cat-wrap)이 container 가 아니다 — 열 줄이기가 창 폭으로 갈린다');
+    assert.ok(/\.cat-wrap\{container-type:inline-size;/.test(css), '목록 칸(.cat-wrap)이 container 가 아니다 — 열 줄이기가 창 폭으로 갈린다');
     const m = css.match(/@container \(max-width:379px\)\{([^}]*\}[^}]*\})\s*\}/);
     assert.ok(m, '목록 폭 380px 미만 규칙(@container max-width:379px)이 없다');
-    assert.ok(/\.cat-grip,\.cat-head \.ch-grip\{display:none\}/.test(m[1]), '좁은 목록 폭에서 ⠿ 를 숨기지 않는다(D2)');
+    assert.ok(/\.cat-grip,\.cat-head \.ch-grip,\.cat-head \.ch-dot\{display:none\}/.test(m[1]), '좁은 목록 폭에서 ⠿ 를 숨기지 않는다(D2)');
     assert.ok(/\.cat-head,\.cat-row\{grid-template-columns:/.test(m[1]) && /\n\.cat-head,\.cat-row\{display:grid;grid-template-columns:/.test(css),
       '머리글(.cat-head)과 줄(.cat-row)이 한 규칙의 열 폭을 쓰지 않는다');
   },

@@ -55,13 +55,13 @@ const statics = {
   //  내 과제 창 = 목록만(D1, D2, D17)
   myTasksMarkup(app) {
     const m = block(app, 'categoryModal');
-    assert.ok(/<button type="button" class="btn sm primary" id="btnCatAdd">＋ 과제 추가<\/button>/.test(m), '머리에 [＋ 과제 추가] 가 없다(D1)');
-    assert.ok(/id="catHead"[^>]*>.*<span>과제<\/span><span class="ch-kind">구분<\/span><span class="ch-count">건수<\/span>/.test(m), '열 머리글(과제, 구분, 건수)이 없다(D2)');
+    assert.ok(/<button type="button" class="cat-add" id="btnCatAdd"><span class="cat-plus" aria-hidden="true">\+<\/span>과제 추가<\/button>/.test(m), '목록 아래에 [+ 과제 추가] 가 없다(D1)');
+    assert.ok(/id="catHead"[^>]*>.*<span>과제<\/span><span class="ch-count">기록<\/span>/.test(m) && !/ch-kind|건수/.test(m), '열 머리글(과제, 기록)이 없거나 옛 구분, 건수 칸이 남았다(D2)');
     assert.ok(/<div id="catList" role="list"/.test(m), '목록(#catList role=list)이 없다');
     for (const gone of ['id="cName"', 'id="cDesc"', 'id="cPalette"', 'id="btnCatSave"', 'id="btnCatCancelEdit"', 'id="btnOfficialOpen"', 'id="offEntryMeta"', 'id="catOrderHint"', 'class="cat-form"', 'cat-sec-lb'])
       assert.ok(!app.includes(gone), `없앤 입력 폼, 입구 카드, 안내 줄이 남았다: ${gone}(D1)`);
     assert.ok(!/개인과 공식\(DB\) 통합 목록|순서는 보고서·필터에 그대로 반영됩니다|공식 과제\(DB\) 찾아보기/.test(app), '없앤 안내 문구가 남았다(D1)');
-    assert.ok(/<button class="btn" type="button" id="btnRelinkOpen" title="공식 과제로 연결" aria-label="공식 과제로 연결">🔗<span class="btn-label"> 공식 과제로 연결<\/span><\/button>/.test(m), '하단 버튼이 「🔗 공식 과제로 연결」(title, aria 포함)이 아니다(D8)');
+    assert.ok(!/btnRelinkOpen|modal-foot/.test(m), '내 과제 창에 푸터나 하단 연결 버튼이 남았다(연결은 줄 ⋯ 메뉴, D8)');
     const rl = noHtmlComments(block(app, 'relinkModal'));
     assert.ok(!/기존 과제 재연결|개인 과제/.test(rl + noHtmlComments(m)), '연결 창이나 내 과제 창에 「기존 과제 재연결」「개인 과제」가 남았다(D8, D17)');
     assert.ok(/<h2>공식 과제로 연결<\/h2>/.test(rl), '연결 창 제목이 「공식 과제로 연결」이 아니다(D8)');
@@ -69,7 +69,7 @@ const statics = {
     assert.ok(!/cat-badge|>DB<|data-act="(up|down|edit|del|unsub|movedata)"|▲|▼|🔒/.test(row), '줄에 「DB」 배지, ▲▼, 옛 버튼, 잠금 아이콘이 남았다(D2, D17)');
     assert.ok(/const CAT_KIND_LABEL = \{ official: '공식', default: '기본', personal: '일반' \};/.test(app), '구분 열의 말이 공식, 기본, 일반이 아니다(D17)');
     assert.ok(row.includes('삭제됨') && row.includes('c.dbGone'), 'DB 에서 사라진 공식 과제를 구분 칸에 「삭제됨」으로 보이지 않는다');
-    assert.ok(row.includes('${catUsageCount(c.id)}건'), '건수가 catUsageCount(빼기 관문과 같은 숫자)가 아니다');
+    assert.ok(row.includes('catUsageCount(c.id)') && !row.includes('}건'), '기록 수가 catUsageCount(빼기 관문과 같은 숫자)가 아니거나 「건」이 붙었다');
   },
   //  수정 창, 합치기 창, 추가 창 마크업과 버튼 문구(D4, D6, D9~D16)
   dialogsMarkup(app) {
@@ -121,7 +121,7 @@ test('변이①s: 입구 카드를 되살리면 정적① 이 실패한다', () 
   assert.throws(() => statics.myTasksMarkup(bad), /입구 카드|안내 문구/);
 });
 test('변이②s: 구분 열 대신 「DB」 배지를 붙이면 정적① 이 실패한다', () => {
-  const bad = mutate('<span class="cat-nm" data-full="${nm}" title="${nm}">${nm}</span></div>`', '<span class="cat-nm" data-full="${nm}" title="${nm}">${nm}</span> <span class="cat-badge db">DB</span></div>`', src);
+  const bad = mutate('<span class="cat-nm" data-full="${nm}" title="${nm}">${nm}</span>${tag}</div>`', '<span class="cat-nm" data-full="${nm}" title="${nm}">${nm}</span>${tag} <span class="cat-badge db">DB</span></div>`', src);
   assert.throws(() => statics.myTasksMarkup(bad), /DB/);
 });
 test('변이③s: 합치기 창 제목에 낫표를 넣으면 정적③ 이 실패한다', () => {
@@ -246,22 +246,20 @@ if (!JSDOM) {
       await withBoot(source, async (W) => {
         assert.deepStrictEqual(W.$$('#catList .cat-row').map((r) => r.dataset.id), W.ids(), '목록이 state.categories 순서가 아니다');
         assert.ok(W.open('categoryModal') && !W.$('#catHead').classList.contains('hidden'), '열 머리글이 안 보인다');
-        const kinds = W.$$('#catList .cat-row').map((r) => r.dataset.id + ':' + r.querySelector('.cat-kind').textContent);
-        assert.deepStrictEqual(kinds, ['c-p:일반', 'db-1:공식', 'db-2:공식', 'db-g:삭제됨', 'c-v:기본', 'c-e:기본'], '구분 열 값이 다르다: ' + JSON.stringify(kinds));
+        const kinds = W.$$('#catList .cat-row').map((r) => r.dataset.id + ':' + (r.querySelector('.cat-tag') ? r.querySelector('.cat-tag').textContent : ''));
+        assert.deepStrictEqual(kinds, ['c-p:', 'db-1:공식', 'db-2:공식', 'db-g:삭제됨', 'c-v:', 'c-e:'], '이름 뒤 표가 다르다(공식과 삭제됨만 붙는다): ' + JSON.stringify(kinds));
         const r = W.row('c-p');
-        assert.deepStrictEqual([...r.children].map((c) => c.className), ['cat-grip', 'cat-dot', 'cat-main', 'cat-kind personal', 'cat-count', 'cat-more'], '줄의 칸 순서가 다르다(D2)');
+        assert.deepStrictEqual([...r.children].map((c) => c.className), ['cat-grip', 'cat-dot', 'cat-main', 'cat-count', 'cat-more'], '줄의 칸 순서가 다르다(D2)');
         const nm = r.querySelector('.cat-nm');
         assert.ok(nm.dataset.full === '프로젝트' && nm.title === '프로젝트' && nm.textContent === '프로젝트', '이름 칸에 원래 이름(data-full), title 이 없다(D14)');
         assert.strictEqual(r.querySelector('.cat-desc').textContent, '내 메모', '메모 줄이 없다');
         assert.strictEqual(W.row('db-2').querySelector('.cat-desc'), null, '메모가 없는데 메모 줄이 있다');
-        assert.strictEqual(r.querySelector('.cat-count').textContent, '2건', '건수가 일정과 할 일 합계가 아니다');
-        assert.strictEqual(r.querySelector('.cat-count').title, '일정 1건, 할 일 1건', '건수 title 이 일정과 할 일로 나뉘지 않는다');
-        assert.strictEqual(W.row('db-1').querySelector('.cat-count').textContent, '1건');
+        assert.strictEqual(r.querySelector('.cat-count').textContent, '2', '기록 수가 일정과 할 일 합계 숫자가 아니다');
+        assert.strictEqual(r.querySelector('.cat-count').title, '기록 2개', '기록 수 title 이 다르다');
+        assert.strictEqual(W.row('db-1').querySelector('.cat-count').textContent, '1');
         assert.strictEqual(r.querySelector('[data-catmore]').getAttribute('aria-haspopup'), 'menu');
         assert.ok(!W.$('#catList .cat-badge') && !W.$('#catList [data-act]'), '「DB」 배지나 옛 줄 버튼이 남았다');
-        assert.strictEqual(W.$('#btnRelinkOpen').classList.contains('hidden'), false, '일반 과제가 있는데 연결 버튼이 숨었다(D8)');
-        W.ev("state.categories = state.categories.filter(function(c){ return c.id !== 'c-p'; }); renderCatModal();");
-        assert.strictEqual(W.$('#btnRelinkOpen').classList.contains('hidden'), true, '일반 과제가 없는데 연결 버튼이 보인다(D8)');
+        assert.strictEqual(W.$('#btnRelinkOpen'), null, '없앤 하단 연결 버튼이 남았다(D8)');
       });
     },
     //  ⋯ 메뉴 항목이 종류마다 맞다(D5, D7) · 한 번에 하나 · Esc 는 메뉴만 · 바깥 클릭 · 화살표
@@ -499,7 +497,7 @@ if (!JSDOM) {
         assert.ok(c && c.desc === '새 메모' && c.color === color && !c.source, '일반 과제가 이름, 메모, 색으로 추가되지 않았다: ' + JSON.stringify(c));
         assert.ok(!W.open('catAddModal'), '일반 과제를 추가했는데 창이 닫히지 않았다(D16)');
         assert.ok(W.row(c.id), '내 과제 목록에 새 줄이 없다');
-        assert.strictEqual(W.row(c.id).querySelector('.cat-kind').textContent, '일반');
+        assert.strictEqual(W.row(c.id).dataset.kind, 'personal'); assert.strictEqual(W.row(c.id).querySelector('.cat-tag'), null);
       });
     },
     //  근태 창의 「캘린더에 새 과제 만들기」(호스트가 __attendCatNew 를 부른다) = 과제 추가 창 일반 탭
@@ -534,7 +532,7 @@ if (!JSDOM) {
     },
   };
 
-  test('런타임①: 목록 줄 구조 · 구분 열(일반, 공식, 삭제됨, 기본) · 건수 · 메모 줄 · 연결 버튼은 일반 과제가 있을 때만', () => checks.listRows(src));
+  test('런타임①: 목록 줄 구조 · 공식, 삭제됨 표 · 기록 수 · 메모 줄 · 하단 연결 버튼 없음', () => checks.listRows(src));
   test('런타임②: ⋯ 메뉴 항목이 과제 종류마다 맞다 · 한 번에 하나 · 화살표 · Esc 는 메뉴만 · 바깥 클릭', () => checks.menuItems(src));
   test('런타임③: 줄을 누르면 수정 창(⋯, ⠿ 는 아님) · 줄에서 Enter · ⋯ 의 수정', () => checks.rowOpensEdit(src));
   test('런타임④: 수정 저장 — 일반 이름 바꾸기(줄바꿈은 공백), 같은 이름과 빈 이름 거절, 공식 과제 이름 불변', () => checks.editSave(src));

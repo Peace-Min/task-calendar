@@ -114,7 +114,7 @@ const S = {
     const state = cssRules(src).filter((r) => /^\.ah-(seg|nav)/.test(r.sel) && !/:hover/.test(r.sel));
     const grey = state.filter((r) => /var\(--(hover-bg|dim-bg|bg|fill|line|line-2)\)/.test((/background(-color)?:[^;]*/.exec(r.body) || [''])[0]));
     assert.deepStrictEqual(grey.map((r) => r.sel), [], '선택/비선택 상태 규칙에 회색 바탕 토큰이 있다');
-    const rules = cssRules(src).filter((r) => /\.ah-|#adminHub|\.cat-title|\.cat-sub|\.cat-admin-row|#usMembersSec\.ah-admin/.test(r.sel));
+    const rules = cssRules(src).filter((r) => /\.ah-|#adminHub|#usMembersSec\.ah-admin/.test(r.sel));
     assert.ok(rules.length >= 30, '관리 화면 규칙을 찾지 못했다: ' + rules.length);
     const hex = rules.filter((r) => /#[0-9a-f]{3,8}\b/i.test(r.body)).map((r) => r.sel);
     assert.deepStrictEqual(hex, [], '관리 화면 규칙에 hex 색이 있다(토큰만 — 5종 테마는 리맵으로 따라온다)');
@@ -131,7 +131,8 @@ const S = {
     assert.match(src, /<button class="btn icon has-label" id="btnCatsTop" title="내 과제: [^"]+" aria-label="내 과제">🏷️<\/button>/, '툴바 버튼(H10)');
     assert.match(src, /set\('btnCatsTop', label\(ICON\.tag, '내 과제'\)\);/, '툴바 라벨(applyIcons)');
     assert.match(src, /<button id="btnCatsFold">내 과제<\/button>/, '⋯ 접기 항목');
-    assert.match(src, /<h2>🏷️ 내 과제<\/h2><span class="cat-sub">내 캘린더에서 쓰는 과제\(색, 순서\)<\/span>/, '모달 제목 + 부제');
+    assert.match(src, /<h2>🏷️ 내 과제<\/h2><button type="button" class="cat-x" data-close aria-label="닫기"/, '모달 제목 + ✕ (부제 없음)');
+    assert.ok(!/cat-sub|내 캘린더에서 쓰는 과제\(색, 순서\)/.test(src), '내 과제 부제가 되살아났다');
     //  사용자에게 보이는 문자열에 옛 이름이 남지 않는다 — 패치노트(역사 기록)·주석은 제외.
     const ps = src.indexOf('<div class="overlay hidden" id="patchModal">'), pe = src.indexOf('<div class="overlay hidden" id="updNotesModal">');
     assert.ok(ps > 0 && pe > ps, '패치노트 경계');
@@ -527,8 +528,8 @@ if (!JSDOM) {
     $(M, '#hostbar button[data-host="menu"]').click(); await settle();
     assert.deepStrictEqual(menuMsgs(M, before), [{ cmd: 'menu' }], '☰ 메시지가 지금과 다르다');
     M.ev('openCatModal()'); await settle(40);
-    assert.ok($(M, '#catAdminRow').classList.contains('hidden'), '관리자 확인 전에 내 과제의 관리 버튼이 보인다');
-    assert.ok(!$(M, '#btnCatAdd').classList.contains('hidden'), '「＋ 과제 추가」는 모두에게 그대로(TASK-ADD-UX D1)');
+    assert.ok(!$(M, '#catAdminRow') && !$(M, '#btnCatAdmin'), '내 과제 창에 관리 입구가 되살아났다(입구는 ⋯ 메뉴 하나)');
+    assert.ok(!$(M, '#btnCatAdd').classList.contains('hidden'), '「과제 추가」는 모두에게 그대로(TASK-ADD-UX D1)');
     M.ev("closeModal('#categoryModal')"); await settle(FADE);
   });
 
@@ -611,16 +612,11 @@ if (!JSDOM) {
     M.ev("closeModal('#userModal')"); await settle(FADE);
   });
 
-  test('(R5) 입구 ③: 내 과제 — 관리자만 「⚙ 공식 과제 편집은 관리에서 ›」(관리자 꼬리표) · 누르면 관리 창을 공식 과제 항목으로 연다', async () => {
+  test('(R5) 입구 ③: 내 과제 창에는 관리 입구가 없다(2026-10-30 없앰) · 관리 창은 호스트가 넘긴 항목으로 연다', async () => {
     await reset(M);
     $(M, '#btnCatsTop').focus(); $(M, '#btnCatsTop').click(); await settle(40);
     assert.strictEqual(isOpen(M, 'categoryModal'), true);
-    const row = $(M, '#catAdminRow');
-    assert.ok(!row.classList.contains('hidden'), '관리자인데 버튼이 없다');
-    assert.ok(/⚙ 공식 과제 편집은 관리에서 ›\s*관리자/.test($(M, '#btnCatAdmin').textContent));
-    $(M, '#btnCatAdmin').click(); await settle(60);
-    assert.deepStrictEqual(adminOpens(M), ['projects'], '내 과제 링크가 관리 창을 공식 과제 항목으로 열지 않았다');
-    assert.strictEqual(isOpen(M, 'adminHub'), false, '메인 창 안에 관리 화면이 열렸다');
+    assert.ok(!$(M, '#catAdminRow') && !$(M, '#btnCatAdmin'), '관리자인데도 내 과제 창에 관리 입구가 있다');
     M.ev("closeModal('#categoryModal')"); await settle(FADE);
     //  관리 창: 호스트가 넘긴 항목(공식 과제)으로 연다. 이미 열려 있으면 그 항목으로만 옮긴다(앞으로 가져오기는 호스트)
     await reset(B); await openHub(B, 'members');
@@ -689,7 +685,7 @@ if (!JSDOM) {
   });
 
   // ── R7 ──
-  test('(R7) 「내 과제」: 툴바 라벨·aria · ⋯ 접기 · 열면 「🏷️ 내 과제」 창(과제 목록 · ＋ 과제 추가 · 공식 과제로 연결)', async () => {
+  test('(R7) 「내 과제」: 툴바 라벨·aria · ⋯ 접기 · 열면 「🏷️ 내 과제」 창(과제 목록 · 과제 추가)', async () => {
     await reset(M);
     const b = $(M, '#btnCatsTop');
     assert.strictEqual(b.getAttribute('aria-label'), '내 과제');
@@ -698,7 +694,7 @@ if (!JSDOM) {
     $(M, '#btnCatsFold').click(); await settle(40);
     assert.strictEqual(isOpen(M, 'categoryModal'), true, '⋯ 접기 항목이 내 과제를 열지 않는다');
     assert.strictEqual($(M, '#categoryModal h2').textContent, '🏷️ 내 과제');
-    assert.ok($(M, '#catList') && $(M, '#btnCatAdd') && $(M, '#btnRelinkOpen'), '내 과제 창의 기능이 사라졌다');
+    assert.ok($(M, '#catList') && $(M, '#btnCatAdd') && !$(M, '#btnRelinkOpen'), '내 과제 창의 기능이 사라졌거나 없앤 연결 단추가 남았다');
     assert.ok(!$(M, '#btnOfficialOpen') && !$(M, '#btnCatSave') && !$(M, '#cName'), '없앤 입구 카드나 입력 폼이 남았다(TASK-ADD-UX D1)');
     assert.strictEqual($(M, '#categoryModal .modal').getAttribute('aria-labelledby'), $(M, '#categoryModal h2').id);
   });

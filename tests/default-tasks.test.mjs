@@ -320,7 +320,8 @@ if (!JSDOM) {
       await withBoot(source, WITH_DEFAULTS({ categories: [CAT('c-p', '프로젝트'), CAT('c-v', '휴가'), CAT('c-e', '기타')], entries: [ENT('e-v', 'c-v'), ENT('e-e', 'c-e')] }), async (W) => {
         W.ev('openCatModal();');
         for (const id of ['c-v', 'c-e']) {
-          assert.strictEqual(W.row(id).querySelector('.cat-kind').textContent, '기본', `기본 과제(${id}) 줄의 구분 열이 '기본' 이 아니다`);
+          assert.strictEqual(W.row(id).dataset.kind, 'default', `기본 과제(${id}) 줄의 data-kind 가 'default' 가 아니다`);
+          assert.strictEqual(W.row(id).querySelector('.cat-tag'), null, `기본 과제(${id}) 줄에 표(공식)가 붙었다`);
           assert.strictEqual(W.item(id, 'del'), null, `기본 과제(${id}) 메뉴에 삭제가 있다`);
           assert.strictEqual(W.item(id, 'unsub'), null, `기본 과제(${id}) 메뉴에 빼기가 있다`);
           assert.ok(W.item(id, 'edit') && W.item(id, 'merge') && W.item(id, 'down'), `기본 과제(${id}) 메뉴에 수정, 합치기, 순서 항목이 없다`);

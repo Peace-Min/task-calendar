@@ -415,7 +415,7 @@ async function main() {
   const e1 = await endsDisabled();
   ok('C2 첫 행의 위로, 맨 위로 · 마지막 행의 아래로, 맨 아래로 = 꺼짐 · 그 밖은 켜짐', !!e1 && e1.firstUp && e1.lastDown && e1.midOk, JSON.stringify(e1));
   ok('C2 aria-live 낭독 「<과제명> — N번째에서 N-1번째로 옮겼습니다」', (await live()) === `${lastName}: ${n}번째에서 ${n - 1}번째로 옮겼습니다`, await live());
-  ok('C2 ⋯ 가 줄 맨 오른쪽(건수 뒤)이다', await cdp.ev(`(function(){ const r = document.querySelector('#catList .cat-row');
+  ok('C2 ⋯ 가 줄 맨 오른쪽(기록 수 뒤)이다', await cdp.ev(`(function(){ const r = document.querySelector('#catList .cat-row');
     const c = r && r.querySelector('.cat-count'), b = r && r.querySelector('[data-catmore]');
     return !!(c && b) && !!(c.compareDocumentPosition(b) & 4) && r.lastElementChild === b; })()`));
   const f1 = await focusInfo();
