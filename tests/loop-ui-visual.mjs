@@ -58,8 +58,11 @@ const ALL_THEMES = ['light', 'dark', 'forest', 'sepia', 'contrast'];
 const SCREENS = [
   { id: 'base',                    enter: '__vt.closeAll()' },
   { id: 'categoryModal',           enter: '__vt.closeAll(); openCatModal()' },
-  { id: 'categoryModal.editMine',  enter: '__vt.closeAll(); openCatModal(); __vt.catEdit("mine")' },
-  { id: 'categoryModal.editDb',    enter: '__vt.closeAll(); __vt.ensureSub(0); openCatModal(); __vt.catEdit("db")', needsCatalog: true },
+  //  2026-10-30(TASK-ADD-UX): 수정은 내 과제 창 위의 작은 창(#catEditModal), 추가는 탭 둘의 넓은 창(#catAddModal)이다
+  { id: 'catEditModal.mine',       enter: '__vt.closeAll(); openCatModal(); __vt.catEdit("mine")' },
+  { id: 'catEditModal.db',         enter: '__vt.closeAll(); __vt.ensureSub(0); openCatModal(); __vt.catEdit("db")', needsCatalog: true },
+  { id: 'catAddModal.official',    enter: '__vt.closeAll(); openCatModal(); openCatAdd("off")' },
+  { id: 'catAddModal.own',         enter: '__vt.closeAll(); openCatModal(); openCatAdd("own")' },
   { id: 'officialModal',           enter: '__vt.closeAll(); openOfficialModal()' },
   { id: 'officialModal.unsubbed',  enter: '__vt.closeAll(); __vt.ensureUnsub(0); openOfficialModal(); __vt.offSelect(0)', needsCatalog: true },
   { id: 'officialModal.subbed',    enter: '__vt.closeAll(); __vt.ensureSub(0); openOfficialModal(); __vt.offSelect(0)', needsCatalog: true },
@@ -110,7 +113,7 @@ const EXEMPT = {
   btnWrap: [
     // 색상 팔레트는 스와치 격자(줄바꿈이 곧 레이아웃)다. 근거: renderPalette()가 .sw 버튼을 N개 깔고
     // CSS `.palette{display:flex;flex-wrap:wrap}`로 접는다 — '한 줄에 다 들어가야 하는 바'가 아니다.
-    '#cPalette', '.palette',
+    '#cePalette', '#caPalette', '.palette',
     // 테마 선택 메뉴는 세로 목록(버튼 6개가 각 줄). 근거: `#themeMenu`는 드롭다운 패널이다.
     '#themeMenu',
     // (과제 필터 줄의 줄바꿈 예외는 2026-10-30 뺐다. 칩이 넘치면 +N 으로 접고 줄은 늘 한 줄이다, FILTER-MULTI.)
@@ -314,10 +317,10 @@ V.catEdit = function(kind){
   var want = (kind === 'db');
   var c = state.categories.find(function(x){ return isOfficialCat(x) === want; });
   if(!c) return false;
+  //  줄을 누르면 수정 창이 열린다(TASK-ADD-UX D4, 옛 줄의 [수정] 버튼)
   var row = document.querySelector('#catList .cat-row[data-id="' + (window.CSS && CSS.escape ? CSS.escape(c.id) : c.id) + '"]');
-  var btn = row && row.querySelector('[data-act="edit"]');
-  if(!btn) return false;
-  btn.click();
+  if(!row) return false;
+  row.click();
   return true;
 };
 
@@ -767,7 +770,7 @@ V.audit = function(opt){
 
   /* V10 빈 상태 문구 부재 -------------------------------------------------------- */
   // 목록 컨테이너와 '행' 셀렉터 쌍 — 앱이 실제로 쓰는 구조에 근거한다(renderOfficialList/renderCatModal 등).
-  var LISTS = [ ['#offList','.off-row'], ['#rlpList','.off-row'], ['#catList','.cat-row'],
+  var LISTS = [ ['#offList','.off-row'], ['#rlpList','.off-row'], ['#catList','.cat-row'], ['#caList','.ca-r'],
                 ['#custList','.cust-row'], ['#codeList','.cust-row'], ['#rlList','.rl-row'] ];
   for (var i=0;i<LISTS.length;i++){
     var box = scopeEl.querySelector ? scopeEl.querySelector(LISTS[i][0]) : null;

@@ -7,6 +7,10 @@
 
 ---
 
+## 🆕 2026-10-30 (다음 판, 번호는 배포 때): 내 과제 창 정리와 과제 추가 창
+
+배포 뒤 사용자 대부분이 공식 과제를 고르지 않고 과제 이름을 직접 입력했다. 원인이던 화면 구조를 바꿨다. '🏷️ 내 과제'(`#categoryModal`)는 목록만 남기고(아래 입력 폼, `#btnOfficialOpen` 입구 카드 제거) 머리에 [＋ 과제 추가](`#btnCatAdd`)를 둔다. 줄은 ⠿, 색, 이름과 메모, 구분 열(공식, 기본, 일반, 삭제됨), 건수(`catUsageCount`), ⋯ 하나다. ▲▼와 줄 링크 버튼을 걷고 순서는 ⠿ 포인터 끌기와 ⋯ 메뉴(위로, 아래로, 맨 위로, 맨 아래로)로, 둘 다 `moveCategory` 를 거쳐 저장 1회다. 줄 클릭은 새 수정 창(`#catEditModal`), '옮기기'는 '다른 과제와 합치기'(`#catMoveModal`, 체크로 합친 뒤 삭제나 빼기, 별도 확인 창 없음), '기존 과제 재연결'은 '공식 과제로 연결', 공식 과제 '제거'는 '내 캘린더에서 빼기'(묻지 않음, 과제별 시간이 지워질 때만 확인). 새 과제 추가 창(`#catAddModal`)은 탭 둘: 공식 과제는 표 한 장(통상명칭, 계약명, 발주처, 상태, 계약기간, 구분은 그룹 줄, 표 칸 container 680/360px 로 열 줄이기, 줄 펼침에 사업명과 개발 시작, 종료, [추가] 한 번, 이미 있으면 '✓ 내 과제'), 일반 과제는 이름, 색상, 메모. 긴 이름은 두 줄 넘을 때 앞부분 … 끝 8자(`catFitName`). 지운 함수: `catMoveBtnsHtml`, `catMoveDataBtnHtml`, `catSyncMoveBtns`, `catFlash`, `catMoveRow`, `applyCatFormLock`, `resetCatForm`, `saveCatFromForm`, `updateOfficialEntry`. 일반 사용자의 메인 창에서 단독 `#officialModal` 입구가 없어졌다(관리 화면 도킹 그대로). `deleteCategory`, `unsubscribeDbCat`, DB, 호스트 C#, 버전은 그대로다. 시험: 새 `tests/task-add.test.mjs`, 기존 13개 갱신. 기획: [docs/TASK-ADD-UX.md](docs/TASK-ADD-UX.md), 위키 [내 과제와 과제 추가](docs/wiki/내-과제와-과제-추가.md).
+
 ## 🆕 2026-10-30 (다음 판, 번호는 배포 때): 과제 필터 다중 선택과 팝업형 필터 줄
 
 개인 탭 필터 줄을 한 줄(42px) 팝업형으로 바꿨다. 폭 고정 과제 단추(전체, 과제명, 과제명 외 N, 선택 없음)와 목록 팝업(검색, 전체 선택과 해제, 기록 많은 순, 0건은 선 아래), 고른 과제 칩(x 로 빼기, 넘치면 +N). 필터 상태는 `filterCats` 하나(null 전체, Set 고른 과제)로 합쳤고 할 일 탭의 따로 놀던 과제 필터(`noteFilterCat`, 드래그 손잡이, `tc_filterMax`)를 없앴다. 할 일 목록, 일정 상세, 주간 과제별 줄이 같은 필터를 따른다. 열람 창 내 일정 겹은 필터를 타지 않는다. 버전과 DB 는 바꾸지 않는다. 기획: [docs/FILTER-MULTI.md](docs/FILTER-MULTI.md), 위키 [과제 필터](docs/wiki/과제-필터.md).

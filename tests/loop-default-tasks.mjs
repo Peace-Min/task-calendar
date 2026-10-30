@@ -185,7 +185,7 @@ const zzLeft = () => J(`(function(){ const z = ${JSON.stringify(ZZ_ALL)};
            todos: (state.todos || []).filter(function(t){ return String(t.text || '').indexOf(z) === 0; }).length }; })()`);
 
 async function closeAll() {
-  await cdp.ev(`(function(){ ['#confirmModal','#catMoveModal','#quickAdd','#reportModal','#categoryModal'].forEach(function(s){
+  await cdp.ev(`(function(){ ['#confirmModal','#catMoveModal','#catEditModal','#catAddModal','#quickAdd','#reportModal','#categoryModal'].forEach(function(s){
     try { const m = document.querySelector(s); if (m && !m.classList.contains('hidden')) closeModal(s); } catch (_) {} }); return 1; })()`);
   await sleep(400);
 }
@@ -197,22 +197,28 @@ async function openCat() {
   await sleep(350);
   return opened;
 }
-//  개인 과제를 사람이 만드는 길로 만든다 — 이름 칸 → [과제 추가](#btnCatSave)
+//  개인 과제를 사람이 만드는 길로 만든다 — [＋ 과제 추가] → 일반 과제 탭 → 이름 → [추가](TASK-ADD-UX, 2026-10-30)
 async function addCatViaUi(name) {
   if (!(await cdp.ev(isOpen('#categoryModal')))) await openCat();
   await saveIdle();
-  await cdp.ev(`(function(){ const n = document.getElementById('cName'); n.value = ${JSON.stringify(name)};
-    n.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('btnCatSave').click(); return 1; })()`);
+  await cdp.ev(`(function(){ document.getElementById('btnCatAdd').click(); document.getElementById('caTabOwn').click();
+    const n = document.getElementById('caName'); n.value = ${JSON.stringify(name)};
+    n.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('caAddOwn').click(); return 1; })()`);
   const got = await waitFor(`state.categories.some(function(c){ return c.name === ${JSON.stringify(name)}; })`, 4000, 100);
   await sleep(150);
   await saveIdle();
   return got ? catIdByName(name) : null;
 }
-//  행의 버튼을 누른다(그 행이 없거나 버튼이 없으면 이유를 돌려준다)
+//  줄의 ⋯ 메뉴 항목을 누른다(그 줄이 없거나 항목이 없으면 이유를 돌려준다). 옛 줄 버튼 이름을 메뉴 항목으로 옮긴다(TASK-ADD-UX D5).
+const MENU_ACT = { del: 'del', movedata: 'merge', unsub: 'unsub', edit: 'edit' };
 const rowBtn = (id, act) => cdp.ev(`(function(){
   const row = [].find.call(document.querySelectorAll('#catList .cat-row'), function(x){ return x.dataset.id === ${JSON.stringify(id)}; });
-  if (!row) return 'norow'; const b = row.querySelector('[data-act="${act}"]'); if (!b) return 'nobtn';
-  try { b.scrollIntoView({ block: 'nearest' }); } catch (_) {} b.click(); return 'ok'; })()`);
+  if (!row) return 'norow';
+  try { row.scrollIntoView({ block: 'nearest' }); } catch (_) {}
+  if (!row.querySelector('.cat-menu')) row.querySelector('[data-catmore]').click();
+  const b = row.querySelector('.cat-menu [data-catdo="${MENU_ACT[act] || act}"]');
+  if (!b || b.disabled){ catMenuClose(false); return 'nobtn'; }
+  b.click(); return 'ok'; })()`);
 //  과제를 사람이 지우는 길로 지운다 — 그 행의 [삭제] → 확인 상자의 문구를 읽고 [삭제](#cfOk). 돌려주는 값 = { gone, msg, saves }
 async function deleteCatViaUi(id) {
   if (!(await cdp.ev(isOpen('#categoryModal')))) await openCat();
@@ -368,18 +374,19 @@ async function main() {
       const m = await mark();
       const r = await rowBtn(a, 'movedata');
       const opened = r === 'ok' && await waitFor(isOpen('#catMoveModal'), 3000, 100);
-      ok('D4 [옮기기]로 옮기기 창이 열린다', opened, r);
+      ok('D4 ⋯ 의 [다른 과제와 합치기]로 합치기 창이 열린다', opened, r);
       if (opened) {
         const opts = await J("[].map.call(document.querySelectorAll('#cmvTarget option'), function(o){ return o.value; })");
         ok('D4 대상 목록에 자기 자신이 없다', !opts.includes(a) && opts.includes(b), JSON.stringify(opts));
         await cdp.ev(`(function(){ const s = document.getElementById('cmvTarget'); s.value = ${JSON.stringify(b)}; s.dispatchEvent(new Event('change')); document.getElementById('cmvRun').click(); return 1; })()`);
-        const cf = await waitFor(isOpen('#confirmModal'), 3000, 100);
-        const msg = cf ? await cdp.ev("document.getElementById('cfMsg').textContent") : '';
-        ok('D4 확인창이 무엇을 어디로 옮기는지 숫자로 말한다', /일정 2개, 할 일 1개, 과제별 시간 3일을/.test(msg), msg);
-        if (cf) await cdp.ev(`document.getElementById('cfOk').click(); 1`);
+        //  합치기 창이 확인이다(D6): 확인창 없이 바로 옮기고, 결과 토스트가 무엇을 어디로 합쳤는지 숫자로 말한다
         await waitFor(`!state.entries.some(function(e){ return e.categoryId === ${JSON.stringify(a)}; })`, 4000, 100);
+        ok('D4 확인창을 따로 띄우지 않는다', !(await cdp.ev(isOpen('#confirmModal'))));
         await sleep(150); await saveIdle();
-        const saves = reqs(await since(m), 'saveState');
+        const L4 = await since(m);
+        const msg = L4.filter((x) => x.toast).map((x) => x.toast).join(' / ');
+        ok('D4 결과 토스트가 무엇을 어디로 합쳤는지 숫자로 말한다', /일정 2개, 할 일 1개, 과제별 시간 3일을 .* 과제로 합쳤습니다/.test(msg), msg);
+        const saves = reqs(L4, 'saveState');
         ok('D4 저장이 한 번, 성공', saves.length === 1 && saves[0].res && saves[0].res.ok, JSON.stringify(saves));
         await closeAll();
         const r1 = await reload();

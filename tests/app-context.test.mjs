@@ -2483,7 +2483,8 @@ if (!JSDOM) {
       // 과제 관리 행
       const row = ev("catRowHtml(state.categories.find(function(c){return c.id==='db-u1';}))");
       assert.ok(!/cat-desc/.test(row), '과제관리 행에 부제(cat-desc)가 남아 있다');
-      assert.ok(/통상u1/.test(row) && /cat-badge db/.test(row), '이름·DB 배지는 유지돼야 한다');
+      assert.ok(/통상u1/.test(row) && /<span class="cat-kind official">공식<\/span>/.test(row), '이름과 구분 열(공식)은 유지돼야 한다');
+      assert.ok(!/cat-badge|>DB</.test(row), '「DB」 배지가 남았다(TASK-ADD-UX D17: 구분 열의 「공식」)');
     });
 
     // ══════════════════════════════════════════════════════════════════
@@ -2750,57 +2751,60 @@ if (!JSDOM) {
          "c.desc='레이더 담당분';})()");
     };
 
-    test('소유권 분리: 공식 과제 행이 설명을 표시하고 [수정] 버튼을 준다', () => {
+    //  ⋯ 메뉴 열기 — 그 줄의 ⋯ 를 누르고 메뉴의 data-catdo 목록을 돌려준다(TASK-ADD-UX D5)
+    const menuActs = (id) => evJSON("(function(){ var r = document.querySelector('#catList .cat-row[data-id=\"" + id + "\"]');" +
+      " r.querySelector('[data-catmore]').click(); return [].map.call(r.querySelectorAll('.cat-menu [data-catdo]'), function(b){ return b.dataset.catdo + (b.disabled ? ':off' : ''); }); })()");
+    test('소유권 분리: 공식 과제 줄이 메모를 표시하고 ⋯ 에 [수정]과 [내 캘린더에서 빼기]를 준다', () => {
       seedOfficialLocal();
       const row = ev("catRowHtml(state.categories.find(function(c){return c.id==='db-u1';}))");
-      assert.ok(row.includes('data-act="edit"'), '공식 행에 [수정] 진입점이 없다 — 로컬 필드를 고칠 방법이 사라진다');
-      assert.ok(row.includes('data-act="unsub"'), '제거(구독 해제) 버튼이 사라졌다');
-      assert.ok(row.includes('cat-badge db'), 'DB 배지가 사라졌다(출처 표시)');
-      assert.ok(row.includes('레이더 담당분'), '설명이 표시되지 않는다');
+      assert.ok(row.includes('<span class="cat-kind official">공식</span>'), '구분 열에 「공식」이 없다(출처 표시)');
+      assert.ok(row.includes('레이더 담당분'), '메모가 표시되지 않는다');
       assert.ok(!row.includes('cat-git') && !/Git:|SVN:/.test(row), '저장소 경로 표시가 남았다(Git 기능 삭제)');
+      ev('openCatModal();');
+      const acts = menuActs('db-u1');
+      assert.ok(acts.includes('edit'), '공식 줄 ⋯ 에 [수정] 진입점이 없다 — 로컬 필드를 고칠 방법이 사라진다');
+      assert.ok(acts.includes('unsub'), '공식 줄 ⋯ 에 [내 캘린더에서 빼기]가 없다');
+      assert.ok(!acts.includes('del') && !acts.includes('link'), '공식 줄 ⋯ 에 삭제나 공식 과제로 연결이 있다: ' + JSON.stringify(acts));
     });
 
-    test('소유권 분리: 공식 행 [수정]으로 편집에 진입하면 과제명만 잠기고 안내가 뜬다', () => {
+    test('소유권 분리: 공식 줄을 누르면 수정 창이 열리고 과제명은 글자로만 보인다(잠금 아이콘, 안내 없음)', () => {
       seedOfficialLocal();
       ev('openCatModal();');
-      ev("document.querySelector('#catList .cat-row[data-id=\"db-u1\"] [data-act=\"edit\"]').click();");
-      assert.strictEqual(ev('editingCatId'), 'db-u1', '공식 행 [수정]이 편집 모드로 들어가지 않는다');
-      assert.strictEqual(ev("document.getElementById('cName').readOnly"), true, '과제명 입력이 열려 있다(DB 소유 필드)');
-      // 색상은 로컬 소유(2026-07-30) — DB에 색 컬럼이 없으므로 잠그면 거짓 안내가 된다.
-      assert.strictEqual(ev("document.getElementById('cColor').disabled"), false, '색상 직접선택이 잠겨 있다 — 색은 로컬 소유다');
-      assert.strictEqual(ev("document.getElementById('cColor').title"), '직접 선택', '색상 입력에 거짓 안내(회사 DB가 정한다)가 남아 있다');
-      assert.strictEqual(ev("document.getElementById('cLockNote').classList.contains('hidden')"), false, '잠금 사유 안내가 안 보인다');
-      const note = ev("document.getElementById('cLockNote').textContent");
-      assert.ok(/회사 DB/.test(note) && /보고서/.test(note), '왜 잠겼는지(보고서 집계) 설명이 없다: ' + note);
-      assert.ok(/설명/.test(note), '무엇은 열려 있는지 안내가 없다: ' + note);
-      assert.ok(!/Git|SVN/.test(note), '안내가 없어진 Git, SVN 경로를 말한다: ' + note);
-      assert.ok(/색상/.test(note) && !/과제명·색상/.test(note), '안내가 색상까지 DB 소유라고 말한다(사실 아님): ' + note);
-      // 설명 입력은 정상(잠금 대상 아님)
-      assert.strictEqual(ev("document.getElementById('cDesc').readOnly"), false, '설명까지 잠겼다(연동 불가 회귀)');
-      assert.strictEqual(ev("document.getElementById('cDesc').value"), '레이더 담당분', '설명이 폼에 프리필되지 않는다');
-      // 폼 제목·버튼 문구가 '새 과제 추가'와 섞이지 않는다
-      assert.ok(/공식 과제/.test(ev("document.getElementById('catFormTitle').textContent")), '폼 제목이 공식 편집 모드를 알리지 않는다');
-      assert.strictEqual(ev("document.getElementById('btnCatSave').textContent"), '수정 저장');
-      // 편집 취소 → 잠금이 원복(잔상 없음)
-      ev("document.getElementById('btnCatCancelEdit').click();");
-      assert.strictEqual(ev('editingCatId'), null);
-      assert.strictEqual(ev("document.getElementById('cName').readOnly"), false, '편집 이탈 후에도 이름칸이 잠겨 있다(새 과제 추가 불가)');
-      assert.strictEqual(ev("document.getElementById('cLockNote').classList.contains('hidden')"), true, '안내가 남아 새 과제 추가를 오해시킨다');
+      ev("document.querySelector('#catList .cat-row[data-id=\"db-u1\"]').click();");
+      assert.strictEqual(ev("document.getElementById('catEditModal').classList.contains('hidden')"), false, '공식 줄을 눌렀는데 수정 창이 열리지 않는다');
+      assert.strictEqual(ev('__catEditId'), 'db-u1');
+      assert.strictEqual(ev("document.getElementById('ceName').classList.contains('hidden')"), true, '과제명 입력칸이 보인다(DB 소유 필드)');
+      assert.strictEqual(ev("document.getElementById('ceFixed').textContent"), '통상u1', '과제명이 글자로 보이지 않는다');
+      const body = ev("document.querySelector('#catEditModal .modal-body').textContent");
+      assert.ok(!/회사 DB|🔒|바꿀 수 없습니다/.test(body), '수정 창에 잠금 안내나 아이콘이 남았다(D4): ' + body);
+      // 색상은 로컬 소유(2026-07-30) — 직접 선택이 열려 있고 거짓 안내가 없다
+      assert.strictEqual(ev("document.querySelector('#cePalette input[type=color]').disabled"), false, '색상 직접선택이 잠겨 있다 — 색은 로컬 소유다');
+      assert.strictEqual(ev("document.querySelector('#cePalette input[type=color]').title"), '직접 선택');
+      // 메모 입력은 정상(잠금 대상 아님)
+      assert.strictEqual(ev("document.getElementById('ceDesc').readOnly"), false, '메모까지 잠겼다');
+      assert.strictEqual(ev("document.getElementById('ceDesc').value"), '레이더 담당분', '메모가 수정 창에 채워지지 않는다');
+      // 일반 과제를 열면 이름 칸이 다시 보인다(잔상 없음)
+      ev("closeModal('#catEditModal'); addCategory('내 일', '#123456', ''); renderCatModal();");
+      const pid = ev("state.categories.filter(function(c){return c.source!=='db';}).slice(-1)[0].id");
+      ev("document.querySelector('#catList .cat-row[data-id=\"" + pid + "\"]').click();");
+      assert.strictEqual(ev("document.getElementById('ceName').classList.contains('hidden')"), false, '일반 과제인데 이름 칸이 숨어 있다(앞 공식 과제의 잔상)');
+      assert.strictEqual(ev("document.getElementById('ceName').value"), '내 일');
+      assert.strictEqual(ev("document.getElementById('ceFixed').classList.contains('hidden')"), true);
     });
 
     test('소유권 분리(계약): 공식 과제 저장은 name만 지키고 color/desc를 반영한다', () => {
       seedOfficialLocal();
       ev('openCatModal();');
-      ev("document.querySelector('#catList .cat-row[data-id=\"db-u1\"] [data-act=\"edit\"]').click();");
-      // 폼을 일부러 오염시킨다 — 잠금이 UI 장식이 아니라 '저장 경로 계약'인지 본다(DOM은 언제든 조작 가능).
-      ev("document.getElementById('cName').readOnly=false; document.getElementById('cName').value='조작된 이름';");
-      ev("selColor='#ff0000';");
-      ev("document.getElementById('cDesc').value='내 PC 메모';");
-      ev('saveCatFromForm();');
+      ev("openCatEdit('db-u1');");
+      // 칸을 일부러 오염시킨다 — 잠금이 UI 장식이 아니라 '저장 경로 계약'인지 본다(DOM은 언제든 조작 가능).
+      ev("var n=document.getElementById('ceName'); n.classList.remove('hidden'); n.value='조작된 이름';");
+      ev("renderPalette(document.getElementById('cePalette'), '#ff0000');");
+      ev("document.getElementById('ceDesc').value='내 PC 메모';");
+      ev('saveCatEdit();');
       const c = evJSON("state.categories.find(function(x){return x.id==='db-u1';})");
       assert.strictEqual(c.name, '통상u1', '공식 과제의 이름이 로컬 편집으로 바뀌었다 — 보고서 집계(사업부 과제명 일치)가 깨진다');
       assert.strictEqual(c.color, '#ff0000', '공식 과제의 색이 저장되지 않는다 — 색은 로컬 소유다');
-      assert.strictEqual(c.desc, '내 PC 메모', '설명이 저장되지 않는다');
+      assert.strictEqual(c.desc, '내 PC 메모', '메모가 저장되지 않는다');
       assert.ok(!('gitRepo' in c) && !('svnRepo' in c), '저장소 경로 키가 생겼다(Git 기능 삭제)');
       assert.strictEqual(c.source, 'db', '출처가 유실됐다');
       // XML 영속(공통 경로)에도 로컬 필드가 실린다
@@ -2888,46 +2892,43 @@ if (!JSDOM) {
     test('색 소유권: 공식 과제 편집에서 팔레트/색 입력이 실제로 반영된다(UI 잠금 해제 회귀 방지)', () => {
       seedOfficialLocal();
       ev('openCatModal();');
-      ev("document.querySelector('#catList .cat-row[data-id=\"db-u1\"] [data-act=\"edit\"]').click();");
-      // 팔레트 스와치 클릭 — 잠금 가드(catFormLocked)가 남아 있으면 selColor가 안 바뀐다
-      const sw = ev("(function(){var s=document.querySelector('#cPalette .swatch:not(.on)'); s.click(); return s.dataset.color;})()");
-      assert.strictEqual(ev('selColor'), sw, '공식 과제 편집 중 팔레트 클릭이 무시된다');
+      ev("document.querySelector('#catList .cat-row[data-id=\"db-u1\"]').click();");
+      // 팔레트 스와치 클릭 — 잠금 가드가 남아 있으면 고른 색이 안 바뀐다
+      const sw = ev("(function(){var s=document.querySelector('#cePalette .swatch:not(.on)'); s.click(); return s.dataset.color;})()");
+      assert.strictEqual(ev("palValue(document.getElementById('cePalette'))"), sw, '공식 과제 편집 중 팔레트 클릭이 무시된다');
       // 직접 선택(color input) — disabled도 아니고 input 핸들러도 살아 있어야 한다
-      ev("(function(){var i=document.getElementById('cColor'); i.value='#0f0f0f'; i.dispatchEvent(new window.Event('input',{bubbles:true}));})()");
-      assert.strictEqual(ev('selColor'), '#0f0f0f', '색 직접선택 입력이 무시된다');
-      ev('saveCatFromForm();');
+      ev("(function(){var i=document.querySelector('#cePalette input[type=color]'); i.value='#0f0f0f'; i.dispatchEvent(new window.Event('input',{bubbles:true}));})()");
+      assert.strictEqual(ev("palValue(document.getElementById('cePalette'))"), '#0f0f0f', '색 직접선택 입력이 무시된다');
+      ev("document.getElementById('ceSave').click();");
       assert.strictEqual(ev("state.categories.find(function(c){return c.id==='db-u1';}).color"), '#0f0f0f', '고른 색이 저장되지 않는다');
       // 저장된 색은 XML 왕복에도 남는다(재부팅 후에도 유지)
       const back = evJSON('fromXML(toXML())').categories.find(x => x.id === 'db-u1');
       assert.strictEqual(back.color, '#0f0f0f', '사용자 색이 XML에 영속되지 않는다');
     });
 
-    test('소유권 분리: 공식 과제 삭제(del)는 여전히 차단된다(제거=unsub만)', async () => {
+    test('소유권 분리: 공식 과제 삭제(del)는 여전히 차단된다(빼기=unsub만)', async () => {
       seedOfficialLocal();
       ev('openCatModal();');
-      const row = ev("catRowHtml(state.categories.find(function(c){return c.id==='db-u1';}))");
-      assert.ok(!row.includes('data-act="del"'), '공식 행에 삭제 버튼이 생겼다');
-      // 가드 자체 검증 — del 버튼을 주입해 눌러도 확인창조차 뜨지 않아야 한다(핸들러가 먼저 되돌아온다)
+      assert.ok(!menuActs('db-u1').includes('del'), '공식 줄 ⋯ 에 삭제가 생겼다');
+      // 가드 자체 검증 — 열린 메뉴에 삭제 항목을 주입해 눌러도 확인창조차 뜨지 않아야 한다(catDelete 가 먼저 되돌아온다)
       ev("window.__askN=0; window.__cb0=window.confirmBox; window.confirmBox=function(){window.__askN++; return Promise.resolve('ok');};");
-      ev("(function(){var r=document.querySelector('#catList .cat-row[data-id=\"db-u1\"]');" +
-         "var b=document.createElement('button'); b.dataset.act='del'; r.appendChild(b); b.click();})()");
+      ev("(function(){var m=document.querySelector('#catList .cat-row[data-id=\"db-u1\"] .cat-menu');" +
+         "var b=document.createElement('button'); b.setAttribute('role','menuitem'); b.dataset.catdo='del'; m.appendChild(b); b.click();})()");
       await new Promise(r => setTimeout(r, 0));
       ev('window.confirmBox=window.__cb0;');
       assert.strictEqual(ev('window.__askN'), 0, '공식 과제에서 삭제 확인창이 떴다(가드가 뚫렸다)');
       assert.strictEqual(ev("state.categories.some(function(c){return c.id==='db-u1';})"), true, '공식 과제가 삭제됐다');
-      // 개인 과제는 그대로 삭제 가능해야 한다(가드가 과하게 넓어지지 않았는지)
-      assert.strictEqual(ev("typeof deleteCategory"), 'function');
+      assert.strictEqual(ev("deleteCategory('db-u1')"), false, 'deleteCategory 가 공식 과제를 지웠다(화면 우회)');
     });
 
-    test('소유권 분리: 편집 중이던 공식 과제를 제거하면 폼이 유령으로 남지 않는다', () => {
+    test('소유권 분리: 수정 중이던 공식 과제를 빼면 수정 창이 유령으로 남지 않는다', () => {
       seedOfficialLocal();
       ev('openCatModal();');
-      ev("document.querySelector('#catList .cat-row[data-id=\"db-u1\"] [data-act=\"edit\"]').click();");
-      assert.strictEqual(ev('editingCatId'), 'db-u1');
-      ev("unsubscribeDbCat('db-u1'); renderCatModal();");   // 카탈로그/행 어느 경로로 제거하든 같은 렌더를 탄다
-      assert.strictEqual(ev('editingCatId'), null, '사라진 과제를 계속 편집 중이라고 믿는다(저장이 조용히 무시된다)');
-      assert.strictEqual(ev("document.getElementById('catFormTitle').textContent"), '새 과제 추가', '폼 제목이 편집 모드로 남았다');
-      assert.strictEqual(ev("document.getElementById('cName').readOnly"), false, '이름칸이 잠긴 채 남아 새 과제를 못 만든다');
+      ev("openCatEdit('db-u1');");
+      assert.strictEqual(ev('__catEditId'), 'db-u1');
+      ev("unsubscribeDbCat('db-u1'); renderCatModal();");   // 카탈로그/줄 어느 경로로 빼든 같은 렌더를 탄다
+      assert.strictEqual(ev('__catEditId'), null, '사라진 과제를 계속 수정 중이라고 믿는다(저장이 조용히 무시된다)');
+      assert.ok(ev("document.getElementById('catEditModal').classList.contains('hidden') || document.getElementById('catEditModal').classList.contains('closing')"), '사라진 과제의 수정 창이 열린 채다');
     });
 
     // ══════════════════════════════════════════════════════════════════

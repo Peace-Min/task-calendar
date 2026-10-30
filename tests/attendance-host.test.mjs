@@ -247,7 +247,7 @@ const checks = {
     assert.ok(call > 0, '메인 창의 __attendCatNew 를 부르지 않는다');
     assert.ok(front < call, '과제 창을 연 뒤에 메인 창을 가져온다');
     assert.ok(!/GetStr|GetRawText|doc/.test(m), '새 과제 만들기가 근태 창이 보낸 값을 싣는다');
-    assert.match(s.app, /window\.__attendCatNew = function\(\)\{\s*if\(!HOST \|\| PEER \|\| SUBWIN\) return;\s*try\{ openCatModal\(\); \}catch\(_\)\{\}/,'웹 메인 창의 __attendCatNew 가 과제 창을 열지 않거나 다른 창에서도 연다');
+    assert.match(s.app, /window\.__attendCatNew = function\(\)\{\s*if\(!HOST \|\| PEER \|\| SUBWIN\) return;\s*try\{ openCatModal\(\); openCatAdd\('own'\); \}catch\(_\)\{\}/,'웹 메인 창의 __attendCatNew 가 과제 추가 창을 일반 과제 탭으로 열지 않거나 다른 창에서도 연다(TASK-ADD-UX)');
   },
 
   // ⑫ 주간보고(결정 13): 목록 읽기, 회의내용 저장, 저장 성공 알림, 회의내용 넘기기

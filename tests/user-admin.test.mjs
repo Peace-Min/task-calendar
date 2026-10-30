@@ -717,9 +717,12 @@ const checks = {
     assert.ok(/\.row2\{[^}]*gap:var\(--sp-4\)\}/.test(css),
       '.row2 의 칸 사이가 토큰(--sp-4)이 아니다');
     //  ★ 자기 윗여백을 이미 가진 묶음의 첫 라벨은 그 여백과 16px 이 겹쳐 32~40px 이 된다(2026-09-10).
-    //    (.room-form 은 2026-10-21 회의실 관리 창과, .fsect 는 2026-10-26 기록 창과 함께 없앴다)
-    assert.ok(/\.rem-block > label:first-child,\.cat-form > label:first-child\{margin-top:0\}/.test(css),
-      '윗여백을 가진 묶음 둘(.rem-block, .cat-form)의 첫 라벨 예외가 없다. 라벨 위가 두 벌로 쌓인다');
+    //    (.room-form 은 2026-10-21 회의실 관리 창과, .fsect 는 2026-10-26 기록 창과, .cat-form 은 2026-10-30 내 과제 입력 폼과 함께 없앴다)
+    assert.ok(/\.rem-block > label:first-child\{margin-top:0\}/.test(css),
+      '윗여백을 가진 묶음(.rem-block)의 첫 라벨 예외가 없다. 라벨 위가 두 벌로 쌓인다');
+    //    과제 추가 창의 탭 칸(.ca-pane)은 모달 본문 안의 칸이라 첫 라벨이 '본문의 첫 라벨' 규칙에 걸리지 않는다. 같은 예외를 따로 둔다.
+    assert.ok(/\.ca-pane > label:first-child\{margin-top:0\}/.test(css),
+      '과제 추가 창 탭 칸(.ca-pane)의 첫 라벨 예외가 없다. 일반 과제 탭의 첫 라벨 위가 비어 보인다');
     //  ★ 좁은 폭에서는 2열을 접는다 — 위젯 실폭에서 드롭다운 문구가 통째로 잘렸다.
     assert.ok(/@media \(max-width:420px\)\{ \.modal \.row2\{grid-template-columns:minmax\(0,1fr\)\} \}/.test(css),
       '좁은 폭(≤420px)에서 .row2 가 1열로 접히지 않는다 — 잘린 라벨은 고를 수 없는 라벨이다');

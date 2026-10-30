@@ -31,7 +31,7 @@ function mutate(from, to, base) {
 
 //  함수 단위 관문 — 본문에 guardEdit() 이 있고, 그것이 첫 쓰기보다 **앞**이다.
 const GATED_FUNCTIONS = [
-  'openQuickAdd', 'qaSave', 'saveCatFromForm',
+  'openQuickAdd', 'qaSave', 'saveCatEdit',   // 과제 수정 창 저장(TASK-ADD-UX D4, 옛 saveCatFromForm)
   'startImport', 'showImportPreview', 'applyImport', 'clearAll',
   'offSubscribeFromCatalog', 'offUnsubscribeFromCatalog',
   'commitDayNoteEdit',
@@ -40,9 +40,11 @@ const GATED_FUNCTIONS = [
   'legacyPromptImport',   // 이전 기록 「가져오기」 = 바로 교체(2026-10-01) — 읽기 전에 막는다
   'moveCategory',         // 과제 순서 ▲▼(docs/CATEGORY-ORDER.md R7) — 맞바꾸기 전에 막는다
   //  (deleteCategory 도 관문을 지나지만 여기에는 못 싣는다 — 이름 자체가 WRITE_TOKENS 의 'deleteCategory(' 라 머리말에서 걸린다.
-  //   그 관문은 tests/default-tasks.test.mjs 가 따로 본다. 화면 쪽은 아래 GATED_HANDLERS 의 「과제 목록 삭제(del)」.)
+  //   그 관문은 tests/default-tasks.test.mjs 가 따로 본다. 화면 쪽은 위 GATED_FUNCTIONS 의 catDelete.)
   'moveCategoryData',     // 다른 과제로 옮기기(DEFAULT-TASKS §4.6) — 옮기기 전에 막는다
-  'openCatMoveModal',     // 옮기기 창 — 끊긴 채로 대상을 고르게 하지 않는다
+  'openCatMoveModal',     // 합치기 창(옛 옮기기 창) — 끊긴 채로 대상을 고르게 하지 않는다
+  //  내 과제 ⋯ 메뉴와 과제 추가 창(TASK-ADD-UX, 2026-10-30): 빼기, 삭제, 공식 과제 추가, 일반 과제 추가. 예전 #catList 위임의 unsub, del 자리다.
+  'catUnsub', 'catDelete', 'catAddOfficial', 'catAddOwn',
 ];
 const WRITE_TOKENS = ['save()', 'saveFull()', 'dbSave(', 'addEntry(', 'updateEntry(', 'deleteEntry(', 'addTodo(',
   'updateTodo(', 'addCategory(', 'updateCategory(', 'deleteCategory(', 'subscribeDbCat(', 'unsubscribeDbCat(',
@@ -53,9 +55,7 @@ const GATED_HANDLERS = [
   ['날짜 패널 카드 삭제', "if(act === 'edit') editEntry(card.dataset.id);", 'deleteEntry(e.id)'],
   ['할 일 인라인 편집 저장·삭제', 'const id = box.dataset.id, act = ev.target.dataset.act;', 'updateTodo(id,'],
   ['할 일 행 완료·삭제·중요', "const row = ev.target.closest('.todo-row'); if(!row) return;", 'toggleTodo(row.dataset.id)'],
-  ['과제 목록 제거(unsub)', "$('#catList').addEventListener('click'", 'unsubscribeDbCat(c.id)'],
-  ['과제 목록 삭제(del)', "$('#catList').addEventListener('click'", 'deleteCategory(c.id)'],
-  ['과제 목록 옮기기(movedata)', "$('#catList').addEventListener('click'", 'openCatMoveModal(c.id)'],
+  //  (과제 목록 #catList 위임의 unsub, del, movedata 는 2026-10-30 ⋯ 메뉴로 옮겼다. 관문은 함수(catUnsub, catDelete, openCatMoveModal)가 진다 → GATED_FUNCTIONS)
   ['근태(보고서)', 'const svGuarded = () =>', 'sv(); };'],
   ['과제별 시간(보고서)', "const from = $('#rptFrom').value; const cat = inp.dataset.hcat;", 'setTaskHours(from, cat, inp.value)'],
   ['머리기호', "$('#rptMarker').addEventListener('change'", 'save()'],
