@@ -528,7 +528,7 @@ if (!JSDOM) {
     assert.deepStrictEqual(menuMsgs(M, before), [{ cmd: 'menu' }], '☰ 메시지가 지금과 다르다');
     M.ev('openCatModal()'); await settle(40);
     assert.ok($(M, '#catAdminRow').classList.contains('hidden'), '관리자 확인 전에 내 과제의 관리 버튼이 보인다');
-    assert.ok(!$(M, '#btnOfficialOpen').classList.contains('hidden'), '「공식 과제 찾아보기」는 모두에게 그대로');
+    assert.ok(!$(M, '#btnCatAdd').classList.contains('hidden'), '「＋ 과제 추가」는 모두에게 그대로(TASK-ADD-UX D1)');
     M.ev("closeModal('#categoryModal')"); await settle(FADE);
   });
 
@@ -632,11 +632,12 @@ if (!JSDOM) {
   // ── R3(ADMIN-HUB-2) · J3 — 찾아보기(단독 공식 과제)는 모두에게 읽기 전용 · 도킹은 편집 가능 ──
   const ZZCAT = { id: 'db-zz1', name: 'zz과제', color: '#3e5be0', source: 'db', customer: 'zzC', section: '일반계약', status: '진행중',
     startDate: '2026-01-01', endDate: '2026-12-31', devEndDate: '', projectName: 'zz과제', contractName: '', commonName: 'zz과제' };
-  test('(R3·J3) 찾아보기(내 과제 → 공식 과제 · 단독)는 관리자여도 읽기 전용 — 새 공식 과제·편집/숨김·하단 관리 버튼 없음 · 「캘린더에 추가」·새로고침·닫기는 그대로', async () => {
+  test('(R3·J3) 찾아보기(공식 과제 · 단독, 내 과제 위)는 관리자여도 읽기 전용 — 새 공식 과제·편집/숨김·하단 관리 버튼 없음 · 「캘린더에 추가」·새로고침·닫기는 그대로', async () => {
     await reset(M);
     M.ev(`dbCatalog = [${JSON.stringify(ZZCAT)}];`);
     $(M, '#btnCatsTop').focus(); $(M, '#btnCatsTop').click(); await settle(40);
-    $(M, '#btnOfficialOpen').focus(); $(M, '#btnOfficialOpen').click(); await settle(40);
+    //  내 과제의 입구 카드는 2026-10-30 과제 추가 창(TASK-ADD-UX D1)으로 바뀌었다. 단독 화면은 여는 함수로 띄운다(읽기 전용 계약은 그대로).
+    M.ev('openOfficialModal()'); await settle(40);
     M.ev("offSelect('db-zz1')"); await settle();
     assert.deepStrictEqual(stack(M), ['categoryModal', 'officialModal'], '전제: 내 과제 위에 공식 과제(단독)');
     for (const sel of ['#offNew', '#officialModal .off-d-act', '#offCustMgr', '#offCodeMgr', '#offTrash']) {
@@ -688,7 +689,7 @@ if (!JSDOM) {
   });
 
   // ── R7 ──
-  test('(R7) 「내 과제」: 툴바 라벨·aria · ⋯ 접기 · 열면 「🏷️ 내 과제」 창(기능 그대로 — 과제 목록 · 찾아보기 카드)', async () => {
+  test('(R7) 「내 과제」: 툴바 라벨·aria · ⋯ 접기 · 열면 「🏷️ 내 과제」 창(과제 목록 · ＋ 과제 추가 · 공식 과제로 연결)', async () => {
     await reset(M);
     const b = $(M, '#btnCatsTop');
     assert.strictEqual(b.getAttribute('aria-label'), '내 과제');
@@ -697,7 +698,8 @@ if (!JSDOM) {
     $(M, '#btnCatsFold').click(); await settle(40);
     assert.strictEqual(isOpen(M, 'categoryModal'), true, '⋯ 접기 항목이 내 과제를 열지 않는다');
     assert.strictEqual($(M, '#categoryModal h2').textContent, '🏷️ 내 과제');
-    assert.ok($(M, '#catList') && $(M, '#btnOfficialOpen') && $(M, '#btnCatSave'), '내 과제 창의 기능이 사라졌다');
+    assert.ok($(M, '#catList') && $(M, '#btnCatAdd') && $(M, '#btnRelinkOpen'), '내 과제 창의 기능이 사라졌다');
+    assert.ok(!$(M, '#btnOfficialOpen') && !$(M, '#btnCatSave') && !$(M, '#cName'), '없앤 입구 카드나 입력 폼이 남았다(TASK-ADD-UX D1)');
     assert.strictEqual($(M, '#categoryModal .modal').getAttribute('aria-labelledby'), $(M, '#categoryModal h2').id);
   });
 

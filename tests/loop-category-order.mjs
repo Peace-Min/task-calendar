@@ -3,25 +3,25 @@
  *  tests/loop-category-order.mjs — 과제 순서 설정 **실동작** 루프(docs/CATEGORY-ORDER.md §3 C1~C7)
  * -------------------------------------------------------------------------------------
  *  계약 시험(category-order.test.mjs)은 jsdom·소스 대조로 **규칙**을 잠근다. 이 루프는 실제 위젯(Debug ·
- *  TC_DEBUG_PORT)에 붙어 로그인한 사용자 **자신의** 캘린더에서 진짜 ▲▼ 버튼을 **진짜 마우스로**(CDP Input.dispatchMouseEvent) 누르고, 그 순서가
+ *  TC_DEBUG_PORT)에 붙어 로그인한 사용자 **자신의** 캘린더에서 줄의 ⋯ 메뉴의 위로/아래로를 **진짜 마우스로**(CDP Input.dispatchMouseEvent) 누르고, 그 순서가
  *  실 호스트·실 DB 를 지나 다시 읽혀도 그대로인지 본다. 영속은 DB 를 직접 보지 않고 **앱을 통해** 확인한다 —
  *  reloadState 를 보내 호스트가 다시 읽어 준 state(__applyState)에서 센다(호스트 → DB → 호스트 → 웹 왕복).
  *
  *  케이스 ↔ 수용 기준(§3):
  *    O0        전제 — 로그인 · conn ok · bootOk · 과제 ≥ 3(모자라면 zz 개인 과제를 폼으로 만든다) · 원래 순서 스냅샷
  *    C1        「과제 관리」(헤더 버튼) 목록 순서 = state.categories · 공식이 개인 사이에 끼어도 다시 열면 그대로(R1)
- *    C2        마지막 행 ▲(진짜 마우스 클릭) — 한 칸 이동 · saveState 1회 · aria-live · 첫 행 ▲ · 마지막 행 ▼ = aria-disabled + 이유 툴팁
- *              (「맨 위입니다」/「맨 아래입니다」) · 끝 버튼을 눌러도 변화 0 · 저장 0
- *    ★ 2026-10-06(docs/ADMIN-HUB-4.md N3) — ADMIN-HUB-3 의 ✥ 끌기를 걷고 ▲▼ 로 되돌렸다(직급·소속 줄과 같은 .code-ord · 줄 오른쪽).
- *      끝은 disabled 가 아니라 aria-disabled 다(포커스가 남아 이유를 읽는다) — 이 루프의 끝 판정도 그 표식을 본다.
- *    C7        옮긴 뒤 포커스 = 옮겨진 행의 같은 ▲ · 모달 스크롤 자리 유지 · 맨 위에 닿으면 포커스가 ▼ 로
+ *    C2        마지막 행 ⋯ → 위로(진짜 마우스 클릭) — 한 칸 이동 · saveState 1회 · aria-live · 첫 행의 위로 · 마지막 행의 아래로 = 꺼짐(disabled)
+ *              · 꺼진 항목을 눌러도 변화 0 · 저장 0
+ *    ★ 2026-10-30(docs/TASK-ADD-UX.md D3, D5) — 줄의 ▲▼(2026-10-06 N3)를 ⋯ 메뉴의 순서 묶음(위로, 아래로, 맨 위로, 맨 아래로)과 ⠿ 끌기로 바꿨다.
+ *      끝 항목은 disabled 다(메뉴 안에서 화살표가 건너뛴다).
+ *    C7        옮긴 뒤 포커스 = 옮겨진 행의 ⋯ · 목록을 다시 만들지 않는다 · 모달 스크롤 자리 유지 · 반짝임 없음
  *    C3        reloadState → 다시 읽힌 state.categories 순서 = 옮긴 직후 순서(서버 저장)
  *    C4        collectReportData(이번 달, rptSources()) 행 = 목록 순서 그대로 + 보고서 미리보기 카드 순서
  *              ★ 2026-10-07 기본 과제(docs/DEFAULT-TASKS.md §4.3) — 「기타」 맨 뒤 규칙과 미분류 합성 행(__uncat__)을 지웠다.
  *                기타도 목록의 한 과제라 제 자리에 선다. 이 루프는 그 둘이 되살아나면 실패한다.
  *    C5        필터 막대 칩 · 빠른 추가 #qaCat 옵션 순서 = state.categories (예전 기록 창 #fCat 은 2026-10-26 Git 기능과 함께 없앴다)
- *    C6        __dbFault{network} → 끊김 → ▼ → 순서·화면 변화 0 · saveState 0 · 잠금 토스트 → 해제 → 복구
- *    정리      장애 off · 원래 순서로 되돌린다(진짜 ▲ 로) · zz 과제 삭제 · reloadState → 원래 순서 확인 · 모달 닫기
+ *    C6        __dbFault{network} → 끊김 → 아래로 → 순서·화면 변화 0 · saveState 0 · 잠금 토스트 → 해제 → 복구
+ *    정리      장애 off · 원래 순서로 되돌린다(진짜 위로 로) · zz 과제 삭제 · reloadState → 원래 순서 확인 · 모달 닫기
  *
  *  ★ 남기지 않는다: finally 에서 장애를 끄고, 순서를 원래대로 되돌리고, 만든 zz 과제(`zzORD-<seed>-<n>`)를 지운다.
  *    되돌리지 못하면 원래 순서를 크게 찍는다(손으로 되돌릴 수 있게).
@@ -153,7 +153,7 @@ const UNINSTALL = `(function(){
   const R = window.__ordRec; if (!R) return 'none';
   hostRequest = R.orig.hostRequest; hpost = R.orig.hpost; toast = R.orig.toast;
   window.__applyState = R.orig.applyState; window.__applyStateError = R.orig.applyErr;
-  delete window.__ordRec; try { delete window.__ordBtn; } catch (_) {} return 'ok';
+  delete window.__ordRec; try { delete window.__ordRow; } catch (_) {} return 'ok';
 })()`;
 const mark = () => cdp.ev('__ordRec.log.length');
 const since = (m) => J(`__ordRec.log.slice(${Number(m)})`);
@@ -182,12 +182,12 @@ async function reload(ms = 20000) {
 const order = () => J('state.categories.map(function(c){ return c.id; })');
 const cats = () => J('state.categories.map(function(c){ return { id: c.id, name: String(c.name || ""), off: !!isOfficialCat(c), pick: !!isPickableCat(c) }; })');
 const domOrder = () => J("[].map.call(document.querySelectorAll('#catList .cat-row'), function(r){ return r.dataset.id; })");
-const domOfficial = () => J("[].map.call(document.querySelectorAll('#catList .cat-row'), function(r){ return !!r.querySelector('.cat-badge.db'); })");
+const domOfficial = () => J("[].map.call(document.querySelectorAll('#catList .cat-row'), function(r){ return r.dataset.kind === 'official'; })");
 const isOpen = (sel) => `(function(){ const m = document.querySelector(${JSON.stringify(sel)}); return !!m && !m.classList.contains('hidden') && !m.classList.contains('closing'); })()`;
 const zzCats = () => J(`state.categories.filter(function(c){ return String(c.name || '').indexOf(${JSON.stringify(ZZ_ALL)}) === 0; }).map(function(c){ return { id: c.id, name: c.name }; })`);
 
 async function closeAll() {
-  await cdp.ev(`(function(){ ['#confirmModal','#quickAdd','#reportModal','#categoryModal'].forEach(function(s){
+  await cdp.ev(`(function(){ try{ catMenuClose(false); }catch(_){} ['#confirmModal','#catEditModal','#catAddModal','#quickAdd','#reportModal','#categoryModal'].forEach(function(s){
     try { const m = document.querySelector(s); if (m && !m.classList.contains('hidden')) closeModal(s); } catch (_) {} }); return 1; })()`);
   await sleep(400);
 }
@@ -199,60 +199,61 @@ async function openCat() {
   await sleep(350);
   return opened;
 }
-//  누른다 = 그 행의 진짜 버튼을 **진짜 마우스로** 누른다(CDP Input.dispatchMouseEvent — 사람이 누를 때와 같은 길: 포커스 → click).
-//   끝 버튼(aria-disabled)은 기본으로 누르지 않고 'end' 를 돌려준다 — { end: true } 면 일부러 눌러 '변화 0'을 본다.
-//   그다음 저장 회신까지 기다린다.
+//  누른다 = 그 행의 ⋯ 를 **진짜 마우스로** 눌러 메뉴를 열고, 메뉴의 항목(위로 'up', 아래로 'down', 맨 위로 'top', 맨 아래로 'bottom')을
+//   **진짜 마우스로** 누른다(CDP Input.dispatchMouseEvent — 사람이 누를 때와 같은 길). 꺼진 항목은 기본으로 누르지 않고 'end' 를 돌려준다
+//   — { end: true } 면 일부러 눌러 '변화 0'을 본다. 그다음 저장 회신까지 기다린다.
 async function press(id, act, { idle = true, end = false } = {}) {
   if (idle) await saveIdle();
   const m = await mark();
-  const g = await J(`(function(){
-    const row = [].find.call(document.querySelectorAll('#catList .cat-row'), function(x){ return x.dataset.id === ${JSON.stringify(id)}; });
-    if (!row) return { r: 'norow' };
-    const b = row.querySelector('[data-act="${act}"]');
-    if (!b) return { r: 'nobtn' };
-    if (b.disabled) return { r: 'disabled' };
-    if (b.getAttribute('aria-disabled') === 'true' && !${end ? 'true' : 'false'}) return { r: 'end' };
-    try { b.scrollIntoView({ block: 'nearest' }); } catch (_) {}
-    window.__ordBtn = b;
-    const q = b.getBoundingClientRect();
-    return { r: 'ok', x: q.left + q.width / 2, y: q.top + q.height / 2 };
-  })()`);
-  const r = g ? g.r : 'norow';
-  if (r === 'ok') {
+  const click = async (g) => {
     const mk = (type, extra) => cdp.send('Input.dispatchMouseEvent', Object.assign({ type, x: Math.round(g.x), y: Math.round(g.y), button: 'left', pointerType: 'mouse' }, extra));
     await mk('mouseMoved', { button: 'none', buttons: 0 });
     await mk('mousePressed', { buttons: 1, clickCount: 1 });
     await mk('mouseReleased', { buttons: 0, clickCount: 1 });
-  }
+  };
+  const at = (sel) => J(`(function(){
+    const row = [].find.call(document.querySelectorAll('#catList .cat-row'), function(x){ return x.dataset.id === ${JSON.stringify(id)}; });
+    if (!row) return { r: 'norow' };
+    const b = row.querySelector(${JSON.stringify(sel)});
+    if (!b) return { r: 'nobtn' };
+    try { b.scrollIntoView({ block: 'nearest' }); } catch (_) {}
+    const q = b.getBoundingClientRect();
+    return { r: b.disabled ? 'end' : 'ok', x: q.left + q.width / 2, y: q.top + q.height / 2 };
+  })()`);
+  let g = await at('[data-catmore]');
+  if (g && g.r === 'ok') { await click(g); await sleep(80); g = await at('.cat-menu [data-catdo="' + act + '"]'); }
+  const r = g ? g.r : 'norow';
+  if (r === 'ok' || (r === 'end' && end)) await click(g);
+  await cdp.ev('(function(){ try{ catMenuClose(false); }catch(_){} return 1; })()');   // 꺼진 항목이면 메뉴가 열린 채다
   await sleep(120);
   if (idle) await saveIdle();
   const L = await since(m);
-  return { r, L, saves: reqs(L, 'saveState') };
+  return { r: r === 'end' && end ? 'ok' : r, L, saves: reqs(L, 'saveState') };
 }
 const swapped = (arr, i, j) => { const a = arr.slice(); const t = a[i]; a[i] = a[j]; a[j] = t; return a; };
+//  끝 항목: 메뉴를 그리는 함수(catMenuHtml)로 줄마다 위로/아래로의 꺼짐을 본다(메뉴를 하나씩 열지 않는다)
 const endsDisabled = () => J(`(function(){ const rows = document.querySelectorAll('#catList .cat-row'); if (!rows.length) return null;
-  const u = rows[0].querySelector('[data-act="up"]'), d = rows[rows.length - 1].querySelector('[data-act="down"]');
+  const off = function(r, act){ const d = document.createElement('div'); d.innerHTML = catMenuHtml(catById(r.dataset.id)); const b = d.querySelector('[data-catdo="' + act + '"]'); return !!b && b.disabled; };
   let midOk = true;
-  for (let i = 0; i < rows.length; i++) { const uu = rows[i].querySelector('[data-act="up"]'), dd = rows[i].querySelector('[data-act="down"]');
-    if (i > 0 && (uu.disabled || uu.getAttribute('aria-disabled') === 'true')) midOk = false;
-    if (i < rows.length - 1 && (dd.disabled || dd.getAttribute('aria-disabled') === 'true')) midOk = false; }
-  //  끝 = aria-disabled + 이유 툴팁(N3) — disabled 는 아니다(포커스가 남아야 이유를 읽는다)
-  const endOf = function(b, tip){ return !!b && b.getAttribute('aria-disabled') === 'true' && !b.disabled && b.title === tip; };
-  return { firstUp: endOf(u, '맨 위입니다'), lastDown: endOf(d, '맨 아래입니다'), midOk: midOk }; })()`);
+  for (let i = 0; i < rows.length; i++) {
+    if (i > 0 && off(rows[i], 'up')) midOk = false;
+    if (i < rows.length - 1 && off(rows[i], 'down')) midOk = false; }
+  return { firstUp: off(rows[0], 'up') && off(rows[0], 'top'), lastDown: off(rows[rows.length - 1], 'down') && off(rows[rows.length - 1], 'bottom'), midOk: midOk }; })()`);
 const live = () => cdp.ev("String((document.getElementById('catLive') || {}).textContent || '')");
-const focusInfo = () => J(`(function(){ const a = document.activeElement; const b = window.__ordBtn;
+const focusInfo = () => J(`(function(){ const a = document.activeElement;
   const row = a && a.closest ? a.closest('#catList .cat-row') : null;
-  return { same: !!b && a === b, act: a && a.dataset ? (a.dataset.act || '') : '', row: row ? row.dataset.id : null,
+  return { more: !!a && a.hasAttribute && a.hasAttribute('data-catmore'), row: row ? row.dataset.id : null,
     tag: a ? a.tagName : null, label: a && a.getAttribute ? a.getAttribute('aria-label') : null }; })()`);
 const BODY = "document.querySelector('#categoryModal .modal-body')";
 
-//  zz 과제를 사람이 지우는 길로 지운다 — 그 행의 [삭제] → 확인 상자 [삭제](#cfOk).
+//  zz 과제를 사람이 지우는 길로 지운다 — 그 줄 ⋯ 의 [삭제…] → 확인 상자 [삭제](#cfOk).
 async function deleteCatViaUi(id) {
   if (!(await cdp.ev(isOpen('#categoryModal')))) await openCat();
   await saveIdle();
   const r = await cdp.ev(`(function(){
     const row = [].find.call(document.querySelectorAll('#catList .cat-row'), function(x){ return x.dataset.id === ${JSON.stringify(id)}; });
-    const b = row && row.querySelector('[data-act="del"]'); if (!b) return 'nobtn'; b.click(); return 'ok'; })()`);
+    if (!row) return 'nobtn'; row.querySelector('[data-catmore]').click();
+    const b = row.querySelector('.cat-menu [data-catdo="del"]'); if (!b) return 'nobtn'; b.click(); return 'ok'; })()`);
   if (r !== 'ok') return false;
   if (!(await waitFor(isOpen('#confirmModal'), 3000, 100))) return false;
   await cdp.ev(`document.getElementById('cfOk').click(); 1`);
@@ -261,12 +262,13 @@ async function deleteCatViaUi(id) {
   await saveIdle();
   return gone;
 }
-//  개인 과제를 사람이 만드는 길로 만든다 — 이름 칸 → [과제 추가](#btnCatSave). 새 과제는 맨 뒤에 붙는다(R6).
+//  일반 과제를 사람이 만드는 길로 만든다 — [＋ 과제 추가] → 일반 과제 탭 → 이름 → [추가](TASK-ADD-UX). 새 과제는 맨 뒤에 붙는다(R6).
 async function addCatViaUi(name) {
   if (!(await cdp.ev(isOpen('#categoryModal')))) await openCat();
   await saveIdle();
-  await cdp.ev(`(function(){ const n = document.getElementById('cName'); n.value = ${JSON.stringify(name)};
-    n.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('btnCatSave').click(); return 1; })()`);
+  await cdp.ev(`(function(){ document.getElementById('btnCatAdd').click(); document.getElementById('caTabOwn').click();
+    const n = document.getElementById('caName'); n.value = ${JSON.stringify(name)};
+    n.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('caAddOwn').click(); return 1; })()`);
   const got = await waitFor(`state.categories.some(function(c){ return c.name === ${JSON.stringify(name)}; })`, 4000, 100);
   await sleep(150);
   await saveIdle();
@@ -350,12 +352,12 @@ async function main() {
   head('C1 「과제 관리」 목록 = state.categories 순서(개인·공식 섞임 그대로)');
   ok('C1 헤더 [과제 관리] 로 모달이 열린다', await openCat());
   ok('C1 목록 행 순서 = state.categories', same(await domOrder(), await order()), JSON.stringify({ dom: await domOrder(), state: await order() }));
-  ok('C1 안내 한 줄 「순서는 보고서·필터에 그대로 반영됩니다」가 보인다(R8)',
-    await cdp.ev("(function(){ const h = document.getElementById('catOrderHint'); return !!h && !h.classList.contains('hidden') && /순서는 보고서·필터에 그대로 반영됩니다/.test(h.textContent) && h.offsetHeight > 0; })()"));
-  ok('C1 각 행 ▲▼ 는 진짜 버튼 + aria-label「위로 이동: 과제명」/「아래로 이동: 과제명」', await cdp.ev(`(function(){
+  ok('C1 옛 안내 한 줄(#catOrderHint)과 줄의 ▲▼ 가 없다(TASK-ADD-UX D1, D3)',
+    await cdp.ev("!document.getElementById('catOrderHint') && !document.querySelector('#catList [data-act=\"up\"], #catList [data-act=\"down\"]')"));
+  ok('C1 각 줄의 ⋯ 는 진짜 메뉴 버튼 + aria-label「과제명 더 보기」', await cdp.ev(`(function(){
     const rows = document.querySelectorAll('#catList .cat-row'); if (!rows.length) return false;
-    return [].every.call(rows, function(r){ const c = catById(r.dataset.id); const u = r.querySelector('[data-act="up"]'), d = r.querySelector('[data-act="down"]');
-      return !!c && u && d && u.tagName === 'BUTTON' && d.tagName === 'BUTTON' && u.getAttribute('aria-label') === '위로 이동: ' + c.name && d.getAttribute('aria-label') === '아래로 이동: ' + c.name; }); })()`));
+    return [].every.call(rows, function(r){ const c = catById(r.dataset.id); const b = r.querySelector('[data-catmore]');
+      return !!c && b && b.tagName === 'BUTTON' && b.getAttribute('aria-haspopup') === 'menu' && b.getAttribute('aria-label') === c.name + ' 더 보기'; }); })()`));
   let C1moves = 0;
   {
     const cs = await cats();
@@ -363,13 +365,13 @@ async function main() {
     const interleaved = (list) => list.some((c, i) => c.off && list.slice(0, i).some((x) => !x.off) && list.slice(i + 1).some((x) => !x.off));
     if (nP >= 2 && nO >= 1) {
       if (!interleaved(cs)) {
-        //  공식 하나를 개인 사이로 — 진짜 ▲/▼ 로 한 칸씩(개인을 하나 지나칠 때까지).
+        //  공식 하나를 개인 사이로 — 진짜 위로/아래로 로 한 칸씩(개인을 하나 지나칠 때까지).
         const o = cs.find((c) => c.off);
         const dir = cs.slice(0, cs.indexOf(o)).some((x) => !x.off) ? 'up' : 'down';
         for (let k = 0; k < cs.length && !interleaved(await cats()); k++) {
           const p = await press(o.id, dir);
           C1moves++;
-          if (p.r !== 'ok' || p.saves.length !== 1) { ok(`C1 배치용 ${dir === 'up' ? '▲' : '▼'} (${o.name})`, false, JSON.stringify({ r: p.r, saves: p.saves.length })); break; }
+          if (p.r !== 'ok' || p.saves.length !== 1) { ok(`C1 배치용 ${dir === 'up' ? '위로' : '아래로'} (${o.name})`, false, JSON.stringify({ r: p.r, saves: p.saves.length })); break; }
         }
         note(`공식 과제 하나를 개인 과제 사이로 옮겼다(${C1moves}칸)`);
       }
@@ -379,15 +381,15 @@ async function main() {
       await openCat();   // 다시 연다 = renderCatModal 이 새로 그린다 — 개인 먼저로 다시 묶으면 여기서 갈린다
       const dO = await domOrder(), dOff = await domOfficial();
       ok('C1 다시 연 목록도 state.categories 순서(개인 먼저로 다시 묶지 않는다 — R1)', same(dO, await order()), JSON.stringify(dO));
-      ok('C1 다시 연 목록에서 공식(DB 배지) 행이 개인 행 사이에 그려진다',
+      ok('C1 다시 연 목록에서 공식(구분 열 「공식」) 줄이 개인 줄 사이에 그려진다',
         dOff.some((off, i) => off && dOff.slice(0, i).some((x) => !x) && dOff.slice(i + 1).some((x) => !x)), JSON.stringify(dOff.map((x) => (x ? 'O' : 'P')).join('')));
     } else {
       na('C1 개인·공식 섞임', `개인 ${nP} · 공식 ${nO} — 공식을 개인 사이에 둘 수 없다`);
     }
   }
 
-  /* ── C2 · C7 마지막 행 ▲ ── */
-  head('C2 · C7 마지막 행 ▲(focus → click) — 한 칸 · 저장 1회 · 끝 버튼 비활성 · 포커스·스크롤 유지');
+  /* ── C2 · C7 마지막 행 위로 ── */
+  head('C2 · C7 마지막 행 ⋯ → 위로 — 한 칸 · 저장 1회 · 끝 항목 꺼짐 · 포커스·스크롤 유지 · 목록 그대로');
   let EXPECT = await order();
   const n = EXPECT.length;
   const lastId = EXPECT[n - 1];
@@ -401,27 +403,29 @@ async function main() {
   vlog('스크롤:', JSON.stringify(geo));
   await sleep(150);
   const st0 = await cdp.ev(`${BODY}.scrollTop`);
+  await cdp.ev(`(function(){ window.__ordRow = [].find.call(document.querySelectorAll('#catList .cat-row'), function(x){ return x.dataset.id === ${JSON.stringify(lastId)}; }); return 1; })()`);
   const p1 = await press(lastId, 'up');
   EXPECT = swapped(EXPECT, n - 1, n - 2);
-  ok(`C2 마지막 행(${lastName}) ▲ 를 눌렀다`, p1.r === 'ok', p1.r);
+  ok(`C2 마지막 행(${lastName}) ⋯ 의 위로를 눌렀다`, p1.r === 'ok', p1.r);
   ok('C2 한 번 = saveState 1회', p1.saves.length === 1, `${p1.saves.length}회`);
   ok('C2 그 저장이 성공했고 payload 순서 = 옮긴 순서', !!(p1.saves[0] && p1.saves[0].res && p1.saves[0].res.ok) && same(p1.saves[0] && p1.saves[0].order, EXPECT),
     JSON.stringify(p1.saves.map((x) => ({ res: x.res, order: x.order }))));
   ok('C2 한 칸 위로(state.categories)', same(await order(), EXPECT), JSON.stringify(await order()));
   ok('C2 목록 행 순서 = state.categories', same(await domOrder(), EXPECT));
   const e1 = await endsDisabled();
-  ok('C2 첫 행 ▲ · 마지막 행 ▼ = aria-disabled + 이유 툴팁 · 그 밖은 켜짐(N3)', !!e1 && e1.firstUp && e1.lastDown && e1.midOk, JSON.stringify(e1));
+  ok('C2 첫 행의 위로, 맨 위로 · 마지막 행의 아래로, 맨 아래로 = 꺼짐 · 그 밖은 켜짐', !!e1 && e1.firstUp && e1.lastDown && e1.midOk, JSON.stringify(e1));
   ok('C2 aria-live 낭독 「<과제명> — N번째에서 N-1번째로 옮겼습니다」', (await live()) === `${lastName}: ${n}번째에서 ${n - 1}번째로 옮겼습니다`, await live());
-  ok('C2 ▲▼ 가 줄 오른쪽(건수 뒤 · 수정 앞)의 .code-ord 다(직급·소속 줄과 같은 컴포넌트 · N3)', await cdp.ev(`(function(){ const r = document.querySelector('#catList .cat-row');
-    const o = r && r.querySelector('.code-ord'), c = r && r.querySelector('.cat-count'), e = r && r.querySelector('[data-act="edit"]');
-    return !!(o && c && e) && !!(c.compareDocumentPosition(o) & 4) && !!(o.compareDocumentPosition(e) & 4) && o.querySelectorAll('.btn.sm').length === 2; })()`));
+  ok('C2 ⋯ 가 줄 맨 오른쪽(건수 뒤)이다', await cdp.ev(`(function(){ const r = document.querySelector('#catList .cat-row');
+    const c = r && r.querySelector('.cat-count'), b = r && r.querySelector('[data-catmore]');
+    return !!(c && b) && !!(c.compareDocumentPosition(b) & 4) && r.lastElementChild === b; })()`));
   const f1 = await focusInfo();
-  ok('C7 포커스 = 옮겨진 행의 같은 ▲(같은 노드)', f1.same && f1.row === lastId && f1.act === 'up', JSON.stringify(f1));
+  ok('C7 포커스 = 옮겨진 행의 ⋯', f1.more && f1.row === lastId, JSON.stringify(f1));
+  ok('C7 옮길 때 목록을 다시 만들지 않았다(옮긴 줄이 같은 노드)', await cdp.ev(`(function(){ const r = [].find.call(document.querySelectorAll('#catList .cat-row'), function(x){ return x.dataset.id === ${JSON.stringify(lastId)}; }); return !!r && r === window.__ordRow && !r.classList.contains('cat-flash'); })()`));
   if (geo && geo.scrollable) {
     const st1 = await cdp.ev(`${BODY}.scrollTop`);
     ok('C7 모달 스크롤 자리 유지(.modal-body scrollTop)', Math.abs(st1 - st0) < 1, `${st0} → ${st1}`);
   } else na('C7 스크롤 자리', `모달 본문이 스크롤되지 않는다(${JSON.stringify(geo)})`);
-  //  맨 위까지 — 한 번에 한 칸 · 매번 저장 1회. 맨 위에 닿아 ▲ 가 꺼지면 포커스는 같은 행의 ▼ 로.
+  //  맨 위까지 — 한 번에 한 칸 · 매번 저장 1회.
   let perPress = true, steps = 0;
   for (let i = n - 2; i > 0; i--) {
     const p = await press(lastId, 'up');
@@ -432,12 +436,12 @@ async function main() {
   ok(`C2 맨 위까지 ${steps}번 더 — 매번 한 칸 · 저장 1회`, perPress);
   ok('C2 맨 위에 닿았다(state · 목록)', (await order())[0] === lastId && same(await domOrder(), await order()));
   const f2 = await focusInfo();
-  ok('C7 맨 위에 닿으면 포커스가 같은 행의 ▼ 로 넘어간다(body 로 떨어지지 않는다)', f2.row === lastId && f2.act === 'down', JSON.stringify(f2));
+  ok('C7 맨 위에 닿아도 포커스는 그 줄의 ⋯ 다(body 로 떨어지지 않는다)', f2.more && f2.row === lastId, JSON.stringify(f2));
   const e2 = await endsDisabled();
-  ok('C2 맨 위로 온 행의 ▲ · 마지막 행 ▼ = 끝 표시(aria-disabled + 툴팁)', !!e2 && e2.firstUp && e2.lastDown && e2.midOk, JSON.stringify(e2));
-  //  끝 버튼을 진짜로 눌러도 바뀌는 것 0 · 저장 0(N3)
+  ok('C2 맨 위로 온 행의 위로 · 마지막 행의 아래로 = 꺼짐', !!e2 && e2.firstUp && e2.lastDown && e2.midOk, JSON.stringify(e2));
+  //  꺼진 항목을 진짜로 눌러도 바뀌는 것 0 · 저장 0
   const pe = await press(lastId, 'up', { end: true });
-  ok('C2 맨 위 ▲ 를 눌러도 변화 0 · 저장 0', pe.r === 'ok' && pe.saves.length === 0 && same(await order(), EXPECT), JSON.stringify({ r: pe.r, saves: pe.saves.length }));
+  ok('C2 맨 위 줄의 위로(꺼짐)를 눌러도 변화 0 · 저장 0', pe.r === 'ok' && pe.saves.length === 0 && same(await order(), EXPECT), JSON.stringify({ r: pe.r, saves: pe.saves.length }));
 
   /* ── C3 서버에서 다시 읽기 ── */
   head('C3 reloadState → 서버에서 다시 읽은 순서 = 옮긴 직후 순서');
@@ -529,7 +533,7 @@ async function main() {
   }
 
   /* ── C6 연결 끊김 중 이동 불가 ── */
-  head('C6 (live) network 장애 → 끊김 → ▼ → 순서·화면·저장 변화 0 → 해제 → 복구');
+  head('C6 (live) network 장애 → 끊김 → 아래로 → 순서·화면·저장 변화 0 → 해제 → 복구');
   if (!faultOk) undecide('C6 연결 끊김 중 이동', '__dbFault 를 쓸 수 없다(디버그 실행이 아니다)');
   else {
     await openCat();
@@ -544,7 +548,7 @@ async function main() {
     const p6 = await press(firstId, 'down', { idle: false });
     await sleep(500);
     const L6 = await since(m6);
-    ok('C6 첫 행 ▼ 를 눌렀다(버튼은 켜져 있다)', p6.r === 'ok', p6.r);
+    ok('C6 첫 행 아래로를 눌렀다(항목은 켜져 있다)', p6.r === 'ok', p6.r);
     ok('C6 state.categories 순서 변화 0', same(await order(), before), JSON.stringify(await order()));
     ok('C6 목록 화면 순서 변화 0', same(await domOrder(), before), JSON.stringify(await domOrder()));
     ok('C6 saveState 0건', reqs(L6, 'saveState').length === 0, `${reqs(L6, 'saveState').length}건`);
@@ -590,7 +594,7 @@ try {
         //  zz 과제 — 이 실행이 만든 것 + 이름이 zzORD- 로 시작하는 것(중단 잔재)
         const zz = await zzCats();
         for (const c of zz) ok(`정리: zz 과제 ${c.name} 삭제`, await deleteCatViaUi(c.id));
-        //  원래 순서로 — 진짜 ▲ 를 눌러 한 칸씩(moveCategory 경로). 각 목표 자리에 올 과제를 위로 끌어올린다.
+        //  원래 순서로 — 진짜 위로를 눌러 한 칸씩(moveCategory 경로). 각 목표 자리에 올 과제를 위로 끌어올린다.
         const target = ORIG.slice();
         let stuck = false, moves = 0;
         for (let k = 0; k < target.length && !stuck; k++) {
@@ -612,7 +616,7 @@ try {
         restored = r === 'applied' && same(fin, ORIG);
         if (!restored) {
           //  마지막 수단 — 원래 순서로 배열을 놓고 save() 한 번.
-          console.log(`${el()}   · 정리: ▲ 복원이 어긋났다(${r}) — 배열을 원래 순서로 놓고 save() 1회`);
+          console.log(`${el()}   · 정리: 위로 복원이 어긋났다(${r}) — 배열을 원래 순서로 놓고 save() 1회`);
           await cdp.ev(`(function(){ const want = ${JSON.stringify(ORIG)}; const by = new Map(state.categories.map(function(c){ return [c.id, c]; }));
             const rest = state.categories.filter(function(c){ return want.indexOf(c.id) < 0; });
             state.categories = want.filter(function(id){ return by.has(id); }).map(function(id){ return by.get(id); }).concat(rest); save(); return 1; })()`);
@@ -620,7 +624,7 @@ try {
           const r2 = await reload();
           restored = r2 === 'applied' && same(await order(), ORIG);
         }
-        ok(`정리: 원래 순서 복원(▲ ${moves}번) — reloadState 뒤 서버 순서 = 원래 순서`, restored, JSON.stringify({ got: await order(), want: ORIG }));
+        ok(`정리: 원래 순서 복원(위로 ${moves}번) — reloadState 뒤 서버 순서 = 원래 순서`, restored, JSON.stringify({ got: await order(), want: ORIG }));
         ok('정리: zz 과제 잔재 0', (await zzCats()).length === 0);
         await closeAll();
         healthyAtEnd = await waitFor(isHealthy, 5000);

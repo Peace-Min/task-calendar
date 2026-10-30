@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내 과제 추가 시안 v2</title>
+<style>
+/* 토큰: 앱 :root 값 그대로(filterbar-proto.html 과 같다) */
+:root{
+  --bg:#f3f4f7; --panel:#ffffff; --line:#e4e7ee; --line-2:#d6dbe6; --ctl-border:#8b93a5;
+  --text:#1d2433; --muted:#5b6373; --faint:#9aa2b3; --faint-text:#6c7488;
+  --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd; --accent-fill:var(--accent); --on-accent:#fff;
+  --hover-bg:#f3f5fa; --dim-bg:#fafbfd; --mark-bg:#ffe27a; --mark-ink:#1d2433;
+  --ok:#1f7a4d; --warn-text:#8a6400; --warn-bg:#fbefd0;
+  --r-sm:6px; --r-md:10px; --r-lg:14px; --shadow:0 10px 32px rgba(20,28,55,.16);
+  --fs-micro:11px; --fs-meta:12px; --fs-body:13px; --fs-emph:14px; --fs-title:15px; --fs-h2:17px;
+}
+[hidden]{display:none !important}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI','Malgun Gothic','맑은 고딕',system-ui,sans-serif;font-size:var(--fs-body);line-height:1.5}
+button,input,select{font-family:inherit;color:inherit;font-size:inherit}
+.page{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:var(--fs-h2);margin:0 0 4px}
+.lead{color:var(--muted);margin:0 0 12px}
+.tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.tabs button{border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:6px 12px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
+.stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);overflow:hidden}
+.mh{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.mh b{font-size:var(--fs-title)} .mh span.s{color:var(--muted);font-size:var(--fs-meta);margin-left:8px}
+.mb{padding:12px 14px}
+.mf{display:flex;align-items:center;gap:8px;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--line)}
+.btn{border:1px solid var(--ctl-border);background:var(--panel);border-radius:var(--r-sm);padding:6px 12px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--hover-bg)}
+.btn.primary{background:var(--accent-fill);color:var(--on-accent);border-color:var(--accent-fill)}
+.btn.sm{padding:3px 10px;font-size:var(--fs-meta)}
+.lbl{display:block;font-weight:600;margin:0 0 4px}
+.hint{color:var(--muted);font-size:var(--fs-meta)}
+.inp{width:100%;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:7px 10px;background:var(--panel)}
+.inp:focus{outline:2px solid var(--accent)}
+.tag{font-size:var(--fs-micro);padding:1px 7px;border-radius:99px;border:1px solid var(--line-2);color:var(--muted);white-space:nowrap}
+.tag.in{border-color:var(--ok);color:var(--ok)}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.row{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:4px}
+.row .nm{flex:1}
+mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px}
+.toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#222a3d;color:#fff;padding:8px 14px;border-radius:var(--r-md);opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
+.toast.on{opacity:1}
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:6px 10px;border-radius:0 var(--r-sm) var(--r-sm) 0;font-size:var(--fs-meta)}
+.note.warn{border-left-color:#b97d00;background:var(--warn-bg);color:#7a5600}
+.fld{margin-bottom:12px}
+.lnk{background:none;border:0;padding:0;color:var(--accent-2);text-decoration:underline;cursor:pointer}
+.cmp{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:10px 14px;font-size:var(--fs-meta);color:var(--muted)}
+.cmp b{color:var(--text)}
+
+/* 내 과제 창(목록만) */
+.mine{max-width:380px;margin:0 auto}
+
+/* 추가 창(넓게) */
+.ov{position:absolute;inset:0;background:rgba(20,28,55,.4);display:flex;align-items:center;justify-content:center;padding:14px;z-index:6}
+.ov[hidden]{display:none}
+.dlg{background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:var(--shadow);width:100%;max-width:820px;height:100%;max-height:600px;display:flex;flex-direction:column}
+.dlg .body{flex:1;min-height:0;display:flex;flex-direction:column;padding:10px 14px 0}
+.fl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 6px}
+.fl select{border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 8px;background:var(--panel);min-width:130px}
+.chip{border:1px solid var(--line-2);background:var(--panel);border-radius:99px;padding:3px 10px;font-size:var(--fs-meta);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
+.cnt{margin-left:auto;color:var(--muted);font-size:var(--fs-meta)}
+.dtabs{display:flex;gap:4px;padding:0 14px;border-bottom:1px solid var(--line)}
+.dtabs button{border:0;background:none;padding:9px 12px 8px;cursor:pointer;border-bottom:3px solid transparent;font-weight:600;color:var(--muted)}
+.dtabs button small{display:block;font-weight:400;font-size:var(--fs-micro);color:var(--faint-text)}
+.dtabs button[aria-selected="true"]{color:var(--accent-2);border-bottom-color:var(--accent)}
+.res{flex:1;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:var(--r-sm)}
+.opt{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:9px 12px;border-bottom:1px solid var(--line)}
+.opt:hover{background:var(--hover-bg)}
+.opt.have{background:var(--dim-bg)}
+.opt .t{font-weight:700;display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
+.opt .m{grid-column:1;color:var(--text);font-size:var(--fs-meta)}
+.k{color:var(--faint-text);font-size:var(--fs-micro);font-weight:400;margin-right:5px}
+.k.gap{margin-left:12px}
+.opt .t .k{font-size:var(--fs-micro)}
+.opt .m3{grid-column:1;color:var(--text);font-size:var(--fs-meta)}
+.opt .m2{grid-column:1;color:var(--text);font-size:var(--fs-meta)}
+.opt .act{grid-column:2;grid-row:1 / span 4;align-self:center;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.st{font-size:var(--fs-micro);font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.st i{width:7px;height:7px;border-radius:50%;display:inline-block}
+.st.run{color:var(--ok)} .st.run i{background:var(--ok)}
+.st.plan{color:var(--warn-text)} .st.plan i{background:#b97d00}
+.st.end{color:var(--faint-text)} .st.end i{background:var(--faint)}
+.sec{padding:5px 12px;font-size:var(--fs-micro);color:var(--faint-text);background:var(--dim-bg);border-bottom:1px solid var(--line);position:sticky;top:0}
+.own{padding:10px 12px;background:var(--dim-bg);border-top:1px solid var(--line)}
+.empty{padding:14px 12px;color:var(--muted)}
+.pal{display:flex;gap:8px}
+.sw{width:24px;height:24px;border-radius:50%;border:2px solid transparent;cursor:pointer}
+.sw.on{outline:2px solid var(--text);outline-offset:2px}
+
+/* 내 과제 목록 행(제안): 손잡이, 색, 이름, 건수, ⋯ 하나 */
+.crow,.chead{display:grid;grid-template-columns:16px 10px minmax(0,1fr) 46px 40px 30px;align-items:center;gap:10px;padding:9px 8px}
+.chead{padding:0 9px 4px;font-size:var(--fs-micro);color:var(--faint-text)}
+.chead span:nth-child(4){text-align:center}.chead span:nth-child(5){text-align:right}
+.ctype{justify-self:center;font-size:var(--fs-micro);font-weight:600;padding:1px 0;width:46px;text-align:center;border-radius:99px;border:1px solid var(--line-2);color:var(--muted)}
+.ctype.official{border-color:var(--ok);color:var(--ok);background:#eaf6ef}
+.ctype.default{background:var(--dim-bg);color:var(--text)}
+.ccount{text-align:right}
+.crow{border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:6px;background:var(--panel);cursor:pointer;position:relative}
+.crow:hover{background:var(--hover-bg)}
+.crow.drag{opacity:.45}
+.crow.over{box-shadow:0 -2px 0 var(--accent)}
+.crow.flash{animation:fl .9s}
+@keyframes fl{0%{background:var(--accent-soft)}100%{background:var(--panel)}}
+.grip{color:var(--faint);cursor:grab;user-select:none;width:16px;text-align:center;font-size:16px;line-height:1}
+.crow:hover .grip{color:var(--muted)}
+.cmain{flex:1;min-width:0}
+.cname{font-weight:600}
+.nmtxt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:keep-all;overflow-wrap:anywhere;line-height:1.35}
+
+.csub{color:var(--muted);font-size:var(--fs-meta);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ccount{color:var(--muted);font-size:var(--fs-meta);white-space:nowrap}
+.more{border:1px solid transparent;background:none;border-radius:var(--r-sm);width:30px;height:28px;cursor:pointer;font-size:16px;line-height:1;color:var(--muted)}
+.more:hover,.more[aria-expanded="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2)}
+.menu{position:absolute;right:6px;top:calc(100% - 2px);background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:var(--shadow);z-index:8;min-width:230px;padding:4px;cursor:default}
+.mi{display:block;width:100%;text-align:left;border:0;background:none;padding:7px 10px;border-radius:var(--r-sm);cursor:pointer}
+.mi:hover{background:var(--hover-bg)}
+.mi[disabled]{color:var(--faint-text);cursor:default;background:none}
+.mi.danger{color:#c0343a}
+.mi small{display:block;color:var(--muted);font-size:var(--fs-micro)}
+.mgrp{font-size:var(--fs-micro);color:var(--faint-text);padding:6px 10px 2px}
+.msep{height:1px;background:var(--line);margin:4px 2px}
+.smw{position:absolute;inset:0;background:rgba(20,28,55,.4);display:flex;align-items:center;justify-content:center;padding:14px;z-index:9}
+.smw[hidden]{display:none}
+.smc{background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:var(--shadow);width:100%;max-width:420px}
+.btn.danger.fill{background:#d6494e;color:#fff;border-color:#d6494e}
+.cur-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);font-size:var(--fs-meta)}
+.cur-row .nm{flex:1;min-width:0}
+.cur-row .l{background:none;border:0;color:var(--accent-2);cursor:pointer;padding:0 2px;white-space:nowrap}
+.cur-row .l.d{color:#c0343a}
+.arr{border:1px solid var(--line-2);background:var(--panel);border-radius:4px;width:22px;height:22px;line-height:1;padding:0;color:var(--muted)}
+
+/* 공식 과제 표(추가 창): 열 분리, 폭에 따라 열이 줄어든다 */
+.res{container-type:inline-size}
+.tb-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1.2fr) minmax(0,1fr) 64px 132px 74px;gap:10px;align-items:center;padding:8px 12px}
+.tb-h{position:sticky;top:0;z-index:2;background:var(--dim-bg);border-bottom:1px solid var(--line-2);font-size:var(--fs-micro);font-weight:600;color:var(--muted);padding-top:6px;padding-bottom:6px}
+.tb-g{padding:5px 12px;font-size:var(--fs-meta);font-weight:600;background:var(--dim-bg);border-bottom:1px solid var(--line);cursor:pointer;display:flex;gap:6px;align-items:center}
+.tb-g .n{color:var(--muted);font-weight:400;font-size:var(--fs-micro)}
+.tb-r{border-bottom:1px solid var(--line);cursor:pointer}
+.tb-r:hover{background:var(--hover-bg)}
+.tb-r.have{background:var(--dim-bg)}
+.tb-r.have .rn{color:var(--muted)}
+.tb-r:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.rn{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:keep-all;overflow-wrap:anywhere;font-weight:600;line-height:1.35}
+.tb-r .c{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-meta)}
+.sub-cust{display:none;color:var(--muted);font-size:var(--fs-micro);margin-top:2px}
+.h-narrow{display:none}
+.tb-x{padding:8px 12px 10px 28px;background:var(--dim-bg);border-bottom:1px solid var(--line)}
+.tb-x dl{display:grid;grid-template-columns:76px minmax(0,1fr);gap:3px 10px;margin:0;font-size:var(--fs-meta)}
+.tb-x dt{color:var(--faint-text)} .tb-x dd{margin:0}
+.x-cust,.x-st,.x-per,.x-ctr{display:none}
+.caret{display:inline-block;width:12px;color:var(--muted)}
+.cact{text-align:right}
+/* 가운데: 열 줄이기 */
+@container (max-width:759px){
+  .tb-grid{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) 30px 74px}
+  .c-ctr,.c-per{display:none}
+  .c-st .stx{display:none}
+  .c-st{text-align:center}
+  .x-st,.x-per,.x-ctr{display:contents}
+}
+/* 좁게: 이름 + 담기만 */
+@container (max-width:399px){
+  .tb-grid{grid-template-columns:minmax(0,1fr) 74px}
+  .c-cust,.c-st{display:none}
+  .sub-cust{display:block}
+  .h-narrow{display:inline}
+  .x-cust{display:contents}
+}
+.gc{display:none !important}
+
+/* 지금 팝업(비교용 재현) */
+.cur-tools{display:grid;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.cur-tools .r{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.cur-tools select{border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:4px 6px;background:var(--panel)}
+.cur-split{display:grid;grid-template-columns:1.5fr 1fr;min-height:300px}
+.cur-list{border-right:1px solid var(--line);font-size:var(--fs-meta)}
+.cur-list .h,.cur-list .r{display:grid;grid-template-columns:1.4fr 1fr .8fr .7fr 1.1fr;gap:6px;padding:5px 8px;border-bottom:1px solid var(--line);align-items:center}
+.cur-list .h{color:var(--muted);font-weight:600;background:var(--dim-bg)}
+.cur-list .r.on{background:var(--accent-soft)}
+.cur-list .g{padding:4px 8px;font-weight:600;background:var(--dim-bg)}
+.cur-det{padding:12px 14px}
+.cur-det dl{display:grid;grid-template-columns:70px 1fr;gap:3px 8px;margin:8px 0 12px;font-size:var(--fs-meta)}
+.cur-det dt{color:var(--muted)}
+.cur-det dd{margin:0}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>내 과제 추가 시안 v2: 비슷한 과제를 구분해서 바로 추가한다</h1>
+  <p class="lead">대상은 「내 과제」 창과 그 추가 창뿐입니다. 샘플 데이터이며 저장되지 않습니다. 이름이 비슷한 과제를 일부러 넣어 두었습니다.</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="t1" aria-selected="true">제안: 내 과제 창과 추가 창</button>
+    <button role="tab" id="t2" aria-selected="false">비교: 지금 내 과제 창(재현)</button>
+    <button role="tab" id="t3" aria-selected="false">비교: 지금 공식 과제 찾아보기 팝업(재현)</button>
+  </div>
+
+  <div class="tabs" role="group" aria-label="창 폭">
+    <span class="hint">내 과제 창 폭</span>
+    <button class="chip" type="button" id="w380" aria-pressed="true">좁은 위젯(380px)</button>
+    <button class="chip" type="button" id="w560" aria-pressed="false">넓은 창(560px)</button>
+  </div>
+
+  <div class="tabs" role="group" aria-label="추가 창 폭">
+    <span class="hint">추가 창 폭</span>
+    <button class="chip" type="button" data-dw="320" aria-pressed="false">320px</button>
+    <button class="chip" type="button" data-dw="480" aria-pressed="false">480px</button>
+    <button class="chip" type="button" data-dw="820" aria-pressed="true">820px</button>
+  </div>
+
+  <!-- 제안 -->
+  <div id="v1" class="stage" style="height:640px">
+    <div class="mine">
+      <div class="mh"><div><b>🏷️ 내 과제</b><span class="s">내 캘린더에서 쓰는 과제(색, 순서)</span></div><button class="btn primary sm" id="open" type="button">＋ 과제 추가</button></div>
+      <div class="mb"><div id="mine"></div></div>
+      <div class="mf"><button class="btn" id="relink" type="button" title="직접 만든 과제를 공식 과제에 이어 붙입니다">🔗 공식 과제로 연결</button><span style="flex:1"></span><button class="btn">닫기</button></div>
+    </div>
+
+    <div class="smw" id="sm" hidden><div class="smc" role="dialog" aria-modal="true"><div class="mh"><b id="smt"></b><button class="btn sm" id="smx" type="button" aria-label="닫기">×</button></div><div class="mb" id="smb"></div><div class="mf" id="smf"></div></div></div>
+    <div class="ov" id="ov" hidden>
+      <div class="dlg" role="dialog" aria-label="과제 추가">
+        <div class="mh"><b>과제 추가</b><button class="btn sm" id="x" type="button" aria-label="닫기">×</button></div>
+        <div class="dtabs" role="tablist" aria-label="과제 종류">
+          <button role="tab" id="dt1" type="button" aria-selected="true">공식 과제</button>
+          <button role="tab" id="dt2" type="button" aria-selected="false">일반 과제</button>
+        </div>
+
+        <div class="body" id="s1">
+          <input class="inp" id="q" autocomplete="off" placeholder="통상명칭, 사업명, 계약명, 발주처로 찾기" aria-label="공식 과제 검색">
+          <div class="fl">
+            <select id="fc" aria-label="발주처"></select>
+            <select id="fs" aria-label="구분"></select>
+            <button class="chip" type="button" data-st="run" aria-pressed="true">진행중</button>
+            <button class="chip" type="button" data-st="plan" aria-pressed="true">예정</button>
+            <button class="chip" type="button" data-st="end" aria-pressed="false">종료</button>
+            <span class="cnt" id="cnt" role="status"></span>
+          </div>
+          <div class="res" id="res"></div>
+        </div>
+
+        <div class="body" id="s2" hidden>
+          <div class="fld"><label class="lbl" for="nm">과제 이름</label><input class="inp" id="nm" maxlength="60"></div>
+          <div class="fld"><label class="lbl">색상</label><div class="pal" id="pal"></div></div>
+          <div class="fld"><label class="lbl" for="ds">메모 (선택)</label><input class="inp" id="ds" maxlength="200"></div>
+        </div>
+
+        <div class="mf" id="f1"><button class="btn" id="done" type="button" style="margin-right:auto">닫기</button><span class="hint" id="added"></span></div>
+        <div class="mf" id="f2" hidden><button class="btn" id="back" type="button" style="margin-right:auto">닫기</button><button class="btn primary" id="make" type="button">추가</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 비교: 지금 내 과제 창 -->
+  <div id="v2" class="stage" hidden>
+    <div class="mine">
+      <div class="mh"><div><b>🏷️ 내 과제</b><span class="s">내 캘린더에서 쓰는 과제(색, 순서)</span></div></div>
+      <div class="mb">
+        <button class="btn" style="width:100%;text-align:left;margin-bottom:10px" type="button">📁 공식 과제(DB) 찾아보기 <span class="hint">128건, 연결됨 →</span></button>
+        <div class="hint" style="margin:4px 0">등록된 과제 · 개인과 공식(DB) 통합 목록</div>
+        <div style="border:1px solid var(--line);border-radius:var(--r-sm)">
+          <div class="cur-row"><span class="dot" style="background:#3e5be0"></span><span class="nm"><b>통합관제 유지보수</b> <span class="tag">DB</span></span><span class="hint">42건</span><button class="arr">▲</button><button class="arr">▼</button><button class="l">옮기기</button><button class="l">수정</button><button class="l d">제거</button></div>
+          <div class="cur-row"><span class="dot" style="background:#1f7a4d"></span><span class="nm"><b>주간 보고서</b></span><span class="hint">31건</span><button class="arr">▲</button><button class="arr">▼</button><button class="l">옮기기</button><button class="l">수정</button><button class="l d">삭제</button></div>
+          <div class="cur-row"><span class="dot" style="background:#b4602a"></span><span class="nm"><b>휴가</b> <span class="tag">기본</span></span><span class="hint">6건</span><button class="arr">▲</button><button class="arr">▼</button><button class="l">옮기기</button><button class="l">수정</button></div>
+        </div>
+        <div style="margin-top:12px"><label class="lbl">새 과제 추가</label><input class="inp" placeholder="과제 이름 (예: 주간 보고서)" disabled><div class="hint" style="margin-top:6px">색상 팔레트, 설명 입력칸이 이어집니다</div></div>
+      </div>
+      <div class="mf"><button class="btn">🔗 기존 과제 재연결</button><span style="flex:1"></span><button class="btn">닫기</button><button class="btn primary">과제 추가</button></div>
+    </div>
+  </div>
+
+  <!-- 비교: 지금 팝업 -->
+  <div id="v3" class="stage" hidden>
+    <div class="mh"><div><b>📁 공식 과제 (DB)</b><span class="s">연결됨 (128건)</span></div><button class="btn sm" type="button">×</button></div>
+    <div class="cur-tools">
+      <input class="inp" placeholder="사업명, 통상명칭, 발주처 검색" disabled>
+      <div class="r"><select disabled><option>발주처 전체</option></select><select disabled><option>구분 전체</option></select></div>
+      <div class="r"><span class="hint">상태</span><label><input type="checkbox" checked disabled> 진행중</label><label><input type="checkbox" checked disabled> 예정</label><label><input type="checkbox" disabled> 종료</label></div>
+      <div class="r"><span class="hint">9 / 128건</span><span style="flex:1"></span><button class="btn sm" disabled>초기화</button><button class="btn sm" disabled>⬇ Excel 추출</button></div>
+    </div>
+    <div class="cur-split">
+      <div class="cur-list" id="curlist"></div>
+      <div class="cur-det" id="curdet"><div class="hint" style="text-align:center;padding-top:80px">왼쪽에서 과제를 선택하세요</div></div>
+    </div>
+    <div class="mf"><button class="btn" disabled>지금 새로고침</button><span style="flex:1"></span><button class="btn">닫기</button></div>
+  </div>
+
+  <div class="cmp" id="cmpnote"></div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* 샘플: 이름이 비슷한 과제를 섞었다. 실제 앱에서는 공식 과제 카탈로그를 쓴다 */
+const OFF = [
+  {id:'o1', name:'통합관제 플랫폼', proj:'통합관제 플랫폼 구축 사업', ctr:'1단계 구축 용역', cust:'한국도로공사', sec:'개발', st:'run', per:'2026.03 ~ 2027.02'},
+  {id:'o2', name:'통합관제 플랫폼', proj:'통합관제 플랫폼 구축 사업', ctr:'2단계 고도화 용역', cust:'한국도로공사', sec:'개발', st:'plan', per:'2027.03 ~ 2027.12'},
+  {id:'o3', name:'통합관제 유지보수', proj:'통합관제 플랫폼 유지관리', ctr:'2026년 유지보수', cust:'한국도로공사', sec:'유지보수', st:'run', per:'2026.01 ~ 2026.12'},
+  {id:'o4', name:'통합관제 유지보수', proj:'통합관제 시스템 운영', ctr:'2026년 유지보수', cust:'국토교통부', sec:'유지보수', st:'run', per:'2026.01 ~ 2026.12'},
+  {id:'o5', name:'통합관제 유지보수', proj:'통합관제 플랫폼 유지관리', ctr:'2025년 유지보수', cust:'한국도로공사', sec:'유지보수', st:'end', per:'2025.01 ~ 2025.12'},
+  {id:'o6', name:'공항 관제 모니터링', proj:'공항 통합 모니터링 구축', ctr:'구축 용역', cust:'한국공항공사', sec:'개발', st:'run', per:'2026.05 ~ 2026.12'},
+  {id:'o7', name:'SW 품질 컨설팅', proj:'SW 품질관리 체계 컨설팅', ctr:'컨설팅 용역', cust:'한국전력', sec:'컨설팅', st:'plan', per:'2026.11 ~ 2027.04'},
+  {id:'o8', name:'MES 고도화', proj:'스마트팩토리 MES 고도화', ctr:'3차 고도화', cust:'현대모비스', sec:'개발', st:'run', per:'2026.02 ~ 2026.11'},
+  {id:'o10', name:'통합관제 플랫폼 구축 및 대외 연동 인터페이스 고도화 유지보수 (2026년)', proj:'통합관제 플랫폼 유지관리', ctr:'2026년 유지보수', cust:'한국도로공사', sec:'유지보수', st:'run', per:'2026.01 ~ 2026.12'},
+  {id:'o11', name:'통합관제 플랫폼 구축 및 대외 연동 인터페이스 고도화 유지보수 (2025년)', proj:'통합관제 플랫폼 유지관리', ctr:'2025년 유지보수', cust:'한국도로공사', sec:'유지보수', st:'end', per:'2025.01 ~ 2025.12'},
+  {id:'o9', name:'MES 고도화', proj:'스마트팩토리 MES 고도화', ctr:'2차 고도화', cust:'현대모비스', sec:'개발', st:'end', per:'2025.02 ~ 2025.11'}
+];
+const ST = {run:'진행중', plan:'예정', end:'종료'};
+/* 개발기간 샘플: 계약 시작 1달 뒤 ~ 계약 종료 1달 전(앱의 기본 채움 규칙과 같다) */
+function devPer(per){
+  const m = per.match(/(\d{4})\.(\d{2}) ~ (\d{4})\.(\d{2})/); if(!m) return '미정';
+  const sh = (y, mo, d) => { const t = y * 12 + (mo - 1) + d; return String(Math.floor(t / 12)) + '.' + String(t % 12 + 1).padStart(2, '0'); };
+  return sh(+m[1], +m[2], 1) + ' ~ ' + sh(+m[3], +m[4], -1);
+}
+const MINE = [
+  {id:'d1', name:'휴가', kind:'default', count:6, color:'#b4602a'},
+  {id:'o3', kind:'official', count:42, desc:'도로공사 2026 정기점검 포함'},
+  {id:'p1', name:'주간 보고서', kind:'personal', count:31, desc:'매주 금요일 작성', color:'#1f7a4d'},
+  {id:'o8', kind:'official', count:15},
+  {id:'p2', name:'사내 교육', kind:'personal', count:0, color:'#8a3ea8'},
+  {id:'o10', kind:'official', count:12},
+  {id:'o11', kind:'official', count:27},
+  {id:'p3', name:'2026년 차세대 통합 관제 시스템 고도화 및 대외 연동 인터페이스 개선 과제 (1차 사업)', kind:'personal', count:3, desc:'긴 이름 확인용 샘플', color:'#c43a3f'}
+];
+const COLORS = ['#3e5be0','#1f7a4d','#b4602a','#8a3ea8','#c43a3f'];
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const have = id => MINE.some(m => m.id === id);
+const hl = (t,q) => { if(!q) return esc(t); const i=t.toLowerCase().indexOf(q.toLowerCase()); return i<0?esc(t):esc(t.slice(0,i))+'<mark>'+esc(t.slice(i,i+q.length))+'</mark>'+esc(t.slice(i+q.length)); };
+function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('on'); clearTimeout(toast.h); toast.h=setTimeout(()=>t.classList.remove('on'),2200); }
+let addedN = 0, pcolor = COLORS[0];
+
+const NOTES = {
+  1: '<b>추가 창</b>은 위 탭으로 <b>공식 과제 / 일반 과제</b>를 나눴습니다. 공식 탭은 <b>표 한 장</b>입니다. 열은 통상명칭, (계약명), 발주처, 상태, 계약기간, 담기이고 구분은 접히는 그룹 머리줄입니다. 추가는 줄 끝 <b>[추가]</b> 한 번입니다. 줄을 누르면 아래로 사업명, 개발기간 같은 나머지 정보가 펼쳐집니다(입력칸은 없습니다). 색상과 메모는 추가한 뒤 목록 줄의 수정에서 정합니다. 하단은 두 탭 모두 <b>[닫기]</b>가 왼쪽 같은 자리에 있고, 일반 탭에만 오른쪽에 <b>[추가]</b>가 있습니다. 오른쪽 상세 패널은 없앴고, 위의 「추가 창 폭」 버튼으로 320, 480, 820px에서의 열 변화를 확인할 수 있습니다. <b>정리한 점</b> 1) 줄마다 있던 ▲ ▼ 옮기기 수정 제거 다섯 개를 <b>⋯ 하나</b>로 모았습니다. 2) 순서는 왼쪽 ⠿를 끌어서 바꾸고, 키보드용은 ⋯ 메뉴의 위로, 아래로, 맨 위로, 맨 아래로입니다. 3) 줄을 누르면 수정 창이 열립니다. 4) 데이터를 옮기는 「옮기기」는 <b>「다른 과제와 합치기」</b>로 바꿔 순서 바꾸기와 겹치지 않게 했고, 합친 뒤 삭제하는 체크가 있습니다. 일반 과제 줄 메뉴에는 <b>「공식 과제로 연결」</b>이 있고, 하단 <b>🔗 공식 과제로 연결</b> 버튼은 여러 개를 한 창에서 처리합니다(일반 과제가 없으면 사라집니다). 5) 공식 과제의 「제거」는 「내 캘린더에서 빼기」(일정은 지워지지 않음), 일반 과제의 「삭제」는 빨간색으로 따로 두었습니다. 6) 과제 목록은 <b>통상명칭 한 줄, 그 아래 줄에 내 메모</b>만 보입니다(공식 과제의 사업명, 계약명은 추가 창에서 보여 주므로 목록에서는 뺐습니다). <b>구분(공식, 기본, 개인)</b>은 이름 옆에 붙이지 않고 <b>별도 고정 열</b>에 두고 열 머리글을 달았습니다. 위아래로 훑으며 구분할 수 있습니다. 또한 <b>긴 과제명</b>은 두 줄에 들어가면 그대로 보이고, 넘치면 <b>앞부분 … 끝 8자</b>로 줄여 연도와 차수처럼 끝에서 갈리는 이름을 구분하게 했으며, 마우스를 올리면 전체 이름이 나옵니다(수정 창에도 전체가 보입니다). 건수는 「42건」으로 줄여 이름 자리를 넓혔습니다. 위의 폭 버튼으로 좁은 위젯과 넓은 창을 비교하세요. 아래 입력 폼이 사라지고 추가와 수정은 모두 창으로 엽니다. ⠿를 끌어 보고, 줄을 누르고, ⋯를 눌러 보세요.',
+  2: '<b>지금 내 과제 창의 불편</b> 1) 줄마다 ▲ ▼ 옮기기 수정 제거 5개가 가로로 늘어서 좁은 창에서 이름이 잘립니다. 2) 「옮기기」가 순서 이동인지 데이터 이동인지 헷갈립니다(▲▼도 옮기기의 한 종류). 3) 공식은 「제거」, 개인은 「삭제」라 같은 자리에 다른 말이 있고, 위험도 구분이 없습니다. 4) 아래 추가 폼(이름, 색상, 설명)이 목록과 한 화면에 있어 직접 입력을 부추깁니다. 5) 「DB」 배지는 사용자 말이 아닙니다.',
+  3: '<b>지금 팝업의 불편</b> 1) 담으려면 줄을 눌러 고른 뒤 오른쪽 상세에서 [＋ 캘린더에 추가]를 눌러야 합니다(2단계). 2) 목록에는 통상명칭만 보이고 사업명과 계약명은 상세를 열어야 보여서, 이름이 같은 줄은 하나씩 눌러 봐야 합니다. 3) 도구줄이 검색, 발주처, 구분, 상태, 초기화, Excel까지 길어 목록이 아래로 밀립니다. 4) 구분별 접힘 그룹과 6열 표라 좁은 창에서 글자가 잘립니다.'
+};
+function note(n){ $('#cmpnote').innerHTML = NOTES[n]; }
+
+/* 탭 */
+function tab(n){ setTimeout(fitNames, 0); for(let i=1;i<=3;i++){ $('#v'+i).hidden = i!==n; $('#t'+i).setAttribute('aria-selected', i===n); } note(n); }
+for(let i=1;i<=3;i++) $('#t'+i).onclick = () => tab(i);
+
+/* 내 과제 목록 */
+const nameOf = m => { const o = OFF.find(x => x.id === m.id); return o ? o.name : m.name; };
+const colorOf = (m,i) => m.color || COLORS[i % COLORS.length];
+function paintMine(flashId){
+  $('#mine').innerHTML = '<div class="chead" aria-hidden="true"><span></span><span></span><span>과제</span><span>구분</span><span>일정</span><span></span></div>' + MINE.map((m,i) => {
+    const o = OFF.find(x => x.id === m.id);
+    const KT = {official:'공식', default:'기본', personal:'일반'};
+    const sub = esc(m.desc || '');   // 두 번째 줄 = 내 메모(없으면 줄 없음)
+    return `<div class="crow" data-id="${m.id}" tabindex="0" aria-label="${esc(nameOf(m))} 수정">
+      <span class="grip" draggable="true" title="끌어서 순서 바꾸기" aria-hidden="true">⠿</span>
+      <span class="dot" style="background:${colorOf(m,i)}"></span>
+      <div class="cmain"><div class="cname" title="${esc(nameOf(m))}"><span class="nmtxt">${esc(nameOf(m))}</span></div>${sub?`<div class="csub">${sub}</div>`:''}</div>
+      <span class="ctype ${m.kind}" title="${m.kind==='official'?'회사 공식 과제':m.kind==='default'?'모두에게 있는 기본 과제':'내가 직접 만든 과제'}">${KT[m.kind]}</span>
+      <span class="ccount" title="이 과제의 일정 건수">${m.count||0}건</span>
+      <button class="more" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(nameOf(m))} 더 보기" data-more="${m.id}">⋯</button>
+    </div>`;
+  }).join('');
+  $('#relink').hidden = !MINE.some(x => x.kind === 'personal');
+  fitNames();
+  if(flashId){ const r = document.querySelector(`.crow[data-id="${flashId}"]`); if(r) r.classList.add('flash'); }
+}
+/* 긴 이름: 두 줄에 들어가면 그대로, 넘치면 앞부분 + … + 끝 TAIL자. 끝이 갈리는 비슷한 이름(연도, 차수)을 구분하기 위함 */
+const TAIL = 8;
+function fitNames(){
+  document.querySelectorAll('.crow .nmtxt').forEach(el => {
+    const full = el.closest('.cname').title; el.textContent = full;
+    if(el.clientHeight === 0 || el.scrollHeight <= el.clientHeight + 1) return;
+    let lo = 0, hi = full.length - TAIL - 1, best = 0;
+    while(lo <= hi){ const k = (lo + hi) >> 1; el.textContent = full.slice(0, k).trimEnd() + '…' + full.slice(-TAIL); if(el.scrollHeight <= el.clientHeight + 1){ best = k; lo = k + 1; } else hi = k - 1; }
+    el.textContent = full.slice(0, best).trimEnd() + '…' + full.slice(-TAIL);
+  });
+}
+function closeMenu(){ document.querySelectorAll('.menu').forEach(m => m.remove()); document.querySelectorAll('.more[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded','false')); }
+function openMenu(btn){
+  closeMenu(); const id = btn.dataset.more, i = MINE.findIndex(x => x.id === id), m = MINE[i];
+  const last = i === MINE.length-1, first = i === 0;
+  const dis = c => c ? ' disabled' : '';
+  let rm = '';
+  if(m.kind==='official') rm = (m.count>0)
+    ? `<button class="mi" disabled>내 캘린더에서 빼기<small>일정 ${m.count}건이 있어 먼저 합치기로 옮기거나 정리해야 합니다</small></button>`
+    : `<button class="mi" data-do="unsub">내 캘린더에서 빼기<small>일정은 없고, 공식 목록에는 그대로 남습니다</small></button>`;
+  if(m.kind==='personal') rm = `<button class="mi danger" data-do="del">삭제…<small>이 과제의 일정 ${m.count}건도 함께 지워집니다</small></button>`;
+  const el = document.createElement('div'); el.className='menu'; el.setAttribute('role','menu');
+  el.innerHTML = `<button class="mi" data-do="edit">수정</button>
+    ${m.count ? '<button class="mi" data-do="merge">다른 과제와 합치기…</button>' : ''}
+    ${m.kind==='personal' ? '<button class="mi" data-do="link">공식 과제로 연결…</button>' : ''}
+    <div class="msep"></div><div class="mgrp">순서</div>
+    <button class="mi" data-do="up"${dis(first)}>위로</button><button class="mi" data-do="down"${dis(last)}>아래로</button>
+    <button class="mi" data-do="top"${dis(first)}>맨 위로</button><button class="mi" data-do="bottom"${dis(last)}>맨 아래로</button>
+    ${rm?'<div class="msep"></div>'+rm:''}`;
+  btn.closest('.crow').appendChild(el); btn.setAttribute('aria-expanded','true');
+  el.dataset.id = id; const f = el.querySelector('.mi:not([disabled])'); if(f) f.focus();
+}
+function reorder(id, to){
+  const i = MINE.findIndex(x => x.id === id); const [m] = MINE.splice(i,1);
+  MINE.splice(Math.max(0,Math.min(MINE.length,to)),0,m); paintMine(id);
+  toast(`${nameOf(m)}: ${i+1}번째에서 ${MINE.indexOf(m)+1}번째로 옮겼습니다`);
+}
+/* 작은 창 */
+function sm(title, body, foot, wide){ $('.smc').style.maxWidth = wide ? '600px' : '420px'; $('#smt').textContent = title; $('#smb').innerHTML = body; $('#smf').innerHTML = foot; $('#sm').hidden = false; }
+function smClose(){ $('#sm').hidden = true; }
+$('#smx').onclick = smClose;
+$('#relink').onclick = bulkDlg;
+function palHtml(sel){ return COLORS.map(c => `<button type="button" class="sw ${c===sel?'on':''}" data-pc="${c}" style="background:${c}" aria-label="색상 ${c}"></button>`).join(''); }
+function editDlg(id){
+  const m = MINE.find(x => x.id === id); let col = colorOf(m, MINE.indexOf(m));
+  const nameField = m.kind==='personal'
+    ? `<div class="fld"><label class="lbl" for="en">과제 이름</label><textarea class="inp" id="en" rows="1" maxlength="60" style="resize:none;overflow:hidden;line-height:1.4;display:block">${esc(m.name)}</textarea><div class="hint" style="text-align:right" id="enc"></div></div>`
+    : `<div class="fld"><label class="lbl">과제 이름</label><div>${esc(nameOf(m))} <span class="hint">${m.kind==='official'?'회사 공식 과제 이름이라 바꿀 수 없습니다':'기본 과제 이름은 바꿀 수 없습니다'}</span></div></div>`;
+  sm('과제 수정', nameField + `<div class="fld"><label class="lbl">색상</label><div class="pal" id="epal">${palHtml(col)}</div></div>`
+     + `<div class="fld"><label class="lbl" for="ed">메모 (선택)</label><input class="inp" id="ed" value="${esc(m.desc||'')}" maxlength="200"></div>`,
+     '<button class="btn" id="smc" type="button">취소</button><button class="btn primary" id="sms" type="button">저장</button>');
+  const en = $('#en');
+  if(en){
+    const grow = () => { en.style.height = 'auto'; en.style.height = en.scrollHeight + 2 + 'px'; $('#enc').textContent = en.value.length + ' / 60자'; };
+    en.addEventListener('input', () => { en.value = en.value.split('\n').join(' ').split('\r').join(' '); grow(); });
+    en.addEventListener('keydown', e => { if(e.key === 'Enter') e.preventDefault(); });
+    grow(); setTimeout(grow, 0);
+  }
+  $('#epal').onclick = e => { const b = e.target.closest('[data-pc]'); if(b){ col = b.dataset.pc; $('#epal').innerHTML = palHtml(col); } };
+  $('#smc').onclick = smClose;
+  $('#sms').onclick = () => { if(m.kind==='personal'){ const n = $('#en').value.trim(); if(!n){ toast('과제 이름을 적어 주세요'); return; } m.name = n; } m.color = col; m.desc = $('#ed').value.trim(); smClose(); paintMine(id); toast('저장했습니다'); };
+}
+function mergeDlg(id){
+  const m = MINE.find(x => x.id === id);
+  const opts = MINE.filter(x => x.id !== id).map(x => `<option value="${x.id}">${esc(nameOf(x))}</option>`).join('');
+  const after = m.kind==='personal' ? '합친 뒤 이 과제 삭제' : m.kind==='official' ? '합친 뒤 내 캘린더에서 빼기' : '';
+  sm('다른 과제와 합치기', `<p style="margin:0 0 10px"><b>${esc(nameOf(m))}</b>의 일정 ${m.count}건을 아래 과제로 옮겨 하나로 합칩니다.</p>
+     <select class="inp" id="mt"><option value="">합칠 과제를 고르세요</option>${opts}</select>
+     ${after ? `<label style="display:flex;gap:6px;align-items:center;margin-top:10px"><input type="checkbox" id="mdel"> ${after}</label>` : ''}
+     <p class="hint" style="margin:8px 0 0">체크하지 않으면 이 과제는 일정이 없는 과제로 남습니다.</p>`,
+     '<button class="btn" id="smc" type="button">취소</button><button class="btn primary" id="sms" type="button" disabled>합치기</button>');
+  $('#mt').onchange = () => $('#sms').disabled = !$('#mt').value;
+  $('#smc').onclick = smClose;
+  $('#sms').onclick = () => {
+    const t = MINE.find(x => x.id === $('#mt').value); const n = m.count; t.count = (t.count||0) + n; m.count = 0;
+    const del = $('#mdel') && $('#mdel').checked; if(del) MINE.splice(MINE.indexOf(m), 1);
+    smClose(); paintMine(t.id); toast(`일정 ${n}건을 ${nameOf(t)} 과제로 합쳤습니다${del ? ' (원래 과제는 정리했습니다)' : ''}`);
+  };
+}
+/* 공식 과제로 연결: 직접 만든 과제 하나를 고른 공식 과제에 이어 붙인다. back = 끝난 뒤 돌아갈 곳(한꺼번에 연결 창) */
+const LINKED = {};
+function linkDlg(id, back){
+  const m = MINE.find(x => x.id === id);
+  const draw = () => {
+    const q = ($('#lq') ? $('#lq').value : '').trim().toLowerCase();
+    const L = OFF.filter(o => !q || [o.name,o.proj,o.ctr,o.cust].some(v => v.toLowerCase().includes(q)));
+    $('#lres').innerHTML = L.map(o => `<div class="opt"><div class="t">${esc(o.name)}<span class="tag">${esc(o.cust)}</span><span class="tag">${esc(o.sec)}</span></div><div class="m">${esc(o.proj)} / ${esc(o.ctr)}</div><div class="m2">${esc(o.per)}</div><div class="act"><button class="btn sm primary" type="button" data-pick="${o.id}">선택</button></div></div>`).join('') || '<div class="empty">찾는 공식 과제가 없습니다.</div>';
+  };
+  sm('공식 과제로 연결', `<p style="margin:0 0 8px"><b>${esc(m.name)}</b>의 일정 ${m.count}건을 연결할 공식 과제를 고르세요.</p>
+     <input class="inp" id="lq" autocomplete="off" placeholder="통상명칭, 사업명, 계약명, 발주처로 찾기"><div class="res" id="lres" style="height:250px;margin-top:8px"></div>`,
+     '<button class="btn" id="smc" type="button">취소</button>', true);
+  draw(); $('#lq').focus(); $('#lq').oninput = draw;
+  $('#smc').onclick = () => back ? back() : smClose();
+  $('#lres').onclick = e => {
+    const b = e.target.closest('[data-pick]'); if(!b) return;
+    const o = OFF.find(x => x.id === b.dataset.pick); const n = m.count;
+    let t = MINE.find(x => x.id === o.id); if(!t){ t = {id:o.id, kind:'official', count:0}; MINE.splice(MINE.indexOf(m) + 1, 0, t); }
+    t.count = (t.count||0) + n; m.count = 0; if(m.color && !t.color) t.color = m.color; if(m.desc && !t.desc) t.desc = m.desc;
+    LINKED[id] = o.name; paintMine(t.id); toast(`일정 ${n}건을 ${o.name}에 연결했습니다`);
+    if(back) back(); else smClose();
+  };
+}
+function bulkDlg(){
+  const P = MINE.filter(x => x.kind === 'personal');
+  sm('공식 과제로 연결', `<p style="margin:0 0 10px">직접 만든 과제를 공식 과제에 이어 붙이면 <b>일정이 함께 옮겨지고</b> 보고서 집계에 잡힙니다. 연결할 과제 옆 [공식 과제 선택]을 누르세요.</p>
+     ${P.map(m => `<div class="row"><span class="dot" style="background:${colorOf(m, MINE.indexOf(m))}"></span><span class="nm"><b>${esc(m.name)}</b> <span class="hint">일정 ${m.count}건</span>${LINKED[m.id] ? `<div class="hint">연결함: ${esc(LINKED[m.id])}</div>` : ''}</span><button class="btn sm" type="button" data-lk="${m.id}"${m.count ? '' : ' disabled title="옮길 일정이 없습니다"'}>공식 과제 선택…</button></div>`).join('') || '<div class="empty">직접 만든 과제가 없습니다.</div>'}`,
+     '<button class="btn primary" id="smc" type="button">완료</button>', true);
+  $('#smc').onclick = smClose;
+  $('#smb').onclick = e => { const b = e.target.closest('[data-lk]'); if(b) linkDlg(b.dataset.lk, bulkDlg); };
+}
+function delDlg(id){
+  const m = MINE.find(x => x.id === id);
+  sm('과제 삭제', `<p style="margin:0"><b>${esc(m.name)}</b> 과제를 삭제합니다.${m.count?` 일정 ${m.count}건이 함께 지워지고 되돌릴 수 없습니다. 남기려면 먼저 「다른 과제와 합치기」를 쓰세요.`:' 일정은 없습니다.'}</p>`,
+     '<button class="btn" id="smc" type="button">취소</button><button class="btn danger fill" id="sms" type="button">삭제</button>');
+  $('#smc').onclick = smClose;
+  $('#sms').onclick = () => { MINE.splice(MINE.findIndex(x => x.id === id),1); smClose(); paintMine(); toast(`${m.name} 과제를 삭제했습니다`); };
+}
+$('#mine').addEventListener('click', e => {
+  const more = e.target.closest('[data-more]');
+  if(more){ e.stopPropagation(); if(more.getAttribute('aria-expanded')==='true') closeMenu(); else openMenu(more); return; }
+  const it = e.target.closest('[data-do]');
+  if(it){
+    const id = it.closest('.menu').dataset.id, i = MINE.findIndex(x => x.id === id); closeMenu();
+    ({edit:()=>editDlg(id), merge:()=>mergeDlg(id), link:()=>linkDlg(id), del:()=>delDlg(id),
+      up:()=>reorder(id,i-1), down:()=>reorder(id,i+1), top:()=>reorder(id,0), bottom:()=>reorder(id,MINE.length-1),
+      unsub:()=>{ MINE.splice(i,1); paintMine(); toast('내 캘린더에서 뺐습니다(공식 목록에는 그대로 있습니다)'); }})[it.dataset.do]();
+    return;
+  }
+  if(e.target.closest('.menu')) return;
+  const row = e.target.closest('.crow'); if(row && !e.target.closest('.grip')) editDlg(row.dataset.id);
+});
+$('#mine').addEventListener('keydown', e => {
+  if(e.key==='Escape') closeMenu();
+  if(e.key==='Enter' && e.target.classList.contains('crow')) editDlg(e.target.dataset.id);
+});
+document.addEventListener('click', e => { if(!e.target.closest('.menu') && !e.target.closest('[data-more]')) closeMenu(); });
+/* 끌어서 순서 바꾸기 */
+let dragId = null;
+$('#mine').addEventListener('dragstart', e => { const r = e.target.closest('.crow'); if(!r) return; dragId = r.dataset.id; r.classList.add('drag'); e.dataTransfer.effectAllowed='move'; try{ e.dataTransfer.setData('text/plain', dragId); }catch(_){} });
+$('#mine').addEventListener('dragover', e => { if(!dragId) return; e.preventDefault(); document.querySelectorAll('.crow.over').forEach(x => x.classList.remove('over')); const r = e.target.closest('.crow'); if(r && r.dataset.id !== dragId) r.classList.add('over'); });
+$('#mine').addEventListener('drop', e => { e.preventDefault(); const r = e.target.closest('.crow'); if(r && dragId && r.dataset.id !== dragId) reorder(dragId, MINE.findIndex(x => x.id === r.dataset.id)); dragId = null; });
+$('#mine').addEventListener('dragend', () => { dragId = null; document.querySelectorAll('.crow.drag,.crow.over').forEach(x => x.classList.remove('drag','over')); });
+
+/* 추가 창 */
+const stOn = () => new Set([...document.querySelectorAll('.chip[data-st][aria-pressed="true"]')].map(b => b.dataset.st));
+function fillSel(){
+  const cs = [...new Set(OFF.map(o => o.cust))], ss = [...new Set(OFF.map(o => o.sec))];
+  $('#fc').innerHTML = '<option value="">발주처 전체</option>' + cs.map(c => `<option>${esc(c)}</option>`).join('');
+  $('#fs').innerHTML = '<option value="">구분 전체</option>' + ss.map(c => `<option>${esc(c)}</option>`).join('');
+}
+const closedG = new Set(), openR = new Set();
+function paintRes(){
+  const q = $('#q').value.trim(), c = $('#fc').value, s = $('#fs').value, on = stOn();
+  const keep = $('#res').scrollTop;
+  const L = OFF.filter(o => on.has(o.st) && (!c || o.cust === c) && (!s || o.sec === s)
+    && (!q || [o.name,o.proj,o.ctr,o.cust].some(v => v.toLowerCase().includes(q.toLowerCase()))));
+  $('#cnt').textContent = `${L.length} / ${OFF.length}건`;
+  if(!L.length){ $('#res').innerHTML = '<div class="empty">조건에 맞는 공식 과제가 없습니다. 종료 과제는 위 「종료」를 눌러 포함할 수 있습니다.</div>'; return; }
+  let h = `<div class="tb-grid tb-h" role="row"><span>통상명칭<span class="h-narrow"> / 발주처</span></span><span class="c-ctr">계약명</span><span class="c-cust">발주처</span><span class="c-st">상태</span><span class="c-per">계약기간</span><span></span></div>`;
+  const groups = [...new Set(L.map(o => o.sec))];
+  for(const g of groups){
+    const rows = L.filter(o => o.sec === g).sort((a,b) => have(a.id) - have(b.id));
+    const cl = closedG.has(g);
+    h += `<div class="tb-g" role="row" tabindex="0" data-g="${esc(g)}" aria-expanded="${!cl}"><span class="caret">${cl ? '▸' : '▾'}</span>${esc(g)}<span class="n">${rows.length}건</span></div>`;
+    for(const o of rows){
+      const open = openR.has(o.id), dev = devPer(o.per);
+      h += `<div class="tb-grid tb-r ${have(o.id) ? 'have' : ''}${cl ? ' gc' : ''}" role="row" tabindex="0" data-r="${o.id}" data-gs="${esc(g)}" aria-expanded="${open}">
+        <div class="nmcell"><span class="rn" data-full="${esc(o.name)}" title="${esc(o.name)}"></span><div class="sub-cust">${hl(o.cust,q)}</div></div>
+        <span class="c c-ctr" title="${esc(o.ctr)}">${hl(o.ctr,q)}</span>
+        <span class="c c-cust" title="${esc(o.cust)}">${hl(o.cust,q)}</span>
+        <span class="c c-st"><span class="st ${o.st}"><i></i><span class="stx">${ST[o.st]}</span></span></span>
+        <span class="c c-per">${esc(o.per)}</span>
+        <span class="cact">${have(o.id) ? '<span class="tag in">✓ 내 과제</span>' : `<button class="btn sm primary" type="button" data-add="${o.id}">추가</button>`}</span>
+      </div>
+      <div class="tb-x${cl ? ' gc' : ''}" data-x="${o.id}" data-gs="${esc(g)}"${open ? '' : ' hidden'}><dl>
+        <dt>사업명</dt><dd>${hl(o.proj,q)}</dd>
+        <dt class="x-ctr">계약명</dt><dd class="x-ctr">${hl(o.ctr,q)}</dd>
+        <dt class="x-cust">발주처</dt><dd class="x-cust">${hl(o.cust,q)}</dd>
+        <dt class="x-st">상태</dt><dd class="x-st">${ST[o.st]}</dd>
+        <dt class="x-per">계약기간</dt><dd class="x-per">${esc(o.per)}</dd>
+        <dt>개발시작</dt><dd>${dev.split(' ~ ')[0]}</dd>
+        <dt>개발종료</dt><dd>${dev.split(' ~ ')[1] || '미정'}</dd>
+      </dl></div>`;
+    }
+  }
+  $('#res').innerHTML = h; $('#res').scrollTop = keep;
+  fitRes();
+}
+/* 긴 통상명칭: 두 줄에 들어가면 그대로, 넘치면 앞부분 + … + 끝 8자 */
+function fitRes(){
+  const q = $('#q').value.trim();
+  document.querySelectorAll('#res .rn').forEach(el => {
+    const full = el.dataset.full; el.innerHTML = hl(full, q);
+    if(!el.clientHeight || el.scrollHeight <= el.clientHeight + 1) return;
+    let lo = 0, hi = full.length - 9, best = 0;
+    while(lo <= hi){ const k = (lo + hi) >> 1; el.textContent = full.slice(0, k).trimEnd() + '…' + full.slice(-8); if(el.scrollHeight <= el.clientHeight + 1){ best = k; lo = k + 1; } else hi = k - 1; }
+    el.textContent = full.slice(0, best).trimEnd() + '…' + full.slice(-8);
+  });
+}
+$('#res').addEventListener('click', e => {
+  if(e.target.closest('[data-add]')) return;
+  const g = e.target.closest('.tb-g');
+  if(g){ const k = g.dataset.g; if(closedG.has(k)) closedG.delete(k); else closedG.add(k); paintRes(); return; }
+  const r = e.target.closest('.tb-r'); if(!r) return;
+  const id = r.dataset.r, x = document.querySelector(`.tb-x[data-x="${id}"]`);
+  if(openR.has(id)) openR.delete(id); else openR.add(id);
+  x.hidden = !openR.has(id); r.setAttribute('aria-expanded', openR.has(id));
+});
+$('#res').addEventListener('keydown', e => { if((e.key === 'Enter' || e.key === ' ') && e.target.matches('.tb-r, .tb-g')){ e.preventDefault(); e.target.click(); } });
+if(window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(fitRes)).observe($('#res'));
+document.querySelectorAll('[data-dw]').forEach(b => b.onclick = () => {
+  $('.dlg').style.maxWidth = b.dataset.dw + 'px';
+  document.querySelectorAll('[data-dw]').forEach(x => x.setAttribute('aria-pressed', x === b));
+});
+function step(n){
+  $('#s1').hidden = n!==1; $('#s2').hidden = n!==2; $('#f1').hidden = n!==1; $('#f2').hidden = n!==2;
+  $('#dt1').setAttribute('aria-selected', n===1); $('#dt2').setAttribute('aria-selected', n===2);
+  if(n===2){ $('#nm').value = $('#q').value.trim(); $('#ds').value=''; pal(); $('#nm').focus(); } else $('#q').focus();
+}
+$('#dt1').onclick = () => step(1); $('#dt2').onclick = () => step(2);
+function pal(){ $('#pal').innerHTML = COLORS.map(c => `<button type="button" class="sw ${c===pcolor?'on':''}" data-c="${c}" style="background:${c}" aria-label="색상 ${c}"></button>`).join(''); }
+function dlg(open){
+  $('#ov').hidden = !open;
+  if(open){ addedN = 0; $('#added').textContent=''; $('#q').value=''; openR.clear(); fillSel(); step(1); paintRes(); $('#q').focus(); fitRes(); }
+  else $('#open').focus();
+}
+$('#open').onclick = () => dlg(true);
+$('#x').onclick = $('#done').onclick = () => dlg(false);
+['#q'].forEach(s => $(s).addEventListener('input', paintRes));
+['#fc','#fs'].forEach(s => $(s).addEventListener('change', paintRes));
+document.querySelectorAll('.chip[data-st]').forEach(b => b.onclick = () => { b.setAttribute('aria-pressed', b.getAttribute('aria-pressed')!=='true'); paintRes(); });
+$('#res').addEventListener('click', e => {
+  const b = e.target.closest('[data-add]'); if(!b) return; e.stopPropagation();
+  const o = OFF.find(x => x.id === b.dataset.add); MINE.push({id:o.id, kind:'official', count:0}); addedN++;
+  $('#added').textContent = `이번에 ${addedN}개를 추가했습니다`; toast(`${o.name} (${o.ctr}) 을(를) 추가했습니다`); paintMine(); paintRes();
+});
+$('#back').onclick = () => dlg(false);
+$('#pal').addEventListener('click', e => { const b = e.target.closest('[data-c]'); if(b){ pcolor = b.dataset.c; pal(); } });
+$('#make').onclick = () => {
+  const n = $('#nm').value.trim(); if(!n){ toast('과제 이름을 적어 주세요'); return; }
+  MINE.push({id:'p'+Date.now(), name:n, kind:'personal', count:0, color:pcolor}); toast(n + ' 일반 과제를 추가했습니다'); paintMine(); dlg(false);
+};
+$('#ov').addEventListener('keydown', e => { if(e.key === 'Escape') dlg(false); });
+
+/* 비교: 지금 팝업 재현 */
+(function(){
+  const groups = ['개발','유지보수','컨설팅']; let h = '<div class="h"><span>통상명칭</span><span>발주처</span><span>구분</span><span>상태</span><span>계약기간</span></div>';
+  for(const g of groups){
+    const L = OFF.filter(o => o.sec === g && o.st !== 'end'); if(!L.length) continue;
+    h += `<div class="g">▾ ${g} <span class="hint">${L.length}건</span></div>` + L.map(o => `<div class="r" data-id="${o.id}" style="cursor:pointer"><span>${esc(o.name)}</span><span>${esc(o.cust)}</span><span>${esc(o.sec)}</span><span class="st ${o.st}"><i></i>${ST[o.st]}</span><span>${esc(o.per)}</span></div>`).join('');
+  }
+  $('#curlist').innerHTML = h;
+  $('#curlist').addEventListener('click', e => {
+    const r = e.target.closest('.r'); if(!r) return;
+    document.querySelectorAll('#curlist .r').forEach(x => x.classList.toggle('on', x === r));
+    const o = OFF.find(x => x.id === r.dataset.id);
+    $('#curdet').innerHTML = `<b>${esc(o.name)}</b><dl><dt>사업명</dt><dd>${esc(o.proj)}</dd><dt>계약명</dt><dd>${esc(o.ctr)}</dd><dt>발주처</dt><dd>${esc(o.cust)}</dd><dt>구분</dt><dd>${esc(o.sec)}</dd><dt>상태</dt><dd>${ST[o.st]}</dd><dt>계약기간</dt><dd>${esc(o.per)}</dd></dl><button class="btn sm primary" type="button">＋ 캘린더에 추가</button>`;
+  });
+})();
+
+function setW(w){ setTimeout(fitNames, 0); document.querySelectorAll('.mine').forEach(m => m.style.maxWidth = w + 'px'); $('#w380').setAttribute('aria-pressed', w===380); $('#w560').setAttribute('aria-pressed', w===560); }
+$('#w380').onclick = () => setW(380); $('#w560').onclick = () => setW(560);
+paintMine(); note(1);
+</script>
+</body>
+</html>

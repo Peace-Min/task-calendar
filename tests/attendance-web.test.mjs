@@ -332,10 +332,13 @@ if (!JSDOM) {
       assert.deepStrictEqual(items(), ['알파:x', '베타:x', '감마:x', '델타:x']);
       esc(X);
       assert.ok(!shown(X, '#atAddMenu') && shown(X, '#atEd'), 'Esc 가 메뉴만 닫지 않았다');
-      //  브라우저의 새 과제 만들기는 같은 화면의 과제 창을 연다. 만든 과제는 바로 목록에 나온다(지금 내 달력을 본다)
+      //  브라우저의 새 과제 만들기는 같은 화면의 과제 추가 창(일반 과제 탭)을 연다. 만든 과제는 바로 목록에 나온다(지금 내 달력을 본다)
       X.$('#atAdd').click(); X.$('#atAddNew').click();
-      assert.ok(shown(X, '#categoryModal'), '브라우저에서 과제 창이 열리지 않았다');
-      X.ev("addCategory('엡실론', '#123456', ''); closeTopModal()");
+      assert.ok(shown(X, '#categoryModal') && shown(X, '#catAddModal'), '브라우저에서 과제 추가 창이 열리지 않았다');
+      assert.strictEqual(X.$('#caTabOwn').getAttribute('aria-selected'), 'true', '과제 추가 창이 일반 과제 탭으로 열리지 않았다');
+      X.ev("$('#caName').value = '엡실론'; catAddOwn();");
+      assert.ok(!shown(X, '#catAddModal') || X.$('#catAddModal').classList.contains('closing'), '일반 과제를 추가했는데 과제 추가 창이 닫히지 않았다');
+      X.ev("closeTopModal()");
       X.$('#atAdd').click();
       assert.ok(items().includes('엡실론'), '새로 만든 과제가 목록에 없다');
       assert.deepStrictEqual(X.errors, []);
@@ -827,12 +830,15 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(W) __attendCatNew: 메인 창은 과제 창을 연다(근태 창의 새 과제 만들기 요청)', async () => {
+  test('(W) __attendCatNew: 메인 창은 과제 추가 창을 일반 과제 탭으로 연다(근태 창의 새 과제 만들기 요청)', async () => {
     const X = await bootMain();
     try {
-      assert.ok(!shown(X, '#categoryModal'));
+      assert.ok(!shown(X, '#categoryModal') && !shown(X, '#catAddModal'));
       X.ev('__attendCatNew()');
       assert.ok(shown(X, '#categoryModal'), '메인 창이 과제 창을 열지 않았다');
+      assert.ok(shown(X, '#catAddModal'), '메인 창이 과제 추가 창을 열지 않았다');
+      assert.strictEqual(X.$('#caTabOwn').getAttribute('aria-selected'), 'true', '과제 추가 창이 일반 과제 탭이 아니다');
+      assert.ok(!X.$('#caPaneOwn').hidden && X.$('#caPaneOff').hidden, '일반 과제 탭의 칸이 보이지 않는다');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });

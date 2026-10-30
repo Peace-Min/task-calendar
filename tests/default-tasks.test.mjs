@@ -226,7 +226,13 @@ if (!JSDOM) {
       runBootFlush: () => { const fs = timers.filter((f) => f === w.bootDefaultsFlush); for (let i = timers.length - 1; i >= 0; i--) if (timers[i] === w.bootDefaultsFlush) timers.splice(i, 1); fs.forEach((f) => f()); return fs.length; },
       cats: () => JSON.parse(w.eval('JSON.stringify(state.categories.map(function(c){ return { id: c.id, name: c.name, source: c.source || "" }; }))')),
       idOf: (name) => w.eval("(function(){ var c = defaultTaskOf(" + JSON.stringify(name) + "); return c ? c.id : null; })()"),
-      btn: (id, act) => w.document.querySelector('#catList .cat-row[data-id="' + id + '"] [data-act="' + act + '"]'),
+      //  ⋯ 메뉴의 항목(TASK-ADD-UX D5): 그 줄의 ⋯ 를 눌러 메뉴를 열고 항목을 돌려준다(그 항목이 없으면 null)
+      item: (id, act) => {
+        const r = w.document.querySelector('#catList .cat-row[data-id="' + id + '"]'); if (!r) return null;
+        if (!r.querySelector('.cat-menu')) r.querySelector('[data-catmore]').click();
+        return r.querySelector('.cat-menu [data-catdo="' + act + '"]');
+      },
+      row: (id) => w.document.querySelector('#catList .cat-row[data-id="' + id + '"]'),
       clear: () => { log.length = 0; w.eval('window.__cf = []'); },
       //  닫기 전에 저장 왕복(dbSave 의 Promise 사슬)을 끝까지 흘린다 — 닫힌 창에서 회신이 돌면 document 가 없어 터진다.
       close: async () => { await settle(); try { w.close(); } catch (_) {} },
@@ -311,41 +317,45 @@ if (!JSDOM) {
     },
     //  ② 기본 과제 보호 — 삭제 버튼 없음, 이름 잠금, deleteCategory 거부, 재연결 대상 아님, 같은 이름 새 과제 막음
     async protectedDefaults(source) {
-      await withBoot(source, WITH_DEFAULTS({ categories: [CAT('c-p', '프로젝트'), CAT('c-v', '휴가'), CAT('c-e', '기타')] }), async (W) => {
+      await withBoot(source, WITH_DEFAULTS({ categories: [CAT('c-p', '프로젝트'), CAT('c-v', '휴가'), CAT('c-e', '기타')], entries: [ENT('e-v', 'c-v'), ENT('e-e', 'c-e')] }), async (W) => {
         W.ev('openCatModal();');
         for (const id of ['c-v', 'c-e']) {
-          assert.strictEqual(W.btn(id, 'del'), null, `기본 과제(${id}) 행에 삭제 버튼이 있다`);
-          assert.ok(W.btn(id, 'edit') && W.btn(id, 'movedata') && W.btn(id, 'up'), `기본 과제(${id}) 행에 수정, 옮기기, 순서 버튼이 없다`);
+          assert.strictEqual(W.row(id).querySelector('.cat-kind').textContent, '기본', `기본 과제(${id}) 줄의 구분 열이 '기본' 이 아니다`);
+          assert.strictEqual(W.item(id, 'del'), null, `기본 과제(${id}) 메뉴에 삭제가 있다`);
+          assert.strictEqual(W.item(id, 'unsub'), null, `기본 과제(${id}) 메뉴에 빼기가 있다`);
+          assert.ok(W.item(id, 'edit') && W.item(id, 'merge') && W.item(id, 'down'), `기본 과제(${id}) 메뉴에 수정, 합치기, 순서 항목이 없다`);
         }
-        assert.ok(W.btn('c-p', 'del'), '대조군: 일반 개인 과제에는 삭제 버튼이 있다');
-        //  삭제 버튼을 주입해 눌러도 확인창조차 뜨지 않는다(위임이 먼저 돌아온다)
-        W.ev("(function(){ var r = document.querySelector('#catList .cat-row[data-id=\"c-e\"]'); var b = document.createElement('button'); b.dataset.act = 'del'; r.appendChild(b); b.click(); })()");
+        assert.ok(W.item('c-p', 'del'), '대조군: 일반 과제 메뉴에는 삭제가 있다');
+        //  삭제 항목을 주입해 눌러도 확인창조차 뜨지 않는다(catDelete 가 먼저 돌아온다)
+        W.item('c-e', 'edit');
+        W.ev("(function(){ var m = document.querySelector('#catList .cat-row[data-id=\"c-e\"] .cat-menu'); var b = document.createElement('button'); b.setAttribute('role', 'menuitem'); b.dataset.catdo = 'del'; m.appendChild(b); b.click(); })()");
         await settle();
         assert.strictEqual(W.confirms().length, 0, '기본 과제에서 삭제 확인창이 떴다');
         assert.strictEqual(W.ev("deleteCategory('c-e')"), false, 'deleteCategory 가 기본 과제를 지웠다(화면 우회)');
         assert.strictEqual(named(W, '기타').length, 1, '기본 과제 기타가 사라졌다');
         assert.strictEqual(W.reqs('saveState').length, 0, '거부했는데 저장했다');
-        //  이름 잠금 — 수정 폼은 열리되 이름 칸이 잠기고 기본 과제용 안내가 선다. 색은 바뀐다.
-        W.btn('c-v', 'edit').click();
-        assert.strictEqual(W.ev("$('#cName').readOnly"), true, '기본 과제의 이름 칸이 잠기지 않았다');
-        assert.ok(/기본 과제라 이름을 바꿀 수 없습니다/.test(W.ev("$('#cLockNote').textContent")), '기본 과제 잠금 안내가 없다');
-        assert.strictEqual(W.ev("$('#cLockNote').classList.contains('hidden')"), false, '잠금 안내가 숨어 있다');
-        W.ev("$('#cName').value = '연차'; selColor = '#d6494e'; saveCatFromForm();");
+        //  이름 잠금: 줄을 누르면 수정 창이 열리고 이름은 글자로만 보인다(입력칸이 숨는다). 칸을 조작해 저장해도 이름은 그대로, 색은 바뀐다.
+        W.row('c-v').click();
+        assert.strictEqual(W.ev("$('#catEditModal').classList.contains('hidden')"), false, '기본 과제 줄을 눌렀는데 수정 창이 열리지 않았다');
+        assert.strictEqual(W.ev("$('#ceName').classList.contains('hidden')"), true, '기본 과제의 이름 입력칸이 보인다');
+        assert.strictEqual(W.ev("$('#ceFixed').textContent"), '휴가', '기본 과제 이름이 글자로 보이지 않는다');
+        W.ev("$('#ceName').classList.remove('hidden'); $('#ceName').value = '연차'; renderPalette($('#cePalette'), '#d6494e'); saveCatEdit();");
         await settle();
         const v = W.evJSON("catById('c-v')");
-        assert.strictEqual(v.name, '휴가', '잠긴 이름 칸을 조작하니 기본 과제 이름이 바뀌었다');
+        assert.strictEqual(v.name, '휴가', '숨은 이름 칸을 조작하니 기본 과제 이름이 바뀌었다');
         assert.strictEqual(v.color, '#d6494e', '기본 과제의 색은 바꿀 수 있어야 한다');
         W.ev("updateCategory('c-e', '그 외', '#5b6b7d', '', '', '')");
         assert.strictEqual(W.ev("catById('c-e').name"), '기타', 'updateCategory 가 기본 과제 이름을 바꿨다(폼 우회)');
-        //  같은 이름의 새 과제는 기존 중복 검사가 막는다
+        //  같은 이름의 새 과제는 추가 창(일반 탭)의 중복 검사가 막는다
         const n0 = W.cats().length;
-        W.ev("resetCatForm(); renderCatModal(); $('#cName').value = '휴가'; saveCatFromForm();");
+        W.ev("openCatAdd('own'); $('#caName').value = '휴가'; catAddOwn();");
         assert.strictEqual(W.cats().length, n0, "'휴가' 라는 이름의 과제를 하나 더 만들었다");
         assert.ok(W.toasts().includes('같은 이름의 과제가 이미 있습니다'), '중복 이름을 막으며 이유를 말하지 않는다');
-        //  재연결 대상에 없다
+        W.ev("closeModal('#catAddModal');");
+        //  공식 과제로 연결 목록에 없다
         W.ev('openRelinkModal();');
         const rl = W.evJSON("[].map.call(document.querySelectorAll('#rlList .rl-row'), function(r){ return r.dataset.cat; })");
-        assert.deepStrictEqual(rl, ['c-p'], '재연결 목록에 기본 과제가 있다(또는 일반 개인 과제가 없다): ' + JSON.stringify(rl));
+        assert.deepStrictEqual(rl, ['c-p'], '재연결 목록에 기본 과제가 있다(또는 일반 과제가 없다): ' + JSON.stringify(rl));
       });
     },
     //  ③ 선택 상자와 데이터 함수 — 빈 선택지 없음, 새 기록 기본값 = 기타(필터로 고른 과제가 있으면 그 과제)
@@ -390,11 +400,11 @@ if (!JSDOM) {
       });
       await withBoot(source, data, async (W) => {
         W.ev('openCatModal();');
-        W.btn('c-x', 'del').click();
+        W.item('c-x', 'del').click();
         await settle();
         const cf = W.confirms();
         assert.strictEqual(cf.length, 1, '삭제 확인창이 한 번 뜨지 않았다');
-        assert.strictEqual(cf[0][1], "'지울 과제' 과제를 삭제할까요?\n이 과제의 일정 2개, 할 일 1개, 과제별 시간 2일이 함께 삭제되고 되돌릴 수 없습니다.\n남기려면 먼저 '옮기기'로 다른 과제에 옮기세요.",
+        assert.strictEqual(cf[0][1], "'지울 과제' 과제를 삭제할까요?\n이 과제의 일정 2개, 할 일 1개, 과제별 시간 2일이 함께 삭제되고 되돌릴 수 없습니다.\n남기려면 먼저 '다른 과제와 합치기'를 쓰세요.",
           '확인창이 무엇이 몇 개 지워지는지 정확히 말하지 않는다: ' + cf[0][1]);
         assert.deepStrictEqual(W.cats().map((c) => c.id), ['c-k', 'c-v', 'c-e'], '과제가 지워지지 않았다');
         assert.deepStrictEqual(W.evJSON('state.entries.map(function(e){ return e.id; })'), ['e-k'], '그 과제의 일정이 남았다');
@@ -414,18 +424,18 @@ if (!JSDOM) {
       await withBoot(source, WITH_DEFAULTS({ categories: [CAT('c-x', '빈 과제'), CAT('c-v', '휴가'), CAT('c-e', '기타')], entries: [ENT('e-1', 'c-x')] }), async (W) => {
         W.ev("window.__cfAns = false;");
         W.ev('openCatModal();');
-        W.btn('c-x', 'del').click();
+        W.item('c-x', 'del').click();
         await settle();
         assert.strictEqual(named(W, '빈 과제').length, 1, '취소했는데 지웠다');
         assert.strictEqual(W.reqs('saveState').length, 0, '취소했는데 저장했다');
         W.ev("state.entries = []; window.__cfAns = 'ok'; window.__cf = [];");
-        W.btn('c-x', 'del').click();
+        W.item('c-x', 'del').click();
         await settle();
         assert.strictEqual(W.confirms()[0][1], "'빈 과제' 과제를 삭제할까요?\n이 과제에는 일정, 할 일, 과제별 시간이 없습니다.");
         assert.strictEqual(named(W, '빈 과제').length, 0);
       });
     },
-    //  ⑥ 옮기기 — 화면 경로 그대로(행의 [옮기기] → 대상 고르기 → [옮기기] → 확인창)
+    //  ⑥ 합치기(옛 옮기기, TASK-ADD-UX D6) — 화면 경로 그대로(⋯ 의 [다른 과제와 합치기…] → 대상 고르기 → [합치기]). 이 창이 확인이라 확인창은 없다
     async moveSumsHours(source) {
       const data = WITH_DEFAULTS({
         categories: [CAT('c-a', '연차'), CAT('c-b', '프로젝트'), CAT('db-g', '사라진 공식', { source: 'db', dbGone: true }), CAT('c-v', '휴가'), CAT('c-e', '기타')],
@@ -435,29 +445,28 @@ if (!JSDOM) {
       });
       await withBoot(source, data, async (W) => {
         W.ev('openCatModal();');
-        W.btn('c-a', 'movedata').click();
+        W.item('c-a', 'merge').click();
         await settle();
-        assert.ok(W.ev("!$('#catMoveModal').classList.contains('hidden')"), '옮기기 창이 열리지 않았다');
+        assert.ok(W.ev("!$('#catMoveModal').classList.contains('hidden')"), '합치기 창이 열리지 않았다');
         const opts = W.evJSON("[].map.call(document.querySelectorAll('#cmvTarget option'), function(o){ return o.value; })");
         assert.deepStrictEqual(opts, ['', 'c-b', 'c-v', 'c-e'], '대상 목록이 자기 자신을 빼고 고를 수 있는 과제(isPickableCat)만이 아니다: ' + JSON.stringify(opts));
-        assert.strictEqual(W.ev("$('#cmvRun').disabled"), true, '대상을 고르기 전에 [옮기기]가 켜져 있다');
+        assert.strictEqual(W.ev("$('#cmvRun').disabled"), true, '대상을 고르기 전에 [합치기]가 켜져 있다');
         W.ev("$('#cmvTarget').value = 'c-v'; $('#cmvTarget').dispatchEvent(new Event('change'));");
         assert.strictEqual(W.ev("$('#cmvRun').disabled"), false);
         W.ev("$('#cmvRun').click();");
         await settle();
-        const cf = W.confirms();
-        assert.strictEqual(cf.length, 1, '옮기기 확인창이 뜨지 않았다');
-        assert.ok(cf[0][1].startsWith("'연차' 과제의 일정 2개, 할 일 1개, 과제별 시간 3일을 '휴가' 과제로 옮깁니다."), '확인창 숫자, 문구가 다르다: ' + cf[0][1]);
+        assert.strictEqual(W.confirms().length, 0, '합치기 창이 확인인데 확인창을 또 띄웠다(D6)');
+        assert.ok(W.toasts().includes("'연차' 과제의 일정 2개, 할 일 1개, 과제별 시간 3일을 '휴가' 과제로 합쳤습니다"), '결과 토스트의 숫자, 문구가 다르다: ' + JSON.stringify(W.toasts()));
         assert.deepStrictEqual(W.evJSON("state.entries.map(function(e){ return e.id + ':' + e.categoryId; })"), ['e-a1:c-v', 'e-a2:c-v', 'e-b:c-b'], '일정이 옮겨지지 않았다');
         assert.deepStrictEqual(W.evJSON("state.todos.map(function(t){ return t.id + ':' + t.categoryId; })"), ['t-a:c-v', 't-b:c-b'], '할 일이 옮겨지지 않았다');
         assert.deepStrictEqual(W.evJSON('state.taskHours'), { '2026-10-01': { 'c-v': 8 }, '2026-10-02': { 'c-v': 24 }, '2026-10-03': { 'c-v': 2.5 }, '2026-10-04': { 'c-b': 1 } },
           '시간이 옮겨지지 않았거나, 겹친 날을 더하지 않았거나, 하루 24 상한을 넘겼다: ' + W.ev('JSON.stringify(state.taskHours)'));
-        assert.strictEqual(named(W, '연차').length, 1, '출발 과제가 사라졌다 — 옮기기는 지우지 않는다');
-        assert.strictEqual(W.saves().length, 1, '옮기기가 한 번의 저장으로 나가지 않았다');
-        assert.ok(W.ev("$('#catMoveModal').classList.contains('hidden')"), '옮긴 뒤 창이 닫히지 않았다');
-        //  옮긴 뒤 출발 과제를 지우면 지울 데이터가 없다(빈 과제)
+        assert.strictEqual(named(W, '연차').length, 1, '출발 과제가 사라졌다 — 체크하지 않은 합치기는 지우지 않는다');
+        assert.strictEqual(W.saves().length, 1, '합치기가 한 번의 저장으로 나가지 않았다');
+        assert.ok(W.ev("$('#catMoveModal').classList.contains('hidden')"), '합친 뒤 창이 닫히지 않았다');
+        //  합친 뒤 출발 과제를 지우면 지울 데이터가 없다(빈 과제)
         W.ev("window.__cf = [];");
-        W.btn('c-a', 'del').click();
+        W.item('c-a', 'del').click();
         await settle();
         assert.strictEqual(W.confirms()[0][1], "'연차' 과제를 삭제할까요?\n이 과제에는 일정, 할 일, 과제별 시간이 없습니다.", '옮긴 뒤에도 출발 과제를 가리키는 것이 남았다');
       });
@@ -554,10 +563,10 @@ if (!JSDOM) {
       await withBoot(source, WITH_DEFAULTS({ categories: [CAT(OFF, '공식 과제', { source: 'db' }), CAT('c-v', '휴가'), CAT('c-e', '기타')],
         taskHours: { '2026-10-01': { [OFF]: 3, 'c-e': 1 }, '2026-10-02': { [OFF]: 2 } } }), async (W) => {
         W.ev('openCatModal();');
-        W.btn(OFF, 'unsub').click();
+        W.item(OFF, 'unsub').click();
         await settle();
         const cf = W.confirms();
-        assert.ok(cf.length === 1 && /과제별 시간 2일은 함께 지워집니다/.test(cf[0][1]), '제거 확인창이 함께 지워지는 시간을 말하지 않는다: ' + JSON.stringify(cf));
+        assert.ok(cf.length === 1 && /과제별 시간 2일이 함께 지워집니다/.test(cf[0][1]), '빼기 확인창이 함께 지워지는 시간을 말하지 않는다(시간이 있을 때만 묻는다, D7): ' + JSON.stringify(cf));
         assert.ok(!W.cats().some((c) => c.id === OFF), '공식 과제가 제거되지 않았다');
         assert.deepStrictEqual(W.evJSON('state.taskHours'), { '2026-10-01': { 'c-e': 1 } }, '제거한 공식 과제의 시간이 state 에 남았다');
         const saves = W.saves();
@@ -628,7 +637,7 @@ if (!JSDOM) {
   test('행동⑥: 선택 상자에 빈 선택지가 없고 새 기록 기본값은 기타(필터 과제 우선) · 데이터 함수도 빈 값을 기타로 채운다', () => checks.pickersDefaultToGita(src));
   test('행동⑦: 과제 삭제가 그 과제의 일정, 할 일, 시간을 지운다 · 확인창 숫자 · 저장 payload 에 참조 0 · 저장 한 번', () => checks.deleteRemovesData(src));
   test('행동⑧: 데이터 없는 과제의 확인창 문구 · 취소하면 아무것도 바뀌지 않는다', () => checks.deleteEmptyAndCancel(src));
-  test('행동⑨: 옮기기 — 일정, 할 일, 시간이 옮겨지고 겹친 날은 더해지며 24 를 넘지 않는다 · 출발 과제는 남는다 · 저장 한 번', () => checks.moveSumsHours(src));
+  test('행동⑨: 합치기(옛 옮기기) — 일정, 할 일, 시간이 옮겨지고 겹친 날은 더해지며 24 를 넘지 않는다 · 출발 과제는 남는다 · 저장 한 번', () => checks.moveSumsHours(src));
   test('행동⑩: 옮기기는 잠금 중, 같은 과제, 없는 과제를 거부한다', () => checks.moveGuarded(src));
   test("행동⑪: XML 가져오기 — 과제 없는/없는 과제의 기록은 기타로 · 파일의 '기타' 를 쓴다 · 없는 과제의 시간은 버린다", () => checks.importAttachesToGita(src));
   test('행동⑫: 빈 캘린더 판정 — 기본 과제만 있으면 비어 있다', () => checks.emptyWithDefaultsOnly(src));

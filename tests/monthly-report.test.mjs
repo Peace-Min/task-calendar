@@ -961,8 +961,8 @@ if (!JSDOM) {
       await fresh();
       const cs = (el) => W.w.getComputedStyle(el);
       const pickLb = row(W, P1).querySelector('label.check'), chipLb = W.doc.querySelector('#rptmEtc label.rpt-chip');
-      //  대조군은 과제 창의 설명 라벨이다(예전 첫 모달 라벨이던 기록 창은 2026-10-26 Git 기능과 함께 없앴다)
-      const other = W.doc.querySelector('#categoryModal label[for="cDesc"]');
+      //  대조군은 과제 수정 창의 메모 라벨이다(예전 첫 모달 라벨이던 기록 창은 2026-10-26 Git 기능과, 내 과제 창의 입력 폼은 2026-10-30 에 없앴다)
+      const other = W.doc.querySelector('#catEditModal label[for="ceDesc"]');
       assert.ok(other, '전제: 대조군(월간 탭 밖 모달 라벨)이 없다');
       const o = cs(other);
       //  jsdom 은 var() 가 든 margin 줄임말을 계산하지 못해 여백은 정적 검사(MS10)가 보고, 여기서는 굵기와 display 로 대조한다
