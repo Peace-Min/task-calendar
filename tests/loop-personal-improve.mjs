@@ -63,6 +63,8 @@ const D = { evS: '2026-12-07', evE: '2026-12-15', tdS: '2026-12-16', tdE: '2026-
   try {
     if (!(await ev(`typeof renderMonthBars === 'function' && typeof openQuickAdd === 'function' && typeof shiftByGrab === 'function'`))) { undecide('O0 앱', '이 판의 함수(renderMonthBars, shiftByGrab)가 없다. 이 브랜치로 빌드한 위젯인지 확인'); return; }
     if (!(await waitFor(healthy, 5000))) { await ev(`(() => { const b = document.getElementById('dsErrorRetry'); if (b) b.click(); else hpost({cmd:'reloadState'}); return 1; })()`); }
+    //  월간 막대를 보는 루프다. 위젯이 주간 보기를 기억하고 있으면 월간으로 돌린다(2026-10-30 주간 과제별 줄)
+    await ev("(typeof calView === 'function' && calView() !== 'month') ? (setCalView('month'), 1) : 1");
     if (!(await waitFor(healthy, 30000))) { undecide('O0 정상 연결', JSON.stringify(await J(`{conn, bootOk, unsaved}`))); return; }
     ok('O0 conn ok, bootOk', true);
     const view0 = await J('view'), sel0 = await ev('selectedDate'), dens0 = await ev('calDensity()');

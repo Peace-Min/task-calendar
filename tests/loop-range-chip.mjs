@@ -45,6 +45,8 @@ const countMine = () => ev(`state.entries.filter(e => String(e.title||'').starts
     // O0 전제
     if (!(await ev(`typeof selectDate === 'function' && typeof chipHtml === 'function'`))) { undecide('O0 앱', '함수 없음'); return; }
     if (!(await waitFor(healthy, 5000))) { await ev(`(() => { const b = document.getElementById('dsErrorRetry'); if (b) b.click(); else hpost({cmd:'reloadState'}); return 1; })()`); }
+    //  월간 막대를 보는 루프다. 위젯이 주간 보기를 기억하고 있으면 월간으로 돌린다(2026-10-30 주간 과제별 줄)
+    await ev("(typeof calView === 'function' && calView() !== 'month') ? (setCalView('month'), 1) : 1");
     if (!(await waitFor(healthy, 30000))) { undecide('O0 정상 연결', JSON.stringify(await J(`{conn, bootOk, unsaved}`))); return; }
     ok('O0 conn ok · bootOk', true);
     const view0 = await J('view'), sel0 = await ev('selectedDate');

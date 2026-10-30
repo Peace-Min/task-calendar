@@ -307,8 +307,8 @@ async function main() {
   /* ── O0 전제 ── */
   head('O0 전제 — 로그인 · 정상 연결 · 과제 ≥ 3 · 원래 순서');
   vlog('기록기:', await cdp.ev(INSTALL));
-  if (await cdp.ev("typeof moveCategory !== 'function' || typeof catMoveRow !== 'function'")) {
-    notReady = true; undecide('O0 기능 존재', '위젯에 moveCategory/catMoveRow 가 없다 — 낡은 빌드다(dotnet build -c Debug 후 재시작)'); return;
+  if (await cdp.ev("typeof moveCategory !== 'function'")) {   // catMoveRow 는 2026-10-30 내 과제 창 정리(TASK-ADD-UX)에서 없어졌다
+    notReady = true; undecide('O0 기능 존재', '위젯에 moveCategory 가 없다 — 낡은 빌드다(dotnet build -c Debug 후 재시작)'); return;
   }
   const f0 = await fault('off').catch(() => null);
   faultOk = !!(f0 && f0.ok === true);

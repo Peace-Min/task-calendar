@@ -203,6 +203,8 @@ async function openReportAt(date) {
   if (await cdp.ev(isOpen('#reportModal'))) { await cdp.ev("closeModal('#reportModal'); 1"); await sleep(450); }
   await cdp.ev(`(function(){ const b = document.getElementById('btnReportTop'); if (b && b.offsetParent) b.click(); else openReport(); return 1; })()`);
   const opened = await waitFor(isOpen('#reportModal'), 3000, 100);
+  //  2026-10-30: 보고서 창은 기간 취합으로 열리고 [일간 작성] 탭은 숨었다(근태 탭으로 옮김). 숨은 일간 기능을 직접 고른다
+  await cdp.ev("setReportMode('daily'); 1");
   //  포함 항목을 셋 다, 빈 항목 제외는 끈다(행 = 모든 과제). buildReport 가 이 선택을 tc_rptSources 에 저장하므로 원래 값은 O0 에서 받아 두고 끝에 되돌린다.
   await cdp.ev(`(function(){ ['#rptSrcEvent','#rptSrcTodo','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false; return 1; })()`);
   await setDate(date);

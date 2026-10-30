@@ -107,6 +107,8 @@ const DATA_STATES = {
 const EXEMPT = {
   // V1 가로 스크롤 — 의도적으로 가로 스크롤을 쓰는 컨테이너
   hscroll: [
+    // 주간 과제별 줄(#grid.wrows)은 과제 탭 주간(.pc-wscroll)처럼 좁은 폭에서 표가 가로로 스크롤된다(이름 칸 + 7칸 최소 폭). 2026-10-30 PERSONAL-PEER-WEEK-VIEW
+    '#grid.wrows',
     // (과제 필터 줄은 2026-10-30 42px 한 줄 고정으로 바뀌어 가로 스크롤 예외를 뺐다, FILTER-MULTI. 넘치면 결함이다.)
   ],
   // V3 액션 바 줄바꿈 — 여러 줄이 정상인 wrap 컨테이너
@@ -125,6 +127,8 @@ const EXEMPT = {
     // 근거: CSS `.grid.bars > .gridrow{display:grid;...}`, `.chip.chip-bar{position:relative;z-index:1}`, renderMonthBars 의 칸 style="grid-row:1 / -1".
     // 과제 탭의 같은 짜임(.pc-week)도 같은 이유로 겹친다.
     '#grid.bars > .gridrow', '.pc-week',
+    // 주간 과제별 줄도 같은 짜임이다(줄마다 .gridrow, 칸은 grid-row:1 / -1, 막대는 차선 행). renderWeekRows
+    '.wr-table > .gridrow',
   ],
   // V7 터치 타깃 — 인라인 텍스트 링크는 '버튼'이 아니라 문장 안 링크라 높이 규범이 다르다.
   smallTargetWarnOnly: ['a', '.lnk', '.link', '.off-subtick'],
