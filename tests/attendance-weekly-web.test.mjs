@@ -57,7 +57,7 @@ test('(S) 미리보기 색은 :root 의 --nf-* 토큰이고(테마와 상관없�
   const root = app.slice(app.indexOf(':root{'), app.indexOf('}', app.indexOf(':root{')));
   for (const t of ['--nf-paper', '--nf-ink', '--nf-edge', '--nf-th', '--nf-td', '--nf-box']) assert.ok(new RegExp(t + ':#[0-9a-f]{6};').test(root), t + ' 토큰이 :root 에 없다');
   assert.ok(/\.nf\{background:var\(--nf-paper\);color:var\(--nf-ink\)/.test(app), '.nf 가 토큰을 쓰지 않는다');
-  const h0 = app.indexOf('<div class="at-ed aw-ed hidden" id="awEd"'), h1 = app.indexOf('id="awAskClose"', h0);
+  const h0 = app.indexOf('<div class="at-ed aw-ed hidden" id="awEd"'), h1 = app.indexOf('id="awSend"', h0);
   const j0 = app.indexOf('/* ===== 근태 주간보고(docs/ATTENDANCE-PLAN.md §13, 결정 13'), j1 = app.indexOf('function awInit(){', j0);
   assert.ok(h0 > 0 && h1 > h0 && j0 > 0 && j1 > j0);
   for (const part of [app.slice(h0, h1), app.slice(j0, j1)]) {
@@ -440,7 +440,6 @@ if (!JSDOM) {
       //  전체 초기화
       const subj = X.$('#awSubj').value;
       X.$('#awReset').click();
-      assert.ok(!shown(X, '#awAsk'), '전체 초기화가 물었다');
       assert.deepStrictEqual([X.$('#awProg').value, X.$('#awPlan').value, hrs(X), X.$('#awMeet').value, X.$('#awSubj').value, X.ev('AWE.mon')], ['', '', [], '', subj, MON]);
       assert.strictEqual(X.$('#awReset').disabled, true);
       await tick(AW_WAIT);
@@ -449,26 +448,27 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(B) 떠날 때 확인: 고친 글이 있으면 ← 주간 목록, Esc, 탭 이동이 묻고, [닫기]면 임시 저장을 쓰고 목록으로', () => {
+  test('(B) 떠날 때 묻지 않는다(2026-10-30): 고친 글이 있어도 ← 주간 목록, Esc, 탭 이동이 바로 떠나고 임시 저장을 쓴다', () => {
     const X = bootBrowser();
     try {
+      assert.ok(!X.$('#awAsk'), '묻는 창이 남아 있다');
       openWeekB(X);
       X.$('#awBack').click();
-      assert.ok(shown(X, '#awList') && !shown(X, '#awAsk'), '고친 것이 없는데 물었다');
+      assert.ok(shown(X, '#awList'), '고친 것이 없는데 목록으로 가지 않았다');
       X.ev(`awOpen('${MON}')`);
       input(X, '#awMeet', '고친 글');
       X.$('#awBack').click();
-      assert.ok(shown(X, '#awAsk') && shown(X, '#awEd'), '← 주간 목록이 묻지 않았다');
-      X.$('#awAskStay').click();
-      assert.ok(!shown(X, '#awAsk') && shown(X, '#awEd'));
+      assert.ok(shown(X, '#awList') && !shown(X, '#awEd'), '← 주간 목록이 바로 돌아가지 않았다');
+      assert.ok(X.ev(`localStorage.getItem('tc_attWDraft:me:${MON}')`).includes('고친 글'), '목록으로 가며 임시 저장을 쓰지 않았다');
+      X.ev(`awOpen('${MON}')`);
+      assert.strictEqual(X.$('#awMeet').value, '고친 글', '임시 저장으로 이어서 열지 않았다');
+      input(X, '#awMeet', '고친 글 2');
       esc(X);
-      assert.ok(shown(X, '#awAsk'), 'Esc 가 묻지 않았다');
-      esc(X);
-      assert.ok(!shown(X, '#awAsk') && shown(X, '#awEd'), '묻는 창의 Esc 는 계속 쓰기여야 한다');
+      assert.ok(shown(X, '#awList'), 'Esc 가 바로 목록으로 가지 않았다');
+      X.ev(`awOpen('${MON}')`);
+      input(X, '#awMeet', '고친 글');
       X.$('#pcTabPersonal').click();
-      assert.ok(shown(X, '#awAsk') && X.ev('PCAL.tab') === 'attend', '탭 이동이 묻지 않았다');
-      X.$('#awAskClose').click();
-      assert.strictEqual(X.ev('PCAL.tab'), 'personal');
+      assert.strictEqual(X.ev('PCAL.tab'), 'personal', '탭 이동이 바로 옮기지 않았다');
       assert.ok(X.ev(`localStorage.getItem('tc_attWDraft:me:${MON}')`).includes('고친 글'), '떠나며 임시 저장을 쓰지 않았다');
       X.ev("pcSetTab('attend')");
       assert.ok(shown(X, '#awList'), '돌아오면 주간 목록이어야 한다');
@@ -692,13 +692,9 @@ if (!JSDOM) {
       assert.strictEqual(A.ev('AWE.mon'), MON);
       //  닫기 지키기
       input(A, '#awMeet', '고친 글');
-      assert.strictEqual(A.ev('__winCloseRequest()'), 'ask');
-      assert.ok(shown(A, '#awAsk'));
-      A.$('#awAskStay').click();
+      assert.ok(!A.$('#awAsk'), '묻는 창이 남아 있다');
       A.$('#awClose').click();
-      assert.ok(shown(A, '#awAsk'), '닫기 단추가 묻지 않았다');
-      A.$('#awAskClose').click();
-      assert.strictEqual(A.w.__closeCalls, 1, '[닫기]가 창을 닫지 않았다');
+      assert.strictEqual(A.w.__closeCalls, 1, '[닫기]가 고친 글이 있을 때 바로 닫지 않았다');
       assert.ok(A.ev(`localStorage.getItem('${KEYA}')`).includes('고친 글'), '닫으며 임시 저장을 쓰지 않았다');
       assert.deepStrictEqual(A.errors, []);
     } finally { A.close(); }

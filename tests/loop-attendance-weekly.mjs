@@ -219,8 +219,8 @@ async function forceCloseAttend() {
   if (!t) return true;
   try {
     if (!A || A.closed || A.targetId !== t.id) { if (A) A.close(); A = await Cdp.attach(t); }
-    await A.ev(`(function(){ try { AWE.armed = false; AWE.sending = false; clearTimeout(AWE.wd); clearTimeout(AWE.timer); AWE.timer = null; awAskHide(); AWE.p = null; } catch (_) {}
-      try { ATE.armed = false; ATE.sending = false; clearTimeout(ATE.timer); ATE.timer = null; atAskHide(); ATE.p = null; } catch (_) {}
+    await A.ev(`(function(){ try { AWE.armed = false; AWE.sending = false; clearTimeout(AWE.wd); clearTimeout(AWE.timer); AWE.timer = null; AWE.p = null; } catch (_) {}
+      try { ATE.armed = false; ATE.sending = false; clearTimeout(ATE.timer); ATE.timer = null; ATE.p = null; } catch (_) {}
       ${LOOP_KEYS_JS}.forEach(function(k){ localStorage.removeItem(k); }); try { window.close(); } catch (_) {} return 1; })()`).catch(() => 0);
   } catch (_) { /* 붙지 못했다 */ }
   return await waitAttendTarget({ gone: true, timeout: 8000 });
@@ -387,7 +387,7 @@ async function main() {
   /* ── W7 창 안 목록 ── */
   head('W7 창 안 목록: [‹ 목록], [작성]은 이번 주를 그 자리에서');
   const n7 = (await A.J('__awLoopW.log')).length;
-  ok('W7 [‹ 목록]을 눌렀다(고친 것 없음, 묻지 않는다)', (await click(A, 'awBack')) === 'ok' && !(await shown(A, 'awAsk')));
+  ok('W7 [‹ 목록]을 눌렀다(묻는 창 없음)', (await click(A, 'awBack')) === 'ok' && !(await A.ev(`!!document.getElementById('awAsk')`)));
   const got7 = await A.waitFor(`ATW.view === 'wlist' && !AWL.loading && !!AWL.from`, 15000);
   ok('W7 reportWeeklyList(시간 줄 표를 읽는 질의 포함)가 오류 없이 돌아왔다(읽기만)', (await A.ev('AWL.err')) === '');
   ok('W7 창 안의 목록이 보이고 reportWeeklyList 를 읽었다', got7 && (await shown(A, 'awList')) && (await A.J('__awLoopW.log')).slice(n7).some((x) => x.req === 'reportWeeklyList' && x.ok));
@@ -399,18 +399,14 @@ async function main() {
   else note('이번 주에 쓰던 글이 있어 W8 은 그 주에서 확인한다');
 
   /* ── W8 닫기 지키기 ── */
-  head('W8 닫기 지키기: 고친 글이 있으면 묻고, [닫기]면 창이 닫히고 키는 남는다');
+  head('W8 닫기: 고친 글이 있어도 묻지 않고(2026-10-30) [닫기]면 창이 닫히고 키는 남는다');
   await A.waitFor(`!AWE.nav && !AWE.busy`, 15000);
   const KEY8 = await A.ev('awDraftKey(AWE.mon)');
   const own8 = KEY8.endsWith(':' + W);   // 이 루프의 2099 주일 때만 키를 남겼다가 정리에서 지운다(이번 주의 사람 글은 건드리지 않는다)
   if (own8) {
     await A.ev(`(function(){ const m = document.getElementById('awMeet'); m.value = '루프 닫기 시험'; m.dispatchEvent(new Event('input', { bubbles: true })); return 1; })()`);
-    ok('W8 쓰던 글이 있으면 __winCloseRequest() = ask', (await A.ev('window.__winCloseRequest()')) === 'ask' && (await shown(A, 'awAsk')));
-    await click(A, 'awAskStay');
-    ok('W8 계속 쓰기면 남는다', !(await shown(A, 'awAsk')) && (await attendTargets()).length === 1);
-    await click(A, 'awClose');
-    ok('W8 닫기 단추도 묻는다', await shown(A, 'awAsk'));
-    await click(A, 'awAskClose').catch(() => 'closed');
+    ok('W8 쓰던 글이 있어도 __winCloseRequest() = close(창 X 는 묻지 않는다)', (await A.ev('window.__winCloseRequest()')) === 'close');
+    await click(A, 'awClose').catch(() => 'closed');
     ok('W8 [닫기]면 근태 창이 닫혔다', await waitAttendTarget({ gone: true, timeout: 8000 }));
     ok('W8 닫아도 임시 저장은 남는다', ((await storedIn(M, KEY8)) || {}).meet === '루프 닫기 시험');
   } else note('2099 주로 돌아가지 못해 닫기 지키기는 건너뛴다');

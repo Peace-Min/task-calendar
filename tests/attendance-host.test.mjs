@@ -301,6 +301,8 @@ const checks = {
     const lw = member(s.rdb, 'public async Task<List<Dictionary<string, object?>>?> ListWeeklyAsync(string? loginId, DateTime from, DateTime to)');
     assert.ok(lw.includes('"WHERE user_id=@u AND period_start BETWEEN @f AND @t ORDER BY period_start, line_no"') && /catch \(MySqlException mex\) when \(mex\.ErrorCode == MySqlErrorCode\.NoSuchTable\)/.test(lw),
       '주간 목록의 시간 줄 읽기가 사람과 기간으로 거르지 않거나 표 없음(1146)을 견디지 않는다');
+    //  CHAR(36) 은 MySqlConnector 가 Guid 로 읽는다: GetString(3) 이면 공식 과제 줄이 하나만 있어도 목록 전체가 InvalidCast 로 실패한다(2026-10-30 실측)
+    assert.ok(stripCsComments(lw).includes('Convert.ToString(hr.GetValue(3), CultureInfo.InvariantCulture)') && !stripCsComments(lw).includes('hr.GetString(3)'), '주간 목록이 project_uid(CHAR(36), Guid 로 읽힘)를 GetString 으로 꺼낸다');
     const push = h.indexOf('if (ok) ReportPush("window.__reportWeeklySaved && window.__reportWeeklySaved(" + JsonSerializer.Serialize(new { periodStart = sdate }) + ")");');
     assert.ok(save > 0 && push > save, '__reportWeeklySaved 가 저장 성공 뒤에 두 창으로 가지 않는다');
     assert.match(h, /SaveReportRecordWithRetryAsync\("weekly"/, '주간 기록 저장이 재시도 경로(S10)를 지나지 않는다');

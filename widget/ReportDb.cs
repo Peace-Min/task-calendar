@@ -469,7 +469,8 @@ namespace TaskCalendarWidget
                         L.Add(new Dictionary<string, object?>
                         {
                             ["name"] = hr.IsDBNull(2) ? "" : hr.GetString(2),
-                            ["projectUid"] = hr.IsDBNull(3) ? "" : hr.GetString(3),
+                            //  ★ project_uid 는 CHAR(36) 이라 MySqlConnector 가 Guid 로 읽는다. GetString 은 InvalidCast 로 목록 전체를 실패시킨다(2026-10-30 실측).
+                            ["projectUid"] = hr.IsDBNull(3) ? "" : Convert.ToString(hr.GetValue(3), CultureInfo.InvariantCulture) ?? "",
                             ["hours"] = hr.IsDBNull(4) ? 0m : hr.GetDecimal(4),
                         });
                     }

@@ -18,7 +18,7 @@
  *    A3c  가져오기 이전 보고(어제): reportDailyList(DB 읽기만) 하루로 읽는다(오류 없음, 보고가 있으면 카드, 없으면 없는 날 안내). 회사 사이트 명령은 없다
  *    A4   임시 저장: 입력 뒤 2초 안에 tc_attDraft:<who>:2099-12-02 가 근태 창 저장소에 생기고({v:2, memo, blocks}) 메인 창에서도 보인다(같은 출처).
  *         메인 근태 달력의 그 칸에 ✎ 작성 중
- *    A5   닫기 지키기: __winCloseRequest() = 'ask' 와 묻는 창. 계속 쓰기면 남고, 닫기면 창이 닫힌다(키는 남는다).
+ *    A5   닫기: 쓰던 글이 있어도 __winCloseRequest() = 'close', 묻는 창 없이 [닫기]면 창이 닫힌다(키는 남는다, 2026-10-30).
  *         다시 열면 안내 없이 글이 되살아나고, 처음 상태와 같아지면 키를 지운다
  *    A6   날짜 이동: › 가 호스트와 메인 창을 거쳐 같은 창에 2099-12-03 으로 돌아온다. 넘기기 전에 12-02 글을 바로 임시 저장한다
  *    A7   보내기(가로채기, 실제 전송 없음): 막는 블록(내용 있는 0시간)은 보내지 않는다. payload(kind, date, 자유 메모와 블록 조립, &nbsp; 들여쓰기,
@@ -246,7 +246,7 @@ async function forceCloseAttend() {
   if (!t) return true;
   try {
     if (!A || A.closed || A.targetId !== t.id) { if (A) A.close(); A = await Cdp.attach(t); }
-    await A.ev(`(function(){ try { ATE.armed = false; ATE.sending = false; clearTimeout(ATE.wd); clearTimeout(ATE.timer); ATE.timer = null; atAskHide(); ATE.p = null; } catch (_) {}
+    await A.ev(`(function(){ try { ATE.armed = false; ATE.sending = false; clearTimeout(ATE.wd); clearTimeout(ATE.timer); ATE.timer = null; ATE.p = null; } catch (_) {}
       ${LOOP_KEYS_JS}.forEach(function(k){ localStorage.removeItem(k); }); try { window.close(); } catch (_) {} return 1; })()`).catch(() => 0);
   } catch (_) { /* 붙지 못했다 */ }
   return await waitAttendTarget({ gone: true, timeout: 8000 });
@@ -400,7 +400,7 @@ async function main() {
   //  전체 초기화: 묻지 않고 지운다(정근, 초과 없음). 안내도 되돌리기도 없다(2026-10-29 사용자)
   ok('A3 전체 초기화를 눌렀다', (await click(A, 'atReset')) === 'ok');
   ok('A3 전체 초기화 = 메모와 블록이 비고 정근, 초과 없음, 묻지 않고 되돌리기 없음', await A.ev(`ATE.memo === '' && ATE.blocks.length === 0 && document.getElementById('atStatus').value === '1' && document.getElementById('atOt').value === '0'
-    && document.getElementById('atAsk').classList.contains('hidden') && document.getElementById('atMsg').textContent === '' && !document.getElementById('atUndo') && document.getElementById('atReset').disabled`));
+    && !document.getElementById('atAsk') && document.getElementById('atMsg').textContent === '' && !document.getElementById('atUndo') && document.getElementById('atReset').disabled`));
   await A.ev(`(function(){ document.querySelector('#atPanel [data-attab="imp"]').click(); return 1; })()`);
   ok('A3 근태 목록에 미기록이 없고 기본은 정근 또는 그날 근태', await A.ev(`(function(){ const o = [].map.call(document.getElementById('atStatus').options, function(x){ return x.value; }); return o.indexOf('') < 0 && o.length === ATTEND_STATUS.length && !!document.getElementById('atStatus').value; })()`));
   ok('A3 회사 달력 표시 미리 보기와 한 칸 글이 없다', await A.ev(`!document.getElementById('atPv') && !document.getElementById('atText')`));
@@ -473,14 +473,10 @@ async function main() {
   } else ok('A4 메인 근태 달력의 그 칸에 ✎ 작성 중(storage 알림으로 다시 그림)', true);
 
   /* ── A5 닫기 지키기 ── */
-  head('A5 닫기 지키기: 묻는 창, 계속 쓰기, 닫기, 다시 열어 되살리기, 버리기');
-  ok('A5 쓰던 글이 있으면 __winCloseRequest() = ask', (await A.ev('window.__winCloseRequest()')) === 'ask');
-  ok('A5 묻는 창이 보인다(계속 쓰기에 포커스)', (await shown(A, 'atAsk')) && (await A.ev(`document.activeElement === document.getElementById('atAskStay')`)));
-  await click(A, 'atAskStay');
-  await sleep(300);
-  ok('A5 계속 쓰기면 묻는 창만 닫히고 창과 글이 남는다', !(await shown(A, 'atAsk')) && (await attendTargets()).length === 1 && (await A.ev(`ATE.memo`)) === TXT4);
-  ok('A5 다시 닫기 요청 = ask', (await A.ev('window.__winCloseRequest()')) === 'ask');
-  await click(A, 'atAskClose').catch(() => 'closed');
+  head('A5 닫기: 묻지 않고 닫기, 다시 열어 되살리기, 버리기');
+  ok('A5 쓰던 글이 있어도 __winCloseRequest() = close(창 X 는 묻지 않는다)', (await A.ev('window.__winCloseRequest()')) === 'close');
+  ok('A5 묻는 창이 없다', !(await A.ev(`!!document.getElementById('atAsk')`)));
+  await click(A, 'atClose').catch(() => 'closed');
   const gone5 = await waitAttendTarget({ gone: true, timeout: 8000 });
   ok('A5 닫기면 근태 창이 닫혔다(대상이 사라짐)', gone5);
   const k5 = await storedIn(M, KEY);

@@ -324,7 +324,7 @@ if (!JSDOM) {
       X.$('#atAdd').click();
       assert.deepStrictEqual(items(), ['알파:x', '베타:x', '감마:x', '델타:x']);
       esc(X);
-      assert.ok(!shown(X, '#atAddMenu') && shown(X, '#atEd') && !shown(X, '#atAsk'), 'Esc 가 메뉴만 닫지 않았다');
+      assert.ok(!shown(X, '#atAddMenu') && shown(X, '#atEd'), 'Esc 가 메뉴만 닫지 않았다');
       //  브라우저의 새 과제 만들기는 같은 화면의 과제 창을 연다. 만든 과제는 바로 목록에 나온다(지금 내 달력을 본다)
       X.$('#atAdd').click(); X.$('#atAddNew').click();
       assert.ok(shown(X, '#categoryModal'), '브라우저에서 과제 창이 열리지 않았다');
@@ -505,7 +505,6 @@ if (!JSDOM) {
       assert.strictEqual(r().textContent, '전체 초기화');
       typeMemo(X, '* 외근'); input(X, '#atStatus', '2'); input(X, '#atOt', '3'); setHours(X, 1, '1.5');
       r().click();
-      assert.ok(!shown(X, '#atAsk'), '전체 초기화가 물었다');
       assert.deepStrictEqual([X.ev('ATE.memo'), X.ev('ATE.blocks.length'), X.$('#atStatus').value, X.$('#atOt').value], ['', 0, '1', '0']);
       assert.ok(!X.$('#atUndo') && X.$('#atMsg').textContent === '', '전체 초기화 뒤에 안내나 되돌리기가 나왔다');
       assert.strictEqual(r().disabled, true, '이미 빈 상태인데 전체 초기화가 켜져 있다');
@@ -611,7 +610,7 @@ if (!JSDOM) {
       assert.ok(!shown(X, '#atEd') && shown(X, '#atMonth'), 'Esc 로 달력에 돌아가지 않았다');
       X.ev(`atShowEditor(atBuildPayload(addDays(todayYmd(), 9), ${JSON.stringify(sv)}, false))`);
       X.$('#atBack').click();
-      assert.ok(!shown(X, '#atAsk') && shown(X, '#atMonth'), '고친 것이 없는데 ← 근태 달력이 물었다');
+      assert.ok(shown(X, '#atMonth'), '← 근태 달력으로 돌아가지 않았다');
       X.ev(`atShowEditor(atBuildPayload(addDays(todayYmd(), 8), null, false))`);
       assert.strictEqual(X.$('#atSent').textContent, '');
       assert.deepStrictEqual(X.errors, []);
@@ -634,8 +633,6 @@ if (!JSDOM) {
       assert.strictEqual(d.status, '6'); assert.strictEqual(d.overtime, 0); assert.ok(d.savedAt);
       assert.ok(X.$('#atSaved').textContent.startsWith('이 PC에 임시 저장됨 '));
       X.$('#atClose').click();
-      assert.ok(shown(X, '#atAsk'), '고친 내용이 있는데 닫기가 묻지 않았다');
-      X.$('#atAskClose').click();
       assert.ok(shown(X, '#atMonth') && !shown(X, '#atEd'));
       assert.ok(X.$(`#atGrid .at-day[data-date="${X.T}"] .at-drf`), '달력에 작성 중 표시가 없다');
       X.ev(`atOpen(${JSON.stringify(X.T)})`);
@@ -688,29 +685,24 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(B) 떠날 때 확인: 고친 글이 있으면 탭 이동, ← 근태 달력, Esc 가 바로 닫지 않는다. 계속 쓰기, 바깥 누름은 남는다', () => {
+  test('(B) 떠날 때 묻지 않는다(2026-10-30): 고친 글이 있어도 Esc, ← 근태 달력, 탭 이동이 바로 떠나고 임시 저장을 쓴다', () => {
     const X = bootBrowser();
     try {
+      assert.ok(!X.$('#atAsk'), '묻는 창이 남아 있다');
       openB(X);
       typeBlock(X, 0, '- 고친 글');
       esc(X);
-      assert.ok(shown(X, '#atEd') && shown(X, '#atAsk'), 'Esc 가 고친 글이 있는데 묻지 않았다');
-      X.$('#atAskStay').click();
-      assert.ok(shown(X, '#atEd') && !shown(X, '#atAsk'));
-      X.$('#pcTabPersonal').click();
-      assert.ok(shown(X, '#atAsk'), '탭 이동이 묻지 않았다');
-      assert.strictEqual(X.ev('PCAL.tab'), 'attend');
-      X.$('#atAskStay').click();
-      assert.ok(!shown(X, '#atAsk') && blk(X)[0].text === '- 고친 글');
+      assert.ok(!shown(X, '#atEd') && shown(X, '#atMonth'), 'Esc 가 고친 글이 있을 때 바로 닫지 않았다');
+      assert.ok(X.ev(`localStorage.getItem(${JSON.stringify(KEYB(X))})`).includes('고친 글'), 'Esc 로 닫으며 임시 저장을 쓰지 않았다');
+      openB(X);
+      assert.strictEqual(blk(X)[0].text, '- 고친 글', '임시 저장으로 이어서 열지 않았다');
+      typeBlock(X, 0, '- 또 고친 글');
       X.$('#atBack').click();
-      assert.ok(shown(X, '#atAsk'));
-      X.$('#atAsk').dispatchEvent(new X.w.MouseEvent('click', { bubbles: true }));
-      assert.ok(!shown(X, '#atAsk') && shown(X, '#atEd'), '바깥을 누르면 계속 쓰기여야 한다');
-      X.$('#atClose').click(); assert.ok(shown(X, '#atAsk'));
-      esc(X);
-      assert.ok(!shown(X, '#atAsk') && shown(X, '#atEd'));
-      X.$('#pcTabPersonal').click(); X.$('#atAskClose').click();
-      assert.strictEqual(X.ev('PCAL.tab'), 'personal');
+      assert.ok(shown(X, '#atMonth'), '← 근태 달력이 바로 돌아가지 않았다');
+      openB(X);
+      typeBlock(X, 0, '- 고친 글');
+      X.$('#pcTabPersonal').click();
+      assert.strictEqual(X.ev('PCAL.tab'), 'personal', '탭 이동이 바로 옮기지 않았다');
       assert.ok(X.ev(`localStorage.getItem(${JSON.stringify(KEYB(X))})`).includes('고친 글'), '닫으며 임시 저장을 쓰지 않았다');
       X.ev(`localStorage.removeItem(${JSON.stringify(KEYB(X))})`);
       openB(X);
@@ -1133,26 +1125,23 @@ if (!JSDOM) {
     } finally { A.close(); }
   });
 
+  //  닫을 때 묻지 않는다(2026-10-30): 고친 글이 있어도 'close' 이고, 닫기 전에 임시 저장을 쓴다.
   function closeGuard(A) {
+    assert.ok(!A.$('#atAsk'), '묻는 창이 남아 있다');
     openA(A);
     assert.strictEqual(A.ev('__winCloseRequest()'), 'close', '고친 것이 없는데 닫기를 막았다');
     typeBlock(A, 0, '- 고친 글');
-    assert.strictEqual(A.ev('__winCloseRequest()'), 'ask', '고친 글이 있는데 묻지 않았다');
-    assert.ok(shown(A, '#atAsk'));
-    assert.strictEqual(A.ev('__winCloseRequest()'), 'ask', '묻는 중에 다시 누르면 기다려야 한다');
-    A.$('#atAskStay').click();
-    assert.strictEqual(A.w.__closeCalls, 0);
+    assert.strictEqual(A.ev('__winCloseRequest()'), 'close', '고친 글이 있는데 닫기를 막았다');
+    assert.ok(String(A.ev(`localStorage.getItem(${JSON.stringify(A.KEY)})`)).includes('고친 글'), '창 X 로 닫으며 임시 저장을 쓰지 않았다');
+    A.ev(`localStorage.removeItem(${JSON.stringify(A.KEY)})`);
     esc(A);
-    assert.ok(shown(A, '#atAsk'), 'Esc 가 고친 글이 있는데 묻지 않았다');
-    assert.strictEqual(A.w.__closeCalls, 0, 'Esc 가 묻지 않고 근태 창을 닫았다');
-    A.$('#atAskStay').click();
+    assert.strictEqual(A.w.__closeCalls, 1, 'Esc 가 고친 글이 있을 때 바로 닫지 않았다');
+    assert.ok(String(A.ev(`localStorage.getItem(${JSON.stringify(A.KEY)})`)).includes('고친 글'), 'Esc 로 닫으며 임시 저장을 쓰지 않았다');
+    A.ev('ATE.closeSent = false');   // 같은 틱의 두 번째 닫기는 한 번으로 친다(atWinCloseNow)
     A.$('#atClose').click();
-    assert.ok(shown(A, '#atAsk'), '닫기 단추가 묻지 않았다');
-    A.$('#atAskClose').click();
-    assert.strictEqual(A.w.__closeCalls, 1, '[닫기]가 창을 닫지 않았다');
-    assert.ok(A.ev(`localStorage.getItem(${JSON.stringify(A.KEY)})`).includes('고친 글'), '닫으며 임시 저장을 쓰지 않았다');
+    assert.strictEqual(A.w.__closeCalls, 2, '[닫기]가 창을 바로 닫지 않았다');
   }
-  test('(A) 닫기 지키기: __winCloseRequest 는 close / ask / busy, 계속 쓰기, Esc 는 닫기와 같다, [닫기]는 임시 저장 뒤 창 닫기', () => {
+  test('(A) 닫기: __winCloseRequest 는 고친 글이 있어도 close, Esc 와 [닫기]도 묻지 않고 임시 저장 뒤 창 닫기', () => {
     const A = bootAttend();
     try { closeGuard(A); } finally { A.close(); }
   });
@@ -1165,7 +1154,7 @@ if (!JSDOM) {
       A.$('#atNext').click();
       const N = A.ev('addDays(todayYmd(), 1)');
       assert.deepStrictEqual(A.posted[A.posted.length - 1], { cmd: 'attendNav', date: N, refresh: false });
-      assert.ok(A.ev(`localStorage.getItem(${JSON.stringify(A.KEY)})`).includes('넘기기 전 글'));
+      assert.ok(String(A.ev(`localStorage.getItem(${JSON.stringify(A.KEY)})`)).includes('넘기기 전 글'));
       assert.strictEqual(A.$('#atNext').disabled, true, '청한 날짜가 오기 전에 또 넘길 수 있다');
       A.ev('__attendWinOpen(' + JSON.stringify(payloadFrom(N)) + ')');
       assert.strictEqual(A.ev('ATE.date'), N);
@@ -1208,10 +1197,10 @@ if (!JSDOM) {
     const A = bootAttend(bad);
     try { assert.throws(() => successClears(A), /임시 저장이 남았다/); } finally { A.close(); }
   });
-  test('변이 M3: 닫기 전 확인(고친 글)을 빼면 닫기 지키기 검사가 잡는다', () => {
-    const bad = mutate(app, "  if(atDirty()){ atAsk(() => atWinCloseNow()); return 'ask'; }\n", '');
+  test('변이 M3: 닫기 전 임시 저장 쓰기를 빼면 닫기 검사가 잡는다', () => {
+    const bad = mutate(app, "  if(ATE.sending){ toast('보고하는 중입니다. 끝난 뒤에 닫으세요', 'warn'); return 'busy'; }\n  atDraftFlushNow();\n", "  if(ATE.sending){ toast('보고하는 중입니다. 끝난 뒤에 닫으세요', 'warn'); return 'busy'; }\n");
     const A = bootAttend(bad);
-    try { assert.throws(() => closeGuard(A), /묻지 않았다/); } finally { A.close(); }
+    try { assert.throws(() => closeGuard(A), /임시 저장을 쓰지 않았다/); } finally { A.close(); }
   });
   test('변이 M4: 성공 뒤 창 블록을 보낸 그대로 맞추기를 빼면 성공 검사가 잡는다', () => {
     const bad = mutate(app, '    ATE.memo = sentMemo; ATE.blocks = sent.map(b => Object.assign({}, b));', '');
@@ -1222,7 +1211,7 @@ if (!JSDOM) {
     const bad = mutate(app, "  if(atAddShown()){ atAddOpen(false); const a = $('#atAdd'); if(a) try{ a.focus(); }catch(_){} return true; }   // 과제 추가 메뉴만 닫는다" + NL + "  atRequestClose();" + NL,
       "  if(atAddShown()){ atAddOpen(false); const a = $('#atAdd'); if(a) try{ a.focus(); }catch(_){} return true; }   // 과제 추가 메뉴만 닫는다" + NL);
     const A = bootAttend(bad);
-    try { assert.throws(() => closeGuard(A), /Esc 가 고친 글이 있는데 묻지 않았다/); } finally { A.close(); }
+    try { assert.throws(() => closeGuard(A), /Esc 가 고친 글이 있을 때 바로 닫지 않았다/); } finally { A.close(); }
   });
   test('변이 M6: 가져오기 회신의 날짜 거르기를 빼면 중계 검사가 잡는다', () => {
     const bad = mutate(app, "  if(ATE.cal.date !== o.date) return;   // 그 사이 다른 날짜를 골랐다" + NL, '');
