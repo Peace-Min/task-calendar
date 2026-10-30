@@ -90,14 +90,14 @@ const ROSTER = [
   M_('nou', '무소속', '연구원', ''),
 ];
 
-test('(순수) G2: pkModel 내 부서 — myUnit 직속 · 나 제외 · 즐겨찾기/최근에 나온 사람 제외 · N명 = 나 뺀 직속 · 검색 중엔 없음', () => {
+test('(순수) G2: pkModel 내 부서 — myUnit 직속(본인 포함, isMe=true) · 즐겨찾기/최근에 나온 사람 제외 · N명 = 직속 전체 · 검색 중엔 없음', () => {
   const pkModel = modelFn(app);
   let md = pkModel({ favs: [{ loginId: 's21', name: '임재원' }], recents: [{ loginId: 'wblee', name: '이웅빈' }], members: ROSTER, q: '', me: 'phmin', viewing: '', myUnit: 'SW 2팀' });
-  assert.deepStrictEqual(md.mine.map((r) => r.loginId), ['s22'], '나·즐겨찾기·최근이 내 부서에 또 나왔다');
-  assert.strictEqual(md.mineCount, 3, 'N명은 나만 빼고 센다(위에 이미 나온 사람도 센다)');
-  assert.deepStrictEqual([md.mine[0].canView, md.mine[0].org], [false, 'SW 2팀'], '범위 밖은 canView=false');
+  assert.deepStrictEqual(md.mine.map((r) => [r.loginId, r.isMe]), [['phmin', true], ['s22', false]], '내 부서에 본인이 없거나 즐겨찾기·최근이 또 나왔다');
+  assert.strictEqual(md.mineCount, 4, 'N명은 본인을 포함한 직속 전체 인원을 센다(위에 이미 나온 사람도 센다)');
+  assert.deepStrictEqual([md.mine[1].canView, md.mine[1].org], [false, 'SW 2팀'], '범위 밖은 canView=false');
   md = pkModel({ favs: [], recents: [], members: ROSTER, q: '', me: 'phmin', viewing: '', myUnit: 'SW 2팀' });
-  assert.deepStrictEqual(md.mine.map((r) => r.loginId), ['wblee', 's21', 's22'], '명부 순서 그대로가 아니다');
+  assert.deepStrictEqual(md.mine.map((r) => r.loginId), ['phmin', 'wblee', 's21', 's22'], '명부 순서 그대로가 아니다');
   md = pkModel({ favs: [], recents: [], members: ROSTER, q: '이웅', me: 'phmin', viewing: '', myUnit: 'SW 2팀' });
   assert.deepStrictEqual([md.mine, md.mineCount], [[], 0], '검색 중에 내 부서 묶음이 나왔다(검색이 탭보다 우선 · G1)');
   md = pkModel({ favs: [], recents: [], members: ROSTER, q: '', me: 'phmin', viewing: '' });
@@ -106,43 +106,45 @@ test('(순수) G2: pkModel 내 부서 — myUnit 직속 · 나 제외 · 즐겨�
   assert.deepStrictEqual(md.mine, [], '명부를 못 읽었는데 내 부서가 나왔다');
 });
 
-test('(순수) G4: pkOrgIndex — 루트(부모 없음·고아) · mbCmp 순서 · 인원(하위 포함 · 나 제외) · 직속 · 순환은 트리에 없음 · 경로', () => {
+test('(순수) G4: pkOrgIndex — 루트(부모 없음·고아) · mbCmp 순서 · 인원(하위 포함 · 본인 포함) · 직속(본인 포함) · 순환은 트리에 없음 · 경로', () => {
   const { pkOrgIndex, pkOrgPath } = orgFns(app);
   const ix = pkOrgIndex(UNITS, ROSTER, 'phmin');
   assert.deepStrictEqual(ix.roots, ['회사', '외부팀']);
   assert.deepStrictEqual(ix.kids.get('회사'), ['경영지원본부', '연구소', '사업본부']);
   assert.deepStrictEqual(ix.kids.get('연구소'), ['SW 2팀', 'SW 1팀', 'HW팀'], 'sortOrder 가 이름보다 먼저가 아니다');
   const cnt = Object.fromEntries([...ix.count]);
-  assert.deepStrictEqual(cnt, { 회사: 10, 경영지원본부: 1, 인사팀: 1, 재무팀: 0, 연구소: 7, 'SW 2팀': 3, 'SW 1팀': 2, HW팀: 1, 사업본부: 1, 영업팀: 1, 외부팀: 0 });
-  assert.deepStrictEqual((ix.direct.get('SW 2팀') || []).map((m) => m.loginId), ['wblee', 's21', 's22'], '직속에 내가 있다');
+  assert.deepStrictEqual(cnt, { 회사: 11, 경영지원본부: 1, 인사팀: 1, 재무팀: 0, 연구소: 8, 'SW 2팀': 4, 'SW 1팀': 2, HW팀: 1, 사업본부: 1, 영업팀: 1, 외부팀: 0 });
+  assert.deepStrictEqual((ix.direct.get('SW 2팀') || []).map((m) => m.loginId), ['phmin', 'wblee', 's21', 's22'], '직속에 본인이 포함되어야 한다');
   assert.ok(!ix.has('X순환A') && !ix.has('X순환B'), '순환 조직이 트리에 들어왔다');
   assert.ok(ix.has('외부팀') && !ix.has('없는조직'));
   assert.deepStrictEqual(pkOrgPath(ix, 'SW 2팀'), ['회사', '연구소', 'SW 2팀']);
   assert.deepStrictEqual(pkOrgPath(ix, '없는팀'), []);
   //  같은 사람·같은 조직 이름이 두 번 와도 한 번만
   const ix2 = pkOrgIndex(UNITS.concat([U_('연구소', '사업본부', 0)]), ROSTER.concat([M_('wblee', '이웅빈', '선임', 'SW 2팀')]), 'phmin');
-  assert.strictEqual(ix2.count.get('SW 2팀'), 3);
+  assert.strictEqual(ix2.count.get('SW 2팀'), 4);
   assert.deepStrictEqual(ix2.kids.get('사업본부'), ['영업팀'], '중복 이름 조직이 두 번째 부모에 붙었다');
   //  빈 회신·이상값에도 던지지 않는다
   const ix3 = pkOrgIndex(null, null, '');
   assert.deepStrictEqual([ix3.roots, ix3.has('회사')], [[], false]);
 });
 
-test('(변이) G2: 내 부서의 「나 제외」 줄을 지우면 (순수) 판정이 잡는다', () => {
-  const bad = mutate(app, '      if(id === me) continue;          // G2 — 나는 내 부서 목록에 없다\n', '');
+test('(변이) G2: 내 부서의 본인 판정(isMe)을 지우면 (순수) 판정이 잡는다', () => {
+  const bad = mutate(app, '    const isMe = !!me && id === me;\n', '    const isMe = false;\n');
   const md = modelFn(bad)({ favs: [], recents: [], members: ROSTER, q: '', me: 'phmin', viewing: '', myUnit: 'SW 2팀' });
-  assert.ok(md.mine.some((r) => r.loginId === 'phmin'), '전제: 변이가 나를 내 부서에 넣는다');
-  assert.notStrictEqual(md.mineCount, 3, '전제: 변이가 N명을 바꾼다');
+  assert.strictEqual(md.mine[0].isMe, false, '전제: 변이가 본인 표시를 지운다');
 });
 test('(변이) G2: 내 부서의 「두 줄 금지」 줄을 지우면 즐겨찾기·최근에 있는 사람이 또 나와 잡힌다', () => {
   const bad = mutate(app, '      if(shown.has(id)) continue;      // G2 — 즐겨찾기·최근에 이미 나온 사람은 다시 안 그린다(같은 사람 두 줄 금지)\n', '');
   const md = modelFn(bad)({ favs: [{ loginId: 's21', name: '임재원' }], recents: [{ loginId: 'wblee', name: '이웅빈' }], members: ROSTER, q: '', me: 'phmin', viewing: '', myUnit: 'SW 2팀' });
-  assert.throws(() => assert.deepStrictEqual(md.mine.map((r) => r.loginId), ['s22'], '두 줄'), /두 줄/);
+  assert.throws(() => assert.deepStrictEqual(md.mine.map((r) => r.loginId), ['phmin', 's22'], '두 줄'), /두 줄/);
 });
-test('(변이) G4: 조직 인원에서 「나 제외」를 지우면 내 조직·상위의 N 이 하나씩 늘어 잡힌다', () => {
-  const bad = mutate(app, '    if(id === meId) continue;          // G4 — 인원 수·목록에서 나를 뺀다\n', '');
-  const ix = orgFns(bad).pkOrgIndex(UNITS, ROSTER, 'phmin');
-  assert.deepStrictEqual([ix.count.get('SW 2팀'), ix.count.get('회사')], [4, 11], '전제: 변이가 나를 센다');
+test('(변이) G4: 본인 행 비활성(r.isMe)을 빼면 내 행이 열 수 있게 나와 잡힌다', () => {
+  if (!JSDOM) return;
+  const bad = mutate(app, '  const off = r.isMe || r.gone || !r.canView || r.viewing;\n', '  const off = r.gone || !r.canView || r.viewing;\n');
+  const dom = new JSDOM('<!doctype html><html><body></body></html>');
+  const pkRowEl = new Function('document', extractFunction(bad, 'pkRowEl') + '\nreturn pkRowEl;')(dom.window.document);
+  const el = pkRowEl({ loginId: 'phmin', name: '박현민', title: '수석', org: 'SW 2팀', gone: false, canView: true, viewing: false, isMe: true, fav: false }, null);
+  assert.strictEqual(el.querySelector('.pk-open').getAttribute('aria-disabled'), null, '전제: 변이가 본인 비활성을 지운다');
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -298,19 +300,26 @@ if (!JSDOM) {
   });
 
   // ── R2 ──
-  test('(R2) 「사람」: ★ 즐겨찾기 → 최근 → 내 부서 순서 · 내 부서는 나·즐겨찾기·최근 제외 · 머리말 「내 부서 · SW 2팀 3명」 + 링크', async () => {
+  test('(R2) 「사람」: ★ 즐겨찾기 → 최근 → 내 부서 순서 · 내 부서는 본인((나) 비활성) 포함·즐겨찾기·최근 제외 · 머리말 「내 부서: SW 2팀 4명」 + 링크', async () => {
     await reset(B);
     setLS(B, keyF, [{ loginId: 's21', name: '임재원' }]);
     setLS(B, keyR, [{ loginId: 'ihyoon', name: '윤인환' }, { loginId: 'wblee', name: '이웅빈' }]);
     await openTop(B);
     assert.deepStrictEqual(secOrder(B), ['Fav', 'Recent', 'Mine'], '묶음 순서가 다르다');
-    assert.deepStrictEqual(rows(B, 'Mine').map((r) => [r.id, r.off]), [['s22', true]], '내 부서에 나·중복이 있거나 범위 밖이 회색이 아니다');
-    assert.strictEqual(rows(B, 'Mine')[0].tip, '일정 열람 범위 밖입니다');
-    assert.ok(!B.doc.querySelector('#pkBody .pk-open[data-login="phmin"]'), '나 자신이 목록에 있다');
+    assert.deepStrictEqual(rows(B, 'Mine').map((r) => [r.id, r.off, r.tip]), [
+      ['phmin', true, '나 자신입니다'],
+      ['s22', true, '일정 열람 범위 밖입니다'],
+    ], '내 부서에 본인(비활성)이 없거나 중복이 있거나 범위 밖이 회색이 아니다');
+    assert.ok(/박현민 수석연구원 \(나\)/.test(rows(B, 'Mine')[0].text), rows(B, 'Mine')[0].text);
+    const myRow = B.doc.querySelector('#pkBody .pk-open[data-login="phmin"]').parentElement;
+    assert.strictEqual(myRow.querySelector('.pk-star, .pk-del'), null, '본인 행에는 ☆/✕ 단추가 없어야 한다');
+    B.ev('__calls.length = 0'); B.posted.length = 0;
+    openBtn(B, 'phmin').click();
+    assert.deepStrictEqual([calls(B), peerOpens(B), isOpen(B)], [[], [], true], '본인 행을 눌렀더니 반응했다');
     for (const id of ['s21', 'wblee']) assert.strictEqual(B.doc.querySelectorAll(`#pkBody .pk-open[data-login="${id}"]`).length, 1, '같은 사람 두 줄: ' + id);
     const h = [...B.doc.querySelectorAll('#pkBody .pk-sec-h')].pop();
     assert.strictEqual(h.querySelector('span').textContent, '내 부서: SW 2팀');
-    assert.strictEqual(h.querySelector('.pk-cnt').textContent, '3명', 'N명 = 나를 뺀 직속 인원(위에 나온 사람 포함)');
+    assert.strictEqual(h.querySelector('.pk-cnt').textContent, '4명', 'N명 = 본인을 포함한 직속 인원(위에 나온 사람 포함)');
     const more = h.querySelector('[data-act="goorg"]');
     assert.ok(more && more.textContent === '조직도에서 다른 부서 ›', '「조직도에서 다른 부서 ›」 링크가 없다');
     assert.ok(!notes(B).some((t) => /☆ 를 누르면/.test(t)), '쓰던 사람에게 처음 안내가 나왔다');
@@ -338,10 +347,10 @@ if (!JSDOM) {
     //  J8(2026-10-02 · ADMIN-HUB-2) — 두 문장 · 인용 없음(「최근 본 사|람」 처럼 인용 중간에서 끊겨 읽혔다)
     assert.strictEqual(bd.firstElementChild.textContent, '☆ 를 누르면 즐겨찾기에 남습니다. 한 번 연 사람은 최근 목록에 쌓입니다.');
     assert.deepStrictEqual(secOrder(B), ['Mine']);
-    assert.deepStrictEqual(rows(B, 'Mine').map((r) => r.id), ['wblee', 's21', 's22']);
+    assert.deepStrictEqual(rows(B, 'Mine').map((r) => r.id), ['phmin', 'wblee', 's21', 's22']);
     //  검색 칸 ↓ → 내 부서 첫 행(K11 — 지금 보이는 본문의 첫 행)
     key(B, B.doc.getElementById('pkSearch'), 'ArrowDown');
-    assert.strictEqual(act(B), 'pk-open:wblee');
+    assert.strictEqual(act(B), 'pk-open:phmin');
   });
 
   // ── R4 ──
@@ -364,10 +373,12 @@ if (!JSDOM) {
     assert.deepStrictEqual(nodes(B).filter((n) => n.ti === 0).map((n) => n.unit), ['SW 2팀'], '로빙 tabindex 가 고른 조직에 있지 않다');
     assert.deepStrictEqual(nodes(B).filter((n) => n.mine).map((n) => n.unit), ['SW 2팀'], '「내 소속」 꼬리표');
     assert.deepStrictEqual(Object.fromEntries(nodes(B).map((n) => [n.unit, n.cnt])),
-      { 회사: '10', 경영지원본부: '1', 연구소: '7', 'SW 2팀': '3', 'SW 1팀': '2', HW팀: '1', 사업본부: '1', 외부팀: '0' }, '인원 수(하위 포함 · 나 제외)');
+      { 회사: '11', 경영지원본부: '1', 연구소: '8', 'SW 2팀': '4', 'SW 1팀': '2', HW팀: '1', 사업본부: '1', 외부팀: '0' }, '인원 수(하위 포함 · 본인 포함)');
     assert.ok(!nodes(B).some((n) => /순환/.test(n.unit)), '순환 조직이 트리에 나왔다');
     assert.deepStrictEqual(crumb(B), ['회사', '연구소', '[SW 2팀]']);
-    assert.deepStrictEqual(rows(B, 'Unit').map((r) => r.id), ['wblee', 's21', 's22'], '오른쪽 목록 = 내 부서 직속(나 제외)');
+    const unitRows = rows(B, 'Unit');
+    assert.deepStrictEqual(unitRows.map((r) => r.id), ['phmin', 'wblee', 's21', 's22'], '오른쪽 목록 = 내 부서 직속(본인 포함)');
+    assert.ok(unitRows[0].off && /박현민 수석연구원 \(나\)/.test(unitRows[0].text) && unitRows[0].tip === '나 자신입니다', JSON.stringify(unitRows[0]));
   });
 
   test('(R4) ▸/▾ 는 펼침만 바꾼다(고른 조직 그대로) · 다 펼친 트리 순서 = 「구성원 보기」 트리 순서', async () => {
@@ -399,13 +410,13 @@ if (!JSDOM) {
     assert.deepStrictEqual(nodes(B).filter((n) => n.sel).map((n) => n.unit), ['연구소']);
     assert.strictEqual(act(B), 'node:연구소');
     assert.deepStrictEqual(crumb(B), ['회사', '[연구소]']);
-    assert.deepStrictEqual(subs(B), ['SW 2팀:3명', 'SW 1팀:2명', 'HW팀:1명']);
+    assert.deepStrictEqual(subs(B), ['SW 2팀:4명', 'SW 1팀:2명', 'HW팀:1명']);
     assert.ok(B.doc.querySelector('#pkBody .pk-olist .pk-subsep'), '하위 조직 줄과 사람 사이 구분선이 없다');
     assert.deepStrictEqual(rows(B, 'Unit').map((r) => r.id), ['lab'], '직속만이어야 한다(하위 조직 사람은 하위 줄로)');
     //  경로의 조상을 누르면 그 조직으로
     crumbBtn(B, '회사').click();
     assert.deepStrictEqual(nodes(B).filter((n) => n.sel).map((n) => n.unit), ['회사']);
-    assert.deepStrictEqual(subs(B), ['경영지원본부:1명', '연구소:7명', '사업본부:1명']);
+    assert.deepStrictEqual(subs(B), ['경영지원본부:1명', '연구소:8명', '사업본부:1명']);
     assert.deepStrictEqual(rows(B, 'Unit').map((r) => r.id), ['ceo']);
     assert.strictEqual(act(B), 'pk-sub:경영지원본부', '경로를 누른 뒤 포커스가 목록 첫 줄로 가지 않았다');
     //  하위 조직 줄을 누르면 그 조직으로(트리도 따라 펼친다)
@@ -450,9 +461,9 @@ if (!JSDOM) {
     assert.ok(!p.classList.contains('pk-wide') && !B.doc.querySelector('#pkBody .pk-tree'), '좁은데 트리가 있다');
     assert.ok(parseFloat(p.style.width) <= 360, '좁은데 넓어졌다: ' + p.style.width);
     assert.deepStrictEqual(crumb(B), ['회사', '연구소', '[SW 2팀]'], '좁을 때도 처음 자리는 내 부서');
-    assert.deepStrictEqual(rows(B, 'Unit').map((r) => r.id), ['wblee', 's21', 's22']);
+    assert.deepStrictEqual(rows(B, 'Unit').map((r) => r.id), ['phmin', 'wblee', 's21', 's22']);
     crumbBtn(B, '회사').click();
-    assert.deepStrictEqual(subs(B), ['경영지원본부:1명', '연구소:7명', '사업본부:1명']);
+    assert.deepStrictEqual(subs(B), ['경영지원본부:1명', '연구소:8명', '사업본부:1명']);
     subBtn(B, '연구소').click();
     assert.deepStrictEqual(crumb(B), ['회사', '[연구소]']);
     assert.strictEqual(act(B), 'pk-sub:SW 2팀', '내려간 뒤 포커스가 새 목록 첫 줄이 아니다');
