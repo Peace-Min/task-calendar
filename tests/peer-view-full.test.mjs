@@ -408,9 +408,12 @@ if (!JSDOM) {
     test('R P4/Q5: 기본 밀도는 「펼침」 — 격자가 expand 이고 바쁜 날(15건)에 「+N」 이 없다', () => {
       assert.strictEqual(P.ev('calDensity()'), 'expand');
       assert.strictEqual(P.ev('document.getElementById("grid").classList.contains("expand")'), true);
-      assert.strictEqual(P.ev('document.querySelectorAll("#grid .cell[data-date=\\"2026-10-15\\"] .chip").length'), 15,
-        '펼침인데 바쁜 날 칩이 다 그려지지 않았다');
-      assert.strictEqual(P.ev('document.querySelector("#grid .cell[data-date=\\"2026-10-15\\"] .chips").dataset.extra'), '0');
+      const cnt = P.ev(`(function(){
+        var wk = document.querySelector('#grid .cell[data-date="2026-10-15"]').closest('.gridrow');
+        return Array.prototype.filter.call(wk.querySelectorAll('.chip-bar'), function(b){ return Number(b.dataset.c0) <= 4 && Number(b.dataset.c1) >= 4; }).length;
+      })()`);
+      assert.strictEqual(cnt, 15, '펼침인데 바쁜 날 칩이 다 그려지지 않았다');
+      assert.strictEqual(P.ev('document.querySelector("#grid .cell[data-date=\\"2026-10-15\\"]").closest(".gridrow").dataset.extra.split(",")[4]'), '0');
       assert.strictEqual(P.ev('document.querySelectorAll("#grid .more").length'), 0, '펼침인데 「+N」 이 있다');
     });
 
@@ -437,14 +440,19 @@ if (!JSDOM) {
         '코드로 바꾼 밀도가 띠 라디오에 반영되지 않는다');
     });
 
-    test('R P1/Q1: 10월 달력에서 9/29~10/2 기간 칩을 10/1 칸에서 누르면 10월 유지 · 선택 10/1', () => {
+    test('R P1/Q1: 10월 달력에서 9/29~10/2 기간 막대를 10/1 칸에서 누르면 10월 유지 · 선택 10/1', () => {
       P.ev('view = {y:2026, m:9}; selectedDate = "2026-10-03"; renderAll();');
-      const has = P.ev('!!document.querySelector("#grid .cell[data-date=\\"2026-10-01\\"] .chip[data-id=\\"e-r1\\"]")');
-      assert.ok(has, '사전조건: 10/1 칸에 기간 칩이 있어야 한다');
-      assert.strictEqual(P.ev('document.querySelector("#grid .cell[data-date=\\"2026-10-01\\"] .chip[data-id=\\"e-r1\\"]").dataset.occ'), '2026-09-29',
-        '사전조건: 칩의 data-occ 는 시작일(9/29)이다 — 그래서 이 시험이 의미가 있다');
-      P.ev('document.querySelector("#grid .cell[data-date=\\"2026-10-01\\"] .chip[data-id=\\"e-r1\\"]").click();');
-      assert.strictEqual(P.ev('view.m'), 9, '열람 창에서 기간 칩을 눌렀더니 달이 바뀌었다');
+      const has = P.ev('!!document.querySelector("#grid .chip-bar[data-id=\\"e-r1\\"]")');
+      assert.ok(has, '사전조건: 첫 주에 기간 막대가 있어야 한다');
+      assert.strictEqual(P.ev('document.querySelector("#grid .chip-bar[data-id=\\"e-r1\\"]").dataset.occ'), '2026-09-29',
+        '사전조건: 막대의 data-occ 는 시작일(9/29)이다 — 그래서 이 시험이 의미가 있다');
+      P.ev(`(function(){
+        var b = document.querySelector('#grid .chip-bar[data-id="e-r1"]');
+        var wk = b.closest('.gridrow');
+        wk.getBoundingClientRect = function(){ return { left:0, top:0, right:700, bottom:100, width:700, height:100, x:0, y:0 }; };
+        b.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true, detail:1, clientX: 4 * 100 + 50, clientY: 40 }));
+      })()`);
+      assert.strictEqual(P.ev('view.m'), 9, '열람 창에서 기간 막대를 눌렀더니 달이 바뀌었다');
       assert.strictEqual(P.ev('selectedDate'), '2026-10-01');
     });
 

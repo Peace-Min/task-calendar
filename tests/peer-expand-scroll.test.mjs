@@ -199,7 +199,7 @@ if (!JSDOM) {
       layout: document.body.dataset.peerLayout || 'overlay', ovl: document.body.dataset.peerOverlay || null, dens: calDensity() });
   })()`));
   const expandOk = (p, what) => {
-    assert.strictEqual(p.cls, 'grid expand', what + ': 펼침인데 격자에 expand 클래스가 없다');
+    assert.strictEqual(p.cls, 'grid bars expand', what + ': 펼침인데 격자에 bars expand 클래스가 없다');
     assert.ok(rowSizeOk(p.rows), `${what}: 계산된 grid-auto-rows 가 고정 최소값이다: ${p.rows}`);
     assert.strictEqual(p.ovy, 'auto', what + ': 격자가 스크롤 상자가 아니다');
     assert.ok(p.minH === '0' || p.minH === '0px', what + ': 격자 min-height 가 0 이 아니다: ' + p.minH);
@@ -234,9 +234,9 @@ if (!JSDOM) {
     test('(jsdom) 고정, 촘촘히로 바꾸면 예전 값 그대로(1fr, 176px, 펼침 규칙이 새지 않는다)', async () => {
       const set = (v) => P.ev(`(function(){ var x = document.querySelector('#peerBanner input[name="peerDensity"][value="${v}"]'); x.checked = true; x.dispatchEvent(new Event('change')); return calDensity(); })()`);
       assert.strictEqual(set('fixed'), 'fixed'); await settle();
-      let p = probe(P); assert.strictEqual(p.cls, 'grid'); assert.strictEqual(p.rows, '1fr');
+      let p = probe(P); assert.strictEqual(p.cls, 'grid bars'); assert.strictEqual(p.rows, '1fr');
       assert.strictEqual(set('dense'), 'dense'); await settle();
-      p = probe(P); assert.strictEqual(p.cls, 'grid dense'); assert.strictEqual(p.rows, '176px');
+      p = probe(P); assert.strictEqual(p.cls, 'grid bars dense'); assert.strictEqual(p.rows, '176px');
       assert.strictEqual(set('expand'), 'expand'); await settle();
       expandOk(probe(P), '다시 펼침');
       P.close();
@@ -249,7 +249,7 @@ if (!JSDOM) {
       try {
         await settle(); inject(M); await settle();
         const p = probe(M);
-        assert.strictEqual(p.cls, 'grid expand', '사전조건: 변이 앱도 펼침이다');
+        assert.strictEqual(p.cls, 'grid bars expand', '사전조건: 변이 앱도 펼침이다');
         assert.ok(!rowSizeOk(p.rows), '변이했는데도 계산된 값이 내용 기반이다(변이가 캐스케이드에 닿지 않았다): ' + p.rows);
         assert.throws(() => expandOk(p, '변이'), '계산된 값 판정이 변이를 통과시킨다');
       } finally { M.close(); }

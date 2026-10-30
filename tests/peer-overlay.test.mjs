@@ -279,9 +279,9 @@ if (!JSDOM) {
     categories: PEER_CATS, entries: [...PEER_ES, ...MINE_ES],
     todos: [], rooms: [], taskHours: {}, attendance: {}, 
   };
-  // 격자에 뜨는 칩 수 — 기간 일정은 날짜마다 한 조각이다.
-  const MINE_CHIPS = 4;   // e-m1(1일) + e-m2(16·17·18)
-  const PEER_CHIPS = 5;   // e-p1 + e-p2 + e-p3(15·16·17)
+  // 격자에 뜨는 칩 수 — 기간 일정은 주 단위 막대(.chip-bar) 한 개로 그려진다(docs/PEER-RANGE-BARS.md).
+  const MINE_CHIPS = 2;   // e-m1(9/8 하루) + e-m2(9/16~9/18 한 주 막대 1개)
+  const PEER_CHIPS = 3;   // e-p1(9/8) + e-p2(9/8) + e-p3(9/15~9/17 한 주 막대 1개)
 
   const settle = () => new Promise(r => setTimeout(r, 60));
   // 창에 픽스처를 넣고 9월 8일을 고른다(선택 날짜가 겹치는 날이라야 일자 패널 계약이 성립한다).
@@ -372,8 +372,8 @@ if (!JSDOM) {
       P.ev('filterCatId = "c-A"; renderAll();');
       assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip.chip-mine").length'), MINE_CHIPS,
         '상대 과제 필터가 내 겹까지 걷어냈다 — 내 일정이 없는 날처럼 보인다');
-      assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip:not(.chip-mine)").length'), 4,
-        'c-A(e-p1 1조각 + e-p3 3조각)만 남아야 한다');
+      assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip:not(.chip-mine)").length'), 2,
+        'c-A(e-p1 1개 + e-p3 기간 막대 1개)만 남아야 한다');
       assert.ok(!P.ev('document.getElementById("grid").textContent').includes('상대: 주간보고'),
         '상대 과제 필터가 상대 일정에는 걸려야 한다');
       P.ev('filterCatId = null; renderAll();');
@@ -525,14 +525,14 @@ if (!JSDOM) {
         });
     });
 
-    // ── 변이② chipHtml 이 chip-mine 을 안 붙인다 → 내 겹이 상대 칩과 구분되지 않는다 ──
-    test('변이②: chipHtml 이 chip-mine 을 안 붙이면 「내 칩은 내 색(연한 채움 + 왼쪽 막대)으로 구분된다」 계약이 깨진다', async () => {
+    // ── 변이② barChipHtml 이 chip-mine 을 안 붙인다 → 내 겹이 상대 칩과 구분되지 않는다 ──
+    test('변이②: barChipHtml 이 chip-mine 을 안 붙이면 「내 칩은 내 색(연한 채움 + 왼쪽 막대)으로 구분된다」 계약이 깨진다', async () => {
       assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip.chip-mine").length'), MINE_CHIPS,
         '사전조건: 정상 앱은 내 칩에 chip-mine 을 붙인다');
 
       await withMutatedApp(
-        "${mine?' chip-mine':''}",
-        "${false?' chip-mine':''}",
+        "${mine ? ' chip-mine' : ''}",
+        "${false ? ' chip-mine' : ''}",
         PEER_URL,
         async (m) => {
           inject(m);
