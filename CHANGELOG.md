@@ -7,6 +7,10 @@
 
 ---
 
+## 🆕 2026-10-30 (다음 판, 번호는 배포 때): 과제 탭 날짜 목록 팝업을 과제별 묶음으로
+
+과제 탭 달력에서 날짜를 누르면 뜨는 그날 일정 목록(`pcOpenDayList`, `pcDayRowHtml`, `.pc-pop` 계열)을 과제 이름 묶음 머리 아래 그 과제 일정이 붙는 2단 계층으로 바꿨다. 묶음 순서는 `pcOrder`, 묶음 안은 날짜만 있는 일정(여러 날이면 긴 것 먼저) 위에 시각 일정 시각 순. 시각 열은 없고 시각이나 기간이 있을 때만 제목 앞에 작게 붙는다. 읽기 전용(숨긴) 과제는 묶음 머리에 "읽기 전용". 머리의 "일정 n건", 빈 날 안내 문구, 하단 "이 날짜에 일정 등록" 큰 단추를 없애고 머리 오른쪽 작은 "등록"(`data-act="newOn"` 그대로)으로 옮겼다. 폭 320px, 최대 높이 440px(날짜 머리 고정, 과제 머리 sticky), 760px 이하는 하단 시트. 키보드 이동 순서는 등록, 줄들. 버전, DB, 호스트 C# 는 바꾸지 않는다. 기획과 시안: [docs/PROJECT-CAL-DAY-POPUP-DECISIONS.md](docs/PROJECT-CAL-DAY-POPUP-DECISIONS.md), 점검과 상용 앱 조사: [docs/PROJECT-CAL-DETAIL-UX.md](docs/PROJECT-CAL-DETAIL-UX.md).
+
 ## 🆕 2026-10-30 (다음 판, 번호는 배포 때): 개인 및 다른 사람 일정 주간 보기(과제별 줄)
 
 날짜 제목 옆 [월간 | 주간](`#calViewSeg`, 창마다 `tc_calView`, `tc_peerView`). 월간은 날짜 격자 그대로이고 주간은 과제 탭처럼 과제별 줄 표다(`renderWeekRows`, 월요일 시작, 빈 과제도 줄, 분류 없는 기록은 "분류 없음" 줄). 다른 사람 일정 겹쳐 보기는 같은 DB 과제면 그 줄 안에 내 막대를, 겹치지 않는 내 과제는 굵은 선 아래 내 과제 줄로 둔다. 나란히 보기도 같은 규칙(같은 DB 과제 위에서 양쪽 차선 수 맞춤). 내 일정 겹(`buildMineOverlay`)에 내 과제의 키, 이름, 색(`_cat`)을 더했고 `categoryId` 는 그대로 null 이다. 내 과제 목록은 겹 끝 한 칸(`_mineCats`)으로 와서 `meta.mineCats` 로 프레임에 간다(호스트 C# 그대로). 처음 구현(4316c53)의 "월간 한 줄 크게" 주간은 걷었다. 버전과 DB 는 바꾸지 않는다. 기획: [docs/PERSONAL-PEER-WEEK-VIEW.md](docs/PERSONAL-PEER-WEEK-VIEW.md).
