@@ -499,10 +499,11 @@ test('변이⑦: 버전 도입 전 파일이 버전을 올리기 시작하면 �
 
 test('변이⑨: 실제로 났던 결함(보고 기록 3표의 DROP 누락, c4cf813)을 재현하면 잡는다', () => {
   // 8-31 에 새로 만든 3표를 DROP 블록에서만 지워 본다 — 사람이 눈으로 잡았던 그 상태다.
-  const mutated = canonSql.replace(/^DROP TABLE IF EXISTS cal_report_(hours|daily|weekly);.*\r?\n/gm, '');
+  //  2026-10-30 주간 과제투입시간(cal_report_weekly_hours, 구조 20)도 같은 보고 기록이라 함께 지워 본다.
+  const mutated = canonSql.replace(/^DROP TABLE IF EXISTS cal_report_(hours|daily|weekly|weekly_hours);.*\r?\n/gm, '');
   assert.notStrictEqual(mutated, canonSql, '변이 준비 실패: 보고 기록 DROP 줄을 찾지 못했다');
   assert.throws(() => checks.dropCoversCreate(mutated),
-    /cal_report_daily|cal_report_hours|cal_report_weekly/);
+    /cal_report_daily|cal_report_hours|cal_report_weekly|cal_report_weekly_hours/);
 });
 
 test('변이·정렬: 열람 조회에 날짜를 앞세우면(원래 있던 결함) 가드 ⑩ 이 잡는다', () => {

@@ -1,4 +1,5 @@
-// 근태 주간보고(docs/ATTENDANCE-PLAN.md §13, 결정 13, 2026-10-29) 웹 시험. §13.5 의 웹 항목.
+// 근태 주간보고(docs/ATTENDANCE-PLAN.md §13, §14, 결정 13, 14) 웹 시험. §13.5, §14.5 의 웹 항목.
+//   결정 14(2026-10-30): 진행사항, 차주계획은 자유 글 한 칸이고 과제투입시간은 진행사항과 따로 움직이는 목록(맨먼스 원천)이다.
 //
 // 이 파일이 지키는 것:
 //   (S) 정적: 근태 창 허용 목록에 reportWeeklyList, netcusWeekSubmit 이 있다. 위젯 주간 전송은 회의내용(resultwork)을 실린 요청에만 붙인다
@@ -42,6 +43,16 @@ test('(S) 위젯 주간 전송은 resultwork 를 실린 요청에만 붙인다(�
   assert.ok(/submitWeekly\(p\)\{ hpost\(Object\.assign\(\{ cmd: 'netcusWeekSubmit', sdate: p\.fields\.sdate, edate: p\.fields\.edate, subject: p\.fields\.subject, content: p\.fields\.content, endwork: p\.fields\.endwork, planwork: p\.fields\.planwork \}/.test(w), '주간 전송의 기본 칸이 바뀌었다');
   assert.ok(/typeof p\.fields\.resultwork === 'string' \? \{ resultwork: p\.fields\.resultwork \} : \{\}/.test(w), 'resultwork 를 실린 요청에만 붙이지 않는다');
 });
+test('(S) 과제투입시간은 한 줄에 과제 하나(세로 목록, 칸 폭 고정)이고, 주간 화면에 반짝임이 없다(2026-10-30 사용자: 정적인 화면)', () => {
+  assert.ok(app.includes('.aw-hours{display:flex;flex-direction:column;'), '과제투입시간이 세로 한 줄 목록이 아니다');
+  assert.ok(app.includes('.aw-hr{display:grid;grid-template-columns:10px minmax(0,1fr) 64px 24px;'), '과제투입시간 줄의 칸 폭이 고정이 아니다');
+  assert.ok(!/aw-flash|awFlash/.test(app), '주간 화면에 반짝임이 남아 있다');
+  assert.ok(/\.at-list\{[^}]*scrollbar-gutter:stable/.test(app), '스크롤바가 생길 때 폭이 줄어 패널이 밀린다(scrollbar-gutter:stable 없음)');
+  assert.ok(!/\.aw-form\{[^}]*overflow:hidden/.test(app), '주간 표가 넘치는 내용을 숨겨 과제 추가 패널이 잘린다');
+  const pick = app.slice(app.indexOf('function awAddPick('), app.indexOf('function awCatNew('));
+  assert.ok(pick.includes('awHoursRender();') && !pick.includes('awRender()') && !/scrollIntoView/.test(pick), '과제 추가가 화면 전체를 다시 그리거나 스크롤을 옮긴다');
+});
+
 test('(S) 미리보기 색은 :root 의 --nf-* 토큰이고(테마와 상관없이), 주간 화면 문구에 엠 대시, en 대시, 낫표, 띄어 쓴 가운데 점이 없다', () => {
   const root = app.slice(app.indexOf(':root{'), app.indexOf('}', app.indexOf(':root{')));
   for (const t of ['--nf-paper', '--nf-ink', '--nf-edge', '--nf-th', '--nf-td', '--nf-box']) assert.ok(new RegExp(t + ':#[0-9a-f]{6};').test(root), t + ' 토큰이 :root 에 없다');
@@ -110,30 +121,28 @@ if (!JSDOM) {
     clearDrafts(X);
     return X;
   }
-  //  화면 조작: kind 'prog' | 'plan' 의 i 번째 블록
-  const blocks = (X, k) => X.evJSON(`AWE.${k}.map(function(b){ return { name: b.name, text: b.text }; })`);
-  const typeBlock = (X, k, i, v) => input(X, `#awEd textarea[data-wt="${k}:${i}"]`, v);
-  const addBlock = (X, k, name) => { X.$(`#awEd [data-awadd="${k}"]`).click(); X.$(`#awAddList [data-awaddname="${name}"]`).click(); };
+  //  화면 조작: 과제투입시간 목록에 과제 더하기(실제 [+ 과제 추가] 메뉴), 지금 목록
+  const hrs = (X) => X.evJSON('AWE.hrs');
+  const addHours = (X, name) => { if (X.$('#awAddMenu').classList.contains('hidden')) X.$('#awEd [data-awadd="hours"]').click(); X.$(`#awAddList [data-awaddname="${name}"]`).click(); };
   const hoursRows = (X) => X.evJSON("[].map.call(document.querySelectorAll('#awHours .aw-hr'), function(l){ return [l.querySelector('.aw-hn').textContent, l.querySelector('input').value]; })");
   const nfBox = (X, k) => X.$(`#awNf .nf-box[data-nf="${k}"]`).textContent;
 
   // ── (U) 순수 ────────────────────────────────────────────────────────
-  test('(U) 조립: 진행사항과 차주계획은 [과제명] 줄 + 내용(비면 -), 블록 사이 빈 줄, 과제 미정은 빼고, 과제투입시간은 진행사항을 따라가며 ----- 와 합계', () => {
+  test('(U) 조립: 진행사항과 차주계획은 칸의 글 그대로(앞 빈 줄과 끝 공백만 정리), 과제투입시간은 목록 그대로 ----- 와 합계, 막는 것은 과제 0개뿐', () => {
     const X = bootBrowser();
     try {
-      const prog = [{ name: '알파', text: '\n  - 연동 환경 구축\n- 회의  \n\n' }, { name: '베타', text: '   ' }, { name: '', text: '미정 글' }];
-      const s = { subj: '10월 다섯째주', prog, plan: [{ name: '감마', text: '' }], hours: { '알파': 12, '베타': 2.5, '감마': 9, '없음': 3 }, meet: '\n- 주간회의\n\n' };
+      const s = { subj: '10월 다섯째주', prog: '\n  [표적기](~\'28/12)\n  - 담당자 배치표  \n\n', plan: '', hrs: ['알파', '베타'], hours: { '알파': 12, '베타': 2.5, '감마': 9 }, meet: '\n- 주간회의\n\n' };
       const c = X.evJSON(`awCompose(${JSON.stringify(s)})`);
-      assert.strictEqual(c.endwork, '[알파]\n  - 연동 환경 구축\n- 회의\n\n[베타]\n-', '진행사항 조립이 다르다');
-      assert.strictEqual(c.planwork, '[감마]\n-', '빈 차주계획 블록이 - 가 아니다');
-      assert.strictEqual(c.content, '[알파] : 12\n[베타] : 2.5\n-----\n합계 : 14.5', '과제투입시간이 진행사항 과제만 따르지 않거나 끝 줄이 다르다');
+      assert.strictEqual(c.endwork, "  [표적기](~'28/12)\n  - 담당자 배치표", '진행사항이 글 그대로가 아니다');
+      assert.strictEqual(c.planwork, '', '빈 차주계획은 빈 글이다(블록 표시 - 를 넣지 않는다)');
+      assert.strictEqual(c.content, '[알파] : 12\n[베타] : 2.5\n-----\n합계 : 14.5', '과제투입시간이 목록의 과제만 따르지 않거나 끝 줄이 다르다');
       assert.strictEqual(c.resultwork, '- 주간회의');
-      assert.strictEqual(X.ev(`awHoursText([], { '알파': 3 })`), '', '진행사항이 없으면 과제투입시간은 빈 글이어야 한다');
-      assert.strictEqual(X.ev(`awHoursText([{ name: '알파', text: '' }], {})`), '[알파] : 0\n-----\n합계 : 0', '값 없는 과제는 0 이어야 한다');
-      const pr = (st) => X.evJSON(`awProblems(${JSON.stringify(st)})`);
-      assert.deepStrictEqual(pr({ prog: [], plan: [] }), { noProg: true, bad: [] });
-      assert.deepStrictEqual(pr({ prog: [{ name: '알파' }, { name: '' }], plan: [{ name: '' }] }), { noProg: false, bad: [{ kind: 'prog', i: 1 }, { kind: 'plan', i: 0 }] });
-      assert.deepStrictEqual(pr({ prog: [{ name: '' }], plan: [] }).noProg, true, '과제 미정만 있으면 진행사항이 없는 것이다');
+      assert.strictEqual(X.ev(`awHoursText([], { '알파': 3 })`), '', '과제가 없으면 과제투입시간은 빈 글이어야 한다');
+      assert.strictEqual(X.ev(`awHoursText(['알파'], {})`), '[알파] : 0\n-----\n합계 : 0', '값 없는 과제는 0 이어야 한다');
+      assert.deepStrictEqual(X.evJSON('awProblems({ hrs: [], prog: \'글\' })'), { noHours: true });
+      assert.deepStrictEqual(X.evJSON('awProblems({ hrs: [\'알파\'], prog: \'\' })'), { noHours: false }, '진행사항이 비어도 막으면 안 된다');
+      //  일간 보고를 진행사항 초안으로 옮기는 글: 과제마다 [과제명] 줄 + 내용(비면 -)
+      assert.strictEqual(X.ev("awBlocksText([{ name: '알파', text: '  - 한 일' }, { name: '휴가', text: '' }])"), '[알파]\n  - 한 일\n\n[휴가]\n-');
     } finally { X.close(); }
   });
 
@@ -152,22 +161,16 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(U) 되살리기: [과제명] 머리(캘린더 과제만, 같은 과제 둘째는 미정), 첫 머리 앞 글은 미정, - 는 빈 내용, 과제투입시간 줄 읽기', () => {
+  test('(U) 과제투입시간: 캘린더 과제 순서(모르는 이름은 뒤, 같은 이름은 한 번), 기록 payload(공식 과제 uid, 0 시간 제외), 글에서 시간 읽기, 옛 임시 저장(v1 블록) 바꾸기', () => {
     const X = bootBrowser();
     try {
-      const text = '머리 앞 글\n[알파]\n&nbsp;&nbsp;- 연동\n[모름]\n- 다른 일\n[베타]\n-\n\n[알파]\n- 둘째';
-      const r = X.evJSON(`awParseBlocks(${JSON.stringify(text)}, ${JSON.stringify(NAMES)})`);
-      assert.deepStrictEqual(r, [
-        { name: '', text: '머리 앞 글', raw: '' },
-        { name: '알파', text: '  - 연동', raw: '' },
-        { name: '', text: '[모름]\n- 다른 일', raw: '[모름]' },
-        { name: '베타', text: '', raw: '' },
-        { name: '', text: '[알파]\n- 둘째', raw: '[알파]' },
-      ]);
-      //  조립한 글은 그대로 되살아난다
-      const back = X.evJSON(`awParseBlocks(awBlocksText([{ name: '알파', text: '  - 한 일' }, { name: '감마', text: '' }]), ${JSON.stringify(NAMES)})`);
-      assert.deepStrictEqual(back.map((b) => [b.name, b.text]), [['알파', '  - 한 일'], ['감마', '']]);
+      assert.deepStrictEqual(X.evJSON(`awSortHrs(['감마', '모름', '알파', '감마'], ${JSON.stringify(NAMES)})`), ['알파', '감마', '모름']);
+      const U = '0f8fad5b-d9cb-469f-a165-70867728950e';
+      const pl = X.evJSON(`awHoursPayload(['알파', '베타', '감마'], { '알파': 6.5, '베타': 0, '감마': 2 }, [{ key: 'db-${U}', name: '알파' }, { key: 'c-c', name: '감마' }])`);
+      assert.deepStrictEqual(pl, [{ name: '알파', projectUid: U, hours: 6.5 }, { name: '감마', projectUid: '', hours: 2 }], '공식 과제 uid 나 0 시간 제외가 다르다');
       assert.deepStrictEqual(X.evJSON("awParseHours('[알파] : 12\\n[베타] : 2.5\\n-----\\n합계 : 14.5')"), { '알파': 12, '베타': 2.5 });
+      const v1 = X.evJSON(`awDraftNorm({ v: 1, subj: 's', prog: [{ name: '알파', text: '- 한 일' }, { name: '', text: '미정' }], plan: [{ name: '베타', text: '' }], hours: { '알파': 3 }, meet: 'm' })`);
+      assert.deepStrictEqual([v1.v, v1.prog, v1.plan, v1.hrs, v1.hours, v1.meet], [2, '[알파]\n- 한 일', '[베타]\n-', ['알파'], { '알파': 3 }, 'm'], '옛 블록 임시 저장을 글과 시간 목록으로 바꾸지 않았다');
     } finally { X.close(); }
   });
 
@@ -268,34 +271,56 @@ if (!JSDOM) {
 
   function openWeekB(X, mon) { X.ev("localStorage.setItem('tc_attKind', 'week'); pcSetTab('attend')"); X.ev(`awOpen(${JSON.stringify(mon || MON)})`); }
 
-  test('(B) 과제 추가와 과제투입시간: 진행사항 블록을 따라 칸이 생기고 빠진다(2열, 0~168, 0.5), 합계, 캘린더 순서 정렬, 차주계획은 따로', () => {
+  test('(B) 과제투입시간 목록: 진행사항과 따로(블록 없음, 자유 글 두 칸), [+ 과제 추가] 체크 목록(열어 둔 채 넣고 빼기), 캘린더 순서, 숫자 칸 0~168 0.5, ✕ 빼기, 합계', () => {
     const X = bootBrowser();
     try {
       openWeekB(X);
-      assert.strictEqual(X.$('#awHours').textContent.trim(), '', '빈 과제투입시간에 설명 문구가 남아 있다(2026-10-29 사용자: 설명 문구를 두지 않는다)');
-      addBlock(X, 'prog', '감마'); addBlock(X, 'prog', '알파');
-      assert.deepStrictEqual(blocks(X, 'prog').map((b) => b.name), ['알파', '감마'], '캘린더 순서로 정렬하지 않았다');
-      X.$('#awEd [data-awadd="prog"]').click();
-      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#awAddList [data-awaddname]'), function(b){ return b.dataset.awaddname + (b.disabled ? ':x' : ''); })"), ['알파:x', '베타', '감마:x', '휴가'], '이미 있는 과제가 흐리지 않다');
+      assert.ok(X.$('#awProg').matches('textarea.aw-free.aw-big') && X.$('#awPlan').matches('textarea.aw-free.aw-big'), '진행사항, 차주계획이 넉넉한 자유 글 칸이 아니다');
+      assert.ok(!X.$('#awEd .at-blk, #awEd [data-wt], #awEd [data-awadd="prog"], #awEd [data-awadd="plan"]'), '주간에 과제 블록이 남아 있다');
+      assert.strictEqual(X.$('#awHours').textContent.trim(), '', '빈 과제투입시간에 설명 문구가 있다');
+      addHours(X, '감마');
+      assert.ok(!X.$('#awAddMenu').classList.contains('hidden'), '과제를 넣었는데 패널이 닫혔다(열어 둔 채 이어서 넣는다)');
+      addHours(X, '알파');
+      assert.deepStrictEqual(hrs(X), ['알파', '감마'], '캘린더 순서로 정렬하지 않았다');
+      const checks = () => X.evJSON("[].map.call(document.querySelectorAll('#awAddList [data-awaddname]'), function(b){ return b.dataset.awaddname + (b.getAttribute('aria-checked') === 'true' ? ':v' : ''); })");
+      assert.deepStrictEqual(checks(), ['알파:v', '베타', '감마:v', '휴가'], '넣은 과제가 체크로 보이지 않는다');
+      //  체크를 다시 누르면 뺀다(패널은 그대로)
+      X.$('#awAddList [data-awaddname="베타"]').click(); X.$('#awAddList [data-awaddname="베타"]').click();
+      assert.deepStrictEqual(hrs(X), ['알파', '감마'], '체크를 풀었는데 빠지지 않았다');
+      assert.ok(!X.$('#awAddMenu').classList.contains('hidden'));
+      //  [전체 선택] [전체 해제]: 보이는 과제(검색으로 거른 것)에만, 패널은 그대로
+      X.$('#awAddAll').click();
+      assert.deepStrictEqual(hrs(X), ['알파', '베타', '감마', '휴가'], '전체 선택이 모든 과제를 넣지 않았다');
+      X.$('#awAddQ').value = '마'; X.$('#awAddQ').dispatchEvent(new X.w.Event('input', { bubbles: true }));
+      X.$('#awAddNone').click();
+      assert.deepStrictEqual(hrs(X), ['알파', '베타', '휴가'], '전체 해제가 검색으로 보이는 과제(감마)만 빼지 않았다');
+      X.$('#awAddQ').value = ''; X.$('#awAddQ').dispatchEvent(new X.w.Event('input', { bubbles: true }));
+      X.$('#awAddNone').click();
+      assert.deepStrictEqual(hrs(X), [], '전체 해제가 모두 빼지 않았다');
+      assert.ok(!X.$('#awAddMenu').classList.contains('hidden'), '전체 선택, 해제 뒤 패널이 닫혔다');
+      addHours(X, '감마'); addHours(X, '알파');
+      //  [닫기]
+      X.$('#awAddDone').click();
+      assert.ok(X.$('#awAddMenu').classList.contains('hidden'), '[닫기]가 패널을 닫지 않았다');
+      X.$('#awEd [data-awadd="hours"]').click();
       esc(X);
       assert.ok(X.$('#awAddMenu').classList.contains('hidden') && shown(X, '#awEd'), 'Esc 가 메뉴만 닫지 않았다');
-      assert.deepStrictEqual(hoursRows(X), [['알파', '0'], ['감마', '0']]);
+      assert.deepStrictEqual(hoursRows(X), [['알파', '0'], ['감마', '0']], '새 과제의 시간이 그 주 일간 합계(브라우저는 없음 = 0)가 아니다');
       const hi = X.$('#awHours input[data-wh="0"]');
       assert.deepStrictEqual([hi.type, hi.min, hi.max, hi.step], ['number', '0', '168', '0.5'], '시간 칸이 0~168, 0.5 숫자 칸이 아니다');
       input(X, '#awHours input[data-wh="0"]', '12.3'); blur(X, '#awHours input[data-wh="0"]');
       input(X, '#awHours input[data-wh="1"]', '300'); blur(X, '#awHours input[data-wh="1"]');
       assert.deepStrictEqual(hoursRows(X), [['알파', '12.5'], ['감마', '168']], '떠날 때 0.5 단위와 0~168 로 맞추지 않았다');
       assert.strictEqual(X.$('#awHSum').textContent, '합계 180.5시간');
-      //  차주계획에 더해도 과제투입시간은 그대로
-      addBlock(X, 'plan', '베타');
-      assert.deepStrictEqual(hoursRows(X).map((r) => r[0]), ['알파', '감마'], '차주계획 과제가 과제투입시간에 들어갔다');
-      //  진행사항에서 빼면 같이 빠진다
-      X.$('#awEd [data-wx="prog:1"]').click();
+      //  진행사항을 바꿔도 과제투입시간은 그대로(따로 움직인다)
+      input(X, '#awProg', '[베타]\n- 다른 과제 글');
+      assert.deepStrictEqual(hrs(X), ['알파', '감마'], '진행사항을 바꿨는데 과제투입시간이 바뀌었다');
+      //  ✕ 로 빼면 시간도 지운다
+      X.$('#awHours [data-whx="1"]').click();
       assert.deepStrictEqual(hoursRows(X), [['알파', '12.5']]);
       assert.strictEqual(X.ev("'감마' in AWE.hours"), false, '뺀 과제의 시간이 남았다');
       //  과제명은 글자(고칠 수 없다)
-      const h0 = X.$('#awEd .at-blk[data-wk="prog:0"] .at-bh');
-      assert.ok(h0.querySelector('.at-bn') && !h0.querySelector('input, select'), '과제명을 고칠 수 있는 칸이 있다');
+      assert.ok(X.$('#awHours .aw-hr .aw-hn') && X.$('#awHours .aw-hr').querySelectorAll('input').length === 1, '과제명을 고칠 수 있는 칸이 있다');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });
@@ -304,23 +329,23 @@ if (!JSDOM) {
     const X = bootBrowser();
     try {
       openWeekB(X);
-      addBlock(X, 'prog', '알파'); addBlock(X, 'prog', '베타'); addBlock(X, 'plan', '감마');
-      typeBlock(X, 'prog', 0, '  - 연동 환경 구축');
+      input(X, '#awProg', '  - 연동 환경 구축\n[베타](~\'28/12)');
+      addHours(X, '알파'); addHours(X, '베타');
       input(X, '#awHours input[data-wh="0"]', '6'); input(X, '#awHours input[data-wh="1"]', '2');
+      input(X, '#awPlan', '- 다음 주 계획');
       input(X, '#awMeet', '- 주간회의');
       await tick(AW_WAIT);
       assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#awNf .nf-t th'), function(t){ return t.textContent; })"),
         ['기간', '제목', '진행사항', '과제투입시간', '미처리사항', '차주계획', '문제점 및건의사항', '회의내용'], '폼 항목이 인트라넷과 다르다');
       const c = X.evJSON('awCompose(awCur())');
       assert.strictEqual(nfBox(X, '진행사항'), c.endwork);
-      assert.strictEqual(nfBox(X, '진행사항'), '[알파]\n  - 연동 환경 구축\n\n[베타]\n-');
+      assert.strictEqual(nfBox(X, '진행사항'), "  - 연동 환경 구축\n[베타](~'28/12)");
       assert.strictEqual(nfBox(X, '과제투입시간'), '[알파] : 6\n[베타] : 2\n-----\n합계 : 8');
-      assert.strictEqual(nfBox(X, '차주계획'), '[감마]\n-');
+      assert.strictEqual(nfBox(X, '차주계획'), '- 다음 주 계획');
       assert.strictEqual(nfBox(X, '회의내용'), '- 주간회의');
       assert.strictEqual(nfBox(X, '미처리사항'), ''); assert.strictEqual(nfBox(X, '문제점 및건의사항'), '');
       assert.ok(X.$('#awNf .nf-box[data-nf="미처리사항"]').classList.contains('empty'));
       assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#awNf .nf-in'), function(e){ return e.textContent; })"), [MON, '2026-11-01', '10월 다섯째주']);
-      //  테마와 상관없는 흰 바탕: 클래스가 토큰만 쓴다(정적 시험이 토큰 값을 본다)
       assert.ok(X.$('#awNf').classList.contains('nf'));
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
@@ -364,30 +389,24 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(B) 막는 규칙: 진행사항 블록 없음, 과제 미정 블록(빨강)은 보내지 않는다. 시간 합계 검사는 없다. 브라우저 보내기는 잠그지 않는다', () => {
+  test('(B) 막는 규칙: 과제투입시간 과제 0개만 막는다(진행사항이 비어도 보낸다), 시간 합계 검사는 없다. 브라우저 보내기는 잠그지 않는다. payload 에 hours 구조', () => {
     const X = bootBrowser();
     try {
       openWeekB(X);
       X.ev('window.__sent = []; Platform.report.submitWeekly = function(p){ __sent.push(JSON.parse(JSON.stringify(p))); };');
+      input(X, '#awProg', '진행 글');
       X.$('#awSend').click();
-      assert.ok(X.$('#awMsg').textContent.includes('진행사항에 과제가 없습니다'), '진행사항 없음을 막지 않았다');
+      assert.strictEqual(X.$('#awMsg').textContent, '보내지 않았습니다. 과제투입시간에 과제가 없습니다.', '과제 0개를 막지 않았다');
       assert.strictEqual(X.evJSON('__sent').length, 0);
-      //  과제 미정 블록(차주계획의 모르는 이름)
-      X.ev(`AWE.plan = awParseBlocks('[모름]\\n- 할 일', ${JSON.stringify(NAMES)}); awRender();`);
-      addBlock(X, 'prog', '알파');
-      assert.ok(X.$('#awEd .at-blk[data-wk="plan:0"]').classList.contains('bad'), '과제 미정 블록이 빨갛지 않다');
-      X.$('#awSend').click();
-      assert.ok(X.$('#awMsg').textContent.includes('과제를 고를 블록이 1개'), '과제 미정을 막지 않았다');
-      assert.strictEqual(X.evJSON('__sent').length, 0);
-      //  고르면 머리 줄이 지워지고 보낼 수 있다(시간은 0 이어도 된다)
-      input(X, '#awEd select[data-wpick="plan:0"]', '감마');
-      assert.deepStrictEqual(blocks(X, 'plan'), [{ name: '감마', text: '- 할 일' }]);
+      input(X, '#awProg', '');
+      addHours(X, '알파');
       X.$('#awSend').click();
       const sent = X.evJSON('__sent');
-      assert.strictEqual(sent.length, 1, '막을 것이 없는데 보내지 않았다');
+      assert.strictEqual(sent.length, 1, '과제가 있는데 보내지 않았다(진행사항이 비어도 보낸다)');
       assert.strictEqual(sent[0].kind, 'weekly');
       assert.deepStrictEqual(Object.keys(sent[0].fields).sort(), ['content', 'edate', 'endwork', 'planwork', 'resultwork', 'sdate', 'subject']);
-      assert.deepStrictEqual([sent[0].fields.sdate, sent[0].fields.edate, sent[0].fields.content], [MON, '2026-11-01', '[알파] : 0\n-----\n합계 : 0']);
+      assert.deepStrictEqual([sent[0].fields.sdate, sent[0].fields.edate, sent[0].fields.content, sent[0].fields.endwork], [MON, '2026-11-01', '[알파] : 0\n-----\n합계 : 0', '']);
+      assert.deepStrictEqual(sent[0].hours, [], '0 시간 과제는 기록용 hours 에 넣지 않는다');
       assert.strictEqual(X.$('#awSend').disabled, false, '브라우저 보내기가 잠갔다');
       assert.ok(X.$('#awMsg').textContent.includes('브라우저에서는'), '브라우저 안내가 없다');
       assert.ok(X.ev(`localStorage.getItem('tc_attWDraft:me:${MON}')`), '브라우저 보내기가 임시 저장을 지웠거나 쓰지 않았다');
@@ -401,27 +420,28 @@ if (!JSDOM) {
     try {
       openWeekB(X);
       assert.strictEqual(X.$('#awReset').disabled, true, '빈 상태에서 전체 초기화가 켜져 있다');
-      addBlock(X, 'prog', '알파'); typeBlock(X, 'prog', 0, '- 한 일');
+      input(X, '#awProg', '- 한 일');
+      addHours(X, '알파');
       input(X, '#awHours input[data-wh="0"]', '7');
-      addBlock(X, 'plan', '베타');
+      input(X, '#awPlan', '- 계획');
       input(X, '#awMeet', '회의 메모');
       await tick(AW_WAIT);
       const KEY = `tc_attWDraft:me:${MON}`;
       const d = JSON.parse(X.ev(`localStorage.getItem('${KEY}')`));
-      assert.deepStrictEqual([d.v, d.prog, d.plan, d.hours, d.meet], [1, [{ name: '알파', text: '- 한 일' }], [{ name: '베타', text: '' }], { '알파': 7 }, '회의 메모']);
+      assert.deepStrictEqual([d.v, d.prog, d.plan, d.hrs, d.hours, d.meet], [2, '- 한 일', '- 계획', ['알파'], { '알파': 7 }, '회의 메모']);
       assert.ok(X.$('#awSaved').textContent.startsWith('이 PC에 임시 저장됨'));
       //  다른 주로 갔다가 돌아오면 그대로
       X.$('#awNext').click();
-      assert.deepStrictEqual(blocks(X, 'prog'), []);
+      assert.deepStrictEqual([X.ev('AWE.prog'), hrs(X)], ['', []]);
       X.$('#awPrev').click();
-      assert.deepStrictEqual(blocks(X, 'prog'), [{ name: '알파', text: '- 한 일' }]);
+      assert.deepStrictEqual([X.ev('AWE.prog'), hrs(X), X.$('#awProg').value], ['- 한 일', ['알파'], '- 한 일']);
       assert.strictEqual(X.$('#awMeet').value, '회의 메모');
       assert.strictEqual(X.$('#awMsg').textContent, '');
       //  전체 초기화
       const subj = X.$('#awSubj').value;
       X.$('#awReset').click();
       assert.ok(!shown(X, '#awAsk'), '전체 초기화가 물었다');
-      assert.deepStrictEqual([blocks(X, 'prog'), blocks(X, 'plan'), X.$('#awMeet').value, X.$('#awSubj').value, X.ev('AWE.mon')], [[], [], '', subj, MON]);
+      assert.deepStrictEqual([X.$('#awProg').value, X.$('#awPlan').value, hrs(X), X.$('#awMeet').value, X.$('#awSubj').value, X.ev('AWE.mon')], ['', '', [], '', subj, MON]);
       assert.strictEqual(X.$('#awReset').disabled, true);
       await tick(AW_WAIT);
       assert.strictEqual(X.ev(`localStorage.getItem('${KEY}')`), null, '처음 상태(빈 주)와 같아졌는데 임시 저장이 남았다');
@@ -538,9 +558,11 @@ if (!JSDOM) {
       assert.deepStrictEqual(calls.map((c) => c[0]), ['reportDailyList', 'reportWeeklyList'], '두 가져오기를 하지 않았다');
       assert.deepStrictEqual(calls[0][1], { from: MON, to: '2026-11-01' });
       assert.deepStrictEqual(calls[1][1], { from: '2026-10-19', to: '2026-10-19' });
-      assert.deepStrictEqual(blocks(A, 'prog'), [{ name: '알파', text: '  - 연동 환경 구축 중\n- 요구사항 구현' }, { name: '베타', text: '- 회신' }, { name: '휴가', text: '' }]);
-      assert.deepStrictEqual(A.evJSON('awHoursFor(AWE.prog, AWE.hours)'), { '알파': 10, '베타': 4, '휴가': 2 });
-      assert.deepStrictEqual(blocks(A, 'plan'), [{ name: '베타', text: '- 다음 일' }, { name: '', text: '[모름]\n- 무엇' }], '지난주 차주계획이 블록이 아니다(모르는 이름은 미정)');
+      assert.strictEqual(A.ev('AWE.prog'), '[알파]\n  - 연동 환경 구축 중\n- 요구사항 구현\n\n[베타]\n- 회신\n\n[휴가]\n-', '진행사항 초안이 [과제명] 머리 글이 아니다');
+      assert.strictEqual(A.$('#awProg').value, A.ev('AWE.prog'));
+      assert.deepStrictEqual(hrs(A), ['알파', '베타', '휴가']);
+      assert.deepStrictEqual(A.evJSON('awHoursFor(AWE.hrs, AWE.hours)'), { '알파': 10, '베타': 4, '휴가': 2 });
+      assert.strictEqual(A.ev('AWE.plan'), '[베타]\n- 다음 일\n\n[모름]\n- 무엇', '지난주 차주계획이 글 그대로가 아니다');
       assert.strictEqual(A.ev('awDirty()'), false, '가져온 결과가 처음 상태가 아니다');
       assert.strictEqual(A.ev(`localStorage.getItem('${KEYA}')`), null, '가져오기만으로 임시 저장을 썼다');
       //  바닥 안내는 한 문장, 흐린 색(초록은 보고 성공만). 지난주 기록이 없다는 말은 가져오기 패널의 단추 곁에
@@ -549,9 +571,10 @@ if (!JSDOM) {
       assert.strictEqual(A.$('#awImpMsg').textContent, '', '지난주 기록이 있는데 패널 안내가 있다');
       assert.strictEqual(A.$('#awSend').disabled, false);
       assert.ok(A.doc.title.startsWith('주간보고 '));
-      //  진행사항에 과제를 더하면 시간 칸이 그 주 일간 합계로 생긴다
-      A.ev('AWE.prog = AWE.prog.filter(function(b){ return b.name !== "베타"; }); delete AWE.hours["베타"]; awRender();');
-      addBlock(A, 'prog', '베타');
+      //  과제투입시간에 과제를 더하면 시간 칸이 그 주 일간 합계로 생긴다
+      A.$('#awHours [data-whx="1"]').click();
+      assert.deepStrictEqual(hrs(A), ['알파', '휴가']);
+      addHours(A, '베타');
       assert.deepStrictEqual(hoursRows(A).find((r) => r[0] === '베타'), ['베타', '4'], '더한 과제의 시간 칸이 그 주 일간 합계가 아니다');
       assert.deepStrictEqual(A.errors, []);
     } finally { A.close(); }
@@ -563,9 +586,9 @@ if (!JSDOM) {
       A.ev('__attendWinOpen(' + JSON.stringify(wpayload(MON, WROW(MON, { subject: '10월 다섯째주', content: '[알파] : 8\n[휴가] : 2\n-----\n합계 : 10', endwork: '[알파]\n&nbsp;&nbsp;- 한 일\n\n[휴가]\n-', meeting: '- 회의&nbsp;내용' }))) + ')');
       await tick(40);
       assert.deepStrictEqual(A.evJSON('__calls').map((c) => c[0]), ['reportDailyList'], '완료한 주인데 가져오기를 했다(일간 합계 읽기만 해야 한다)');
-      assert.deepStrictEqual(blocks(A, 'prog'), [{ name: '알파', text: '  - 한 일' }, { name: '휴가', text: '' }]);
-      assert.deepStrictEqual(hoursRows(A), [['알파', '8'], ['휴가', '2']]);
-      assert.deepStrictEqual(blocks(A, 'plan'), [{ name: '베타', text: '- 다음 일' }]);
+      assert.strictEqual(A.ev('AWE.prog'), '[알파]\n  - 한 일\n\n[휴가]\n-', '완료한 주의 진행사항이 기록 글 그대로가 아니다');
+      assert.deepStrictEqual(hoursRows(A), [['알파', '8'], ['휴가', '2']], '시간 줄이 없는 기록이면 과제투입시간 글에서 되살린다');
+      assert.strictEqual(A.ev('AWE.plan'), '[베타]\n- 다음 일');
       assert.strictEqual(A.$('#awMeet').value, '- 회의 내용');
       assert.ok(/^작성한 시각 \d{4}-\d\d-\d\d \d\d:\d\d$/.test(A.$('#awSent').textContent), '작성한 시각이 없다');
       assert.strictEqual(A.ev('awDirty()'), false);
@@ -573,10 +596,10 @@ if (!JSDOM) {
       A.$('#awPanel [data-awtab="imp"]').click();
       assert.ok(shown(A, '#awImp') && !shown(A, '#awPv'));
       A.$('#awImpPlan').click(); await tick(40);
-      assert.deepStrictEqual(blocks(A, 'plan').map((b) => b.name), ['베타', '']);
-      assert.deepStrictEqual(blocks(A, 'prog').map((b) => b.name), ['알파', '휴가'], '차주계획 가져오기가 진행사항을 바꿨다');
+      assert.strictEqual(A.ev('AWE.plan'), '[베타]\n- 다음 일\n\n[모름]\n- 무엇', '지난주 차주계획을 글 그대로 덮어쓰지 않았다');
+      assert.strictEqual(A.ev('AWE.prog'), '[알파]\n  - 한 일\n\n[휴가]\n-', '차주계획 가져오기가 진행사항을 바꿨다');
       A.$('#awImpDaily').click(); await tick(40);
-      assert.deepStrictEqual(blocks(A, 'prog').map((b) => b.name), ['알파', '베타', '휴가']);
+      assert.ok(A.ev('AWE.prog').startsWith('[알파]\n  - 연동 환경 구축 중'), '일간 가져오기가 진행사항을 덮어쓰지 않았다');
       assert.deepStrictEqual(hoursRows(A), [['알파', '10'], ['베타', '4'], ['휴가', '2']], '일간 가져오기가 과제투입시간을 합계로 채우지 않았다');
       assert.strictEqual(A.ev('awDirty()'), true);
       assert.deepStrictEqual(A.errors, []);
@@ -584,8 +607,8 @@ if (!JSDOM) {
   });
 
   function sendWeekly(A) {
-    A.ev('AWE.plan = AWE.plan.filter(function(b){ return b.name; }); awRender(); awOnEdit();');
-    typeBlock(A, 'prog', 2, '\t- 연차');
+    input(A, '#awProg', A.ev('AWE.prog') + '\n\t- 연차');
+    input(A, '#awPlan', '[베타]\n  - 다음 일');
     input(A, '#awMeet', '  - 주간회의');
     const n = A.posted.length;
     A.$('#awSend').click();
@@ -599,11 +622,12 @@ if (!JSDOM) {
       await openNewA(A);
       const s = sendWeekly(A);
       const NB = '&nbsp;';
-      assert.deepStrictEqual(Object.keys(s).sort(), ['cmd', 'content', 'edate', 'endwork', 'planwork', 'resultwork', 'sdate', 'subject']);
+      assert.deepStrictEqual(Object.keys(s).sort(), ['cmd', 'content', 'edate', 'endwork', 'hours', 'planwork', 'resultwork', 'sdate', 'subject']);
+      assert.deepStrictEqual(s.hours, [{ name: '알파', projectUid: '', hours: 10 }, { name: '베타', projectUid: '', hours: 4 }, { name: '휴가', projectUid: '', hours: 2 }], '과제투입시간 구조(hours)가 다르다');
       assert.deepStrictEqual([s.sdate, s.edate, s.subject], [MON, '2026-11-01', '10월 다섯째주']);
-      assert.strictEqual(s.endwork, '[알파]\n' + NB.repeat(2) + '- 연동 환경 구축 중\n- 요구사항 구현\n\n[베타]\n- 회신\n\n[휴가]\n' + NB.repeat(4) + '- 연차');
+      assert.strictEqual(s.endwork, '[알파]\n' + NB.repeat(2) + '- 연동 환경 구축 중\n- 요구사항 구현\n\n[베타]\n- 회신\n\n[휴가]\n-\n' + NB.repeat(4) + '- 연차');
       assert.strictEqual(s.content, '[알파] : 10\n[베타] : 4\n[휴가] : 2\n-----\n합계 : 16');
-      assert.strictEqual(s.planwork, '[베타]\n- 다음 일');
+      assert.strictEqual(s.planwork, '[베타]\n' + NB.repeat(2) + '- 다음 일');
       assert.strictEqual(s.resultwork, NB.repeat(2) + '- 주간회의');
       for (const sel of ['#awSend', '#awClose', '#awBack', '#awPrev', '#awWeekBtn', '#awMeet', '#awSubj', '#awReset', '#awImpDaily'])
         assert.strictEqual(A.$(sel).disabled, true, sel + ' 가 처리 중에 잠기지 않았다');
@@ -663,7 +687,7 @@ if (!JSDOM) {
       A.$('#awList tr[data-awmon="2026-10-19"]').click(); await tick(40);
       assert.ok(shown(A, '#awEd'));
       assert.strictEqual(A.ev('AWE.mon'), '2026-10-19');
-      assert.deepStrictEqual(blocks(A, 'plan').map((b) => b.name), ['베타', ''], '완료한 주를 기록으로 열지 않았다');
+      assert.ok(A.ev('AWE.plan').startsWith('[베타]'), '완료한 주를 기록으로 열지 않았다');
       A.$('#awNext').click(); await tick(40);
       assert.strictEqual(A.ev('AWE.mon'), MON);
       //  닫기 지키기
@@ -687,13 +711,13 @@ if (!JSDOM) {
       const n = A.posted.length;
       A.ev('__attendWinActivated()');
       assert.deepStrictEqual(A.posted.slice(n), [{ cmd: 'attendNav', date: MON, refresh: true }]);
-      const prog = JSON.stringify(blocks(A, 'prog'));
+      const prog = A.ev('AWE.prog');
       const daily = { v: 1, date: MON, me: { userId: 7, loginId: 'tester', name: '시험자' }, saved: null, attend: '', attendOt: 0,
         source: { rows: [], hours: {}, fmt: { mkSpec: { kind: 'const', ch: '-' }, indent: 2 } }, projects: PROJ.concat([{ key: 'c-e', name: '엡실론', color: '#123456' }]), refresh: true };
       A.ev('__attendWinOpen(' + JSON.stringify(daily) + ')');
       assert.ok(shown(A, '#awEd') && !shown(A, '#atEd'), '새로고침 회신이 일간으로 바꿨다');
-      assert.strictEqual(JSON.stringify(blocks(A, 'prog')), prog, '새로고침이 블록을 바꿨다');
-      A.$('#awEd [data-awadd="plan"]').click();
+      assert.strictEqual(A.ev('AWE.prog'), prog, '새로고침이 진행사항을 바꿨다');
+      A.$('#awEd [data-awadd="hours"]').click();
       assert.ok(A.$('#awAddList [data-awaddname="엡실론"]'), '새 과제가 과제 추가 목록에 없다');
       //  새 과제 만들기는 메인 창에 청한다
       const k = A.posted.length;
@@ -710,6 +734,24 @@ if (!JSDOM) {
       A.ev('__attendWinOpen(' + JSON.stringify(wpayload()) + ')'); await tick(40);
       assert.ok(shown(A, '#awEd') && !shown(A, '#atEd'));
       assert.strictEqual(A.$('#awMeet').value, '주간 글', '주간으로 돌아왔는데 임시 저장으로 열지 않았다');
+      assert.deepStrictEqual(A.errors, []);
+    } finally { A.close(); }
+  });
+
+  test('(A) 공식 과제(db-<uid>)는 hours 에 projectUid 를 싣고, 완료한 주는 기록의 시간 줄(hours)로 과제투입시간 목록을 그대로 되살린다', async () => {
+    const A = boot(app, ATTEND_URL, true);
+    try {
+      clearDrafts(A);
+      stubHost(A, `{ reportDailyList: { ok: true, rows: [] }, reportWeeklyList: { ok: true, rows: [] } }`);
+      const U = '0f8fad5b-d9cb-469f-a165-70867728950e';
+      const proj = [{ key: 'db-' + U, name: '공식', color: '#3e5be0' }].concat(PROJ);
+      const saved = WROW(MON, { content: '[알파] : 1\n-----\n합계 : 1', hours: [{ name: '공식', projectUid: U, hours: 7.5 }, { name: '감마', projectUid: '', hours: 2 }] });
+      A.ev('__attendWinOpen(' + JSON.stringify(Object.assign(wpayload(MON, saved), { projects: proj })) + ')'); await tick(40);
+      assert.deepStrictEqual(hoursRows(A), [['공식', '7.5'], ['감마', '2']], '기록의 시간 줄이 있으면 그것으로 되살려야 한다(글보다 먼저)');
+      const n = A.posted.length;
+      A.$('#awSend').click();
+      const out = A.posted.slice(n).find((m) => m.cmd === 'netcusWeekSubmit');
+      assert.deepStrictEqual(out.hours, [{ name: '공식', projectUid: U, hours: 7.5 }, { name: '감마', projectUid: '', hours: 2 }]);
       assert.deepStrictEqual(A.errors, []);
     } finally { A.close(); }
   });
@@ -740,14 +782,18 @@ if (!JSDOM) {
     const bad = mutate(app, "return '[' + b.name + ']\\n' + (body.trim() ? body : '-');", "return '[' + b.name + ']\\n' + body;");
     runOn(bad, (X) => assert.notStrictEqual(X.ev("awBlocksText([{ name: '알파', text: '' }])"), '[알파]\n-'));
   });
-  test('변이 W2: 과제투입시간이 진행사항을 따라가지 않으면(시간표 전부) 조립 검사가 잡는다', () => {
-    const bad = mutate(app, 'function awHoursFor(prog, hours){ const o = {}, h = hours || {}; for(const n of awProgNames(prog)) o[n] = awHoursVal(h[n]); return o; }',
-      'function awHoursFor(prog, hours){ const o = {}, h = hours || {}; for(const n of Object.keys(h)) o[n] = awHoursVal(h[n]); return o; }');
-    runOn(bad, (X) => assert.notStrictEqual(X.ev("awHoursText([{ name: '알파', text: '' }], { '알파': 1, '없음': 2 })"), '[알파] : 1\n-----\n합계 : 1'));
+  test('변이 W2: 과제투입시간이 목록을 따르지 않으면(시간표 전부) 조립 검사가 잡는다', () => {
+    const bad = mutate(app, 'function awHoursFor(hrs, hours){ const o = {}, h = hours || {}; for(const n of (hrs || [])) o[n] = awHoursVal(h[n]); return o; }',
+      'function awHoursFor(hrs, hours){ const o = {}, h = hours || {}; for(const n of Object.keys(h)) o[n] = awHoursVal(h[n]); return o; }');
+    runOn(bad, (X) => assert.notStrictEqual(X.ev("awHoursText(['알파'], { '알파': 1, '없음': 2 })"), '[알파] : 1\n-----\n합계 : 1'));
   });
-  test('변이 W3: 진행사항 없음 막기를 빼면 막는 규칙 검사가 잡는다', () => {
-    const bad = mutate(app, "  return { noProg: !awProgNames(s.prog).length, bad };", "  return { noProg: false, bad };");
-    runOn(bad, (X) => assert.notStrictEqual(X.ev('awProblems({ prog: [], plan: [] }).noProg'), true));
+  test('변이 W3: 과제 0개 막기를 빼면 막는 규칙 검사가 잡는다', () => {
+    const bad = mutate(app, "function awProblems(s){ return { noHours: !(s.hrs || []).length }; }", "function awProblems(s){ return { noHours: false }; }");
+    runOn(bad, (X) => assert.notStrictEqual(X.ev('awProblems({ hrs: [] }).noHours'), true));
+  });
+  test('변이 W5: 공식 과제 uid 를 빼면 hours 구조 검사가 잡는다', () => {
+    const bad = mutate(app, "    return { name: n, projectUid: m ? m[1] : '', hours: Math.round(h[n] * 100) / 100 };", "    return { name: n, projectUid: '', hours: Math.round(h[n] * 100) / 100 };");
+    runOn(bad, (X) => assert.notStrictEqual(X.ev("awHoursPayload(['알파'], { '알파': 1 }, [{ key: 'db-0f8fad5b-d9cb-469f-a165-70867728950e', name: '알파' }])[0].projectUid"), '0f8fad5b-d9cb-469f-a165-70867728950e'));
   });
   test('변이 W4: 저장 알림의 모양 비교를 빼면(늘 지움) 보낸 뒤 고친 임시 저장이 사라진다', async () => {
     const bad = mutate(app, '  if(sig && dr && awSig(dr) === sig) awDraftDel(mon);', '  if(dr) awDraftDel(mon);');

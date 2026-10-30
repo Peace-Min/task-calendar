@@ -197,6 +197,10 @@ GRANT SELECT, INSERT ON taskmgr.cal_migration_log TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_report_daily  TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_report_hours TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_report_weekly TO 'taskmgr_app'@'%';
+-- ★ cal_report_weekly_hours(주간 과제투입시간, 구조 20, 2026-10-30 결정 14)에 DELETE 를 주는 이유는 cal_report_hours 와 같다.
+--   다시 보내면 그 주의 줄을 지우고 새로 넣는다(주간보고 행과 한 트랜잭션). 부모 cal_report_weekly 에는 여전히 DELETE 가 없다.
+-- ★ 배포 SQL(release-v<버전>.sql)은 GRANT 를 하지 않는다. 표마다 권한을 주는 환경은 이 줄을 root 로 따로 돌린다.
+GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_report_weekly_hours TO 'taskmgr_app'@'%';
 
 -- ---------- 스키마 버전 행 (§5.5) ----------
 -- SELECT 만 준다. 앱은 접속 프리앰블에서 한 줄을 읽어 자기 빌드 상수와 비교하고, 다르면

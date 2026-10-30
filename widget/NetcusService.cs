@@ -31,7 +31,8 @@ namespace TaskCalendarWidget
         //  주간 보고 기록 저장. 반환값이 없다: 주간은 폼 채우기까지만 하고, 기록은 호스트가 뒤에서 10, 30, 60초 재시도한다(OfflineHost.cs S10).
         //  meeting = 회의내용(resultwork, 구조 20). 폼에 채운 값 그대로 남긴다(ATTENDANCE-PLAN §13.3).
         //    null = 이 요청은 회의내용을 다루지 않았다(보고서 창의 옛 주간 전송). 그때는 DB 의 회의내용도 그대로 둔다.
-        void SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork, string? meeting);
+        //    hoursJson = 과제투입시간 구조([{name, projectUid, hours}], 결정 14). null 이면 그 주의 시간 줄을 그대로 둔다(옛 전송).
+        void SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork, string? meeting, string? hoursJson);
 
         //  버전 관문 확인(VERSION-GATE §2.4). 관문으로 DB 연결을 한 번 열고 닫는다. false = 막혔다.
         //  ★ 회사 사이트에 접속하기 **전에** 부른다. 보고는 사이트로 먼저 나가고 DB 기록은 나중이라,
@@ -70,8 +71,9 @@ namespace TaskCalendarWidget
         //  resultwork = 회의내용(결정 13). 근태 탭 주간 편집이 보내면 새 글, 수정 화면 둘 다 채운다. 미처리사항(notendwork), 문제점(problem)은 받지 않는다.
         //    null = 요청에 회의내용 칸이 없다(보고서 창의 옛 주간 전송). 그때는 예전처럼 회의내용을 건드리지 않는다:
         //    빈 값으로 채우면 수정 화면에서 인트라넷에 이미 쓴 회의내용을 지운다.
-        public Task WeekFill(string sdate, string edate, string subject, string content, string endwork, string planwork, string? resultwork)
-            => NetcusWeekFill(new NetcusWeekReq { Sdate = sdate, Edate = edate, Subject = subject, Content = content, Endwork = endwork, Planwork = planwork, Resultwork = resultwork });
+        //  hoursJson(결정 14): 과제투입시간 구조. 회사 폼에는 쓰지 않고(폼은 content 글) 기록에만 남긴다.
+        public Task WeekFill(string sdate, string edate, string subject, string content, string endwork, string planwork, string? resultwork, string? hoursJson = null)
+            => NetcusWeekFill(new NetcusWeekReq { Sdate = sdate, Edate = edate, Subject = subject, Content = content, Endwork = endwork, Planwork = planwork, Resultwork = resultwork, HoursJson = hoursJson });
 
         public Task WeekMerge(string reqId, string from, string to) => NetcusWeekMerge(reqId, from, to);
         public Task ViewMonth(string reqId, int y, int m, int d) => NetcusViewMonth(reqId, y, m, d);
@@ -195,6 +197,7 @@ namespace TaskCalendarWidget
         {
             public string Sdate = "", Edate = "", Subject = "", Content = "", Endwork = "", Planwork = "";
             public string? Resultwork;   // 회의내용. null = 다루지 않는다(WeekFill 주석)
+            public string? HoursJson;    // 과제투입시간 구조(결정 14). null = 다루지 않는다
         }
 
         // ----- 자격증명 (DPAPI, CurrentUser) -----
@@ -746,7 +749,7 @@ namespace TaskCalendarWidget
                 //  ★ 여기서 기록하는 것은 '보냈다'가 아니라 **'캘린더가 작성했다'**다.
                 //    위젯은 주간을 전송하지 않고 사용자가 직접 제출한다(위 문구 그대로).
                 //    그래서 사용자가 폼에서 보완한 내용은 담기지 않고, 컴럼 이름도 composed_at 이다(§5.9.5).
-                _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork);
+                _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);
 
                 // ── 같은 기간 글이 있을 때: 그 글의 수정 화면(pjm_modify.jsp)을 열어 네 칸만 채운다(WEEKLY-UPSERT §3.2, 결정 13 에서 회의내용을 더했다) ──
                 //   로컬 함수인 이유: 자동수락 detach(이 메서드의 지역 변수)를 수정 화면 로드 직전에 여기서 끊어야 한다(인계 계약).
@@ -825,7 +828,7 @@ namespace TaskCalendarWidget
                     try { _w2win?.Activate(); } catch { }
                     NetcusResult(true, WeekModifyOkMsg(hit.Matches, req.Resultwork != null));
                     //  새 글 경로와 같다: 기록하는 것은 '캘린더가 채운 내용'이다(사용자가 창에서 고친 내용은 담기지 않는다).
-                    _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork);
+                    _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);
                 }
             }
             catch (Exception ex)

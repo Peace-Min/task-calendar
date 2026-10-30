@@ -24,6 +24,7 @@
    "GRANT SELECT, INSERT, UPDATE ON `taskcalendar`.`cal_report_daily` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_report_hours` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE ON `taskcalendar`.`cal_report_weekly` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_report_weekly_hours` TO `taskmgr_app`@`%`",
    "GRANT SELECT ON `taskcalendar`.`cal_schema_meta` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_task_hours` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, DELETE ON `taskcalendar`.`cal_todo_day_note` TO `taskmgr_app`@`%`",
@@ -1559,6 +1560,98 @@
     {
      "name": "chk_crw_period",
      "clause": "(`period_start` <= `period_end`)"
+    }
+   ]
+  },
+  {
+   "name": "cal_report_weekly_hours",
+   "engine": "InnoDB",
+   "rows": 0,
+   "comment": "주간보고 과제투입시간(과제별 줄). 맨먼스 집계의 원천. 주간보고 행과 한 트랜잭션으로 쓰고 다시 보내면 그 주 줄을 바꾼다",
+   "coll": "utf8mb4_0900_ai_ci",
+   "exact": 0,
+   "columns": [
+    {
+     "name": "user_id",
+     "type": "smallint unsigned",
+     "nullable": false,
+     "def": null,
+     "key": "PRI",
+     "extra": "",
+     "comment": "주인(cal_report_weekly.user_id)"
+    },
+    {
+     "name": "period_start",
+     "type": "date",
+     "nullable": false,
+     "def": null,
+     "key": "PRI",
+     "extra": "",
+     "comment": "주간보고 기간 시작(cal_report_weekly.period_start)"
+    },
+    {
+     "name": "line_no",
+     "type": "smallint unsigned",
+     "nullable": false,
+     "def": null,
+     "key": "PRI",
+     "extra": "",
+     "comment": "과제투입시간 안의 줄 순서(0부터)"
+    },
+    {
+     "name": "task_name",
+     "type": "varchar(200)",
+     "nullable": false,
+     "def": null,
+     "key": "",
+     "extra": "",
+     "comment": "보낸 과제명 그대로. 과제 이름이 바뀌어도 지난 줄은 그대로다"
+    },
+    {
+     "name": "project_uid",
+     "type": "char(36)",
+     "nullable": true,
+     "def": null,
+     "key": "MUL",
+     "extra": "",
+     "comment": "공식 과제 id(project.uid). 개인 과제는 NULL. 과제가 지워져도 남도록 FK 없음"
+    },
+    {
+     "name": "hours",
+     "type": "decimal(5,2)",
+     "nullable": false,
+     "def": null,
+     "key": "",
+     "extra": "",
+     "comment": "그 주 그 과제의 시간. 0 초과 168 이하"
+    }
+   ],
+   "indexes": [
+    {
+     "name": "ix_crwh_project",
+     "unique": false,
+     "cols": "project_uid,period_start"
+    },
+    {
+     "name": "PRIMARY",
+     "unique": true,
+     "cols": "user_id,period_start,line_no"
+    }
+   ],
+   "fks": [
+    {
+     "name": "fk_crwh_weekly",
+     "cols": "user_id,period_start",
+     "ref": "cal_report_weekly",
+     "refCols": "user_id,period_start",
+     "upd": "CASCADE",
+     "del": "CASCADE"
+    }
+   ],
+   "checks": [
+    {
+     "name": "chk_crwh_hours",
+     "clause": "((`hours` > 0) and (`hours` <= 168))"
     }
    ]
   },

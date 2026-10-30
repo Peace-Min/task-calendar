@@ -2360,6 +2360,12 @@ buildNetcusHoursText()      :7887  주간 = Σ hoursByDate   ← 파생값
 둘 다 저장하면 같은 시간이 두 번 세어진다. 원자값(`날짜 × 과제`)만 있으면 주, 월, 연 어느 단위로든 합칠 수 있다.
 `cal_report_weekly.content` 는 **원문 보관**이지 집계 대상이 아니다.
 
+> **2026-10-30, 뒤집음(결정 14,** [`../docs/ATTENDANCE-PLAN.md`](../docs/ATTENDANCE-PLAN.md) **§14.4, 구조 20).**
+> 맨먼스(MM) 집계의 원천은 **주간 과제투입시간**이다. 일간을 쓰지 않는 사람의 공수는 주간에만 있어 일간 원자로는 셀 수 없다.
+> 그래서 주간보고 표 아래 자식 표 `cal_report_weekly_hours`(사람, 주 시작일, 줄, 과제명, 공식 과제 id `project_uid`, 시간)를 둔다.
+> 이중으로 세지 않는다는 원칙은 그대로이고, 원천이 주간 쪽으로 옮겨 갔다. 일간 두 표는 바뀌지 않고 주간을 채우는 재료로만 쓴다.
+> 표의 키, FK, 인덱스와 그 까닭은 §5.9.5 끝의 주와 `db/deploy/schema-calendar.sql` 의 주석이 정본이다.
+
 ### 5.9.5 일간과 주간이 다른 점: `sent_at` vs `composed_at`
 
 | | 일간 | 주간 |
@@ -2380,6 +2386,13 @@ buildNetcusHoursText()      :7887  주간 = Σ hoursByDate   ← 파생값
 > 캘린더가 쓴 글이라 위 원칙(캘린더가 만든 것만 담는다)과 맞는다. `NULL` 은 이 칸이 생기기 전에 작성한 주이고, 앱은 빈 글로 읽는다.
 > 그래서 주간 표의 칸은 `user_id`, `period_start`, `period_end`, `subject`, `content`(과제투입시간), `endwork`(진행사항),
 > `plan`(차주계획), `meeting`(회의내용), `composed_at` 과 감사 칸 둘이다. 이관은 `db/deploy/migrations/v20-weekly-meeting.sql`.
+
+> **2026-10-30, 주간 과제투입시간 표 `cal_report_weekly_hours`(구조 20 에 합침, 결정 14).**
+> 칸: `user_id`, `period_start`, `line_no`, `task_name`(보낸 과제명), `project_uid`(공식 과제면 `project.uid`, 개인 과제는 `NULL`), `hours DECIMAL(5,2)`(0 초과 168 이하).
+> PK `(user_id, period_start, line_no)`, FK `(user_id, period_start)` → `cal_report_weekly` `ON DELETE CASCADE ON UPDATE CASCADE`(일간 `fk_crh_daily` 와 같은 결).
+> 인덱스는 과제별 집계용 `ix_crwh_project(project_uid, period_start)` 하나다. 사람별 `(user_id, period_start)` 는 PK 의 앞 두 열이 맡으므로 따로 두지 않았다.
+> `project_uid` 에 FK 를 걸지 않는다. 과제를 숨기거나 영구 삭제해도 지난 공수는 남아야 하기 때문이다(과제명도 함께 남긴다).
+> 주간보고 행과 시간 줄은 한 트랜잭션으로 쓰고, 다시 보내면 그 주 줄을 지우고 새로 넣는다(앱 계정에 DELETE). 같은 v20 조각이 표가 없을 때만 만든다.
 
 ### 5.9.6 `cat_no` 의 FK: 2026-09-09 판정 뒤집음
 
@@ -3335,6 +3348,9 @@ binlog 는 **변경 이력**이다. *"어느 상태에서 출발해 이 변경�
 ---
 
 ## 정정 이력
+
+- **2026-10-30, 주간 과제투입시간**([`../docs/ATTENDANCE-PLAN.md`](../docs/ATTENDANCE-PLAN.md) §14.4, 결정 14, 구조 번호 20 그대로).
+  - §5.9.4 의 '주간 공수는 저장하지 않는다' 를 뒤집었다는 주와 §5.9.5 에 `cal_report_weekly_hours` 의 칸, 키, FK, 인덱스를 적었다.
 
 - **2026-10-29, 주간보고 회의내용**([`../docs/ATTENDANCE-PLAN.md`](../docs/ATTENDANCE-PLAN.md) §13.4, 구조 번호 20).
   - §5.9.5 에 `cal_report_weekly.meeting`(회의내용, NULL 허용)을 더했다는 주와 주간 표의 칸 목록을 적었다.

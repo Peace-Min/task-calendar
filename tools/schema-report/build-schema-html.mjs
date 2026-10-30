@@ -181,6 +181,7 @@ const MIGRATIONS = [
   ['10-22', '과제 캘린더(v16)', '공식 과제마다 공용 캘린더를 두는 새 표 둘을 더했다: cal_project_event(과제 일정, 소프트 삭제, row_version), cal_project_change(바뀐 필드만 담는 지우지 않는 이력). 과제별 감시점 표는 없다(동시 수정은 일정의 row_version, 재시도는 이력의 mutation_uid UNIQUE). 개인 일정에 등록은 한 번 찍는 사본이라 대응표가 없다. 외래키는 번호(project.id, event_id)를 가리키고 사람은 이름 글자로만 남긴다. 두 표 모두 앱 계정에 DELETE 가 없다. 이관 조각 db/deploy/migrations/v16-project-calendar.sql.'],
   ['10-22', '월간보고(v17)', 'project 에 개발시작일(dev_start_date, end_date 와 dev_end_date 사이)과 개발 기간 순서 CHECK 를 더하고, 과제별 개발 일정 그림 표 project_schedule_image(바이트 MEDIUMBLOB, 과제 CASCADE, 등록자 RESTRICT)를 만들었다. 백업은 --hex-blob 으로 뜬다. 이관 조각 db/deploy/migrations/v17-monthly-report.sql.'],
   ['10-29', '회의내용(v20)', 'cal_report_weekly 에 회의내용 칸 meeting(MEDIUMTEXT NULL, plan 뒤)을 더했다. 근태 창의 주간보고가 회사 폼의 회의내용도 채우게 되어 그 글을 함께 남긴다. 기존 행은 NULL 로 두고(이 칸이 생기기 전에 작성한 주) 앱은 빈 글로 읽는다. 이관 조각 db/deploy/migrations/v20-weekly-meeting.sql.'],
+  ['10-30', '주간 과제투입시간(v20)', '같은 판 20 에 cal_report_weekly_hours 를 더했다(결정 14). 주간보고의 과제별 시간 줄(과제명, 공식 과제 id project_uid, 시간 0 초과 168 이하)로 맨먼스 집계의 원천이다. cal_report_weekly 의 자식(CASCADE)이고 주간보고 행과 한 트랜잭션으로 쓰며 다시 보내면 그 주 줄을 바꾼다. project_uid 는 과제가 지워져도 남도록 FK 를 걸지 않았다. 같은 이관 조각 v20-weekly-meeting.sql 이 표가 없을 때만 만든다.'],
 ];
 
 const html = `<!DOCTYPE html>
@@ -367,7 +368,7 @@ const html = `<!DOCTYPE html>
     ${ent('cal_entry', ['<span class="key">PK</span> user_id, entry_no', '<span class="key">UQ</span> user_id, uid', 'entry_date, recur_*, sort_order', 'updated_at = 낙관적 잠금'], '일정')}${rel('entry_no', 'CASCADE')}
     ${ent('cal_entry_except, cal_entry_commit', ['<span class="key">PK</span> user_id, entry_no, (날짜|seq)'], '부속')}
   </div>
-  <p class="note">그림에는 관계를 읽는 데 필요한 키만 적었다. 전체 컬럼과 CHECK 는 03 절에서 표를 펼치면 나온다. 소유자 FK 가 걸린 표: cal_todo(→ cal_todo_day_note CASCADE), cal_task_hours(과제 FK RESTRICT), cal_attendance, cal_user_pref, cal_user_rev, cal_migration_log, cal_report_daily(→ cal_report_hours CASCADE), cal_report_weekly. ${ownerRuleShort} 괄호 안의 CASCADE 는 소유자 FK 가 아니라 그 표의 자식 FK 다. 부모 행을 지우면 딸린 줄이 함께 지워진다는 뜻이지, 사용자 삭제가 전파된다는 뜻이 아니다.</p>
+  <p class="note">그림에는 관계를 읽는 데 필요한 키만 적었다. 전체 컬럼과 CHECK 는 03 절에서 표를 펼치면 나온다. 소유자 FK 가 걸린 표: cal_todo(→ cal_todo_day_note CASCADE), cal_task_hours(과제 FK RESTRICT), cal_attendance, cal_user_pref, cal_user_rev, cal_migration_log, cal_report_daily(→ cal_report_hours CASCADE), cal_report_weekly(→ cal_report_weekly_hours CASCADE). ${ownerRuleShort} 괄호 안의 CASCADE 는 소유자 FK 가 아니라 그 표의 자식 FK 다. 부모 행을 지우면 딸린 줄이 함께 지워진다는 뜻이지, 사용자 삭제가 전파된다는 뜻이 아니다.</p>
 </section>
 
 <section>

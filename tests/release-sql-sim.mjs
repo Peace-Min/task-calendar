@@ -40,6 +40,10 @@
 //   ALTER TABLE cal_report_weekly ADD COLUMN meeting MEDIUMTEXT NULL AFTER ..., ALGORITHM=INSTANT(있는 행은 meeting = NULL 이 된다),
 //   information_schema.COLUMNS 의 이름, COLUMN_TYPE 과 NULL 허용, 바로 앞 칸 자리 하위 질의(project 와 같은 모양).
 //   행(tables.cal_report_weekly 의 user_id, period_start, 그리고 칸이 있으면 meeting)은 값이 바뀌지 않았는지 보려고만 둔다.
+//   주간 과제투입시간 표(같은 v20 조각, 2026-10-30 결정 14): cal_report_weekly_hours 를 v16 처럼 표 모양(defs)으로 둔다.
+//   CREATE TABLE IF NOT EXISTS 의 정의에서 열 수, FK 수와 함께 기본 키 열 수, CHECK 이름, FK 의 대상과 규칙을 읽고
+//   information_schema.KEY_COLUMN_USAGE(PRIMARY), TABLE_CONSTRAINTS(CHECK 이름), REFERENTIAL_CONSTRAINTS(대상, DELETE_RULE,
+//   UPDATE_RULE) 의 표별 COUNT(*) 하위 질의에 그 값으로 답한다.
 //
 // ★ *.test.mjs 가 아니다(러너가 수집하지 않는다. ps-guard-lib.mjs 머리말과 같은 이유).
 
@@ -204,8 +208,8 @@ const ROOM_COUNTS = {
 // ── 표 정의의 모양(v16): 열 수와 FK 수 ────────────────────────────────────
 //  CREATE TABLE 문 하나에서 괄호 안의 열 정의 줄(이름 + 형)과 FOREIGN KEY 를 센다. 정본과 조각의 정의를 같은 함수로 센다.
 const COL_LINE = /^\s*[a-z_][a-z0-9_]*\s+(TINYINT|SMALLINT|INT|BIGINT|VARCHAR|CHAR|DATE|DATETIME|TIME|TEXT|MEDIUMTEXT|MEDIUMBLOB|JSON|DECIMAL)\b/i;
-//  표 모양을 세는(defs) 새 표: 과제 캘린더(v16)와 월간보고 그림 표(v17)
-const SHAPED = (n) => n.startsWith('cal_project_') || n === 'project_schedule_image';
+//  표 모양을 세는(defs) 새 표: 과제 캘린더(v16), 월간보고 그림 표(v17), 주간 과제투입시간 표(v20)
+const SHAPED = (n) => n.startsWith('cal_project_') || n === 'project_schedule_image' || n === 'cal_report_weekly_hours';
 
 // ── project 표의 모양(v17): 열 순서, 형, NULL 허용과 CHECK 이름 ──────────────────
 //  정본 schema-structure.sql 의 v16 까지 모양. dev_start_date 는 v17 이 end_date 뒤에 넣는다.
@@ -261,12 +265,32 @@ export const V19_FILL = 'UPDATE project p JOIN (SELECT id, ROW_NUMBER() OVER (PA
   + 'LEFT JOIN (SELECT section_id, MAX(sort_no) AS mx FROM project WHERE is_active = 1 GROUP BY section_id) m ON m.section_id = p.section_id '
   + 'SET p.sort_no = IFNULL(m.mx, 0) + o.rn, p.updated_at = p.updated_at WHERE p.id > 0';
 const showName = (r) => (String(r.common_name || '') !== '' ? String(r.common_name) : String(r.project_name || ''));
+//  defOf: 열 수와 FK 수만(v16, v17 의 검증과 그 시험이 쓰는 모양). defShape: 거기에 기본 키 열 수, CHECK 이름, FK 대상과 규칙을 더한 것
+//  (흉내 실행기의 표 모양과 v20 검증). defOf 의 모양을 넓히지 않는 이유: 다른 시험이 그 값을 { cols, fks } 로 통째 대조한다.
 export function defOf(createSql) {
+  const { cols, fks } = defShape(createSql);
+  return { cols, fks };
+}
+export function defShape(createSql) {
   const open = createSql.indexOf('(');
   const close = createSql.lastIndexOf(') ENGINE=');
   if (open < 0 || close < open) throw new Error(`표 정의를 읽지 못했다: ${createSql.slice(0, 80)}`);
   const body = createSql.slice(open + 1, close);
-  return { cols: body.split('\n').filter((l) => COL_LINE.test(l)).length, fks: (body.match(/\bFOREIGN KEY\b/g) || []).length };
+  //  v20: 기본 키 열 수, CHECK 이름, FK 의 대상과 규칙(적지 않은 규칙은 MySQL 처럼 NO ACTION 으로 읽힌다).
+  //  COMMENT 글자 안을 잘못 읽지 않게 따옴표 안을 비운 뒤 읽는다(조각의 두 겹 따옴표도 같은 식으로 비워진다).
+  const bare = body.replace(/'(?:[^']|'')*'/g, "''");
+  const pk = /PRIMARY KEY\s*\(([^)]*)\)/i.exec(bare);
+  const checks = [...bare.matchAll(/CONSTRAINT\s+(\w+)\s+CHECK\b/gi)].map((m) => m[1]);
+  const RULE = '(CASCADE|RESTRICT|SET NULL|NO ACTION)';
+  const refs = [...bare.matchAll(new RegExp(`REFERENCES\\s+(\\w+)\\s*\\([^)]*\\)((?:\\s+ON\\s+(?:DELETE|UPDATE)\\s+${RULE})*)`, 'gi'))]
+    .map((m) => {
+      const rule = (w) => ((new RegExp(`ON\\s+${w}\\s+${RULE}`, 'i').exec(m[2]) || [])[1] || 'NO ACTION').toUpperCase();
+      return `${m[1]}:${rule('DELETE')}:${rule('UPDATE')}`;
+    });
+  return {
+    cols: body.split('\n').filter((l) => COL_LINE.test(l)).length, fks: (body.match(/\bFOREIGN KEY\b/g) || []).length,
+    pk: pk ? pk[1].split(',').length : 0, checks, refs,
+  };
 }
 
 // ── Git, SVN 삭제(v18): 지울 칸과 CHECK, 그리고 CHECK 가 쓰는 칸 ──────────────────
@@ -331,7 +355,8 @@ export class FakeDb {
       out[n] = n === 'room_code'
         ? this.tables[n].map((r) => [r.name, r.sort_order]).sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1))
         : ROW_KEY[n] ? this.tables[n].map(ROW_KEY[n]).sort()
-        : this.defs[n] ? [`cols=${this.defs[n].cols}`, `fks=${this.defs[n].fks}`]
+        : this.defs[n] ? [`cols=${this.defs[n].cols}`, `fks=${this.defs[n].fks}`,
+          ...(this.defs[n].pk === undefined ? [] : [`pk=${this.defs[n].pk}`, `checks=${this.defs[n].checks}`, `refs=${this.defs[n].refs}`])]
           : this.tables[n].map((r) => `${r.user_id}:${r.name}`).sort();
     }
     return out;
@@ -368,6 +393,13 @@ export class FakeDb {
       if (!d) throw new Error(`모양을 모르는 표를 센다(defs 에 ${m[2]} 가 없다)`);
       return m[1].toUpperCase() === 'COLUMNS' ? d.cols : d.fks;
     }
+    //  v20: 주간 과제투입시간 표의 기본 키 열 수, CHECK 이름, 대상과 규칙을 붙인 FK 수(모양은 defs. 모르면 판정 불가로 실패)
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours)' AND CONSTRAINT_NAME = 'PRIMARY'$/.exec(s);
+    if (m) return this.shapeOf(m[1], 'pk', (d) => d.pk);
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours)' AND CONSTRAINT_NAME = '(\w+)' AND CONSTRAINT_TYPE = 'CHECK'$/.exec(s);
+    if (m) { const c = m[2]; return this.shapeOf(m[1], 'checks', (d) => d.checks.filter((x) => x === c).length); }
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours)' AND REFERENCED_TABLE_NAME = '(\w+)' AND DELETE_RULE = '([A-Z ]+)' AND UPDATE_RULE = '([A-Z ]+)'$/.exec(s);
+    if (m) { const want = `${m[2]}:${m[3]}:${m[4]}`; return this.shapeOf(m[1], 'refs', (d) => d.refs.filter((x) => x === want).length); }
     //  v18: 일정, 과제, 설정 표의 지울 칸(이름 하나 또는 IN 목록)과 CHECK 이름. 지울 칸 목록에 없는 이름을 물으면 모르는 질의다.
     m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_entry|cal_category|cal_user_pref)' AND COLUMN_NAME (?:= '(\w+)'|IN \(([^)]*)\))$/.exec(s);
     if (m) {
@@ -412,6 +444,13 @@ export class FakeDb {
     m = /^SELECT COUNT\(\*\) FROM cal_schema_meta WHERE k IN \(([^)]*)\)$/.exec(s);
     if (m) return [...m[1].matchAll(/'([a-z_0-9]+)'/g)].filter((x) => this.rows.has(x[1])).length;
     throw new Error(`모르는 하위 질의: ${s}`);
+  }
+  //  defs 로 모양을 아는 표의 한 가지 값. 표가 없으면 0, 그 값을 모르면 판정 불가로 실패한다(통과가 아니다).
+  shapeOf(t, field, f) {
+    if (!this.schema || !this.hasTable(t)) return 0;
+    const d = this.defs[t];
+    if (!d || d[field] === undefined) throw new Error(`모양을 모르는 표를 센다(defs 에 ${t}.${field} 가 없다)`);
+    return f(d);
   }
   eval(text) { return new Expr(text, this).parse(); }
   put(k, v) {
@@ -470,7 +509,7 @@ export class FakeDb {
       this.mutating(s, opts);
       if (!this.hasTable(m[1])) {
         this.tables[m[1]] = [];
-        if (SHAPED(m[1])) this.defs[m[1]] = defOf(s);
+        if (SHAPED(m[1])) this.defs[m[1]] = defShape(s);
         this.writes.push({ k: `table:${m[1]}`, v: 'create' });
       }
       return;

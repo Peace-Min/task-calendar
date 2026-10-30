@@ -281,8 +281,26 @@ const checks = {
     assert.ok(w.includes('meeting=COALESCE(VALUES(meeting), meeting)'), '회의내용이 없는 요청(옛 보고서 창)이 있던 회의내용을 지운다');
     assert.ok(w.includes('cmd.Parameters.AddWithValue("@mt", (object?)meeting ?? DBNull.Value);'), '회의내용을 파라미터로 묶지 않는다');
     //  저장 성공 뒤에만 __reportWeeklySaved(두 창)
-    const h = stripCsComments(member(s.main, 'void INetcusHost.SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork, string? meeting)'));
-    const save = h.indexOf('bool ok = await db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork, meeting);');
+    const h = stripCsComments(member(s.main, 'void INetcusHost.SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork, string? meeting, string? hoursJson)'));
+    const save = h.indexOf('bool ok = await db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork, meeting, hours);');
+    assert.ok(h.includes('var hours = hoursJson == null ? null : ParseWeeklyHoursJson(hoursJson);'), '주간 시간줄을 들어오는 자리에서 거르지 않거나, 없는 요청(null)을 빈 목록으로 바꾼다');
+    //  주간 과제투입시간(결정 14): 주간 행과 시간 줄을 한 트랜잭션으로, 그 주를 지우고 다시 넣는다(0 시간 제외, 공식 과제 id 꼴만)
+    const t = stripCsComments(member(s.rdb, 'public async Task<bool> SaveWeeklyAsync('));
+    const iTx = t.indexOf('await using var tx = await conn.BeginTransactionAsync(cts.Token);'), iUp = t.indexOf('INSERT INTO cal_report_weekly "');
+    const iDel = t.indexOf('"DELETE FROM cal_report_weekly_hours WHERE user_id=@u AND period_start=@s"'), iIns = t.indexOf('INSERT INTO cal_report_weekly_hours (user_id, period_start, line_no, task_name, project_uid, hours) VALUES ');
+    const iCommit = t.indexOf('await tx.CommitAsync(cts.Token);');
+    assert.ok(iTx > 0 && iTx < iUp && iUp < iDel && iDel < iIns && iIns < iCommit, '주간 행과 시간 줄이 한 트랜잭션(행, 지우기, 넣기, 커밋 순)이 아니다');
+    assert.ok((t.match(/\.Transaction = tx;/g) || []).length >= 3, '주간 저장의 명령이 모두 그 트랜잭션에 묶이지 않았다');
+    assert.ok(/if \(hours != null\)/.test(t), '시간 줄이 없는 요청(옛 전송)이 그 주의 줄을 지운다');
+    assert.ok(/if \(!WeeklyHoursInDomain\(h\.Hours\)\) continue;/.test(t) && /ProjectUidOk\(h\.ProjectUid\) \? h\.ProjectUid : \(object\)DBNull\.Value/.test(t), '0 시간 제외나 공식 과제 id 꼴 확인이 없다');
+    const pj = stripCsComments(member(s.main, 'private List<WeeklyHourLine> ParseWeeklyHoursJson(string? json)'));
+    assert.ok(/name\.Length > 200/.test(pj) && /if \(!ReportDb\.WeeklyHoursInDomain\(h\)\)/.test(pj) && /!ReportDb\.ProjectUidOk\(uid\)/.test(pj), 'ParseWeeklyHoursJson 이 과제명 길이, 시간 범위, 공식 과제 id 꼴을 보지 않는다');
+    const ws0 = d.slice(d.indexOf('case "netcusWeekSubmit":'), d.indexOf('break;', d.indexOf('case "netcusWeekSubmit":')));
+    assert.ok(ws0.includes('doc.RootElement.TryGetProperty("hours", out var whEl) && whEl.ValueKind == JsonValueKind.Array ? whEl.GetRawText() : null'), 'netcusWeekSubmit 이 hours 구조를 배열일 때만 넘기지 않는다');
+    //  목록 읽기의 시간 줄: 파라미터로 묶고, 표가 없는 DB(1146)에서는 시간 줄 없이 목록만
+    const lw = member(s.rdb, 'public async Task<List<Dictionary<string, object?>>?> ListWeeklyAsync(string? loginId, DateTime from, DateTime to)');
+    assert.ok(lw.includes('"WHERE user_id=@u AND period_start BETWEEN @f AND @t ORDER BY period_start, line_no"') && /catch \(MySqlException mex\) when \(mex\.ErrorCode == MySqlErrorCode\.NoSuchTable\)/.test(lw),
+      '주간 목록의 시간 줄 읽기가 사람과 기간으로 거르지 않거나 표 없음(1146)을 견디지 않는다');
     const push = h.indexOf('if (ok) ReportPush("window.__reportWeeklySaved && window.__reportWeeklySaved(" + JsonSerializer.Serialize(new { periodStart = sdate }) + ")");');
     assert.ok(save > 0 && push > save, '__reportWeeklySaved 가 저장 성공 뒤에 두 창으로 가지 않는다');
     assert.match(h, /SaveReportRecordWithRetryAsync\("weekly"/, '주간 기록 저장이 재시도 경로(S10)를 지나지 않는다');
@@ -295,7 +313,7 @@ const checks = {
     assert.ok(wf.includes(`(req.Resultwork != null ? $"set('resultwork',{J(req.Resultwork)});" : "")`), '새 글 경로가 회의내용(resultwork)을 채우지 않는다');
     assert.ok(wf.includes('WeekModifyFillJs(req.Endwork, req.Content, req.Planwork, req.Resultwork)'), '수정 경로가 회의내용을 넘기지 않는다');
     assert.ok(!/set\('(notendwork|problem)'/.test(wf), '미처리사항이나 문제점을 채운다');
-    assert.strictEqual((wf.match(/_host\.SaveWeeklyReport\(req\.Sdate, req\.Edate, req\.Subject, req\.Content, req\.Endwork, req\.Planwork, req\.Resultwork\);/g) || []).length, 2, '두 경로가 회의내용까지 기록하지 않는다');
+    assert.strictEqual((wf.match(/_host\.SaveWeeklyReport\(req\.Sdate, req\.Edate, req\.Subject, req\.Content, req\.Endwork, req\.Planwork, req\.Resultwork, req\.HoursJson\);/g) || []).length, 2, '두 경로가 회의내용과 시간 줄까지 기록하지 않는다');
   },
 
   // ⑨ 로그아웃과 계정 바뀜에 근태 창도 닫힌다
@@ -425,6 +443,14 @@ test('변이⑫b: 회의내용 없는 요청이 있던 값을 지우게 하면 �
 test('변이⑫c: __reportWeeklySaved 를 성공 확인 밖으로 빼면 주간⑫ 가 실패한다', () => {
   const bad = mutate(src.main, 'if (ok) ReportPush("window.__reportWeeklySaved', 'ReportPush("window.__reportWeeklySaved');
   assert.throws(() => checks.weekly(with_('main', bad)), /저장 성공 뒤에/);
+});
+test('변이⑫e: 주간 시간 줄을 트랜잭션 밖(커밋 뒤)에서 넣으면 주간⑫ 가 실패한다', () => {
+  const bad = mutate(src.rdb, '                await tx.CommitAsync(cts.Token);\n                _log("보고 기록 저장: 주간 "', '                _log("보고 기록 저장: 주간 "');
+  assert.throws(() => checks.weekly(with_('rdb', bad)), /한 트랜잭션/);
+});
+test('변이⑫f: 시간 줄이 없는 옛 요청도 그 주의 줄을 지우면 주간⑫ 가 실패한다', () => {
+  const bad = mutate(src.rdb, '                if (hours != null)\n', '                if (true)\n');
+  assert.throws(() => checks.weekly(with_('rdb', bad)), /옛 전송/);
 });
 test('변이⑫d: resultwork 를 늘 빈 글로 넘기면(칸이 없어도) 주간⑫ 가 실패한다', () => {
   const bad = mutate(src.main, '(rw.GetString() ?? "") : null', '(rw.GetString() ?? "") : ""');

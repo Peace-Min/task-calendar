@@ -10,10 +10,10 @@
  *    W1   [일간][주간]: 근태 탭 머리의 [주간]을 누르면 목록(#awList)이 보이고 reportWeeklyList(52주, 읽기만)를 성공으로 읽는다. tc_attKind 기억
  *    W2   열기: 메인 창 awOpen(2099-12-07) 이 그 주의 기록을 읽고(reportWeeklyList 하루) attendOpen(kind week). 근태 창이 주간 편집만 보이고
  *         처음 여는 주라 두 가져오기를 한 번 해 둔다(2099 라 기록 없음 안내), 고친 것 없음
- *    W3   편집: 과제 추가(진행사항 둘, 차주계획 하나), 과제투입시간 칸이 진행사항을 따라가고 합계, 회의내용, 미리보기(인트라넷 폼 모양) = 조립 글
+ *    W3   편집(결정 14): 진행사항, 차주계획은 자유 글, 과제투입시간은 따로 움직이는 목록([+ 과제 추가], 숫자 칸, 합계), 회의내용, 미리보기(인트라넷 폼 모양) = 조립 글
  *    W4   임시 저장: 2초 안에 tc_attWDraft:<who>:2099-12-07 이 생기고 메인 창 목록에 작성 중으로 보인다
  *    W5   이동: › 는 그 주 기록을 읽어 2099-12-14 를 열고(넘기기 전에 임시 저장), ‹ 로 돌아오면 글이 되살아난다. 주 고르기 달력이 그 달 줄을 보인다
- *    W6   보내기(가로채기, 실제 전송 없음): 진행사항 없음은 막고, payload(기간, 제목, 네 칸, resultwork, &nbsp;), 잠금, 연속 클릭 한 번,
+ *    W6   보내기(가로채기, 실제 전송 없음): 과제투입시간 0개는 막고, payload(기간, 제목, 네 칸, resultwork, &nbsp;, hours 구조), 잠금, 연속 클릭 한 번,
  *         실패 회신 흉내 = 공통 안내, 성공 회신 흉내 = 처음 상태(임시 저장은 남음), 저장 알림 흉내 = 임시 저장 지움
  *    W7   창 안 목록: [‹ 목록]이 창 안의 목록(reportWeeklyList)을 보이고 [일간][주간]은 없다. [작성]은 이번 주를 그 자리에서 연다
  *    W8   닫기 지키기: 고친 글이 있으면 __winCloseRequest() = ask, [닫기]면 창이 닫히고 키는 남는다
@@ -23,7 +23,8 @@
  *    두 창의 hpost 를 감싸 'netcus' 로 시작하는 명령은 호스트로 넘기지 않고 기록만 한다. 회신은 __netcusResult 를 직접 불러 흉내 낸다.
  *    __reportWeeklySaved 흉내는 근태 창에서만 부른다(DB 에 쓰지 않는다. 임시 저장을 지우는 웹 동작만 본다).
  *  ★ DB 에 쓰지 않는다. 읽는 것은 reportWeeklyList(목록, 2099 주, 지난주)와 reportDailyList(2099 주 7일)뿐이다.
- *  ★ 과제 블록은 이 계정의 실제 캘린더 과제(payload.projects) 앞의 셋으로 만든다. 셋이 안 되면 W3 이후를 판정 불가로 둔다.
+ *  ★ 과제투입시간은 이 계정의 실제 캘린더 과제(payload.projects) 앞의 둘로 만든다. 셋이 안 되면 W3 이후를 판정 불가로 둔다.
+ *  ★ 보내기를 가로채므로 시간 줄이 DB 에 남는지는 이 루프가 볼 수 없다. 대신 W7 에서 reportWeeklyList 가 오류 없이 돌아오는지(시간 줄 표를 읽는 질의 포함) 읽기만 확인한다.
  *
  *  실행:
  *    TC_DEBUG_PORT=9222 로 위젯을 로그인된 채 띄운 뒤
@@ -194,22 +195,25 @@ const dropLoopKeys = (C) => C.ev(`(function(){ const a = ${LOOP_KEYS_JS}; a.forE
   return a.length; })()`);
 const click = (C, id) => C.ev(`(function(){ const b = document.getElementById(${JSON.stringify(id)}); if (!b) return 'none'; if (b.disabled) return 'disabled'; b.click(); return 'ok'; })()`);
 const shown = (C, id) => C.ev(`(function(){ const e = document.getElementById(${JSON.stringify(id)}); if (!e || e.classList.contains('hidden')) return false; const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; })()`);
-//  근태 창 안에서 블록을 모두 지우고 [+ 과제 추가] 메뉴로 다시 만든다(모두 실제 처리기). list = { prog:[{name, text, hours}], plan:[{name, text}] }, meet = 회의내용.
+//  근태 창 안에서 주간 칸을 채운다(모두 실제 처리기, 결정 14). list = { prog:'글', plan:'글', hours:[{name, hours}] }, meet = 회의내용.
+//    과제투입시간은 ✕ 로 모두 빼고 [+ 과제 추가] 메뉴로 다시 더한 뒤 숫자 칸에 쓴다.
 const setWeek = (list, meet) => A.ev(`(function(){
-  ['prog', 'plan'].forEach(function(k){ let g = 50; while (awList(k).length && g--) document.querySelector('#awEd [data-wx="' + k + ':0"]').click(); });
+  let g = 50; while (AWE.hrs.length && g--) document.querySelector('#awHours [data-whx="0"]').click();
   const L = ${JSON.stringify(list)};
-  for (const k of ['prog', 'plan']) for (const b of L[k]) {
-    document.querySelector('#awEd [data-awadd="' + k + '"]').click();
+  const put = function(id, v){ const t = document.getElementById(id); t.value = v; t.dispatchEvent(new Event('input', { bubbles: true })); };
+  put('awProg', L.prog); put('awPlan', L.plan);
+  //  [+ 과제 추가]는 열어 둔 채 체크로 넣는 패널이다(2026-10-30). 한 번 열고 이어서 체크한 뒤 [닫기]
+  if (document.getElementById('awAddMenu').classList.contains('hidden')) document.querySelector('#awEd [data-awadd="hours"]').click();
+  for (const b of L.hours) {
     const it = [].find.call(document.querySelectorAll('#awAddList [data-awaddname]'), function(x){ return x.dataset.awaddname === b.name; });
-    if (!it || it.disabled) return 'noitem:' + b.name; it.click();
-    const i = awList(k).findIndex(function(x){ return x.name === b.name; });
-    const t = document.querySelector('#awEd textarea[data-wt="' + k + ':' + i + '"]'); t.value = b.text; t.dispatchEvent(new Event('input', { bubbles: true }));
+    if (!it || it.getAttribute('aria-checked') === 'true') return 'noitem:' + b.name; it.click();
   }
-  L.prog.forEach(function(b){ const i = awProgNames(AWE.prog).indexOf(b.name); const h = document.querySelector('#awHours input[data-wh="' + i + '"]');
+  document.getElementById('awAddDone').click();
+  L.hours.forEach(function(b){ const i = AWE.hrs.indexOf(b.name); const h = document.querySelector('#awHours input[data-wh="' + i + '"]');
     h.value = String(b.hours); h.dispatchEvent(new Event('input', { bubbles: true })); h.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); });
-  const m = document.getElementById('awMeet'); m.value = ${JSON.stringify(meet)}; m.dispatchEvent(new Event('input', { bubbles: true }));
+  put('awMeet', ${JSON.stringify(meet)});
   return 'ok'; })()`);
-const curWeek = () => A.J(`({ prog: AWE.prog.map(function(b){ return { name: b.name, text: b.text }; }), plan: AWE.plan.map(function(b){ return { name: b.name, text: b.text }; }), hours: awHoursFor(AWE.prog, AWE.hours), meet: AWE.meet })`);
+const curWeek = () => A.J(`({ prog: AWE.prog, plan: AWE.plan, hrs: AWE.hrs.slice(), hours: awHoursFor(AWE.hrs, AWE.hours), meet: AWE.meet })`);
 async function forceCloseAttend() {
   const t = (await attendTargets())[0];
   if (!t) return true;
@@ -296,15 +300,16 @@ async function main() {
   ok('W2 처음 여는 주의 가져오기 결과: 바닥은 한 문장(흐린 색), 지난주 없음은 가져오기 패널, 고친 것 없음', v2.msg === '이번 주 일간 보고가 없습니다.' && v2.msgCls === 'at-msg' && v2.imp === '지난주 주간보고가 없습니다.' && !v2.dirty, JSON.stringify({ msg: v2.msg, imp: v2.imp }));
 
   /* ── W3 편집 ── */
-  head('W3 편집: 과제 추가, 과제투입시간이 진행사항을 따라감, 합계, 회의내용, 미리보기(인트라넷 폼 모양)');
+  head('W3 편집: 자유 글 두 칸, 과제투입시간 목록(진행사항과 따로), 합계, 회의내용, 미리보기(인트라넷 폼 모양)');
   const P = await A.J('ATW.ctx.projects.map(function(x){ return x.name; })');
   ok('W3 payload 과제 목록 = 메인 창 내 과제 목록', same(P, await M.J('state.categories.map(function(c){ return c.name; })')), JSON.stringify(P.slice(0, 4)));
   if (P.length < 3) { undecide('W3 이후', `이 계정의 캘린더 과제가 ${P.length}개라 블록 셋을 만들 수 없다`); return; }
-  const LIST = { prog: [{ name: P[0], text: '- 루프 진행 줄\n  - 들여 쓴 줄', hours: 12.5 }, { name: P[1], text: '', hours: 3 }], plan: [{ name: P[2], text: '- 루프 다음 주 계획' }] };
+  const LIST = { prog: `[${P[2]}](~'28/12)\n- 루프 진행 줄\n  - 들여 쓴 줄`, plan: '- 루프 다음 주 계획', hours: [{ name: P[0], hours: 12.5 }, { name: P[1], hours: 3 }] };
   const MEET = '- 루프 회의내용';
-  ok('W3 블록을 만들었다(과제 추가 메뉴, 내용 칸, 시간 칸, 회의내용)', (await setWeek(LIST, MEET)) === 'ok');
+  ok('W3 주간에 과제 블록이 없다(진행사항, 차주계획은 자유 글)', await A.ev(`!document.querySelector('#awEd .at-blk') && document.getElementById('awProg').tagName === 'TEXTAREA' && document.getElementById('awPlan').tagName === 'TEXTAREA'`));
+  ok('W3 칸을 채웠다(자유 글, 과제 추가 메뉴, 시간 칸, 회의내용)', (await setWeek(LIST, MEET)) === 'ok');
   const c3 = await curWeek();
-  ok('W3 과제투입시간 = 진행사항 과제만(차주계획 과제는 없다)', same(Object.keys(c3.hours), [P[0], P[1]]) && same(c3.hours, { [P[0]]: 12.5, [P[1]]: 3 }), JSON.stringify(c3.hours));
+  ok('W3 과제투입시간 = 고른 과제(진행사항 글의 [과제]와 상관없다)', same(c3.hrs, [P[0], P[1]]) && same(c3.hours, { [P[0]]: 12.5, [P[1]]: 3 }), JSON.stringify(c3.hours));
   ok('W3 합계 줄', (await A.ev(`document.getElementById('awHSum').textContent`)) === '합계 15.5시간');
   await A.ev(`(function(){ awPTabSet('pv', false); awPvRender(); return 1; })()`);
   const pv3 = await A.J(`(function(){ const c = awCompose(awCur()); const box = function(k){ const e = document.querySelector('#awNf .nf-box[data-nf="' + k + '"]'); return e ? e.textContent : null; };
@@ -312,7 +317,7 @@ async function main() {
       bg: getComputedStyle(document.getElementById('awNf')).backgroundColor, th: [].map.call(document.querySelectorAll('#awNf th'), function(t){ return t.textContent; }), c: c }; })()`);
   ok('W3 미리보기 칸 = 조립 글(미처리사항, 문제점은 빈칸)', pv3.ok, JSON.stringify(pv3.c));
   ok('W3 미리보기는 흰 바탕(테마와 상관없음)과 인트라넷 항목 여덟', pv3.bg === 'rgb(255, 255, 255)' && pv3.th.length === 8, JSON.stringify(pv3.th));
-  ok('W3 진행사항 조립(빈 내용은 -)', pv3.c.endwork === `[${P[0]}]\n- 루프 진행 줄\n  - 들여 쓴 줄\n\n[${P[1]}]\n-`);
+  ok('W3 진행사항 조립 = 칸의 글 그대로', pv3.c.endwork === LIST.prog);
   ok('W3 과제투입시간 조립(----- 와 합계)', pv3.c.content === `[${P[0]}] : 12.5\n[${P[1]}] : 3\n-----\n합계 : 15.5`);
 
   /* ── W4 임시 저장 ── */
@@ -321,7 +326,7 @@ async function main() {
   ok('W4 키 이름이 두 창에서 같다(tc_attWDraft:<who>:월요일)', KEY === `tc_attWDraft:${await M.ev('rptDraftWho()')}:${W}`, KEY);
   const got4 = await A.waitFor(`localStorage.getItem(${JSON.stringify(KEY)}) !== null`, 2500, 100);
   const s4 = await storedIn(M, KEY);
-  ok('W4 키가 생겼고 값 = {v:1, prog, plan, hours, meet}', got4 && !!s4 && s4.v === 1 && same(s4.prog.map((b) => b.name), [P[0], P[1]]) && same(s4.plan.map((b) => b.name), [P[2]]) && s4.meet === MEET, JSON.stringify(s4));
+  ok('W4 키가 생겼고 값 = {v:2, prog, plan, hrs, hours, meet}', got4 && !!s4 && s4.v === 2 && s4.prog === LIST.prog && s4.plan === LIST.plan && same(s4.hrs, [P[0], P[1]]) && s4.meet === MEET, JSON.stringify(s4));
   await M.ev('awListRender(); 1');
   ok('W4 메인 창 목록에 그 주가 작성 중', (await M.ev(`(function(){ const r = document.querySelector('#awList tr[data-awmon="${W}"] .aw-badge'); return r ? r.textContent : ''; })()`)) === '작성 중');
 
@@ -329,7 +334,7 @@ async function main() {
   head('W5 이동: › 로 다음 주(그 주 기록 읽기), ‹ 로 돌아오면 글이 그대로, 주 고르기 달력');
   ok('W5 › 를 눌렀다', (await click(A, 'awNext')) === 'ok');
   ok('W5 다음 주(2099-12-14)가 같은 창에 열렸다', !!(await attachWeek(W2, 20000)));
-  ok('W5 다음 주는 깨끗하다(진행사항 없음)', (await A.ev('AWE.prog.length')) === 0);
+  ok('W5 다음 주는 깨끗하다(진행사항, 과제투입시간 없음)', (await A.ev('AWE.prog')) === '' && (await A.ev('AWE.hrs.length')) === 0);
   ok('W5 그 주 기록을 읽었다(reportWeeklyList 하루)', (await A.J('__awLoopW.log')).some((x) => x.req === 'reportWeeklyList' && x.from === W2 && x.to === W2 && x.ok));
   await click(A, 'awPrev');
   ok('W5 ‹ 로 돌아오면 글이 그대로(임시 저장)', !!(await attachWeek(W, 20000)) && same(await curWeek(), c3) && (await A.ev('AWE.meet')) === MEET);
@@ -345,11 +350,11 @@ async function main() {
   ok('W6 근태 창 가로채기(submitWeekly)와 netcus 차단(hpost)이 제자리', await interceptOkA());
   if (!(await interceptOkA())) throw new Error('전송 가로채기가 제자리에 없다. 실제 전송 위험이라 누르지 않는다');
   const keep6 = await curWeek();
-  await A.ev(`(function(){ let g = 50; while (AWE.prog.length && g--) document.querySelector('#awEd [data-wx="prog:0"]').click(); return 1; })()`);
+  await A.ev(`(function(){ let g = 50; while (AWE.hrs.length && g--) document.querySelector('#awHours [data-whx="0"]').click(); return 1; })()`);
   const n6a = await A.ev('__awLoopW.cap.length');
   await click(A, 'awSend'); await sleep(100);
-  ok('W6 진행사항이 없으면 보내지 않고 안내', (await A.ev('__awLoopW.cap.length')) === n6a && /진행사항에 과제가 없습니다/.test(await A.ev(`document.getElementById('awMsg').textContent`)) && !(await A.ev('AWE.sending')));
-  ok('W6 블록을 다시 만들었다', (await setWeek(LIST, MEET)) === 'ok' && same(await curWeek(), keep6));
+  ok('W6 과제투입시간에 과제가 없으면 보내지 않고 안내', (await A.ev('__awLoopW.cap.length')) === n6a && /과제투입시간에 과제가 없습니다/.test(await A.ev(`document.getElementById('awMsg').textContent`)) && !(await A.ev('AWE.sending')));
+  ok('W6 칸을 다시 채웠다', (await setWeek(LIST, MEET)) === 'ok' && same(await curWeek(), keep6));
   if (!(await interceptOkA())) throw new Error('전송 가로채기가 제자리에 없다. 실제 전송 위험이라 누르지 않는다');
   const n6 = await A.ev('__awLoopW.cap.length');
   const r6 = await A.J(`(function(){ const b = document.getElementById('awSend'); b.click(); const busy = { disabled: b.disabled, label: b.textContent, meet: document.getElementById('awMeet').disabled,
@@ -359,7 +364,10 @@ async function main() {
   const cap6 = await A.J('__awLoopW.cap[__awLoopW.cap.length - 1]');
   ok('W6 payload kind weekly, 기간(월~일), 제목', !!cap6 && cap6.kind === 'weekly' && cap6.fields.sdate === W && cap6.fields.edate === '2099-12-13' && cap6.fields.subject === '12월 둘째주', JSON.stringify(cap6 && cap6.fields));
   ok('W6 네 칸(endwork, content, planwork, resultwork), 줄 앞 공백은 &nbsp;', !!cap6 && cap6.fields.endwork === nbsp(pv3.c.endwork) && cap6.fields.content === pv3.c.content
-    && cap6.fields.planwork === `[${P[2]}]\n- 루프 다음 주 계획` && cap6.fields.resultwork === MEET, JSON.stringify(cap6 && cap6.fields));
+    && cap6.fields.planwork === LIST.plan && cap6.fields.resultwork === MEET, JSON.stringify(cap6 && cap6.fields));
+  const PK = await A.J('ATW.ctx.projects.slice(0, 2).map(function(x){ return x.key; })');
+  const uidOf = (k) => (/^db-([0-9a-fA-F-]{36})$/.exec(k || '') || [])[1] || '';
+  ok('W6 hours 구조 = 과제투입시간(이름, 공식 과제 uid, 시간)', !!cap6 && same(cap6.hours, [{ name: P[0], projectUid: uidOf(PK[0]), hours: 12.5 }, { name: P[1], projectUid: uidOf(PK[1]), hours: 3 }]), JSON.stringify(cap6 && cap6.hours));
   ok('W6 netcus 명령은 하나도 호스트로 나가지 않았다(두 창)', same(await A.J('__awLoopW.blocked'), []) && same(await M.J('__awLoop.blocked'), []));
   ok('W6 보내는 중에는 창 닫기 요청 = busy', (await A.ev('window.__winCloseRequest()')) === 'busy');
   await A.ev(`window.__netcusResult(false, '시험 실패 회신(루프)'); 1`);
@@ -381,6 +389,7 @@ async function main() {
   const n7 = (await A.J('__awLoopW.log')).length;
   ok('W7 [‹ 목록]을 눌렀다(고친 것 없음, 묻지 않는다)', (await click(A, 'awBack')) === 'ok' && !(await shown(A, 'awAsk')));
   const got7 = await A.waitFor(`ATW.view === 'wlist' && !AWL.loading && !!AWL.from`, 15000);
+  ok('W7 reportWeeklyList(시간 줄 표를 읽는 질의 포함)가 오류 없이 돌아왔다(읽기만)', (await A.ev('AWL.err')) === '');
   ok('W7 창 안의 목록이 보이고 reportWeeklyList 를 읽었다', got7 && (await shown(A, 'awList')) && (await A.J('__awLoopW.log')).slice(n7).some((x) => x.req === 'reportWeeklyList' && x.ok));
   ok('W7 근태 창 목록에는 [일간][주간]이 없다', !(await A.ev(`!!document.querySelector('#awList [data-atkind]')`)));
   const TM = await A.ev('awMonOf(todayYmd())');

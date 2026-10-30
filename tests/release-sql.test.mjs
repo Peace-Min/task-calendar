@@ -10,7 +10,8 @@
 //      마지막 조각 뒤에 멈춘 DB 마무리, 새 DB, 낮은 DB, 이상한 값, v15 회의실 검증 멈춤, v16 과제 캘린더 표 모양 검증 멈춤,
 //      v17 월간보고(칸, CHECK, 그림 표) 검증 멈춤, v18 Git, SVN 삭제(커밋 기록, 커밋 목록 표, 칸과 CHECK) 결과와 검증 멈춤,
 //      v19 과제 순서(칸, 코드표 표 설명, 보이는 과제의 처음 순서) 결과와 검증 멈춤,
-//      v20 주간보고 회의내용(칸 하나, 있는 행은 NULL) 결과와 검증 멈춤,
+//      v20 주간보고 회의내용(칸 하나, 있는 행은 NULL)과 주간 과제투입시간 표(cal_report_weekly_hours, 2026-10-30 결정 14) 결과와 검증 멈춤,
+//      이미 20 인 DB(회의내용 칸만 받은 개발 DB)는 v20 을 건너뛰어 새 표가 생기지 않는다는 것,
 //      실제 사슬 뒤에 시험 조각을 붙인 건너뛴 배포,
 //      그리고 바꾸는 문장마다 실패를 넣어 보고 같은 파일을 다시 돌리면 끝나는지, 그 사이 앱에 반쯤 바뀐 상태(meta 와 표)가 보이지 않는지.
 //   ④ 조각 폴더의 모든 파일이 조각 규칙(§5.2)을 따른다.
@@ -22,7 +23,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, assert, readText } from './harness.mjs';
 import { mutate, exitCodeTable, exitCodesInTable, maskPs } from './ps-guard-lib.mjs';
-import { FakeDb, splitStatements, defOf, PROJECT_V16, PROJECT_V17, PROJECT_V19, VCS_V17, VCS_V18, PREF_COMMENT_V18, CODES_V18, CODES_V19, V19_FILL, WEEKLY_V19, WEEKLY_V20 } from './release-sql-sim.mjs';
+import { FakeDb, splitStatements, defShape, PROJECT_V16, PROJECT_V17, PROJECT_V19, VCS_V17, VCS_V18, PREF_COMMENT_V18, CODES_V18, CODES_V19, V19_FILL, WEEKLY_V19, WEEKLY_V20 } from './release-sql-sim.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const GEN = join(ROOT, 'installer', 'release-sql.ps1');
@@ -114,13 +115,13 @@ const CAL_ROOMS = [
 ];
 const ROOM_CODES = [['회의실A', 10], ['Room b', 20], ['대회의실', 30]];
 //  16 부터는 과제 캘린더 표 둘(cal_project_*)이 있다. 모양(열 수, FK 수)은 정본 schema-calendar.sql 의 정의에서 센다
-//  (흉내 실행기가 v16 조각의 CREATE 에서 세는 것과 같은 함수 defOf). v16 의 검증이 이 모양을 information_schema 로 다시 본다.
+//  (흉내 실행기가 v16 조각의 CREATE 에서 세는 것과 같은 함수 defShape). v16 의 검증이 이 모양을 information_schema 로 다시 본다.
 const PC_TABLES = ['cal_project_event', 'cal_project_change'];
 const CANON_CAL = readText(join(ROOT, 'db', 'deploy', 'schema-calendar.sql'));
 const PC_DEFS = Object.fromEntries(PC_TABLES.map((n) => {
   const i = CANON_CAL.indexOf(`CREATE TABLE ${n} (`);
   assert.ok(i >= 0, `정본에 ${n} 가 없다`);
-  return [n, defOf(CANON_CAL.slice(i, CANON_CAL.indexOf(';', CANON_CAL.indexOf(') ENGINE=', i))))];
+  return [n, defShape(CANON_CAL.slice(i, CANON_CAL.indexOf(';', CANON_CAL.indexOf(') ENGINE=', i))))];
 }));
 //  17 부터는 월간보고 그림 표(project_schedule_image)와 project.dev_start_date(end_date 뒤), CHECK chk_project_dev_dates 가 있다.
 //  그림 표 모양도 정본 schema-calendar.sql 의 정의에서 같은 함수로 센다.
@@ -128,7 +129,7 @@ const SI_TABLE = 'project_schedule_image';
 const SI_DEFS = (() => {
   const i = CANON_CAL.indexOf(`CREATE TABLE ${SI_TABLE} (`);
   assert.ok(i >= 0, `정본에 ${SI_TABLE} 가 없다`);
-  return { [SI_TABLE]: defOf(CANON_CAL.slice(i, CANON_CAL.indexOf(';', CANON_CAL.indexOf(') ENGINE=', i)))) };
+  return { [SI_TABLE]: defShape(CANON_CAL.slice(i, CANON_CAL.indexOf(';', CANON_CAL.indexOf(') ENGINE=', i)))) };
 })();
 //  18 부터는 Git, SVN 이 없다(v18 조각): 커밋 기록(cal_entry.source = 'git')과 그 자식 행, cal_entry_commit 표,
 //  cal_entry.source, cal_category.uses_repo, cal_user_pref 의 작성자와 커밋 본문 칸, 그 CHECK 넷. 17 까지의 DB 에는
@@ -163,6 +164,14 @@ const WEEKLY_ROWS19 = () => [
   { user_id: 1, period_start: '2026-10-12' }, { user_id: 1, period_start: '2026-10-19' }, { user_id: 2, period_start: '2026-10-19' },
 ];
 const WEEKLY_ROWS20 = () => WEEKLY_ROWS19().map((r) => ({ ...r, meeting: null }));
+//  20 부터는 주간 과제투입시간 표(cal_report_weekly_hours)도 있다(같은 v20 조각, 2026-10-30 결정 14). 빈 표로 생긴다(옮길 데이터 없음).
+//  모양(열 수, FK 수, 기본 키 열 수, CHECK 이름, FK 대상과 규칙)은 정본 schema-calendar.sql 의 정의에서 같은 함수 defShape 로 센다.
+const WH_TABLE = 'cal_report_weekly_hours';
+const WH_DEFS = (() => {
+  const i = CANON_CAL.indexOf(`CREATE TABLE ${WH_TABLE} (`);
+  assert.ok(i >= 0, `정본에 ${WH_TABLE} 가 없다`);
+  return { [WH_TABLE]: defShape(CANON_CAL.slice(i, CANON_CAL.indexOf(';', CANON_CAL.indexOf(') ENGINE=', i)))) };
+})();
 const T = {
   old: () => ({ cal_room: CAL_ROOMS, ...VCS_ROWS17() }),
   shared: () => ({ room_code: ROOM_CODES.map(([name, sort_order]) => ({ name, sort_order })) }),
@@ -181,8 +190,9 @@ const S = {
       ...(Number(n) >= 18 ? VCS_ROWS18() : VCS_ROWS17()),
       project: Number(n) >= 19 ? PROJ_ROWS19() : PROJ_ROWS18(),
       cal_report_weekly: Number(n) >= 20 ? WEEKLY_ROWS20() : WEEKLY_ROWS19(),
+      ...(Number(n) >= 20 ? { [WH_TABLE]: [] } : {}),
     },
-    defs: Number(n) >= 17 ? { ...PC_DEFS, ...SI_DEFS } : Number(n) >= 16 ? PC_DEFS : {},
+    defs: Number(n) >= 20 ? { ...PC_DEFS, ...SI_DEFS, ...WH_DEFS } : Number(n) >= 17 ? { ...PC_DEFS, ...SI_DEFS } : Number(n) >= 16 ? PC_DEFS : {},
     project: Number(n) >= 19 ? PROJECT_V19() : Number(n) >= 17 ? PROJECT_V17() : PROJECT_V16(),
     vcs: Number(n) >= 18 ? VCS_V18() : VCS_V17(),
     codes: Number(n) >= 19 ? CODES_V19() : CODES_V18(),
@@ -194,8 +204,8 @@ const stateOf = (init) => open(init).state();
 const finalMeta = (n) => ({ db_structure_version: String(n), db_updating: '0', app_latest_version: VER, app_installer_file: FILE, app_installer_sha256: SHA });
 //  끝 상태(meta 와 표): 공용 회의실 목록 하나, cal_room 없음, 과제 캘린더 표 둘과 그림 표(정본과 같은 모양), project 에 개발 시작일 칸과 CHECK,
 //  일반 일정과 예외일만(커밋 기록, cal_entry_commit, 지울 칸과 CHECK 없음, cal_user_pref 표 설명은 18),
-//  과제에 순서 칸과 처음 순서(보이는 과제만), 코드표 표 설명은 19, 주간보고에 회의내용 칸(있던 행은 NULL)
-const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si(), ...VCS_ROWS18(), project: PROJ_ROWS19(), cal_report_weekly: WEEKLY_ROWS20() }, defs: { ...PC_DEFS, ...SI_DEFS }, project: PROJECT_V19(), vcs: VCS_V18(), codes: CODES_V19(), weekly: WEEKLY_V20() }).state();
+//  과제에 순서 칸과 처음 순서(보이는 과제만), 코드표 표 설명은 19, 주간보고에 회의내용 칸(있던 행은 NULL), 주간 과제투입시간 표(빈 표, 정본 모양)
+const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si(), ...VCS_ROWS18(), project: PROJ_ROWS19(), cal_report_weekly: WEEKLY_ROWS20(), [WH_TABLE]: [] }, defs: { ...PC_DEFS, ...SI_DEFS, ...WH_DEFS }, project: PROJECT_V19(), vcs: VCS_V18(), codes: CODES_V19(), weekly: WEEKLY_V20() }).state();
 const FINAL_TABLES = FINAL_DB['#tables'];
 const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES, '#project': FINAL_DB['#project'], '#vcs': FINAL_DB['#vcs'], '#codes': FINAL_DB['#codes'], '#weekly': FINAL_DB['#weekly'] });
 const sortObj = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
@@ -336,9 +346,10 @@ const checks = {
     //  v19: 순서 칸, 코드표 표 설명 둘, 처음 순서 채우기 순서이고 v18 뒤다
     const iOrd = ['col:project.sort_no', 'comment:section_code', 'comment:status_code', 'table:project'].map((k) => db.writes.findIndex((w) => w.k === k));
     assert.ok(iOrd[0] > iGit[iGit.length - 1] && iOrd.every((x, k) => k === 0 || x > iOrd[k - 1]), `v19(칸, 표 설명, 순서 채우기)가 v18 뒤에 차례로 돌지 않는다: ${iOrd}`);
-    //  v20: 회의내용 칸이고 v19 뒤다
+    //  v20: 회의내용 칸, 주간 과제투입시간 표 순서이고 v19 뒤다
     const iMeet = db.writes.findIndex((w) => w.k === 'col:cal_report_weekly.meeting');
-    assert.ok(iMeet > iOrd[iOrd.length - 1], `v20(회의내용 칸)이 v19 뒤에 돌지 않는다: ${iMeet}`);
+    const iWh = db.writes.findIndex((w) => w.k === `table:${WH_TABLE}`);
+    assert.ok(iMeet > iOrd[iOrd.length - 1] && iWh > iMeet, `v20(회의내용 칸, 주간 시간 표)이 v19 뒤에 차례로 돌지 않는다: ${iMeet}, ${iWh}`);
     assertNoHalfOpen(db, stateOf(init), finalState(APP), '13 에서 처음');
     //  성공 뒤 다시 돌리면 바뀌는 것이 없다
     const n = db.writes.length, before = db.stamps(), shape = db.state();
@@ -561,8 +572,8 @@ const checks = {
     assert.ok(r.ok, `19 에서 20 으로 올리는 배포가 끝나지 않는다: ${JSON.stringify(r)}`);
     assert.deepStrictEqual(db.weekly, WEEKLY_V20(), `cal_report_weekly 모양이 정본(v20, plan 뒤 meeting)과 다르다: ${JSON.stringify(db.weekly)}`);
     assert.deepStrictEqual(db.tables.cal_report_weekly, WEEKLY_ROWS20(), `있던 주간보고 행이 그대로가 아니거나 meeting 이 NULL 이 아니다: ${JSON.stringify(db.tables.cal_report_weekly)}`);
-    assert.deepStrictEqual(db.writes.filter((w) => w.k.startsWith('col:') || w.k.startsWith('table:')).map((w) => w.k), ['col:cal_report_weekly.meeting'],
-      '19 에서 올리는데 회의내용 칸 말고 다른 표나 칸을 바꿨다(앞 조각이 건너뛰지 않았다)');
+    assert.deepStrictEqual(db.writes.filter((w) => w.k.startsWith('col:') || w.k.startsWith('table:')).map((w) => w.k), ['col:cal_report_weekly.meeting', `table:${WH_TABLE}`],
+      '19 에서 올리는데 회의내용 칸과 주간 시간 표 말고 다른 표나 칸을 바꿨다(앞 조각이 건너뛰지 않았다)');
     //  다시 돌려도 바뀌는 것이 없다(조각은 건너뛰고 열기는 같은 값이라 0행)
     const n = db.writes.length, shape = db.state();
     assert.ok(db.run(sql).ok, '19 에서 올린 뒤 다시 돌리면 끝나야 한다');
@@ -578,7 +589,47 @@ const checks = {
     assert.strictEqual(db.meta().db_structure_version, '19', `${label}: v20 검증에서 멈췄는데 구조 번호가 올라갔다`);
     assertNoHalfOpen(db, stateOf(mk()), null, `v20 검증 멈춤(${label})`);
   },
+  // v20 결과(결정 14): 주간 과제투입시간 표가 정본 모양(열, 기본 키, FK 대상과 CASCADE, CHECK)의 빈 표로 생기고, 다시 돌려도 그대로다
+  weeklyHoursAdded(sql) {
+    const db = open(S.at(19));
+    assert.ok(!db.hasTable(WH_TABLE), '출발 상태(19)에 주간 시간 표가 이미 있다(판정 불가)');
+    const r = db.run(sql);
+    assert.ok(r.ok, `19 에서 20 으로 올리는 배포가 끝나지 않는다: ${JSON.stringify(r)}`);
+    assert.ok(db.hasTable(WH_TABLE), '19 에서 20 으로 올렸는데 주간 과제투입시간 표가 없다');
+    assert.deepStrictEqual(db.defs[WH_TABLE], WH_DEFS[WH_TABLE], `주간 시간 표 모양이 정본과 다르다: ${JSON.stringify(db.defs[WH_TABLE])}`);
+    assert.deepStrictEqual(db.tables[WH_TABLE], [], '새 주간 시간 표에 행이 있다(옮길 데이터가 없어야 한다)');
+    const n = db.writes.length, shape = db.state();
+    assert.ok(db.run(sql).ok, '19 에서 올린 뒤 다시 돌리면 끝나야 한다');
+    assert.strictEqual(db.writes.length, n, `다시 돌렸는데 ${db.writes.length - n}행을 바꿨다`);
+    assert.ok(same(db.state(), shape), '다시 돌렸는데 표나 칸이 바뀌었다');
+  },
+  // 이미 20 인 DB(2026-10-29 에 회의내용 칸만 받은 개발 PC DB): v20 은 건너뛰므로 주간 시간 표를 만들지 않는다.
+  //   그 DB 는 일회용 SQL(dist/rehearsal/apply-v20b-dev.sql)로 표만 만든다. 이 시험은 그 일회용 SQL 이 왜 필요한지를 박아 둔다.
+  at20Skips(sql) {
+    const init = S.at(20);
+    delete init.tables[WH_TABLE];
+    delete init.defs[WH_TABLE];
+    const db = open(init);
+    const r = db.run(sql);
+    assert.ok(r.ok, `이미 20 인 DB 에서 배포 SQL 이 끝나지 않는다: ${JSON.stringify(r)}`);
+    assert.ok(!db.hasTable(WH_TABLE), '이미 20 인 DB 에서 v20 이 건너뛰지 않고 주간 시간 표를 만들었다');
+    assert.ok(!db.writes.some((w) => w.k === 'db_updating' || w.k.startsWith('table:') || w.k.startsWith('col:')), '이미 20 인 DB 에서 닫거나 표, 칸을 바꿨다');
+  },
 };
+//  v20 검증이 잡아야 하는 주간 시간 표 모양(같은 이름의 다른 표가 이미 있음). 19 에서 출발한다.
+const whBad = (label, patch) => [label, () => {
+  const x = S.at(19);
+  x.tables[WH_TABLE] = [];
+  x.defs = { ...x.defs, [WH_TABLE]: { ...WH_DEFS[WH_TABLE], ...patch } };
+  return x;
+}];
+const V20_WH_BAD_SHAPES = [
+  whBad('주간 시간 표 열 수가 다름', { cols: 5 }),
+  whBad('주간 시간 표 기본 키가 (user_id, period_start) 뿐', { pk: 2 }),
+  whBad('주간 시간 표 FK 가 없음', { fks: 0, refs: [] }),
+  whBad('주간 시간 표 FK 가 RESTRICT', { refs: ['cal_report_weekly:RESTRICT:RESTRICT'] }),
+  whBad('주간 시간 표 CHECK 가 없음', { checks: [] }),
+];
 //  v20 검증이 잡아야 하는 출발 모양(같은 이름의 다른 칸)
 const V20_BAD_SHAPES = [
   ['회의내용 칸 형이 다름(TEXT)', () => { const x = S.at(19); x.weekly.cols.splice(x.weekly.cols.indexOf('plan:mediumtext') + 1, 0, 'meeting:text?'); return x; }],
@@ -730,6 +781,30 @@ test('배포SQL③m4: 흉내 실행기의 주간보고 모양(WEEKLY_V20)과 v20
     'v20 검증이 칸의 형(mediumtext, NULL 허용)과 자리(plan 바로 뒤)를 보지 않는다');
   assert.ok(!/\bUPDATE cal_report_weekly\b/i.test(frag), 'v20 조각이 있던 주간보고 행을 고친다(칸만 더해야 한다)');
 });
+test('배포SQL③n: 19 에서 20 으로 올리면 주간 과제투입시간 표가 정본 모양(열 6, 기본 키 3열, cal_report_weekly 로 CASCADE FK, CHECK)의 빈 표로 생기고 다시 돌려도 그대로다', () =>
+  checks.weeklyHoursAdded(realSql()));
+test('배포SQL③n2: v20 검증이 맞지 않으면(같은 이름 주간 시간 표의 열, 기본 키, FK, CHECK 가 다름) 닫힌 채 멈추고 구조 번호를 올리지 않는다', () => {
+  for (const [label, mk] of V20_WH_BAD_SHAPES) checks.meetingVerify(realSql(), label, mk);
+});
+test('배포SQL③n3: 이미 20 인 DB 는 v20 을 건너뛰어 주간 시간 표가 생기지 않는다(개발 DB 는 일회용 SQL 로 따로 만든다)', () =>
+  checks.at20Skips(realSql()));
+test('배포SQL③n4: 주간 과제투입시간 표의 정의가 정본 schema-calendar.sql 과 v20 조각에서 글자까지 같고, 조각은 @go 일 때만 IF NOT EXISTS 로 만든다', () => {
+  const canon = /CREATE TABLE cal_report_weekly_hours \(([\s\S]*?\) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci\s+COMMENT='[^']*')/.exec(CANON_CAL);
+  assert.ok(canon, '정본에서 cal_report_weekly_hours 정의를 찾지 못했다(판정 불가)');
+  assert.ok(!/--/.test(canon[1]), '정본 정의 안에 -- 주석이 있다(조각 문자열과 글자로 맞출 수 없다)');
+  const frag = readText(join(FRAG_DIR, 'v20-weekly-meeting.sql'));
+  const f = /SET @s := IF\(@go,\n  'CREATE TABLE IF NOT EXISTS cal_report_weekly_hours \(([\s\S]*?\) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci\s+COMMENT=''(?:[^']|'')*'')',\n  'DO 0'\);\nPREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;/.exec(frag);
+  assert.ok(f, 'v20 조각에 주간 시간 표를 @go 일 때만 IF NOT EXISTS 로 만드는 PREPARE 가 없다');
+  assert.strictEqual(f[1].replace(/''/g, "'"), canon[1], 'v20 조각의 주간 시간 표 정의가 정본과 글자까지 같지 않다');
+  //  검증의 기대값이 정본 정의에서 센 모양과 같다
+  const d = WH_DEFS[WH_TABLE];
+  assert.ok(frag.includes(`(@m_hc = ${d.cols} AND @m_hp = ${d.pk} AND @m_hf = ${d.fks} AND @m_hr = 1 AND @m_hk = 1)`), `v20 검증의 기대값이 정본 정의(열 ${d.cols}, 기본 키 ${d.pk}, FK ${d.fks})와 다르다`);
+  assert.deepStrictEqual(d.refs, ['cal_report_weekly:CASCADE:CASCADE'], `정본 주간 시간 표의 FK 가 cal_report_weekly 로 CASCADE 하나가 아니다: ${d.refs}`);
+  assert.ok(frag.includes("REFERENCED_TABLE_NAME = 'cal_report_weekly' AND DELETE_RULE = 'CASCADE' AND UPDATE_RULE = 'CASCADE'"), 'v20 검증이 FK 의 대상과 규칙을 보지 않는다');
+  for (const c of d.checks) assert.ok(frag.includes(`AND CONSTRAINT_NAME = '${c}' AND CONSTRAINT_TYPE = 'CHECK'`), `v20 검증이 CHECK ${c} 를 보지 않는다`);
+  const code = frag.split('\n').filter((l) => !/^\s*--/.test(l)).join('\n');
+  assert.ok(!/\bGRANT\b/i.test(code), 'v20 조각이 GRANT 를 한다(배포 SQL 은 권한을 줄 수 없다)');
+});
 test(`배포SQL③i: 건너뛴 배포(13, 14, ${APP} 에서 ${NEXT})는 조각을 차례로 돌리고, 어디서 실패해도 다시 돌리면 끝난다`, () => {
   checks.extended(extSql());
   checks.faults(extSql(), S.legacy13, NEXT, `13 에서 ${NEXT}`);
@@ -873,6 +948,18 @@ test('변이R26: v20 이 칸이 있는지 보지 않고 늘 더하면 중간 실
 test('변이R27: v20 이 칸을 다른 자리(plan 앞)에 더하면 ③m 이 실패한다(검증에서 멈춘다)', () => {
   const bad = mutate(realSql(), 'ADD COLUMN meeting MEDIUMTEXT NULL AFTER plan,', 'ADD COLUMN meeting MEDIUMTEXT NULL AFTER endwork,');
   assert.throws(() => checks.meetingAdded(bad), /끝나지 않는다/);
+});
+test('변이R28: v20 의 주간 시간 표 검증을 끄면(같은 이름의 다른 모양 표) ③n2 가 실패한다', () => {
+  const bad = mutate(realSql(), 'SET @g := IF(NOT @go OR (@m_hc = ', 'SET @g := IF(1 OR (@m_hc = ');
+  for (const [, mk] of V20_WH_BAD_SHAPES) assert.throws(() => checks.meetingVerify(bad, '검증 끔', mk), /멈추지 않았다/);
+});
+test('변이R29: v20 이 IF NOT EXISTS 없이 주간 시간 표를 만들면 중간 실패 뒤 재실행이 멈춘다(③g 실패)', () => {
+  const bad = mutate(realSql(), "'CREATE TABLE IF NOT EXISTS cal_report_weekly_hours (", "'CREATE TABLE cal_report_weekly_hours (");
+  assert.throws(() => checks.faults(bad, () => S.at(19), APP, '19 에서'), /모르는 문장|다시 돌려도 끝나지 않는다/);
+});
+test('변이R30: v20 이 주간 시간 표를 만들지 않으면 ③n 이 실패한다(검증에서 멈춘다)', () => {
+  const bad = mutate(realSql(), "SET @s := IF(@go,\n  'CREATE TABLE IF NOT EXISTS cal_report_weekly_hours (", "SET @s := IF(0,\n  'CREATE TABLE IF NOT EXISTS cal_report_weekly_hours (");
+  assert.throws(() => checks.weeklyHoursAdded(bad), /끝나지 않는다/);
 });
 test('변이R20: v18 이 CHECK 보다 칸을 먼저 지우면 17 에서 올리는 배포가 멈춘다(③j 실패, MySQL 3959)', () => {
   const sql = realSql();

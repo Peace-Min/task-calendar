@@ -926,7 +926,9 @@ namespace TaskCalendarWidget
                         _ = _netcus.WeekFill(GetStr(doc, "sdate"), GetStr(doc, "edate"), GetStr(doc, "subject"),
                             GetStr(doc, "content"), GetStr(doc, "endwork"), GetStr(doc, "planwork"),
                             //  resultwork = 회의내용(결정 13). 칸이 없으면 null(보고서 창의 옛 전송): 인트라넷의 회의내용을 빈 값으로 덮지 않는다
-                            doc.RootElement.TryGetProperty("resultwork", out var rw) && rw.ValueKind == JsonValueKind.String ? (rw.GetString() ?? "") : null);   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
+                            doc.RootElement.TryGetProperty("resultwork", out var rw) && rw.ValueKind == JsonValueKind.String ? (rw.GetString() ?? "") : null,
+                            //  hours = 과제투입시간 구조(결정 14). 배열일 때만 넘긴다(없으면 null: 그 주의 시간 줄을 건드리지 않는다)
+                            doc.RootElement.TryGetProperty("hours", out var whEl) && whEl.ValueKind == JsonValueKind.Array ? whEl.GetRawText() : null);   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
                         break;
                     case "netcusWeekMerge":   // 주간보고 병합(Phase2) — 기간 일간보고 content를 '읽기만' 해서 reqId로 회신
                     {
@@ -2484,14 +2486,15 @@ namespace TaskCalendarWidget
             return ok;
         }
 
-        void INetcusHost.SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork, string? meeting)
+        void INetcusHost.SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork, string? meeting, string? hoursJson)
         {
             string? loginId = CurrentLoginId();
+            var hours = hoursJson == null ? null : ParseWeeklyHoursJson(hoursJson);
             var db = new ReportDb(Log);
             _ = Task.Run(() => SaveReportRecordWithRetryAsync("weekly", sdate, db,   // 실패 시 10·30·60초 재시도(OfflineHost.cs · S10)
                 async () =>
                 {
-                    bool ok = await db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork, meeting);
+                    bool ok = await db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork, meeting, hours);
                     //  기록이 커밋된 뒤에만 알린다(결정 13): 웹은 그 주 임시 저장을 지우고 목록 상태를 완료로 바꾼다.
                     //    폼 채우기 성공 회신만 보고 지우면, 기록이 끝내 실패했을 때 글이 어디에도 남지 않는다.
                     if (ok) ReportPush("window.__reportWeeklySaved && window.__reportWeeklySaved(" + JsonSerializer.Serialize(new { periodStart = sdate }) + ")");
@@ -2750,6 +2753,43 @@ namespace TaskCalendarWidget
                 }
             }
             catch (Exception ex) { Log("보고 시간줄 파싱 실패(본문 기록은 계속한다): " + ex.Message); }
+            return list;
+        }
+
+        //  웹이 보낸 주간 과제투입시간 배열 → WeeklyHourLine 목록(결정 14). ParseHoursJson 과 같은 원칙이다:
+        //    값이 들어오는 여기서 거른다(과제명 1~200자, 시간 0 초과 168 이하, 공식 과제 id 는 36자 uuid 꼴만, 아니면 개인 과제 null).
+        //    줄 하나가 CHECK 나 칸 폭에 걸리면 그 주 기록 트랜잭션 전체가 롤백되므로 그 줄만 버리고 로그를 남긴다. 파싱 실패는 빈 목록이다.
+        private List<WeeklyHourLine> ParseWeeklyHoursJson(string? json)
+        {
+            var list = new List<WeeklyHourLine>();
+            if (string.IsNullOrWhiteSpace(json)) return list;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.ValueKind != JsonValueKind.Array) return list;
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    if (el.ValueKind != JsonValueKind.Object) continue;
+                    string name = (el.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? (n.GetString() ?? "") : "").Trim();
+                    if (name.Length == 0) continue;
+                    if (name.Length > 200) { Log("주간 시간줄 제외(과제명 200자 초과): " + name.Substring(0, 40) + "…"); continue; }
+                    decimal h = 0m;
+                    if (el.TryGetProperty("hours", out var hv))
+                    {
+                        if (hv.ValueKind == JsonValueKind.Number) hv.TryGetDecimal(out h);
+                        else if (hv.ValueKind == JsonValueKind.String) decimal.TryParse(hv.GetString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out h);
+                    }
+                    if (!ReportDb.WeeklyHoursInDomain(h))
+                    {
+                        if (h != 0m) Log("주간 시간줄 제외(허용 범위 0 초과 ~ 168 이하 밖): " + name + " " + h.ToString(System.Globalization.CultureInfo.InvariantCulture) + "시간");
+                        continue;   // 0 시간은 기록할 것이 없다(로그도 남기지 않는다)
+                    }
+                    string uid = el.TryGetProperty("projectUid", out var u) && u.ValueKind == JsonValueKind.String ? (u.GetString() ?? "").Trim() : "";
+                    if (uid.Length > 0 && !ReportDb.ProjectUidOk(uid)) { Log("주간 시간줄: 공식 과제 id 꼴이 아니라 개인 과제로 남긴다: " + name); uid = ""; }
+                    list.Add(new WeeklyHourLine { TaskName = name, ProjectUid = uid.Length > 0 ? uid : null, Hours = h });
+                }
+            }
+            catch (Exception ex) { Log("주간 시간줄 파싱 실패(본문 기록은 계속한다): " + ex.Message); }
             return list;
         }
 

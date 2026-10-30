@@ -29,6 +29,15 @@ namespace TaskCalendarWidget
         public decimal Hours;
     }
 
+    //  주간 과제투입시간 한 줄(cal_report_weekly_hours, 결정 14). 맨먼스 집계의 원천이다.
+    //    ProjectUid = 공식 과제 id(project.uid, 36자). 개인 과제는 null. 과제 이름이 바뀌어도 사람 사이 합산이 끊기지 않게 id 를 함께 남긴다.
+    internal sealed class WeeklyHourLine
+    {
+        public string TaskName = "";
+        public string? ProjectUid;
+        public decimal Hours;
+    }
+
     // ================================================================================
     //  ReportDb — 보고 기록 쓰기 (설계 §5.9)
     //  (2026-10-29 부터 일간 보고 목록 읽기도 여기 있다. ATTENDANCE-PLAN §3.2, 아래 공개 API 3)
@@ -65,6 +74,13 @@ namespace TaskCalendarWidget
         //     저장 직전의 마지막 관문)에 **숫자까지 두 벌** 적혀 있었다. 한쪽만 고치면 두 관문이 갈린다.
         //     판정은 여기 한 줄이고, 두 곳은 이것을 부른다(문구·로그는 각자 자기 자리의 말로 남긴다).
         internal static bool HoursInDomain(decimal h) => h > 0m && h <= 24m;
+
+        //  주간 과제투입시간의 허용 범위(chk_crwh_hours: 0 초과 168 이하). 0 은 '기록할 것이 없다' 라 남기지 않는다(일간과 같다).
+        //  판정은 이 한 곳에만 둔다. 들어오는 자리(MainWindow.ParseWeeklyHoursJson)와 저장 직전이 같은 함수를 쓴다.
+        internal static bool WeeklyHoursInDomain(decimal h) => h > 0m && h <= 168m;
+        //  공식 과제 id 꼴(project.uid, 8-4-4-4-12 의 36자). 그 밖의 값은 개인 과제(null)로 남긴다.
+        internal static bool ProjectUidOk(string? s) =>
+            s != null && System.Text.RegularExpressions.Regex.IsMatch(s, "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
         //  마지막 저장이 **예외로** 실패했으면 그 원문 한 줄(DbErrors.Detail), 성공·건너뜀이면 null.
         //  ★ false 하나로는 '실패'와 '건너뜀(로그인 없음·빈 본문)'을 못 가른다 — 재시도(S10)는 앞쪽만 한다.
@@ -233,10 +249,14 @@ namespace TaskCalendarWidget
         //   사용자가 폼에서 보완한 내용(notendwork·problem·차주계획 보완분)은 여기 담기지 않는다.
         //   meeting(회의내용, 구조 20, ATTENDANCE-PLAN §13.3): 남기지 않으면 완료한 주를 다시 열 때 빈칸이 되고,
         //   그대로 다시 보내면 인트라넷의 회의내용을 빈칸으로 덮어쓴다(결정 13). 그래서 폼에 채운 값을 같이 남긴다.
+        //   hours(결정 14): 과제투입시간 줄을 cal_report_weekly_hours 에 **같은 트랜잭션**으로 쓴다. 그 주의 줄을 지우고 다시 넣는다
+        //   (다시 보내면 줄 구성이 바뀔 수 있어 행 단위 UPSERT 로는 사라진 줄이 남는다. SaveDailyAsync 와 같다). 0 시간 줄은 남기지 않는다.
         public async Task<bool> SaveWeeklyAsync(
             string? loginId, string? sdate, string? edate,
-            string? subject, string? content, string? endwork, string? plan, string? meeting)
+            string? subject, string? content, string? endwork, string? plan, string? meeting,
+            IReadOnlyList<WeeklyHourLine>? hours = null)
             //  meeting null = 이 요청은 회의내용을 다루지 않았다(보고서 창의 옛 주간 전송). 새 행은 NULL, 있던 행은 그 값을 그대로 둔다.
+            //  hours null = 이 요청은 과제투입시간 줄을 다루지 않았다(같은 옛 전송). 그 주의 줄을 그대로 둔다.
         {
             LastFailure = null;
             var ps = ParseDate(sdate);
@@ -251,7 +271,9 @@ namespace TaskCalendarWidget
                 await using var conn = await OpenWriteAsync(cts.Token);
                 int userId = await ResolveUserIdAsync(conn, loginId, cts.Token);
 
+                await using var tx = await conn.BeginTransactionAsync(cts.Token);
                 await using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
                 cmd.CommandText =
                     "INSERT INTO cal_report_weekly " +
                     "(user_id, period_start, period_end, subject, content, endwork, plan, meeting, composed_at) " +
@@ -269,8 +291,50 @@ namespace TaskCalendarWidget
                 cmd.Parameters.AddWithValue("@at", DateTime.UtcNow);
                 await cmd.ExecuteNonQueryAsync(cts.Token);
 
+                //  과제투입시간 줄(결정 14): 그 주를 비우고 다시 넣는다. 부모 행(위 UPSERT)과 한 트랜잭션이라 반쯤 쓴 상태가 남지 않는다.
+                int written = -1;
+                if (hours != null)
+                {
+                    await using (var del = conn.CreateCommand())
+                    {
+                        del.Transaction = tx;
+                        del.CommandText = "DELETE FROM cal_report_weekly_hours WHERE user_id=@u AND period_start=@s";
+                        del.Parameters.AddWithValue("@u", userId);
+                        del.Parameters.AddWithValue("@s", ps.Value);
+                        await del.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    await using var ins = conn.CreateCommand();
+                    ins.Transaction = tx;
+                    var sb = new StringBuilder("INSERT INTO cal_report_weekly_hours (user_id, period_start, line_no, task_name, project_uid, hours) VALUES ");
+                    int lineNo = 0;
+                    foreach (var h in hours)
+                    {
+                        if (h == null) continue;
+                        string name = (h.TaskName ?? "").Trim();
+                        if (name.Length == 0 || name.Length > 200) continue;      // 칸 폭 밖은 들어오는 자리에서 이미 걸렀다. 여기서 한 번 더(CHECK 와 1406 이 트랜잭션 전체를 죽이지 않게)
+                        if (!WeeklyHoursInDomain(h.Hours)) continue;                // 0 시간과 범위 밖은 남기지 않는다(chk_crwh_hours)
+                        if (lineNo > 0) sb.Append(',');
+                        sb.Append("(@u, @s, @l").Append(lineNo).Append(", @n").Append(lineNo).Append(", @p").Append(lineNo).Append(", @h").Append(lineNo).Append(')');
+                        ins.Parameters.AddWithValue("@l" + lineNo, lineNo);
+                        ins.Parameters.AddWithValue("@n" + lineNo, name);
+                        ins.Parameters.AddWithValue("@p" + lineNo, ProjectUidOk(h.ProjectUid) ? h.ProjectUid : (object)DBNull.Value);
+                        ins.Parameters.AddWithValue("@h" + lineNo, decimal.Round(h.Hours, 2));
+                        lineNo++;
+                    }
+                    if (lineNo > 0)
+                    {
+                        ins.Parameters.AddWithValue("@u", userId);
+                        ins.Parameters.AddWithValue("@s", ps.Value);
+                        ins.CommandText = sb.ToString();
+                        await ins.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    written = lineNo;
+                }
+
+                await tx.CommitAsync(cts.Token);
                 _log("보고 기록 저장: 주간 " + ps.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) +
-                     " ~ " + pe.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " (user_id=" + userId + ")");
+                     " ~ " + pe.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " (user_id=" + userId +
+                     (written >= 0 ? " · 시간줄 " + written + "건" : " · 시간줄 그대로") + ")");
                 return true;
             }
             catch (Exception ex)
@@ -343,7 +407,8 @@ namespace TaskCalendarWidget
         //   이 앱으로 작성한 주만 있다(인트라넷에 직접 쓴 주는 [인트라넷에서 확인]으로 본다).
         //   사람은 호스트가 세션에서 읽어 넘긴다(payload 의 me 를 믿지 않는다). 기간은 period_start 기준 from 이상 to 이하,
         //   ListMaxDays 일까지(일간과 같은 상한. 목록 한 해치면 넉넉하다).
-        //   반환: [{periodStart, periodEnd, subject, content, endwork, plan, meeting, composedAt}] (최근 주가 위) / 실패나 잘못된 인자는 null.
+        //   반환: [{periodStart, periodEnd, subject, content, endwork, plan, meeting, composedAt, hours?}] (최근 주가 위) / 실패나 잘못된 인자는 null.
+        //   hours = [{name, projectUid, hours}](결정 14, 과제투입시간 줄). 시간 표가 없는 DB 에서는 이 키가 없다.
         //   meeting 이 NULL 인 행(구조 20 전에 작성한 주)은 빈 글로 준다.
         public async Task<List<Dictionary<string, object?>>?> ListWeeklyAsync(string? loginId, DateTime from, DateTime to)
         {
@@ -383,6 +448,39 @@ namespace TaskCalendarWidget
                         });
                     }
                 }
+                //  과제투입시간 줄(결정 14). 같은 기간을 한 번 더 읽어 주마다 hours:[{name, projectUid, hours}] 로 붙인다(줄 순서).
+                //  ★ 이 표가 아직 없는 DB(구조 20 이지만 v20 보정 전의 개발 DB, 1146)에서는 시간 줄 없이 목록만 돌려준다.
+                //    목록 전체를 실패시키면 주간 화면이 통째로 막힌다. 그때 웹은 과제투입시간을 글(content)에서 되살린다.
+                var byWeek = new Dictionary<string, List<Dictionary<string, object?>>>();
+                try
+                {
+                    await using var hc = conn.CreateCommand();
+                    hc.CommandText =
+                        "SELECT period_start, line_no, task_name, project_uid, hours FROM cal_report_weekly_hours " +
+                        "WHERE user_id=@u AND period_start BETWEEN @f AND @t ORDER BY period_start, line_no";
+                    hc.Parameters.AddWithValue("@u", userId);
+                    hc.Parameters.AddWithValue("@f", from);
+                    hc.Parameters.AddWithValue("@t", to);
+                    await using var hr = await hc.ExecuteReaderAsync(cts.Token);
+                    while (await hr.ReadAsync(cts.Token))
+                    {
+                        string k = hr.GetDateTime(0).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                        if (!byWeek.TryGetValue(k, out var L)) byWeek[k] = L = new List<Dictionary<string, object?>>();
+                        L.Add(new Dictionary<string, object?>
+                        {
+                            ["name"] = hr.IsDBNull(2) ? "" : hr.GetString(2),
+                            ["projectUid"] = hr.IsDBNull(3) ? "" : hr.GetString(3),
+                            ["hours"] = hr.IsDBNull(4) ? 0m : hr.GetDecimal(4),
+                        });
+                    }
+                }
+                catch (MySqlException mex) when (mex.ErrorCode == MySqlErrorCode.NoSuchTable)
+                {
+                    _log("주간보고 목록: 과제투입시간 표(cal_report_weekly_hours)가 없어 시간 줄 없이 돌려준다(개발 DB 보정 전)");
+                    byWeek = null;
+                }
+                foreach (var row in rows)
+                    if (byWeek != null) row["hours"] = byWeek.TryGetValue((string)row["periodStart"]!, out var hl) ? hl : new List<Dictionary<string, object?>>();
                 _log("주간보고 목록: " + from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " ~ " +
                      to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " (user_id=" + userId + ", " + rows.Count + "건)");
                 return rows;

@@ -340,6 +340,7 @@ const NEVER_WIPE = [
   ['cal_report_daily',  '보고한 사실은 캘린더 데이터가 아니다 — 가져오기로 지난 보고 이력이 사라지면 안 된다'],
   ['cal_report_hours',  '위와 같다(cal_report_daily 의 자식)'],
   ['cal_report_weekly', '위와 같다'],
+  ['cal_report_weekly_hours', '위와 같다(cal_report_weekly 의 자식, 주간 과제투입시간)'],
 ];
 
 const c6 = {

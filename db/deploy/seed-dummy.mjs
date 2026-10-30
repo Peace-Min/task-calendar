@@ -964,7 +964,8 @@ function verifyContent(ids) {
   bad10 ? badV('V10', bad10 + '건') : okV('V10');
 }
 
-const PROTECTED_TABLES = ['cal_report_daily', 'cal_report_weekly', 'cal_report_hours',
+//  cal_report_weekly_hours: 주간 과제투입시간(구조 20, 2026-10-30 결정 14). 보고 기록이라 다른 cal_report_* 와 같이 지킨다.
+const PROTECTED_TABLES = ['cal_report_daily', 'cal_report_weekly', 'cal_report_hours', 'cal_report_weekly_hours',
   'cal_migration_log', 'cal_user_pref'];
 
 /** 시딩 전후 대조용 스냅샷. ★ 보호 대상 표는 COUNT(*) 로 '읽기만' 한다(R4 의 예외 — V13 의 근거). */

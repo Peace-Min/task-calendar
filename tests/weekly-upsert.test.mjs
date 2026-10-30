@@ -595,7 +595,7 @@ const checks = {
   //  C5. 수정 경로의 저장은 성공 통지 뒤에 한 번, 실패 경로들보다 뒤에 있다(새 글 경로는 report-wiring ④).
   modifySaveAfterSuccess(cs) {
     const om = openModify(cs);
-    const call = '_host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork);';
+    const call = '_host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);';
     const at = om.indexOf(call);
     assert.ok(at > 0, '수정 경로에서 SaveWeeklyReport 호출을 찾지 못했다. 배선이 끊겼다');
     assert.strictEqual(om.split('_host.SaveWeeklyReport(').length - 1, 1, '수정 경로에서 저장을 두 번 이상 부른다');
@@ -758,7 +758,7 @@ test('주간 고치기 변이 CM9: 수정 화면 채우기가 기간이나 제�
   assert.throws(() => checks.modifyFillsThreeOnly(bad2, txt), /subject 에 요청 값을 쓴다/);
 });
 test('주간 고치기 변이 CM10: 수정 경로의 저장을 지우거나 성공 통지 앞으로 옮기면 C5 가 잡는다', () => {
-  const call = '                    _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork);';
+  const call = '                    _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);';
   assert.ok(svc.includes(call), '수정 경로의 저장 호출(20칸 들여쓰기)을 찾지 못했다');
   const at = svc.lastIndexOf(call);
   const removed = svc.slice(0, at) + '                    // 지워짐' + svc.slice(at + call.length);

@@ -169,7 +169,10 @@ const checks = {
       [/GRANT[^;]*UPDATE[^;]*ON\s+taskmgr\.cal_report_daily/i, 'cal_report_daily UPDATE'],
       [/GRANT[^;]*INSERT[^;]*ON\s+taskmgr\.cal_report_hours/i, 'cal_report_hours INSERT'],
       [/GRANT[^;]*DELETE[^;]*ON\s+taskmgr\.cal_report_hours/i, 'cal_report_hours DELETE(재삽입 계약)'],
-      [/GRANT[^;]*INSERT[^;]*ON\s+taskmgr\.cal_report_weekly/i, 'cal_report_weekly INSERT'],
+      [/GRANT[^;]*INSERT[^;]*ON\s+taskmgr\.cal_report_weekly\s/i, 'cal_report_weekly INSERT'],
+      //  주간 과제투입시간(결정 14): 다시 보내면 그 주의 줄을 지우고 넣는다(일간 cal_report_hours 와 같은 재삽입 계약)
+      [/GRANT[^;]*INSERT[^;]*ON\s+taskmgr\.cal_report_weekly_hours/i, 'cal_report_weekly_hours INSERT'],
+      [/GRANT[^;]*DELETE[^;]*ON\s+taskmgr\.cal_report_weekly_hours/i, 'cal_report_weekly_hours DELETE(재삽입 계약)'],
     ];
     for (const [re, what] of need)
       assert.ok(re.test(sqlText), `grants-calendar.sql 에 ${what} 권한이 없다 — 배선이 ERROR 1142 로 죽는다`);
@@ -220,8 +223,15 @@ const checks = {
       'ParseHoursJson 이 정본 범위 밖 줄을 버리지 않는다(HoursInDomain 을 부르지 않는다) — 그 한 줄이 그 날 저장 전체를 롤백시킨다');
     assert.ok(/if \(!HoursInDomain\(h\.Hours\)\) continue;/.test(rdb),
       'ReportDb 의 마지막 관문이 HoursInDomain 을 부르지 않는다 — 들어오는 자리와 저장하는 자리가 같은 판정을 해야 한다');
-    //     ③ 은 'HoursInDomain 선언 줄을 걷어 내고 나면 범위 숫자가 한 자리도 안 남는가' 로 본다.
-    const rdbElse = rdb.replace(/\n[^\n]*HoursInDomain\(decimal h\)[^\n]*/, '');
+    //     주간 과제투입시간(결정 14)의 판정(WeeklyHoursInDomain)도 정본 chk_crwh_hours 와 글자까지 같아야 한다.
+    const wh = /CONSTRAINT\s+chk_crwh_hours\s+CHECK\s*\(\s*hours\s*>\s*(\d+)\s+AND\s+hours\s*<=\s*(\d+)\s*\)/i.exec(canonText);
+    assert.ok(wh, '정본에서 chk_crwh_hours 의 범위를 읽지 못했다(판정 불가 ≠ 통과)');
+    assert.ok(new RegExp('internal static bool WeeklyHoursInDomain\\(decimal h\\) => h > ' + wh[1] + 'm && h <= ' + wh[2] + 'm;').test(rdb),
+      `주간 공수 판정(ReportDb.WeeklyHoursInDomain)이 정본 범위(${wh[1]} 초과 ~ ${wh[2]} 이하)와 같지 않다`);
+    assert.ok(/if \(!ReportDb\.WeeklyHoursInDomain\(h\)\)/.test(mainCs) && /if \(!WeeklyHoursInDomain\(h\.Hours\)\) continue;/.test(rdb),
+      '주간 시간줄이 들어오는 자리(ParseWeeklyHoursJson)와 저장 직전(SaveWeeklyAsync)에 같은 판정을 하지 않는다');
+    //     ③ 은 '두 판정 선언 줄을 걷어 내고 나면 범위 숫자가 한 자리도 안 남는가' 로 본다.
+    const rdbElse = rdb.replace(/\n[^\n]*HoursInDomain\(decimal h\)[^\n]*/g, '');
     assert.strictEqual([...rdbElse.matchAll(/\bh(?:\.Hours)?\s*(?:<=|>=|<|>)\s*\d/g)].length, 0,
       '공수 범위 숫자가 HoursInDomain 선언 밖에 또 적혀 있다(ReportDb) — 판정은 그 한 줄뿐이어야 한다(R5)');
     assert.strictEqual([...mainCs.matchAll(/\bh(?:\.Hours)?\s*(?:<=|>=|<|>)\s*\d/g)].length, 0,
@@ -340,7 +350,7 @@ test('변이③b: 일간 저장을 기다리지 않거나 결과를 고정 성�
 });
 
 test('변이④: 주간 저장을 채우기 성공 통지 앞으로 옮기면 배선④ 가 실패한다', () => {
-  const call = '                _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork);';   // 회의내용(결정 13)까지
+  const call = '                _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);';   // 회의내용(결정 13)까지
   const msg = '                NetcusResult(true, "주간보고 작성 폼을 채웠습니다';
   assert.ok(netcus.includes(call), '주간 저장 호출을 찾지 못했다');
   const bad = mutate(msg, call + '\n' + msg, netcus).replace(call + '\n', (m, off) => off > netcus.indexOf(msg) ? '' : m);
