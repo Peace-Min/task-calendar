@@ -656,8 +656,10 @@ body.cat-dragging,body.cat-dragging *{cursor:grabbing!important;user-select:none
 .modal .cmv-after .check{margin:0;font-weight:400}
 /* ---------- 과제 추가 창(#catAddModal, docs/TASK-ADD-UX.md D9~D16) ----------
    창 높이를 고정해 탭을 바꿔도 출렁이지 않는다. 공식 탭은 표 한 장(열: 통상명칭, 계약명, 발주처, 상태, 계약기간, 동작)이고
-   구분은 접히는 그룹 머리줄이다. 열 줄이기는 표 칸(.ca-res)의 폭으로 정한다(760px 미만, 400px 미만). */
+   구분은 접히는 그룹 머리줄이다. 열 줄이기는 표 칸(.ca-res)의 폭으로 정한다(680px 미만, 360px 미만). */
 #catAddModal .modal{height:min(600px,92vh)}
+/* 넓은 창에서는 표 칸이 760px 을 넘어 계약명과 계약기간까지 보이게(같은 통상명칭을 계약명으로 가른다). 기본 .modal.wide(720px)로는 늘 가운데 단계였다 */
+#catAddModal .modal.wide{width:min(900px,96vw)}
 .ca-tabs{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--line);flex:none}
 .ca-tabs [role="tab"]{border:0;background:none;padding:9px 12px 8px;cursor:pointer;border-bottom:3px solid transparent;font-family:inherit;font-size:var(--fs-body);font-weight:600;color:var(--muted)}
 .ca-tabs [role="tab"][aria-selected="true"]{color:var(--accent-2);border-bottom-color:var(--accent)}
@@ -669,7 +671,7 @@ body.cat-dragging,body.cat-dragging *{cursor:grabbing!important;user-select:none
 .ca-strow{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;min-width:0}
 .ca-count{margin-left:auto;font-size:var(--fs-meta);color:var(--muted);white-space:nowrap}
 .ca-res{flex:1;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:var(--r-sm);container-type:inline-size}
-.ca-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1.2fr) minmax(0,1fr) 64px 132px 74px;gap:10px;align-items:center;padding:8px 12px}
+.ca-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1.1fr) minmax(0,1fr) 64px 168px 74px;gap:10px;align-items:center;padding:8px 12px}
 .ca-h{position:sticky;top:0;z-index:2;background:var(--dim-bg);border-bottom:1px solid var(--line-2);font-size:var(--fs-micro);font-weight:600;color:var(--muted);padding-top:6px;padding-bottom:6px}
 .ca-h-narrow{display:none}
 .ca-g{display:flex;gap:6px;align-items:center;padding:5px 12px;font-size:var(--fs-meta);font-weight:600;background:var(--dim-bg);border-bottom:1px solid var(--line);cursor:pointer}
@@ -693,14 +695,14 @@ body.cat-dragging,body.cat-dragging *{cursor:grabbing!important;user-select:none
 .ca-empty{padding:14px 12px;color:var(--muted);font-size:var(--fs-body)}
 .modal-foot > .ca-added{flex:1 1 0;min-width:0;font-size:var(--fs-meta);color:var(--muted)}
 .modal-foot > .ca-added ~ .spacer{flex:none}
-@container (max-width:759px){
+@container (max-width:679px){
   .ca-grid{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) 30px 74px}
   .ca-c-ctr,.ca-c-per{display:none}
   .ca-c-st .ca-stx{display:none}
   .ca-c-st{text-align:center}
   .ca-x .x-ctr,.ca-x .x-st,.ca-x .x-per{display:block}
 }
-@container (max-width:399px){
+@container (max-width:359px){
   .ca-grid{grid-template-columns:minmax(0,1fr) 74px}
   .ca-c-cust,.ca-c-st{display:none}
   .ca-sub-cust,.ca-h-narrow{display:block}

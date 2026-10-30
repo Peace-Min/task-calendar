@@ -7,6 +7,10 @@
 
 ---
 
+## 🆕 2026-10-30 (다음 판, 번호는 배포 때): 내 과제 창 정리와 과제 추가 창
+
+배포 뒤 사용자 대부분이 공식 과제를 고르지 않고 과제 이름을 직접 입력했다. 원인이던 화면 구조를 바꿨다. '🏷️ 내 과제'(`#categoryModal`)는 목록만 남기고(아래 입력 폼, `#btnOfficialOpen` 입구 카드 제거) 머리에 [＋ 과제 추가](`#btnCatAdd`)를 둔다. 줄은 ⠿, 색, 이름과 메모, 구분 열(공식, 기본, 일반, 삭제됨), 건수(`catUsageCount`), ⋯ 하나다. ▲▼와 줄 링크 버튼을 걷고 순서는 ⠿ 포인터 끌기와 ⋯ 메뉴(위로, 아래로, 맨 위로, 맨 아래로)로, 둘 다 `moveCategory` 를 거쳐 저장 1회다. 줄 클릭은 새 수정 창(`#catEditModal`), '옮기기'는 '다른 과제와 합치기'(`#catMoveModal`, 체크로 합친 뒤 삭제나 빼기, 별도 확인 창 없음), '기존 과제 재연결'은 '공식 과제로 연결', 공식 과제 '제거'는 '내 캘린더에서 빼기'(묻지 않음, 과제별 시간이 지워질 때만 확인). 새 과제 추가 창(`#catAddModal`)은 탭 둘: 공식 과제는 표 한 장(통상명칭, 계약명, 발주처, 상태, 계약기간, 구분은 그룹 줄, 표 칸 container 680/360px 로 열 줄이기, 줄 펼침에 사업명과 개발 시작, 종료, [추가] 한 번, 이미 있으면 '✓ 내 과제'), 일반 과제는 이름, 색상, 메모. 긴 이름은 두 줄 넘을 때 앞부분 … 끝 8자(`catFitName`). 지운 함수: `catMoveBtnsHtml`, `catMoveDataBtnHtml`, `catSyncMoveBtns`, `catFlash`, `catMoveRow`, `applyCatFormLock`, `resetCatForm`, `saveCatFromForm`, `updateOfficialEntry`. 일반 사용자의 메인 창에서 단독 `#officialModal` 입구가 없어졌다(관리 화면 도킹 그대로). `deleteCategory`, `unsubscribeDbCat`, DB, 호스트 C#, 버전은 그대로다. 시험: 새 `tests/task-add.test.mjs`, 기존 13개 갱신. 기획: [docs/TASK-ADD-UX.md](docs/TASK-ADD-UX.md), 위키 [내 과제와 과제 추가](docs/wiki/내-과제와-과제-추가.md).
+
 ## 🆕 2026-10-30 (다음 판, 번호는 배포 때): 개인 및 다른 사람 일정 주간 보기(과제별 줄)
 
 날짜 제목 옆 [월간 | 주간](`#calViewSeg`, 창마다 `tc_calView`, `tc_peerView`). 월간은 날짜 격자 그대로이고 주간은 과제 탭처럼 과제별 줄 표다(`renderWeekRows`, 월요일 시작, 빈 과제도 줄, 분류 없는 기록은 "분류 없음" 줄). 다른 사람 일정 겹쳐 보기는 같은 DB 과제면 그 줄 안에 내 막대를, 겹치지 않는 내 과제는 굵은 선 아래 내 과제 줄로 둔다. 나란히 보기도 같은 규칙(같은 DB 과제 위에서 양쪽 차선 수 맞춤). 내 일정 겹(`buildMineOverlay`)에 내 과제의 키, 이름, 색(`_cat`)을 더했고 `categoryId` 는 그대로 null 이다. 내 과제 목록은 겹 끝 한 칸(`_mineCats`)으로 와서 `meta.mineCats` 로 프레임에 간다(호스트 C# 그대로). 처음 구현(4316c53)의 "월간 한 줄 크게" 주간은 걷었다. 버전과 DB 는 바꾸지 않는다. 기획: [docs/PERSONAL-PEER-WEEK-VIEW.md](docs/PERSONAL-PEER-WEEK-VIEW.md).

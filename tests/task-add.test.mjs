@@ -2,7 +2,7 @@
 //
 // 이 파일이 지키는 것:
 //   (a) 정적: 내 과제 창은 목록만(입력 폼, 입구 카드, 안내 줄, 「DB」 배지, ▲▼ 없음) · 머리의 [＋ 과제 추가] · 열 머리글(과제, 구분, 건수) ·
-//       수정 창, 합치기 창, 과제 추가 창(탭 둘, 표 칸 container 760/400) 마크업 · 버튼 문구 · 새 화면의 금지 문장부호.
+//       수정 창, 합치기 창, 과제 추가 창(탭 둘, 표 칸 container 680/360) 마크업 · 버튼 문구 · 새 화면의 금지 문장부호.
 //   (b) jsdom 런타임(위젯 모드): 목록 줄 구조와 구분 열 값 · ⋯ 메뉴 항목이 과제 종류마다 맞다(한 번에 하나, Esc, 바깥 클릭, 화살표) ·
 //       줄을 누르면 수정 창 · 수정 저장(일반 이름 바꾸기, 줄바꿈은 공백, 공식 이름 불변, 같은 이름과 빈 이름 거절) ·
 //       합치기 + 체크(일반 삭제, 공식 빼기, 기본은 체크 없음, 확인창 없음) · 빼기(사용 중 꺼짐, 0건 즉시, 시간이 있을 때만 확인) ·
@@ -91,11 +91,11 @@ const statics = {
     const foot = a.slice(a.indexOf('<div class="modal-foot">'));
     assert.ok(/^<div class="modal-foot">\s*<button class="btn" data-close>닫기<\/button>/.test(foot), '추가 창 하단 왼쪽(첫 자리)이 [닫기] 가 아니다(D16)');
     assert.ok(!/안내|설명|선택하세요/.test(noHtmlComments(a).replace(/placeholder="[^"]*"/g, '')), '추가 창에 안내 문구가 있다(D9, D15)');
-    //  표 칸이 열 줄이기의 기준이다(container, 760px 미만, 400px 미만)
+    //  표 칸이 열 줄이기의 기준이다(container, 680px 미만, 360px 미만)
     const css = app.slice(0, app.indexOf('</style>'));
     assert.ok(/\.ca-res\{[^}]*container-type:inline-size/.test(css), '추가 창 표 칸(.ca-res)이 container 가 아니다(D11)');
-    assert.ok(/@container \(max-width:759px\)\{[^@]*\.ca-c-ctr,\.ca-c-per\{display:none\}/.test(css), '760px 미만에서 계약명, 계약기간을 숨기지 않는다(D11)');
-    assert.ok(/@container \(max-width:399px\)\{[^@]*\.ca-c-cust,\.ca-c-st\{display:none\}/.test(css), '400px 미만에서 발주처, 상태를 숨기지 않는다(D11)');
+    assert.ok(/@container \(max-width:679px\)\{[^@]*\.ca-c-ctr,\.ca-c-per\{display:none\}/.test(css), '680px 미만에서 계약명, 계약기간을 숨기지 않는다(D11)');
+    assert.ok(/@container \(max-width:359px\)\{[^@]*\.ca-c-cust,\.ca-c-st\{display:none\}/.test(css), '360px 미만에서 발주처, 상태를 숨기지 않는다(D11)');
     assert.ok(/#catAddModal \.modal\{height:/.test(css), '추가 창 높이가 고정이 아니다(탭을 바꾸면 출렁인다, D9)');
     //  버튼과 상태 문구
     assert.ok(app.includes('<span class="ca-have">✓ 내 과제</span>'), '「✓ 내 과제」 표시가 없다(D12)');
