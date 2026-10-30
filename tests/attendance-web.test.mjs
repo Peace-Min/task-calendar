@@ -49,6 +49,13 @@ test('(S) 근태 창 허용 목록은 아홉이고(netcusWeekMerge 없음, atten
   assert.ok(/get\('win'\) === 'attend'/.test(app), '?win=attend 판별이 없다');
   assert.ok(/<button type="button" class="pc-tab" role="tab" id="pcTabAttend"[^>]*data-pctab="attend">근태<\/button>/.test(app), '탭 줄에 근태 탭이 없다');
 });
+test('(S) 보고서 창의 일간 작성, 주간 작성 입구는 숨기고(근태 탭으로 옮김, 2026-10-30) 열면 기간 취합부터', () => {
+  for (const k of ['daily', 'weekly']) assert.ok(new RegExp('<button class="btn sm hidden" data-rmode="' + k + '"').test(app), '보고서 창의 ' + k + ' 탭이 보인다');
+  for (const k of ['custom', 'monthly']) assert.ok(new RegExp('<button class="btn sm" data-rmode="' + k + '"').test(app), '보고서 창의 ' + k + ' 탭이 숨었다');
+  const o = app.slice(app.indexOf('function openReport(){'), app.indexOf('function openReport(){') + 1200);
+  assert.ok(o.includes("setReportMode('custom');") && !o.includes("setReportMode('daily');"), '보고서 창이 기간 취합으로 열리지 않는다');
+  assert.ok(app.includes("'[data-rmode]:not(.hidden)'"), '화살표 키가 숨긴 탭으로 간다');
+});
 test('(S) 근태 화면 문구에 엠 대시, en 대시, 낫표, 띄어 쓴 가운데 점이 없다', () => {
   const a = app.indexOf('<section class="at-view" id="atView"'), b = app.indexOf('</section>', a);
   const j0 = app.indexOf('/* ===== 근태 탭과 근태 보고 화면(docs/ATTENDANCE-PLAN.md, 2026-10-29'), j1 = app.indexOf('function atInit(){', j0);

@@ -290,7 +290,7 @@ if (!JSDOM) {
     m.ev("try{ localStorage.setItem('tc_netcusMode', 'dry'); }catch(_){}");
     const today = seed(m);
     await tick();
-    m.ev("openReport(); ['#rptSrcEvent','#rptSrcTodo'].forEach(function(s){ var e=$(s); if(e) e.checked = true; }); buildReport(); updateRptSendVis();");
+    m.ev("openReport(); setReportMode('daily'); ['#rptSrcEvent','#rptSrcTodo'].forEach(function(s){ var e=$(s); if(e) e.checked = true; }); buildReport(); updateRptSendVis();");
     assert.strictEqual(m.ev("$('#btnRptSend').dataset.mode"), 'daily', '보고서가 일간으로 열리지 않았다');
     const before = submits(m).length;
     m.doc.getElementById('btnRptSend').click();
@@ -366,7 +366,7 @@ if (!JSDOM) {
       assert.ok(!M.doc.getElementById('settingsModal').textContent.includes('미제출 테스트'), '설정에 「미제출 테스트」 문구가 남아 있다');
       M.ev("closeModal('#settingsModal')");
       await waitFor(() => overlayClosed(M, 'settingsModal'), '설정이 닫힌다');
-      M.ev("try{ localStorage.setItem('tc_netcusMode', 'real'); }catch(_){}; openReport(); updateRptSendVis();");
+      M.ev("try{ localStorage.setItem('tc_netcusMode', 'real'); }catch(_){}; openReport(); setReportMode('daily'); updateRptSendVis();");
       assert.strictEqual(M.doc.getElementById('rptSendMode'), null, '보고서 창에 전송 모드 배지가 있다');
       const b = M.doc.getElementById('btnRptSend');
       assert.ok(!b.classList.contains('real'), '전송 버튼이 「실제 제출」 톤을 입었다(모드 분기가 남았다)');

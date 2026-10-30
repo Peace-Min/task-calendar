@@ -3911,8 +3911,9 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
       <div class="rpt-body">
         <div class="rpt-rail">
           <div class="rpt-presets" role="tablist" aria-label="보고 유형">
-            <button class="btn sm" data-rmode="daily" role="tab" aria-controls="rptOut" aria-selected="false" tabindex="-1">일간 작성</button>
-            <button class="btn sm" data-rmode="weekly" role="tab" aria-controls="rptOut" aria-selected="false" tabindex="-1">주간 작성</button>
+            <!-- 일간, 주간 작성은 근태 탭으로 옮겨 입구만 숨긴다(2026-10-30 사용자). 코드는 보고서 창을 근태 탭으로 다 옮길 때 한 번에 걷는다 -->
+            <button class="btn sm hidden" data-rmode="daily" role="tab" aria-controls="rptOut" aria-selected="false" tabindex="-1">일간 작성</button>
+            <button class="btn sm hidden" data-rmode="weekly" role="tab" aria-controls="rptOut" aria-selected="false" tabindex="-1">주간 작성</button>
             <button class="btn sm" data-rmode="custom" role="tab" aria-controls="rptOut" aria-selected="false" tabindex="-1">기간 취합</button>
             <button class="btn sm" data-rmode="monthly" role="tab" aria-controls="rptMonthlyPane" aria-selected="false" tabindex="-1">월간 보고</button>
           </div>
@@ -17666,7 +17667,7 @@ function openReport(){
   rptDraftPrune();    // 14일 지난 이 계정의 임시 저장 정리(§4). 그 뒤의 렌더는 읽기만 한다
   rptWDraftPrune();   // 주간: 기간 끝이 14일 넘게 지난 키(WEEKLY-EDIT §5)
   openModal('#reportModal');
-  setReportMode('daily');   // 기본: 일간(오늘). 포함 항목 선택은 setReportMode→applyRptSourcePrefs가 모드별로 복원. 주간/커스텀은 탭으로 전환
+  setReportMode('custom');   // 기본: 기간 취합(일간, 주간 작성은 근태 탭으로 옮겨 입구를 숨겼다, 2026-10-30). 포함 항목 선택은 setReportMode→applyRptSourcePrefs가 모드별로 복원
   // 재오픈 시 ⚙옵션 접힘(좁은 폭 컴팩트) + 내용 출처 세그를 state.reportSource로 반영
   const _opt = $('#rptOpt'); if(_opt) _opt.classList.remove('open');
   const _ob = $('#rptOptBtn'); if(_ob) _ob.setAttribute('aria-expanded', 'false');
@@ -20781,7 +20782,7 @@ function bind(){
   $('#tabCategory').addEventListener('click', () => setSearchMode('category'));
   // ARIA 탭 roving — dpTabs와 같은 규약(←/→/Home/End 이동+자동 활성화)
   tablistRoving('#sTabs', '.tab', b => setSearchMode(b.id === 'tabKeyword' ? 'keyword' : 'category'));
-  tablistRoving('#reportModal .rpt-presets[role=tablist]', '[data-rmode]', b => setReportMode(b.dataset.rmode));
+  tablistRoving('#reportModal .rpt-presets[role=tablist]', '[data-rmode]:not(.hidden)', b => setReportMode(b.dataset.rmode));
   //  휴지통 탭(과제 쪽 넷 · 퇴사자 쪽은 탭 줄이 없다) — 검색 탭과 **같은 규약**을 쓴다(←/→/Home/End + 자동
   //  활성화). 버튼은 trRender 가 매번 다시 만들지만 컨테이너(#trTabs)는 그대로라 여기 한 번의 배선으로 충분하다.
   //  ★ 화살표키로 옮기는 것도 **탭 전환**이다 — 마우스와 같은 규칙으로 맨 위에서 연다(2026-09-14 W2).

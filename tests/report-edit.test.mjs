@@ -353,7 +353,7 @@ if (!JSDOM) {
     reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
   });
   //  보고서를 일간·그 날짜로 연다(포함 항목 셋 다, 설명 포함, 빈 항목 제외 끔).
-  const openDaily = (m, date) => m.ev(`openReport(); ['#rptSrcEvent','#rptSrcTodo','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
+  const openDaily = (m, date) => m.ev(`openReport(); setReportMode("daily"); ['#rptSrcEvent','#rptSrcTodo','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
     + ` $('#rptFrom').value = ${JSON.stringify(date)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
   const setDate = (m, date) => m.ev(`$('#rptFrom').value = ${JSON.stringify(date)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
   const cardNames = (m) => m.evJSON("[].map.call(document.querySelectorAll('#rptOut .rcard .rcard-nm'), function(x){ return x.textContent; })");
@@ -594,7 +594,7 @@ if (!JSDOM) {
         const k15 = `tc_rptDraft:${who}:${B.ev('addDays(todayYmd(), -15)')}`, k14 = `tc_rptDraft:${who}:${B.ev('addDays(todayYmd(), -14)')}`;
         const other = `tc_rptDraft:other-user:${B.ev('addDays(todayYmd(), -30)')}`, bogus = `tc_rptDraft:${who}:not-a-date`;
         for (const k of [k15, k14, other, bogus]) B.ev(`localStorage.setItem(${JSON.stringify(k)}, '{"v":1}')`);
-        B.ev('openReport()');
+        B.ev('openReport(); setReportMode("daily")');
         const keys = draftKeys(B);
         assert.ok(!keys.includes(k15), '15일 지난 키가 남아 있다');
         assert.ok(keys.includes(k14), '14일째 키까지 지웠다');
@@ -610,7 +610,7 @@ if (!JSDOM) {
         + " P.removeItem = function(x){ if(bad(x)) throw new Error('blocked'); return r.apply(this, arguments); }; P.key = function(){ throw new Error('blocked'); };"
         + " window.__unblock = function(){ P.getItem = g; P.setItem = s; P.removeItem = r; P.key = k; }; })();");
       try {
-        B.ev('openReport(); buildReport();');   // 정리(prune)가 key() 예외를 삼켜야 한다
+        B.ev('openReport(); setReportMode("daily"); buildReport();');   // 정리(prune)가 key() 예외를 삼켜야 한다
         clickIn(B, 'c-b', '.rcard-x');
         assert.ok(card(B, 'c-b').classList.contains('rcard-out'), '저장소가 막히자 X 가 동작하지 않는다');
         setView(B, 'doc'); typeIn(B, 'c-a', '막힌 저장소에서 쓴 글');
