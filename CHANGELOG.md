@@ -7,6 +7,10 @@
 
 ---
 
+## 🆕 2026-10-30 (다음 판, 번호는 배포 때): 과제 탭 날짜 목록 팝업을 과제별 묶음으로
+
+과제 탭 달력에서 날짜를 누르면 뜨는 그날 일정 목록(`pcOpenDayList`, `pcDayRowHtml`, `.pc-pop` 계열)을 과제 이름 묶음 머리 아래 그 과제 일정이 붙는 2단 계층으로 바꿨다. 묶음 순서는 `pcOrder`, 묶음 안은 날짜만 있는 일정(여러 날이면 긴 것 먼저) 위에 시각 일정 시각 순. 시각 열은 없고 시각이나 기간이 있을 때만 제목 앞에 작게 붙는다. 읽기 전용(숨긴) 과제는 묶음 머리에 "읽기 전용". 머리의 "일정 n건", 빈 날 안내 문구, 하단 "이 날짜에 일정 등록" 큰 단추를 없애고 머리 오른쪽 작은 "등록"(`data-act="newOn"` 그대로)으로 옮겼다. 폭 320px, 최대 높이 440px(날짜 머리 고정, 과제 머리 sticky), 760px 이하는 하단 시트. 키보드 이동 순서는 등록, 줄들. 버전, DB, 호스트 C# 는 바꾸지 않는다. 기획과 시안: [docs/PROJECT-CAL-DAY-POPUP-DECISIONS.md](docs/PROJECT-CAL-DAY-POPUP-DECISIONS.md), 점검과 상용 앱 조사: [docs/PROJECT-CAL-DETAIL-UX.md](docs/PROJECT-CAL-DETAIL-UX.md).
+
 ## 🆕 2026-10-30 (다음 판, 번호는 배포 때): 내 과제 창 정리와 과제 추가 창
 
 배포 뒤 사용자 대부분이 공식 과제를 고르지 않고 과제 이름을 직접 입력했다. 원인이던 화면 구조를 바꿨다. '🏷️ 내 과제'(`#categoryModal`)는 목록만 남기고(아래 입력 폼, `#btnOfficialOpen` 입구 카드 제거) 머리에 [＋ 과제 추가](`#btnCatAdd`)를 둔다. 줄은 ⠿, 색, 이름과 메모, 구분 열(공식, 기본, 일반, 삭제됨), 건수(`catUsageCount`), ⋯ 하나다. ▲▼와 줄 링크 버튼을 걷고 순서는 ⠿ 포인터 끌기와 ⋯ 메뉴(위로, 아래로, 맨 위로, 맨 아래로)로, 둘 다 `moveCategory` 를 거쳐 저장 1회다. 줄 클릭은 새 수정 창(`#catEditModal`), '옮기기'는 '다른 과제와 합치기'(`#catMoveModal`, 체크로 합친 뒤 삭제나 빼기, 별도 확인 창 없음), '기존 과제 재연결'은 '공식 과제로 연결', 공식 과제 '제거'는 '내 캘린더에서 빼기'(묻지 않음, 과제별 시간이 지워질 때만 확인). 새 과제 추가 창(`#catAddModal`)은 탭 둘: 공식 과제는 표 한 장(통상명칭, 계약명, 발주처, 상태, 계약기간, 구분은 그룹 줄, 표 칸 container 680/360px 로 열 줄이기, 줄 펼침에 사업명과 개발 시작, 종료, [추가] 한 번, 이미 있으면 '✓ 내 과제'), 일반 과제는 이름, 색상, 메모. 긴 이름은 두 줄 넘을 때 앞부분 … 끝 8자(`catFitName`). 지운 함수: `catMoveBtnsHtml`, `catMoveDataBtnHtml`, `catSyncMoveBtns`, `catFlash`, `catMoveRow`, `applyCatFormLock`, `resetCatForm`, `saveCatFromForm`, `updateOfficialEntry`. 일반 사용자의 메인 창에서 단독 `#officialModal` 입구가 없어졌다(관리 화면 도킹 그대로). `deleteCategory`, `unsubscribeDbCat`, DB, 호스트 C#, 버전은 그대로다. 시험: 새 `tests/task-add.test.mjs`, 기존 13개 갱신. 기획: [docs/TASK-ADD-UX.md](docs/TASK-ADD-UX.md), 위키 [내 과제와 과제 추가](docs/wiki/내-과제와-과제-추가.md).

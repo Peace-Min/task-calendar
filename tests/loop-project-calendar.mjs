@@ -7,7 +7,7 @@
  *  보는 것:
  *    P0 정상 연결, 과제 탭 진입(목록과 범위 읽기)
  *    P1 등록 폼으로 기간 일정과 시간 일정 만들기 → 월간 막대, 시간 일정 점
- *    P2 날짜 칸 → 그날 일정 목록(두 일정 줄, [수정] 없음, 이 날짜에 일정 등록), 체크한 과제가 하나면 폼에 그 과제
+ *    P2 날짜 칸 → 그날 일정 목록(두 일정 줄, [수정] 없음, 머리의 등록, 과제 묶음 머리),체크한 과제가 하나면 폼에 그 과제
  *    P3 주간(과제 행)에 막대
  *    P4 수정: 막대(작은 창은 칸) → 누른 날짜 칸에 붙은 그날 일정 목록(그 줄이 있고 강조는 없음) → 그 줄 → 상세 → 수정 → 판이 오른다
  *    P5 충돌: 폼을 연 뒤 같은 일정을 호스트 명령으로 한 번 더 고친다(다른 사람 흉내) → 충돌 안내 → 내 입력 유지 → 저장
@@ -99,8 +99,8 @@ async function fillAndSave(v) {
     ok('P1 월간: 기간 일정은 막대, 시간 일정은 점과 시각(작은 창은 +n)', m1.range && (m1.timed || m1.folded), JSON.stringify(m1));
 
     // P2 날짜 칸 → 그날 일정 목록
-    const dl = await J(`(() => { const c = document.querySelector('#pcView .pc-day[data-date="${today}"]'); if(!c) return null; c.click(); const p = document.getElementById('pcPop'); return p ? { rows: [...p.querySelectorAll('.pc-dl .chip')].map(r => r.dataset.ev), edits: p.querySelectorAll('[data-act="edit"]').length, foot: !!p.querySelector('[data-act="newOn"]'), head: (p.querySelector('.pc-pop-n') || {}).textContent || '' } : null; })()`);
-    ok('P2 그날 일정 목록: 두 일정 줄, [수정] 없음, 이 날짜에 일정 등록', !!dl && dl.rows.includes(E1) && dl.rows.includes(E2) && dl.edits === 0 && dl.foot && /^일정 \d+건$/.test(dl.head), dl ? JSON.stringify({ rows: dl.rows.length, edits: dl.edits, head: dl.head }) : '팝오버 없음');
+    const dl = await J(`(() => { const c = document.querySelector('#pcView .pc-day[data-date="${today}"]'); if(!c) return null; c.click(); const p = document.getElementById('pcPop'); return p ? { rows: [...p.querySelectorAll('.pc-dl .pc-dl-row')].map(r => r.dataset.ev), edits: p.querySelectorAll('[data-act="edit"]').length, reg: !!p.querySelector('.pc-pop-top [data-act="newOn"]'), heads: p.querySelectorAll('.pc-dl-gh').length, count: !!p.querySelector('.pc-pop-n') || /일정 [0-9]+건/.test(p.textContent) } : null; })()`);
+    ok('P2 그날 일정 목록: 두 일정 줄, [수정] 없음, 머리의 등록, 과제 묶음 머리, 건수 없음', !!dl && dl.rows.includes(E1) && dl.rows.includes(E2) && dl.edits === 0 && dl.reg && dl.heads >= 1 && !dl.count, dl ? JSON.stringify({ rows: dl.rows.length, edits: dl.edits, reg: dl.reg, heads: dl.heads, count: dl.count }) : '팝오버 없음');
     await ev(`pcEscape()`);
 
     // P3 주간
@@ -115,9 +115,9 @@ async function fillAndSave(v) {
     //  막대가 보이면 막대, "+n" 으로 접혔으면 날짜 칸. 어느 쪽이든 그날 목록이 뜨고 그 일정 줄이 있다.
     //  누른 줄 강조는 없다(2026-10-23 사용자): 줄에 hit 과 aria-current 가 없고 초점은 목록 창 자체. 목록 창은 막대가 아니라 날짜 칸에 붙는다.
     const p4l = await J(`(() => { const b = document.querySelector('#pcView .pc-ev[data-ev="${E2}"]'); if(b) b.click(); else document.querySelector('#pcView .pc-day[data-date="${today}"]').click();
-      const p = document.getElementById('pcPop'); if(!p) return null; const row = p.querySelector('.pc-dl .chip[data-ev="${E2}"]');
+      const p = document.getElementById('pcPop'); if(!p) return null; const row = p.querySelector('.pc-dl .pc-dl-row[data-ev="${E2}"]');
       const a = PCAL.pop && PCAL.pop.anchor;
-      const r = { bar: !!b, row: !!row, marked: !!p.querySelector('.pc-dl .chip.hit, .pc-dl [aria-current]'), popFocus: document.activeElement === p,
+      const r = { bar: !!b, row: !!row, marked: !!p.querySelector('.pc-dl .pc-dl-row.hit, .pc-dl [aria-current]'), popFocus: document.activeElement === p,
         cell: !!a && a !== b && !!a.matches && a.matches('.pc-day[data-date], .pc-wday[data-date]') };
       if(row) row.click(); return r; })()`);
     ok('P4 누르면 그날 일정 목록이 뜨고 그 일정 줄이 있다(강조 없음, 초점은 목록 창, 날짜 칸에 붙음)', !!p4l && p4l.row && !p4l.marked && p4l.popFocus && p4l.cell, JSON.stringify(p4l));
