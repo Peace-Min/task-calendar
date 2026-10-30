@@ -172,18 +172,6 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 }
 .spacer{flex:1}
 .actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-/* ---------- 가로 넘침 공통(헤더 액션 · 과제 필터바) ----------
-   OS 스크롤바가 칩/버튼 위에 겹쳐 그려져 마지막 항목을 가린다 → 스크롤바는 숨기고,
-   '더 있다'는 신호는 오른쪽 끝 페이드로 준다. 페이드는 실제로 넘칠 때만(JS가 .ovf-fade 부착) —
-   항상 켜 두면 넘치지 않을 때도 마지막 버튼이 흐려져 비활성처럼 보인다. */
-/* 스크롤바 숨김만 담당 — overflow 방향은 각 요소가 정한다(필터바는 넓은 폭에서 세로,
-   좁은 폭에서 가로로 스크롤하므로 여기서 방향을 강제하면 넓은 폭 2줄 스크롤이 죽는다). */
-.ovf-scroll{scrollbar-width:none;-ms-overflow-style:none}
-.ovf-scroll::-webkit-scrollbar{width:0;height:0;display:none}
-.ovf-scroll.ovf-fade{
-  -webkit-mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 22px),transparent 100%);
-          mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 22px),transparent 100%);
-}
 
 .btn{
   display:inline-flex;align-items:center;gap:6px;
@@ -224,22 +212,73 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .menu button.danger{color:var(--danger-text)}
 .menu hr{border:none;border-top:1px solid var(--line);margin:5px 4px}
 
-/* ---------- category filter chips ---------- */
+/* ---------- 과제 필터 줄(docs/FILTER-MULTI.md): 42px 한 줄 고정, 왼쪽 과제 버튼 + 고른 과제 칩, 버튼 아래 팝업 ----------
+   줄은 넘치지 않는다(줄바꿈, 스크롤, 페이드 없음). 칩이 다 안 들어가면 fitFilterChips 가 +N 으로 접는다.
+   팝업은 줄 안에 absolute 로 달린다. 그래서 줄에 overflow 를 걸지 않는다(걸면 팝업이 잘린다). */
 .filterbar{
-  display:flex;align-items:center;gap:6px;flex-wrap:wrap;align-content:flex-start;
-  padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--line);
-  flex:none;max-height:66px;overflow-y:auto;   /* 카테고리 많아도 ~2줄로 제한 + 스크롤(달력 영역 보호) */
+  display:flex;align-items:center;gap:8px;flex-wrap:nowrap;height:42px;
+  padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line);
+  flex:none;position:relative;z-index:25;
 }
-.filterbar .lbl{font-size:var(--fs-meta);color:var(--muted);margin-right:2px;flex:none}
+.filterbar .lbl{font-size:var(--fs-meta);color:var(--muted);margin-right:2px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fb-btn{
+  display:inline-flex;align-items:center;gap:6px;flex:none;width:208px;height:30px;
+  border:1px solid var(--ctl-border);background:var(--panel);color:var(--text);border-radius:var(--r-sm);
+  padding:0 8px 0 10px;cursor:pointer;line-height:1;white-space:nowrap;text-align:left;font:inherit;font-size:var(--fs-body);
+}
+.fb-btn:hover,.fb-btn[aria-expanded="true"]{border-color:var(--accent);background:var(--hover-bg)}
+.fb-btn .pl{color:var(--muted);flex:none}
+.fb-btn .pv{display:inline-flex;align-items:center;gap:5px;flex:1;min-width:0;font-weight:600}
+.fb-btn .pv .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.fb-btn .pv .fb-cnt{flex:none;color:var(--muted);font-weight:400;font-variant-numeric:tabular-nums}
+.fb-btn .pv.none{color:var(--faint-text);font-weight:400}
+.fb-btn .fb-caret{width:10px;height:10px;flex:none;color:var(--muted)}
+.fb-btn.filtered{border-color:var(--accent);background:var(--accent-soft)}
+.fb-btn.filtered .pv{color:var(--accent-2)}
+.fb-rest{flex:1;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;height:100%}
 .fchip{
   display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);
-  background:var(--panel);border-radius:999px;padding:4px 11px;font-size:var(--fs-body);cursor:pointer;color:var(--text);
-  flex:none;max-width:200px;
+  background:var(--panel);border-radius:999px;padding:4px 11px;font-size:var(--fs-body);color:var(--text);
+  flex:none;max-width:180px;white-space:nowrap;
 }
-.fchip .fc-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}  /* 긴 카테고리명 말줄임 */
-.fchip .dot{width:9px;height:9px;border-radius:50%;flex:none}
-.fchip:hover{border-color:#bcc4d6}
+.fchip .fc-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}  /* 긴 과제명 말줄임 */
+.fchip .dot,.fb-btn .dot,.fb-opt .dot{width:9px;height:9px;border-radius:50%;flex:none;display:inline-block}
 .fchip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
+.fchip.fb-tok{padding:0 3px 0 10px;height:28px}
+.fb-x{border:0;background:transparent;cursor:pointer;width:22px;height:22px;border-radius:999px;display:inline-grid;place-items:center;color:inherit;flex:none;padding:0}
+.fb-x:hover{background:var(--panel)}
+.fb-x svg{width:9px;height:9px;pointer-events:none}
+.fb-more{flex:none;border:1px solid var(--line-2);background:var(--panel);border-radius:999px;height:28px;padding:0 10px;cursor:pointer;font:inherit;font-size:var(--fs-body);font-variant-numeric:tabular-nums;color:var(--muted)}
+.fb-more:hover{border-color:var(--border-hover);color:var(--text)}
+.fb-btn:focus-visible,.fb-x:focus-visible,.fb-more:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.fb-pop{position:absolute;z-index:70;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);display:flex;flex-direction:column;color:var(--text)}
+.fb-pop.sheet{border-radius:0 0 var(--r-md) var(--r-md);border-top:0}
+.fb-pop .fb-ph{padding:8px 8px 4px}
+.fb-pop .fb-q{width:100%;height:30px;border:1px solid var(--ctl-border);background:var(--panel);color:var(--text);border-radius:var(--r-sm);padding:0 9px;font:inherit;font-size:var(--fs-body)}
+.fb-pop .fb-q:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.fb-pop .fb-acts{display:flex;align-items:center;gap:2px;height:28px;padding:0 8px 2px 4px;border-bottom:1px solid var(--line)}
+.fb-lk{border:0;background:transparent;color:var(--accent-2);cursor:pointer;height:24px;padding:0 6px;border-radius:4px;font:inherit;font-size:var(--fs-body)}
+.fb-lk:hover{background:var(--hover-bg)}
+.fb-lk:disabled{color:var(--faint-text);cursor:default;background:transparent}
+.fb-lk:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.fb-opts{overflow-y:auto;padding:4px 4px 6px;outline:none}   /* fb-list 는 문의 창 목록 이름이라 쓰지 않는다 */
+.fb-gap{height:1px;background:var(--line);margin:4px 6px}
+.fb-opt{display:flex;align-items:center;gap:8px;height:30px;padding:0 6px 0 8px;border-radius:var(--r-sm);cursor:pointer}
+.fb-opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-opt .n{flex:none;min-width:28px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.fb-opt.zero{color:var(--muted)}
+.fb-opt.zero .dot{opacity:.55}
+.fb-opt:hover{background:var(--hover-bg)}
+.fb-opt.act{background:var(--hover-bg);box-shadow:inset 0 0 0 1px var(--border-hover)}
+.fb-opts:focus .fb-opt.act{box-shadow:inset 0 0 0 2px var(--accent)}
+.fb-pop mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px}
+.fb-none{padding:10px 8px;color:var(--muted)}
+.fb-ind{width:15px;height:15px;flex:none;border:1.5px solid var(--ctl-border);border-radius:3px;display:inline-grid;place-items:center;background:var(--panel)}
+.fb-ind svg{width:10px;height:10px;display:none;color:var(--on-accent)}
+.fb-opt[aria-selected="true"] .fb-ind{border-color:var(--accent-fill);background:var(--accent-fill)}
+.fb-opt[aria-selected="true"] .fb-ind svg{display:block}
+.fb-opt[aria-selected="true"] .nm{font-weight:600}
+@media (max-width:599.98px){ .fb-btn{width:156px} .filterbar{padding:0 10px;gap:6px} }
 
 /* ---------- main layout ---------- */
 main{flex:1;display:flex;min-height:0;position:relative}
@@ -430,8 +469,6 @@ body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 �
 .splitter:hover::after,.splitter.dragging::after{background:#fff}
 /* 키보드로 잡을 수 있게 됐으니 어디에 포커스가 있는지 보여야 한다(WCAG 2.4.7) */
 .splitter:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;background:var(--accent)}
-.nd-filter-rs:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.nd-filter-rs:focus-visible::after{background:var(--accent)}
 .dp-head{
   display:flex;align-items:flex-start;justify-content:space-between;gap:8px;
   padding:16px 16px 12px;border-bottom:1px solid var(--line);
@@ -1566,10 +1603,6 @@ details.vg-more dd{margin:0;color:var(--text)}
     대체됐고 해당 마크업이 더는 생성되지 않는다. 남은 .nd-* 는 패널 본문이 실제로 쓰는 것들.) */
 .btn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
 .nd-head{display:flex;align-items:flex-end;gap:6px;padding:8px 8px 0;border-bottom:1px solid var(--line);flex:none}
-.nd-filter{display:flex;align-items:center;align-content:flex-start;gap:6px;flex-wrap:wrap;padding:8px 12px;flex:none;overflow:auto}  /* 과제 수에 따라 자동 확장(max-height 캡) + 넘치면 스크롤 */
-.nd-filter-rs{height:12px;flex:none;cursor:ns-resize;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--line);touch-action:none;user-select:none}  /* 중앙 가로 드래그 핸들(스플리터식) */
-.nd-filter-rs::after{content:"";width:32px;height:3px;border-radius:2px;background:var(--line-2)}
-.nd-filter-rs:hover::after,.nd-filter-rs.drag::after{background:var(--accent)}
 .nd-body{flex:1;overflow-y:auto;padding:12px 14px}
 .nd-empty{color:var(--muted);font-size:var(--fs-body);text-align:center;padding:34px 14px;line-height:1.7}
 .nd-day{font-size:var(--fs-meta);font-weight:700;color:var(--muted);margin:14px 0 4px;position:sticky;top:-12px;background:var(--panel);padding:4px 0}
@@ -2240,8 +2273,6 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
   .btn.icon{min-width:40px;min-height:40px;justify-content:center}
   .btn.icon.has-label{padding:5px 9px}
   .btn.icon.has-label .btn-label{display:none}
-  /* 필터바: 2줄 wrap → 1줄 가로 스크롤(약 66→32px). 스크롤바 숨김·페이드는 .ovf-scroll이 담당 */
-  .filterbar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-height:none;padding:6px 12px}
   /* P1: 좁은 폭에서 모달 → 하단 시트(엄지 도달성 + 상용 모바일 규범, Things/TickTick식) */
   .overlay{align-items:flex-end;padding:0}
   .modal,.modal.wide,.qa-modal{width:100%;max-width:100%;max-height:88vh;border-radius:14px 14px 0 0}
@@ -2340,7 +2371,7 @@ html.dark{
 html.dark .todo-edit .te-daynote{ background:var(--panel) }
 html.dark .btn:hover,html.dark .menu button:hover,html.dark .cell:hover,html.dark .x:hover,html.dark .s-row:hover,html.dark .imp-box{ background:var(--fill) }
 html.dark .sk-line,html.dark .sk-cell{ background:var(--border-hover) }
-html.dark .btn:hover,html.dark .fchip:hover,html.dark .nd-toggle:hover{ border-color:var(--border-hover) }
+html.dark .btn:hover,html.dark .nd-toggle:hover{ border-color:var(--border-hover) }
 html.dark .chip{ background:var(--fill) }
 html.dark .badge-git{ background:#222b3e;color:var(--muted);border-color:var(--line-2) }
 html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
@@ -3238,7 +3269,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
   <button type="button" class="pc-tab" role="tab" id="pcTabAttend" aria-selected="false" aria-controls="atView" tabindex="-1" data-pctab="attend">근태</button>
 </div>
 
-<div class="filterbar ovf-scroll" id="filterbar"></div>
+<div class="filterbar" id="filterbar"></div>
 
 <main>
   <div id="bootSkeleton" class="hidden" aria-hidden="true">
@@ -6113,7 +6144,7 @@ window.__applyState = function(json, meta){
     //    데이터가 들어온 **직후**의 모습이 기준이 된다.
     if(PEER) __peerPristine = JSON.stringify(data);
     if(PEER) paintPeerLegend();   // 범례 견본 = 그 사람 과제 색(데이터가 들어온 뒤라야 안다)
-    filterCatId = null; noteFilterCat = null;
+    filterCats = null;
     __bootMeta = meta || null;            // 스키마 게이트(가져오기·초기화)가 읽는 값 — 배지보다 먼저 세운다
     renderAll();
     pushReminders();
@@ -10541,8 +10572,7 @@ function unsubscribeDbCat(id){
   //    deleteCategory 와 같은 정리 함수(dropCatHours)를 쓴다(moveCategoryData 는 더해야 해서 자기 루프지만 빈 날 규약은 같다).
   dropCatHours(id);
   state.categories = state.categories.filter(x => x.id !== id);
-  if(filterCatId === id) filterCatId = null;
-  if(noteFilterCat === id) noteFilterCat = null;
+  filterDropCat(id);
   return true;
 }
 // __applyProjects 후: 편입된 DB 과제의 name을 카탈로그 기준으로 최신화. 카탈로그(활성)에 없으면 dbGone 마크(목록에서 제거하진 않음 — 라벨·필터 보존).
@@ -10766,7 +10796,7 @@ function passFilter(e){
   //    왼쪽 달력에서 내 것을 빼는 일은 renderGrid 가 달력마다 고르는 술어(pick)가 맡는다 — 여기는 「보이는가」 만 판정한다.
   if(e && e._mine && PEER && __peerLayout === 'side') return true;
   if(e && e._mine) return PEER && __peerOverlay;
-  return (!filterCatId || e.categoryId === filterCatId);
+  return filterCats === null || filterCats.has(e.categoryId);
 }
 function entriesOn(date){
   // 그날에 걸치는 기간 일정 + 그날 발생하는 반복 일정 + 단일일 일정 (occurrence 단위)
@@ -10825,8 +10855,7 @@ function deleteCategory(id){
   state.todos = (state.todos || []).filter(t => !t || t.categoryId !== id);
   dropCatHours(id);
   state.categories = state.categories.filter(x => x.id !== id);
-  if(filterCatId === id) filterCatId = null;
-  if(noteFilterCat === id) noteFilterCat = null;
+  filterDropCat(id);
   save();
   return true;
 }
@@ -11220,9 +11249,10 @@ const _t = new Date();
 let view = {y:_t.getFullYear(), m:_t.getMonth()};
 let selectedDate = todayYmd();
 let focusDs = null;          // 그리드 키보드 포커스(roving tabindex) 대상 날짜 — 선택과 별개로 이동
-let filterCatId = null;
+//  과제 필터(docs/FILTER-MULTI.md). 화면 전체에 하나다(달력, 주간 과제별 줄, 상세, 할 일 탭이 같이 따른다).
+//    null = 전체(필터 없음). Set = 고른 과제 id. 빈 Set = 선택 없음(아무 기록도 안 보인다). 저장하지 않는다.
+let filterCats = null;
 let noteTab = 'detail';      // 우측 패널 탭: 'detail'(일정 상세) | 'todo'(할 일)
-let noteFilterCat = null;    // 할 일 탭 전용 과제 필터 — 캘린더 전역 filterCatId와 독립
 let noteCollapsed = new Set(['done','nodate']);  // 접힌 섹션 키(완료·기한없음은 기본 접힘)
 let editingTodoId = null;    // 인라인 편집 중인 TODO id
 let editingDayNoteKey = null; // 보고서 날짜별 dayNote 줄 편집 키. (일간 보고서 줄편집 키는 줄 ✎ 와 함께 없앴다, REPORT-EDIT §5)
@@ -11248,28 +11278,268 @@ function renderWeekdays(){
   if(wm) wm.innerHTML = $('#weekdays').innerHTML;
 }
 
+/* ---------- 과제 필터 줄(docs/FILTER-MULTI.md, 시안 filterbar-proto-v3.html 의 V2) ----------
+   [과제 버튼(폭 고정)] [고른 과제 칩 … +N]. 버튼을 누르면 줄 안에 팝업(검색, 전체 선택/해제, 다중 선택 목록)이 뜬다.
+   ★ 버튼과 칩 자리는 한 번 만들고 내용만 바꾼다. 팝업이 열린 채 과제를 켜고 끄면 renderAll 이 여기를 다시 부르는데,
+     줄을 통째로 갈아 끼우면 팝업과 포커스가 날아가 깜빡인다. 팝업 목록도 목록 칸(.fb-list)은 그대로 두고 속만 바꾼다. */
+const FB_CARET = '<svg class="fb-caret" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
+const FB_X = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.6"/></svg>';
+const FB_CHECK = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.8 5.2 4 7.4 8.4 2.8" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>';
+const FB = { pop:null, q:null, lb:null, items:[], act:-1, actId:null };   // 열린 팝업(닫혀 있으면 pop=null)
+
+//  고른 과제(과제 목록 순서). 전체면 빈 배열
+function filterSelCats(){ return filterCats === null ? [] : state.categories.filter(c => filterCats.has(c.id)); }
+//  새 기록의 기본 과제: 고른 과제 중 목록 순서로 첫째(FILTER-MULTI §3)
+function filterFirstCat(){ const c = filterSelCats()[0]; return c ? c.id : null; }
+//  과제를 지우거나 뺐을 때: 묶음에서 빼고, 그래서 비면 전체로(지운 과제 하나만 골라 두었던 경우)
+function filterDropCat(id){ if(filterCats !== null && filterCats.delete(id) && !filterCats.size) filterCats = null; }
+//  모든 과제를 다 고르면 전체와 같다(분류 없는 기록도 다시 보인다)
+function filterNormalize(){ if(filterCats !== null && state.categories.length && state.categories.every(c => filterCats.has(c.id))) filterCats = null; }
+function filterToggleCat(id){
+  if(filterCats === null) filterCats = new Set(state.categories.map(c => c.id));
+  if(filterCats.has(id)) filterCats.delete(id); else filterCats.add(id);
+  filterNormalize();
+}
+//  필터를 바꾼 뒤 다시 그리기(예전 칩 클릭과 같은 길)
+function filterApply(){ renderAll(); }
+//  팝업 목록 순서: 기록 많은 순, 같으면 가나다순. 0건은 구분선 뒤 묶음
+function filterCatCounts(){
+  const n = new Map();
+  for(const e of state.entries) if(e && e.categoryId) n.set(e.categoryId, (n.get(e.categoryId) || 0) + 1);
+  return n;
+}
+function filterSorted(){
+  const n = filterCatCounts(), byName = (x, y) => String(x.c.name).localeCompare(String(y.c.name), 'ko');
+  const live = [], zero = [];
+  for(const c of state.categories){ const k = n.get(c.id) || 0; (k ? live : zero).push({ c, n: k }); }
+  live.sort((x, y) => (y.n - x.n) || byName(x, y));
+  zero.sort(byName);
+  return { live, zero };
+}
+function filterLabel(){
+  if(filterCats === null) return { html:'<span class="nm">전체</span>', text:'전체', f:false };
+  const sel = filterSelCats();
+  if(!sel.length) return { html:'<span class="nm">선택 없음</span>', text:'선택 없음', f:false, none:true };
+  const c = sel[0], k = sel.length - 1;
+  return { html:`<span class="dot" style="background:${validColor(c.color)}"></span><span class="nm">${esc(c.name)}</span>` + (k ? `<span class="fb-cnt">외 ${k}</span>` : ''),
+           text: c.name + (k ? ` 외 ${k}` : ''), f:true };
+}
+
 function renderFilterbar(){
-  const bar = $('#filterbar');
+  const bar = $('#filterbar'); if(!bar) return;
   if(!state.categories.length){
+    if(FB.pop) filterPopClose(false);
+    bar.removeAttribute('role'); bar.removeAttribute('aria-label');
     bar.innerHTML = `<span class="lbl">등록된 수행 과제가 없습니다. [내 과제]에서 추가하세요.</span>`;
     return;
   }
-  let html = `<span class="lbl">과제 필터:</span>`;
-  html += `<button class="fchip ${!filterCatId?'on':''}" data-cat="">전체</button>`;
-  for(const c of state.categories){
-    const n = state.entries.filter(e => e.categoryId === c.id).length;
-    html += `<button class="fchip ${filterCatId===c.id?'on':''}" data-cat="${esc(c.id)}">
-      <span class="dot" style="background:${validColor(c.color)}"></span><span class="fc-name">${esc(c.name)}</span> <span style="opacity:.6">${n}</span></button>`;
+  if(!bar.querySelector('.fb-btn')){
+    bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', '과제 필터');
+    bar.innerHTML = `<button type="button" class="fb-btn" id="fbBtn" aria-haspopup="listbox" aria-expanded="false"><span class="pl">과제</span><span class="pv"></span>${FB_CARET}</button><div class="fb-rest"></div>`;
   }
-  bar.innerHTML = html;
-  syncOverflowFade();   // 칩 개수가 바뀌면 넘침 여부도 바뀐다
+  const btn = bar.querySelector('.fb-btn'), lb = filterLabel(), pv = btn.querySelector('.pv');
+  pv.innerHTML = lb.html; pv.classList.toggle('none', !!lb.none);
+  btn.classList.toggle('filtered', lb.f);
+  btn.setAttribute('aria-label', '과제 필터, ' + lb.text);
+  btn.title = '과제 필터: ' + lb.text;
+  fitFilterChips();
+  if(FB.pop) filterFillList(false);
 }
-/* 넘침 페이드 동기화 — 실제로 가로로 넘칠 때만 오른쪽 끝을 흐린다.
-   항상 켜 두면 넘치지 않을 때도 마지막 칩이 흐려져 '비활성'으로 오독된다. */
-function syncOverflowFade(){
+//  고른 과제 칩을 깔고, 줄에 다 안 들어가면 뒤에서부터 덜어 +N 으로 접는다. 그리기 전(같은 프레임)에 재므로 깜빡이지 않는다.
+//  줄이 숨어 있으면(과제, 근태 탭) 잴 수 없다. 다시 보일 때 ResizeObserver 가 부른다.
+function fitFilterChips(){
+  const bar = $('#filterbar'), rest = bar && bar.querySelector('.fb-rest'); if(!rest) return;
+  const sel = filterSelCats();
+  rest.innerHTML = sel.map(c => `<span class="fchip on fb-tok" data-cat="${esc(c.id)}" title="${esc(c.name)}"><span class="dot" style="background:${validColor(c.color)}"></span><span class="fc-name">${esc(c.name)}</span><button type="button" class="fb-x" data-rm="${esc(c.id)}" aria-label="${esc(c.name)} 빼기" title="빼기">${FB_X}</button></span>`).join('')
+    + (sel.length ? '<button type="button" class="fb-more" aria-haspopup="listbox">+0</button>' : '');
+  const more = rest.querySelector('.fb-more'); if(!more) return;
+  if(!rest.clientWidth){ more.remove(); return; }
+  const right = rest.getBoundingClientRect().right + .5;
+  const over = () => { const l = rest.lastElementChild; return !!l && l.getBoundingClientRect().right > right; };
+  const toks = [...rest.querySelectorAll('.fb-tok')];
+  let k = 0;
+  while(over() && k < toks.length){ toks[toks.length - 1 - k].remove(); k++; more.textContent = '+' + k; }
+  if(!k) more.remove();
+  else { more.setAttribute('aria-label', `고른 과제 ${k}개 더, 목록 열기`); more.title = `고른 과제 ${k}개 더`; }
+}
+
+/* 팝업 */
+function filterPopOpen(focusTo){
+  const bar = $('#filterbar'), btn = bar && bar.querySelector('.fb-btn'); if(!btn) return;
+  if(FB.pop) filterPopClose(false);
+  const pop = document.createElement('div');
+  pop.className = 'fb-pop'; pop.id = 'fbPop';
+  pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', '과제 고르기');
+  pop.innerHTML = `<div class="fb-ph"><input class="fb-q" type="text" role="searchbox" autocomplete="off" placeholder="과제 검색" aria-label="과제 검색" aria-controls="fbList"></div>`
+    + `<div class="fb-acts"><button type="button" class="fb-lk" data-act="all">전체 선택</button><button type="button" class="fb-lk" data-act="none">전체 해제</button></div>`
+    + `<div class="fb-opts" role="listbox" tabindex="0" id="fbList" aria-label="과제" aria-multiselectable="true"></div>`;
+  bar.appendChild(pop);
+  Object.assign(FB, { pop, q: pop.querySelector('.fb-q'), lb: pop.querySelector('.fb-opts'), items: [], act: -1, actId: null });
+  btn.setAttribute('aria-expanded', 'true'); btn.setAttribute('aria-controls', 'fbPop');
+  filterFillList(true);
+  filterPopPlace(true);   // 목록을 채운 뒤에 높이를 잰다(내용만큼)
+  (focusTo === 'list' ? FB.lb : FB.q).focus({ preventScroll: true });
+}
+//  자리: 버튼 아래. 줄 폭이 480 미만이면 줄 아래 꽉 찬 시트. 목록 높이는 열 때 한 번 정한다(검색 중 출렁이지 않게)
+function filterPopPlace(sizeList){
+  const bar = $('#filterbar'), pop = FB.pop; if(!pop || !bar) return;
+  const btn = bar.querySelector('.fb-btn'), W = bar.clientWidth, narrow = W < 480;
+  pop.classList.toggle('sheet', narrow);
+  let w, left, top;
+  if(narrow){ w = W; left = 0; top = bar.offsetHeight; }
+  else { w = Math.min(340, W - 16); left = Math.max(8, Math.min(btn ? btn.offsetLeft : 8, W - w - 8)); top = bar.offsetHeight + 4; }
+  pop.style.width = w + 'px'; pop.style.left = left + 'px'; pop.style.top = top + 'px';
+  if(sizeList){
+    const head = pop.querySelector('.fb-ph').offsetHeight + pop.querySelector('.fb-acts').offsetHeight;
+    const avail = window.innerHeight - bar.getBoundingClientRect().bottom - head - 24;
+    FB.lb.style.height = '';
+    const cap = Math.max(120, Math.min(narrow ? 360 : 300, avail));
+    FB.lb.style.height = Math.min(FB.lb.scrollHeight, cap) + 'px';   // 내용만큼, 상한까지(과제가 적으면 빈 공간을 남기지 않는다. 연 뒤에는 검색해도 높이를 바꾸지 않는다)
+  }
+}
+function filterPopClose(ret){
+  if(!FB.pop) return;
+  const btn = $('#filterbar .fb-btn');
+  FB.pop.remove();
+  Object.assign(FB, { pop:null, q:null, lb:null, items:[], act:-1, actId:null });
+  if(btn){ btn.setAttribute('aria-expanded', 'false'); btn.removeAttribute('aria-controls'); if(ret) btn.focus(); }
+}
+function filterMarkQ(s, q){
+  s = String(s); if(!q) return esc(s);
+  const i = s.toLowerCase().indexOf(q);
+  return i < 0 ? esc(s) : esc(s.slice(0, i)) + '<mark>' + esc(s.slice(i, i + q.length)) + '</mark>' + esc(s.slice(i + q.length));
+}
+//  목록 다시 채우기. initial 이 아니면 스크롤과 활성 항목(과제 id 로)을 그대로 둔다(켜고 끌 때 흔들리지 않게)
+function filterFillList(initial){
+  if(!FB.pop) return;
+  const q = FB.q.value.trim().toLowerCase(), hit = x => !q || String(x.c.name).toLowerCase().includes(q);
+  const { live, zero } = filterSorted(), L = live.filter(hit), Z = zero.filter(hit);
+  let i = 0;
+  const opt = x => {
+    const on = filterCats === null || filterCats.has(x.c.id);
+    return `<div class="fb-opt${x.n ? '' : ' zero'}" role="option" id="fbo-${i++}" data-id="${esc(x.c.id)}" aria-selected="${on}" title="${esc(x.c.name)}, 기록 ${x.n}건">`
+      + `<span class="fb-ind" aria-hidden="true">${FB_CHECK}</span><span class="dot" style="background:${validColor(x.c.color)}"></span>`
+      + `<span class="nm">${filterMarkQ(x.c.name, q)}</span><span class="n">${x.n}</span></div>`;
+  };
+  let h = L.map(opt).join('');
+  if(Z.length){ if(L.length) h += '<div class="fb-gap" role="presentation"></div>'; h += Z.map(opt).join(''); }
+  if(!L.length && !Z.length) h = '<div class="fb-none">일치하는 과제 없음</div>';
+  const st = FB.lb.scrollTop;
+  FB.lb.innerHTML = h;
+  if(!initial) FB.lb.scrollTop = st;
+  FB.items = [...FB.lb.querySelectorAll('.fb-opt')];
+  let a = -1;
+  if(!initial && FB.actId) a = FB.items.findIndex(o => o.dataset.id === FB.actId);
+  if(a < 0 && initial) a = FB.items.findIndex(o => o.getAttribute('aria-selected') === 'true');
+  if(a < 0 && FB.items.length) a = 0;
+  filterSetAct(a, initial);
+  FB.pop.querySelector('[data-act="all"]').disabled = filterCats === null;
+  FB.pop.querySelector('[data-act="none"]').disabled = filterCats !== null && filterCats.size === 0;
+}
+function filterSetAct(i, scroll){
+  FB.act = i;
+  FB.items.forEach((o, j) => o.classList.toggle('act', j === i));
+  const o = FB.items[i];
+  if(o){ FB.actId = o.dataset.id; FB.lb.setAttribute('aria-activedescendant', o.id); if(scroll !== false) o.scrollIntoView({ block: 'nearest' }); }
+  else { FB.actId = null; FB.lb.removeAttribute('aria-activedescendant'); }
+}
+function filterPickOpt(o){
+  if(!o || !o.dataset.id) return;
+  FB.actId = o.dataset.id;
+  filterToggleCat(o.dataset.id);
+  filterApply();
+}
+function bindFilterbar(){
   const bar = $('#filterbar'); if(!bar) return;
-  const over = bar.scrollWidth - bar.clientWidth > 2;   // 서브픽셀 여유
-  bar.classList.toggle('ovf-fade', over);
+  bar.addEventListener('click', ev => {
+    const t = ev.target;
+    if(FB.pop && FB.pop.contains(t)){
+      const lk = t.closest('.fb-lk');
+      if(lk){
+        filterCats = lk.dataset.act === 'all' ? null : new Set();
+        filterApply(); FB.lb.focus({ preventScroll: true });   // 누른 단추가 꺼질 수 있으니 포커스는 목록으로
+        return;
+      }
+      const o = t.closest('.fb-opt');
+      if(o){ filterSetAct(FB.items.indexOf(o), false); filterPickOpt(o); if(FB.lb) FB.lb.focus({ preventScroll: true }); }
+      return;
+    }
+    if(t.closest('.fb-btn')){ if(FB.pop) filterPopClose(true); else filterPopOpen('q'); return; }
+    if(t.closest('.fb-more')){ filterPopOpen('list'); return; }
+    const rm = t.closest('.fb-x[data-rm]');
+    if(rm){
+      const xs = [...bar.querySelectorAll('.fb-x[data-rm]')], i = xs.indexOf(rm);
+      filterDropCat(rm.dataset.rm);   // 마지막 칩을 빼면 필터가 없어진 것이니 전체로
+      if(FB.pop) filterPopClose(false);
+      filterApply();
+      const nx = [...bar.querySelectorAll('.fb-x[data-rm]')];
+      (nx[Math.min(i, nx.length - 1)] || bar.querySelector('.fb-btn')).focus();
+    }
+  });
+  bar.addEventListener('mousemove', ev => {
+    if(!FB.pop) return; const o = ev.target.closest('.fb-opt'); if(!o) return;
+    const i = FB.items.indexOf(o); if(i >= 0 && i !== FB.act) filterSetAct(i, false);
+  });
+  bar.addEventListener('input', ev => {
+    if(!FB.pop || ev.target !== FB.q) return;
+    FB.actId = null; filterFillList(false); FB.lb.scrollTop = 0; filterSetAct(FB.items.length ? 0 : -1, false);
+  });
+  bar.addEventListener('keydown', ev => {
+    if(ev.isComposing || ev.keyCode === 229) return;   // 한글 조합 중 Enter, 화살표는 조합 확정에 쓴다
+    const t = ev.target;
+    //  여기서 처리한 키는 전역 단축키(Esc 로 창 닫기, Home/End 오늘로, 화살표 이동)로 번지지 않게 막는다
+    const done = () => { ev.preventDefault(); ev.stopPropagation(); };
+    if(t.classList && t.classList.contains('fb-btn') && ev.key === 'ArrowDown'){ done(); filterPopOpen('q'); return; }
+    if(FB.pop && FB.pop.contains(t)){
+      if(ev.key === 'Escape'){ done(); filterPopClose(true); return; }
+      if(ev.key === 'Tab'){
+        const leaving = ev.shiftKey ? t === FB.q : t === FB.lb;
+        if(leaving){ done(); filterPopClose(true); }
+        return;
+      }
+      if(t === FB.q){
+        if(ev.key === 'ArrowDown'){ done(); FB.lb.focus({ preventScroll: true }); filterSetAct(Math.max(0, FB.act), true); return; }
+        if(ev.key === 'Enter'){ done(); filterPickOpt(FB.items[FB.act]); return; }
+        ev.stopPropagation();   // 검색칸 글자 입력이 전역 단축키로 가지 않게
+        return;
+      }
+      if(t === FB.lb){
+        const n = FB.items.length;
+        if(ev.key === 'ArrowDown'){ done(); filterSetAct(Math.min(n - 1, FB.act + 1)); return; }
+        if(ev.key === 'ArrowUp'){ done(); if(FB.act <= 0) FB.q.focus(); else filterSetAct(FB.act - 1); return; }
+        if(ev.key === 'Home'){ done(); filterSetAct(n ? 0 : -1); return; }
+        if(ev.key === 'End'){ done(); filterSetAct(n - 1); return; }
+        if(ev.key === 'PageDown' || ev.key === 'PageUp'){ done(); if(n) filterSetAct(Math.max(0, Math.min(n - 1, FB.act + (ev.key === 'PageDown' ? 8 : -8)))); return; }
+        if(ev.key === 'Enter' || ev.key === ' '){ done(); filterPickOpt(FB.items[FB.act]); return; }
+        if(ev.key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey){ ev.stopPropagation(); FB.q.focus(); return; }   // 글자를 치면 검색칸으로
+      }
+      ev.stopPropagation();
+      return;
+    }
+    //  칩 줄(toolbar) 안 좌우 화살표
+    if(ev.key === 'ArrowRight' || ev.key === 'ArrowLeft'){
+      const items = [...bar.querySelectorAll('.fb-btn, .fb-rest button')], i = items.indexOf(t); if(i < 0) return;
+      done(); items[(i + (ev.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length].focus();
+    }
+  });
+  //  바깥을 누르거나 포커스가 바깥으로 가면 닫는다(포커스는 옮겨 간 자리에 둔다)
+  document.addEventListener('pointerdown', ev => {
+    if(!FB.pop) return;
+    const t = ev.target, btn = bar.querySelector('.fb-btn');
+    if(FB.pop.contains(t) || (btn && btn.contains(t)) || (t && t.closest && t.closest('.fb-more'))) return;
+    filterPopClose(false);
+  }, true);
+  document.addEventListener('focusin', ev => {
+    if(!FB.pop) return;
+    if(FB.pop.contains(ev.target) || ev.target === bar.querySelector('.fb-btn')) return;
+    filterPopClose(false);
+  });
+  //  폭이 바뀌면 칩을 다시 접고 팝업 자리를 다시 잡는다. 숨었던 줄이 다시 보일 때도(과제 탭에서 돌아올 때) 여기로 온다
+  window.addEventListener('resize', () => { fitFilterChips(); filterPopPlace(false); });
+  if(typeof ResizeObserver === 'function'){
+    let lastW = -1;
+    new ResizeObserver(() => { const w = bar.clientWidth; if(w === lastW) return; lastW = w; fitFilterChips(); filterPopPlace(false); }).observe(bar);
+  }
 }
 
 // 막대 세그먼트 정렬: 막대(여러 날)를 위로, 같은 시리즈끼리 묶어 레인 안정화, 나머지는 시간순
@@ -11466,7 +11736,7 @@ function renderMonthGrid(g, dens, pick, opts){
   if(opts.todos){
     for(const t of (state.todos || [])){
       if(!t.due) continue;
-      if(filterCatId && t.categoryId !== filterCatId) continue;
+      if(filterCats !== null && !filterCats.has(t.categoryId)) continue;
       const tEnd = (t.endDate && t.endDate > t.due) ? t.endDate : t.due;
       if(tEnd < startDs || t.due > endDs) continue;
       const a = maxStr(t.due, startDs), b = minStr(tEnd, endDs);
@@ -11659,7 +11929,7 @@ function pmMonthItems(startDs, endDs, pick, opts){
   if(!opts || opts.todos !== false){
     for(const t of (state.todos || [])){
       if(!t.due) continue;
-      if(filterCatId && t.categoryId !== filterCatId) continue;
+      if(filterCats !== null && !filterCats.has(t.categoryId)) continue;
       const tEnd = (t.endDate && t.endDate > t.due) ? t.endDate : t.due;
       if(tEnd < startDs || t.due > endDs) continue;
       out.push({ todo: t, s: t.due, e: tEnd, key: 't:' + t.id, mine: false });
@@ -11780,7 +12050,7 @@ function renderWeekRows(g, part){
   const theirs = all.filter(x => !x.mine), mineAll = all.filter(x => x.mine);
   const showMine = PEER && (part === 'mine' || (part === 'all' && __peerOverlay));
   const showTheirs = part !== 'mine';
-  const cats = (filterCatId ? state.categories.filter(c => c.id === filterCatId) : state.categories);
+  const cats = filterCats === null ? state.categories : state.categories.filter(c => filterCats.has(c.id));   // 필터가 있으면 고른 과제 줄만(빈 줄 포함)
   const mineCats = PEER ? (__peerMineCats || []) : [];
   const shared = new Set(mineCats.filter(m => m.key.startsWith('db-') && state.categories.some(c => c.id === m.key)).map(m => m.key));
   let tabDs = focusDs || selectedDate;
@@ -11818,7 +12088,8 @@ function renderWeekRows(g, part){
   const gap = '<div class="wr-gap" aria-hidden="true"></div>';
   const ofCat = (items, id) => items.filter(x => wrCatOf(x) === id);
   const mineOf = key => mineAll.filter(x => wrMineKey(x) === key);
-  const etcTheirs = theirs.filter(x => { const id = wrCatOf(x); return !id || !state.categories.some(c => c.id === id); });
+  //  분류 없음 줄은 전체일 때만(FILTER-MULTI §3). 필터가 있으면 거기 들 기록이 없다.
+  const etcTheirs = filterCats !== null ? [] : theirs.filter(x => { const id = wrCatOf(x); return !id || !state.categories.some(c => c.id === id); });
   const mineColor = 'var(--mine-bar)';
   if(part === 'all'){
     //  개인 창, 열람 창 겹쳐 보기: 과제 줄(같은 DB 과제면 내 막대를 아래 차선에) + 기타 + (겹이면) 내 과제 줄
@@ -11826,7 +12097,7 @@ function renderWeekRows(g, part){
     if(etcTheirs.length) html += row('분류 없음', 'var(--line-2)', [etcTheirs], 'etc');
   } else {
     //  나란히 보기: 같은 DB 과제를 위에(양쪽 같은 차선 수), 각자 과제를 굵은 선 아래에
-    const sharedCats = state.categories.filter(c => shared.has(c.id));
+    const sharedCats = state.categories.filter(c => shared.has(c.id) && (filterCats === null || filterCats.has(c.id)));   // 필터로 고른 과제만(양쪽 같은 목록이라 줄 맞춤은 그대로)
     for(const c of sharedCats){
       const n = Math.max(L(ofCat(theirs, c.id)).lanes, L(mineOf(c.id)).lanes);
       html += part === 'peer' ? row(c.name, validColor(c.color), [ofCat(theirs, c.id)], '', n) : row(c.name, validColor(c.color), [mineOf(c.id)], 'mine', n);
@@ -12091,7 +12362,7 @@ function dayDetailHtml(){
     <div>
       <div class="dp-date">${d.getMonth()+1}월 ${d.getDate()}일 <span class="dp-dow ${dowCls}">${WEEKDAYS[dow]}요일</span></div>
       ${hol?`<div class="dp-hol">${ICON.flag} ${esc(hol)}</div>`:''}
-      <div class="dp-count">${list.length ? `${list.length}개의 기록${filterCatId?' (필터 적용 중)':''}` : '기록 없음'}</div>
+      <div class="dp-count">${list.length ? `${list.length}개의 기록${filterCats !== null?' (필터 적용 중)':''}` : '기록 없음'}</div>
     </div>
     <div style="display:flex;gap:6px;flex:none">
       <button class="btn primary sm" id="btnAddHere">${ICON.plus} 추가</button>
@@ -12142,7 +12413,7 @@ function renderPanel(){
       setTimeout(() => { const e2 = $(`#dpBody .card[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
     }
   } else {
-    body.innerHTML = noteFilterBarHtml() + `<div class="dp-pad">` + renderTodoListTab() + `</div>`;
+    body.innerHTML = `<div class="dp-pad">` + renderTodoListTab() + `</div>`;
     if(flashTodoId){   // 칩 클릭 reveal — 해당 할 일 행 강조·스크롤(일정 카드 flash 대칭)
       const el = $('#dpBody .todo-row.flash');
       if(el) el.scrollIntoView({block:'nearest'});
@@ -12233,7 +12504,7 @@ function goto(ds, entryId){
   closeModal('#searchModal');
   flashTargetId = entryId || null;
   // 검색은 전역(필터 무시)이므로, 필터가 켜져 있으면 해제해야 대상 기록과 강조가 보인다
-  if(filterCatId){ filterCatId = null; renderFilterbar(); }
+  if(filterCats !== null){ filterCats = null; renderFilterbar(); }
   selectDate(ds);
 }
 
@@ -15911,7 +16182,7 @@ function applyImport(opt){
     reportFont: normalizeReportFont(pendingImport.reportFont),      // 교체 = 가져온 파일이 통째로 원본
   };
   importNormalizeCats(state);
-  filterCatId = null; noteFilterCat = null;
+  filterCats = null;
   if(!quiet) toast(`데이터를 교체했습니다. 과제 ${state.categories.length}개, 기록 ${state.entries.length}개`);
   pendingImport = null;
   //  ★ 전량 교체로 보낸다. state 가 곧 결과이고, DB 는 그 결과를 그대로 반영하기만 하면 된다.
@@ -15928,7 +16199,7 @@ async function clearAll(){
   const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
   state = {categories:[], entries:[], todos:[], reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportFormatPrefs:{daily:defaultReportFormatPref(), weekly:defaultReportFormatPref()}, reportSource:'cal', taskHours:{}, attendance:{}, reportFont:defaultReportFont()};
   ensureDefaultTasks(state);   // 초기화 뒤에도 기본 과제(휴가, 기타)는 있다(DEFAULT-TASKS §3). 같은 전량 교체 저장에 실린다
-  filterCatId = null; noteFilterCat = null;
+  filterCats = null;
   //  ★ 초기화도 state 를 통째로 갈아끼운 것이므로 전량 교체다(가져오기와 같은 부류).
   //    실행 취소도 마찬가지 — 되살릴 스냅샷이 곧 결과 state 다.
   saveFull(); renderAll();
@@ -18990,21 +19261,6 @@ function setPanelTab(tab){ noteTab = tab; editingTodoId = null; renderPanel(); }
 //  S5 — 나란히 보기(열람 창)에서는 폭과 무관하게 상세 패널이 접혀 있고, 날짜를 누르면 이 시트로 올라온다(좁은 폭 시트와 같은 길).
 function openSheetIfNarrow(){ if(window.innerWidth <= 760 || peerSide()){ panelSheetOpen = true; document.body.classList.add('sheet-open'); } }
 function closeSheet(){ panelSheetOpen = false; document.body.classList.remove('sheet-open'); }
-// 할 일 탭의 과제 필터 바(전역 filterCatId와 분리). 과제 없으면 빈 문자열
-/* 과제 필터 영역 — 과제 수에 따라 자동 확장(max-height 캡), 중앙 핸들 드래그로 캡 조절 + 영속 */
-let filterBarMax = 220;
-try{ const _fm = parseInt(localStorage.getItem('tc_filterMax'), 10); if(_fm >= 42 && _fm <= 800) filterBarMax = _fm; }catch(_){}
-function noteFilterBarHtml(){
-  if(!state.categories.length) return '';
-  let h = `<div class="nd-filter" style="max-height:${filterBarMax}px"><span class="lbl" style="font-size:var(--fs-meta);color:var(--muted)">과제:</span>`;
-  h += `<button class="fchip ${!noteFilterCat ? 'on' : ''}" data-ncat="">전체</button>`;
-  for(const c of state.categories){
-    h += `<button class="fchip ${noteFilterCat === c.id ? 'on' : ''}" data-ncat="${esc(c.id)}"><span class="dot" style="background:${validColor(c.color)}"></span><span class="fc-name">${esc(c.name)}</span></button>`;
-  }
-  return h + `</div><div class="nd-filter-rs" title="드래그 또는 ↑/↓ 키로 과제 영역 높이 조절" tabindex="0" role="separator"
-    aria-orientation="horizontal" aria-label="과제 영역 높이 조절"
-    aria-valuenow="${filterBarMax}" aria-valuemin="42" aria-valuemax="800"></div>`;
-}
 // 데이터 변경 후 열린 뷰 재반영 — 단일 리렌더 트리거. 보고서 모달이 떠 있으면 초안도 갱신.
 // (보고서에서 캘린더 기록을 고치던 경로는 일간 줄 ✎/✕ 와 함께 없앴다. 보고서 글은 글 편집에서 고치고 캘린더 기록은 바뀌지 않는다, REPORT-EDIT §5)
 function notifyDataChanged(){
@@ -19027,12 +19283,12 @@ function commitDayNoteEdit(ta){
   notifyDataChanged();   // 열린 뷰 일괄 재반영(패널·그리드·보고서)
 }
 
-// 마감 축 버킷 분류(노트 과제 필터 적용) — 평면 나열 대신 [지남/오늘/예정/기한없음/완료]
+// 마감 축 버킷 분류(상단 과제 필터 적용) — 평면 나열 대신 [지남/오늘/예정/기한없음/완료]
 function todoBuckets(){
   const today = todayYmd();
   const b = {overdue:[], today:[], upcoming:[], nodate:[], done:[]};
   for(const t of (state.todos || [])){
-    if(noteFilterCat && t.categoryId !== noteFilterCat) continue;
+    if(filterCats !== null && !filterCats.has(t.categoryId)) continue;
     if(t.done){ b.done.push(t); continue; }
     if(!t.due) b.nodate.push(t);
     else if(t.due < today) b.overdue.push(t);
@@ -19135,7 +19391,7 @@ function quickAddHtml(defaultDue){
   </div>`;
 }
 function emptyTodoHtml(scope){
-  return `<div class="nd-empty">${noteFilterCat ? '이 과제에 ' : ''}${scope==='today' ? '오늘 처리할 일이' : '할 일이'} 없습니다.
+  return `<div class="nd-empty">${filterCats !== null ? '고른 과제에 ' : ''}${scope==='today' ? '오늘 처리할 일이' : '할 일이'} 없습니다.
     <span class="nd-empty-hint">위 칸에 한 줄로 적어보세요. 기한을 넣으면 [오늘/예정] 구획과 캘린더에 자동 정리됩니다.</span></div>`;
 }
 // '오늘' 탭 = 지남 + 오늘 + (오늘 완료) — 지금 집중할 것
@@ -19154,7 +19410,7 @@ function renderTodayTab(){
 function renderTodoListTab(){
   const ds = selectedDate;
   const onlyHigh = arr => noteImportantOnly ? arr.filter(t => t.prio === 'high') : arr;
-  const inCat = t => !noteFilterCat || t.categoryId === noteFilterCat;
+  const inCat = t => filterCats === null || filterCats.has(t.categoryId);
   const covers = t => t.due && t.due <= ds && ((t.endDate && t.endDate > t.due) ? t.endDate : t.due) >= ds;  // 단일일·기간 모두 그 날 포함
   const sortS = (x,y) => ((y.prio==='high')-(x.prio==='high')) || String(x.createdAt).localeCompare(String(y.createdAt));
   const onDay  = onlyHigh((state.todos||[]).filter(t => inCat(t) && !t.done && covers(t))).sort(sortS);
@@ -19429,7 +19685,7 @@ function openQuickAdd(date, type, entryId){
     locSet('qa', e.location || '');
     $('#qaMemo').value = e.memo || '';
   } else {
-    setCatSelectValue($('#qaCat'), filterCatId || noteFilterCat || '');   // 필터로 고른 과제, 없으면 기타
+    setCatSelectValue($('#qaCat'), filterFirstCat() || '');   // 필터로 고른 과제 중 목록 순서로 첫째, 없으면 기타
     const d0 = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : selectedDate;
     $('#qaTitle').value = '';
     $('#qaDate').value = d0;
@@ -20223,9 +20479,6 @@ function bind(){
   $('#dpSheetClose').addEventListener('click', closeSheet);        // 좁은 폭 하단 시트 닫기 손잡이
 
   $('#dpBody').addEventListener('click', ev => {
-    // 과제 필터 칩(할 일) — 캘린더 전역 필터는 건드리지 않음
-    const chip = ev.target.closest('.nd-filter .fchip');
-    if(chip){ noteFilterCat = chip.dataset.ncat || null; renderPanel(); return; }
     // ＋ 할 일 추가 → quick-create(할 일) 일원화
     if(ev.target.closest('#btnTodoNew')){ openQuickAdd(selectedDate, 'todo'); return; }
     // ★ 중요만 보기 토글
@@ -20312,58 +20565,6 @@ function bind(){
   let _menuPointerInside = false;
   document.addEventListener('pointerdown', ev => { _menuPointerInside = !!(ev.target && ev.target.closest && ev.target.closest('.menu-wrap')); }, true);
   document.addEventListener('click', ev => { if(_menuPointerInside){ _menuPointerInside = false; return; } if(!ev.target.closest('.menu-wrap')) closeMore(); });
-  // 과제 필터 영역 중앙 핸들 드래그 → max-height(자동확장 캡) 조절 + 영속(재렌더 시 filterBarMax로 복원)
-  let _fbDrag = null;
-  $('#dayPanel').addEventListener('pointerdown', ev => {
-    const handle = ev.target.closest('.nd-filter-rs'); if(!handle) return;
-    const f = handle.previousElementSibling; if(!f || !f.classList.contains('nd-filter')) return;
-    ev.preventDefault();
-    _fbDrag = { startY: ev.clientY, startH: f.getBoundingClientRect().height, f, handle };
-    handle.classList.add('drag');
-    try{ handle.setPointerCapture(ev.pointerId); }catch(_){}
-  });
-  $('#dayPanel').addEventListener('pointermove', ev => {
-    if(!_fbDrag) return;
-    let nh = Math.round(_fbDrag.startH + (ev.clientY - _fbDrag.startY));
-    nh = Math.max(42, Math.min(nh, 800));
-    _fbDrag.f.style.maxHeight = nh + 'px';
-  });
-  const fbEnd = () => {
-    if(!_fbDrag) return;
-    const nh = parseInt(_fbDrag.f.style.maxHeight, 10);
-    if(nh >= 42){
-      filterBarMax = nh; try{ localStorage.setItem('tc_filterMax', String(nh)); }catch(_){}
-      _fbDrag.handle.setAttribute('aria-valuenow', String(nh));   // 드래그 결과도 보조기술에 반영(키보드 경로와 동일)
-      _fbDrag.handle.setAttribute('aria-valuetext', nh + '픽셀');
-    }
-    _fbDrag.handle.classList.remove('drag'); _fbDrag = null;
-  };
-  $('#dayPanel').addEventListener('pointerup', fbEnd);
-  $('#dayPanel').addEventListener('pointercancel', fbEnd);
-  // WCAG 2.1.1 — 핸들이 재렌더되므로 위임으로 건다. ↑/↓ 16px, Shift 64px, Home/End 양 끝.
-  // 드래그와 같은 한계(42~800)·같은 영속 키(tc_filterMax)를 쓴다.
-  $('#dayPanel').addEventListener('keydown', ev => {
-    const handle = ev.target.closest && ev.target.closest('.nd-filter-rs'); if(!handle) return;
-    const f = handle.previousElementSibling; if(!f || !f.classList.contains('nd-filter')) return;
-    const STEP = ev.shiftKey ? 64 : 16;
-    // 기준값은 '측정 높이'가 아니라 영속되는 캡(filterBarMax)이다. max-height는 상한일 뿐이라
-    // 내용이 짧으면 측정 높이 < 캡이 되고, 측정값으로 스텝을 쌓으면 키 입력이 먹지 않는 것처럼 보인다.
-    const cur = filterBarMax;
-    let nh = null;
-    if(ev.key === 'ArrowDown') nh = cur + STEP;
-    else if(ev.key === 'ArrowUp') nh = cur - STEP;
-    else if(ev.key === 'Home') nh = 42;
-    else if(ev.key === 'End') nh = 800;
-    else return;
-    // Home/End는 전역에서 '오늘로 이동'이기도 하다 — 핸들에 포커스가 있을 땐 최소/최대가 맞으므로
-    // 전파를 끊는다. 안 끊으면 renderAll()이 핸들을 재생성해 방금 준 값이 날아간다.
-    ev.preventDefault(); ev.stopPropagation();
-    nh = Math.max(42, Math.min(nh, 800));
-    f.style.maxHeight = nh + 'px';
-    filterBarMax = nh; try{ localStorage.setItem('tc_filterMax', String(nh)); }catch(_){}
-    handle.setAttribute('aria-valuenow', String(nh));
-    handle.setAttribute('aria-valuetext', nh + '픽셀');
-  });
   // ⋯ 접기 항목 — 헤더 원본 버튼의 클릭을 그대로 위임(동작 정의가 두 벌이 되지 않게)
   { const fold = { btnSearchFold:'#btnSearch', btnCatsFold:'#btnCatsTop', btnFeedbackFold:'#btnFeedback',
                    btnUserFold:'#btnUser', btnReportFold:'#btnReportTop' };   // ≤320px에서만 보이는 항목 — 숨은 원본도 click()은 동작
@@ -20553,13 +20754,7 @@ function bind(){
   $('#btnLegacyImport').addEventListener('click', () => legacyPromptImport());   // 이전 버전 기록 — 읽어서 바로 교체(빈 캘린더일 때만)
   $('#btnLegacyNever').addEventListener('click', () => legacyPromptNever());
 
-  /* 과제 필터 칩 */
-  $('#filterbar').addEventListener('click', ev => {
-    const chip = ev.target.closest('.fchip');
-    if(!chip) return;
-    filterCatId = chip.dataset.cat || null;
-    renderAll();
-  });
+  bindFilterbar();   // 과제 필터 줄과 팝업(docs/FILTER-MULTI.md)
 
   /* 그리드: 선택 / 칩 수정 / 더블클릭 새 기록 / 드래그 이동 */
   const grid = $('#grid');
@@ -25036,8 +25231,6 @@ setupModalA11y();
 pcInit();                 // 과제 탭(개인 / 과제 탭 줄, 과제 화면, 모달 배선). 모달 접근성 감시가 선 다음
 atInit();                 // 근태 탭 달력과 근태 보고 화면 배선(ATTENDANCE-PLAN). 근태 창에서도 보고 화면 배선은 돈다
 setupSplitter();
-// 창 폭이 바뀌면 넘침 여부도 바뀐다(위젯은 8방향 리사이즈라 자주 일어남)
-window.addEventListener('resize', syncOverflowFade);
 setupGuideResize();
 renderAll();
 //  WINDOW-UI §4 — 열람 창(?peerwin=1)은 내 달력을 부팅하지 않는다(호스트바, 로그인, ready, 과제 목록 모두 없음). 열람 껍데기만 편다.

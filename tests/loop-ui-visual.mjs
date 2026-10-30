@@ -104,10 +104,7 @@ const DATA_STATES = {
 const EXEMPT = {
   // V1 가로 스크롤 — 의도적으로 가로 스크롤을 쓰는 컨테이너
   hscroll: [
-    // 좁은 폭(≤440px)에서 필터바를 '2줄 wrap → 1줄 가로 스크롤'로 바꾸는 것은 설계다.
-    // 근거: CSS `@media (max-width:440px){ .filterbar{flex-wrap:nowrap;overflow-x:auto;...} }`
-    //       + `.ovf-scroll`(스크롤바 숨김·페이드) 클래스가 같은 요소에 붙어 있다.
-    '#filterbar', '.ovf-scroll',
+    // (과제 필터 줄은 2026-10-30 42px 한 줄 고정으로 바뀌어 가로 스크롤 예외를 뺐다, FILTER-MULTI. 넘치면 결함이다.)
   ],
   // V3 액션 바 줄바꿈 — 여러 줄이 정상인 wrap 컨테이너
   btnWrap: [
@@ -116,10 +113,7 @@ const EXEMPT = {
     '#cPalette', '.palette',
     // 테마 선택 메뉴는 세로 목록(버튼 6개가 각 줄). 근거: `#themeMenu`는 드롭다운 패널이다.
     '#themeMenu',
-    // 과제 필터 막대는 과제 칩 수(사용자 데이터)에 따라 여러 줄로 접히는 것이 설계다.
-    // 근거: CSS `.filterbar{flex-wrap:wrap;max-height:66px;overflow-y:auto}`(카테고리가 많아도 약 2줄로 제한 + 스크롤).
-    // 2026-10-07 기본 과제(휴가, 기타)로 칩이 2개 늘자 1400px 에서 접혀 오탐이 났다(DEFAULT-TASKS).
-    '#filterbar',
+    // (과제 필터 줄의 줄바꿈 예외는 2026-10-30 뺐다. 칩이 넘치면 +N 으로 접고 줄은 늘 한 줄이다, FILTER-MULTI.)
   ],
   // V4 겹침 — 의도적으로 겹치는 구조
   overlap: [

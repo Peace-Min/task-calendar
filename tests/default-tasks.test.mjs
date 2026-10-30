@@ -145,8 +145,8 @@ test('변이⑤s: 이관 도구가 예전처럼 없는 과제를 NULL 로 넣으
   assert.throws(() => statics.toolSameRule(bad), /MapCat|NULL/);
 });
 test('변이⑥s: 공식 과제 제거가 시간을 걷지 않으면 정적④ 가 실패한다', () => {
-  assert.throws(() => statics.gates(mutate('  dropCatHours(id);\n  state.categories = state.categories.filter(x => x.id !== id);\n  if(filterCatId === id) filterCatId = null;\n  if(noteFilterCat === id) noteFilterCat = null;\n  return true;',
-    '  state.categories = state.categories.filter(x => x.id !== id);\n  if(filterCatId === id) filterCatId = null;\n  if(noteFilterCat === id) noteFilterCat = null;\n  return true;', src)), /unsubscribeDbCat/);
+  assert.throws(() => statics.gates(mutate('  dropCatHours(id);\n  state.categories = state.categories.filter(x => x.id !== id);\n  filterDropCat(id);\n  return true;',
+    '  state.categories = state.categories.filter(x => x.id !== id);\n  filterDropCat(id);\n  return true;', src)), /unsubscribeDbCat/);
 });
 test('변이④s: deleteCategory 의 기본 과제 거르기를 빼면 정적④ 가 실패한다', () => {
   assert.throws(() => statics.gates(mutate('if(!c || isDefaultTask(c) || isOfficialCat(c)) return false;', 'if(!c || isOfficialCat(c)) return false;', src)), /기본 과제/);
@@ -354,9 +354,9 @@ if (!JSDOM) {
         entries: [ENT('e-x', 'c-gone')], todos: [TODO('t-n', null)] }), async (W) => {
         const optVals = (sel) => W.evJSON("[].map.call(document.querySelectorAll('" + sel + " option'), function(o){ return o.value; })");
         //  (예전 기록 창 #fCat 은 2026-10-26 Git 기능과 함께 없앴다. 새 기록과 편집은 모두 한 화면 폼 #qaCat 이다.)
-        W.ev("filterCatId = 'c-p'; openQuickAdd('2026-10-05');");
-        assert.strictEqual(W.ev("$('#qaCat').value"), 'c-p', '필터로 고른 과제가 새 기록의 기본값이 아니다');
-        W.ev("closeModal('#quickAdd'); filterCatId = null;");
+        W.ev("filterCats = new Set(['c-e', 'c-p']); openQuickAdd('2026-10-05');");
+        assert.strictEqual(W.ev("$('#qaCat').value"), 'c-p', '필터로 고른 과제(목록 순서로 첫째)가 새 기록의 기본값이 아니다');
+        W.ev("closeModal('#quickAdd'); filterCats = null;");
         //  편집: 목록에 없는 과제는 '(알 수 없는 과제)' 로 보존된다(조용히 첫 과제로 바뀌지 않는다)
         W.ev("openQuickAdd(null, 'event', 'e-x');");
         assert.strictEqual(W.ev("$('#qaCat').value"), 'c-gone', '목록에 없는 과제를 가리키는 기록을 열자 값이 바뀌었다');
@@ -688,8 +688,8 @@ if (!JSDOM) {
     await assert.rejects(() => checks.importKeepsOfficialRefs(bad), /편입하지 않았다/);
   });
   test('변이⑬: 공식 과제 제거가 시간을 걷지 않으면 행동⑮ 가 실패한다', async () => {
-    const bad = mutate('  dropCatHours(id);\n  state.categories = state.categories.filter(x => x.id !== id);\n  if(filterCatId === id) filterCatId = null;\n  if(noteFilterCat === id) noteFilterCat = null;\n  return true;',
-      '  state.categories = state.categories.filter(x => x.id !== id);\n  if(filterCatId === id) filterCatId = null;\n  if(noteFilterCat === id) noteFilterCat = null;\n  return true;', src);
+    const bad = mutate('  dropCatHours(id);\n  state.categories = state.categories.filter(x => x.id !== id);\n  filterDropCat(id);\n  return true;',
+      '  state.categories = state.categories.filter(x => x.id !== id);\n  filterDropCat(id);\n  return true;', src);
     await assert.rejects(() => checks.unsubscribeDropsHours(bad), /시간이 state 에 남았다/);
   });
   test('변이⑮: 다시 주입될 때 보장 플래그를 남기면(예전 판) 행동⑰ 이 실패한다', async () => {

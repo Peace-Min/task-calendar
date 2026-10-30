@@ -380,26 +380,29 @@ if (!JSDOM) {
 
     // ── 계약 5. 필터 — 내 겹은 상대 과제 축을 타지 않는다 ──────────────
     test('P 필터(과제): 상대 과제 하나만 켜면 상대 일정만 걸러지고 내 겹은 그대로 남는다', () => {
-      P.ev('filterCatId = "c-A"; renderAll();');
+      P.ev('filterCats = new Set(["c-A"]); renderAll();');
       assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip.chip-mine").length'), MINE_CHIPS,
         '상대 과제 필터가 내 겹까지 걷어냈다 — 내 일정이 없는 날처럼 보인다');
       assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip:not(.chip-mine)").length'), 2,
         'c-A(e-p1 1개 + e-p3 기간 막대 1개)만 남아야 한다');
       assert.ok(!P.ev('document.getElementById("grid").textContent').includes('상대: 주간보고'),
         '상대 과제 필터가 상대 일정에는 걸려야 한다');
-      P.ev('filterCatId = null; renderAll();');
+      P.ev('filterCats = null; renderAll();');
       assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip").length'), MINE_CHIPS + PEER_CHIPS);
     });
 
     //  (출처 필터 filterSource 는 커밋 기록만 거르던 죽은 갈래라 2026-10-26 Git 기능과 함께 없앴다.)
 
     // ── 계약 6. 필터바 ──────────────────────────────────────────────
-    test('P 필터바: 칩은 「전체」+ 상대 과제뿐이고, 상대 과제 건수에 내 일정이 안 섞인다', () => {
-      const chips = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#filterbar .fchip"), function(b){return b.textContent.trim().replace(/\\s+/g," ");})');
-      assert.strictEqual(chips.length, PEER_CATS.length + 1,
-        '필터바 칩 수가 「전체」+ 상대 과제와 다르다(내 과제가 샜다): ' + JSON.stringify(chips));
-      assert.deepStrictEqual(chips, ['전체', '설계 검토 2', '보고서 작성 1'],
-        '내 일정이 상대 과제 건수에 섞이면 숫자가 커진다: ' + JSON.stringify(chips));
+    test('P 필터바: 과제 팝업 목록은 상대 과제뿐이고, 상대 과제 건수에 내 일정이 안 섞인다(FILTER-MULTI)', () => {
+      assert.strictEqual(P.ev('document.querySelector("#filterbar .fb-btn .pv").textContent.trim()'), '전체');
+      P.ev('document.querySelector("#filterbar .fb-btn").click()');
+      const opts = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#fbPop .fb-opt"), function(b){return b.querySelector(".nm").textContent + " " + b.querySelector(".n").textContent;})');
+      P.ev('filterPopClose(false)');
+      assert.strictEqual(opts.length, PEER_CATS.length,
+        '팝업 목록 수가 상대 과제 수와 다르다(내 과제가 샜다): ' + JSON.stringify(opts));
+      assert.deepStrictEqual(opts, ['설계 검토 2', '보고서 작성 1'],
+        '내 일정이 상대 과제 건수에 섞이면 숫자가 커진다: ' + JSON.stringify(opts));
     });
 
     // ── 계약 7. 토글 ────────────────────────────────────────────────
@@ -516,10 +519,10 @@ if (!JSDOM) {
 
     // ── 변이① passFilter 의 _mine 우회를 없앤다 → 상대 과제를 켜는 순간 내 겹이 사라진다 ──
     test('변이①: passFilter 에서 _mine 우회를 빼면 「겹은 상대 과제 필터를 안 탄다」 계약이 깨진다', async () => {
-      P.ev('filterCatId = "c-A"; renderAll();');
+      P.ev('filterCats = new Set(["c-A"]); renderAll();');
       assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip.chip-mine").length'), MINE_CHIPS,
         '사전조건: 정상 앱은 상대 과제를 켜도 내 겹을 남긴다');
-      P.ev('filterCatId = null; renderAll();');
+      P.ev('filterCats = null; renderAll();');
 
       await withMutatedApp(
         '  if(e && e._mine) return PEER && __peerOverlay;',
@@ -530,7 +533,7 @@ if (!JSDOM) {
           await settle();
           assert.strictEqual(m.ev('document.querySelectorAll("#grid .chip.chip-mine").length'), MINE_CHIPS,
             '사전조건: 필터가 꺼져 있으면 변이 앱에서도 겹이 보인다(변이는 과제 축만 건드린다)');
-          m.ev('filterCatId = "c-A"; renderAll();');
+          m.ev('filterCats = new Set(["c-A"]); renderAll();');
           assert.strictEqual(m.ev('document.querySelectorAll("#grid .chip.chip-mine").length'), 0,
             '변이했는데도 겹이 남아 있다 — 변이가 필터 경로에 닿지 않았다(앵커 재검토)');
         });

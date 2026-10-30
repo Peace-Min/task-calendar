@@ -230,11 +230,11 @@ if (!JSDOM) {
 
     test('(jsdom) S11: 과제 필터는 왼쪽(그 사람)에만 걸린다 — 오른쪽 내 칩 수는 그대로', () => {
       const before = q(P, '#gridMine .chip');
-      P.ev('filterCatId = "c-A"; renderAll();');
+      P.ev('filterCats = new Set(["c-A"]); renderAll();');
       const leftIds = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#grid .chip[data-id]"), function(c){ return c.dataset.id; })');
       assert.ok(leftIds.length && leftIds.every(id => ['p-10', 'p-14', 'p-09', 'p-rng'].includes(id)), JSON.stringify(leftIds));
       assert.strictEqual(q(P, '#gridMine .chip'), before, '과제 필터가 오른쪽(내) 달력까지 걸렸다');
-      P.ev('filterCatId = null; renderAll();');
+      P.ev('filterCats = null; renderAll();');
     });
 
     test('(jsdom) R4/S5: 상세 패널은 접혀 있고 날짜를 누르면 시트로 열린다 · 두 묶음 머리말 · 닫기 손잡이로 닫힌다', () => {

@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>과제 필터바 개선안</title>
+<style>
+/* 앱(task-calendar-prototype.html) :root 토큰을 그대로 옮겼다. 세피아, 다크는 앱 값과 같다 */
+:root{
+  --bg:#f3f4f7; --panel:#ffffff; --line:#e4e7ee; --line-2:#d6dbe6; --ctl-border:#8b93a5;
+  --text:#1d2433; --muted:#5b6373; --faint:#9aa2b3; --faint-text:#6c7488;
+  --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd; --accent-fill:var(--accent); --on-accent:#fff;
+  --hover-bg:#f3f5fa; --dim-bg:#fafbfd; --border-hover:#bcc4d6; --mark-bg:#ffe27a; --mark-ink:#1d2433;
+  --r-sm:6px; --r-md:10px; --r-lg:14px; --shadow:0 10px 32px rgba(20,28,55,.16);
+  --fs-micro:11px; --fs-meta:12px; --fs-body:13px; --fs-emph:14px; --fs-title:15px;
+}
+:root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#75664f; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; --dim-bg:#f4ecdd; --hover-bg:#f3ead9; --border-hover:#bfa982; }
+:root[data-theme="dark"]{ --bg:#0f1420; --panel:#1a2031; --line:#2a3245; --line-2:#3a4357; --text:#e6e9f2; --muted:#a8b0c3; --faint:#5c6578; --faint-text:#9aa3b7; --accent:#6182ff; --accent-2:#9db0ff; --accent-soft:#1d2742; --accent-fill:#4f66d8; --ctl-border:#666f8a; --hover-bg:#222b3e; --dim-bg:#141a27; --border-hover:#49546e; --shadow:0 12px 34px rgba(0,0,0,.55); }
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI','Malgun Gothic','맑은 고딕',system-ui,sans-serif;font-size:var(--fs-body);line-height:1.5}
+button,input{font-family:inherit;color:inherit}
+.page{max-width:1080px;margin:0 auto;padding:16px}
+h1{font-size:var(--fs-title);margin:0 0 10px}
+
+/* ---------- 시연 조작판 ---------- */
+.ctl{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:10px 14px;margin-bottom:14px}
+.ctl .grp{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ctl .k{font-size:var(--fs-meta);color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:var(--r-sm);overflow:hidden}
+.seg button{border:0;background:var(--panel);padding:4px 10px;font-size:var(--fs-body);cursor:pointer;border-left:1px solid var(--line-2)}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent-2);font-weight:600}
+.seg button:focus-visible,.ctl input:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.rec{font-size:var(--fs-micro);color:var(--accent-2);border:1px solid var(--accent);border-radius:999px;padding:0 6px;margin-left:4px;font-weight:600}
+#w{width:220px;accent-color:var(--accent)}
+#wv{font-variant-numeric:tabular-nums;min-width:52px;display:inline-block}
+
+/* ---------- 비교 무대 ---------- */
+.stage{display:flex;flex-direction:column;gap:18px}
+.cap{font-size:var(--fs-meta);color:var(--muted);margin:0 0 4px;font-weight:600}
+.frame{border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--panel);position:relative;margin:0}
+.calstub{height:96px;background:repeating-linear-gradient(90deg,var(--dim-bg) 0,var(--dim-bg) calc(100%/7 - 1px),var(--line) calc(100%/7 - 1px),var(--line) calc(100%/7));border-radius:0 0 var(--r-sm) var(--r-sm)}
+
+/* ---------- 공통 칩(앱 .fchip 그대로) ---------- */
+.fchip{
+  display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);
+  background:var(--panel);border-radius:999px;padding:4px 11px;font-size:var(--fs-body);cursor:pointer;color:var(--text);
+  flex:none;max-width:200px;line-height:1.5;
+}
+.fchip .fc-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fchip .dot{width:9px;height:9px;border-radius:50%;flex:none}
+.fchip:hover{border-color:var(--border-hover)}
+.fchip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
+.fchip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.lbl{font-size:var(--fs-meta);color:var(--muted);margin-right:2px;flex:none;white-space:nowrap}
+
+/* ---------- Before: 현재 앱 그대로(.filterbar + .ovf-scroll + 좁은 폭 1줄 가로 스크롤) ---------- */
+.before .filterbar{
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;align-content:flex-start;
+  padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--line);
+  max-height:66px;overflow-y:auto;scrollbar-width:none;
+}
+.before .filterbar::-webkit-scrollbar{width:0;height:0;display:none}
+.before .filterbar.ovf-fade{-webkit-mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 22px),transparent 100%);mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 22px),transparent 100%)}
+.before.narrow .filterbar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-height:none;padding:6px 12px}
+.before .fchip .n{opacity:.6}
+.warn{font-size:var(--fs-micro);color:var(--muted);margin-top:4px;min-height:17px}
+
+/* ---------- After: 한 줄 고정, 넘치는 만큼 +N 으로 접는다 ---------- */
+.fb{
+  display:flex;align-items:center;gap:6px;flex-wrap:nowrap;overflow:hidden;
+  height:42px;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line);
+}
+.fb.tight{padding:0 12px}
+.fb .fchip .n{color:var(--muted);font-weight:400;font-variant-numeric:tabular-nums}
+.fb .fchip.on .n{color:inherit}
+.fb .fchip.zero .fc-name{color:var(--muted)}
+.fb .fchip.on.zero .fc-name{color:inherit}
+.fb .sep{width:1px;height:16px;background:var(--line-2);flex:none;margin:0 2px}
+.fb .lbl.sr,.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.fmore{
+  display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:auto;
+  border:1px solid var(--line-2);background:var(--panel);border-radius:999px;padding:4px 11px;
+  font-size:var(--fs-body);color:var(--text);cursor:pointer;font-variant-numeric:tabular-nums;line-height:1.5;
+}
+.fmore:hover,.fmore[aria-expanded="true"]{border-color:var(--border-hover);background:var(--hover-bg)}
+.fmore:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.fmore svg{width:10px;height:10px}
+.measure{position:absolute;left:-9999px;top:0;visibility:hidden;display:flex;gap:6px;white-space:nowrap}
+
+/* 팝오버(앱 .menu 와 같은 면) */
+.pop{
+  position:absolute;top:44px;right:8px;z-index:40;width:300px;max-width:calc(100% - 16px);
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);padding:6px;
+}
+.pop[hidden]{display:none}
+.pop .q{width:100%;border:1px solid var(--ctl-border);background:var(--panel);border-radius:var(--r-sm);padding:6px 9px;font-size:var(--fs-body);margin-bottom:6px}
+.pop .q:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.pop .hd{font-size:var(--fs-micro);color:var(--muted);padding:2px 8px 4px}
+.pop ul{list-style:none;margin:0;padding:0;max-height:288px;overflow-y:auto}
+.pop li.gap{height:1px;background:var(--line);margin:4px 6px}
+.pop .row{
+  display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;text-align:left;
+  padding:6px 8px;border-radius:var(--r-sm);font-size:var(--fs-body);cursor:pointer;
+}
+.pop .row:hover{background:var(--hover-bg)}
+.pop .row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.pop .row .dot{width:9px;height:9px;border-radius:50%;flex:none}
+.pop .row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pop .row .n{color:var(--muted);font-variant-numeric:tabular-nums}
+.pop .row.zero .nm{color:var(--muted)}
+.pop .row[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent-2);font-weight:600}
+.pop .row[aria-pressed="true"] .n,.pop .row[aria-pressed="true"] .nm{color:inherit}
+.pop mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px}
+.pop .none{padding:8px;color:var(--muted)}
+
+.memo{margin-top:20px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:10px 14px 10px 30px;font-size:var(--fs-body)}
+.memo li{margin:2px 0}
+.memo code{font-family:Consolas,monospace;font-size:12px;background:var(--dim-bg);padding:0 3px;border-radius:3px}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>과제 필터바 개선안</h1>
+
+  <div class="ctl" role="group" aria-label="시연 조작">
+    <div class="grp"><label class="k" for="w">폭</label><input id="w" type="range" min="400" max="1000" step="10" value="800"><span id="wv">800px</span></div>
+    <div class="grp"><span class="k" id="kData">과제 수</span><div class="seg" data-ctl="data" aria-labelledby="kData"><button data-v="13" aria-pressed="true">13개</button><button data-v="40" aria-pressed="false">40개</button></div></div>
+    <div class="grp"><span class="k" id="kSort">After 정렬</span><div class="seg" data-ctl="sort" aria-labelledby="kSort">
+      <button data-v="count" aria-pressed="true">기록 많은 순<span class="rec">추천</span></button>
+      <button data-v="recent" aria-pressed="false">최근 기록 순</button>
+      <button data-v="name" aria-pressed="false">가나다 순</button>
+      <button data-v="reg" aria-pressed="false">등록 순</button>
+    </div></div>
+    <div class="grp"><span class="k" id="kTheme">테마</span><div class="seg" data-ctl="theme" aria-labelledby="kTheme"><button data-v="light" aria-pressed="true">기본</button><button data-v="sepia" aria-pressed="false">세피아</button><button data-v="dark" aria-pressed="false">다크</button></div></div>
+  </div>
+
+  <div class="stage">
+    <section>
+      <p class="cap">Before (현재: 등록 순, 2줄 캡과 숨은 스크롤, 440px 이하 1줄 가로 스크롤)</p>
+      <div class="frame before" id="fBefore">
+        <div class="filterbar" id="barBefore"></div>
+        <div class="calstub"></div>
+      </div>
+      <div class="warn" id="warnBefore" aria-live="polite"></div>
+    </section>
+    <section>
+      <p class="cap">After (개선안: 한 줄 고정, 넘치는 만큼 +N 목록으로 접기)</p>
+      <div class="frame after" id="fAfter">
+        <div class="fb" id="barAfter" role="toolbar" aria-label="과제 필터"></div>
+        <div class="pop" id="pop" role="dialog" aria-label="과제 전체 목록" hidden></div>
+        <div class="measure" id="measure" aria-hidden="true"></div>
+        <div class="calstub"></div>
+      </div>
+      <div class="warn" id="warnAfter" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <ol class="memo">
+    <li>정렬은 고정 칩 전체, 그다음 기록 많은 순(같으면 가나다), 0건은 구분선 뒤로. 숫자가 줄어드는 방향이 곧 기준이라 따로 설명이 필요 없고, 달을 넘겨도 순서가 흔들리지 않는다.</li>
+    <li>필터바는 높이 42px 한 줄 고정. 들어가는 만큼만 칩을 놓고 나머지는 끝의 +N 버튼(검색 가능한 목록)으로 접는다. 칩을 반만 보여 주거나 스크롤로 숨기는 상태가 원천적으로 없다.</li>
+    <li>선택된 과제가 접힌 쪽에 있으면 마지막 칸으로 끌어올려 항상 줄에 보인다. 다른 칩 자리는 그대로라 출렁임이 없다.</li>
+    <li>옮길 곳: <code>renderFilterbar()</code>를 정렬 함수와 폭 맞춤 단계로 나누고 <code>ResizeObserver</code>로 재배치, <code>syncOverflowFade</code>와 <code>.ovf-scroll</code>의 필터바 사용, <code>.filterbar</code>의 <code>max-height:66px</code>/<code>flex-wrap</code>, 440px 미디어 쿼리의 <code>.filterbar</code> 줄 제거.</li>
+    <li>할 일 탭 <code>noteFilterBarHtml()</code>도 같은 구조로 바꾸면 <code>.nd-filter-rs</code> 드래그 핸들, <code>filterBarMax</code>, <code>tc_filterMax</code> 저장이 필요 없어진다. 클릭 위임(<code>#filterbar</code> click, <code>data-cat</code>)은 그대로 쓴다.</li>
+  </ol>
+</div>
+
+<script>
+'use strict';
+/* ---------- 데이터 ---------- */
+// 사용자 화면의 실제 13개(등록 순, 기록 수). last = 마지막 기록일(최근 기록 순 시연용)
+const BASE = [
+  ['보고서 작성',1,'#3e5be0','2026-10-28'],['시스템 점검',0,'#1f9d8f',''],['asdasd',0,'#8a93a6',''],['zcxzxcxc',0,'#b06ad0',''],
+  ['asgasgasg',1,'#d6494e','2026-09-12'],['qweqwew',1,'#e0a32e','2026-10-02'],['Test',11,'#2e9e6b','2026-10-27'],['가렌의 방패',1,'#5a6886','2026-08-30'],
+  ['뺀비의 폭죽',3,'#c46a2a','2026-10-21'],['네코의 꼬리',0,'#7d5bd0',''],['휴가',0,'#2a8fc4',''],['기타',3,'#8b6b4a','2026-10-29']
+];
+// 사용자 목록은 전체 포함 13칩(과제 12개 + 전체). 데이터 토글의 13 = 과제 13개가 되도록 하나 더한다
+BASE.push(['정기 회의',2,'#4b62a0','2026-10-30']);
+const EXTRA_NAMES = ['레이더 신호처리 개선','표적 추적 알고리즘','시험 장비 교정','납품 문서 정리','코드 리뷰','신규 입사자 교육','고객사 미팅','보안 점검','빌드 서버 이전',
+  '데이터베이스 이관','성능 시험','사용자 매뉴얼 개정','위젯 UI 개편','장애 대응','특허 출원 준비','예산 집행 정리','외부 교육 수강','협력사 검토','연구 노트 작성',
+  '시뮬레이터 유지보수','현장 설치 지원','품질 감사 대응','월간 보고 취합','인터페이스 정의서','회로도 검토','부품 단종 대응','시제품 조립'];
+const PALETTE = ['#3e5be0','#1f9d8f','#d6494e','#e0a32e','#2e9e6b','#7d5bd0','#c46a2a','#2a8fc4','#b06ad0','#5a6886','#8b6b4a','#4b62a0'];
+function makeData(n){
+  const out = BASE.map((r,i) => ({id:'c'+i, name:r[0], n:r[1], color:r[2], last:r[3], reg:i}));
+  let seed = 7; const rnd = () => (seed = (seed*9301 + 49297) % 233280) / 233280;
+  for(let i = 0; out.length < n; i++){
+    const z = rnd() < .25, cnt = z ? 0 : Math.max(1, Math.round(rnd()*rnd()*40));
+    const d = z ? '' : '2026-' + String(1 + Math.floor(rnd()*10)).padStart(2,'0') + '-' + String(1 + Math.floor(rnd()*28)).padStart(2,'0');
+    out.push({id:'x'+i, name:EXTRA_NAMES[i % EXTRA_NAMES.length], n:cnt, color:PALETTE[i % PALETTE.length], last:d, reg:out.length});
+  }
+  return out;
+}
+
+/* ---------- 상태 ---------- */
+const S = { width:800, count:13, sort:'count', sel:null, q:'' };
+let cats = makeData(13);
+const SORT_LABEL = {count:'기록 많은 순', recent:'최근 기록 순', name:'가나다 순', reg:'등록 순'};
+const coll = new Intl.Collator('ko');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* 정렬: 0건은 언제나 뒤 묶음(등록 순 제외). zeroFrom = 0건 묶음이 시작하는 인덱스(-1이면 구분 없음) */
+function sorted(){
+  const a = cats.slice();
+  if(S.sort === 'reg') return {list:a.sort((x,y) => x.reg - y.reg), zeroFrom:-1};
+  const cmp = {
+    count:(x,y) => (y.n - x.n) || coll.compare(x.name, y.name),
+    recent:(x,y) => (y.last || '').localeCompare(x.last || '') || coll.compare(x.name, y.name),
+    name:(x,y) => coll.compare(x.name, y.name)
+  }[S.sort];
+  const live = a.filter(c => c.n > 0).sort(cmp), zero = a.filter(c => c.n === 0).sort((x,y) => coll.compare(x.name, y.name));
+  return {list:live.concat(zero), zeroFrom: zero.length && live.length ? live.length : -1};
+}
+
+/* ---------- Before: 현재 renderFilterbar 그대로 ---------- */
+function renderBefore(){
+  const f = document.getElementById('fBefore'), bar = document.getElementById('barBefore');
+  f.style.width = S.width + 'px';
+  f.classList.toggle('narrow', S.width <= 440);
+  let h = '<span class="lbl">과제 필터:</span><button class="fchip ' + (!S.sel ? 'on' : '') + '" data-cat="">전체</button>';
+  for(const c of cats.slice().sort((x,y) => x.reg - y.reg))
+    h += '<button class="fchip ' + (S.sel === c.id ? 'on' : '') + '" data-cat="' + c.id + '"><span class="dot" style="background:' + c.color + '"></span><span class="fc-name">' + esc(c.name) + '</span> <span class="n">' + c.n + '</span></button>';
+  bar.innerHTML = h;
+  const overX = bar.scrollWidth - bar.clientWidth > 2, overY = bar.scrollHeight - bar.clientHeight > 2;
+  bar.classList.toggle('ovf-fade', overX);
+  // 숨은 칩 수(바 바깥에 걸친 칩)
+  const br = bar.getBoundingClientRect(); let hid = 0, cut = 0;
+  bar.querySelectorAll('.fchip').forEach(ch => { const r = ch.getBoundingClientRect();
+    if(r.right <= br.right + 1 && r.bottom <= br.bottom + 1) return;
+    if(r.left >= br.right - 1 || r.top >= br.bottom - 1) hid++; else cut++; });
+  document.getElementById('warnBefore').textContent = (overX || overY) ? ('스크롤해야 보이는 칩 ' + hid + '개, 잘린 칩 ' + cut + '개') : '';
+}
+
+/* ---------- After ---------- */
+function chipHtml(c, extra){
+  return '<button class="fchip' + (c.n === 0 ? ' zero' : '') + (S.sel === c.id ? ' on' : '') + (extra || '') + '" data-cat="' + c.id + '" aria-pressed="' + (S.sel === c.id) + '">' +
+    '<span class="dot" style="background:' + c.color + '"></span><span class="fc-name">' + esc(c.name) + '</span><span class="n">' + c.n + '</span></button>';
+}
+const allHtml = () => '<button class="fchip' + (!S.sel ? ' on' : '') + '" data-cat="" aria-pressed="' + !S.sel + '">전체</button>';
+const moreHtml = n => '<button class="fmore" id="more" aria-haspopup="dialog" aria-expanded="' + !document.getElementById('pop').hidden + '" aria-controls="pop" aria-label="과제 ' + n + '개 더 보기">+' + n +
+  '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></button>';
+
+let widthCache = null;   // 데이터, 정렬, 선택이 바뀔 때만 다시 잰다
+function measure(list){
+  const m = document.getElementById('measure');
+  m.innerHTML = '<span class="lbl">과제 필터</span>' + allHtml() + list.map(c => chipHtml(c)).join('') + moreHtml(88) + '<span class="sep" style="display:block;width:1px;margin:0 2px"></span>';
+  // offsetWidth 는 정수로 반올림돼 칩이 많으면 오차가 쌓인다 → 소수 폭을 올림
+  const k = m.children, bw = el => Math.ceil(el.getBoundingClientRect().width * 10) / 10;
+  const w = {lbl:bw(k[0]), all:bw(k[1]), chips:{}, more:bw(k[k.length - 2]), sep:5};
+  list.forEach((c,i) => { w.chips[c.id] = bw(k[i + 2]); });
+  return w;
+}
+
+function renderAfter(){
+  const f = document.getElementById('fAfter'), bar = document.getElementById('barAfter');
+  f.style.width = S.width + 'px';
+  const {list, zeroFrom} = sorted();
+  if(!widthCache) widthCache = measure(list);
+  const W = widthCache, GAP = 6;
+  const tight = S.width < 560; bar.classList.toggle('tight', tight);
+  const pad = tight ? 24 : 32;
+  const showLbl = S.width >= 520;   // 좁으면 글자 라벨은 숨기고 aria-label 로만 남긴다
+  let avail = S.width - 2 - pad - 2   /* 2px 안전 여유 */ - W.all - (showLbl ? W.lbl + 2 + GAP : 0);
+
+  // 전부 들어가나
+  const cost = (i) => GAP + W.chips[list[i].id] + (i === zeroFrom ? W.sep + GAP : 0);
+  let total = 0; for(let i = 0; i < list.length; i++) total += cost(i);
+  let vis = [];
+  if(total <= avail){ vis = list.map((c,i) => i); }
+  else{
+    let budget = avail - GAP - W.more, used = 0;
+    for(let i = 0; i < list.length; i++){ const c = cost(i); if(used + c > budget) break; used += c; vis.push(i); }
+    // 선택된 과제가 접힌 쪽이면 마지막 칸으로 끌어올린다(앞 칩들 자리는 그대로)
+    const si = list.findIndex(c => c.id === S.sel);
+    if(si >= 0 && !vis.includes(si)){
+      const need = GAP + W.chips[list[si].id];
+      while(vis.length && used + need > budget){ used -= cost(vis.pop()); }
+      if(used + need <= budget) vis.push(si);
+    }
+  }
+  const hidden = list.length - vis.length;
+  let h = '<span class="lbl' + (showLbl ? '' : ' sr') + '">과제 필터</span>' + allHtml();
+  vis.forEach(i => { if(i === zeroFrom) h += '<span class="sep" aria-hidden="true"></span>'; h += chipHtml(list[i]); });
+  if(hidden > 0) h += moreHtml(hidden);
+  bar.innerHTML = h;
+
+  // 검증: 잘림, 넘침
+  const br = bar.getBoundingClientRect(); let cut = 0;
+  bar.querySelectorAll('.fchip,.fmore').forEach(ch => { const r = ch.getBoundingClientRect(); if(r.right > br.right - (tight ? 12 : 16) + 1) cut++; });
+  document.getElementById('warnAfter').textContent = '보이는 칩 ' + (vis.length + 1) + '개, 접힘 ' + hidden + '개' + (cut ? ', 잘린 칩 ' + cut + '개' : '') + (bar.scrollWidth > bar.clientWidth + 1 ? ', 넘침 있음' : '');
+  if(!document.getElementById('pop').hidden) renderPop(false);
+}
+
+/* ---------- +N 목록 ---------- */
+function renderPop(focus){
+  const pop = document.getElementById('pop'), {list, zeroFrom} = sorted();
+  const q = S.q.trim().toLowerCase();
+  const hit = c => !q || c.name.toLowerCase().includes(q);
+  const mark = s => { if(!q) return esc(s); const i = s.toLowerCase().indexOf(q); return i < 0 ? esc(s) : esc(s.slice(0,i)) + '<mark>' + esc(s.slice(i, i + q.length)) + '</mark>' + esc(s.slice(i + q.length)); };
+  let rows = '';
+  if(!q) rows += '<li><button class="row" data-cat="" aria-pressed="' + !S.sel + '"><span class="nm">전체</span></button></li>';
+  let n = 0;
+  list.forEach((c,i) => {
+    if(!hit(c)) return;
+    if(i === zeroFrom && !q) rows += '<li class="gap" aria-hidden="true"></li>';
+    n++;
+    rows += '<li><button class="row' + (c.n === 0 ? ' zero' : '') + '" data-cat="' + c.id + '" aria-pressed="' + (S.sel === c.id) + '"><span class="dot" style="background:' + c.color + '"></span><span class="nm">' + mark(c.name) + '</span><span class="n">' + c.n + '</span></button></li>';
+  });
+  if(q && !n) rows = '<li class="none">일치하는 과제 없음</li>';
+  const qOld = pop.querySelector('.q');
+  if(qOld && !focus){ pop.querySelector('ul').innerHTML = rows; pop.querySelector('.hd').textContent = SORT_LABEL[S.sort]; return; }
+  pop.innerHTML = (cats.length > 10 ? '<input class="q" type="search" placeholder="과제 검색" aria-label="과제 검색" value="' + esc(S.q) + '">' : '') +
+    '<div class="hd">' + SORT_LABEL[S.sort] + '</div><ul>' + rows + '</ul>';
+  if(focus){ const t = pop.querySelector('.q') || pop.querySelector('.row[aria-pressed="true"]') || pop.querySelector('.row'); t && t.focus(); }
+}
+function openPop(){ const p = document.getElementById('pop'); p.hidden = false; S.q = ''; renderPop(true); const m = document.getElementById('more'); m && m.setAttribute('aria-expanded','true'); }
+function closePop(ret){ const p = document.getElementById('pop'); if(p.hidden) return; p.hidden = true; const m = document.getElementById('more'); if(m){ m.setAttribute('aria-expanded','false'); if(ret) m.focus(); } }
+
+// 다시 그리면 버튼이 새로 만들어지므로 포커스를 같은 칩(없으면 +N)으로 되돌린다
+function select(id, refocus){
+  S.sel = id || null; widthCache = null; renderAll();
+  if(refocus) (document.querySelector('#barAfter .fchip[data-cat="' + (id || '') + '"]') || document.getElementById('more') || document.querySelector('#barAfter .fchip')).focus();
+}
+
+/* ---------- 이벤트 ---------- */
+document.getElementById('barAfter').addEventListener('click', ev => {
+  const more = ev.target.closest('.fmore'); if(more){ document.getElementById('pop').hidden ? openPop() : closePop(true); return; }
+  const ch = ev.target.closest('.fchip'); if(ch){ closePop(); select(ch.dataset.cat, true); }
+});
+document.getElementById('barBefore').addEventListener('click', ev => { const ch = ev.target.closest('.fchip'); if(ch) select(ch.dataset.cat); });
+// 툴바 안 좌우 화살표 이동(roving 대신 단순 이동, Tab 순서는 유지)
+document.getElementById('barAfter').addEventListener('keydown', ev => {
+  if(ev.key !== 'ArrowRight' && ev.key !== 'ArrowLeft') return;
+  const items = [...document.querySelectorAll('#barAfter button')], i = items.indexOf(document.activeElement); if(i < 0) return;
+  ev.preventDefault(); items[(i + (ev.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length].focus();
+});
+const pop = document.getElementById('pop');
+pop.addEventListener('click', ev => { const r = ev.target.closest('.row'); if(r){ closePop(false); select(r.dataset.cat, true); } });
+pop.addEventListener('input', ev => { if(ev.target.classList.contains('q')){ S.q = ev.target.value; renderPop(false); } });
+pop.addEventListener('keydown', ev => {
+  if(ev.key === 'Escape'){ ev.preventDefault(); closePop(true); return; }
+  if(ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp' && ev.key !== 'Enter') return;
+  const rows = [...pop.querySelectorAll('.row')], i = rows.indexOf(document.activeElement);
+  if(ev.key === 'Enter'){ if(i < 0 && rows[0] && ev.target.classList.contains('q')){ ev.preventDefault(); rows[0].click(); } return; }
+  ev.preventDefault();
+  const d = ev.key === 'ArrowDown' ? 1 : -1;
+  if(i < 0){ if(d > 0 && rows[0]) rows[0].focus(); return; }
+  if(i + d < 0){ const q = pop.querySelector('.q'); (q || rows[0]).focus(); return; }
+  rows[Math.min(rows.length - 1, i + d)].focus();
+});
+document.addEventListener('pointerdown', ev => { if(!ev.target.closest('#pop,#more')) closePop(false); });
+pop.addEventListener('focusout', ev => { if(ev.relatedTarget && !pop.contains(ev.relatedTarget) && ev.relatedTarget.id !== 'more') closePop(false); });
+
+document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if(!b) return;
+  seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  const v = b.dataset.v, k = seg.dataset.ctl;
+  if(k === 'data'){ S.count = +v; cats = makeData(S.count); if(S.sel && !cats.some(c => c.id === S.sel)) S.sel = null; }
+  if(k === 'sort') S.sort = v;
+  if(k === 'theme') document.documentElement.dataset.theme = v;
+  widthCache = null; closePop(false); renderAll();
+}));
+const wIn = document.getElementById('w');
+wIn.addEventListener('input', () => { S.width = +wIn.value; document.getElementById('wv').textContent = S.width + 'px'; renderAll(); });
+
+function renderAll(){ renderBefore(); renderAfter(); }
+// URL 해시로 상태 지정(검증용): #w=600&n=40&sel=c6
+(function(){ const p = new URLSearchParams(location.hash.slice(1));
+  if(p.get('w')){ S.width = +p.get('w'); wIn.value = S.width; document.getElementById('wv').textContent = S.width + 'px'; }
+  if(p.get('n') === '40'){ S.count = 40; cats = makeData(40); document.querySelectorAll('[data-ctl="data"] button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === '40'))); }
+  if(p.get('sel')) S.sel = p.get('sel');
+})();
+(document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(() => { widthCache = null; renderAll(); });
+renderAll();
+</script>
+</body>
+</html>

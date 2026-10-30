@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>과제 필터 시안 v2</title>
+<style>
+/* 토큰: 앱 :root 값 그대로(filterbar-proto.html 과 같다) */
+:root{
+  --bg:#f3f4f7; --panel:#ffffff; --line:#e4e7ee; --line-2:#d6dbe6; --ctl-border:#8b93a5;
+  --text:#1d2433; --muted:#5b6373; --faint:#9aa2b3; --faint-text:#6c7488;
+  --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd; --accent-fill:var(--accent); --on-accent:#fff;
+  --hover-bg:#f3f5fa; --dim-bg:#fafbfd; --border-hover:#bcc4d6; --mark-bg:#ffe27a; --mark-ink:#1d2433; --star:#d99a00;
+  --r-sm:6px; --r-md:10px; --r-lg:14px; --shadow:0 10px 32px rgba(20,28,55,.16);
+  --fs-micro:11px; --fs-meta:12px; --fs-body:13px; --fs-emph:14px; --fs-title:15px;
+}
+:root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#75664f; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; --dim-bg:#f4ecdd; --hover-bg:#f3ead9; --border-hover:#bfa982; --star:#b07a10; }
+:root[data-theme="dark"]{ --bg:#0f1420; --panel:#1a2031; --line:#2a3245; --line-2:#3a4357; --text:#e6e9f2; --muted:#a8b0c3; --faint:#5c6578; --faint-text:#9aa3b7; --accent:#6182ff; --accent-2:#9db0ff; --accent-soft:#1d2742; --accent-fill:#4f66d8; --ctl-border:#666f8a; --hover-bg:#222b3e; --dim-bg:#141a27; --border-hover:#49546e; --shadow:0 12px 34px rgba(0,0,0,.55); --mark-bg:#6b5a12; --mark-ink:#fff5cc; --star:#f2c14e; }
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI','Malgun Gothic','맑은 고딕',system-ui,sans-serif;font-size:var(--fs-body);line-height:1.5}
+button,input{font-family:inherit;color:inherit;font-size:inherit}
+.page{max-width:1080px;margin:0 auto;padding:16px}
+h1{font-size:var(--fs-title);margin:0 0 10px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* 추천과 비교표 */
+.reco{background:var(--panel);border:1px solid var(--accent);border-radius:var(--r-md);padding:10px 14px;margin-bottom:12px}
+.reco p{margin:0}
+.reco p + p{color:var(--muted)}
+.cmp{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:14px;font-size:var(--fs-meta);font-variant-numeric:tabular-nums}
+.cmp th,.cmp td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}
+.cmp th:first-child,.cmp td:first-child{text-align:left}
+.cmp thead th{color:var(--muted);font-weight:600}
+.cmp thead tr.tot th{color:var(--text)}
+.cmp .best{color:var(--accent-2);font-weight:700}
+.tblwrap{overflow-x:auto}
+
+/* 조작판 */
+.ctl{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:10px 14px;margin-bottom:14px;position:sticky;top:0;z-index:60}
+.ctl .grp{display:flex;align-items:center;gap:8px}
+.ctl .k{font-size:var(--fs-meta);color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:var(--r-sm);overflow:hidden}
+.seg button{border:0;background:var(--panel);padding:4px 10px;cursor:pointer;border-left:1px solid var(--line-2)}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent-2);font-weight:600}
+.seg button:focus-visible,.ctl input:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#w{width:220px;accent-color:var(--accent)}
+#wv{font-variant-numeric:tabular-nums;min-width:52px;display:inline-block}
+
+/* 시안 카드 */
+.stage{display:flex;flex-direction:column;gap:22px}
+.card-h{display:flex;align-items:baseline;gap:8px;margin:0 0 2px}
+.card-h h2{font-size:var(--fs-emph);margin:0}
+.tag{display:inline-block;min-width:20px;text-align:center;border-radius:var(--r-sm);background:var(--accent-soft);color:var(--accent-2);font-weight:700;margin-right:4px}
+.score{font-size:var(--fs-meta);color:var(--muted);font-variant-numeric:tabular-nums}
+.meta{font-size:var(--fs-meta);color:var(--muted);margin:0 0 6px;display:flex;flex-wrap:wrap;gap:2px 14px}
+.meta b{color:var(--text);font-weight:600;margin-right:4px}
+.meta code{font-family:Consolas,monospace;font-size:11px;background:var(--dim-bg);padding:0 3px;border-radius:3px}
+.frame{border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--panel);position:relative;max-width:100%}
+.calstub{height:96px;background:repeating-linear-gradient(90deg,var(--dim-bg) 0,var(--dim-bg) calc(100%/7 - 1px),var(--line) calc(100%/7 - 1px),var(--line) calc(100%/7));border-radius:0 0 var(--r-sm) var(--r-sm)}
+.chk{font-size:var(--fs-micro);color:var(--muted);margin-top:4px;min-height:17px;font-variant-numeric:tabular-nums}
+.chk.bad{color:#c03a3a;font-weight:600}
+
+/* 필터 줄: 높이 42px 한 줄 고정 */
+.fb{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;overflow:hidden;height:42px;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line);border-radius:var(--r-sm) var(--r-sm) 0 0}
+.fb.tight{padding:0 12px}
+.lbl{font-size:var(--fs-meta);color:var(--muted);flex:none;white-space:nowrap;margin-right:2px}
+.fsep{width:1px;height:16px;background:var(--line-2);flex:none;margin:0 2px}
+
+/* 칩(앱 .fchip) */
+.fchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);background:var(--panel);border-radius:999px;padding:4px 11px;cursor:pointer;color:var(--text);flex:none;max-width:200px;line-height:1.5;white-space:nowrap}
+.fchip .fc-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fchip .dot,.opt .dot,.srow .dot{width:9px;height:9px;border-radius:50%;flex:none}
+.fchip .n{color:var(--muted);font-weight:400;font-variant-numeric:tabular-nums}
+.fchip:hover{border-color:var(--border-hover)}
+.fchip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
+.fchip.on .n{color:inherit}
+.fchip.zero .fc-name{color:var(--muted)}
+.fchip.on.zero .fc-name{color:inherit}
+.fchip:focus-visible,.trig:focus-visible,.gbtn:focus-visible,.x:focus-visible,.dtog:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+/* 목록 여는 단추 */
+.trig,.gbtn{display:inline-flex;align-items:center;gap:5px;flex:none;border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);padding:4px 9px;cursor:pointer;line-height:1.5;white-space:nowrap;font-variant-numeric:tabular-nums}
+.trig:hover,.gbtn:hover,.trig[aria-expanded="true"],.gbtn[aria-expanded="true"]{border-color:var(--border-hover);background:var(--hover-bg)}
+.trig .n,.gbtn .n{color:var(--muted)}
+.trig svg,.gbtn svg{width:10px;height:10px;flex:none}
+.trig.end{margin-left:auto}
+.gbtn{max-width:220px}
+.gbtn .gl{color:var(--muted)}
+.gbtn .gv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.gbtn .gl{flex:none}
+.gbtn.m3{max-width:110px}
+.gbtn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
+.gbtn.on .gl,.gbtn.on .n{color:inherit;font-weight:400}
+.gbtn.empty .gl{color:var(--faint-text)}
+
+/* B: 줄 안 콤보박스 */
+.cbx{flex:1;min-width:110px;height:30px;border:1px solid var(--ctl-border);border-radius:var(--r-sm);background:var(--panel);padding:0 9px}
+.cbx:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.tok{display:inline-flex;align-items:center;gap:6px;flex:none;max-width:220px;height:30px;padding:0 4px 0 10px;border-radius:var(--r-sm);background:var(--accent-soft);border:1px solid var(--accent);color:var(--accent-2);font-weight:600}
+.tok .fc-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tok .n{font-weight:400}
+.x{border:0;background:transparent;cursor:pointer;width:22px;height:22px;border-radius:4px;display:inline-grid;place-items:center;color:inherit;flex:none}
+.x:hover{background:var(--hover-bg)}
+.x svg{width:10px;height:10px}
+
+/* 팝오버 목록(앱 .menu 면) */
+.pop{position:absolute;z-index:70;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);padding:6px}
+.pop[hidden]{display:none}
+.pop .q{width:100%;height:30px;border:1px solid var(--ctl-border);background:var(--panel);border-radius:var(--r-sm);padding:0 9px;margin-bottom:6px}
+.pop .q:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.lb{max-height:300px;overflow-y:auto}
+.gh{display:flex;align-items:center;gap:6px;font-size:var(--fs-micro);color:var(--muted);padding:6px 8px 3px;user-select:none}
+.gh.tg{cursor:pointer}
+.gh.tg:hover{color:var(--text)}
+.gh svg{width:9px;height:9px;transition:none}
+.gh[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.gh .gn{margin-left:auto;font-variant-numeric:tabular-nums}
+.ggap{height:1px;background:var(--line);margin:4px 6px}
+.opt{display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border-radius:var(--r-sm);cursor:pointer}
+.opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.opt .n{color:var(--muted);font-variant-numeric:tabular-nums}
+.opt.zero .nm{color:var(--muted)}
+.opt.act{background:var(--hover-bg);box-shadow:inset 0 0 0 1px var(--border-hover)}
+.opt[aria-selected="true"]{background:var(--accent-soft);color:var(--accent-2);font-weight:600}
+.opt[aria-selected="true"] .nm,.opt[aria-selected="true"] .n{color:inherit}
+.opt[aria-selected="true"].act{box-shadow:inset 0 0 0 1px var(--accent)}
+.opt .star{width:22px;height:22px;display:inline-grid;place-items:center;border-radius:4px;color:var(--faint);flex:none}
+.opt .star:hover{background:var(--panel);color:var(--star)}
+.opt .star.pinned{color:var(--star)}
+.opt .star svg{width:13px;height:13px}
+.pop mark,.side mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px}
+.none{padding:8px;color:var(--muted)}
+/* C: 격자 */
+.pop.grid .lb{max-height:320px}
+.pop.grid .grp{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px 6px}
+
+/* D: 사이드 목록 */
+.dwrap{display:flex;height:232px}
+.side{flex:none;width:200px;border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--panel);border-radius:var(--r-sm) 0 0 var(--r-sm)}
+.side.closed{width:40px}
+.side .sh{display:flex;align-items:center;gap:6px;height:42px;padding:0 6px 0 8px;border-bottom:1px solid var(--line);flex:none}
+.side .sh .lbl{flex:1;margin:0}
+.dtog{border:1px solid var(--line-2);background:var(--panel);border-radius:var(--r-sm);width:26px;height:26px;display:inline-grid;place-items:center;cursor:pointer;flex:none}
+.dtog svg{width:12px;height:12px}
+.side.closed .sh{padding:0 6px;justify-content:center}
+.side.closed .sh .lbl,.side.closed .sbody{display:none}
+.side .rail{display:none;flex-direction:column;align-items:center;padding-top:8px}
+.side.closed .rail{display:flex}
+.side .rail .dot{width:10px;height:10px;border-radius:50%}
+.sbody{display:flex;flex-direction:column;min-height:0;flex:1;padding:6px}
+.sbody .q{width:100%;height:28px;border:1px solid var(--ctl-border);background:var(--panel);border-radius:var(--r-sm);padding:0 8px;margin-bottom:4px;flex:none}
+.sbody .q:focus-visible,.slist:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.slist{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;border-radius:var(--r-sm)}
+.srow{display:flex;align-items:center;gap:7px;height:28px;padding:0 6px;border-radius:var(--r-sm);cursor:pointer}
+.srow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow .n{color:var(--muted);font-variant-numeric:tabular-nums;font-size:var(--fs-meta)}
+.srow.zero .nm{color:var(--muted)}
+.srow:hover{background:var(--hover-bg)}
+.srow.act{box-shadow:inset 0 0 0 1px var(--border-hover)}
+.srow[aria-selected="true"]{background:var(--accent-soft);color:var(--accent-2);font-weight:600}
+.srow[aria-selected="true"] .nm,.srow[aria-selected="true"] .n{color:inherit}
+.dmain{flex:1;min-width:0;display:flex;flex-direction:column}
+.dmain .fb{border-radius:0 var(--r-sm) 0 0}
+.dmain .calstub{flex:1;height:auto;border-radius:0 0 var(--r-sm) 0}
+.cur{display:inline-flex;align-items:center;gap:6px;min-width:0;font-weight:600}
+.cur .fc-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cur .dot{width:9px;height:9px;border-radius:50%;flex:none}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>과제 필터 시안 v2</h1>
+
+  <div class="reco">
+    <p><b>추천 1위: A 고정 과제와 검색 목록 (22점)</b></p>
+    <p>자주 쓰는 과제는 사용자가 고정해 늘 한 클릭이고 자리가 움직이지 않으며, 나머지는 검색 목록이 맡아 40개여도 잘림과 숨은 스크롤이 없다. 고정이 비어 있으면 기록 많은 상위 3개로 채워 첫 사용도 한 클릭이다.</p>
+  </div>
+
+  <div class="tblwrap">
+  <table class="cmp" aria-label="시안 점수 비교(각 5점)">
+    <thead>
+      <tr><th scope="col">기준</th><th scope="col">A 고정</th><th scope="col">B 콤보</th><th scope="col">C 최근 슬롯</th><th scope="col">D 사이드</th><th scope="col">E 그룹 단추</th><th scope="col">F +N 접기</th></tr>
+      <tr class="tot"><th scope="row">합계</th><th class="best">22</th><th>21</th><th>20</th><th>18</th><th>19</th><th>19</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>잘림, 숨은 스크롤 없음</td><td>5</td><td>5</td><td>5</td><td>4</td><td>5</td><td>5</td></tr>
+      <tr><td>자주 쓰는 과제 한 클릭</td><td class="best">5</td><td>2</td><td>4</td><td>4</td><td>2</td><td>4</td></tr>
+      <tr><td>40개에서 찾기</td><td>4</td><td class="best">5</td><td>4</td><td>4</td><td>4</td><td>4</td></tr>
+      <tr><td>출렁임 없음</td><td>5</td><td>5</td><td>4</td><td>4</td><td>5</td><td>3</td></tr>
+      <tr><td>구현 쉬움</td><td>3</td><td class="best">4</td><td>3</td><td>2</td><td>3</td><td>3</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="ctl" role="group" aria-label="시연 조작">
+    <div class="grp"><label class="k" for="w">폭</label><input id="w" type="range" min="400" max="1000" step="10" value="800"><span id="wv">800px</span></div>
+    <div class="grp"><span class="k" id="kData">과제 수</span><div class="seg" data-ctl="data" aria-labelledby="kData"><button data-v="13" aria-pressed="true">13개</button><button data-v="40" aria-pressed="false">40개</button></div></div>
+    <div class="grp"><span class="k" id="kTheme">테마</span><div class="seg" data-ctl="theme" aria-labelledby="kTheme"><button data-v="light" aria-pressed="true">기본</button><button data-v="sepia" aria-pressed="false">세피아</button><button data-v="dark" aria-pressed="false">다크</button></div></div>
+  </div>
+
+  <div class="stage">
+    <section aria-labelledby="hA">
+      <div class="card-h"><h2 id="hA"><span class="tag">A</span>고정 과제와 검색 목록</h2><span class="score">22점</span></div>
+      <p class="meta"><span><b>참고</b>Slack 별표 섹션, Todoist 즐겨찾기, Gmail 라벨 더보기</span><span><b>장점</b>자주 쓰는 과제가 늘 같은 자리에서 한 클릭</span><span><b>단점</b>고정 상태를 저장할 곳(설정 또는 DB)이 필요</span><span><b>난이도</b>중</span><span><b>옮길 곳</b><code>renderFilterbar()</code>, 고정 목록 저장(<code>tc_</code> 설정 키), <code>#filterbar</code> 클릭 위임, 팝오버 새로 추가</span></p>
+      <div class="frame" data-v="A"><div class="fb" role="toolbar" aria-label="과제 필터"></div><div class="pop" hidden></div><div class="calstub"></div></div>
+      <div class="chk" aria-live="polite"></div>
+    </section>
+
+    <section aria-labelledby="hB">
+      <div class="card-h"><h2 id="hB"><span class="tag">B</span>검색 콤보박스 하나</h2><span class="score">21점</span></div>
+      <p class="meta"><span><b>참고</b>Linear 필터 메뉴, Raycast 검색 목록, GitHub 라벨 선택</span><span><b>장점</b>과제 수와 폭에 상관없이 줄 모양이 같다</span><span><b>단점</b>매번 열고 고르는 두 단계</span><span><b>난이도</b>하</span><span><b>옮길 곳</b><code>renderFilterbar()</code>를 입력칸과 선택 토큰으로 교체, <code>.filterbar</code> 스크롤 규칙과 <code>syncOverflowFade</code> 제거</span></p>
+      <div class="frame" data-v="B"><div class="fb" aria-label="과제 필터"></div><div class="pop" hidden></div><div class="calstub"></div></div>
+      <div class="chk" aria-live="polite"></div>
+    </section>
+
+    <section aria-labelledby="hC">
+      <div class="card-h"><h2 id="hC"><span class="tag">C</span>최근 사용 슬롯과 격자 목록</h2><span class="score">20점</span></div>
+      <p class="meta"><span><b>참고</b>Notion 최근 항목, Superhuman 분할 받은편지함, Trello 라벨 격자</span><span><b>장점</b>설정 없이 최근 고른 과제가 한 클릭</span><span><b>단점</b>새 과제를 고르면 가장 오래된 슬롯 하나가 바뀐다</span><span><b>난이도</b>중</span><span><b>옮길 곳</b><code>renderFilterbar()</code>, 최근 목록 저장, 넓은 격자 팝오버 CSS</span></p>
+      <div class="frame" data-v="C"><div class="fb" role="toolbar" aria-label="과제 필터"></div><div class="pop" hidden></div><div class="calstub"></div></div>
+      <div class="chk" aria-live="polite"></div>
+    </section>
+
+    <section aria-labelledby="hD">
+      <div class="card-h"><h2 id="hD"><span class="tag">D</span>접이식 사이드 목록</h2><span class="score">18점</span></div>
+      <p class="meta"><span><b>참고</b>Google Calendar 내 캘린더, Outlook 캘린더 그룹, Apple 캘린더</span><span><b>장점</b>전체 과제와 기록 수를 한눈에 훑는다</span><span><b>단점</b>달력 폭을 200px 먹고 접고 펼 때 달력 폭이 바뀐다</span><span><b>난이도</b>상</span><span><b>옮길 곳</b><code>main</code> 레이아웃(달력 옆 칸), <code>#filterbar</code> 제거, 좁은 화면 미디어 쿼리, 접힘 상태 저장</span></p>
+      <div class="frame" data-v="D"><div class="dwrap"></div></div>
+      <div class="chk" aria-live="polite"></div>
+    </section>
+
+    <section aria-labelledby="hE">
+      <div class="card-h"><h2 id="hE"><span class="tag">E</span>기록 시기별 그룹 단추</h2><span class="score">19점</span></div>
+      <p class="meta"><span><b>참고</b>Outlook 분류 그룹, Gmail 카테고리 탭, Jira 빠른 필터 드롭다운 요청</span><span><b>장점</b>단추 수가 4개로 고정이라 폭 걱정이 없다</span><span><b>단점</b>과제가 어느 그룹인지 알아야 바로 간다</span><span><b>난이도</b>중</span><span><b>옮길 곳</b><code>renderFilterbar()</code>, 그룹 판정(마지막 기록일), 그룹 헤더가 있는 팝오버</span></p>
+      <div class="frame" data-v="E"><div class="fb" role="toolbar" aria-label="과제 필터"></div><div class="pop" hidden></div><div class="calstub"></div></div>
+      <div class="chk" aria-live="polite"></div>
+    </section>
+
+    <section aria-labelledby="hF">
+      <div class="card-h"><h2 id="hF"><span class="tag">F</span>한 줄 고정과 +N 접기 (직전 시안)</h2><span class="score">19점</span></div>
+      <p class="meta"><span><b>참고</b>Gmail 라벨 더보기, Jira 빠른 필터 더 보기</span><span><b>장점</b>지금 구조에서 가장 적게 바뀐다</span><span><b>단점</b>폭과 선택에 따라 보이는 칩 수가 바뀐다</span><span><b>난이도</b>중</span><span><b>옮길 곳</b><code>renderFilterbar()</code> 폭 맞춤, <code>ResizeObserver</code>, <code>.filterbar</code> 높이 캡과 440px 미디어 쿼리</span></p>
+      <div class="frame" data-v="F"><div class="fb" role="toolbar" aria-label="과제 필터"></div><div class="pop" hidden></div><div class="calstub"></div></div>
+      <div class="chk" aria-live="polite"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ---------- 데이터(직전 시안과 같다) ---------- */
+const BASE = [
+  ['보고서 작성',1,'#3e5be0','2026-10-28'],['시스템 점검',0,'#1f9d8f',''],['asdasd',0,'#8a93a6',''],['zcxzxcxc',0,'#b06ad0',''],
+  ['asgasgasg',1,'#d6494e','2026-09-12'],['qweqwew',1,'#e0a32e','2026-10-02'],['Test',11,'#2e9e6b','2026-10-27'],['가렌의 방패',1,'#5a6886','2026-08-30'],
+  ['뺀비의 폭죽',3,'#c46a2a','2026-10-21'],['네코의 꼬리',0,'#7d5bd0',''],['휴가',0,'#2a8fc4',''],['기타',3,'#8b6b4a','2026-10-29'],['정기 회의',2,'#4b62a0','2026-10-30']
+];
+const EXTRA_NAMES = ['레이더 신호처리 개선','표적 추적 알고리즘','시험 장비 교정','납품 문서 정리','코드 리뷰','신규 입사자 교육','고객사 미팅','보안 점검','빌드 서버 이전',
+  '데이터베이스 이관','성능 시험','사용자 매뉴얼 개정','위젯 UI 개편','장애 대응','특허 출원 준비','예산 집행 정리','외부 교육 수강','협력사 검토','연구 노트 작성',
+  '시뮬레이터 유지보수','현장 설치 지원','품질 감사 대응','월간 보고 취합','인터페이스 정의서','회로도 검토','부품 단종 대응','시제품 조립'];
+const PALETTE = ['#3e5be0','#1f9d8f','#d6494e','#e0a32e','#2e9e6b','#7d5bd0','#c46a2a','#2a8fc4','#b06ad0','#5a6886','#8b6b4a','#4b62a0'];
+function makeData(n){
+  const out = BASE.map((r,i) => ({id:'c'+i, name:r[0], n:r[1], color:r[2], last:r[3], reg:i}));
+  let seed = 7; const rnd = () => (seed = (seed*9301 + 49297) % 233280) / 233280;
+  for(let i = 0; out.length < n; i++){
+    const z = rnd() < .25, cnt = z ? 0 : Math.max(1, Math.round(rnd()*rnd()*40));
+    const d = z ? '' : '2026-' + String(1 + Math.floor(rnd()*10)).padStart(2,'0') + '-' + String(1 + Math.floor(rnd()*28)).padStart(2,'0');
+    out.push({id:'x'+i, name:EXTRA_NAMES[i % EXTRA_NAMES.length], n:cnt, color:PALETTE[i % PALETTE.length], last:d, reg:out.length});
+  }
+  return out;
+}
+
+/* ---------- 상태(선택은 모든 시안이 공유) ---------- */
+const S = { width:800, count:13, sel:null, pins:['c6','c11','c10'], mru:['c6','c12','c8'], dOpen:null, dQ:'' };
+let cats = makeData(13);
+const TODAY_7 = '2026-10-23', MONTH_1 = '2026-10-01';
+const coll = new Intl.Collator('ko');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const byId = id => cats.find(c => c.id === id);
+const CARET = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
+const XICON = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.5"/></svg>';
+const STAR = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.6l1.9 4 4.3.5-3.2 3 .9 4.3L8 11.3l-3.9 2.1.9-4.3-3.2-3 4.3-.5z" fill="currentColor"/></svg>';
+const SIDE = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="1.5" width="10" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M4.5 1.5v9" stroke="currentColor" stroke-width="1.2"/></svg>';
+
+/* 정렬 기본: 기록 많은 순(같으면 가나다), 0건은 뒤에 가나다 */
+function sorted(){
+  const live = cats.filter(c => c.n > 0).sort((x,y) => (y.n - x.n) || coll.compare(x.name, y.name));
+  const zero = cats.filter(c => c.n === 0).sort((x,y) => coll.compare(x.name, y.name));
+  return {live, zero, list: live.concat(zero)};
+}
+const GROUPS = [['g7','최근 7일','7일'],['gm','이번 달','이달'],['gp','이전','이전'],['g0','기록 없음','없음']];
+const groupOf = c => c.n === 0 ? 'g0' : c.last >= TODAY_7 ? 'g7' : c.last >= MONTH_1 ? 'gm' : 'gp';
+function effectivePins(){ const p = S.pins.filter(byId); return p.length ? {ids:p, auto:false} : {ids:sorted().live.slice(0,3).map(c => c.id), auto:true}; }
+
+/* ---------- 공통 조각 ---------- */
+const chip = (c, extra) => '<button class="fchip' + (c.n === 0 ? ' zero' : '') + (S.sel === c.id ? ' on' : '') + (extra || '') + '" data-cat="' + c.id + '" aria-pressed="' + (S.sel === c.id) + '" title="' + esc(c.name) + ', 기록 ' + c.n + '건">' +
+  '<span class="dot" style="background:' + c.color + '"></span><span class="fc-name">' + esc(c.name) + '</span><span class="n">' + c.n + '</span></button>';
+const allChip = () => '<button class="fchip' + (!S.sel ? ' on' : '') + '" data-cat="" aria-pressed="' + !S.sel + '">전체</button>';
+const frameOf = v => document.querySelector('.frame[data-v="' + v + '"]');
+const barOf = v => frameOf(v).querySelector('.fb');
+const markQ = (s, q) => { if(!q) return esc(s); const i = s.toLowerCase().indexOf(q); return i < 0 ? esc(s) : esc(s.slice(0,i)) + '<mark>' + esc(s.slice(i, i + q.length)) + '</mark>' + esc(s.slice(i + q.length)); };
+
+// 줄 끝을 넘는 요소가 있는가(오른쪽 안쪽 여백 기준)
+function overflows(bar){
+  const br = bar.getBoundingClientRect(), pr = parseFloat(getComputedStyle(bar).paddingRight) || 0;
+  return [...bar.children].some(el => el.offsetParent !== null && el.getBoundingClientRect().right > br.right - pr + .5);
+}
+// 넘치면 drop 순서대로 하나씩 뺀다. 뺀 개수를 돌려준다
+function fit(bar, drop, onDrop){ let k = 0; while(overflows(bar) && k < drop.length){ drop[k].remove(); k++; onDrop && onDrop(k); } return k; }
+function setupBar(bar){ bar.classList.toggle('tight', S.width < 560); }
+
+/* ---------- A. 고정 과제 + 검색 목록 ---------- */
+function renderA(){
+  const bar = barOf('A'); setupBar(bar);
+  const {ids, auto} = effectivePins();
+  const showLbl = S.width >= 600;
+  let h = '<span class="lbl' + (showLbl ? '' : ' sr') + '">과제 필터</span>' + allChip() + '<span class="fsep" aria-hidden="true"></span>';
+  ids.forEach(id => { h += chip(byId(id), ' pin' + (auto ? ' auto' : '')); });
+  if(S.sel && !ids.includes(S.sel)) h += chip(byId(S.sel), ' temp');   // 고정 밖 선택은 고정 뒤 한 칸에 잠시
+  h += '<button class="trig end" data-open="A" aria-haspopup="listbox" aria-expanded="false" aria-label="모든 과제 ' + cats.length + '개" title="모든 과제 (검색)">' + (S.width < 560 ? '과제' : '모든 과제') + ' <span class="n">' + cats.length + '</span>' + CARET + '</button>';
+  bar.innerHTML = h;
+  const drop = [...bar.querySelectorAll('.fchip.pin:not(.on)')].reverse();
+  const k = fit(bar, drop);
+  return k ? '고정 ' + k + '개는 폭이 좁아 목록 위쪽으로' : '';
+}
+
+/* ---------- B. 콤보박스 ---------- */
+function renderB(){
+  const bar = barOf('B'); setupBar(bar);
+  const c = S.sel && byId(S.sel);
+  let h = '<label class="lbl' + (S.width >= 520 ? '' : ' sr') + '" for="cbxB">과제</label>';
+  if(c) h += '<span class="tok" title="' + esc(c.name) + '"><span class="dot" style="background:' + c.color + '"></span><span class="fc-name">' + esc(c.name) + '</span><span class="n">' + c.n + '</span><button class="x" data-cat="" aria-label="과제 필터 해제" title="필터 해제">' + XICON + '</button></span>';
+  h += '<input class="cbx" id="cbxB" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="lb-B" autocomplete="off" placeholder="' + (c ? '다른 과제 검색' : '전체, 과제 검색') + '">';
+  bar.innerHTML = h;
+  return '';
+}
+
+/* ---------- C. 최근 사용 슬롯 ---------- */
+function renderC(){
+  const bar = barOf('C'); setupBar(bar);
+  let h = '<span class="lbl' + (S.width >= 600 ? '' : ' sr') + '">최근</span>' + allChip() + '<span class="fsep" aria-hidden="true"></span>';
+  S.mru.filter(byId).forEach(id => { h += chip(byId(id), ' slot'); });
+  h += '<button class="trig end" data-open="C" aria-haspopup="listbox" aria-expanded="false" aria-label="모든 과제 ' + cats.length + '개">' + (S.width < 560 ? '과제' : '모든 과제') + ' <span class="n">' + cats.length + '</span>' + CARET + '</button>';
+  bar.innerHTML = h;
+  const k = fit(bar, [...bar.querySelectorAll('.fchip.slot:not(.on)')].reverse());
+  return k ? '슬롯 ' + k + '개 숨김(폭)' : '';
+}
+// 슬롯은 자리 고정: 이미 있으면 그대로, 없으면 가장 오래 안 쓴 슬롯 자리에 들어간다
+const slotAge = {};
+let tick = 0;
+function touchMru(id){
+  if(!id) return; tick++;
+  const live = S.mru.filter(byId);
+  if(live.includes(id)){ slotAge[id] = tick; return; }
+  if(live.length < 3){ S.mru = live.concat(id); slotAge[id] = tick; return; }
+  let old = 0; live.forEach((x,i) => { if((slotAge[x] || 0) < (slotAge[live[old]] || 0)) old = i; });
+  live[old] = id; S.mru = live; slotAge[id] = tick;
+}
+
+/* ---------- D. 사이드 목록 ---------- */
+function renderD(){
+  const wrap = frameOf('D').querySelector('.dwrap');
+  const open = S.dOpen === null ? S.width >= 640 : S.dOpen;
+  const {list, live, zero} = sorted();
+  const c = S.sel && byId(S.sel);
+  const keepFocus = document.activeElement && wrap.contains(document.activeElement) ? (document.activeElement.className || '') : '';
+  const old = wrap.querySelector('.slist'), oldScroll = old ? old.scrollTop : 0;
+  wrap.innerHTML =
+    '<aside class="side' + (open ? '' : ' closed') + '" aria-label="과제 목록">' +
+      '<div class="sh"><span class="lbl" id="dLbl">과제</span><button class="dtog" aria-expanded="' + open + '" aria-controls="dBody" aria-label="과제 목록 ' + (open ? '접기' : '펼치기') + '" title="과제 목록 ' + (open ? '접기' : '펼치기') + '">' + SIDE + '</button></div>' +
+      '<div class="rail">' + (c ? '<span class="dot" style="background:' + c.color + '" title="' + esc(c.name) + '"></span>' : '') + '</div>' +
+      '<div class="sbody" id="dBody">' + (cats.length > 10 ? '<input class="q" type="text" aria-label="과제 검색" placeholder="과제 검색" value="' + esc(S.dQ) + '">' : '') +
+        '<div class="slist" role="listbox" tabindex="0" aria-labelledby="dLbl"></div></div>' +
+    '</aside>' +
+    '<div class="dmain"><div class="fb">' + (c ? '<span class="cur"><span class="dot" style="background:' + c.color + '"></span><span class="fc-name">' + esc(c.name) + '</span></span><button class="x" data-cat="" aria-label="과제 필터 해제" title="필터 해제">' + XICON + '</button>' : '<span class="cur">전체 과제</span>') + '</div><div class="calstub"></div></div>';
+  fillSide();
+  const sl = wrap.querySelector('.slist'); sl.scrollTop = oldScroll;
+  if(keepFocus.includes('slist')) sl.focus(); else if(keepFocus.includes('dtog')) wrap.querySelector('.dtog').focus(); else if(keepFocus.includes('q')){ const q = wrap.querySelector('.q'); if(q){ q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
+  const side = wrap.querySelector('.side');
+  return open ? '' : '목록 접힘';
+}
+let dAct = -1;
+function fillSide(){
+  const sl = frameOf('D').querySelector('.slist'); if(!sl) return;
+  const q = S.dQ.trim().toLowerCase(), {live, zero} = sorted();
+  const row = (c, i) => '<div class="srow' + (c && c.n === 0 ? ' zero' : '') + '" role="option" id="d-' + (c ? c.id : 'all') + '" data-cat="' + (c ? c.id : '') + '" aria-selected="' + (c ? S.sel === c.id : !S.sel) + '">' +
+    (c ? '<span class="dot" style="background:' + c.color + '"></span><span class="nm">' + markQ(c.name, q) + '</span><span class="n">' + c.n + '</span>' : '<span class="nm">전체</span>') + '</div>';
+  const hit = c => !q || c.name.toLowerCase().includes(q);
+  let h = q ? '' : row(null);
+  const L = live.filter(hit), Z = zero.filter(hit);
+  L.forEach(c => { h += row(c); });
+  if(Z.length){ h += '<div class="ggap" role="presentation"></div>'; Z.forEach(c => { h += row(c); }); }
+  if(q && !L.length && !Z.length) h = '<div class="none">일치하는 과제 없음</div>';
+  sl.innerHTML = h;
+  const rows = [...sl.querySelectorAll('.srow')];
+  dAct = Math.max(0, rows.findIndex(r => r.getAttribute('aria-selected') === 'true'));
+  setSideAct(rows, dAct, false);
+}
+function setSideAct(rows, i, scroll){
+  const sl = frameOf('D').querySelector('.slist');
+  rows.forEach((r,j) => r.classList.toggle('act', j === i));
+  if(rows[i]){ sl.setAttribute('aria-activedescendant', rows[i].id); if(scroll) rows[i].scrollIntoView({block:'nearest'}); } else sl.removeAttribute('aria-activedescendant');
+}
+
+/* ---------- E. 그룹 단추 ---------- */
+function renderE(){
+  const bar = barOf('E'); setupBar(bar);
+  const cnt = {}; GROUPS.forEach(g => cnt[g[0]] = 0); cats.forEach(c => cnt[groupOf(c)]++);
+  const c = S.sel && byId(S.sel), sg = c ? groupOf(c) : null;
+  const build = (mode) => {   // mode 0: 이름과 수, 1: 수 없이, 2: 짧은 이름, 3: 선택 단추는 과제 이름만
+    let h = allChip();
+    GROUPS.forEach(([k, long, short]) => {
+      const nm = mode >= 2 ? short : long, on = sg === k;
+      h += '<button class="gbtn' + (on ? ' on' + (mode === 3 ? ' m3' : '') : '') + (cnt[k] ? '' : ' empty') + '" data-open="E" data-g="' + k + '" aria-haspopup="listbox" aria-expanded="false" aria-label="' + long + ' ' + cnt[k] + '개' + (on ? ', 선택 ' + esc(c.name) : '') + '" title="' + long + ' ' + cnt[k] + '개">' +
+        (on ? (mode < 3 ? '<span class="gl">' + nm + '</span>' : '') + '<span class="gv">' + esc(c.name) + '</span>' : '<span class="gl">' + nm + '</span>' + (mode ? '' : '<span class="n">' + cnt[k] + '</span>')) + CARET + '</button>';
+    });
+    return h;
+  };
+  for(let m = 0; m < 4; m++){ bar.innerHTML = build(m); if(!overflows(bar)) return m ? '좁은 폭 표기 ' + m : ''; }
+  return '';
+}
+
+/* ---------- F. 한 줄 +N 접기(비교 기준) ---------- */
+function renderF(){
+  const bar = barOf('F'); setupBar(bar);
+  const {list, live} = sorted();
+  const showLbl = S.width >= 520;
+  let h = '<span class="lbl' + (showLbl ? '' : ' sr') + '">과제 필터</span>' + allChip();
+  list.forEach((c,i) => { if(i === live.length && i > 0) h += '<span class="fsep zs" aria-hidden="true"></span>'; h += chip(c, ' ff'); });
+  h += '<button class="trig end more" data-open="F" aria-haspopup="listbox" aria-expanded="false">+0' + CARET + '</button>';
+  bar.innerHTML = h;
+  const more = bar.querySelector('.more');
+  const setN = n => { more.innerHTML = '+' + n + CARET; more.setAttribute('aria-label', '과제 ' + n + '개 더 보기'); };
+  // 끝에서부터 접되 선택된 칩은 남긴다(대신 그 앞 칩이 접힌다)
+  const drop = [...bar.querySelectorAll('.fchip.ff')].filter(x => !x.classList.contains('on')).reverse();
+  const k = fit(bar, drop, n => { setN(n); const zs = bar.querySelector('.zs'); if(zs && !zs.nextElementSibling.classList.contains('fchip')) zs.remove(); });
+  if(!k) more.remove(); else { const zs = bar.querySelector('.zs'); if(zs && (!zs.nextElementSibling || !zs.nextElementSibling.classList.contains('fchip'))) zs.remove(); }
+  return '보이는 칩 ' + (bar.querySelectorAll('.fchip').length) + '개, 접힘 ' + k + '개';
+}
+
+/* ---------- 공통 팝오버 목록(검색 + listbox, aria-activedescendant) ---------- */
+const P = { v:null, trigger:null, input:null, opts:null, act:-1, items:[], collapsed:{} };
+const VOPT = {
+  A:{stars:true},
+  B:{inline:true},
+  C:{mode:'grid'},
+  E:{groups:true},
+  F:{}
+};
+function openPicker(v, trigger, extra){
+  closePicker(false);
+  const fr = frameOf(v), pop = fr.querySelector('.pop');
+  P.v = v; P.trigger = trigger; P.opts = Object.assign({}, VOPT[v], extra || {}); P.collapsed = {};
+  if(P.opts.groups){ GROUPS.forEach(g => { P.collapsed[g[0]] = g[0] !== P.opts.focusGroup; }); }
+  pop.hidden = false; pop.classList.toggle('grid', P.opts.mode === 'grid');
+  if(P.opts.inline){
+    P.input = trigger; pop.innerHTML = '<div class="lb" role="listbox" id="lb-' + v + '" aria-label="과제"></div>';
+  } else {
+    pop.innerHTML = '<input class="q" type="text" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="lb-' + v + '" autocomplete="off" placeholder="과제 검색" aria-label="과제 검색">' +
+      '<div class="lb" role="listbox" id="lb-' + v + '" aria-label="과제' + (P.opts.stars ? ', Ctrl+Enter 로 고정' : '') + '"></div>';
+    P.input = pop.querySelector('.q');
+  }
+  P.input.setAttribute('aria-expanded', 'true'); trigger.setAttribute('aria-expanded', 'true');
+  placePicker(); fillPicker(true);
+  if(document.activeElement !== P.input) P.input.focus();
+  if(P.opts.focusGroup){ const gh = pop.querySelector('.gh[data-g="' + P.opts.focusGroup + '"]'); if(gh) pop.querySelector('.lb').scrollTop = gh.offsetTop - 4; }
+}
+function placePicker(){
+  const fr = frameOf(P.v), pop = fr.querySelector('.pop'), frr = fr.getBoundingClientRect(), tr = P.trigger.getBoundingClientRect();
+  const W = frr.width;
+  const w = P.opts.mode === 'grid' ? W - 16 : Math.min(320, W - 16);
+  let left = P.opts.mode === 'grid' ? 8 : (P.opts.inline ? tr.left - frr.left : tr.right - frr.left - w);
+  left = Math.max(8, Math.min(left, W - w - 8));
+  pop.style.width = w + 'px'; pop.style.left = left + 'px'; pop.style.top = (tr.bottom - frr.top + 6) + 'px';
+}
+function closePicker(ret){
+  if(!P.v) return;
+  const pop = frameOf(P.v).querySelector('.pop'); pop.hidden = true; pop.innerHTML = '';
+  if(P.trigger && P.trigger.isConnected){ P.trigger.setAttribute('aria-expanded', 'false'); P.trigger.removeAttribute('aria-activedescendant'); if(ret) P.trigger.focus(); }
+  if(P.opts.inline && P.input && P.input.isConnected && ret === 'clear') P.input.value = '';
+  P.v = null; P.trigger = null; P.input = null;
+}
+function optHtml(c, q){
+  const sel = c ? S.sel === c.id : !S.sel, id = 'o-' + P.v + '-' + (c ? c.id : 'all');
+  const pinned = c && S.pins.includes(c.id);
+  return '<div class="opt' + (c && c.n === 0 ? ' zero' : '') + '" role="option" id="' + id + '" data-cat="' + (c ? c.id : '') + '" aria-selected="' + sel + '"' + (c ? ' title="' + esc(c.name) + ', 기록 ' + c.n + '건"' : '') + '>' +
+    (c ? '<span class="dot" style="background:' + c.color + '"></span><span class="nm">' + markQ(c.name, q) + '</span><span class="n">' + c.n + '</span>' : '<span class="nm">전체</span>') +
+    (P.opts.stars && c ? '<span class="star' + (pinned ? ' pinned' : '') + '" data-pin="' + c.id + '" aria-hidden="true" title="' + (pinned ? '고정 해제' : '고정') + ' (Ctrl+Enter)">' + STAR + '</span>' : '') + '</div>';
+}
+function fillPicker(initial){
+  const pop = frameOf(P.v).querySelector('.pop'), lb = pop.querySelector('.lb');
+  const q = P.input.value.trim().toLowerCase(), hit = c => !q || c.name.toLowerCase().includes(q);
+  const {live, zero, list} = sorted();
+  let secs;
+  if(P.opts.groups) secs = GROUPS.map(([k, long]) => ({k, label:long, items:list.filter(c => groupOf(c) === k), tg:true}));
+  else if(P.opts.stars){ const pins = S.pins.map(byId).filter(Boolean); secs = [{k:'pin', label:'고정', items:pins}, {k:'all', label:'모든 과제', items:list.filter(c => !S.pins.includes(c.id))}]; }
+  else if(P.opts.mode === 'grid') secs = [{k:'live', label:'기록 있음', items:live}, {k:'zero', label:'기록 없음', items:zero}];
+  else secs = [{k:'live', items:live}, {k:'zero', items:zero, gap:true}];
+  let h = q ? '' : '<div class="grp" role="group" aria-label="전체">' + optHtml(null, q) + '</div>';
+  let any = 0;
+  secs.forEach(s => {
+    const items = s.items.filter(hit); if(!items.length) return; any += items.length;
+    const col = !q && s.tg && P.collapsed[s.k];
+    if(s.gap && !q) h += '<div class="ggap" role="presentation"></div>';
+    const hid = 'gh-' + P.v + '-' + s.k;
+    h += (s.label ? '<div class="gh' + (s.tg && !q ? ' tg' : '') + '" id="' + hid + '" data-g="' + s.k + '"' + (s.tg && !q ? ' aria-expanded="' + !col + '"' : '') + '>' + (s.tg && !q ? CARET : '') + '<span>' + s.label + '</span><span class="gn">' + items.length + '</span></div>' : '') +
+      '<div class="grp" role="group"' + (s.label ? ' aria-labelledby="' + hid + '"' : '') + (col ? ' hidden' : '') + '>' + items.map(c => optHtml(c, q)).join('') + '</div>';
+  });
+  if(q && !any) h = '<div class="none">일치하는 과제 없음</div>';
+  if(!q && P.opts.stars && !S.pins.filter(byId).length) h = h.replace('<div class="gh" id="gh-A-all"', '<div class="none">별을 누르면 줄에 고정</div><div class="gh" id="gh-A-all"');
+  const st = lb.scrollTop; lb.innerHTML = h; if(!initial) lb.scrollTop = st;
+  P.items = [...lb.querySelectorAll('.opt')].filter(o => o.offsetParent !== null);
+  let a = initial || !q ? P.items.findIndex(o => o.getAttribute('aria-selected') === 'true') : 0;
+  if(a < 0) a = 0;
+  if(!initial && P.act >= 0 && !q && P.actId){ const j = P.items.findIndex(o => o.id === P.actId); if(j >= 0) a = j; }
+  setAct(a, initial);
+}
+function setAct(i, scroll){
+  P.act = i;
+  P.items.forEach((o,j) => o.classList.toggle('act', j === i));
+  const o = P.items[i];
+  if(o){ P.actId = o.id; P.input.setAttribute('aria-activedescendant', o.id); if(scroll !== false) o.scrollIntoView({block:'nearest'}); }
+  else { P.actId = null; P.input.removeAttribute('aria-activedescendant'); }
+}
+function moveGrid(dir){
+  const cur = P.items[P.act]; if(!cur) return setAct(0);
+  const r = cur.getBoundingClientRect(); let best = -1, bd = 1e12;
+  P.items.forEach((o,i) => { const q = o.getBoundingClientRect(), dy = (q.top - r.top) * dir; if(dy <= 2) return; const d = dy * 1000 + Math.abs(q.left - r.left); if(d < bd){ bd = d; best = i; } });
+  if(best >= 0) setAct(best);
+}
+function togglePin(id){
+  const i = S.pins.indexOf(id);
+  if(i >= 0) S.pins.splice(i, 1); else S.pins.push(id);
+  renderOne('A');
+  if(P.v === 'A'){ const t = barOf('A').querySelector('.trig'); P.trigger = t; t.setAttribute('aria-expanded', 'true'); placePicker(); fillPicker(false); P.input.focus(); }
+}
+
+/* ---------- 선택 ---------- */
+function select(id, v){
+  S.sel = id || null; touchMru(S.sel);
+  const ret = v;
+  closePicker(false); renderAll();
+  // 다시 그린 뒤 포커스 복귀: 같은 칩, 없으면 목록 단추
+  if(!ret) return;
+  const fr = frameOf(ret);
+  const t = fr.querySelector('.fb .fchip[data-cat="' + (id || '') + '"]') || (ret === 'E' && fr.querySelector('.gbtn.on')) || fr.querySelector('.fb .trig, .fb .cbx, .fb .fchip');
+  if(ret === 'B'){ const cb = fr.querySelector('.cbx'); cb.value = ''; cb.focus(); return; }
+  if(ret === 'D') return;
+  t && t.focus();
+}
+
+/* ---------- 이벤트 ---------- */
+document.addEventListener('click', ev => {
+  const t = ev.target;
+  const pin = t.closest('.star[data-pin]'); if(pin){ ev.stopPropagation(); togglePin(pin.dataset.pin); return; }
+  const gh = t.closest('.pop .gh.tg'); if(gh && P.v){ P.collapsed[gh.dataset.g] = !P.collapsed[gh.dataset.g]; fillPicker(false); P.input.focus(); return; }
+  const opt = t.closest('.pop .opt'); if(opt && P.v){ select(opt.dataset.cat, P.v); return; }
+  if(t.classList.contains('cbx')){ if(P.v !== 'B') openPicker('B', t); return; }
+  const op = t.closest('[data-open]');
+  if(op){ const v = op.dataset.open; if(P.v === v && P.trigger === op){ closePicker(true); return; } openPicker(v, op, op.dataset.g ? {focusGroup:op.dataset.g} : null); return; }
+  const fc = t.closest('.frame .fchip, .frame .x');
+  if(fc){ const v = fc.closest('.frame').dataset.v; select(fc.dataset.cat, v); return; }
+  const tog = t.closest('.dtog'); if(tog){ S.dOpen = tog.getAttribute('aria-expanded') !== 'true'; renderOne('D'); frameOf('D').querySelector('.dtog').focus(); return; }
+  const sr = t.closest('.srow'); if(sr){ select(sr.dataset.cat, 'D'); frameOf('D').querySelector('.slist').focus(); return; }
+});
+document.addEventListener('mousemove', ev => {
+  const o = ev.target.closest('.pop .opt'); if(!o || !P.v) return;
+  const i = P.items.indexOf(o); if(i >= 0 && i !== P.act) setAct(i, false);
+});
+document.addEventListener('pointerdown', ev => {
+  if(!P.v) return;
+  const fr = frameOf(P.v);
+  if(fr.querySelector('.pop').contains(ev.target) || ev.target === P.trigger || (P.trigger && P.trigger.contains(ev.target))) return;
+  closePicker(false);
+});
+document.addEventListener('input', ev => {
+  const t = ev.target;
+  if(t.classList.contains('cbx')){ if(P.v !== 'B') openPicker('B', t); else fillPicker(false); return; }
+  if(P.v && t === P.input){ fillPicker(false); return; }
+  if(t.closest('.side') && t.classList.contains('q')){ S.dQ = t.value; fillSide(); }
+});
+document.addEventListener('focusin', ev => {
+  if(P.v && !frameOf(P.v).contains(ev.target)) closePicker(false);
+});
+document.addEventListener('keydown', ev => {
+  const t = ev.target;
+  // B: 닫힌 콤보에서 아래 화살표나 Enter 로 연다
+  if(t.classList && t.classList.contains('cbx') && P.v !== 'B'){
+    if(ev.key === 'ArrowDown' || (ev.key === 'Enter')){ ev.preventDefault(); openPicker('B', t); }
+    else if(ev.key === 'Escape' && t.value){ t.value = ''; }
+    return;
+  }
+  // 팝오버 목록
+  if(P.v && t === P.input){
+    const grid = P.opts.mode === 'grid';
+    if(ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){ ev.preventDefault(); const d = ev.key === 'ArrowDown' ? 1 : -1; if(grid) moveGrid(d); else setAct(Math.max(0, Math.min(P.items.length - 1, P.act + d))); return; }
+    if(grid && (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') && !P.input.value){ ev.preventDefault(); setAct(Math.max(0, Math.min(P.items.length - 1, P.act + (ev.key === 'ArrowRight' ? 1 : -1)))); return; }
+    if(ev.key === 'Home' && !P.input.value){ ev.preventDefault(); setAct(0); return; }
+    if(ev.key === 'End' && !P.input.value){ ev.preventDefault(); setAct(P.items.length - 1); return; }
+    if(ev.key === 'Enter'){
+      ev.preventDefault(); const o = P.items[P.act]; if(!o) return;
+      if(ev.ctrlKey && P.opts.stars){ if(o.dataset.cat) togglePin(o.dataset.cat); return; }
+      select(o.dataset.cat, P.v); return;
+    }
+    if(ev.key === 'Escape'){ ev.preventDefault(); closePicker(P.opts.inline ? 'clear' : true); return; }
+    if(ev.key === 'Tab'){ closePicker(false); return; }
+    return;
+  }
+  // D: 사이드 listbox
+  if(t.classList && t.classList.contains('slist')){
+    const rows = [...t.querySelectorAll('.srow')];
+    if(ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){ ev.preventDefault(); dAct = Math.max(0, Math.min(rows.length - 1, dAct + (ev.key === 'ArrowDown' ? 1 : -1))); setSideAct(rows, dAct, true); }
+    else if(ev.key === 'Home'){ ev.preventDefault(); dAct = 0; setSideAct(rows, 0, true); }
+    else if(ev.key === 'End'){ ev.preventDefault(); dAct = rows.length - 1; setSideAct(rows, dAct, true); }
+    else if(ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); if(rows[dAct]){ select(rows[dAct].dataset.cat, 'D'); frameOf('D').querySelector('.slist').focus(); } }
+    return;
+  }
+  if(t.closest && t.closest('.side') && t.classList.contains('q')){
+    if(ev.key === 'Escape' && t.value){ ev.preventDefault(); S.dQ = ''; t.value = ''; fillSide(); }
+    else if(ev.key === 'ArrowDown'){ ev.preventDefault(); frameOf('D').querySelector('.slist').focus(); }
+    else if(ev.key === 'Enter'){ ev.preventDefault(); const r = frameOf('D').querySelector('.srow'); if(r) select(r.dataset.cat, 'D'); }
+    return;
+  }
+  // 툴바 안 좌우 화살표
+  const bar = t.closest && t.closest('.fb[role="toolbar"]');
+  if(bar && (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft')){
+    const items = [...bar.querySelectorAll('button')], i = items.indexOf(t); if(i < 0) return;
+    ev.preventDefault(); items[(i + (ev.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length].focus();
+  }
+});
+
+document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if(!b) return;
+  seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  const v = b.dataset.v, k = seg.dataset.ctl;
+  if(k === 'data'){ S.count = +v; cats = makeData(S.count); if(S.sel && !byId(S.sel)) S.sel = null; }
+  if(k === 'theme') document.documentElement.dataset.theme = v;
+  closePicker(false); renderAll();
+}));
+const wIn = document.getElementById('w');
+wIn.addEventListener('input', () => { S.width = +wIn.value; document.getElementById('wv').textContent = S.width + 'px'; closePicker(false); renderAll(); });
+
+/* ---------- 그리기와 자체 점검 ---------- */
+const R = {A:renderA, B:renderB, C:renderC, D:renderD, E:renderE, F:renderF};
+function renderOne(v){
+  const fr = frameOf(v); fr.style.width = S.width + 'px';
+  const note = R[v]() || '';
+  // 점검: 줄 넘침, 잘린 칩
+  const bars = [...fr.querySelectorAll('.fb')];
+  let bad = bars.some(b => overflows(b) || b.scrollWidth > b.clientWidth + 1);
+  const docOver = fr.scrollWidth > fr.clientWidth + 1;
+  const chk = fr.parentElement.querySelector('.chk');
+  chk.textContent = (bad || docOver ? '넘침 있음' : '넘침 없음') + (note ? ', ' + note : '');
+  chk.classList.toggle('bad', bad || docOver);
+}
+function renderAll(){ Object.keys(R).forEach(renderOne); }
+// 검증용 해시: #w=600&n=40&sel=c6
+(function(){ const p = new URLSearchParams(location.hash.slice(1));
+  if(p.get('w')){ S.width = +p.get('w'); wIn.value = S.width; document.getElementById('wv').textContent = S.width + 'px'; }
+  if(p.get('n') === '40'){ S.count = 40; cats = makeData(40); document.querySelectorAll('[data-ctl="data"] button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === '40'))); }
+  if(p.get('sel')) S.sel = p.get('sel');
+  if(p.get('t')){ document.documentElement.dataset.theme = p.get('t'); document.querySelectorAll('[data-ctl="theme"] button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === p.get('t')))); }
+})();
+S.mru.forEach((id,i) => slotAge[id] = i - 3);
+(document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(renderAll);
+renderAll();
+</script>
+</body>
+</html>

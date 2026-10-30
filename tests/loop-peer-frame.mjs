@@ -566,7 +566,7 @@ try {
         peerAttr: w.document.body.dataset.peer||null,
         banner: (w.document.getElementById("peerBanner")||{}).textContent||"",
         grid: w.document.querySelectorAll("#grid .cell").length,
-        chips: w.document.querySelectorAll("#filterbar .fchip").length,
+        chips: w.document.querySelectorAll("#filterbar .fb-btn").length,   // 과제 필터 줄의 과제 버튼(FILTER-MULTI)
         //  ★ 로그인 게이트가 덮고 있으면 달력이 보여도 사용자는 로그인 화면만 본다.
         //    그리고 봉인 때문에 그 게이트는 **영영 안 풀린다**(2026-09-03 사용자 지적).
         gate: (()=>{ const g=w.document.getElementById("loginGate");
@@ -645,7 +645,7 @@ try {
     //  달력 이동 · 연월 · 검색 · 과제 필터칩 · 일자 패널의 **읽기** 컨트롤만 허용한다.
     //  ★ 여기에 무언가를 더할 때는 "그게 읽기인가" 를 먼저 물을 것. 편집이면 CSS 에서 감춰야 한다.
     const ALLOW = new Set(["btnPrev","btnToday","btnNext","btnTitle","jumpMonth","btnCalViewMonth","btnCalViewWeek","btnSearch",
-                           "fchip","dpSheetClose","dptab-detail",
+                           "fbBtn","fb-x","fb-more","dpSheetClose","dptab-detail",
                            //  ★ 2026-10-01(PEER-VIEW-FULL P2) — 「할 일」 탭을 연다(읽기). 탭 안의 편집 수단은 여전히 감춘다.
                            //    (「커밋 내역」 탭은 2026-10-26 Git 기능과 함께 없앴다.)
                            "dptab-todo"]);

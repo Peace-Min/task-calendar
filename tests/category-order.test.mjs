@@ -177,13 +177,14 @@ const statics = {
   },
   //  필터 막대·과제 선택 상자·할 일 필터·할 일 편집·내보내기 — state.categories 를 정렬 없이 돈다
   pickersInOrder(app) {
-    const fb = fnBody(app, 'renderFilterbar');
-    assert.ok(/for\(const c of state\.categories\)/.test(fb) && !/\.sort\(/.test(fb), '필터 막대가 state.categories 순서가 아니다(R4)');
+    //  필터 줄(FILTER-MULTI): 고른 과제 칩과 버튼 글자는 목록 순서(filterSelCats). 팝업 목록만 기록 많은 순이다(2026-10-30 사용자 결정)
+    const fsc = fnBody(app, 'filterSelCats');
+    assert.ok(/state\.categories\.filter\(/.test(fsc) && !/\.sort\(/.test(fsc), '필터 줄의 고른 과제가 state.categories 순서가 아니다(R4)');
+    assert.ok(/filterSelCats\(\)/.test(fnBody(app, 'fitFilterChips')) && /filterSelCats\(\)/.test(fnBody(app, 'filterLabel')), '필터 줄 칩이나 버튼 글자가 filterSelCats 를 거치지 않는다');
     const fs = fnBody(app, 'fillCatSelect');
     assert.ok(/state\.categories\.filter\(isPickableCat\)\.map\(/.test(fs), '과제 선택 상자가 state.categories 순서로 한 줄이 아니다(R4)');
     assert.ok(!/optgroup|\.sort\(|\.concat\(/.test(fs), '과제 선택 상자가 공식/개인으로 묶거나 정렬한다 — 순서가 갈린다(R4)');
-    const nf = fnBody(app, 'noteFilterBarHtml');
-    assert.ok(/for\(const c of state\.categories\)/.test(nf) && !/\.sort\(/.test(nf), '할 일 과제 필터가 state.categories 순서가 아니다');
+    //  (할 일 탭의 과제 필터 noteFilterBarHtml 은 2026-10-30 상단 필터 하나로 합치며 없앴다, FILTER-MULTI)
     const te = fnBody(app, 'todoEditHtml');
     assert.ok(/state\.categories\.filter\(isPickableCat\)/.test(te) && !/categories[^;]*\.sort\(/.test(te), '할 일 편집의 과제 선택이 state.categories 순서가 아니다');
     const ex = fnBody(app, 'openExportModal');
@@ -373,8 +374,11 @@ if (!JSDOM) {
         assert.deepStrictEqual(W.order(), ['c-c', 'c-a', 'c-b', 'db-o', 'c-v', 'c-e'], '맨 위에서 위로 옮기자 순서가 깨졌다(R2): ' + JSON.stringify(W.order()));
 
         //  필터 막대 · 과제 선택 상자 — 같은 순서(C5)
+        //  필터 줄의 고른 과제 칩(FILTER-MULTI)은 목록 순서다. 모두 고르면 전체(칩 없음)라 맨 끝 하나를 빼고 고른다
+        W.ev("filterCats = new Set(state.categories.slice(0, -1).map(function(c){ return c.id; })); renderFilterbar();");
         const chips = W.evJSON("[].map.call(document.querySelectorAll('#filterbar [data-cat]'), function(b){ return b.dataset.cat; }).filter(Boolean)");
-        assert.deepStrictEqual(chips, W.order(), '필터 막대가 목록 순서를 따르지 않는다(C5)');
+        W.ev("filterCats = null; renderFilterbar();");
+        assert.deepStrictEqual(chips, W.order().slice(0, -1), '필터 줄 칩이 목록 순서를 따르지 않는다(C5)');
         const opts = W.evJSON("(function(){ var s = document.createElement('select'); fillCatSelect(s); return [].map.call(s.querySelectorAll('option'), function(o){ return o.value; }).filter(Boolean); })()");
         assert.deepStrictEqual(opts, W.order(), '과제 선택 상자가 목록 순서를 따르지 않는다(C5)');
 

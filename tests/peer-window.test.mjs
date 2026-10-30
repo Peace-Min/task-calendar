@@ -483,13 +483,13 @@ if (!JSDOM) {
       const theirs = { id: 't1', date: '2026-06-03', title: '그 사람', allDay: true, categoryId: 'c1' };
       const old = { id: 'm-old', date: '2026-06-04', title: '옛 겹', allDay: true, categoryId: null, _mine: true };
       F.w.__applyState(JSON.stringify({ categories: [{ id: 'c1', name: '과제', color: '#3e5be0' }], entries: [theirs, old], todos: [] }), { peerName: '윤인환', canWrite: false });
-      F.ev("view = {y:2026, m:5}; selectedDate = '2026-06-03'; filterCatId = 'c1'");
+      F.ev("view = {y:2026, m:5}; selectedDate = '2026-06-03'; filterCats = new Set(['c1'])");
       const ok = F.ev(`__peerSetMine(${JSON.stringify(JSON.stringify([{ id: 'm-new', date: '2026-06-05', title: '새 겹', allDay: true, categoryId: null, _mine: true },
                                                                        { id: 'sneak', date: '2026-06-06', title: '끼어들기', categoryId: 'c1' }]))})`);
       assert.strictEqual(ok, true);
       const ids = () => JSON.parse(F.ev('JSON.stringify(state.entries.map(function(e){ return e.id; }))'));
       assert.deepStrictEqual(ids(), ['t1', 'm-new'], '겹만 갈아 끼우지 않았다(또는 _mine 아닌 것을 받았다)');
-      assert.strictEqual(F.ev('filterCatId'), 'c1', '겹을 바꾸면서 과제 필터를 처음으로 돌렸다');
+      assert.strictEqual(F.ev('filterCats === null ? null : Array.from(filterCats).join()'), 'c1', '겹을 바꾸면서 과제 필터를 처음으로 돌렸다');
       assert.strictEqual(F.ev('selectedDate'), '2026-06-03', '겹을 바꾸면서 고른 날을 잃었다');
       F.ev('save()');   // 열람 창의 save 는 원본으로 되돌린다(peerRevert)
       assert.deepStrictEqual(ids(), ['t1', 'm-new'], '되돌리기가 옛 겹으로 돌아갔다(원본을 고치지 않았다)');
