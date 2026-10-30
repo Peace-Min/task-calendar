@@ -403,7 +403,7 @@ if (!JSDOM) {
         let ks = allKeys(B, 'tc_rptDraft');
         assert.ok(ks.includes(wOld) && ks.includes(wKeep), '일간 정리가 주간 키를 지웠다');
         assert.ok(!ks.includes(dOld) && ks.includes(dKeep), '전제: 일간 정리');
-        B.ev('openReport()');
+        B.ev('openReport(); setReportMode("daily")');
         ks = allKeys(B, 'tc_rptDraft');
         assert.ok(!ks.includes(wOld), '기간 끝이 15일 지난 주간 키가 남았다');
         assert.ok(ks.includes(wKeep), '기간 끝이 14일째인 주간 키까지 지웠다');
@@ -569,7 +569,7 @@ if (!JSDOM) {
       clearDrafts(B);
       try {
         B.ev('state = ' + JSON.stringify(stateFor()) + ';');
-        B.ev("openReport();");
+        B.ev("openReport(); setReportMode('daily');");
         assert.strictEqual(B.ev('rptView'), 'card', '일간은 카드로 연다');
         assert.ok(B.ev("document.querySelectorAll('#rptOut .rcard').length") > 0 && !B.ev("!!document.querySelector('#rptOut .rwf')"), '일간 첫 화면이 카드가 아니다');
         openWeekly(B, MON);

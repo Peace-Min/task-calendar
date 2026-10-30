@@ -12,7 +12,8 @@
 // 잠그는 계약 여섯:
 //   ① 일간 저장은 vr==1(전송 성공 + 되읽어 검증) 분기 **안에서만** 불린다
 //   ② 미제출(DryRun)은 그 앞에서 return 한다 — 테스트 모드가 DB 를 건드리면 안 된다
-//   ③ 저장 실패가 전송을 깨지 않는다(호스트 훅은 void — 예외를 위로 던지지 않는다)
+//   ③ 저장 실패가 예외로 새지 않는다. (2026-10-29 결정 9) 일간 훅은 Task<bool> 이고 NetcusService 가 그 결과를 기다려
+//     성공 또는 공통 실패 안내를 띄운다. 주간 훅은 그대로 void(뒤에서 재시도). ReportDb 는 예외를 잡아 false 를 돌려준다.
 //   ④ 주간 저장은 폼 채우기 성공 뒤에 불린다
 //   ⑤ 웹→호스트 경계가 hours 를 실어 나른다(파싱이 아니라 전달 · §5.9.3)
 //   ⑥ 앱 계정에 세 표의 권한이 있다 — 없으면 런타임 ERROR 1142 로 죽는다
@@ -97,10 +98,16 @@ const checks = {
       'DryRun 블록에 return 이 없다 — 미제출(테스트) 모드가 DB 에 기록하게 된다');
   },
 
-  // ③ 저장 실패가 전송을 깨지 않는다
+  // ③ 저장 실패가 예외로 새지 않는다(결정 9: 일간은 결과를 기다려 알리고, 주간은 그대로 void)
   saveNeverBreaksSend(cs, rdb) {
-    assert.ok(/void SaveDailyReport\(/.test(cs) && /void SaveWeeklyReport\(/.test(cs),
-      '호스트 훅이 void 가 아니다 — 저장 실패가 전송 흐름으로 전파될 수 있다');
+    assert.ok(/Task<bool> SaveDailyReport\(/.test(cs), '일간 훅이 Task<bool> 이 아니다. 저장 결과를 기다려 알릴 수 없다(결정 9)');
+    assert.ok(/void SaveWeeklyReport\(/.test(cs), '주간 훅이 void 가 아니다. 주간은 바꾸지 않기로 했다(ATTENDANCE-PLAN 결정 9)');
+    const b = submitBody(cs);
+    assert.ok(/bool stored = await _host\.SaveDailyReport\(/.test(b), 'NetcusSubmit 이 일간 저장을 기다리지 않는다(결과를 먼저 알리는 옛 순서)');
+    assert.ok(/NetcusResult\(stored, stored \? "회사 보고와 기록 저장을 완료했습니다\." : "처리를 완료하지 못했습니다\. 다시 시도해 주세요\."\);/.test(b),
+      '일간 결과가 저장 결과(stored)를 따르지 않는다. DB 실패도 공통 실패 안내로 보여야 한다(결정 9)');
+    assert.ok(b.indexOf('bool stored = await _host.SaveDailyReport(') < b.indexOf('NetcusResult(stored,'),
+      '일간 결과를 저장보다 먼저 알린다(결정 9: 커밋 확인 뒤에만 성공)');
     // ReportDb 의 두 공개 메서드가 각각 catch 를 갖는다
     for (const m of ['SaveDailyAsync', 'SaveWeeklyAsync']) {
       const i = rdb.indexOf('public async Task<bool> ' + m);
@@ -162,7 +169,10 @@ const checks = {
       [/GRANT[^;]*UPDATE[^;]*ON\s+taskmgr\.cal_report_daily/i, 'cal_report_daily UPDATE'],
       [/GRANT[^;]*INSERT[^;]*ON\s+taskmgr\.cal_report_hours/i, 'cal_report_hours INSERT'],
       [/GRANT[^;]*DELETE[^;]*ON\s+taskmgr\.cal_report_hours/i, 'cal_report_hours DELETE(재삽입 계약)'],
-      [/GRANT[^;]*INSERT[^;]*ON\s+taskmgr\.cal_report_weekly/i, 'cal_report_weekly INSERT'],
+      [/GRANT[^;]*INSERT[^;]*ON\s+taskmgr\.cal_report_weekly\s/i, 'cal_report_weekly INSERT'],
+      //  주간 과제투입시간(결정 14): 다시 보내면 그 주의 줄을 지우고 넣는다(일간 cal_report_hours 와 같은 재삽입 계약)
+      [/GRANT[^;]*INSERT[^;]*ON\s+taskmgr\.cal_report_weekly_hours/i, 'cal_report_weekly_hours INSERT'],
+      [/GRANT[^;]*DELETE[^;]*ON\s+taskmgr\.cal_report_weekly_hours/i, 'cal_report_weekly_hours DELETE(재삽입 계약)'],
     ];
     for (const [re, what] of need)
       assert.ok(re.test(sqlText), `grants-calendar.sql 에 ${what} 권한이 없다 — 배선이 ERROR 1142 로 죽는다`);
@@ -191,7 +201,7 @@ const checks = {
       '범위 밖 잔업을 0 으로 내리지 않는다');
 
     // (c) 두 검증이 **저장 호출 앞**에 실제로 끼어 있고, 내린 값이 저장으로 간다(안 그러면 장식이다).
-    const i = mainCs.indexOf('void INetcusHost.SaveDailyReport(');
+    const i = mainCs.indexOf('Task<bool> INetcusHost.SaveDailyReport(');
     assert.ok(i > 0, 'INetcusHost.SaveDailyReport 를 찾지 못했다');
     const hook = mainCs.slice(i, i + 1600);
     assert.ok(/SafeReportStatus\(status\)/.test(hook) && /SafeOvertime\(overtime\)/.test(hook),
@@ -213,8 +223,15 @@ const checks = {
       'ParseHoursJson 이 정본 범위 밖 줄을 버리지 않는다(HoursInDomain 을 부르지 않는다) — 그 한 줄이 그 날 저장 전체를 롤백시킨다');
     assert.ok(/if \(!HoursInDomain\(h\.Hours\)\) continue;/.test(rdb),
       'ReportDb 의 마지막 관문이 HoursInDomain 을 부르지 않는다 — 들어오는 자리와 저장하는 자리가 같은 판정을 해야 한다');
-    //     ③ 은 'HoursInDomain 선언 줄을 걷어 내고 나면 범위 숫자가 한 자리도 안 남는가' 로 본다.
-    const rdbElse = rdb.replace(/\n[^\n]*HoursInDomain\(decimal h\)[^\n]*/, '');
+    //     주간 과제투입시간(결정 14)의 판정(WeeklyHoursInDomain)도 정본 chk_crwh_hours 와 글자까지 같아야 한다.
+    const wh = /CONSTRAINT\s+chk_crwh_hours\s+CHECK\s*\(\s*hours\s*>\s*(\d+)\s+AND\s+hours\s*<=\s*(\d+)\s*\)/i.exec(canonText);
+    assert.ok(wh, '정본에서 chk_crwh_hours 의 범위를 읽지 못했다(판정 불가 ≠ 통과)');
+    assert.ok(new RegExp('internal static bool WeeklyHoursInDomain\\(decimal h\\) => h > ' + wh[1] + 'm && h <= ' + wh[2] + 'm;').test(rdb),
+      `주간 공수 판정(ReportDb.WeeklyHoursInDomain)이 정본 범위(${wh[1]} 초과 ~ ${wh[2]} 이하)와 같지 않다`);
+    assert.ok(/if \(!ReportDb\.WeeklyHoursInDomain\(h\)\)/.test(mainCs) && /if \(!WeeklyHoursInDomain\(h\.Hours\)\) continue;/.test(rdb),
+      '주간 시간줄이 들어오는 자리(ParseWeeklyHoursJson)와 저장 직전(SaveWeeklyAsync)에 같은 판정을 하지 않는다');
+    //     ③ 은 '두 판정 선언 줄을 걷어 내고 나면 범위 숫자가 한 자리도 안 남는가' 로 본다.
+    const rdbElse = rdb.replace(/\n[^\n]*HoursInDomain\(decimal h\)[^\n]*/g, '');
     assert.strictEqual([...rdbElse.matchAll(/\bh(?:\.Hours)?\s*(?:<=|>=|<|>)\s*\d/g)].length, 0,
       '공수 범위 숫자가 HoursInDomain 선언 밖에 또 적혀 있다(ReportDb) — 판정은 그 한 줄뿐이어야 한다(R5)');
     assert.strictEqual([...mainCs.matchAll(/\bh(?:\.Hours)?\s*(?:<=|>=|<|>)\s*\d/g)].length, 0,
@@ -259,7 +276,7 @@ test('배선②: 미제출(DryRun)은 저장에 도달하지 못한다', () => {
   checks.dryRunReturnsBeforeSave(netcus);
 });
 
-test('배선③: 저장 실패가 전송을 깨지 않는다(훅은 void · ReportDb 가 예외를 잡는다)', () => {
+test('배선③: 일간은 저장을 기다려 결과를 알리고 주간 훅은 void 다(ReportDb 가 예외를 잡는다)', () => {
   checks.saveNeverBreaksSend(netcus, reportdb);
 });
 
@@ -324,8 +341,16 @@ test('변이③: DryRun 의 return 을 빼면 배선② 가 실패한다(테스�
   assert.throws(() => checks.dryRunReturnsBeforeSave(bad), /return 이 없다/);
 });
 
+test('변이③b: 일간 저장을 기다리지 않거나 결과를 고정 성공으로 알리면 배선③ 이 실패한다(결정 9)', () => {
+  const noAwait = mutate('bool stored = await _host.SaveDailyReport(', 'bool stored = true; _ = _host.SaveDailyReport(', netcus);
+  assert.throws(() => checks.saveNeverBreaksSend(noAwait, reportdb), /기다리지 않는다/);
+  const fixedOk = mutate('NetcusResult(stored, stored ? ', 'NetcusResult(true, true ? ', netcus);
+  assert.throws(() => checks.saveNeverBreaksSend(fixedOk, reportdb), /저장 결과\(stored\)를 따르지 않는다/);
+  assert.doesNotThrow(() => checks.saveNeverBreaksSend(netcus, reportdb));   // 통제군
+});
+
 test('변이④: 주간 저장을 채우기 성공 통지 앞으로 옮기면 배선④ 가 실패한다', () => {
-  const call = '                _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork);';
+  const call = '                _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);';   // 회의내용(결정 13)까지
   const msg = '                NetcusResult(true, "주간보고 작성 폼을 채웠습니다';
   assert.ok(netcus.includes(call), '주간 저장 호출을 찾지 못했다');
   const bad = mutate(msg, call + '\n' + msg, netcus).replace(call + '\n', (m, off) => off > netcus.indexOf(msg) ? '' : m);

@@ -126,6 +126,8 @@ const HANDOFF_LOADS = {
   probe: 'await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));',
   // 일간 전송: ①DryRun(미제출)이 남기는 폼 페이지 ②실제 제출 뒤 되읽기 페이지 — 같은 문장이 두 번 나온다.
   submit: 'await NavTo(cw, url);',
+  // 근태 달력 보기(2026-10-29): 그 달 pjm_work.jsp 달력 문서를 사용자에게 남긴다(읽기만, 날짜 칸 강조).
+  view: 'await NavTo(cw, $"https://www.netcus.com/pjm/pjm_work.jsp?y={y}&m={m}&id={Uri.EscapeDataString(id)}");',
 };
 
 // detach 완료 표식 — 호출과 '다시 안 쓴다'는 표시를 한 문장으로 묶은 형태.
@@ -176,12 +178,12 @@ const checks = {
     assert.ok(/ev\.Message/.test(hb), '핸들러가 다이얼로그 메시지를 로그에 남기지 않는다');
   },
 
-  // ⑥ 호출부 계약 — 7곳 전부가 detach를 '반드시 도는 경로'에서 부른다.
+  // ⑥ 호출부 계약 — 8곳 전부가 detach를 '반드시 도는 경로'에서 부른다.
   //    (인계 전에 중단되는 경로에서도 설정이 꺼진 채 남지 않게 하는 마지막 그물)
   allCallSitesDetach(source) {
     const sites = callSites(source);
     const tags = sites.map((s) => s.tag).sort();
-    assert.deepStrictEqual(tags, ['merge', 'probe', 'submit', 'userlogin', 'validate', 'week', 'weekly'],
+    assert.deepStrictEqual(tags, ['merge', 'probe', 'submit', 'userlogin', 'validate', 'view', 'week', 'weekly'],
       `AttachDialogAutoAccept 호출부 목록이 계약과 다르다: ${tags}`);
 
     for (const s of sites) {
@@ -261,11 +263,11 @@ const checks = {
     }
   },
 
-  // ⑩ 인계 목록 자체가 계약이다 — 창을 남기는 op는 정확히 week·probe·submit 셋.
+  // ⑩ 인계 목록 자체가 계약이다. 창을 남기는 op는 정확히 week, probe, submit, view 넷(view 는 2026-10-29 근태 달력 보기).
   //    새 op가 창을 남기게 되면 ⑨의 대상에도 반드시 등록돼야 한다(빠뜨리면 이번 사고 재발).
   handoffSetMatchesWindowKeepers(source) {
     const keeps = callSites(source).filter((s) => !closesWindow(s)).map((s) => s.tag).sort();
-    assert.deepStrictEqual(keeps, ['probe', 'submit', 'week'],
+    assert.deepStrictEqual(keeps, ['probe', 'submit', 'view', 'week'],
       `창을 사용자에게 남기는 op 목록이 바뀌었다: ${keeps} — 인계 계약(⑨) 대상도 함께 갱신해야 한다`);
     assert.deepStrictEqual(Object.keys(HANDOFF_LOADS).sort(), keeps,
       '인계 계약(HANDOFF_LOADS)에 등록된 op와 실제로 창을 남기는 op가 다르다');
@@ -299,7 +301,7 @@ test('다이얼로그 자동수락: 핸들러가 ev.Accept()로 수락하고 메
   checks.handlerAcceptsAndLogs(netcus);
 });
 
-test('다이얼로그 자동수락: 호출부 7곳(userlogin·validate·submit·week·merge·weekly·probe)이 전부 detach를 부른다', () => {
+test('다이얼로그 자동수락: 호출부 8곳(userlogin, validate, submit, week, merge, weekly, probe, view)이 전부 detach를 부른다', () => {
   checks.allCallSitesDetach(netcus);
 });
 
@@ -317,11 +319,11 @@ test('다이얼로그 자동수락: 위젯 다른 소스는 AreDefaultScriptDial
 
 // ══ ★ 인계 순서 계약 ★ ════════════════════════════════════════════════
 
-test('인계 계약: week·probe·submit 모두 인계 문서를 로드하기 전에 detach가 끝난다', () => {
+test('인계 계약: week, probe, submit, view 모두 인계 문서를 로드하기 전에 detach가 끝난다', () => {
   checks.detachBeforeHandoff(netcus);
 });
 
-test('인계 계약: 창을 사용자에게 남기는 op는 week·probe·submit 셋뿐이다', () => {
+test('인계 계약: 창을 사용자에게 남기는 op는 week, probe, submit, view 넷뿐이다', () => {
   checks.handoffSetMatchesWindowKeepers(netcus);
 });
 

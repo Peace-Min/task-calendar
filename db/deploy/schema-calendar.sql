@@ -869,7 +869,8 @@ DROP TABLE IF EXISTS cal_migration_log;
 DROP TABLE IF EXISTS cal_user_rev;
 DROP TABLE IF EXISTS cal_report_hours;      -- cal_report_daily 를 참조, 자식 먼저
 DROP TABLE IF EXISTS cal_report_daily;
-DROP TABLE IF EXISTS cal_report_weekly;     -- 자식 없음
+DROP TABLE IF EXISTS cal_report_weekly_hours; -- 주간 과제투입시간(구조 20). cal_report_weekly 를 참조, 자식 먼저
+DROP TABLE IF EXISTS cal_report_weekly;     -- 자식은 바로 위 cal_report_weekly_hours
 DROP TABLE IF EXISTS cal_user_pref;
 DROP TABLE IF EXISTS cal_attendance;
 DROP TABLE IF EXISTS cal_task_hours;         -- cal_category 를 참조(2026-08-24 신설 FK)
@@ -1508,9 +1509,10 @@ CREATE TABLE cal_report_weekly (
   period_start DATE              NOT NULL,                                  -- 캘린더가 정한 기간 시작(WeekFill 의 sdate)
   period_end   DATE              NOT NULL,                                  -- 기간 끝(edate)
   subject      VARCHAR(200)      NOT NULL DEFAULT '',                       -- 캘린더가 만든 제목('8월 셋째주')
-  content      MEDIUMTEXT        NOT NULL,                                  -- 과제투입시간. 집계는 일간 원자로 한다(이중 계산 방지)
+  content      MEDIUMTEXT        NOT NULL,                                  -- 과제투입시간(회사 폼에 넣은 글 그대로). 집계 원천은 cal_report_weekly_hours(결정 14)
   endwork      MEDIUMTEXT        NOT NULL,                                  -- 진행사항
   plan         MEDIUMTEXT        NOT NULL,                                  -- 차주계획(캘린더가 만든 머리표)
+  meeting      MEDIUMTEXT        NULL,                                      -- 회의내용(구조 20, 2026-10-29). NULL = 이 칸이 생기기 전에 작성한 주
   composed_at  DATETIME(3)       NOT NULL,                                  -- 캘린더가 이 주간보고를 작성한 시각
   created_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
@@ -1523,6 +1525,49 @@ CREATE TABLE cal_report_weekly (
   COMMENT='캘린더가 작성한 주간보고. 사이트의 현재 상태가 아니다 - 사용자가 폼에서 보완한 내용은 담기지 않는다';
 --  ★ composed_at 이지 sent_at 이 아닌 이유: 위젯은 주간을 **전송하지 않는다**(NetcusService.cs:666
 --    "폼을 채웠습니다 - 보완 후 열린 창에서 직접 '제출'하세요"). 우리가 아는 사실은 '작성했다'까지다.
+--  ★ 2026-10-30 결정 14: content 칸 주석은 원래 "집계는 일간 원자로 한다(이중 계산 방지)" 였다. 뒤집혔다.
+--    맨먼스(MM) 집계의 원천은 아래 cal_report_weekly_hours 다(일간을 쓰지 않는 사람의 공수는 주간에만 있다).
+
+-- ── 2단계: cal_report_weekly_hours(구조 20, 2026-10-30 결정 14, docs/ATTENDANCE-PLAN.md §14.4) ─────
+--   주간보고의 과제투입시간을 과제별 줄로 남긴다. 맨먼스(MM) 집계의 원천이다.
+--   ★ 왜 따로 두나: 일간을 쓰지 않는 사람의 공수는 주간에만 있다. 주간 시간을 글(content)로만 두면
+--     표에서 합산할 수 없다. 그렇다고 글을 파싱하지 않는다. 웹이 [{name, projectUid, hours}] 를 구조로 넘기고
+--     호스트가 cal_report_weekly 행과 이 줄들을 **한 트랜잭션**으로 쓴다. 다시 보내면 그 주 줄을 지우고 새로 넣는다
+--     (일간 cal_report_hours 와 같은 방식. 줄 구성이 바뀌면 행 단위 UPSERT 로는 사라진 줄이 남는다). 0 시간 줄은 남기지 않는다.
+--   ★ 일간 cal_report_hours 와 이중으로 세지 않는다. 주간이 원천이고, 일간 표는 주간을 채우는 재료로만 쓴다.
+--   ★ 자식 FK(user_id, period_start) → cal_report_weekly 는 CASCADE 다. 일간 fk_crh_daily 와 같은 결이다.
+--     줄은 그 주 보고의 일부라 혼자 살아남을 이유가 없다. 소유자(app_user) FK 는 부모 cal_report_weekly 가
+--     RESTRICT 로 이미 붙들고 있어 여기에 따로 두지 않는다(퇴사자 정리가 이 줄을 지우지 못하는 것도 부모 덕이다).
+--   ★ project_uid 에 FK 를 걸지 않는다. 과제는 숨기거나(is_active = 0) 휴지통에서 영구 삭제할 수 있는데,
+--     한 번 보고한 공수는 그 뒤에도 남아야 한다. RESTRICT 면 공수를 한 번이라도 보고한 과제는 영구 삭제가 막히고,
+--     CASCADE 나 SET NULL 이면 지난 공수가 사라지거나 주인을 잃는다. 그래서 글자(CHAR(36))로 남기고 과제명도 함께 둔다.
+--     번호(project.id)가 아니라 uid 인 이유: uid 가 과제의 정체성(assign-once, schema-structure.sql uq_project_uid)이고
+--     웹이 이미 db-<uid> 로 들고 다닌다. 과제 이름이 바뀌어도 사람 간 합산이 끊기지 않는다.
+--     콜레이션은 project.uid 와 같은 utf8mb4_0900_ai_ci(표 기본값)라 집계에서 project 와 이을 때 인덱스를 그대로 쓴다.
+--     개인 과제는 NULL 이다(빈 글이 아니다. 호스트가 빈 projectUid 를 NULL 로 바꾼다).
+--   ★ hours 는 DECIMAL(5,2), 0 초과 168 이하(한 주 = 168 시간). 0 은 '기록할 것이 없다' 라 행을 두지 않는다(chk_crh_hours 와 같은 뜻).
+--     일간의 24 대신 168 인 것은 한 줄이 한 과제의 **한 주 합계**이기 때문이다.
+--   ★ 인덱스: 과제별 기간 집계용 ix_crwh_project(project_uid, period_start) 하나만 둔다.
+--     사람별 기간 집계용 (user_id, period_start) 는 따로 만들지 않는다. PK 의 앞 두 열이 정확히 그것이라
+--     MySQL 이 PK 로 범위를 읽고, FK fk_crwh_weekly 의 받침 인덱스도 PK 가 맡는다. 같은 열의 보조 인덱스는 쓰기 비용만 늘린다.
+--   ★ 이 정의는 이관 조각 db/deploy/migrations/v20-weekly-meeting.sql 의 CREATE TABLE IF NOT EXISTS 와 **글자까지 같다**
+--     (작은따옴표만 두 겹. tests/release-sql.test.mjs 가 대조한다). 그래서 정의 안에 -- 주석을 두지 않고 설명은 COMMENT 로 적는다
+--     (과제 캘린더 14~15 와 같은 규칙).
+--   ★ 앱 계정 권한(grants-calendar.sql): SELECT, INSERT, UPDATE, DELETE. 다시 보내기가 그 주 줄을 지우고 넣기 때문이다.
+CREATE TABLE cal_report_weekly_hours (
+  user_id      SMALLINT UNSIGNED NOT NULL    COMMENT '주인(cal_report_weekly.user_id)',
+  period_start DATE              NOT NULL    COMMENT '주간보고 기간 시작(cal_report_weekly.period_start)',
+  line_no      SMALLINT UNSIGNED NOT NULL    COMMENT '과제투입시간 안의 줄 순서(0부터)',
+  task_name    VARCHAR(200)      NOT NULL    COMMENT '보낸 과제명 그대로. 과제 이름이 바뀌어도 지난 줄은 그대로다',
+  project_uid  CHAR(36)          NULL        COMMENT '공식 과제 id(project.uid). 개인 과제는 NULL. 과제가 지워져도 남도록 FK 없음',
+  hours        DECIMAL(5,2)      NOT NULL    COMMENT '그 주 그 과제의 시간. 0 초과 168 이하',
+  PRIMARY KEY (user_id, period_start, line_no),
+  KEY ix_crwh_project (project_uid, period_start),
+  CONSTRAINT fk_crwh_weekly FOREIGN KEY (user_id, period_start)
+    REFERENCES cal_report_weekly (user_id, period_start) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT chk_crwh_hours CHECK (hours > 0 AND hours <= 168)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT='주간보고 과제투입시간(과제별 줄). 맨먼스 집계의 원천. 주간보고 행과 한 트랜잭션으로 쓰고 다시 보내면 그 주 줄을 바꾼다';
 
 
 
@@ -1757,9 +1802,14 @@ CREATE TABLE cal_schema_meta (
 --   - 19 (2026-10-26): 과제 순서(이관 조각 db/deploy/migrations/v19-project-order.sql, docs/PROJECT-ADMIN-UX.md).
 --       project.sort_no(그 구분 안의 순서, 정본 schema-structure.sql)를 더하고 section_code, status_code 의 표 설명에서
 --       고정 번호 문구를 지운다. 이 파일의 cal_* 는 바뀌지 않았다. 앱 상수는 DbGate.AppStructureVersion(19).
+--   - 20 (2026-10-29): 주간보고 회의내용(이관 조각 db/deploy/migrations/v20-weekly-meeting.sql, docs/ATTENDANCE-PLAN.md §13.4).
+--       cal_report_weekly.meeting(MEDIUMTEXT NULL, plan 뒤)을 더한다. 기존 행은 NULL 로 두고 앱은 빈 글로 읽는다.
+--       2026-10-30 결정 14(docs/ATTENDANCE-PLAN.md §14.4)로 같은 판에 주간 과제투입시간 표 cal_report_weekly_hours 를 더했다
+--       (MM 집계의 원천. 구조 20 은 운영 배포 전이라 번호를 올리지 않고 같은 조각에 합쳤다). 표 수가 하나 는다.
+--       앱 상수는 DbGate.AppStructureVersion(20).
 --   ★ app_ 세 키는 빈 값으로 시딩한다(새 버전 없음). 배포 때 release-v<버전>.sql 이 채운다(DB-RELEASE-OPS §4).
 --   ★ 첫 줄(db_structure_version)의 모양을 바꾸지 말 것. setup-taskcalendar.ps1 과 시험이 이 줄에서 기대값을 읽는다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '19', UTC_TIMESTAMP(3)),
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '20', UTC_TIMESTAMP(3)),
   ('db_updating', '0', UTC_TIMESTAMP(3)),
   ('app_latest_version', '', UTC_TIMESTAMP(3)),
   ('app_installer_file', '', UTC_TIMESTAMP(3)),

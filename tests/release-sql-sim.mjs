@@ -36,6 +36,14 @@
 //   ALTER TABLE ... COMMENT, information_schema.COLUMNS 의 COLUMN_TYPE 과 TABLES 의 TABLE_COMMENT 하위 질의,
 //   순서 채우기 UPDATE 한 문장(V19_FILL 과 글자까지 같아야 한다. 구분마다 표시 이름 순, 같으면 id 순으로 그 구분의 최댓값 뒤에),
 //   그리고 SELECT COUNT(*) INTO @x FROM project WHERE is_active = 1 AND sort_no IS NULL. 칸이 없으면 1054 로 멈춘다.
+//   주간보고 회의내용(v20 조각 migrations/v20-weekly-meeting.sql): cal_report_weekly 표의 열 순서와 형(weekly 옵션, 기본은 19 까지의 모양),
+//   ALTER TABLE cal_report_weekly ADD COLUMN meeting MEDIUMTEXT NULL AFTER ..., ALGORITHM=INSTANT(있는 행은 meeting = NULL 이 된다),
+//   information_schema.COLUMNS 의 이름, COLUMN_TYPE 과 NULL 허용, 바로 앞 칸 자리 하위 질의(project 와 같은 모양).
+//   행(tables.cal_report_weekly 의 user_id, period_start, 그리고 칸이 있으면 meeting)은 값이 바뀌지 않았는지 보려고만 둔다.
+//   주간 과제투입시간 표(같은 v20 조각, 2026-10-30 결정 14): cal_report_weekly_hours 를 v16 처럼 표 모양(defs)으로 둔다.
+//   CREATE TABLE IF NOT EXISTS 의 정의에서 열 수, FK 수와 함께 기본 키 열 수, CHECK 이름, FK 의 대상과 규칙을 읽고
+//   information_schema.KEY_COLUMN_USAGE(PRIMARY), TABLE_CONSTRAINTS(CHECK 이름), REFERENTIAL_CONSTRAINTS(대상, DELETE_RULE,
+//   UPDATE_RULE) 의 표별 COUNT(*) 하위 질의에 그 값으로 답한다.
 //
 // ★ *.test.mjs 가 아니다(러너가 수집하지 않는다. ps-guard-lib.mjs 머리말과 같은 이유).
 
@@ -200,8 +208,8 @@ const ROOM_COUNTS = {
 // ── 표 정의의 모양(v16): 열 수와 FK 수 ────────────────────────────────────
 //  CREATE TABLE 문 하나에서 괄호 안의 열 정의 줄(이름 + 형)과 FOREIGN KEY 를 센다. 정본과 조각의 정의를 같은 함수로 센다.
 const COL_LINE = /^\s*[a-z_][a-z0-9_]*\s+(TINYINT|SMALLINT|INT|BIGINT|VARCHAR|CHAR|DATE|DATETIME|TIME|TEXT|MEDIUMTEXT|MEDIUMBLOB|JSON|DECIMAL)\b/i;
-//  표 모양을 세는(defs) 새 표: 과제 캘린더(v16)와 월간보고 그림 표(v17)
-const SHAPED = (n) => n.startsWith('cal_project_') || n === 'project_schedule_image';
+//  표 모양을 세는(defs) 새 표: 과제 캘린더(v16), 월간보고 그림 표(v17), 주간 과제투입시간 표(v20)
+const SHAPED = (n) => n.startsWith('cal_project_') || n === 'project_schedule_image' || n === 'cal_report_weekly_hours';
 
 // ── project 표의 모양(v17): 열 순서, 형, NULL 허용과 CHECK 이름 ──────────────────
 //  정본 schema-structure.sql 의 v16 까지 모양. dev_start_date 는 v17 이 end_date 뒤에 넣는다.
@@ -225,6 +233,21 @@ export const PROJECT_V19 = () => {
 };
 const colOf = (c) => { const [name, t] = c.split(':'); return { name, type: t.replace('?', ''), nullable: t.endsWith('?') }; };
 
+// ── 주간보고 표의 모양(v20): 열 순서, 형(COLUMN_TYPE 글자), NULL 허용 ─────────────────────
+//  정본 schema-calendar.sql 의 cal_report_weekly. 19 까지는 회의내용 칸이 없고, v20 이 plan 뒤에 meeting 을 넣는다.
+//  형은 v19 의 sort_no 처럼 COLUMN_TYPE 글자로 둔다(DATA_TYPE 은 첫 낱말).
+export const WEEKLY_V19 = () => ({
+  cols: ['user_id:smallint unsigned', 'period_start:date', 'period_end:date', 'subject:varchar(200)', 'content:mediumtext',
+    'endwork:mediumtext', 'plan:mediumtext', 'composed_at:datetime(3)', 'created_at:datetime(3)', 'updated_at:datetime(3)'],
+});
+export const WEEKLY_V20 = () => {
+  const w = WEEKLY_V19();
+  w.cols.splice(w.cols.indexOf('plan:mediumtext') + 1, 0, 'meeting:mediumtext?');
+  return w;
+};
+//  열 모양을 흉내 내는 표(이름 → FakeDb 의 모양 필드)
+const COL_SHAPED = { project: 'project', cal_report_weekly: 'weekly' };
+
 // ── 과제 순서(v19): 코드표 표 설명과 순서 채우기 ─────────────────────────────
 //  18 까지는 고정 번호 문구가 있다(2026-10-15 이관과 정본 13~18). 19 에서 지운다(정본 schema-structure.sql 과 같은 글자).
 export const CODES_V18 = () => ({
@@ -242,12 +265,32 @@ export const V19_FILL = 'UPDATE project p JOIN (SELECT id, ROW_NUMBER() OVER (PA
   + 'LEFT JOIN (SELECT section_id, MAX(sort_no) AS mx FROM project WHERE is_active = 1 GROUP BY section_id) m ON m.section_id = p.section_id '
   + 'SET p.sort_no = IFNULL(m.mx, 0) + o.rn, p.updated_at = p.updated_at WHERE p.id > 0';
 const showName = (r) => (String(r.common_name || '') !== '' ? String(r.common_name) : String(r.project_name || ''));
+//  defOf: 열 수와 FK 수만(v16, v17 의 검증과 그 시험이 쓰는 모양). defShape: 거기에 기본 키 열 수, CHECK 이름, FK 대상과 규칙을 더한 것
+//  (흉내 실행기의 표 모양과 v20 검증). defOf 의 모양을 넓히지 않는 이유: 다른 시험이 그 값을 { cols, fks } 로 통째 대조한다.
 export function defOf(createSql) {
+  const { cols, fks } = defShape(createSql);
+  return { cols, fks };
+}
+export function defShape(createSql) {
   const open = createSql.indexOf('(');
   const close = createSql.lastIndexOf(') ENGINE=');
   if (open < 0 || close < open) throw new Error(`표 정의를 읽지 못했다: ${createSql.slice(0, 80)}`);
   const body = createSql.slice(open + 1, close);
-  return { cols: body.split('\n').filter((l) => COL_LINE.test(l)).length, fks: (body.match(/\bFOREIGN KEY\b/g) || []).length };
+  //  v20: 기본 키 열 수, CHECK 이름, FK 의 대상과 규칙(적지 않은 규칙은 MySQL 처럼 NO ACTION 으로 읽힌다).
+  //  COMMENT 글자 안을 잘못 읽지 않게 따옴표 안을 비운 뒤 읽는다(조각의 두 겹 따옴표도 같은 식으로 비워진다).
+  const bare = body.replace(/'(?:[^']|'')*'/g, "''");
+  const pk = /PRIMARY KEY\s*\(([^)]*)\)/i.exec(bare);
+  const checks = [...bare.matchAll(/CONSTRAINT\s+(\w+)\s+CHECK\b/gi)].map((m) => m[1]);
+  const RULE = '(CASCADE|RESTRICT|SET NULL|NO ACTION)';
+  const refs = [...bare.matchAll(new RegExp(`REFERENCES\\s+(\\w+)\\s*\\([^)]*\\)((?:\\s+ON\\s+(?:DELETE|UPDATE)\\s+${RULE})*)`, 'gi'))]
+    .map((m) => {
+      const rule = (w) => ((new RegExp(`ON\\s+${w}\\s+${RULE}`, 'i').exec(m[2]) || [])[1] || 'NO ACTION').toUpperCase();
+      return `${m[1]}:${rule('DELETE')}:${rule('UPDATE')}`;
+    });
+  return {
+    cols: body.split('\n').filter((l) => COL_LINE.test(l)).length, fks: (body.match(/\bFOREIGN KEY\b/g) || []).length,
+    pk: pk ? pk[1].split(',').length : 0, checks, refs,
+  };
 }
 
 // ── Git, SVN 삭제(v18): 지울 칸과 CHECK, 그리고 CHECK 가 쓰는 칸 ──────────────────
@@ -271,6 +314,8 @@ const ROW_KEY = {
   cal_entry_commit: (r) => `${r.user_id}:${r.entry_no}:${r.seq}`,
   //  과제: 번호, 구분, 보임. sort_no 는 칸이 있을 때만 행에 있다(없으면 '-' 도 붙이지 않는다).
   project: (r) => `${r.id}:${r.section_id}:${r.is_active}` + ('sort_no' in r ? `:${r.sort_no === null ? 'NULL' : r.sort_no}` : ''),
+  //  주간보고: 주인, 기간 시작. meeting 은 칸이 있을 때만 행에 있다.
+  cal_report_weekly: (r) => `${r.user_id}:${r.period_start}` + ('meeting' in r ? `:${r.meeting === null ? 'NULL' : r.meeting}` : ''),
 };
 
 // ── 흉내 DB ────────────────────────────────────────────────────────────
@@ -278,13 +323,14 @@ const ROW_KEY = {
 //  tables: { cal_room: [{ user_id, name }], room_code: [{ name, sort_order }] } 처럼 있는 표만 준다(없는 키 = 없는 표).
 //  표 바꾸기도 writes 에 'table:<이름>' 으로 남긴다(다시 돌렸을 때 바뀐 것이 없는지 보려고).
 export class FakeDb {
-  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {}, project = PROJECT_V16(), vcs = VCS_V17(), codes = CODES_V18() } = {}) {
+  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {}, project = PROJECT_V16(), vcs = VCS_V17(), codes = CODES_V18(), weekly = WEEKLY_V19() } = {}) {
     this.rows = new Map(Object.entries(meta).map(([k, v]) => [k, { v, at: 0 }]));
     this.tables = Object.fromEntries(Object.entries(tables).map(([n, rs]) => [n, rs.map((r) => ({ ...r }))]));
     this.defs = Object.fromEntries(Object.entries(defs).map(([n, d]) => [n, { ...d }]));   // 표 이름 → { cols, fks }(v16 검증용)
     this.project = { cols: [...project.cols], checks: [...project.checks] };                  // project 표 모양(v17 검증용)
     this.vcs = { cols: [...vcs.cols], checks: [...vcs.checks], prefComment: vcs.prefComment };  // 지울 칸, CHECK, 표 설명(v18 검증용)
     this.codes = { ...codes };                                                                   // 코드표 표 설명(v19 검증용)
+    this.weekly = { cols: [...weekly.cols] };                                                    // cal_report_weekly 모양(v20 검증용)
     this.tableExists = tableExists;
     this.schema = schema;
     this.comment = '';
@@ -299,15 +345,18 @@ export class FakeDb {
   snap() { if (!this.tx) this.visible.push(this.state()); }
   meta() { return Object.fromEntries([...this.rows].map(([k, r]) => [k, r.v])); }
   //  meta 에 회의실 표 모양('#tables')을 붙인 것. 앱에 보인 상태 비교와 실패 뒤 재실행 결과 비교에 쓴다.
-  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()), '#project': JSON.stringify(this.project), '#vcs': JSON.stringify(this.vcs), '#codes': JSON.stringify(this.codes) }; }
+  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()), '#project': JSON.stringify(this.project), '#vcs': JSON.stringify(this.vcs), '#codes': JSON.stringify(this.codes), '#weekly': JSON.stringify(this.weekly) }; }
   projectHasCol(c) { return this.project.cols.some((x) => colOf(x).name === c); }
+  //  열 모양을 흉내 내는 표의 열 목록(project, cal_report_weekly)
+  shapeCols(t) { return this[COL_SHAPED[t]].cols; }
   tableShape() {
     const out = {};
     for (const n of Object.keys(this.tables).sort()) {
       out[n] = n === 'room_code'
         ? this.tables[n].map((r) => [r.name, r.sort_order]).sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1))
         : ROW_KEY[n] ? this.tables[n].map(ROW_KEY[n]).sort()
-        : this.defs[n] ? [`cols=${this.defs[n].cols}`, `fks=${this.defs[n].fks}`]
+        : this.defs[n] ? [`cols=${this.defs[n].cols}`, `fks=${this.defs[n].fks}`,
+          ...(this.defs[n].pk === undefined ? [] : [`pk=${this.defs[n].pk}`, `checks=${this.defs[n].checks}`, `refs=${this.defs[n].refs}`])]
           : this.tables[n].map((r) => `${r.user_id}:${r.name}`).sort();
     }
     return out;
@@ -344,6 +393,13 @@ export class FakeDb {
       if (!d) throw new Error(`모양을 모르는 표를 센다(defs 에 ${m[2]} 가 없다)`);
       return m[1].toUpperCase() === 'COLUMNS' ? d.cols : d.fks;
     }
+    //  v20: 주간 과제투입시간 표의 기본 키 열 수, CHECK 이름, 대상과 규칙을 붙인 FK 수(모양은 defs. 모르면 판정 불가로 실패)
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours)' AND CONSTRAINT_NAME = 'PRIMARY'$/.exec(s);
+    if (m) return this.shapeOf(m[1], 'pk', (d) => d.pk);
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours)' AND CONSTRAINT_NAME = '(\w+)' AND CONSTRAINT_TYPE = 'CHECK'$/.exec(s);
+    if (m) { const c = m[2]; return this.shapeOf(m[1], 'checks', (d) => d.checks.filter((x) => x === c).length); }
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours)' AND REFERENCED_TABLE_NAME = '(\w+)' AND DELETE_RULE = '([A-Z ]+)' AND UPDATE_RULE = '([A-Z ]+)'$/.exec(s);
+    if (m) { const want = `${m[2]}:${m[3]}:${m[4]}`; return this.shapeOf(m[1], 'refs', (d) => d.refs.filter((x) => x === want).length); }
     //  v18: 일정, 과제, 설정 표의 지울 칸(이름 하나 또는 IN 목록)과 CHECK 이름. 지울 칸 목록에 없는 이름을 물으면 모르는 질의다.
     m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_entry|cal_category|cal_user_pref)' AND COLUMN_NAME (?:= '(\w+)'|IN \(([^)]*)\))$/.exec(s);
     if (m) {
@@ -359,24 +415,25 @@ export class FakeDb {
     }
     //  v17: project 의 칸(이름만, 또는 형과 NULL 허용까지), 바로 앞 칸 자리, CHECK 이름
     //  v17, v19: DATA_TYPE 은 형의 첫 낱말('int'), COLUMN_TYPE 은 형 글자 전체('int unsigned')와 비교한다.
-    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = 'project' AND COLUMN_NAME = '(\w+)'(?: AND (DATA_TYPE|COLUMN_TYPE) = '([\w ]+)' AND IS_NULLABLE = '(YES|NO)')?$/.exec(s);
+    //  v20: cal_report_weekly 도 같은 모양으로 묻는다.
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(project|cal_report_weekly)' AND COLUMN_NAME = '(\w+)'(?: AND (DATA_TYPE|COLUMN_TYPE) = '([\w ]+)' AND IS_NULLABLE = '(YES|NO)')?$/.exec(s);
     if (m) {
       if (!this.schema) return 0;
-      const c = this.project.cols.map(colOf).find((x) => x.name === m[1]);
+      const c = this.shapeCols(m[1]).map(colOf).find((x) => x.name === m[2]);
       if (!c) return 0;
-      if (m[2] === undefined) return 1;
-      const got = m[2] === 'DATA_TYPE' ? c.type.split(' ')[0] : c.type;
-      return got === m[3] && c.nullable === (m[4] === 'YES') ? 1 : 0;
+      if (m[3] === undefined) return 1;
+      const got = m[3] === 'DATA_TYPE' ? c.type.split(' ')[0] : c.type;
+      return got === m[4] && c.nullable === (m[5] === 'YES') ? 1 : 0;
     }
     //  v19: 코드표 표 설명(정확히 같은 글자일 때만 1)
     m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLES WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(section_code|status_code)' AND TABLE_COMMENT = '((?:[^']|'')*)'$/.exec(s);
     if (m) return this.schema && this.codes[m[1]] === m[2].replace(/''/g, "'") ? 1 : 0;
-    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS a JOIN information_schema\.COLUMNS b ON b\.TABLE_SCHEMA = a\.TABLE_SCHEMA AND b\.TABLE_NAME = a\.TABLE_NAME AND b\.ORDINAL_POSITION = a\.ORDINAL_POSITION \+ 1 WHERE a\.TABLE_SCHEMA = DATABASE\(\) AND a\.TABLE_NAME = 'project' AND a\.COLUMN_NAME = '(\w+)' AND b\.COLUMN_NAME = '(\w+)'$/.exec(s);
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS a JOIN information_schema\.COLUMNS b ON b\.TABLE_SCHEMA = a\.TABLE_SCHEMA AND b\.TABLE_NAME = a\.TABLE_NAME AND b\.ORDINAL_POSITION = a\.ORDINAL_POSITION \+ 1 WHERE a\.TABLE_SCHEMA = DATABASE\(\) AND a\.TABLE_NAME = '(project|cal_report_weekly)' AND a\.COLUMN_NAME = '(\w+)' AND b\.COLUMN_NAME = '(\w+)'$/.exec(s);
     if (m) {
       if (!this.schema) return 0;
-      const names = this.project.cols.map((c) => colOf(c).name);
-      const i = names.indexOf(m[1]);
-      return i >= 0 && names[i + 1] === m[2] ? 1 : 0;
+      const names = this.shapeCols(m[1]).map((c) => colOf(c).name);
+      const i = names.indexOf(m[2]);
+      return i >= 0 && names[i + 1] === m[3] ? 1 : 0;
     }
     m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = 'project' AND CONSTRAINT_NAME = '(\w+)' AND CONSTRAINT_TYPE = 'CHECK'$/.exec(s);
     if (m) return this.schema && this.project.checks.includes(m[1]) ? 1 : 0;
@@ -387,6 +444,13 @@ export class FakeDb {
     m = /^SELECT COUNT\(\*\) FROM cal_schema_meta WHERE k IN \(([^)]*)\)$/.exec(s);
     if (m) return [...m[1].matchAll(/'([a-z_0-9]+)'/g)].filter((x) => this.rows.has(x[1])).length;
     throw new Error(`모르는 하위 질의: ${s}`);
+  }
+  //  defs 로 모양을 아는 표의 한 가지 값. 표가 없으면 0, 그 값을 모르면 판정 불가로 실패한다(통과가 아니다).
+  shapeOf(t, field, f) {
+    if (!this.schema || !this.hasTable(t)) return 0;
+    const d = this.defs[t];
+    if (!d || d[field] === undefined) throw new Error(`모양을 모르는 표를 센다(defs 에 ${t}.${field} 가 없다)`);
+    return f(d);
   }
   eval(text) { return new Expr(text, this).parse(); }
   put(k, v) {
@@ -445,7 +509,7 @@ export class FakeDb {
       this.mutating(s, opts);
       if (!this.hasTable(m[1])) {
         this.tables[m[1]] = [];
-        if (SHAPED(m[1])) this.defs[m[1]] = defOf(s);
+        if (SHAPED(m[1])) this.defs[m[1]] = defShape(s);
         this.writes.push({ k: `table:${m[1]}`, v: 'create' });
       }
       return;
@@ -473,6 +537,19 @@ export class FakeDb {
       this.writes.push({ k: `col:project.${m[1]}`, v: 'add' });
       return;
     }
+    //  v20: cal_report_weekly 에 칸 하나(AFTER). 이미 있으면 MySQL 처럼 1060 으로 멈춘다. 있는 행은 새 칸이 NULL 로 생긴다(값 채우기 없음).
+    if ((m = /^ALTER TABLE cal_report_weekly ADD COLUMN (\w+) (MEDIUMTEXT) NULL AFTER (\w+), ALGORITHM=INSTANT$/.exec(q))) {
+      if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
+      this.mutating(s, opts);
+      const names = this.weekly.cols.map((c) => colOf(c).name);
+      if (names.includes(m[1])) throw new SqlStop(`1060 칸 ${m[1]} 이 이미 있다`);
+      const at = names.indexOf(m[3]);
+      if (at < 0) throw new SqlStop(`1054 칸 ${m[3]} 이 없다`);
+      this.weekly.cols.splice(at + 1, 0, `${m[1]}:${m[2].toLowerCase()}?`);
+      if (this.hasTable('cal_report_weekly')) for (const r of this.tables.cal_report_weekly) r[m[1]] = null;
+      this.writes.push({ k: `col:cal_report_weekly.${m[1]}`, v: 'add' });
+      return;
+    }
     if ((m = /^ALTER TABLE project ADD CONSTRAINT (\w+) CHECK \(.+\)$/.exec(q))) {
       if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
       this.mutating(s, opts);
@@ -487,6 +564,16 @@ export class FakeDb {
       const names = this.project.cols.map((c) => colOf(c).name);
       for (const c of ['dev_start_date', 'dev_end_date', 'start_date', 'end_date']) if (!names.includes(c)) throw new SqlStop(`1054 칸 ${c} 이 없다`);
       this.rowCount = 0;
+      return;
+    }
+    //  v20 3-2: 옛 주간보고 기록 모두 지우기. FK CASCADE 로 주간 시간 표의 줄도(행을 흉내 내는 경우) 함께 지운다.
+    if (q === 'DELETE FROM cal_report_weekly') {
+      this.mutating(s, opts);
+      const rows = this.need('cal_report_weekly');
+      this.tables.cal_report_weekly = [];
+      if (Array.isArray(this.tables.cal_report_weekly_hours)) this.tables.cal_report_weekly_hours = [];
+      this.rowCount = rows.length;
+      if (rows.length) this.writes.push({ k: 'table:cal_report_weekly', v: `-${rows.length}` });
       return;
     }
     //  v18: 커밋 기록 지우기. FK CASCADE 로 예외일과 커밋 목록(표가 남아 있으면)도 함께 지운다.

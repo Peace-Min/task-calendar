@@ -303,7 +303,7 @@ if (!JSDOM) {
   }
   //  예전 payload.hours(묶음 없음): 과제 순서대로 시간이 있는 것만.
   const REF_HOURS = "collectReportData($('#rptFrom').value, $('#rptFrom').value, rptSources()).rows.map(function(r){ return { name: r.name, hours: getTaskHours($('#rptFrom').value, r.key) }; }).filter(function(x){ return x.hours != null; })";
-  const openDaily = (m, date) => m.ev(`openReport(); ['#rptSrcEvent','#rptSrcTodo','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
+  const openDaily = (m, date) => m.ev(`openReport(); setReportMode("daily"); ['#rptSrcEvent','#rptSrcTodo','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
     + ` $('#rptFrom').value = ${JSON.stringify(date)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
   const setDate = (m, date) => m.ev(`$('#rptFrom').value = ${JSON.stringify(date)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
   const dcard = (m, cat) => m.ev(`[].find.call(document.querySelectorAll('#rptOut .rcard'), function(c){ return c.dataset.rcat === ${JSON.stringify(cat)}; })`);

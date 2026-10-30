@@ -446,7 +446,7 @@ namespace TaskCalendarWidget
         }
 
         private void OnMainWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e) => OnWebMessage(e, web.CoreWebView2);
-        internal void OnWinWebMessage(CoreWebView2WebMessageReceivedEventArgs e, CoreWebView2 core) => OnWebMessage(e, core);   // AppWindow(열람 창, 관리 창)가 부른다
+        internal void OnWinWebMessage(CoreWebView2WebMessageReceivedEventArgs e, CoreWebView2 core) => OnWebMessage(e, core);   // AppWindow(열람 창, 관리 창, 근태 창)가 부른다
 
         // ============ 따로 뜨는 창(AppWindow)의 메시지 길(WINDOW-UI §4, ADMIN-WINDOW §3) ============
         //  창 종류마다 보낼 수 있는 명령이 정해져 있다(WinKind.Commands). 나머지(저장, 보고, 창 조작, 부팅 ready 등)는
@@ -474,9 +474,21 @@ namespace TaskCalendarWidget
             "unitAdd", "unitRename", "unitSetActive", "unitMove", "unitReorder",                             // 소속
             "trashGet", "trashRestore", "trashDelete",                                                       // 휴지통
         };
+        //  근태 창(ATTENDANCE-PLAN §3.2): 준비 알림, 날짜 이동 요청(메인 창이 payload 를 다시 만든다), 보고한 날 목록, 회사 보고 전송.
+        //  ★ 웹의 ATTENDWIN_CMD 와 같아야 한다(tests/attendance-host.test.mjs). 근태 창은 내 달력을 읽거나 저장하지 않는다.
+        //  과제 블록(결정 12, 2026-10-29): 인트라넷 불러오기(netcusWeekMerge)를 근태 창에서 뺐다(주간보고 병합은 메인 창에서 그대로 쓴다).
+        //    attendCatNew 는 [+ 캘린더에 새 과제 만들기]: 메인 창의 과제 창을 연다(근태 창은 내 과제를 만들 수 없다).
+        //  주간보고(결정 13, 2026-10-29): 근태 창의 주간 모드가 주간 기록을 읽고(reportWeeklyList) 회사 주간 폼을 채운다(netcusWeekSubmit).
+        internal static readonly HashSet<string> AttendWinCommands = new(StringComparer.Ordinal)
+        {
+            "attendWinReady", "attendNav", "reportDailyList", "netcusSubmit",
+            "attendSourceReq", "netcusViewMonth", "attendCatNew",   // 가져오기(다른 날짜 캘린더 기록 청하기), 인트라넷 달력 보기(읽기만), 새 과제. attendSourcePush 는 메인 창만 보낸다
+            "reportWeeklyList", "netcusWeekSubmit",                 // 주간 기록 읽기(읽기만), 주간 폼 채우기(제출은 사용자가 열린 창에서)
+        };
         //  요청 번호의 머리. 회신은 이 표시를 보고 그 창으로 간다(ReplyCore). 창끼리 번호가 겹치지 않는다.
         internal const string PeerReqPrefix = "pw:";
         internal const string AdminReqPrefix = "aw:";
+        internal const string AttendReqPrefix = "tw:";
 
         private AppWindow? WinOf(WinKind k) => _wins.TryGetValue(k, out var w) ? w : null;
 
@@ -873,6 +885,7 @@ namespace TaskCalendarWidget
                     case "peerOpen":         // WINDOW-UI §4 — 메인 창의 입구(툴바 👥, 구성원 보기 행). 열람 창을 열거나 앞으로 가져와 대상을 바꾼다
                         OpenPeerWindow(GetStr(doc, "loginId"), GetStr(doc, "name"));
                         break;
+                    case "attendWinReady":   // 근태 창도 같은 길이다(대상은 __attendWinOpen 으로 넘긴다)
                     case "peerWinReady":     // 따로 뜨는 창의 웹이 떴다. 기다리던 대상을 넘긴다(열람 창 __peerWinOpen, 관리 창 __adminWinOpen)
                     case "adminWinReady":
                         if (fromWin != null && cmd == fromWin.ReadyCmd)
@@ -884,18 +897,49 @@ namespace TaskCalendarWidget
                     case "adminOpen":        // ADMIN-WINDOW §1. 메인 창의 ⚙ 관리, 내 과제의 공식 과제 편집 링크. 관리 창을 열거나 앞으로 가져온다
                         if (fromWin == null) _ = OpenAdminWindowAsync(rq, GetStr(doc, "item"));
                         break;
+                    case "attendOpen":       // ATTENDANCE-PLAN §3.2. 메인 창의 근태 달력만 연다. 이미 떠 있으면 대상만 바꾸고 앞으로 가져온다
+                        if (fromWin == null) OpenAttendWindow(rq, doc);
+                        break;
+                    case "attendNav":        // 근태 창의 날짜 이동(‹ ›)과 앞으로 올 때의 새로 읽기. payload 는 메인 창이 다시 만들어 attendOpen 으로 보낸다
+                        if (fromWin == WinKind.Attend) AttendNavToMain(GetStr(doc, "date"), GetBool(doc, "refresh"));
+                        break;
+                    case "attendSourceReq":  // 근태 창의 가져오기(캘린더, 다른 날짜). 메인 창의 __attendSourceFor 로 넘긴다(메인 창이 attendSourcePush 로 돌려준다)
+                        if (fromWin == WinKind.Attend) AttendSourceToMain(GetStr(doc, "date"));
+                        break;
+                    case "attendCatNew":     // 근태 창의 [+ 캘린더에 새 과제 만들기]. 메인 창을 앞으로 가져와 과제 창(openCatModal)을 연다
+                        if (fromWin == WinKind.Attend) AttendCatNewToMain();
+                        break;
+                    case "attendSourcePush": // 메인 창이 만든 그 날짜의 캘린더 기록. 근태 창의 __attendSource 로 넘긴다
+                        if (fromWin == null) AttendSourceToWin(doc);
+                        break;
+                    case "reportDailyList":  // 그 기간에 이 앱으로 보낸 일간 보고(cal_report_daily). 메인 창과 근태 창이 읽는다. 사람은 세션에서 읽는다
+                        _ = RunReportDailyListAsync(rq, GetStr(doc, "from"), GetStr(doc, "to"));
+                        break;
+                    case "reportWeeklyList": // 그 기간에 이 앱으로 작성한 주간보고(cal_report_weekly, 결정 13). 읽기만. 사람은 세션에서 읽는다
+                        _ = RunReportWeeklyListAsync(rq, GetStr(doc, "from"), GetStr(doc, "to"));
+                        break;
                     case "peerMine":         // 열람 창의 내 일정 겹. 메인 창의 지금 상태를 물어 와 넘긴다(DB 를 다시 읽지 않는다)
                         _ = RunPeerMineAsync(rq);
                         break;
 
                     case "netcusWeekSubmit":
                         _ = _netcus.WeekFill(GetStr(doc, "sdate"), GetStr(doc, "edate"), GetStr(doc, "subject"),
-                            GetStr(doc, "content"), GetStr(doc, "endwork"), GetStr(doc, "planwork"));   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
+                            GetStr(doc, "content"), GetStr(doc, "endwork"), GetStr(doc, "planwork"),
+                            //  resultwork = 회의내용(결정 13). 칸이 없으면 null(보고서 창의 옛 전송): 인트라넷의 회의내용을 빈 값으로 덮지 않는다
+                            doc.RootElement.TryGetProperty("resultwork", out var rw) && rw.ValueKind == JsonValueKind.String ? (rw.GetString() ?? "") : null,
+                            //  hours = 과제투입시간 구조(결정 14). 배열일 때만 넘긴다(없으면 null: 그 주의 시간 줄을 건드리지 않는다)
+                            doc.RootElement.TryGetProperty("hours", out var whEl) && whEl.ValueKind == JsonValueKind.Array ? whEl.GetRawText() : null);   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
                         break;
                     case "netcusWeekMerge":   // 주간보고 병합(Phase2) — 기간 일간보고 content를 '읽기만' 해서 reqId로 회신
                     {
                         string reqId = GetStr(doc, "reqId"), from = GetStr(doc, "from"), to = GetStr(doc, "to");
                         _ = _netcus.WeekMerge(reqId, from, to);   // async — days 배열을 __hostReply(reqId, ...)로 회신
+                        break;
+                    }
+                    case "netcusViewMonth":   // 인트라넷 근태관리 달력을 그 날짜로 열어 보이기(읽기만, 근태 창의 [인트라넷에서 확인])
+                    {
+                        string reqId = GetStr(doc, "reqId");
+                        _ = _netcus.ViewMonth(reqId, GetInt(doc, "y"), GetInt(doc, "m"), GetInt(doc, "d"));   // async, { ok, error, marked } 를 __hostReply(reqId, ...)로 회신
                         break;
                     }
                     case "netcusWeeklyRangeRead":   // 주간보고 범위 읽기(Phase2) — 기간에 걸치는 netcus 주간보고들을 '읽기만' 해서 reqId로 회신
@@ -1431,6 +1475,21 @@ namespace TaskCalendarWidget
             catch { }
         }
 
+        //  보고 알림(ATTENDANCE-PLAN §3.2): __netcusProgress, __netcusResult, __reportDailySaved.
+        //  메인 창에 먼저 보내고, 근태 창이 떠 있으면 거기에도 보낸다(UI 스레드 마샬). 어느 창이 보낸 요청인지는 각 웹이 가린다.
+        private void ReportPush(string js)
+        {
+            try
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    try { _ = web.CoreWebView2?.ExecuteScriptAsync(js); } catch { }
+                    try { _ = WinOf(WinKind.Attend)?.Core?.ExecuteScriptAsync(js); } catch { }
+                });
+            }
+            catch { }
+        }
+
         // ============ 과제 DB 연동 ============
         // 공식 과제(project, is_active=1)를 읽어 웹으로 넘긴다. 오프라인/실패면 ""를 넘기고, 웹은 폴백 없이 목록을 비운다(ADR-18).
         private async Task LoadProjectsToWebAsync()
@@ -1692,7 +1751,7 @@ namespace TaskCalendarWidget
                 if (!cok) { UserSession.Clear(_dataDir, Log); _netcus.ClearCredsForLogout(); Fail(SaveFail); return; }
 
                 Log("사용자 로그인 완료: " + id + " (" + u.name + " · " + u.orgUnit + ")");
-                Dispatcher.Invoke(CloseSubWindows);   // 계정이 바뀌었다. 앞 계정으로 연 열람 창과 관리 창을 남기지 않는다
+                Dispatcher.Invoke(CloseSubWindows);   // 계정이 바뀌었다. 앞 계정으로 연 열람 창, 관리 창, 근태 창을 남기지 않는다
                 ReplyOnUi(reqId, new { ok = true, user = UserPayload(fresh) });
             }
             catch (Exception ex)
@@ -1712,7 +1771,7 @@ namespace TaskCalendarWidget
             {
                 UserSession.Clear(_dataDir, Log);
                 _netcus.ClearCredsForLogout();
-                CloseSubWindows();   // 로그아웃하면 열람 창과 관리 창도 닫는다(WINDOW-UI §4, ADMIN-WINDOW §1)
+                CloseSubWindows();   // 로그아웃하면 열람 창, 관리 창, 근태 창도 닫는다(WINDOW-UI §4, ADMIN-WINDOW §1, ATTENDANCE-PLAN §3.1)
                 Log("사용자 로그아웃 — 세션·자격증명 삭제");
             }
             catch (Exception ex) { Log("사용자 로그아웃 예외: " + ex.Message); }
@@ -1866,6 +1925,106 @@ namespace TaskCalendarWidget
         }
 
         private static string AdminTargetJson(string item, UserSession s) => JsonSerializer.Serialize(new { item, me = UserPayload(s) });
+
+        // ============ 근태 창(ATTENDANCE-PLAN §3) ============
+        //  메인 창의 근태 달력이 부른다(attendOpen). 창은 하나다: 없으면 만들어 띄우고, 있으면 대상만 바꿔 앞으로 가져온다(ShowWin).
+        //  ★ payload 는 메인 창이 자기 달력에서 만든 것을 그대로 넘긴다(근태 창은 내 달력을 읽지 않는다). 객체가 아니면 열지 않는다.
+        //    DB 를 읽는 것(reportDailyList)과 보내는 것(netcusSubmit)은 요청마다 세션의 사람으로 하므로 payload 의 me 를 믿지 않는다.
+        private void OpenAttendWindow(string reqId, JsonDocument doc)
+        {
+            if (!doc.RootElement.TryGetProperty("payload", out var p) || p.ValueKind != JsonValueKind.Object)
+            { HostReply(reqId, new { ok = false, error = "열 날짜 정보가 없습니다." }); return; }
+            UserSession? s = null;
+            try { s = UserSession.Load(_dataDir, Log); } catch { }
+            if (s == null || s.LoginId.Length == 0) { HostReply(reqId, new { ok = false, error = "로그인이 필요합니다." }); return; }
+            var w = ShowWin(WinKind.Attend, p.GetRawText());
+            HostReply(reqId, w != null ? new { ok = true, error = "" } : new { ok = false, error = "근태 창을 열지 못했습니다." });
+        }
+
+        //  근태 창의 날짜 이동을 메인 창에 넘긴다. 날짜는 'YYYY-MM-DD' 만 받는다(그 밖은 버린다). 인자는 JSON 으로 싣는다.
+        private void AttendNavToMain(string date, bool refresh)
+        {
+            if (!ReportDb.TryParseYmd(date, out _)) { Log("근태 창 날짜 이동 거부: 날짜 형식이 아님"); return; }
+            JsCall("window.__attendNavFromWin && window.__attendNavFromWin(" + JsonSerializer.Serialize(date) + "," + (refresh ? "true" : "false") + ")");
+        }
+
+        //  근태 창의 새 과제 만들기(결정 12): 메인 창을 앞으로 가져오고 과제 창을 연다. 인자는 없다(근태 창이 보낸 값을 싣지 않는다).
+        //    만든 과제는 근태 창이 다시 앞으로 올 때(__attendWinActivated, attendNav refresh) 새 payload 의 과제 목록으로 들어간다.
+        private void AttendCatNewToMain()
+        {
+            SummonToFront();
+            JsCall("window.__attendCatNew && window.__attendCatNew()");
+        }
+
+        //  가져오기 중계 1(근태 창 → 메인 창). 날짜는 'YYYY-MM-DD' 만 받고 JSON 인자로 싣는다.
+        private void AttendSourceToMain(string date)
+        {
+            if (!ReportDb.TryParseYmd(date, out _)) { Log("근태 창 가져오기 거부: 날짜 형식이 아님"); return; }
+            JsCall("window.__attendSourceFor && window.__attendSourceFor(" + JsonSerializer.Serialize(date) + ")");
+        }
+
+        //  가져오기 중계 2(메인 창 → 근태 창). 날짜를 다시 확인하고 source 가 객체일 때만 {date, source} 를 JSON 으로 다시 써서 넘긴다
+        //  (받은 글자를 그대로 이어 붙이지 않는다). 근태 창이 없으면 버린다.
+        private void AttendSourceToWin(JsonDocument doc)
+        {
+            string date = GetStr(doc, "date");
+            if (!ReportDb.TryParseYmd(date, out _)) { Log("근태 창 가져오기 회신 거부: 날짜 형식이 아님"); return; }
+            if (!doc.RootElement.TryGetProperty("source", out var src) || src.ValueKind != JsonValueKind.Object) return;
+            var core = WinOf(WinKind.Attend)?.Core;
+            if (core == null) return;
+            string js = "window.__attendSource && window.__attendSource(" + JsonSerializer.Serialize(new { date, source = src }) + ")";
+            try { _ = core.ExecuteScriptAsync(js); } catch { }
+        }
+
+        //  그 기간에 이 앱으로 보낸 일간 보고 목록. 사람은 세션에서 읽는다(웹이 정하지 않는다).
+        //  기간은 'YYYY-MM-DD' 두 개이고 ReportDb.ListMaxDays 일까지다. DB 는 UI 스레드 밖에서 읽고 회신은 ReplyOnUi 로 한다.
+        //  회신: { ok:true, rows:[{date, status, overtime, content, sentAt}] } | { ok:false, error }
+        private async Task RunReportDailyListAsync(string reqId, string from, string to)
+        {
+            if (!ReportDb.TryParseYmd(from, out var f) || !ReportDb.TryParseYmd(to, out var t) || f > t)
+            { ReplyOnUi(reqId, new { ok = false, error = "기간이 올바르지 않습니다." }); return; }
+            if ((t - f).TotalDays > ReportDb.ListMaxDays)
+            { ReplyOnUi(reqId, new { ok = false, error = "기간은 " + ReportDb.ListMaxDays + "일까지 읽을 수 있습니다." }); return; }
+            string? loginId = CurrentLoginId();
+            if (string.IsNullOrEmpty(loginId)) { ReplyOnUi(reqId, new { ok = false, error = "로그인이 필요합니다." }); return; }
+            try
+            {
+                var db = new ReportDb(Log);
+                var rows = await Task.Run(() => db.ListDailyAsync(loginId, f, t));
+                if (rows == null) { ReplyOnUi(reqId, new { ok = false, error = "보고 기록을 불러오지 못했습니다." }); return; }
+                ReplyOnUi(reqId, new { ok = true, rows });
+            }
+            catch (Exception ex)
+            {
+                Log("보고 기록 목록 예외: " + ex.Message);
+                ReplyOnUi(reqId, new { ok = false, error = "보고 기록을 불러오지 못했습니다." });
+            }
+        }
+
+        //  그 기간에 이 앱으로 작성한 주간보고 목록(결정 13, ATTENDANCE-PLAN §13.3). 일간 목록(RunReportDailyListAsync)과 같은 틀이다:
+        //  사람은 세션에서 읽고(웹이 정하지 않는다), 기간은 'YYYY-MM-DD' 두 개에 ReportDb.ListMaxDays 일까지, 회신은 ReplyOnUi.
+        //  기간은 period_start(월요일) 기준이다. 회신: { ok:true, rows:[{periodStart, periodEnd, subject, content, endwork, plan, meeting, composedAt}] } | { ok:false, error }
+        private async Task RunReportWeeklyListAsync(string reqId, string from, string to)
+        {
+            if (!ReportDb.TryParseYmd(from, out var f) || !ReportDb.TryParseYmd(to, out var t) || f > t)
+            { ReplyOnUi(reqId, new { ok = false, error = "기간이 올바르지 않습니다." }); return; }
+            if ((t - f).TotalDays > ReportDb.ListMaxDays)
+            { ReplyOnUi(reqId, new { ok = false, error = "기간은 " + ReportDb.ListMaxDays + "일까지 읽을 수 있습니다." }); return; }
+            string? loginId = CurrentLoginId();
+            if (string.IsNullOrEmpty(loginId)) { ReplyOnUi(reqId, new { ok = false, error = "로그인이 필요합니다." }); return; }
+            try
+            {
+                var db = new ReportDb(Log);
+                var rows = await Task.Run(() => db.ListWeeklyAsync(loginId, f, t));
+                if (rows == null) { ReplyOnUi(reqId, new { ok = false, error = "주간보고 기록을 불러오지 못했습니다." }); return; }
+                ReplyOnUi(reqId, new { ok = true, rows });
+            }
+            catch (Exception ex)
+            {
+                Log("주간보고 목록 예외: " + ex.Message);
+                ReplyOnUi(reqId, new { ok = false, error = "주간보고 기록을 불러오지 못했습니다." });
+            }
+        }
 
         //  userInfoGet 과 같은 읽기(LoadUserInfoJsonAsync)의 결과로 관리자인지. 웹의 ahProbe 와 같은 규칙이다
         //  (edit_role 이 admin 이고 is_active 가 0 이 아니다. is_active 가 비어 있으면 재직으로 본다). 읽지 못했으면 null.
@@ -2297,14 +2456,15 @@ namespace TaskCalendarWidget
         CoreWebView2Environment? INetcusHost.Env => _cwvEnv;
         string INetcusHost.DataDir => _dataDir;
         void INetcusHost.Eval(string js) => JsCall(js);
+        void INetcusHost.EvalReport(string js) => ReportPush(js);   // 진행과 결과는 메인 창과 근태 창 둘 다로(ATTENDANCE-PLAN §3.2)
         void INetcusHost.Reply(string reqId, object payload) => HostReply(reqId, payload);
         void INetcusHost.Log(string msg) => Log(msg);
 
         //  보고 기록 저장(설계 §5.9). NetcusService 는 통신만 하고 DB 를 모른다 —
         //  페이로드 해석과 저장은 호스트인 여기서 한다.
-        //  ★ await 하지 않는다(반환 void) — 이 시점에는 이미 사이트로 보고서가 나갔고,
-        //    저장 지연이 사용자 피드백을 막으면 안 된다. 실패는 ReportDb 가 로그로 남긴다.
-        void INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson)
+        //  ★ 결정 9(ATTENDANCE-PLAN §3.4): NetcusService 가 이 저장을 기다린 뒤에 결과를 알린다. 백그라운드 재시도는 없다.
+        //    true(커밋 확인)일 때만 __reportDailySaved 를 메인 창과 근태 창에 보낸다. 실패는 false 로 돌려주고 로그를 남긴다.
+        async Task<bool> INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson)
         {
             string? loginId = CurrentLoginId();
             var hours = ParseHoursJson(hoursJson);
@@ -2315,17 +2475,31 @@ namespace TaskCalendarWidget
             string st = SafeReportStatus(status);
             int ot = SafeOvertime(overtime);
             var db = new ReportDb(Log);
-            string ymd = $"{y:D4}-{m:D2}-{d:D2}";   // 재시도 실패 알림(__reportRecordFailed)에 실을 날짜
-            _ = Task.Run(() => SaveReportRecordWithRetryAsync("daily", ymd, db,   // 실패 시 10·30·60초 재시도(OfflineHost.cs · S10)
-                () => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours)));
+            bool ok;
+            try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours)); }
+            catch (Exception ex) { Log("보고 기록 저장 예외(일간): " + ex.Message); ok = false; }
+            if (ok)
+            {
+                string date = $"{y:D4}-{m:D2}-{d:D2}";
+                ReportPush("window.__reportDailySaved && window.__reportDailySaved(" + JsonSerializer.Serialize(new { date, status = st, overtime = ot }) + ")");
+            }
+            return ok;
         }
 
-        void INetcusHost.SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork)
+        void INetcusHost.SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork, string? meeting, string? hoursJson)
         {
             string? loginId = CurrentLoginId();
+            var hours = hoursJson == null ? null : ParseWeeklyHoursJson(hoursJson);
             var db = new ReportDb(Log);
             _ = Task.Run(() => SaveReportRecordWithRetryAsync("weekly", sdate, db,   // 실패 시 10·30·60초 재시도(OfflineHost.cs · S10)
-                () => db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork)));
+                async () =>
+                {
+                    bool ok = await db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork, meeting, hours);
+                    //  기록이 커밋된 뒤에만 알린다(결정 13): 웹은 그 주 임시 저장을 지우고 목록 상태를 완료로 바꾼다.
+                    //    폼 채우기 성공 회신만 보고 지우면, 기록이 끝내 실패했을 때 글이 어디에도 남지 않는다.
+                    if (ok) ReportPush("window.__reportWeeklySaved && window.__reportWeeklySaved(" + JsonSerializer.Serialize(new { periodStart = sdate }) + ")");
+                    return ok;
+                }));
         }
 
         // ================================================================================
@@ -2579,6 +2753,43 @@ namespace TaskCalendarWidget
                 }
             }
             catch (Exception ex) { Log("보고 시간줄 파싱 실패(본문 기록은 계속한다): " + ex.Message); }
+            return list;
+        }
+
+        //  웹이 보낸 주간 과제투입시간 배열 → WeeklyHourLine 목록(결정 14). ParseHoursJson 과 같은 원칙이다:
+        //    값이 들어오는 여기서 거른다(과제명 1~200자, 시간 0 초과 168 이하, 공식 과제 id 는 36자 uuid 꼴만, 아니면 개인 과제 null).
+        //    줄 하나가 CHECK 나 칸 폭에 걸리면 그 주 기록 트랜잭션 전체가 롤백되므로 그 줄만 버리고 로그를 남긴다. 파싱 실패는 빈 목록이다.
+        private List<WeeklyHourLine> ParseWeeklyHoursJson(string? json)
+        {
+            var list = new List<WeeklyHourLine>();
+            if (string.IsNullOrWhiteSpace(json)) return list;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.ValueKind != JsonValueKind.Array) return list;
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    if (el.ValueKind != JsonValueKind.Object) continue;
+                    string name = (el.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? (n.GetString() ?? "") : "").Trim();
+                    if (name.Length == 0) continue;
+                    if (name.Length > 200) { Log("주간 시간줄 제외(과제명 200자 초과): " + name.Substring(0, 40) + "…"); continue; }
+                    decimal h = 0m;
+                    if (el.TryGetProperty("hours", out var hv))
+                    {
+                        if (hv.ValueKind == JsonValueKind.Number) hv.TryGetDecimal(out h);
+                        else if (hv.ValueKind == JsonValueKind.String) decimal.TryParse(hv.GetString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out h);
+                    }
+                    if (!ReportDb.WeeklyHoursInDomain(h))
+                    {
+                        if (h != 0m) Log("주간 시간줄 제외(허용 범위 0 초과 ~ 168 이하 밖): " + name + " " + h.ToString(System.Globalization.CultureInfo.InvariantCulture) + "시간");
+                        continue;   // 0 시간은 기록할 것이 없다(로그도 남기지 않는다)
+                    }
+                    string uid = el.TryGetProperty("projectUid", out var u) && u.ValueKind == JsonValueKind.String ? (u.GetString() ?? "").Trim() : "";
+                    if (uid.Length > 0 && !ReportDb.ProjectUidOk(uid)) { Log("주간 시간줄: 공식 과제 id 꼴이 아니라 개인 과제로 남긴다: " + name); uid = ""; }
+                    list.Add(new WeeklyHourLine { TaskName = name, ProjectUid = uid.Length > 0 ? uid : null, Hours = h });
+                }
+            }
+            catch (Exception ex) { Log("주간 시간줄 파싱 실패(본문 기록은 계속한다): " + ex.Message); }
             return list;
         }
 
@@ -3236,6 +3447,8 @@ namespace TaskCalendarWidget
         public PeerWindowBounds? Peer { get; set; }
         // 관리 창(ADMIN-WINDOW)의 마지막 자리. 열람 창과 따로 PC 에 하나다. null = 아직 연 적 없음(1200x800 으로 연다)
         public PeerWindowBounds? Admin { get; set; }
+        // 근태 창(ATTENDANCE-PLAN §3.1)의 마지막 자리. 다른 창과 따로 PC 에 하나다. null = 아직 연 적 없음(1200x860 으로 연다)
+        public PeerWindowBounds? Attend { get; set; }
     }
 
     // 따로 뜨는 창의 자리(DIP). 열람 창부터 쓰던 이름 그대로 관리 창도 같은 모양을 쓴다.

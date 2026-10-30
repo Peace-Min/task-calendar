@@ -442,11 +442,11 @@ test('변이②: DROP 순서를 뒤집으면 dropOrderChildFirst 가 실패한�
 });
 
 test('변이③: 마이그레이션 체인에 구멍을 내면 migrationChain 이 실패한다', () => {
-  //  2026-10-22 남은 판이 다섯(12 → 13, 13 → 14, 조각 14 → 15, 조각 15 → 16, 조각 16 → 17, 2026-10-26 조각 17 → 18, 같은 날 조각 18 → 19)이라,
-  //  그 뒤에 한 칸 떨어진 가짜 파일(20 → 21)을 붙여 v=19 출발이 없는 상태를 만든다.
+  //  2026-10-22 남은 판이 다섯(12 → 13, 13 → 14, 조각 14 → 15, 조각 15 → 16, 조각 16 → 17, 2026-10-26 조각 17 → 18, 같은 날 조각 18 → 19,
+  //  2026-10-29 조각 19 → 20)이라, 그 뒤에 한 칸 떨어진 가짜 파일(21 → 22)을 붙여 v=20 출발이 없는 상태를 만든다.
   const holed = new Map(migrateSrc);
   holed.set('migrate-2099-01-01-ghost.sql',
-    "UPDATE cal_schema_meta SET v = '21', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '20';\n");
+    "UPDATE cal_schema_meta SET v = '22', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '21';\n");
   assert.doesNotThrow(() => checks.migrationChain(migrateSrc, canonSql), '원본은 통과해야 한다');
   assert.throws(() => checks.migrationChain(holed, canonSql), /체인이 끊겼다/);
 });
@@ -499,10 +499,11 @@ test('변이⑦: 버전 도입 전 파일이 버전을 올리기 시작하면 �
 
 test('변이⑨: 실제로 났던 결함(보고 기록 3표의 DROP 누락, c4cf813)을 재현하면 잡는다', () => {
   // 8-31 에 새로 만든 3표를 DROP 블록에서만 지워 본다 — 사람이 눈으로 잡았던 그 상태다.
-  const mutated = canonSql.replace(/^DROP TABLE IF EXISTS cal_report_(hours|daily|weekly);.*\r?\n/gm, '');
+  //  2026-10-30 주간 과제투입시간(cal_report_weekly_hours, 구조 20)도 같은 보고 기록이라 함께 지워 본다.
+  const mutated = canonSql.replace(/^DROP TABLE IF EXISTS cal_report_(hours|daily|weekly|weekly_hours);.*\r?\n/gm, '');
   assert.notStrictEqual(mutated, canonSql, '변이 준비 실패: 보고 기록 DROP 줄을 찾지 못했다');
   assert.throws(() => checks.dropCoversCreate(mutated),
-    /cal_report_daily|cal_report_hours|cal_report_weekly/);
+    /cal_report_daily|cal_report_hours|cal_report_weekly|cal_report_weekly_hours/);
 });
 
 test('변이·정렬: 열람 조회에 날짜를 앞세우면(원래 있던 결함) 가드 ⑩ 이 잡는다', () => {

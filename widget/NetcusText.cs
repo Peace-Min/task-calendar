@@ -109,9 +109,11 @@ namespace TaskCalendarWidget
         }
 
         // 수정 화면 성공 문구. 반드시 "주간보고 " 로 시작한다(웹 RPT_WEEKFILL_OK_RE = /^주간보고 / 가 이걸로 주간 회신을 가른다).
-        internal static string WeekModifyOkMsg(int matches)
+        //  meeting = 회의내용도 채웠다(근태 탭 주간 편집, 결정 13). false 면 예전 세 칸 문구 그대로다.
+        internal static string WeekModifyOkMsg(int matches, bool meeting = false)
         {
-            string m = "주간보고 같은 기간에 이미 있는 글을 고치는 화면으로 열었습니다. 진행사항, 과제투입시간, 차주계획 세 칸은 캘린더 내용으로 바뀌었습니다. "
+            string m = "주간보고 같은 기간에 이미 있는 글을 고치는 화면으로 열었습니다. "
+                + (meeting ? "진행사항, 과제투입시간, 차주계획, 회의내용 네 칸은" : "진행사항, 과제투입시간, 차주계획 세 칸은") + " 캘린더 내용으로 바뀌었습니다. "
                 + "확인 뒤 열린 창에서 임시저장이나 제출을 누르세요. 저장하지 않고 창을 닫으면 회사 글은 그대로입니다.";
             if (matches > 1) m += " 같은 기간 글이 " + matches.ToString(CultureInfo.InvariantCulture) + "개 있어 가장 최근 글을 열었습니다. 나머지는 회사 화면에서 지워 주세요.";
             return m;
@@ -151,17 +153,23 @@ namespace TaskCalendarWidget
             catch { return false; }
         }
 
-        // [WEEKLY-UPSERT:JS] 수정 화면 채우기: 진행사항(endwork), 과제투입시간(content), 차주계획(planwork) 셋만.
-        //   기간, 제목, 작성일, 미처리사항, 문제점, 회의내용, HTML 체크는 건드리지 않는다. 셋이 다 있을 때만 쓰고 1, 아니면 아무것도 안 쓰고 0.
-        internal static string WeekModifyFillJs(string endwork, string content, string planwork) =>
-            "(function(){try{var e=document.getElementsByName('endwork')[0],c=document.getElementsByName('content')[0],p=document.getElementsByName('planwork')[0];"
-          + "if(!e||!c||!p)return 0;"
-          + "e.value=" + J(endwork) + ";c.value=" + J(content) + ";p.value=" + J(planwork) + ";return 1;}catch(x){return 0;}})()";
+        // [WEEKLY-UPSERT:JS] 수정 화면 채우기: 진행사항(endwork), 과제투입시간(content), 차주계획(planwork), 회의내용(resultwork) 넷만.
+        //   기간, 제목, 작성일, 미처리사항, 문제점, HTML 체크는 건드리지 않는다. 채울 칸이 다 있을 때만 쓰고 1, 아니면 아무것도 안 쓰고 0.
+        //   회의내용은 결정 13(2026-10-29)에서 더했다. 이 앱이 DB 에 남겨(구조 20) 완료한 주를 다시 열면 그 값으로 채우기 때문이다.
+        //   resultwork 가 null 이면(보고서 창의 옛 주간 전송) 예전 세 칸 JS 그대로다(회의내용 칸을 읽지도 쓰지도 않는다).
+        internal static string WeekModifyFillJs(string endwork, string content, string planwork, string? resultwork = null) =>
+            resultwork == null
+            ? "(function(){try{var e=document.getElementsByName('endwork')[0],c=document.getElementsByName('content')[0],p=document.getElementsByName('planwork')[0];"
+              + "if(!e||!c||!p)return 0;"
+              + "e.value=" + J(endwork) + ";c.value=" + J(content) + ";p.value=" + J(planwork) + ";return 1;}catch(x){return 0;}})()"
+            : "(function(){try{var e=document.getElementsByName('endwork')[0],c=document.getElementsByName('content')[0],p=document.getElementsByName('planwork')[0],r=document.getElementsByName('resultwork')[0];"
+              + "if(!e||!c||!p||!r)return 0;"
+              + "e.value=" + J(endwork) + ";c.value=" + J(content) + ";p.value=" + J(planwork) + ";r.value=" + J(resultwork) + ";return 1;}catch(x){return 0;}})()";
 
-        // [WEEKLY-UPSERT:JS] 채우기 전 세 칸의 원래 길이(글자 수)만 JSON 으로. 내용은 돌려주지 않는다(로그에 남기지 않으려고). 칸이 없으면 -1.
+        // [WEEKLY-UPSERT:JS] 채우기 전 네 칸의 원래 길이(글자 수)만 JSON 으로. 내용은 돌려주지 않는다(로그에 남기지 않으려고). 칸이 없으면 -1.
         //   문의가 왔을 때 무엇을 얼마나 바꿨는지 로그로 가늠하는 용도다.
         internal const string WeekModifyOrigLenJs = "(function(){try{function L(n){var e=document.getElementsByName(n)[0];return e?String(e.value==null?'':e.value).length:-1;}"
-          + "return JSON.stringify({endwork:L('endwork'),content:L('content'),planwork:L('planwork')});}catch(e){return null;}})()";
+          + "return JSON.stringify({endwork:L('endwork'),content:L('content'),planwork:L('planwork'),resultwork:L('resultwork')});}catch(e){return null;}})()";
 
         // [WEEKLY-UPSERT:JS] Bmodify 안전판. 수정 화면은 칸이 빈 <form name="form"> 밖에 형제로 있어, 원래 Bmodify(document.form.submit)는
         //   빈 폼을 보낼 수 있다(기존 글을 빈 값으로 덮는다). 새 글 화면의 Bwrite 대체처럼 동적 폼으로 바꿔 끼운다.

@@ -21,6 +21,7 @@ namespace TaskCalendarWidget
     //    장애 주입   __dbFault 회신 { ok:true, mode } | { ok:false, error }
     //    S12 푸시    window.__dbConnLost({ kind, detail })              — network 일 때만 · 2초 디바운스
     //    S10 푸시    window.__reportRecordFailed({ which, date, error }) — 10·30·60초 재시도가 모두 실패한 뒤
+    //                (2026-10-29 결정 9 부터 주간만 온다. 일간은 재시도 없이 전송 결과로 실패를 알린다)
     //  ★ detail 은 DbErrors.Detail 하나가 만든다(원문 첫 줄 · 'password' 뒤 절단). 비밀번호는 어디에도 싣지 않는다.
     public partial class MainWindow
     {
@@ -148,6 +149,8 @@ namespace TaskCalendarWidget
         }
 
         // ── S10 — 보고 기록 저장 재시도 ──────────────────────────────────────────
+        //  ★ 주간만 쓴다. 일간은 결정 9(ATTENDANCE-PLAN §3.4)로 재시도를 없앴다: NetcusService 가 저장을 기다려
+        //    실패면 "처리를 완료하지 못했습니다" 를 띄우고, 다시 하면 회사 보고부터 한다(DB 만 다시 저장하지 않는다).
         //  보고는 이미 회사 사이트로 나갔다. 기록(cal_report_*) 저장이 **예외로** 실패하면 10·30·60초 뒤 다시 한다.
         //  셋 다 실패하면 화면에 알린다 — 「보고는 전송됐지만 기록 저장에 실패했습니다」(문구는 웹의 몫).
         //  ★ 건너뜀(로그인 없음·빈 본문 — ReportDb.LastFailure == null)은 재시도하지 않는다. 다시 해도 같다.

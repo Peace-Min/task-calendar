@@ -31,7 +31,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let ws, id = 0; const pend = new Map();
 async function connect() {
   let list; try { list = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json(); } catch { return false; }
-  const p = list.find(x => x.type === 'page' && !/peerwin=1|[?&]win=admin/.test(x.url || '')); if (!p) return false;   // 메인 창만
+  const p = list.find(x => x.type === 'page' && !/peerwin=1|[?&]win=(admin|attend)/.test(x.url || '')); if (!p) return false;   // 메인 창만
   ws = new WebSocket(p.webSocketDebuggerUrl);
   await new Promise((r, j) => { ws.addEventListener('open', r, { once: true }); ws.addEventListener('error', j, { once: true }); });
   ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });

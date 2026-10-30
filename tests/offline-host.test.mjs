@@ -13,6 +13,7 @@
 //   ⑧ commit-lost 는 한 발짜리이고 COMMIT **뒤**에 터진다.
 //   ⑨ S12 — 연결 끊김 푸시는 network 일 때만 · 2초 이상 디바운스.
 //   ⑩ S10 — 보고 기록 저장 재시도 10·30·60초 → 그래도 실패면 __reportRecordFailed.
+//      (2026-10-29 결정 9) 주간만 재시도한다. 일간은 재시도 경로를 타지 않고 저장 결과를 바로 돌려준다(ATTENDANCE-PLAN §3.4).
 //   ⑪ 닫기 경고(§6) — _webUnsaved 면 묻고, Windows 세션 종료는 막지 않는다.
 //   ⑫ 비밀번호는 어디에도 싣지 않는다 · 정상 상태에서 주기 DB 접속이 없다(A11).
 //
@@ -282,13 +283,19 @@ const checks = {
                        'public async Task<string?> LoadTrashJsonAsync(string loginId)', 'public async Task<string?> LoadOrgTitleJsonAsync(string loginId)'])
       assert.ok(/DbErrors\.Observe\(\w+, _log\);/.test(csMember(s.pdb, sig)), `${sig} 의 실패가 분류기에 닿지 않는다`);
     assert.ok(/DbErrors\.Observe\(ex, _log\);/.test(csMember(s.cdb, 'public async Task<string?> LoadPeerScheduleJsonAsync(')), '타인 일정 조회 실패가 분류기에 닿지 않는다');
-    assert.ok((stripCs(s.rdb).match(/DbErrors\.Observe\(ex, _log\)/g) || []).length === 2, '보고 기록 저장 실패(일간·주간)가 분류기에 닿지 않는다');
+    //  2026-10-29 주간 목록 읽기(ListWeeklyAsync, 결정 13)가 더해져 넷이다.
+    assert.ok((stripCs(s.rdb).match(/DbErrors\.Observe\(ex, _log\)/g) || []).length === 4, '보고 기록 저장 실패(일간, 주간)와 일간, 주간 목록 읽기 실패가 분류기에 닿지 않는다');
+    assert.ok(/DbErrors\.Observe\(ex, _log\)/.test(csMember(s.rdb, 'public async Task<List<Dictionary<string, object?>>?> ListWeeklyAsync(')), '주간 목록 읽기 실패가 분류기에 닿지 않는다');
+    assert.ok(/DbErrors\.Observe\(ex, _log\)/.test(csMember(s.rdb, 'public async Task<List<Dictionary<string, object?>>?> ListDailyAsync(')), '일간 목록 읽기 실패가 분류기에 닿지 않는다');
   },
 
   // ⑩ S10 — 보고 기록 재시도
   reportRetry(s) {
-    const daily = csMember(s.main, 'void INetcusHost.SaveDailyReport(');
-    assert.ok(/SaveReportRecordWithRetryAsync\("daily", ymd, db,[\s\S]*?db\.SaveDailyAsync\(loginId, y, m, d, st, ot, content, hours\)/.test(daily), '일간 보고 기록이 재시도 경로로 가지 않는다');
+    //  결정 9: 일간은 재시도하지 않는다. 저장을 기다려 결과를 돌려주고, 실패 알림(__reportRecordFailed)도 일간으로는 나가지 않는다.
+    const daily = csMember(s.main, 'async Task<bool> INetcusHost.SaveDailyReport(');
+    assert.ok(/ok = await Task\.Run\(\(\) => db\.SaveDailyAsync\(loginId, y, m, d, st, ot, content, hours\)\);/.test(daily), '일간 보고 기록 저장을 기다리지 않는다(결정 9)');
+    assert.ok(!/SaveReportRecordWithRetryAsync|__reportRecordFailed/.test(stripCs(daily)), '일간 보고 기록이 아직 백그라운드 재시도로 간다(결정 9 위반)');
+    assert.ok(!/SaveReportRecordWithRetryAsync\("daily"/.test(stripCs(s.main)), '일간 재시도 호출이 남아 있다');
     const weekly = csMember(s.main, 'void INetcusHost.SaveWeeklyReport(');
     assert.ok(/SaveReportRecordWithRetryAsync\("weekly", sdate, db,[\s\S]*?db\.SaveWeeklyAsync\(/.test(weekly), '주간 보고 기록이 재시도 경로로 가지 않는다');
     assert.ok(/private static readonly int\[\] ReportRetryDelaysSec = \{ 10, 30, 60 \};/.test(s.off), '재시도 간격이 10·30·60초가 아니다');
@@ -363,7 +370,7 @@ test('주입⑥: __dbFault 는 TC_DEBUG_PORT 실행에서만 받는다(A10)', ()
 test('주입⑦: widget/*.cs 의 모든 DB 연결 생성이 DbFault.ThrowIfActive() 를 지난다', () => checks.throwIfActive(src));
 test('주입⑧: commit-lost 는 COMMIT 뒤 한 발이다(S9 재현)', () => checks.commitLost(src));
 test('S12⑨: 연결 끊김 푸시는 network 일 때만 · 2초 디바운스 · 모든 실패가 분류기에 닿는다', () => checks.connLost(src));
-test('S10⑩: 보고 기록 저장 재시도 10·30·60초 → __reportRecordFailed', () => checks.reportRetry(src));
+test('S10⑩: 주간 보고 기록 저장 재시도 10·30·60초 → __reportRecordFailed, 일간은 재시도 없음(결정 9)', () => checks.reportRetry(src));
 test('닫기⑪: 미저장이면 묻고, Windows 세션 종료는 막지 않는다', () => checks.closeGuard(src));
 test('위생⑫: 비밀번호를 싣지 않고 정상 상태에서 주기 DB 접속이 없다', () => checks.hygiene(src));
 
@@ -495,6 +502,12 @@ test('변이㉑: OfflineMsg catch 하나가 분류기를 건너뛰면 S12⑨ 가
 test('변이㉒: 재시도 간격을 바꾸면 S10⑩ 이 실패한다', () => {
   const bad = mutate(src.off, '{ 10, 30, 60 }', '{ 1, 1 }');
   assert.throws(() => checks.reportRetry(with_('off', bad)), /10·30·60/);
+});
+
+test('변이㉒b: 일간을 옛 백그라운드 재시도로 되돌리면 S10⑩ 이 실패한다(결정 9)', () => {
+  const bad = mutate(src.main, 'try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours)); }',
+    'try { _ = Task.Run(() => SaveReportRecordWithRetryAsync("daily", "", db, () => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours))); ok = true; }');
+  assert.throws(() => checks.reportRetry(with_('main', bad)), /기다리지 않는다|백그라운드 재시도/);
 });
 
 test('변이㉓: 재시도 없이 바로 알리면 S10⑩ 이 실패한다', () => {
