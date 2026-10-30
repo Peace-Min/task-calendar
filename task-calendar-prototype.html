@@ -158,6 +158,7 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .brand h1{font-size:var(--fs-title);font-weight:700;line-height:1.15}
 .brand .sub{font-size:var(--fs-micro);color:var(--muted)}
 .nav{display:flex;align-items:center;gap:6px;position:relative}
+#calViewSeg .seg-b{padding:4px 9px}
 .title-btn{
   border:none;background:transparent;font-size:var(--fs-display);font-weight:700;color:var(--text);line-height:1.15;
   padding:5px 10px;border-radius:var(--r-sm);cursor:pointer;min-width:120px;letter-spacing:-.01em;
@@ -351,6 +352,27 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .grid.bars > .gridrow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));column-gap:1px;row-gap:2px;background:var(--line);flex:1 1 0;min-height:0;overflow:hidden}
 .grid.bars.dense > .gridrow{flex:none;height:176px}
 .grid.bars.expand > .gridrow{flex:1 0 auto;min-height:74px}
+/* 주간 과제별 줄(renderWeekRows): 과제 탭 주간(.pc-wtable)과 같은 짜임. 왼쪽 과제 이름 칸 + 월~일 7칸, 과제마다 한 줄 */
+.grid.wrows{display:block;overflow:auto;background:var(--panel);--wr-nw:160px}
+.wr-table{display:grid;grid-template-columns:var(--wr-nw) minmax(0,1fr);gap:1px;background:var(--line);min-width:calc(var(--wr-nw) + 7 * 60px)}
+.wr-corner,.wr-days{position:sticky;top:0;z-index:3;background:var(--panel)}
+.wr-corner{left:0;z-index:4;font-size:var(--fs-meta);color:var(--muted);font-weight:600;padding:6px 10px;display:flex;align-items:center}
+.wr-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));column-gap:1px;background:var(--line)}
+.wr-days .wr-hd{flex-direction:row;align-items:center;justify-content:center;gap:5px;padding:6px 2px;font-size:var(--fs-meta);color:var(--muted);font-weight:600}
+.wr-hd .num{display:inline-flex;min-width:22px;height:22px;align-items:center;justify-content:center;border-radius:11px;color:var(--text)}
+.wr-hd.sun,.wr-hd.sun .num{color:var(--sun)} .wr-hd.sat,.wr-hd.sat .num{color:var(--sat)}
+.wr-hd.sel{box-shadow:inset 0 -2px 0 var(--ctl-border)}
+.wr-name{position:sticky;left:0;z-index:2;background:var(--panel);padding:6px 10px;border-left:3px solid var(--c);min-width:0;display:flex;align-items:flex-start;font-weight:700;line-height:19px}
+.wr-name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.wr-name.etc{--c:var(--line-2);font-weight:600;color:var(--muted)}
+.wr-name.mine{background:var(--mine-bg);color:var(--mine-text);border-left-color:var(--mine-bar)}
+.wr-table > .gridrow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));column-gap:1px;row-gap:2px;background:var(--line);min-height:32px}
+.wr-table .wr-c{padding:0;gap:0}
+.wr-table .wr-c.sel{box-shadow:none;background:var(--accent-soft)}
+.wr-gap{grid-column:1 / -1;height:3px;background:var(--line-2)}
+.grid.wrows-mine .wr-c:not(.sel){background:var(--mine-bg)}
+body[data-peer-layout="side"] .grid.wrows{--wr-nw:124px}
+body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 과제별 줄은 표 안에 날짜 머리가 있다 */
 .grid.bars .cell:focus-visible{z-index:0}   /* 칸이 막대 위로 올라와 막대를 덮지 않게(포커스 링은 막대 사이로 보인다) */
 .chip.chip-bar{position:relative;z-index:1;height:19px;line-height:15px;margin:0 4px;min-width:0;display:flex;align-items:center;gap:4px}
 .chip-bar .ctitle,.chip-bar .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
@@ -2207,8 +2229,10 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
   /* P0② 세로 공간 회수 — 크롬을 압축해 그리드 셀을 키운다(밀도 반전 해소) */
   .topbar{gap:6px 8px;padding:8px 12px}
   .topbar .spacer{display:none}
-  .nav{flex:1 1 100%;gap:8px}
-  .title-btn{min-width:0;font-size:var(--fs-head);padding:4px 6px}   /* 좁은 폭에서 display(22px) → head(18px) 한 단계만 강등 */
+  .nav{flex:1 1 100%;gap:6px;min-width:0}
+  .title-btn{min-width:0;font-size:var(--fs-head);padding:4px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}   /* 좁은 폭에서 display(22px) -> head(18px) 한 단계만 강등 */
+  #calViewSeg{margin-left:auto;flex:none}
+  #calViewSeg .seg-b{padding:4px 7px;min-height:32px}
   .actions{flex:1 1 100%;flex-wrap:nowrap;justify-content:flex-start;gap:8px;min-width:0}
   .actions > .btn{flex:0 0 auto;padding:5px 9px}
   /* 터치 위젯: 아이콘 버튼 히트영역 40px + 간격 8px(인접 오탭 방지). 아이콘 시각 크기는 .ic가 유지 */
@@ -2893,6 +2917,10 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
     <button class="btn icon" id="btnNext" title="다음 달 (→)" aria-label="다음 달">▶</button>
     <button class="title-btn" id="btnTitle" title="연·월 바로 이동" aria-label="연·월 바로 이동"></button>
     <input type="month" id="jumpMonth" class="jump hidden" aria-label="연·월 선택">
+    <div class="seg seg-auto" id="calViewSeg" role="group" aria-label="보기 방식">
+      <button type="button" class="seg-b active" id="btnCalViewMonth" data-calview="month" aria-pressed="true">월간</button>
+      <button type="button" class="seg-b" id="btnCalViewWeek" data-calview="week" aria-pressed="false">주간</button>
+    </div>
   </div>
   <div class="spacer"></div>
   <div class="actions">
@@ -5058,6 +5086,8 @@ const SUBWIN = PEERWIN || ADMINWIN;
  *  ★ __peerOverlay 는 let 이다 — hpost() 앞의 __peerToldAt 이 TDZ 로 부팅을 끊었던 것과 같은
  *    자리이므로(2026-09-03), 선언을 쓰는 곳(passFilter)보다 **위에** 둔다. */
 let __peerOverlay = true;
+let __peerMineCats = [];   // 열람 창: 내 과제 목록(주간 과제별 줄, renderWeekRows). 메인 창이 겹과 함께 보낸다
+let __pvMineCats = [];     // 열람 창 껍데기: 받은 내 과제 목록을 프레임에 넘길 때까지 쥔다(pvMineGet)
 //  열람 대상의 이름(배너·상세 패널 머리말) — __bootMeta 는 파일 아래쪽 let 이라 렌더가 먼저 돌면 TDZ 다. 그래서 여기에 따로 둔다.
 let __peerWho = '';
 function peerOverlayOn(){ try{ return localStorage.getItem('tc_peerOverlay') !== '0'; }catch(_){ return true; } }
@@ -5131,14 +5161,21 @@ function peerApplyCarry(v){
  *  ★ __applyState 를 다시 부르지 않는 이유: 그건 과제 필터와 고른 날을 처음으로 돌린다. 여기서는 겹(_mine)만 갈아 끼운다.
  *  ★ 원본(__peerPristine)도 같이 고친다. save() 의 되돌리기(peerRevert)가 옛 겹으로 돌아가지 않게. 같으면 다시 그리지 않는다.
  *  ★ _mine 표시가 있는 것만 받는다. 그 사람의 기록 자리는 여기로 건드릴 수 없다. */
-window.__peerSetMine = function(json){
+window.__peerSetMine = function(json, catsJson){
   if(!PEER || __peerPristine == null) return false;
   let mine, base;
   try{ mine = JSON.parse(json); base = JSON.parse(__peerPristine); }catch(_){ return false; }
   if(!Array.isArray(mine) || !base || !Array.isArray(base.entries)) return false;
   mine = mine.filter(e => e && typeof e === 'object' && e._mine === true);
   const isMine = (e) => !!(e && e._mine);
-  if(JSON.stringify(base.entries.filter(isMine)) === JSON.stringify(mine)) return true;   // 바뀐 것이 없다
+  //  내 과제 목록(주간 과제별 줄의 내 과제 줄). 함께 오면 갈아 끼운다
+  let catsChanged = false;
+  if(typeof catsJson === 'string'){
+    let cs = []; try{ cs = JSON.parse(catsJson); }catch(_){ cs = []; }
+    cs = Array.isArray(cs) ? cs.filter(m => m && typeof m.key === 'string' && m.key).map(m => ({ key: m.key, name: String(m.name || ''), color: String(m.color || '') })) : [];
+    if(JSON.stringify(cs) !== JSON.stringify(__peerMineCats)){ __peerMineCats = cs; catsChanged = true; }
+  }
+  if(JSON.stringify(base.entries.filter(isMine)) === JSON.stringify(mine)){ if(catsChanged) renderAll(); return true; }   // 겹은 그대로다
   base.entries = base.entries.filter(e => !isMine(e)).concat(mine);
   __peerPristine = JSON.stringify(base);
   state.entries = state.entries.filter(e => !isMine(e)).concat(JSON.parse(JSON.stringify(mine)));
@@ -5644,6 +5681,7 @@ window.__applyState = function(json, meta){
       //    body[data-peer] 가 막 세워진 자리라 CSS 스위치도 같이 세우기에 맞다.
       __peerOverlay = peerOverlayOn();
       syncPeerOverlayAttr();
+      __peerMineCats = (meta && Array.isArray(meta.mineCats)) ? meta.mineCats.filter(m => m && typeof m.key === 'string' && m.key).map(m => ({ key: m.key, name: String(m.name || ''), color: String(m.color || '') })) : [];   // 주간 과제별 줄의 내 과제 줄
       __peerLayout = peerLayoutRead();   // S1 — 보기 방식도 같은 자리에서 읽는다(다시 열어도 유지 · 이상값 → 겹쳐 보기)
       peerApplyCarry(meta && meta.view); // K9 — 사람 바꾸기면 보던 달을 잇는다(아래 renderAll() 이 그 달로 그린다 · 없으면 그대로)
       const b = document.getElementById('peerBanner');
@@ -7334,14 +7372,20 @@ function openPeerSchedule(loginId, name, opt){
 //  ★ 받은 것은 buildMineOverlay 로 한 번 더 깎는다(허용 키만, 과제 없음, _mine). 못 받으면 빈 겹이다.
 function pvMineGet(){
   return hostRequest('peerMine', {}, 8000)
-    .then(r => (r && r.ok && Array.isArray(r.entries)) ? buildMineOverlay(r.entries) : [])
+    .then(r => {
+      if(!(r && r.ok && Array.isArray(r.entries))) return [];
+      const tail = r.entries.length ? r.entries[r.entries.length - 1] : null;
+      const hasCats = !!(tail && Array.isArray(tail._mineCats));
+      __pvMineCats = hasCats ? tail._mineCats.filter(m => m && typeof m.key === 'string' && m.key).map(m => ({ key: m.key, name: String(m.name || ''), color: String(m.color || '') })) : [];
+      return buildMineOverlay(hasCats ? r.entries.slice(0, -1) : r.entries);
+    })
     .catch(() => []);
 }
 //  메인 창 쪽. 호스트가 ExecuteScriptAsync 로 부른다. 내 겹 모양(buildMineOverlay)만 돌려준다(메모, 할 일은 없다).
 //  ★ 열람 창과 열람 프레임에는 내 일정이 없다(빈 배열). 아직 부팅 전이면 state 가 비어 있어 빈 배열이 나간다.
 window.__peerMineSnapshot = function(){
   if(PEER || PEERWIN) return [];
-  try{ return buildMineOverlay((state && state.entries) || []); }catch(_){ return []; }
+  try{ const cs = (state && state.categories) || []; return buildMineOverlay((state && state.entries) || [], cs).concat([{ _mineCats: buildMineCats(cs) }]); }catch(_){ return []; }
 };
 //  겹이 지금 보이는가. 프레임 body 의 스위치(겹 켬 또는 나란히 보기)로 판정한다(프레임 안 판정 peerMineShown 과 같은 뜻).
 function pvMineShown(){
@@ -7358,7 +7402,7 @@ function pvMineRefresh(){
   pvMineGet().then(mine => {
     if(__pv !== pv || seq !== __pvMineSeq || !pv.frame) return;
     pv.mine = mine;
-    try{ const w = pv.frame.contentWindow; if(w && typeof w.__peerSetMine === 'function') w.__peerSetMine(JSON.stringify(mine)); }catch(_){}
+    try{ const w = pv.frame.contentWindow; if(w && typeof w.__peerSetMine === 'function') w.__peerSetMine(JSON.stringify(mine), JSON.stringify(__pvMineCats || [])); }catch(_){}   // 내 과제 목록도 함께(주간 과제별 줄)
   });
 }
 //  겹을 다시 켜거나 나란히 보기로 바꾸면 메인 창의 지금 상태로 겹을 새로 받는다.
@@ -7423,12 +7467,24 @@ if(PEER || SUBWIN){
  *  ★ 예외일은 `recurExcept`(엔트리 레벨)다 — expandOccurrences 가 거기를 본다. 이걸 빼면
  *    내가 지운 반복 회차가 열람 창에서 되살아난다.
  *  ★ 빈 칸(null)은 건너뛴다. */
-function buildMineOverlay(entries){
+function buildMineOverlay(entries, cats){
   if(!Array.isArray(entries)) return [];
+  //  내 겹의 과제(주간 과제별 줄, docs/PERSONAL-PEER-WEEK-VIEW.md). 키는 공식 과제면 'db-<uid>'(상대 과제 id 와 같다), 개인 과제면 'm:<id>'.
+  //  ★ 이름과 색만 싣는다. 필터바 축(categoryId)은 그대로 null 이다. cats 가 있으면(메인 창) 내 과제에서 찾고,
+  //    없으면(열람 창이 받은 것) 실려 온 _cat 을 글자로만 다시 담는다. 이 함수는 전역을 쓰지 않는다(시험이 떼어 내 돌린다).
+  const mineCatInfo = (e) => {
+    if(Array.isArray(cats)){
+      const c = cats.find(x => x && x.id === e.categoryId);
+      return c ? { key: (c.source === 'db' ? String(c.id) : 'm:' + String(c.id)), name: String(c.name || ''), color: String(c.color || '') } : null;
+    }
+    const k = e._cat;
+    return (k && typeof k.key === 'string' && k.key) ? { key: k.key, name: String(k.name || ''), color: String(k.color || '') } : null;
+  };
   const out = [];
   for(const e of entries){
     if(!e) continue;
     const r = e.recur;
+    const ci = mineCatInfo(e);
     out.push({
       id: e.id, date: e.date, title: e.title,
       allDay: !!e.allDay,
@@ -7436,10 +7492,15 @@ function buildMineOverlay(entries){
       recur: r ? { freq:r.freq, interval:r.interval, until:r.until, count:r.count } : null,
       recurExcept: Array.isArray(e.recurExcept) ? e.recurExcept.slice() : [],
       categoryId: null,
+      _cat: ci,
       _mine: true,
     });
   }
   return out;
+}
+//  내 과제 목록(빈 과제도 줄로 보이게). 메인 창이 겹 끝에 { _mineCats } 한 칸으로 붙여 보내고, 열람 창이 떼어 낸다(pvMineGet).
+function buildMineCats(cats){
+  return (Array.isArray(cats) ? cats : []).filter(Boolean).map(c => ({ key: (c.source === 'db' ? String(c.id) : 'm:' + String(c.id)), name: String(c.name || ''), color: String(c.color || '') }));
 }
 
 //  iframe 을 만들고, 뜨면 데이터를 넣는다.
@@ -7464,7 +7525,7 @@ function mountPeerFrame(res){
         todos: res.todos || [],
         //  ★ P3 — 과제별 시간·근태·서식은 호스트가 **보내지 않는다**. buildStateFrom 이 요구하는 빈 모양만 채운다.
         taskHours: {}, attendance: {},
-      }), { peerName: __pv.name || __pv.loginId, canWrite: false, view: __pv.carry || null });   // view — K9 보던 달 잇기(peerApplyCarry)
+      }), { peerName: __pv.name || __pv.loginId, canWrite: false, view: __pv.carry || null, mineCats: __pvMineCats || [] });   // view — K9 보던 달 잇기(peerApplyCarry)
       //  ★ K6 — 「최근 본 사람」은 **여기서만** 넣는다: 조회 성공 + 권한 있음 + 프레임 주입까지 끝난 자리다.
       //    실패(pvFail)·권한 없음·닫힘/교체(위 가드)는 이 줄에 오지 않는다. 입구(툴바·구성원 보기·사람 바꾸기)와 무관하게 한 곳이다.
       pkNoteRecent(__pv.loginId, __pv.name);
@@ -10779,8 +10840,10 @@ let flashTodoId = null;   // 할 일 칩 클릭 reveal 시 그 행 강조(일정
 function renderAll(){ renderFilterbar(); renderGrid(); renderDayPanel(); }
 
 function renderWeekdays(){
-  $('#weekdays').innerHTML = WEEKDAYS.map((w,i) =>
-    `<div class="${i===0?'sun':i===6?'sat':''}" aria-hidden="true">${w}</div>`).join('');
+  const wk = calView() === 'week';
+  const days = wk ? ['월','화','수','목','금','토','일'] : WEEKDAYS;
+  $('#weekdays').innerHTML = days.map((w,i) =>
+    `<div class="${wk ? (i===6?'sun':i===5?'sat':'') : (i===0?'sun':i===6?'sat':'')}" aria-hidden="true">${w}</div>`).join('');
   //  S2 — 나란히 보기의 오른쪽 달력도 제 요일 머리줄을 가진다(평소엔 감춰진 자리 · 같은 마크업).
   const wm = document.getElementById('weekdaysMine');
   if(wm) wm.innerHTML = $('#weekdays').innerHTML;
@@ -10895,19 +10958,75 @@ function peerDensityHtml(){
     + opts.map(([v, t]) => `<label class="check"><input type="radio" name="peerDensity" value="${v}"${cur === v ? ' checked' : ''}> ${t}</label>`).join('')
     + '</span>';
 }
+// 월간/주간 보기(docs/PERSONAL-PEER-WEEK-VIEW.md): 내 창(tc_calView)과 열람 창(tc_peerView)을 따로 기억한다(기본 월간).
+// 주간 보기는 과제 탭(pcWeekRange)과 같이 월요일부터 일요일까지 1주(7일)를 한 줄에 펼친다.
+function calViewKey(){ return PEER ? 'tc_peerView' : 'tc_calView'; }
+function calViewDefault(){ return 'month'; }
+function calView(){
+  try{ const v = localStorage.getItem(calViewKey()); return (v === 'month' || v === 'week') ? v : calViewDefault(); }
+  catch(_){ return calViewDefault(); }
+}
+function calWeekRange(anchor){
+  const ds = /^\d{4}-\d{2}-\d{2}$/.test(anchor || '') ? anchor : todayYmd();
+  const from = addDays(ds, -((parseYmd(ds).getDay() + 6) % 7));
+  return { from, to: addDays(from, 6), weeks: 1 };
+}
+function calTitleLabel(){
+  if(calView() !== 'week') return `${view.y}년 ${view.m+1}월`;
+  const r = calWeekRange(selectedDate), a = parseYmd(r.from), b = parseYmd(r.to);
+  if(a.getFullYear() !== b.getFullYear()) return `${a.getFullYear()}.${a.getMonth()+1}.${a.getDate()} ~ ${b.getFullYear()}.${b.getMonth()+1}.${b.getDate()}`;
+  if(a.getMonth() === b.getMonth()) return `${a.getFullYear()}년 ${a.getMonth()+1}월 ${a.getDate()}일 ~ ${b.getDate()}일`;
+  return `${a.getFullYear()}년 ${a.getMonth()+1}월 ${a.getDate()}일 ~ ${b.getMonth()+1}월 ${b.getDate()}일`;
+}
+function syncCalViewSeg(){
+  const wk = calView() === 'week';
+  document.body.classList.toggle('cal-week', wk);
+  document.querySelectorAll('#calViewSeg [data-calview]').forEach(b => {
+    const on = b.dataset.calview === (wk ? 'week' : 'month');
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  const prev = document.getElementById('btnPrev'), next = document.getElementById('btnNext');
+  if(prev){ prev.title = wk ? '이전 주 (←)' : '이전 달 (←)'; prev.setAttribute('aria-label', wk ? '이전 주' : '이전 달'); }
+  if(next){ next.title = wk ? '다음 주 (→)' : '다음 달 (→)'; next.setAttribute('aria-label', wk ? '다음 주' : '다음 달'); }
+}
+function setCalView(v){
+  const val = (v === 'month' || v === 'week') ? v : calViewDefault();
+  try{ localStorage.setItem(calViewKey(), val); }catch(_){}
+  if(val === 'week'){
+    const sd = parseYmd(selectedDate);
+    if(sd.getFullYear() !== view.y || sd.getMonth() !== view.m){
+      const tY = todayYmd(), td = parseYmd(tY);
+      selectedDate = (td.getFullYear() === view.y && td.getMonth() === view.m) ? tY : `${view.y}-${pad(view.m + 1)}-01`;
+      focusDs = selectedDate;
+    }
+  } else {
+    const sd = parseYmd(selectedDate);
+    view = { y: sd.getFullYear(), m: sd.getMonth() };
+  }
+  renderWeekdays();
+  renderGrid();
+  renderPanel();
+}
 function renderGrid(){
   const dens = calDensity();
-  $('#btnTitle').textContent = `${view.y}년 ${view.m+1}월`;
+  syncCalViewSeg();
+  renderWeekdays();
+  $('#btnTitle').textContent = calTitleLabel();
   if(!SUBWIN) document.title = `수행과제 캘린더 (${view.y}년 ${view.m+1}월)`;   // 열람 창의 제목은 보는 사람 이름이다(openPeerSchedule). 관리 창은 adminWinBoot
   //  S2/S3 — 나란히 보기: 왼쪽(#grid) = 그 사람 기록만(일정·기간·반복·할 일) · 오른쪽(#gridMine) = 내 겹 일정만(할 일 없음).
   //    ★ 같은 그리기 함수를 달력마다 한 번씩 부른다 — 칸·칩·레인·「+N」 규칙이 두 달력에서 갈라질 수 없게(코드가 하나다).
   //    ★ 겹쳐 보기(기본)는 예전과 같은 호출 하나(pick 없음 · 할 일 · roving)라 #grid 출력이 바이트 단위로 같다(S11).
   const side = peerSide();
   //  내 창과 열람 창(PEER) 모두 주 단위 기간 막대(renderMonthBars, docs/PEER-RANGE-BARS.md 시안 B)로 그린다.
-  renderMonthBars($('#grid'), dens, side ? (e => !e._mine) : null, { todos: true, roving: true, sideOvl: side });
+  //  주간이면 과제별 줄(renderWeekRows, docs/PERSONAL-PEER-WEEK-VIEW.md). 나란히 보기는 왼쪽 상대, 오른쪽 나로 같은 규칙.
+  const wk = calView() === 'week';
+  if(wk) renderWeekRows($('#grid'), side ? 'peer' : 'all');
+  else renderMonthBars($('#grid'), dens, side ? (e => !e._mine) : null, { todos: true, roving: true, sideOvl: side });
   const gm = document.getElementById('gridMine');
   if(gm){
-    if(side) renderMonthBars(gm, dens, e => !!e._mine, { todos: false, roving: false, sideOvl: true });
+    if(side && wk) renderWeekRows(gm, 'mine');
+    else if(side) renderMonthBars(gm, dens, e => !!e._mine, { todos: false, roving: false, sideOvl: true });
     else if(gm.firstChild) gm.innerHTML = '';   // 겹쳐 보기로 돌아오면 오른쪽 달력은 비운다(감춰진 채 남은 칩이 없게)
   }
   peerSyncRows();                      // S4 — 같은 주 줄 높이 맞춤(나란히 보기 · 좌우일 때만, 아니면 인라인 높이를 걷는다)
@@ -11239,8 +11358,99 @@ function renderMonthBars(g, dens, pick, opts){
   }
   g.innerHTML = html;
   g.classList.add('bars');
+  g.classList.remove('wrows');   // 주간 과제별 줄(renderWeekRows)에서 돌아오면 그 표시를 걷는다
   g.classList.toggle('dense', dens === 'dense');
   g.classList.toggle('expand', dens === 'expand');
+}
+//  주간 과제별 줄(docs/PERSONAL-PEER-WEEK-VIEW.md, 2026-10-30 사용자 결정). 월간은 날짜 격자(renderMonthBars) 그대로이고 주간만 이 표다.
+//  왼쪽 과제 이름 칸 + 월~일 7칸. 과제마다 한 줄이고 빈 과제도 보인다(과제 탭 주간과 같다). 분류 없는 기록은 맨 아래 "분류 없음" 줄(기본 과제 "기타" 와 이름이 겹치지 않게).
+//  열람 창(PEER):
+//    겹쳐 보기 = 같은 DB 과제(id 'db-<uid>' 가 같다)면 상대 줄 안 아래 차선에 내 막대. 겹치지 않는 내 과제(다른 DB 과제, 개인 과제)는
+//                굵은 선 아래 내 과제 줄. 내 일정 겹을 끄면 그 둘이 다 빠진다.
+//    나란히 보기 = 같은 규칙을 두 표로 나눈다(part 'peer' 는 #grid, 'mine' 은 #gridMine). 같은 DB 과제는 위에 두고 양쪽 높이를 맞추며,
+//                각자만 가진 과제는 굵은 선 아래(맞추지 않는다).
+//  ★ 칸(.cell)과 막대(barChipHtml, .gridrow[data-from])는 월간 막대 달력과 같은 모양이라 누르기, 끌어 옮기기, 날짜 고르기가 그대로 돈다.
+//    날짜 머리(.wr-hd)도 .cell 이라 키보드 포커스(roving)는 머리 줄에만 둔다(과제 줄 칸은 tabindex 없음).
+function wrCatOf(it){ const x = it.occ || it.todo; return x ? x.categoryId : null; }
+function wrMineKey(it){ const c = it.occ && it.occ._cat; return c && c.key ? String(c.key) : ''; }
+function renderWeekRows(g, part){
+  const wr = calWeekRange(selectedDate), from = wr.from, to = wr.to;
+  const tY = todayYmd(), DOW_K = ['일','월','화','수','목','금','토'];
+  const cmp = (a, b) => entrySort(a.occ || a.todo, b.occ || b.todo);
+  const all = pmMonthItems(from, to, null, { todos: true });
+  const theirs = all.filter(x => !x.mine), mineAll = all.filter(x => x.mine);
+  const showMine = PEER && (part === 'mine' || (part === 'all' && __peerOverlay));
+  const showTheirs = part !== 'mine';
+  const cats = (filterCatId ? state.categories.filter(c => c.id === filterCatId) : state.categories);
+  const mineCats = PEER ? (__peerMineCats || []) : [];
+  const shared = new Set(mineCats.filter(m => m.key.startsWith('db-') && state.categories.some(c => c.id === m.key)).map(m => m.key));
+  let tabDs = focusDs || selectedDate;
+  if(tabDs < from || tabDs > to) tabDs = (tY >= from && tY <= to) ? tY : from;
+  if(part !== 'mine') focusDs = tabDs;
+  const L = (items) => pmLayoutWeek(items, from, cmp);
+  let html = '<div class="wr-table" role="presentation"><div class="wr-corner">과제</div><div class="wr-days" role="row">';
+  for(let i = 0; i < 7; i++){
+    const ds = addDays(from, i), d = parseYmd(ds), dow = d.getDay(), hol = holidayOn(ds);
+    let cls = 'cell wr-hd';
+    if(ds === tY) cls += ' today';
+    if(ds === selectedDate) cls += ' sel';
+    if(dow === 0 || hol) cls += ' sun'; else if(dow === 6) cls += ' sat';
+    const aria = `${d.getMonth()+1}월 ${d.getDate()}일 ${DOW_K[dow]}요일` + (hol ? `, ${hol}` : '') + (ds === tY ? ', 오늘' : '');
+    html += `<div class="${cls}" data-date="${ds}" role="columnheader"${part !== 'mine' ? ` tabindex="${ds === tabDs ? 0 : -1}"` : ''} aria-selected="${ds === selectedDate}" aria-label="${esc(aria)}"${hol ? ` title="${esc(hol)}"` : ''}>${DOW_K[dow]} <span class="num">${d.getDate()}</span></div>`;
+  }
+  html += '</div>';
+  //  한 과제 줄. groups 를 위에서 아래로 차선을 쌓는다(앞 묶음 차선 수만큼 뒤 묶음을 내린다). minN = 나란히 보기에서 반대편과 맞출 차선 수.
+  const row = (name, color, groups, cls, minN) => {
+    let off = 0, chips = '';
+    for(const items of groups){
+      const lay = L(items);
+      for(const it of lay.items){ it.lane += off; chips += barChipHtml(it, `grid-column:${it.c0 + 1} / ${it.c1 + 2};grid-row:${it.lane + 2}`); }
+      off += lay.lanes;
+    }
+    const n = Math.max(off, minN || 0, 1);
+    let cells = '';
+    for(let i = 0; i < 7; i++){
+      const ds = addDays(from, i), dow = parseYmd(ds).getDay();
+      cells += `<div class="cell wr-c${ds === selectedDate ? ' sel' : ''}${dow === 0 ? ' wknd-sun' : dow === 6 ? ' wknd-sat' : ''}" data-date="${ds}" style="grid-column:${i + 1};grid-row:1 / -1"></div>`;
+    }
+    return `<div class="wr-name${cls ? ' ' + cls : ''}" style="--c:${color}" title="${esc(name)}"><span>${esc(name)}</span></div>`
+      + `<div class="gridrow" role="row" data-from="${from}" style="grid-template-rows:3px repeat(${n}, 19px) minmax(4px,1fr)">${cells}${chips}</div>`;
+  };
+  const gap = '<div class="wr-gap" aria-hidden="true"></div>';
+  const ofCat = (items, id) => items.filter(x => wrCatOf(x) === id);
+  const mineOf = key => mineAll.filter(x => wrMineKey(x) === key);
+  const etcTheirs = theirs.filter(x => { const id = wrCatOf(x); return !id || !state.categories.some(c => c.id === id); });
+  const mineColor = 'var(--mine-bar)';
+  if(part === 'all'){
+    //  개인 창, 열람 창 겹쳐 보기: 과제 줄(같은 DB 과제면 내 막대를 아래 차선에) + 기타 + (겹이면) 내 과제 줄
+    for(const c of cats) html += row(c.name, validColor(c.color), [ofCat(theirs, c.id), showMine && shared.has(c.id) ? mineOf(c.id) : []]);
+    if(etcTheirs.length) html += row('분류 없음', 'var(--line-2)', [etcTheirs], 'etc');
+  } else {
+    //  나란히 보기: 같은 DB 과제를 위에(양쪽 같은 차선 수), 각자 과제를 굵은 선 아래에
+    const sharedCats = state.categories.filter(c => shared.has(c.id));
+    for(const c of sharedCats){
+      const n = Math.max(L(ofCat(theirs, c.id)).lanes, L(mineOf(c.id)).lanes);
+      html += part === 'peer' ? row(c.name, validColor(c.color), [ofCat(theirs, c.id)], '', n) : row(c.name, validColor(c.color), [mineOf(c.id)], 'mine', n);
+    }
+    if(part === 'peer'){
+      const own = cats.filter(c => !shared.has(c.id));
+      if(sharedCats.length && own.length) html += gap;
+      for(const c of own) html += row(c.name, validColor(c.color), [ofCat(theirs, c.id)]);
+      if(etcTheirs.length) html += row('분류 없음', 'var(--line-2)', [etcTheirs], 'etc');
+    }
+  }
+  if(showMine && (part === 'all' || part === 'mine')){
+    const own = mineCats.filter(m => !shared.has(m.key));
+    const etcMine = mineAll.filter(x => { const k = wrMineKey(x); return !k || !mineCats.some(m => m.key === k); });
+    if((own.length || etcMine.length) && (part === 'all' || shared.size)) html += gap;
+    for(const m of own) html += row(m.name, validColor(m.color), [mineOf(m.key)], 'mine');
+    if(etcMine.length) html += row('분류 없음', mineColor, [etcMine], 'mine etc');
+  }
+  html += '</div>';
+  g.innerHTML = html;
+  g.classList.remove('bars', 'dense', 'expand');
+  g.classList.add('wrows');
+  if(!showTheirs) g.classList.add('wrows-mine'); else g.classList.remove('wrows-mine');
 }
 //  막대 달력의 +N: 줄 높이를 재서 칸마다 보이는 차선 수를 정하고(pmFitWeek) 넘친 기록을 숨긴 뒤, 그 칸의 다음 차선 자리에 +N 단추를 단다.
 //  펼침은 높이로 접지 않는다(그리기 한도 밖 기록만 +N). 누르면 그 날짜를 고른다(예전 칸 안 +N 과 같다, 오른쪽 패널에 그날 전부).
@@ -11409,6 +11619,7 @@ function peerSyncRows(){
   };
   clear(g1); clear(g2);
   if(!peerSideByRow() || !g2.firstChild) return;
+  if(g1.classList.contains('wrows')) return;   // 주간 과제별 줄은 줄마다 차선 수를 맞춰 그린다(renderWeekRows). 줄 수가 양쪽 다르다
   const r1 = [...g1.querySelectorAll('.gridrow')], r2 = [...g2.querySelectorAll('.gridrow')];
   const rowH = (rs) => rs.map(r => { const c = r.querySelector('.cell'); return c ? c.getBoundingClientRect().height : 0; });
   const h1 = rowH(r1), h2 = rowH(r2);
@@ -11547,7 +11758,26 @@ function renderDayPanel(){ renderPanel(); }   // 기존 호출부 호환(renderA
 function moveMonth(delta){
   const m = view.m + delta;
   view = {y: view.y + Math.floor(m/12), m: ((m%12)+12)%12};
+  if(calView() === 'week'){
+    const sd = parseYmd(selectedDate);
+    const dim = new Date(view.y, view.m + 1, 0).getDate();
+    selectedDate = ymd(new Date(view.y, view.m, Math.min(sd.getDate(), dim)));
+    focusDs = selectedDate;
+  }
   renderGrid();
+}
+function moveWeek(delta){
+  const nextDs = addDays(selectedDate, delta * 7);
+  selectedDate = nextDs;
+  focusDs = nextDs;
+  const d = parseYmd(nextDs);
+  view = { y: d.getFullYear(), m: d.getMonth() };
+  renderGrid();
+  renderPanel();
+}
+function stepCal(delta){
+  if(calView() === 'week') moveWeek(delta);
+  else moveMonth(delta);
 }
 function goToday(){
   const t = new Date();
@@ -11559,10 +11789,13 @@ function selectDate(ds){
   selectedDate = ds;
   focusDs = ds;              // 선택 시 키보드 포커스(roving)도 함께 이동
   const d = parseYmd(ds);
-  if(d.getFullYear() !== view.y || d.getMonth() !== view.m){
+  const wkMode = calView() === 'week';
+  const inRenderedWeek = wkMode && !!document.querySelector('#grid .cell[data-date="' + ds + '"]');
+  if(wkMode ? !inRenderedWeek : (d.getFullYear() !== view.y || d.getMonth() !== view.m)){
     view = {y:d.getFullYear(), m:d.getMonth()};
-    renderGrid();   // 다른 달로 이동할 때만 그리드 재생성
+    renderGrid();   // 다른 달(주간 모드에서는 다른 주)로 이동할 때만 그리드 재생성
   } else {
+    if(wkMode) view = {y:d.getFullYear(), m:d.getMonth()};
     // 같은 달이면 그리드를 다시 그리지 않고 선택 표시(.sel)만 갱신한다.
     // (단일 클릭이 매번 그리드를 재생성하면, 더블클릭의 첫 클릭에서 셀이 교체돼
     //  더블클릭이 안 잡히고 '새 기록' 창이 안 열린다 — 그 버그 방지)
@@ -11573,6 +11806,7 @@ function selectDate(ds){
     if(cell){ cell.classList.add('sel'); cell.setAttribute('aria-selected','true'); cell.setAttribute('tabindex','0'); }
     const cm = document.querySelector('#gridMine .cell[data-date="' + ds + '"]');
     if(cm){ cm.classList.add('sel'); cm.setAttribute('aria-selected','true'); }
+    $$('#grid .wr-c[data-date="' + ds + '"], #gridMine .wr-c[data-date="' + ds + '"]').forEach(c => c.classList.add('sel'));
   }
   editingTodoId = null;
   renderPanel();             // 현재 탭 유지 — 선택 날짜로 내용만 갱신(일정, 할 일 모두 그 날 기준)
@@ -11586,7 +11820,9 @@ function focusGridDate(ds){
   if(!cell){
     const d = parseYmd(ds);
     view = {y:d.getFullYear(), m:d.getMonth()};
+    if(calView() === 'week') selectedDate = ds;
     renderGrid();   // renderGrid가 focusDs 셀에 tabindex=0 부여
+    if(calView() === 'week') renderPanel();   // 주간은 다른 주로 넘어가며 선택 날짜도 옮겼다(오른쪽 상세가 따라온다)
     cell = grid.querySelector('.cell[data-date="' + ds + '"]');
   } else {
     grid.querySelectorAll('.cell[tabindex="0"]').forEach(c => c.setAttribute('tabindex','-1'));
@@ -19481,9 +19717,10 @@ function bind(){
   applyIcons();
   initTheme();
   /* 상단 내비 */
-  $('#btnPrev').addEventListener('click', () => moveMonth(-1));
-  $('#btnNext').addEventListener('click', () => moveMonth(1));
+  $('#btnPrev').addEventListener('click', () => stepCal(-1));
+  $('#btnNext').addEventListener('click', () => stepCal(1));
   $('#btnToday').addEventListener('click', goToday);
+  { const vs = $('#calViewSeg'); if(vs) vs.addEventListener('click', ev => { const b = ev.target.closest('[data-calview]'); if(b && b.dataset.calview !== calView()) setCalView(b.dataset.calview); }); }
   $('#btnNew').addEventListener('click', () => openQuickAdd(selectedDate));
   /* 일정과 할 일 입력(한 화면 폼) */
   $('#quickAdd .qa-tg').addEventListener('click', ev => { const b = ev.target.closest('[data-qatype]'); if(!b) return;
@@ -19635,7 +19872,16 @@ function bind(){
   });
   jump.addEventListener('change', () => {
     const m = /^(\d{4})-(\d{2})$/.exec(jump.value);
-    if(m){ view = {y:+m[1], m:+m[2]-1}; renderGrid(); }
+    if(m){
+      view = {y:+m[1], m:+m[2]-1};
+      if(calView() === 'week'){
+        const sd = parseYmd(selectedDate);
+        const dim = new Date(view.y, view.m + 1, 0).getDate();
+        selectedDate = ymd(new Date(view.y, view.m, Math.min(sd.getDate(), dim)));
+        focusDs = selectedDate;
+      }
+      renderGrid();
+    }
     jump.classList.add('hidden');
   });
 
@@ -19954,8 +20200,8 @@ function bind(){
       case 'ArrowUp':    target = addDays(ds, -7); break;
       case 'ArrowDown':  target = addDays(ds, 7);  break;
       case 'Home':       target = todayYmd();      break;
-      case 'PageUp':   { const d = parseYmd(ds); const dim = new Date(d.getFullYear(), d.getMonth(), 0).getDate();   target = ymd(new Date(d.getFullYear(), d.getMonth()-1, Math.min(d.getDate(), dim))); break; }
-      case 'PageDown': { const d = parseYmd(ds); const dim = new Date(d.getFullYear(), d.getMonth()+2, 0).getDate(); target = ymd(new Date(d.getFullYear(), d.getMonth()+1, Math.min(d.getDate(), dim))); break; }
+      case 'PageUp':   { if(calView() === 'week'){ target = addDays(ds, -7); break; } const d = parseYmd(ds); const dim = new Date(d.getFullYear(), d.getMonth(), 0).getDate();   target = ymd(new Date(d.getFullYear(), d.getMonth()-1, Math.min(d.getDate(), dim))); break; }
+      case 'PageDown': { if(calView() === 'week'){ target = addDays(ds, 7);  break; } const d = parseYmd(ds); const dim = new Date(d.getFullYear(), d.getMonth()+2, 0).getDate(); target = ymd(new Date(d.getFullYear(), d.getMonth()+1, Math.min(d.getDate(), dim))); break; }
       case 'Enter': case ' ': ev.preventDefault(); ev.stopPropagation(); selectDate(ds); return;
       default: return;
     }
@@ -20760,8 +21006,8 @@ function bind(){
     if(modalOpen) return;
     if(/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
     if(pcOn()){ pcKeyNav(ev.key); return; }   // 과제 탭: 같은 단축키가 과제 달력을 움직인다
-    if(ev.key === 'ArrowLeft' || ev.key === 'PageUp') moveMonth(-1);     // PageUp/Down도 월 이동(예측 가능한 단축키)
-    else if(ev.key === 'ArrowRight' || ev.key === 'PageDown') moveMonth(1);
+    if(ev.key === 'ArrowLeft' || ev.key === 'PageUp') stepCal(-1);     // PageUp/Down도 월/주 이동(예측 가능한 단축키)
+    else if(ev.key === 'ArrowRight' || ev.key === 'PageDown') stepCal(1);
     else if(ev.key === 'Home') goToday();
   });
 }

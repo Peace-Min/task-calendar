@@ -465,8 +465,12 @@ if (!JSDOM) {
       B.w.__applyState(JSON.stringify({ categories: [{ id: 'c-vac', name: '휴가', color: '#2e9e6b' }, { id: 'c-etc', name: '기타', color: '#5b6b7d' }],
         entries: [{ id: 'a', date: '2026-06-01', title: '내 일정', memo: '비밀', location: '3층', categoryId: 'c-etc', commits: [{ subject: 's' }] },
                   { id: 'g', date: '2026-06-02', title: '커밋', source: 'git', categoryId: 'c-etc' }], todos: [{ text: '할 일' }] }), {});
-      const snap = JSON.parse(B.ev('JSON.stringify(window.__peerMineSnapshot())'));
+      const raw = JSON.parse(B.ev('JSON.stringify(window.__peerMineSnapshot())'));
+      //  끝 한 칸은 내 과제 목록(주간 과제별 줄, _mineCats: 키, 이름, 색만)이다
+      assert.deepStrictEqual(raw[raw.length - 1], { _mineCats: [{ key: 'm:c-vac', name: '휴가', color: '#2e9e6b' }, { key: 'm:c-etc', name: '기타', color: '#5b6b7d' }] }, '겹 끝에 내 과제 목록이 없다');
+      const snap = raw.slice(0, -1);
       assert.deepStrictEqual(snap.map((e) => e.id), ['a'], '커밋이 겹에 들어갔다');
+      assert.deepStrictEqual(snap[0]._cat, { key: 'm:c-etc', name: '기타', color: '#5b6b7d' }, '내 겹에 과제(키, 이름, 색)가 실리지 않았다');
       assert.ok(snap[0]._mine === true && snap[0].categoryId === null && !('memo' in snap[0]) && !('location' in snap[0]) && !('commits' in snap[0]), JSON.stringify(snap[0]));
       assert.deepStrictEqual(JSON.parse(V.ev('JSON.stringify(window.__peerMineSnapshot())')), []);
       assert.deepStrictEqual(JSON.parse(F.ev('JSON.stringify(window.__peerMineSnapshot())')), []);

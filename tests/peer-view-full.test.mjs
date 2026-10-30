@@ -240,7 +240,7 @@ const W = {
     //  WINDOW-UI §4 — 내 겹은 메인 창 state.entries 에서 만든다(__peerMineSnapshot). 열람 창은 그것을 받아(__pv.mine) 붙이기만 한다.
     assert.ok(m.includes('.concat(__pv.mine || [])'), '내 겹이 열람 창이 받아 둔 겹(__pv.mine)이 아니다');
     const a = src.indexOf('window.__peerMineSnapshot = function(){'), snap = src.slice(a, src.indexOf('\n};', a));
-    assert.ok(a >= 0 && snap.includes('buildMineOverlay((state && state.entries) || [])') && !/todos|taskHours|attendance|rooms/.test(snap),
+    assert.ok(a >= 0 && snap.includes('buildMineOverlay((state && state.entries) || [], cs)') && !/todos|taskHours|attendance|rooms/.test(snap),
       '내 겹이 일정(state.entries)에서만 만들어지지 않는다');
   },
 };

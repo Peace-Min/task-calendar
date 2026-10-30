@@ -44,7 +44,7 @@ function overlayFnFrom(src) {
 // ══════════════════════════════════════════════════════════════════════
 // 결과 객체가 가져도 되는 키 — 이 목록이 곧 계약이다(늘리려면 여기부터 고쳐야 한다).
 const ALLOWED_KEYS = ['id', 'date', 'title', 'allDay', 'startTime', 'endTime', 'endDate',
-                      'recur', 'recurExcept', 'categoryId', '_mine'];
+                      'recur', 'recurExcept', 'categoryId', '_cat', '_mine'];   // _cat = 주간 과제별 줄의 내 과제(키, 이름, 색만. 2026-10-30)
 // 한 건이라도 새면 남의 화면에 내 개인 기록이 실린다.
 const FORBIDDEN_KEYS = ['memo', 'location', 'remind', 'hours', 'source', 'commits',
                         'createdAt', 'updatedAt', 'taskHours', 'attendance'];
@@ -150,8 +150,8 @@ const peerMineSnapshotSrc = (src) => {
   return src.slice(a, src.indexOf('\n};', a));
 };
 function peerFrameWiringHasFilter(src) {
-  return peerMineSnapshotSrc(src).includes('buildMineOverlay((state && state.entries) || [])')
-      && extractFunction(src, 'pvMineGet').includes('buildMineOverlay(r.entries)')
+  return peerMineSnapshotSrc(src).includes('buildMineOverlay((state && state.entries) || [], cs)')
+      && extractFunction(src, 'pvMineGet').includes('buildMineOverlay(hasCats ? r.entries.slice(0, -1) : r.entries)')
       && extractFunction(src, 'mountPeerFrame').includes('.concat(__pv.mine || [])')
       && !/state\.entries/.test(extractFunction(src, 'mountPeerFrame'));
 }
@@ -162,6 +162,17 @@ test('(정적) 배선: 내 겹은 메인 창에서 buildMineOverlay 로 걸러 �
     '내 겹의 거름 자리(메인 __peerMineSnapshot, 열람 창 pvMineGet) 중 하나가 빠졌거나 mountPeerFrame 이 state.entries 를 직접 붙인다');
   assert.ok(/if\(PEER \|\| PEERWIN\) return \[\];/.test(peerMineSnapshotSrc(src)),
     '열람 창이나 열람 프레임이 __peerMineSnapshot 으로 무언가를 내보낸다(그 창에는 내 일정이 없어야 한다)');
+});
+
+test('(순수) buildMineOverlay: _cat 은 내 과제의 키, 이름, 색만 싣는다(공식 db-<uid>, 개인 m:<id>). 받은 쪽 두 번째 거름도 그 셋만 남기고 categoryId 는 null', () => {
+  const fn = overlayFnFrom(loadAppSource());
+  const cats = [{ id: 'db-u1', source: 'db', name: '공식 과제', color: '#3e7be0', memo: 'x' }, { id: 'c-me-B', name: '개인 과제', color: '#c4447a' }];
+  const ents = [{ id: 'a', date: '2026-10-26', categoryId: 'db-u1', title: 't' }, { id: 'b', date: '2026-10-27', categoryId: 'c-me-B', title: 't' }, { id: 'c', date: '2026-10-28', categoryId: null, title: 't' }];
+  const out = fn(ents, cats);
+  assert.deepStrictEqual(out.map(o => o._cat), [{ key: 'db-u1', name: '공식 과제', color: '#3e7be0' }, { key: 'm:c-me-B', name: '개인 과제', color: '#c4447a' }, null]);
+  assert.ok(out.every(o => o.categoryId === null), '필터바 축(categoryId)이 실렸다');
+  const again = fn(out.map(o => Object.assign({}, o, o._cat ? { _cat: Object.assign({ evil: 1 }, o._cat) } : {})));
+  assert.deepStrictEqual(again.map(o => o._cat), out.map(o => o._cat), '두 번째 거름이 _cat 의 다른 키를 남긴다');
 });
 
 // ── 변이③ buildMineOverlay 가 memo 를 복사한다 → 최소 payload 계약이 깨진다 ──
@@ -200,12 +211,12 @@ test('변이④: buildMineOverlay 가 빈 칸을 안 거르면 빈 칸 계약이
 // ── 변이⑤ 부모가 state.entries 를 그대로 concat → 걸러지지 않은 내 데이터가 통째로 간다 ──
 test('변이⑤: 메인 창이 buildMineOverlay 를 건너뛰고 state.entries 를 그대로 내보내면 배선 계약이 깨진다', () => {
   assert.ok(peerFrameWiringHasFilter(loadAppSource()), '사전조건: 정상 앱은 걸러서 보낸다');
-  const mutated = mutateSource('try{ return buildMineOverlay((state && state.entries) || []); }', 'try{ return ((state && state.entries) || []); }');
+  const mutated = mutateSource('return buildMineOverlay((state && state.entries) || [], cs)', 'return ((state && state.entries) || [])');
   assert.ok(!peerFrameWiringHasFilter(mutated),
     '변이했는데도 배선 계약이 통과한다 — 계약이 __peerMineSnapshot 본문을 안 본다');
 });
 test('변이⑤-b: 열람 창이 받은 겹을 다시 거르지 않거나, mountPeerFrame 이 state.entries 를 붙이면 배선 계약이 깨진다', () => {
-  const a = mutateSource("? buildMineOverlay(r.entries) : [])", "? r.entries : [])");
+  const a = mutateSource("return buildMineOverlay(hasCats ? r.entries.slice(0, -1) : r.entries);", "return (hasCats ? r.entries.slice(0, -1) : r.entries);");
   assert.ok(!peerFrameWiringHasFilter(a), '열람 창의 두 번째 거름을 빼도 계약이 통과한다');
   const b = mutateSource('.concat(__pv.mine || [])', '.concat(buildMineOverlay(state.entries))');
   assert.ok(!peerFrameWiringHasFilter(b), 'mountPeerFrame 이 열람 창의 (빈) state 를 읽어도 계약이 통과한다');

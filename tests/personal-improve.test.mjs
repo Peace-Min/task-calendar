@@ -177,7 +177,7 @@ test('변이S: type=time 부활, 앱 시각 칸 표시 빠짐, bind 배선 빠�
   assert.throws(() => statics.oneScreenForm(mutate('<span class="qa-hint hidden" id="qaRecurHint" aria-live="polite"></span>', '<input type="number" id="qaRecurInterval"><span class="qa-hint hidden" id="qaRecurHint" aria-live="polite"></span>')), /세부 칸/);
   assert.throws(() => statics.narrowSheet(mutate('  .modal,.modal.wide,.qa-modal{width:100%;max-width:100%;max-height:88vh;border-radius:14px 14px 0 0}', '  .modal,.modal.wide{width:100%;max-width:100%;max-height:88vh;border-radius:14px 14px 0 0}')), /아래 시트/);
   assert.throws(() => statics.editRouting(mutate("  if(e) openQuickAdd(null, 'event', id);", "  if(e && !(e.recur && e.recur.freq)) openQuickAdd(null, 'event', id);")), /한 화면 폼|기록 창/);
-  assert.throws(() => statics.barsWiring(mutate("  renderMonthBars($('#grid'), dens,", "  renderMonthGrid($('#grid'), dens,")), /막대/);
+  assert.throws(() => statics.barsWiring(mutate("  else renderMonthBars($('#grid'), dens,", "  else renderMonthGrid($('#grid'), dens,")), /막대/);
 });
 
 /* ── (R) 행동: jsdom 위젯 모드 ───────────────────────────────────────── */
@@ -664,7 +664,7 @@ if (!JSDOM) {
     await assert.rejects(() => R.drag(mutate('shiftByGrab(e.date, e.endDate, p.grab || p.occ || e.date, target)', 'shiftByGrab(e.date, e.endDate, p.occ || e.date, target)')), /잡은 자리/);
   });
   test('변이R④: 열람 창을 옛 칸별 칩으로 되돌리면 R⑤ 가 잡는다', async () => {
-    await assert.rejects(() => R.peer(mutate("  renderMonthBars($('#grid'), dens,", "  renderMonthGrid($('#grid'), dens,")), /열람 창/);
+    await assert.rejects(() => R.peer(mutate("  else renderMonthBars($('#grid'), dens,", "  else renderMonthGrid($('#grid'), dens,")), /열람 창/);
   });
   test('변이R⑤: 반복 세부 값을 버리면(늘 간격 1) R⑦ 이 잡는다', async () => {
     await assert.rejects(() => R.recur(mutate('  if(qaRecurOrig && qaRecurOrig.freq === f) return { freq:f, interval:qaRecurOrig.interval, until:qaRecurOrig.until, count:qaRecurOrig.count };', '')), /세부 값/);

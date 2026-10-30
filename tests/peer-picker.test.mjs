@@ -447,7 +447,7 @@ if (!JSDOM) {
     await reset(V);
     await openPeer(V, 'wblee', '이웅빈');
     assert.deepStrictEqual(list(V, keyR()), ['wblee']);
-    assert.ok(/\{"peerName":"이웅빈","canWrite":false,"view":null\}/.test(JSON.stringify(frameMeta(V))), JSON.stringify(frameMeta(V)));
+    assert.ok(/\{"peerName":"이웅빈","canWrite":false,"view":null,"mineCats":\[\]\}/.test(JSON.stringify(frameMeta(V))), JSON.stringify(frameMeta(V)));
     await openPeer(V, 'ihyoon', '윤인환');
     await openPeer(V, 'wblee', '이웅빈');
     assert.deepStrictEqual(list(V, keyR()), ['wblee', 'ihyoon'], '중복을 앞으로 당기지 않았다');
