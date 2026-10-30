@@ -159,11 +159,11 @@ const PROJ_ROWS18 = () => [
 const PROJ_SORT19 = { 1: 2, 2: 1, 3: null, 4: 2, 5: 1, 6: 1 };
 const PROJ_ROWS19 = () => PROJ_ROWS18().map((r) => ({ ...r, sort_no: PROJ_SORT19[r.id] }));
 //  20 부터는 주간보고에 회의내용 칸(meeting)이 있다(v20 조각). 19 까지의 DB 에는 두 사람이 쓴 주간보고 셋이 있고,
-//  v20 은 칸만 더하므로 그 행들은 그대로 남고 meeting 만 NULL 로 생긴다(이 칸이 생기기 전에 작성한 주).
+//  v20 은 그 옛 기록을 모두 지운다(2026-10-30 사용자 결정: 시간 줄이 없고 근태 탭 전이라 사용자가 본 적도 없다).
+//  20 이상인 DB 는 v20 을 건너뛰므로 그 뒤에 근태 탭이 쓴 기록은 남는다. 이 시험 DB 의 20 은 지운 뒤라 비어 있다.
 const WEEKLY_ROWS19 = () => [
   { user_id: 1, period_start: '2026-10-12' }, { user_id: 1, period_start: '2026-10-19' }, { user_id: 2, period_start: '2026-10-19' },
 ];
-const WEEKLY_ROWS20 = () => WEEKLY_ROWS19().map((r) => ({ ...r, meeting: null }));
 //  20 부터는 주간 과제투입시간 표(cal_report_weekly_hours)도 있다(같은 v20 조각, 2026-10-30 결정 14). 빈 표로 생긴다(옮길 데이터 없음).
 //  모양(열 수, FK 수, 기본 키 열 수, CHECK 이름, FK 대상과 규칙)은 정본 schema-calendar.sql 의 정의에서 같은 함수 defShape 로 센다.
 const WH_TABLE = 'cal_report_weekly_hours';
@@ -189,7 +189,7 @@ const S = {
       ...(Number(n) >= 17 ? { ...T.shared(), ...T.pc(), ...T.si() } : Number(n) >= 16 ? { ...T.shared(), ...T.pc() } : Number(n) >= 15 ? T.shared() : T.old()),
       ...(Number(n) >= 18 ? VCS_ROWS18() : VCS_ROWS17()),
       project: Number(n) >= 19 ? PROJ_ROWS19() : PROJ_ROWS18(),
-      cal_report_weekly: Number(n) >= 20 ? WEEKLY_ROWS20() : WEEKLY_ROWS19(),
+      cal_report_weekly: Number(n) >= 20 ? [] : WEEKLY_ROWS19(),
       ...(Number(n) >= 20 ? { [WH_TABLE]: [] } : {}),
     },
     defs: Number(n) >= 20 ? { ...PC_DEFS, ...SI_DEFS, ...WH_DEFS } : Number(n) >= 17 ? { ...PC_DEFS, ...SI_DEFS } : Number(n) >= 16 ? PC_DEFS : {},
@@ -205,7 +205,7 @@ const finalMeta = (n) => ({ db_structure_version: String(n), db_updating: '0', a
 //  끝 상태(meta 와 표): 공용 회의실 목록 하나, cal_room 없음, 과제 캘린더 표 둘과 그림 표(정본과 같은 모양), project 에 개발 시작일 칸과 CHECK,
 //  일반 일정과 예외일만(커밋 기록, cal_entry_commit, 지울 칸과 CHECK 없음, cal_user_pref 표 설명은 18),
 //  과제에 순서 칸과 처음 순서(보이는 과제만), 코드표 표 설명은 19, 주간보고에 회의내용 칸(있던 행은 NULL), 주간 과제투입시간 표(빈 표, 정본 모양)
-const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si(), ...VCS_ROWS18(), project: PROJ_ROWS19(), cal_report_weekly: WEEKLY_ROWS20(), [WH_TABLE]: [] }, defs: { ...PC_DEFS, ...SI_DEFS, ...WH_DEFS }, project: PROJECT_V19(), vcs: VCS_V18(), codes: CODES_V19(), weekly: WEEKLY_V20() }).state();
+const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si(), ...VCS_ROWS18(), project: PROJ_ROWS19(), cal_report_weekly: [], [WH_TABLE]: [] }, defs: { ...PC_DEFS, ...SI_DEFS, ...WH_DEFS }, project: PROJECT_V19(), vcs: VCS_V18(), codes: CODES_V19(), weekly: WEEKLY_V20() }).state();
 const FINAL_TABLES = FINAL_DB['#tables'];
 const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES, '#project': FINAL_DB['#project'], '#vcs': FINAL_DB['#vcs'], '#codes': FINAL_DB['#codes'], '#weekly': FINAL_DB['#weekly'] });
 const sortObj = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
@@ -565,15 +565,16 @@ const checks = {
     assert.strictEqual(db.meta().db_structure_version, '18', `${label}: v19 검증에서 멈췄는데 구조 번호가 올라갔다`);
     assertNoHalfOpen(db, stateOf(mk()), null, `v19 검증 멈춤(${label})`);
   },
-  // v20 결과: 회의내용 칸이 plan 뒤에 MEDIUMTEXT NULL 로 생기고, 있던 주간보고 행은 그대로이며 meeting 만 NULL 이다
+  // v20 결과: 회의내용 칸이 plan 뒤에 MEDIUMTEXT NULL 로 생기고, 옛 주간보고 행은 모두 지워진다(일간은 그대로)
   meetingAdded(sql) {
     const db = open(S.at(19));
     const r = db.run(sql);
     assert.ok(r.ok, `19 에서 20 으로 올리는 배포가 끝나지 않는다: ${JSON.stringify(r)}`);
     assert.deepStrictEqual(db.weekly, WEEKLY_V20(), `cal_report_weekly 모양이 정본(v20, plan 뒤 meeting)과 다르다: ${JSON.stringify(db.weekly)}`);
-    assert.deepStrictEqual(db.tables.cal_report_weekly, WEEKLY_ROWS20(), `있던 주간보고 행이 그대로가 아니거나 meeting 이 NULL 이 아니다: ${JSON.stringify(db.tables.cal_report_weekly)}`);
-    assert.deepStrictEqual(db.writes.filter((w) => w.k.startsWith('col:') || w.k.startsWith('table:')).map((w) => w.k), ['col:cal_report_weekly.meeting', `table:${WH_TABLE}`],
-      '19 에서 올리는데 회의내용 칸과 주간 시간 표 말고 다른 표나 칸을 바꿨다(앞 조각이 건너뛰지 않았다)');
+    assert.deepStrictEqual(db.tables.cal_report_weekly, [], `옛 주간보고 행이 지워지지 않았다: ${JSON.stringify(db.tables.cal_report_weekly)}`);
+    assert.deepStrictEqual(db.writes.filter((w) => w.k.startsWith('col:') || w.k.startsWith('table:')).map((w) => w.k), ['col:cal_report_weekly.meeting', `table:${WH_TABLE}`, 'table:cal_report_weekly'],
+      '19 에서 올리는데 회의내용 칸, 주간 시간 표, 옛 주간 기록 지우기 말고 다른 표나 칸을 바꿨다(앞 조각이 건너뛰지 않았다)');
+    assert.ok(!/DELETE FROM cal_report_(daily|hours)\b/.test(sql), '배포 SQL 이 일간 기록을 지운다');
     //  다시 돌려도 바뀌는 것이 없다(조각은 건너뛰고 열기는 같은 값이라 0행)
     const n = db.writes.length, shape = db.state();
     assert.ok(db.run(sql).ok, '19 에서 올린 뒤 다시 돌리면 끝나야 한다');

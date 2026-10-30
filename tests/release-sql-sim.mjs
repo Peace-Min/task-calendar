@@ -566,6 +566,16 @@ export class FakeDb {
       this.rowCount = 0;
       return;
     }
+    //  v20 3-2: 옛 주간보고 기록 모두 지우기. FK CASCADE 로 주간 시간 표의 줄도(행을 흉내 내는 경우) 함께 지운다.
+    if (q === 'DELETE FROM cal_report_weekly') {
+      this.mutating(s, opts);
+      const rows = this.need('cal_report_weekly');
+      this.tables.cal_report_weekly = [];
+      if (Array.isArray(this.tables.cal_report_weekly_hours)) this.tables.cal_report_weekly_hours = [];
+      this.rowCount = rows.length;
+      if (rows.length) this.writes.push({ k: 'table:cal_report_weekly', v: `-${rows.length}` });
+      return;
+    }
     //  v18: 커밋 기록 지우기. FK CASCADE 로 예외일과 커밋 목록(표가 남아 있으면)도 함께 지운다.
     if (q === "DELETE FROM cal_entry WHERE user_id > 0 AND source = 'git'") {
       this.mutating(s, opts);

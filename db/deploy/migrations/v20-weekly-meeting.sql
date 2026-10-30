@@ -25,9 +25,16 @@
 --       정의는 정본 db/deploy/schema-calendar.sql 의 cal_report_weekly_hours 와 글자까지 같다(작은따옴표만 두 겹. 시험이 대조한다).
 --       부모 cal_report_weekly 를 (user_id, period_start) 로 CASCADE 참조한다(일간 fk_crh_daily 와 같은 결). 옮길 데이터는 없다.
 --       project_uid 는 project.uid 를 글자로만 담는다(FK 없음. 과제가 지워져도 지난 공수는 남아야 한다. 까닭은 정본 주석).
+--    2-2) 옛 주간보고 기록(cal_report_weekly)을 모두 지운다(2026-10-30 사용자 결정). 19 에서 올릴 때 한 번만.
+--       까닭: 19 까지의 주간 기록은 보고서 창이 보낸 것이라 과제투입시간 줄(MM 원천)이 없고, 그때는 근태 탭이 없어
+--       사용자가 어느 주를 썼는지 보지도 못했다. 원본은 회사 인트라넷에 남는다. 근태 탭은 이 판부터 새로 쌓는다.
+--       일간 기록(cal_report_daily, cal_report_hours)은 건드리지 않는다. 일간과 주간 사이에는 FK 가 없다.
+--       새 시간 표는 방금 만들어 비어 있어 CASCADE 로 함께 지워질 줄이 없다.
 --    3) 검증(information_schema): 새 칸이 있고 mediumtext, NULL 허용이며 plan 바로 뒤에 있다.
 --       새 표가 있고 열 수(6), 기본 키 열 수(3), FK 수(1, cal_report_weekly 를 CASCADE 로), CHECK chk_crwh_hours 가 정본과 같다.
 --    4) 구조 번호 20.
+--
+--  ★ 되돌릴 수 없다: 2-2 는 옛 주간 기록을 지운다. 운영 DB 를 백업한 뒤 돌린다(DB-RELEASE-OPS 의 배포 전 백업).
 --
 --  권한: 이 조각은 권한을 주거나 거두지 않는다(배포 SQL 에서 금지, DB-RELEASE-OPS §5).
 --    회의내용 칸은 표가 그대로라 앱 계정의 SELECT, INSERT, UPDATE 가 새 칸에도 닿는다.
@@ -93,6 +100,13 @@ SET @s := IF(@go,
   COMMENT=''주간보고 과제투입시간(과제별 줄). 맨먼스 집계의 원천. 주간보고 행과 한 트랜잭션으로 쓰고 다시 보내면 그 주 줄을 바꾼다''',
   'DO 0');
 PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
+
+-- 3-2) 옛 주간보고 기록 지우기(19 에서 올릴 때만). 일간 기록은 그대로다.
+--    중간에 멈춰 다시 돌려도 같다(닫힌 동안 새 주간 기록은 생기지 않는다). 20 이상이면 건너뛰어 근태 탭이 쓴 기록은 남는다.
+SET @s := IF(@go, 'DELETE FROM cal_report_weekly', 'DO 0');
+PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
+
+SELECT IF(@go, '옛 주간보고 기록을 지웠다(일간은 그대로)', '지울 것이 없다') AS `v20 옛 주간 기록`;
 
 -- 4) 검증: 칸(형, NULL 허용, 자리). 틀리면 db_updating = 1 인 채로 멈춘다(앱은 계속 기다린다).
 --    information_schema 로 다시 보는 이유: 이름이 같은 다른 모양의 칸이 이미 있으면 위 단계가 건너뛰기 때문이다.

@@ -295,6 +295,7 @@
   - PK `(user_id, period_start, line_no)`, FK `(user_id, period_start)` → `cal_report_weekly` ON DELETE CASCADE ON UPDATE CASCADE(일간 `fk_crh_daily` 와 같은 결), 집계용 인덱스 `(project_uid, period_start)` 와 `(user_id, period_start)`.
 - v20 조각(`v20-weekly-meeting.sql`)에 이 표 만들기를 더한다(표가 없을 때만). 구조 번호는 20 그대로.
 - **이 PC 개발 DB 는 이미 20** 이라 v20 이 건너뛴다. 늘어난 표만 만드는 일회용 SQL(`dist/rehearsal/apply-v20b-dev`)을 사용자가 직접 실행한다(어제와 같은 방식, 사본 리허설 뒤).
+- **옛 주간 기록은 v20 이 모두 지운다(2026-10-30 사용자 결정).** 19 까지 보고서 창이 쓴 `cal_report_weekly` 행은 시간 줄이 없고, 근태 탭 전이라 사용자가 본 적도 없다. 원본은 인트라넷에 남는다. 19 에서 올릴 때 한 번만 지우고(20 이상은 건너뜀), 일간 기록은 건드리지 않는다(일간과 주간 사이 FK 없음). 되돌릴 수 없어 배포 전 백업(DB-RELEASE-OPS)이 전제다.
 - 일간 표는 바꾸지 않는다. 앱 계정 권한(GRANT)과 스키마 보고서, 데모 DB, 스키마 시험을 함께 맞춘다.
 - MM 집계 화면은 이번 범위 밖이다. 달이 걸친 주를 어느 달로 셀지는 그때 정한다.
 
