@@ -33,16 +33,14 @@ test('정적①: 옛 단일 필터, 할 일 탭 필터, 높이 손잡이, 넘침
   }
 });
 
-test('정적②: 필터 줄은 42px 한 줄(줄바꿈, 스크롤 없음)이고 팝업이 잘리지 않게 overflow 를 걸지 않는다', () => {
+test('정적②: 필터 묶음은 날짜 줄 안(월간 주간 단추 바로 뒤)에 있고 팝업이 잘리지 않게 overflow 를 걸지 않는다', () => {
   const css = app.slice(0, app.indexOf('</style>'));
-  const rules = [...css.matchAll(/(^|[}\s])\.filterbar\{([^}]*)\}/g)].map((m) => m[2]);
-  assert.ok(rules.length >= 1, '.filterbar 규칙이 없다');
-  const base = rules[0];
-  assert.ok(/height:42px/.test(base) && /flex-wrap:nowrap/.test(base), '.filterbar 가 42px 한 줄이 아니다: ' + base);
-  for (const r of rules) assert.ok(!/overflow/.test(r) && !/flex-wrap:wrap/.test(r), '.filterbar 에 overflow 나 줄바꿈이 있다(팝업이 잘리거나 줄이 늘어난다): ' + r);
-  assert.ok(/\.fb-btn\{[^}]*width:208px/.test(css), '과제 버튼 폭이 208px 고정이 아니다');
-  assert.ok(/@media \(max-width:599\.98px\)\{ \.fb-btn\{width:156px\}/.test(css), '600px 미만에서 과제 버튼이 156px 이 아니다');
-  assert.ok(app.includes('<div class="filterbar" id="filterbar"></div>'), '#filterbar 자리가 바뀌었다');
+  const rules = [...css.matchAll(/(^|[}\s])\.fb-grp\{([^}]*)\}/g)].map((m) => m[2]);
+  assert.ok(rules.length >= 1, '.fb-grp 규칙이 없다');
+  for (const r of rules) assert.ok(!/overflow/.test(r), '.fb-grp 에 overflow 가 있다(팝업이 잘린다): ' + r);
+  assert.ok(!/\.filterbar\{/.test(css), '옛 .filterbar 줄 규칙이 남았다');
+  assert.ok(/\.fb-btn\{[^}]*max-width:min\(240px,40vw\)/.test(css) && !/\.fb-btn\{[^}]*[^-]width:\d+px/.test(css), '과제 버튼은 글자에 맞추고 최대 폭만 둔다');
+  assert.ok(app.includes('</div>\n    <div class="fb-grp" id="filterbar"></div>\n  </div>'), '#filterbar 가 날짜 줄(.nav) 끝, 월간 주간 단추 뒤에 있지 않다');
 });
 
 test('정적③: 과제 버튼은 aria-haspopup="listbox", 목록은 aria-multiselectable, 한글 조합 중 키는 건너뛴다', () => {
@@ -283,14 +281,17 @@ if (!JSDOM) {
     } finally { W.close(); }
   });
 
-  test('런타임⑤: 과제가 없으면 안내 문구만 있고 버튼이 없다', async () => {
+  test('런타임⑤: 과제가 없으면 꺼진 버튼(과제 없음)과 안내 문구 툴팁', async () => {
     const W = bootWindow('https://tcapp.local/?peer=1');
     try {
       await settle();
       W.w.__applyState(JSON.stringify({ categories: [], entries: [], todos: [] }), { peerName: '홍길동', canWrite: false });
       await settle();
-      assert.strictEqual(W.doc.getElementById('filterbar').textContent.trim(), '등록된 수행 과제가 없습니다. [내 과제]에서 추가하세요.');
-      assert.ok(!W.doc.querySelector('#filterbar .fb-btn'));
+      const btn = W.doc.querySelector('#filterbar .fb-btn');
+      assert.ok(btn && btn.disabled, '과제가 없으면 꺼진 단추여야 한다');
+      assert.strictEqual(btn.textContent.trim(), '과제 없음');
+      assert.strictEqual(btn.title, '등록된 수행 과제가 없습니다. [내 과제]에서 추가하세요.');
+      assert.ok(!W.doc.querySelector('#filterbar .fb-rest'), '칩 자리가 없어야 한다');
     } finally { W.close(); }
   });
 

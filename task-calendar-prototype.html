@@ -159,10 +159,11 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .brand h1{font-size:var(--fs-title);font-weight:700;line-height:1.15}
 .brand .sub{font-size:var(--fs-micro);color:var(--muted)}
 .nav{display:flex;align-items:center;gap:6px;position:relative}
+header.topbar .nav{flex-wrap:wrap;row-gap:6px}   /* 자리가 모자라면 과제 필터 묶음이 다음 줄로 내려간다(좁은 폭용 배치 따로 없음) */
 #calViewSeg .seg-b{padding:4px 9px}
 .title-btn{
   border:none;background:transparent;font-size:var(--fs-display);font-weight:700;color:var(--text);line-height:1.15;
-  padding:5px 10px;border-radius:var(--r-sm);cursor:pointer;min-width:120px;letter-spacing:-.01em;
+  padding:5px 10px;border-radius:var(--r-sm);cursor:pointer;letter-spacing:-.01em;   /* 최소 폭은 fitTitleMinWidth 가 12개월 글자 폭을 재서 정한다 */
 }
 .title-btn:hover{background:var(--hover-bg)}
 .jump{
@@ -212,30 +213,26 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .menu button.danger{color:var(--danger-text)}
 .menu hr{border:none;border-top:1px solid var(--line);margin:5px 4px}
 
-/* ---------- 과제 필터 줄(docs/FILTER-MULTI.md): 42px 한 줄 고정, 왼쪽 과제 버튼 + 고른 과제 칩, 버튼 아래 팝업 ----------
-   줄은 넘치지 않는다(줄바꿈, 스크롤, 페이드 없음). 칩이 다 안 들어가면 fitFilterChips 가 +N 으로 접는다.
-   팝업은 줄 안에 absolute 로 달린다. 그래서 줄에 overflow 를 걸지 않는다(걸면 팝업이 잘린다). */
-.filterbar{
-  display:flex;align-items:center;gap:8px;flex-wrap:nowrap;height:42px;
-  padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line);
-  flex:none;position:relative;z-index:25;
-}
-.filterbar .lbl{font-size:var(--fs-meta);color:var(--muted);margin-right:2px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ---------- 과제 필터 묶음(docs/FILTER-MULTI.md, docs/NAV-LAYOUT-C.md): 날짜 줄의 [월간 | 주간] 바로 오른쪽 ----------
+   과제 단추 + 고른 과제 칩. 단추는 글자에 맞추고 최대 폭에서 말줄임. 칩은 fitFilterChips 가 남는 자리를 재서 +N 으로 접는다.
+   팝업은 묶음 안에 absolute 로 달린다. 그래서 묶음과 날짜 줄에 overflow 를 걸지 않는다(걸면 팝업이 잘린다). */
+.fb-grp{display:flex;align-items:center;gap:8px;flex:none;min-width:0;position:relative}
 .fb-btn{
-  display:inline-flex;align-items:center;gap:6px;flex:none;width:208px;height:30px;
+  display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;max-width:min(240px,40vw);height:30px;
   border:1px solid var(--ctl-border);background:var(--panel);color:var(--text);border-radius:var(--r-sm);
   padding:0 8px 0 10px;cursor:pointer;line-height:1;white-space:nowrap;text-align:left;font:inherit;font-size:var(--fs-body);
 }
-.fb-btn:hover,.fb-btn[aria-expanded="true"]{border-color:var(--accent);background:var(--hover-bg)}
+.fb-btn:hover:not(:disabled),.fb-btn[aria-expanded="true"]{border-color:var(--accent);background:var(--hover-bg)}
 .fb-btn .pl{color:var(--muted);flex:none}
 .fb-btn .pv{display:inline-flex;align-items:center;gap:5px;flex:1;min-width:0;font-weight:600}
 .fb-btn .pv .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .fb-btn .pv .fb-cnt{flex:none;color:var(--muted);font-weight:400;font-variant-numeric:tabular-nums}
 .fb-btn .pv.none{color:var(--faint-text);font-weight:400}
+.fb-btn:disabled{cursor:default;background:var(--panel);border-color:var(--ctl-border)}
 .fb-btn .fb-caret{width:10px;height:10px;flex:none;color:var(--muted)}
 .fb-btn.filtered{border-color:var(--accent);background:var(--accent-soft)}
 .fb-btn.filtered .pv{color:var(--accent-2)}
-.fb-rest{flex:1;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;height:100%}
+.fb-rest{flex:none;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;height:30px}   /* 폭은 fitFilterChips 가 남는 자리로 정한다 */
 .fchip{
   display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);
   background:var(--panel);border-radius:999px;padding:4px 11px;font-size:var(--fs-body);color:var(--text);
@@ -252,7 +249,6 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .fb-more:hover{border-color:var(--border-hover);color:var(--text)}
 .fb-btn:focus-visible,.fb-x:focus-visible,.fb-more:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .fb-pop{position:absolute;z-index:70;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);display:flex;flex-direction:column;color:var(--text)}
-.fb-pop.sheet{border-radius:0 0 var(--r-md) var(--r-md);border-top:0}
 .fb-pop .fb-ph{padding:8px 8px 4px}
 .fb-pop .fb-q{width:100%;height:30px;border:1px solid var(--ctl-border);background:var(--panel);color:var(--text);border-radius:var(--r-sm);padding:0 9px;font:inherit;font-size:var(--fs-body)}
 .fb-pop .fb-q:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
@@ -278,7 +274,6 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .fb-opt[aria-selected="true"] .fb-ind{border-color:var(--accent-fill);background:var(--accent-fill)}
 .fb-opt[aria-selected="true"] .fb-ind svg{display:block}
 .fb-opt[aria-selected="true"] .nm{font-weight:600}
-@media (max-width:599.98px){ .fb-btn{width:156px} .filterbar{padding:0 10px;gap:6px} }
 
 /* ---------- main layout ---------- */
 main{flex:1;display:flex;min-height:0;position:relative}
@@ -1763,7 +1758,7 @@ details.vg-more dd{margin:0;color:var(--text)}
         문의·테마까지 다 노출됐다(사용자 지적).
       · allowlist 는 기본이 '숨김' 이라 **앞으로 생길 UI 도 자동으로 안 보인다.**
         이 방식이라야 "메인이 바뀌어도 열람 화면은 따라오되, 편집 수단은 안 따라온다" 가 성립한다.
-    ★ 보이는 것은 셋뿐이다: 달력 이동(.nav) · 검색 · 과제 필터(#filterbar) · 달력 본체(main).
+    ★ 보이는 것은 셋뿐이다: 달력 이동(.nav, 과제 필터 묶음 #filterbar 포함) · 검색 · 달력 본체(main).
     ★ 창 가장자리 크기 조절 손잡이(.rsz)도 감춘다. 열람 창의 크기는 바깥 창(Windows 창 테두리)이 정한다(WINDOW-UI §4).  */
 body[data-peer] #hostbar,
 body[data-peer] .rsz,
@@ -2601,7 +2596,7 @@ html[data-adminwin] #adminHub > .ah-modal > .modal-head > .x{ display:none }
 .pc-tab:hover{background:var(--hover-bg);color:var(--text)}
 .pc-tab.on{color:var(--accent-2);font-weight:600;border-bottom-color:var(--accent)}
 .pc-tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-body.pc-on #filterbar,body.pc-on main > .cal,body.pc-on main > .splitter,body.pc-on #dayPanel,body.pc-on #bootSkeleton,
+body.pc-on main > .cal,body.pc-on main > .splitter,body.pc-on #dayPanel,body.pc-on #bootSkeleton,
 body.pc-on .topbar .nav,body.pc-on #btnSearch,body.pc-on #btnPeerPick,body.pc-on #btnReportTop,body.pc-on #btnNew,
 body.pc-on .mm-fold-rp,body.pc-on .mm-fold-pk,body.pc-on #btnSearchFold{display:none !important}
 .pc-view{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
@@ -2855,7 +2850,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
      개인 화면 단추도 숨긴다. 근태 화면이 자기 달 이동 줄을 가진다.
    ★ 보고 화면(#atEd)은 하나다. 브라우저에서는 근태 탭 안에서 달력과 자리를 바꾸고, 위젯의 근태 창(html[data-attendwin])에서는
      창 전체를 채운다. 색은 모두 토큰이라 다크 테마도 그대로 따른다. */
-body.at-on #filterbar,body.at-on main > .cal,body.at-on main > .splitter,body.at-on #dayPanel,body.at-on #bootSkeleton,
+body.at-on main > .cal,body.at-on main > .splitter,body.at-on #dayPanel,body.at-on #bootSkeleton,
 body.at-on .topbar .nav,body.at-on #btnSearch,body.at-on #btnPeerPick,body.at-on #btnReportTop,body.at-on #btnNew,
 body.at-on .mm-fold-rp,body.at-on .mm-fold-pk,body.at-on #btnSearchFold{display:none !important}
 body:not(.at-on) #atView{display:none !important}
@@ -3253,6 +3248,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
       <button type="button" class="seg-b active" id="btnCalViewMonth" data-calview="month" aria-pressed="true">월간</button>
       <button type="button" class="seg-b" id="btnCalViewWeek" data-calview="week" aria-pressed="false">주간</button>
     </div>
+    <div class="fb-grp" id="filterbar"></div>
   </div>
   <div class="spacer"></div>
   <div class="actions">
@@ -3338,8 +3334,6 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
   <button type="button" class="pc-tab" role="tab" id="pcTabProject" aria-selected="false" aria-controls="pcView" tabindex="-1" data-pctab="project">과제</button>
   <button type="button" class="pc-tab" role="tab" id="pcTabAttend" aria-selected="false" aria-controls="atView" tabindex="-1" data-pctab="attend">근태</button>
 </div>
-
-<div class="filterbar" id="filterbar"></div>
 
 <main>
   <div id="bootSkeleton" class="hidden" aria-hidden="true">
@@ -11397,10 +11391,10 @@ function renderWeekdays(){
   if(wm) wm.innerHTML = $('#weekdays').innerHTML;
 }
 
-/* ---------- 과제 필터 줄(docs/FILTER-MULTI.md, 시안 filterbar-proto-v3.html 의 V2) ----------
-   [과제 버튼(폭 고정)] [고른 과제 칩 … +N]. 버튼을 누르면 줄 안에 팝업(검색, 전체 선택/해제, 다중 선택 목록)이 뜬다.
+/* ---------- 과제 필터 묶음(docs/FILTER-MULTI.md, docs/NAV-LAYOUT-C.md) ----------
+   날짜 줄(header.topbar .nav)의 [월간 | 주간] 오른쪽: [과제 버튼(글자에 맞춤)] [고른 과제 칩 … +N]. 버튼을 누르면 버튼 아래에 팝업(검색, 전체 선택/해제, 다중 선택 목록)이 뜬다.
    ★ 버튼과 칩 자리는 한 번 만들고 내용만 바꾼다. 팝업이 열린 채 과제를 켜고 끄면 renderAll 이 여기를 다시 부르는데,
-     줄을 통째로 갈아 끼우면 팝업과 포커스가 날아가 깜빡인다. 팝업 목록도 목록 칸(.fb-list)은 그대로 두고 속만 바꾼다. */
+     묶음을 통째로 갈아 끼우면 팝업과 포커스가 날아가 깜빡인다. 팝업 목록도 목록 칸(.fb-list)은 그대로 두고 속만 바꾼다. */
 const FB_CARET = '<svg class="fb-caret" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
 const FB_X = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.6"/></svg>';
 const FB_CHECK = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.8 5.2 4 7.4 8.4 2.8" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>';
@@ -11449,10 +11443,10 @@ function renderFilterbar(){
   if(!state.categories.length){
     if(FB.pop) filterPopClose(false);
     bar.removeAttribute('role'); bar.removeAttribute('aria-label');
-    bar.innerHTML = `<span class="lbl">등록된 수행 과제가 없습니다. [내 과제]에서 추가하세요.</span>`;
+    bar.innerHTML = `<button type="button" class="fb-btn" id="fbBtn" disabled aria-label="과제 필터, 과제 없음" title="등록된 수행 과제가 없습니다. [내 과제]에서 추가하세요."><span class="pv none"><span class="nm">과제 없음</span></span>${FB_CARET}</button>`;
     return;
   }
-  if(!bar.querySelector('.fb-btn')){
+  if(!bar.querySelector('.fb-rest')){
     bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', '과제 필터');
     bar.innerHTML = `<button type="button" class="fb-btn" id="fbBtn" aria-haspopup="listbox" aria-expanded="false"><span class="pl">과제</span><span class="pv"></span>${FB_CARET}</button><div class="fb-rest"></div>`;
   }
@@ -11464,20 +11458,51 @@ function renderFilterbar(){
   fitFilterChips();
   if(FB.pop) filterFillList(false);
 }
-//  고른 과제 칩을 깔고, 줄에 다 안 들어가면 뒤에서부터 덜어 +N 으로 접는다. 그리기 전(같은 프레임)에 재므로 깜빡이지 않는다.
-//  줄이 숨어 있으면(과제, 근태 탭) 잴 수 없다. 다시 보일 때 ResizeObserver 가 부른다.
+//  칩이 쓸 수 있는 폭: 날짜 줄에서 과제 버튼 오른쪽부터 오른쪽 단추 묶음(.actions) 앞까지(모두 재서 정한다. 숫자를 박지 않는다).
+//  묶음이 날짜 줄 안에서 다음 줄로 내려갔으면 날짜 줄(.nav)의 오른쪽 끝까지. 재지 못하면(숨어 있거나 레이아웃이 없으면) 0.
+//  칩 자리(.fb-rest)를 감춘 채 부른다: 칩이 줄 폭을 밀지 않은 최소 상태에서 재야 한다.
+function fbFreeWidth(bar, btn){
+  const top = bar.closest('.topbar'); if(!top || !btn || !btn.offsetWidth) return 0;
+  const nav = bar.closest('.nav'), act = top.querySelector('.actions'), seg = document.getElementById('calViewSeg');
+  const b = btn.getBoundingClientRect(), t = top.getBoundingClientRect(), tcs = getComputedStyle(top);
+  const gap = parseFloat(getComputedStyle(bar).columnGap) || 0;
+  const wrapped = !!seg && seg.offsetWidth > 0 && b.top > seg.getBoundingClientRect().top + 4;
+  let limit;
+  if(wrapped && nav) limit = nav.getBoundingClientRect().right;
+  else {
+    const a = act && act.getBoundingClientRect(), sp = top.querySelector(':scope > .spacer');
+    const gaps = (sp && getComputedStyle(sp).display !== 'none') ? 2 : 1, tg = parseFloat(tcs.columnGap) || 0;
+    const sameRow = !!a && a.width > 0 && a.top < b.bottom - 1 && a.left > b.right;
+    limit = sameRow ? a.left - gaps * tg : t.right - (parseFloat(tcs.paddingRight) || 0);
+  }
+  return Math.floor(limit - b.right - gap) - 2;
+}
+//  고른 과제 칩을 깔고, 남는 자리에 다 안 들어가면 뒤에서부터 덜어 +N 으로 접는다. 하나도 못 들어가면 칩 자리를 감춘다(단추 글자가 상태를 말한다).
+//  그리기 전(같은 프레임)에 재므로 깜빡이지 않는다. 같은 칩, 같은 폭이면 DOM 을 건드리지 않는다.
+//  숨어 있으면(과제, 근태 탭) 잴 수 없다. 칩을 모두 깔아 두고, 다시 보일 때 ResizeObserver 가 부른다.
 function fitFilterChips(){
   const bar = $('#filterbar'), rest = bar && bar.querySelector('.fb-rest'); if(!rest) return;
-  const sel = filterSelCats();
+  const btn = bar.querySelector('.fb-btn'), sel = filterSelCats();
+  const key = sel.map(c => c.id + '\u0001' + c.name + '\u0001' + c.color).join('\u0002');
+  rest.style.display = 'none';
+  const free = fbFreeWidth(bar, btn), measured = !!(btn && btn.offsetWidth);
+  const sig = key + '|' + (measured ? free : 'x');
+  if(rest.dataset.sig === sig && (rest.firstChild || !sel.length)){ rest.style.display = rest.firstChild ? '' : 'none'; return; }
+  rest.dataset.sig = sig;
+  const hide = () => { rest.innerHTML = ''; rest.style.display = 'none'; rest.style.width = ''; };
+  if(!sel.length) return hide();
   rest.innerHTML = sel.map(c => `<span class="fchip on fb-tok" data-cat="${esc(c.id)}" title="${esc(c.name)}"><span class="dot" style="background:${validColor(c.color)}"></span><span class="fc-name">${esc(c.name)}</span><button type="button" class="fb-x" data-rm="${esc(c.id)}" aria-label="${esc(c.name)} 빼기" title="빼기">${FB_X}</button></span>`).join('')
-    + (sel.length ? '<button type="button" class="fb-more" aria-haspopup="listbox">+0</button>' : '');
-  const more = rest.querySelector('.fb-more'); if(!more) return;
-  if(!rest.clientWidth){ more.remove(); return; }
+    + '<button type="button" class="fb-more" aria-haspopup="listbox">+0</button>';
+  const more = rest.querySelector('.fb-more');
+  if(!measured){ more.remove(); rest.style.width = ''; rest.style.display = ''; return; }
+  if(free < 40) return hide();
+  rest.style.width = free + 'px'; rest.style.display = '';
   const right = rest.getBoundingClientRect().right + .5;
   const over = () => { const l = rest.lastElementChild; return !!l && l.getBoundingClientRect().right > right; };
   const toks = [...rest.querySelectorAll('.fb-tok')];
   let k = 0;
   while(over() && k < toks.length){ toks[toks.length - 1 - k].remove(); k++; more.textContent = '+' + k; }
+  if(k >= toks.length) return hide();
   if(!k) more.remove();
   else { more.setAttribute('aria-label', `고른 과제 ${k}개 더, 목록 열기`); more.title = `고른 과제 ${k}개 더`; }
 }
@@ -11499,18 +11524,17 @@ function filterPopOpen(focusTo){
   filterPopPlace(true);   // 목록을 채운 뒤에 높이를 잰다(내용만큼)
   (focusTo === 'list' ? FB.lb : FB.q).focus({ preventScroll: true });
 }
-//  자리: 버튼 아래. 줄 폭이 480 미만이면 줄 아래 꽉 찬 시트. 목록 높이는 열 때 한 번 정한다(검색 중 출렁이지 않게)
+//  자리: 버튼 아래(묶음 기준 absolute). 쓸 수 있는 폭(창 폭)이 480 미만이면 좌우 8px 만 남기고 꽉 찬 시트. 목록 높이는 열 때 한 번 정한다(검색 중 출렁이지 않게)
 function filterPopPlace(sizeList){
   const bar = $('#filterbar'), pop = FB.pop; if(!pop || !bar) return;
-  const btn = bar.querySelector('.fb-btn'), W = bar.clientWidth, narrow = W < 480;
+  const btn = bar.querySelector('.fb-btn'), VW = document.documentElement.clientWidth, narrow = VW < 480;
   pop.classList.toggle('sheet', narrow);
-  let w, left, top;
-  if(narrow){ w = W; left = 0; top = bar.offsetHeight; }
-  else { w = Math.min(340, W - 16); left = Math.max(8, Math.min(btn ? btn.offsetLeft : 8, W - w - 8)); top = bar.offsetHeight + 4; }
-  pop.style.width = w + 'px'; pop.style.left = left + 'px'; pop.style.top = top + 'px';
+  const g = bar.getBoundingClientRect(), bt = btn ? btn.getBoundingClientRect() : g;
+  const w = Math.min(narrow ? VW - 16 : 340, VW - 16), x = Math.max(8, Math.min(bt.left, VW - w - 8));
+  pop.style.width = w + 'px'; pop.style.left = (x - g.left) + 'px'; pop.style.top = (bt.bottom - g.top + 4) + 'px';
   if(sizeList){
     const head = pop.querySelector('.fb-ph').offsetHeight + pop.querySelector('.fb-acts').offsetHeight;
-    const avail = window.innerHeight - bar.getBoundingClientRect().bottom - head - 24;
+    const avail = window.innerHeight - bt.bottom - head - 24;
     FB.lb.style.height = '';
     const cap = Math.max(120, Math.min(narrow ? 360 : 300, avail));
     FB.lb.style.height = Math.min(FB.lb.scrollHeight, cap) + 'px';   // 내용만큼, 상한까지(과제가 적으면 빈 공간을 남기지 않는다. 연 뒤에는 검색해도 높이를 바꾸지 않는다)
@@ -11653,11 +11677,12 @@ function bindFilterbar(){
     if(FB.pop.contains(ev.target) || ev.target === bar.querySelector('.fb-btn')) return;
     filterPopClose(false);
   });
-  //  폭이 바뀌면 칩을 다시 접고 팝업 자리를 다시 잡는다. 숨었던 줄이 다시 보일 때도(과제 탭에서 돌아올 때) 여기로 온다
+  //  폭이 바뀌면 칩을 다시 접고 팝업 자리를 다시 잡는다. 숨었던 묶음이 다시 보일 때도(과제 탭에서 돌아올 때) 여기로 온다.
+  //  묶음과 날짜 줄 전체(.topbar)를 본다. 칩 폭을 정하면 묶음 크기가 바뀌어 한 번 더 불리지만, 같은 결과라 거기서 멈춘다.
   window.addEventListener('resize', () => { fitFilterChips(); filterPopPlace(false); });
   if(typeof ResizeObserver === 'function'){
-    let lastW = -1;
-    new ResizeObserver(() => { const w = bar.clientWidth; if(w === lastW) return; lastW = w; fitFilterChips(); filterPopPlace(false); }).observe(bar);
+    const ro = new ResizeObserver(() => { fitFilterChips(); filterPopPlace(false); });
+    ro.observe(bar); const tb = bar.closest('.topbar'); if(tb) ro.observe(tb);
   }
 }
 
@@ -11759,13 +11784,45 @@ function calWeekRange(anchor){
   const from = addDays(ds, -((parseYmd(ds).getDay() + 6) % 7));
   return { from, to: addDays(from, 6), weeks: 1 };
 }
+//  제목은 월간도 주간도 "YYYY년 M월" 이다. 주간은 그 주 월요일이 든 달(docs/NAV-LAYOUT-C.md). 그래서 보기를 바꿔도 제목 폭이 같다.
 function calTitleLabel(){
   if(calView() !== 'week') return `${view.y}년 ${view.m+1}월`;
-  const r = calWeekRange(selectedDate), a = parseYmd(r.from), b = parseYmd(r.to);
-  if(a.getFullYear() !== b.getFullYear()) return `${a.getFullYear()}.${a.getMonth()+1}.${a.getDate()} ~ ${b.getFullYear()}.${b.getMonth()+1}.${b.getDate()}`;
-  if(a.getMonth() === b.getMonth()) return `${a.getFullYear()}년 ${a.getMonth()+1}월 ${a.getDate()}일 ~ ${b.getDate()}일`;
-  return `${a.getFullYear()}년 ${a.getMonth()+1}월 ${a.getDate()}일 ~ ${b.getMonth()+1}월 ${b.getDate()}일`;
+  const a = parseYmd(calWeekRange(selectedDate).from);
+  return `${a.getFullYear()}년 ${a.getMonth()+1}월`;
 }
+//  제목 칸 최소 폭: 그 해 1월부터 12월까지 "YYYY년 M월" 을 이 칸의 실제 글꼴로 재서 가장 넓은 폭(올림). 글꼴이 바뀌면(좁은 폭 규칙) 다시 잰다.
+//  화면 밖 span 에 글꼴만 복사해 재므로 깜빡이지 않는다. 폭이 바뀌었으면 true.
+const TITLE_W = new Map();
+function fitTitleMinWidth(el, year){
+  if(!el || !el.isConnected) return false;
+  const cs = getComputedStyle(el), y = String(year || new Date().getFullYear());
+  const key = [cs.fontFamily, cs.fontSize, cs.fontWeight, cs.fontStyle, cs.letterSpacing, y].join('|');
+  let w = TITLE_W.get(key);
+  if(w === undefined){
+    const sp = document.createElement('span'), st = sp.style;
+    st.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;pointer-events:none';
+    st.fontFamily = cs.fontFamily; st.fontSize = cs.fontSize; st.fontWeight = cs.fontWeight; st.fontStyle = cs.fontStyle; st.letterSpacing = cs.letterSpacing;
+    document.body.appendChild(sp);
+    w = 0;
+    for(let m = 1; m <= 12; m++){ sp.textContent = y + '년 ' + m + '월'; w = Math.max(w, sp.getBoundingClientRect().width); }
+    sp.remove();
+    if(w > 0) TITLE_W.set(key, w);
+  }
+  if(!(w > 0)) return false;
+  const pad = cs.boxSizing === 'border-box' ? (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) + (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.borderRightWidth) || 0) : 0;
+  const v = Math.ceil(w + pad) + 'px';
+  if(el.style.minWidth === v) return false;
+  el.style.minWidth = v; return true;
+}
+function fitCalTitle(){
+  const t = $('#btnTitle'); if(!t) return;
+  const m = /^(\d{4})/.exec(t.textContent || '');
+  if(fitTitleMinWidth(t, m ? m[1] : null)) fitFilterChips();   // 제목 칸 폭이 바뀌면 칩이 쓸 자리도 바뀐다
+}
+//  글꼴이 늦게 바뀌거나(웹폰트) 창 폭 규칙으로 글꼴 크기가 바뀌면 다시 잰다(같은 글꼴이면 캐시라 비용이 없다)
+function fitTitlesAgain(){ fitCalTitle(); const r = document.querySelector('.pc-range'); if(r) fitTitleMinWidth(r, (/^(\d{4})/.exec(r.textContent || '') || [])[1]); }
+window.addEventListener('resize', fitTitlesAgain);
+try{ if(document.fonts && document.fonts.ready) document.fonts.ready.then(fitTitlesAgain); }catch(_){}
 function syncCalViewSeg(){
   const wk = calView() === 'week';
   document.body.classList.toggle('cal-week', wk);
@@ -11801,6 +11858,7 @@ function renderGrid(){
   syncCalViewSeg();
   renderWeekdays();
   $('#btnTitle').textContent = calTitleLabel();
+  fitCalTitle();
   if(!SUBWIN) document.title = `수행과제 캘린더 (${view.y}년 ${view.m+1}월)`;   // 열람 창의 제목은 보는 사람 이름이다(openPeerSchedule). 관리 창은 adminWinBoot
   //  S2/S3 — 나란히 보기: 왼쪽(#grid) = 그 사람 기록만(일정·기간·반복·할 일) · 오른쪽(#gridMine) = 내 겹 일정만(할 일 없음).
   //    ★ 같은 그리기 함수를 달력마다 한 번씩 부른다 — 칸·칩·레인·「+N」 규칙이 두 달력에서 갈라질 수 없게(코드가 하나다).
@@ -24788,6 +24846,7 @@ function pcRender(){
   v.innerHTML = '<div class="pc-main">' + (narrow ? '' : pcSideHtml(false)) + '<div class="pc-area" id="pcArea">' + pcBarHtml(narrow) + err
     + '<div class="pc-body" id="pcBody"></div>'
     + (narrow && PCAL.drawer ? '<div class="pc-drawer" id="pcDrawer" role="dialog" aria-label="과제 목록">' + pcSideHtml(true) + '</div>' : '') + '</div></div>';
+  { const r = v.querySelector('.pc-range'); if(r) fitTitleMinWidth(r, (/^(\d{4})/.exec(r.textContent || '') || [])[1]); }   // 제목 칸 최소 폭(월간과 주간이 같다)
   const body = document.getElementById('pcBody');
   if(PCAL.view === 'week') pcRenderWeek(body); else pcRenderMonth(body);
   if(narrow && PCAL.drawer){ const b = document.getElementById('pcScope'), dr = document.getElementById('pcDrawer'); if(b && dr) dr.style.top = (b.offsetTop + b.offsetHeight + 6) + 'px'; }
@@ -24823,9 +24882,8 @@ function pcSideHtml(inDrawer){
 }
 function pcRangeLabel(){
   if(PCAL.view === 'month'){ const d = parseYmd(PCAL.anchor); return d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월'; }
-  const r = pcWeekRange(PCAL.anchor), a = parseYmd(r.from), b = parseYmd(r.to);
-  return a.getMonth() === b.getMonth() ? (a.getMonth() + 1) + '월 ' + a.getDate() + '일 ~ ' + b.getDate() + '일'
-    : (a.getMonth() + 1) + '월 ' + a.getDate() + '일 ~ ' + (b.getMonth() + 1) + '월 ' + b.getDate() + '일';
+  const a = parseYmd(pcWeekRange(PCAL.anchor).from);   // 주간도 그 주 월요일이 든 달(docs/NAV-LAYOUT-C.md)
+  return a.getFullYear() + '년 ' + (a.getMonth() + 1) + '월';
 }
 //  상단 "일정 등록": 쓸 수 있는 과제가 하나라도 있으면(폼에서 과제를 고른다).
 function pcCanNew(){ return PCAL.projects.some(p => p.writable); }

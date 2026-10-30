@@ -15,7 +15,7 @@
 //       머리 7칸(.wr-hd, 월~일) + 과제마다 한 줄(빈 과제도), 분류 없는 기록은 "분류 없음" 줄(2026-10-30 사용자 결정)
 //       열람 창 겹쳐 보기: 같은 DB 과제(db-<uid>)면 상대 줄 안에 내 막대, 겹치지 않는 내 과제는 굵은 선 아래 내 과제 줄. 겹을 끄면 둘 다 빠진다
 //       나란히 보기: 같은 DB 과제가 위(양쪽 차선 수 같음), 각자 과제가 아래
-//       주간 모드에서 날짜 제목(#btnTitle)이 주간 범위(같은 달, 다른 달, 다른 해)로 표시됨
+//       주간 모드에서 날짜 제목(#btnTitle)이 그 주 월요일이 든 달 "YYYY년 M월"로 표시됨(docs/NAV-LAYOUT-C.md)
 //       주간 모드에서 #btnPrev / #btnNext 클릭 시 ±7일 이동하고, 월간 모드에서는 기존처럼 ±1달 이동함
 //   (M) 변이 시험(mutation test):
 //       calViewKey 에서 PEER 분기 제거, calWeekRange 의 월요일 시작 오프셋 변경, stepCal 에서 moveWeek 호출 제거 시 실패 검증.
@@ -122,14 +122,14 @@ test('단위④: calTitleLabel 은 월간 모드와 주간 모드(같은 달, �
   // 월간 모드
   assert.strictEqual(getLabel('month', { y: 2026, m: 9 }, '2026-10-21'), '2026년 10월');
 
-  // 주간 모드: 같은 달 내 1주 (2026-10-19 ~ 2026-10-25)
-  assert.strictEqual(getLabel('week', { y: 2026, m: 9 }, '2026-10-21'), '2026년 10월 19일 ~ 25일');
+  // 주간 모드: 제목은 그 주 월요일이 든 달(docs/NAV-LAYOUT-C.md). 같은 달 내 1주 (2026-10-19 ~ 2026-10-25)
+  assert.strictEqual(getLabel('week', { y: 2026, m: 9 }, '2026-10-21'), '2026년 10월');
 
   // 주간 모드: 다른 달에 걸친 1주 (2026-10-26 ~ 2026-11-01)
-  assert.strictEqual(getLabel('week', { y: 2026, m: 9 }, '2026-10-28'), '2026년 10월 26일 ~ 11월 1일');
+  assert.strictEqual(getLabel('week', { y: 2026, m: 9 }, '2026-10-28'), '2026년 10월');
 
   // 주간 모드: 다른 해에 걸친 1주 (2026-12-28 ~ 2027-01-03)
-  assert.strictEqual(getLabel('week', { y: 2026, m: 11 }, '2026-12-30'), '2026.12.28 ~ 2027.1.3');
+  assert.strictEqual(getLabel('week', { y: 2026, m: 11 }, '2026-12-30'), '2026년 12월');
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -372,23 +372,23 @@ if (!JSDOM) {
       await settle();
 
       const btnTitle = doc.getElementById('btnTitle');
-      // 2026-10-19 ~ 25일
-      assert.strictEqual(btnTitle.textContent, '2026년 10월 19일 ~ 25일');
+      // 2026-10-19 ~ 25일, 월요일이 든 달
+      assert.strictEqual(btnTitle.textContent, '2026년 10월');
 
       // 다음 주 이동 (#btnNext)
       doc.getElementById('btnNext').click();
       await settle();
 
       assert.strictEqual(main.ev('selectedDate'), '2026-10-28', 'selectedDate 가 +7일 이동해야 한다');
-      // 2026-10-26 ~ 11월 1일
-      assert.strictEqual(btnTitle.textContent, '2026년 10월 26일 ~ 11월 1일');
+      // 2026-10-26 ~ 11월 1일, 월요일이 든 달(10월)
+      assert.strictEqual(btnTitle.textContent, '2026년 10월');
 
       // 이전 주 이동 (#btnPrev)
       doc.getElementById('btnPrev').click();
       await settle();
 
       assert.strictEqual(main.ev('selectedDate'), '2026-10-21', 'selectedDate 가 -7일 이동해야 한다');
-      assert.strictEqual(btnTitle.textContent, '2026년 10월 19일 ~ 25일');
+      assert.strictEqual(btnTitle.textContent, '2026년 10월');
 
       // 월간 모드로 복귀 시 ±1달 이동 검증
       main.ev('setCalView("month");');
