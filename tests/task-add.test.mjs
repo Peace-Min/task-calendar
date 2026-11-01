@@ -56,7 +56,7 @@ const statics = {
   myTasksMarkup(app) {
     const m = block(app, 'categoryModal');
     assert.ok(/<button type="button" class="cat-add" id="btnCatAdd"><span class="cat-plus" aria-hidden="true">\+<\/span>과제 추가<\/button>/.test(m), '목록 아래에 [+ 과제 추가] 가 없다(D1)');
-    assert.ok(/id="catHead"[^>]*>.*<span>과제<\/span><span class="ch-count">기록<\/span>/.test(m) && !/ch-kind|건수/.test(m), '열 머리글(과제, 기록)이 없거나 옛 구분, 건수 칸이 남았다(D2)');
+    assert.ok(/id="catHead"[^>]*>.*<span>과제<\/span><span class="ch-tag"><\/span><span class="ch-count">기록<\/span>/.test(m) && !/ch-kind|건수/.test(m), '열 머리글(과제, 기록)이 없거나 옛 구분, 건수 칸이 남았다(D2)');
     assert.ok(/<div id="catList" role="list"/.test(m), '목록(#catList role=list)이 없다');
     for (const gone of ['id="cName"', 'id="cDesc"', 'id="cPalette"', 'id="btnCatSave"', 'id="btnCatCancelEdit"', 'id="btnOfficialOpen"', 'id="offEntryMeta"', 'id="catOrderHint"', 'class="cat-form"', 'cat-sec-lb'])
       assert.ok(!app.includes(gone), `없앤 입력 폼, 입구 카드, 안내 줄이 남았다: ${gone}(D1)`);
@@ -121,7 +121,7 @@ test('변이①s: 입구 카드를 되살리면 정적① 이 실패한다', () 
   assert.throws(() => statics.myTasksMarkup(bad), /입구 카드|안내 문구/);
 });
 test('변이②s: 구분 열 대신 「DB」 배지를 붙이면 정적① 이 실패한다', () => {
-  const bad = mutate('<span class="cat-nm" data-full="${nm}" title="${nm}">${nm}</span>${tag}</div>`', '<span class="cat-nm" data-full="${nm}" title="${nm}">${nm}</span>${tag} <span class="cat-badge db">DB</span></div>`', src);
+  const bad = mutate('<span class="cat-nm" data-full="${nm}" title="${nm}">${nm}</span></div>`', '<span class="cat-nm" data-full="${nm}" title="${nm}">${nm}</span> <span class="cat-badge db">DB</span></div>`', src);
   assert.throws(() => statics.myTasksMarkup(bad), /DB/);
 });
 test('변이③s: 합치기 창 제목에 낫표를 넣으면 정적③ 이 실패한다', () => {
@@ -249,7 +249,7 @@ if (!JSDOM) {
         const kinds = W.$$('#catList .cat-row').map((r) => r.dataset.id + ':' + (r.querySelector('.cat-tag') ? r.querySelector('.cat-tag').textContent : ''));
         assert.deepStrictEqual(kinds, ['c-p:', 'db-1:공식', 'db-2:공식', 'db-g:삭제됨', 'c-v:', 'c-e:'], '이름 뒤 표가 다르다(공식과 삭제됨만 붙는다): ' + JSON.stringify(kinds));
         const r = W.row('c-p');
-        assert.deepStrictEqual([...r.children].map((c) => c.className), ['cat-grip', 'cat-dot', 'cat-main', 'cat-count', 'cat-more'], '줄의 칸 순서가 다르다(D2)');
+        assert.deepStrictEqual([...r.children].map((c) => c.className), ['cat-grip', 'cat-dot', 'cat-main', 'cat-tagcol', 'cat-count', 'cat-more'], '줄의 칸 순서가 다르다(D2)');
         const nm = r.querySelector('.cat-nm');
         assert.ok(nm.dataset.full === '프로젝트' && nm.title === '프로젝트' && nm.textContent === '프로젝트', '이름 칸에 원래 이름(data-full), title 이 없다(D14)');
         assert.strictEqual(r.querySelector('.cat-desc').textContent, '내 메모', '메모 줄이 없다');

@@ -108,7 +108,8 @@ const statics = {
     for (const [re, what] of [[/PCAL\.solo|\bsolo:/, 'PCAL.solo 상태'], [/data-act="(?:un)?solo"|case 'solo'|case 'unsolo'/, '단독 보기 동작'],
       [/pc-solo-note|\.pc-row\.solo/, '단독 보기 표시'], [/이름을 누르면/, '이름 누름 안내']]) assert.ok(!re.test(app), `${what}이 남아 있다`);
     const side = extractFunction(m, 'pcSideHtml');
-    assert.ok(/<span class="pc-name">' \+ esc\(p\.name\) \+ '<\/span>'/.test(side) && !/<button[^']*pc-name/.test(side), '과제 이름이 누를 수 있는 단추다(보이기는 체크만 정한다)');
+    //  2026-11-02: 긴 이름 두 줄 + 끝 8자 말줄임(catFitName)에 쓰는 data-full, title 이 붙었다. 여전히 글자(span)다
+    assert.ok(/<span class="pc-name" data-full="' \+ esc\(p\.name\) \+ '" title="' \+ esc\(p\.name\) \+ '">' \+ esc\(p\.name\) \+ '<\/span>'/.test(side) && !/<button[^']*pc-name/.test(side), '과제 이름이 누를 수 있는 단추다(보이기는 체크만 정한다)');
     assert.ok(!/cursor:pointer/.test(/\n\.pc-name\{[^}]*\}/.exec(app)?.[0] || 'cursor:pointer'), '.pc-name 이 누를 수 있는 모양(cursor:pointer)이다');
     assert.ok(!/solo/.test(extractFunction(m, 'pcPrefsSave')), '설정에 단독 보기를 저장한다');
     //  ② 복사 대응: 개인 탭 배지, 대응 지도, "등록됨" 이 없다. 부트스트랩의 copies 를 읽지 않는다.
@@ -160,7 +161,7 @@ test('정적③: 주기 확인 없음, 띠 자리, Esc, 방향키, 부팅 알림
 test('정적④: 과제 탭 문구와 주석의 기호 규칙', () => statics.punct(src));
 test('정적⑤: 검토 반영으로 걷은 것(단독 보기, 복사 대응과 배지와 등록됨, 막대 미리보기와 목록 [수정], 누른 줄 강조)이 없다', () => statics.removed(src));
 test('변이S⑤: 이름 단추, 복사 배지, 미리보기, 누른 줄 강조를 되돌리면 정적⑤ 가 잡는다', () => {
-  assert.throws(() => statics.removed(mutate("'<span class=\"pc-nm\"><span class=\"pc-name\">' + esc(p.name) + '</span>'", "'<span class=\"pc-nm\"><button type=\"button\" class=\"pc-name\" data-act=\"solo\">' + esc(p.name) + '</button>'")), /단독 보기 동작|단추다/);
+  assert.throws(() => statics.removed(mutate("'<span class=\"pc-nm\"><span class=\"pc-name\" data-full=\"' + esc(p.name) + '\" title=\"' + esc(p.name) + '\">' + esc(p.name) + '</span>'","'<span class=\"pc-nm\"><button type=\"button\" class=\"pc-name\" data-act=\"solo\">' + esc(p.name) + '</button>'")), /단독 보기 동작|단추다/);
   assert.throws(() => statics.removed(mutate('      ${ovlBadge}\n    </div>', '      ${ovlBadge}\n      ${pcCopyBadge(e.id)}\n    </div>')), /복사 배지/);
   assert.throws(() => statics.removed(mutate('pcOpenDayList(ds, cell, { hit: bar.dataset.ev, projectUid: rowProj })', 'pcOpenPreview(bar.dataset.ev, bar, null)')), /미리보기|그날 일정 목록/);
   assert.throws(() => statics.removed(mutate(`'<button type="button" class="pc-dl-row" data-act="dlOpen"`, `'<button type="button" class="pc-dl-row' + (hit ? ' hit' : '') + '" data-act="dlOpen"`)), /강조\(hit/);

@@ -636,7 +636,8 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
    ★ 목록 칸(#catWrap)의 폭이 기준이다(container). 380px 미만이면 ⠿ 를 숨기고 순서는 ⋯ 메뉴로 바꾼다.
    ★ 상자에 overflow:hidden 을 걸지 않는다(줄 ⋯ 메뉴가 줄 아래로 뜨기 때문). 둥근 모서리는 첫 줄(머리글)과 마지막 줄이 직접 진다. */
 .cat-wrap{container-type:inline-size;border:1px solid var(--line);border-radius:var(--r-md)}
-.cat-head,.cat-row{display:grid;grid-template-columns:16px 12px minmax(0,1fr) 44px 30px;align-items:center;column-gap:10px}
+.cat-head,.cat-row{display:grid;grid-template-columns:16px 12px minmax(0,1fr) 3.8em 44px 30px;align-items:center;column-gap:10px}   /* 4번째 칸 = 공식, 삭제됨 표시 자리(이름 길이와 상관없이 같은 세로줄, 글자 크기 기준 폭) */
+.cat-tagcol{display:flex;justify-content:flex-end}
 .cat-head{height:38px;padding:0 6px 0 8px;background:var(--bg);border-bottom:1px solid var(--line);border-radius:calc(var(--r-md) - 1px) calc(var(--r-md) - 1px) 0 0;font-size:var(--fs-meta);font-weight:600;color:var(--muted)}
 .cat-head .ch-count{text-align:right}
 .cat-row{position:relative;min-height:40px;padding:6px 6px 6px 8px;cursor:pointer}
@@ -690,8 +691,8 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
 .cat-drag-ghost{position:fixed;z-index:60;margin:0;pointer-events:none;box-shadow:var(--shadow);opacity:.96;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md)}
 body.cat-dragging,body.cat-dragging *{cursor:grabbing!important;user-select:none}
 @container (max-width:379px){
-  .cat-head,.cat-row{grid-template-columns:12px minmax(0,1fr) 40px 30px;column-gap:8px}
-  .cat-grip,.cat-head .ch-grip,.cat-head .ch-dot{display:none}
+  .cat-head,.cat-row{grid-template-columns:12px minmax(0,1fr) 3.8em 40px 30px;column-gap:8px}
+  .cat-grip,.cat-head .ch-grip{display:none}
 }
 /* 과제 수정 창(#catEditModal, D4): 이름 칸은 한 줄에서 시작해 내용만큼 늘어난다(ceGrow). 손으로 늘이는 손잡이는 없다 */
 .modal textarea#ceName{resize:none;overflow:hidden;min-height:0;line-height:1.4;display:block}
@@ -2626,7 +2627,7 @@ body:not(.pc-on) #pcView{display:none !important}
 .pc-row input{width:15px;height:15px;flex:none;accent-color:var(--c);margin-top:3px;cursor:pointer}
 .pc-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--c);flex:none;margin-top:5px}
 .pc-nm{flex:1;min-width:0;display:flex;flex-direction:column}
-.pc-name{font-size:var(--fs-body);color:var(--text);line-height:20px;overflow-wrap:anywhere}   /* 글자일 뿐이다(누르는 동작 없음). 표시와 숨김은 체크만 한다 */
+.pc-name{font-size:var(--fs-body);color:var(--text);line-height:20px;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:keep-all}   /* 글자일 뿐이다(누르는 동작 없음). 표시와 숨김은 체크만 한다 */
 .pc-state{font-size:var(--fs-micro);color:var(--warn-text);font-weight:600}
 .pc-meta{font-size:var(--fs-micro);color:var(--muted);flex:none;line-height:20px}
 .pc-hint{font-size:var(--fs-micro);color:var(--faint-text);line-height:1.5;padding:0 4px}
@@ -3730,7 +3731,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
     <div class="modal-body">
       <!-- 목록 칸이 열 줄이기의 기준이다(container). 좁으면(380px 미만) ⠿ 를 숨기고 순서는 ⋯ 메뉴로 바꾼다. -->
       <div class="cat-wrap" id="catWrap">
-        <div class="cat-head" id="catHead" aria-hidden="true"><span class="ch-grip"></span><span class="ch-dot"></span><span>과제</span><span class="ch-count">기록</span><span></span></div>
+        <div class="cat-head" id="catHead" aria-hidden="true"><span class="ch-grip"></span><span class="ch-dot"></span><span>과제</span><span class="ch-tag"></span><span class="ch-count">기록</span><span></span></div>
         <div id="catList" role="list" aria-label="내 과제 목록"></div>
       </div>
       <button type="button" class="cat-add" id="btnCatAdd"><span class="cat-plus" aria-hidden="true">+</span>과제 추가</button>
@@ -12214,6 +12215,25 @@ function renderMonthBars(g, dens, pick, opts){
 //                각자만 가진 과제는 굵은 선 아래(맞추지 않는다).
 //  ★ 칸(.cell)과 막대(barChipHtml, .gridrow[data-from])는 월간 막대 달력과 같은 모양이라 누르기, 끌어 옮기기, 날짜 고르기가 그대로 돈다.
 //    날짜 머리(.wr-hd)도 .cell 이라 키보드 포커스(roving)는 머리 줄에만 둔다(과제 줄 칸은 tabindex 없음).
+//  왼쪽 과제 이름: 한 줄(줄 높이가 출렁이지 않게). 넘치면 앞부분 … 끝부분(앞 6할, 끝 최대 8자. 끝에서 갈리는 이름을 가린다, 내 과제 창과 같은 생각).
+//  원래 이름은 data-full, 전체는 칸의 title. 재지 못하면(숨은 창, jsdom) 그대로 둔다. 창 폭이 바뀌면 다시 맞춘다.
+function wrFitName(el){
+  const full = String(el.dataset.full || '');
+  el.textContent = full;
+  if(!el.clientWidth || el.scrollWidth <= el.clientWidth + 1 || full.length <= 3) return;
+  //  남길 글자 수 n 을 찾는다. 앞이 6할, 끝은 나머지(최대 8자). 좁은 칸에서 끝만 남고 앞이 한 글자가 되지 않게.
+  const cut = n => { const tail = Math.min(CAT_NAME_TAIL, Math.floor(n * 0.4)); return full.slice(0, n - tail).trimEnd() + '…' + (tail ? full.slice(-tail) : ''); };
+  let lo = 1, hi = full.length - 1, best = 1;
+  while(lo <= hi){
+    const n = (lo + hi) >> 1;
+    el.textContent = cut(n);
+    if(el.scrollWidth <= el.clientWidth + 1){ best = n; lo = n + 1; } else hi = n - 1;
+  }
+  el.textContent = cut(best);
+}
+function wrFitNames(root){ if(root) root.querySelectorAll('.wr-name span[data-full]').forEach(wrFitName); }
+let __wrFitT = 0;
+window.addEventListener('resize', () => { clearTimeout(__wrFitT); __wrFitT = setTimeout(() => { wrFitNames(document.getElementById('grid')); wrFitNames(document.getElementById('gridMine')); }, 120); });
 function wrCatOf(it){ const x = it.occ || it.todo; return x ? x.categoryId : null; }
 function wrMineKey(it){ const c = it.occ && it.occ._cat; return c && c.key ? String(c.key) : ''; }
 function renderWeekRows(g, part){
@@ -12256,7 +12276,7 @@ function renderWeekRows(g, part){
       const ds = addDays(from, i), dow = parseYmd(ds).getDay();
       cells += `<div class="cell wr-c${ds === selectedDate ? ' sel' : ''}${dow === 0 ? ' wknd-sun' : dow === 6 ? ' wknd-sat' : ''}" data-date="${ds}" style="grid-column:${i + 1};grid-row:1 / -1"></div>`;
     }
-    return `<div class="wr-name${cls ? ' ' + cls : ''}" style="--c:${color}" title="${esc(name)}"><span>${esc(name)}</span></div>`
+    return `<div class="wr-name${cls ? ' ' + cls : ''}" style="--c:${color}" title="${esc(name)}"><span data-full="${esc(name)}">${esc(name)}</span></div>`
       + `<div class="gridrow" role="row" data-from="${from}" style="grid-template-rows:3px repeat(${n}, 19px) minmax(4px,1fr)">${cells}${chips}</div>`;
   };
   const gap = '<div class="wr-gap" aria-hidden="true"></div>';
@@ -12294,6 +12314,7 @@ function renderWeekRows(g, part){
   g.innerHTML = html;
   g.classList.remove('bars', 'dense', 'expand');
   g.classList.add('wrows');
+  wrFitNames(g);
   if(!showTheirs) g.classList.add('wrows-mine'); else g.classList.remove('wrows-mine');
 }
 //  막대 달력의 +N: 줄 높이를 재서 칸마다 보이는 차선 수를 정하고(pmFitWeek) 넘친 기록을 숨긴 뒤, 그 칸의 다음 차선 자리에 +N 단추를 단다.
@@ -13437,9 +13458,10 @@ function catRowHtml(c){
   return `<div class="cat-row" role="listitem" tabindex="0" data-id="${esc(c.id)}" data-kind="${kind}"${kind === 'default' ? ' data-default="1"' : ''} aria-label="${nm} 수정">`
     + `<span class="cat-grip" data-catgrip aria-hidden="true" title="끌어서 순서 바꾸기">⠿</span>`
     + `<span class="cat-dot" style="background:${validColor(c.color)}"></span>`
-    + `<div class="cat-main"><div class="cat-name"><span class="cat-nm" data-full="${nm}" title="${nm}">${nm}</span>${tag}</div>`
+    + `<div class="cat-main"><div class="cat-name"><span class="cat-nm" data-full="${nm}" title="${nm}">${nm}</span></div>`
     +   (c.desc ? `<div class="cat-desc" title="${esc(c.desc)}">${esc(c.desc)}</div>` : '')
     + `</div>`
+    + `<span class="cat-tagcol">${tag}</span>`   // 공식, 삭제됨 표시는 이름 뒤가 아니라 고정 칸(이름 길이에 따라 움직이지 않게, 2026-11-02 사용자)
     + `<span class="cat-count${cnt ? '' : ' zero'}" title="기록 ${cnt}개">${cnt}</span>`
     + `<button type="button" class="cat-more" data-catmore aria-haspopup="menu" aria-expanded="false" aria-label="${nm} 더 보기" title="더 보기">⋯</button>`
     + `</div>`;
@@ -24837,6 +24859,7 @@ function pcRender(){
     + '<div class="pc-body" id="pcBody"></div>'
     + (narrow && PCAL.drawer ? '<div class="pc-drawer" id="pcDrawer" role="dialog" aria-label="과제 목록">' + pcSideHtml(true) + '</div>' : '') + '</div></div>';
   { const r = v.querySelector('.pc-range'); if(r) fitTitleMinWidth(r, (/^(\d{4})/.exec(r.textContent || '') || [])[1]); }   // 제목 칸 최소 폭(월간과 주간이 같다)
+  v.querySelectorAll('.pc-list .pc-name[data-full]').forEach(catFitName);   // 긴 과제 이름: 두 줄까지, 넘치면 앞부분 … 끝 8자(내 과제 창과 같은 규칙)
   const body = document.getElementById('pcBody');
   if(PCAL.view === 'week') pcRenderWeek(body); else pcRenderMonth(body);
   if(narrow && PCAL.drawer){ const b = document.getElementById('pcScope'), dr = document.getElementById('pcDrawer'); if(b && dr) dr.style.top = (b.offsetTop + b.offsetHeight + 6) + 'px'; }
@@ -24862,7 +24885,7 @@ function pcSideHtml(inDrawer){
       return '<li class="pc-row" style="--c:' + p.color + '">'
         + '<input type="checkbox" data-act="toggle" data-uid="' + u + '" data-fk="ck-' + u + '"' + (on ? ' checked' : '') + ' aria-label="' + esc(p.name) + ' 달력에 표시">'
         + '<span class="pc-dot" aria-hidden="true"></span>'
-        + '<span class="pc-nm"><span class="pc-name">' + esc(p.name) + '</span>'
+        + '<span class="pc-nm"><span class="pc-name" data-full="' + esc(p.name) + '" title="' + esc(p.name) + '">' + esc(p.name) + '</span>'
         + (p.writable ? '' : '<span class="pc-state">숨긴 과제, 읽기 전용</span>') + '</span>'
         //  n명은 참여자 명단 단추다(밑줄 글자 모양, 기획 §6.9). 과제 이름은 그대로 글자다.
         + '<button type="button" class="pc-mbc" id="pcMbc-' + u + '" data-act="members" data-uid="' + u + '" data-fk="mb-' + u + '" title="참여자 보기" aria-label="' + esc(p.name + ' 참여자 ' + p.members + '명 보기') + '">' + p.members + '명</button></li>';

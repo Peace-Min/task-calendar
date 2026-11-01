@@ -60,7 +60,7 @@ const MUT = {
     s),
   //  좁은 목록 폭(380px 미만)에서 ⠿ 를 숨기지 않는다(D2: 좁으면 순서는 ⋯ 메뉴로)
   noNarrowHide: (s) => mutate(
-    '  .cat-grip,.cat-head .ch-grip,.cat-head .ch-dot{display:none}\n',
+    '  .cat-grip,.cat-head .ch-grip{display:none}\n',
     '',
     s),
   //  끝 막기를 지운다 — 맨 위에서 위로 = 배열 밖(-1)으로 빠진다(메뉴 끝 항목 계약의 데이터 쪽 짝)
@@ -165,7 +165,8 @@ const statics = {
     assert.ok(/\.cat-wrap\{container-type:inline-size;/.test(css), '목록 칸(.cat-wrap)이 container 가 아니다 — 열 줄이기가 창 폭으로 갈린다');
     const m = css.match(/@container \(max-width:379px\)\{([^}]*\}[^}]*\})\s*\}/);
     assert.ok(m, '목록 폭 380px 미만 규칙(@container max-width:379px)이 없다');
-    assert.ok(/\.cat-grip,\.cat-head \.ch-grip,\.cat-head \.ch-dot\{display:none\}/.test(m[1]), '좁은 목록 폭에서 ⠿ 를 숨기지 않는다(D2)');
+    //  머리의 점 칸(.ch-dot)은 남긴다: 좁은 폭 열이 5칸(점, 과제, 공식 표시, 기록, ⋯)이라 머리도 5칸이어야 어긋나지 않는다(2026-11-02)
+    assert.ok(/\.cat-grip,\.cat-head \.ch-grip\{display:none\}/.test(m[1]), '좁은 목록 폭에서 ⠿ 를 숨기지 않는다(D2)');
     assert.ok(/\.cat-head,\.cat-row\{grid-template-columns:/.test(m[1]) && /\n\.cat-head,\.cat-row\{display:grid;grid-template-columns:/.test(css),
       '머리글(.cat-head)과 줄(.cat-row)이 한 규칙의 열 폭을 쓰지 않는다');
   },

@@ -57,7 +57,9 @@ const statics = {
   list(app) {
     useCss(app);
     const m = modalBlock(app);
-    assert.ok(/id="catHead"[^>]*>(?:(?!<\/div>)[\s\S])*<span>과제<\/span><span class="ch-count">기록<\/span><span><\/span><\/div>/.test(m), '열 머리글이 과제, 기록, 빈 칸이 아니다');
+    assert.ok(/id="catHead"[^>]*>(?:(?!<\/div>)[\s\S])*<span>과제<\/span><span class="ch-tag"><\/span><span class="ch-count">기록<\/span><span><\/span><\/div>/.test(m), '열 머리글이 과제, (공식 표시 칸, 글자 없음), 기록, 빈 칸이 아니다');
+    //  공식, 삭제됨 표시는 이름 뒤가 아니라 고정 칸(.cat-tagcol)에 선다(이름 길이와 상관없이 같은 세로줄, 2026-11-02)
+    assert.ok(app.includes('<span class="cat-tagcol">${tag}</span>') && !app.includes('title="${nm}">${nm}</span>${tag}'), '공식 표시가 고정 칸이 아니라 이름 뒤에 붙는다');
     assert.ok(!/건수/.test(noHtmlComments(m)), '「건수」가 남았다');
     const wrap = rule('.cat-wrap');
     assert.ok(/border:1px solid var\(--line\)/.test(wrap) && /border-radius:var\(--r-md\)/.test(wrap) && /container-type:inline-size/.test(wrap), '목록 상자(.cat-wrap)가 테두리 하나, 둥근 모서리, container 가 아니다');
@@ -186,7 +188,7 @@ if (!JSDOM) {
         assert.strictEqual(cnt('db-1').textContent, '1');
         assert.strictEqual(cnt('c-q').textContent, '0'); assert.ok(cnt('c-q').classList.contains('zero'), '0 이 흐리지 않다'); assert.strictEqual(cnt('c-q').title, '기록 0개');
         for (const c of W.$$('#catList .cat-count')) assert.ok(/^\d+$/.test(c.textContent), '기록 수에 숫자 말고 글자가 있다: ' + c.textContent);
-        assert.deepStrictEqual(W.$$('#catHead > span').map((s) => s.textContent), ['', '', '과제', '기록', ''], '열 머리글 글자가 다르다');
+        assert.deepStrictEqual(W.$$('#catHead > span').map((s) => s.textContent), ['', '', '과제', '', '기록', ''], '열 머리글 글자가 다르다');
         assert.ok(!W.$('#catAdminRow') && !W.$('#btnCatAdmin') && !W.$('#btnRelinkOpen') && !W.$('#categoryModal .modal-foot'), '없앤 관리 줄, 푸터, 연결 단추가 있다');
       });
     },
