@@ -2769,6 +2769,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
 .pcd-note{margin-top:14px;font-size:var(--fs-meta);color:var(--muted);background:var(--dim-bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;line-height:1.6}
 /* 등록과 수정 폼(한 화면) */
 .pcf-modal{width:min(520px,100%)}
+.modal.pcf-modal .qa-chk{display:inline-flex;align-items:center;gap:6px;margin:0;font-weight:400;font-size:var(--fs-body);color:var(--text)}   /* 개인 폼의 종일과 같은 모양(.modal label 여백을 끈다) */
 .pcf-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;margin-top:6px}
 .pcf-full{grid-column:1 / -1}
 .modal .pcf-f{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-meta);color:var(--muted);margin:0 !important;font-weight:400 !important;min-width:0}
@@ -5258,9 +5259,13 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
         <label class="pcf-f">종료일<input type="date" id="pcfEnd"></label>
         <label class="pcf-f pcf-full">과제<select id="pcfProj" aria-describedby="pcfProjHint"></select></label>
         <div class="qa-hint pcf-full" id="pcfProjHint"></div>
-        <label class="pcf-f">시작 시각(선택)<input type="text" id="pcfST" data-time-field></label>
-        <label class="pcf-f">종료 시각(선택)<input type="text" id="pcfET" data-time-field></label>
-        <div class="qa-hint pcf-full" id="pcfTimeHint" aria-live="polite"></div>
+        <div class="pcf-full qa-tblock" id="pcfWhen">
+          <label class="qa-chk"><input type="checkbox" id="pcfAllDay"> 종일</label>
+          <div class="qa-trow2" id="pcfTimeRow">
+            <label class="pcf-f">시작 시각<input type="text" id="pcfST" data-time-field></label>
+            <label class="pcf-f">종료 시각<input type="text" id="pcfET" data-time-field></label>
+          </div>
+        </div>
         <div class="pcf-f pcf-full"><label for="pcfLoc">장소</label>
           <div class="loc-combo" data-pfx="pcf"><input type="text" class="loc-in" id="pcfLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pcfLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="고르거나 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="pcfLocPop" role="listbox" aria-label="장소 추천"></div></div>
         </div>
@@ -25181,9 +25186,7 @@ function pcRenderDetail(){
     + '<dt>마지막 수정</dt><dd>' + esc([e.updatedBy, pcAtText(e.updatedAt)].filter(Boolean).join(', ') || '알 수 없음') + '</dd>'
     + '</dl>'
     + '<div class="pcd-memo-h">메모</div>'
-    + (e.memo ? '<div class="pcd-memo" tabindex="0">' + esc(e.memo) + '</div>' : '<div class="pcd-memo none">메모 없음</div>')
-    + '<p class="pcd-note">' + (ro ? '종료된 과제라 읽기 전용입니다. 고치거나 지울 수 없고, 개인 일정에 등록은 할 수 있습니다.'
-      : '공용 일정입니다. 이 과제를 내 과제에 넣은 사람 누구나 고치고 지울 수 있습니다(글쓴이와 관계없이).') + '</p>';
+    + (e.memo ? '<div class="pcd-memo" tabindex="0">' + esc(e.memo) + '</div>' : '<div class="pcd-memo none">메모 없음</div>');
   //  단추: 수정(쓸 수 있는 과제만), 개인 일정에 등록(늘, 누를 때마다 확인 창 없이 새 개인 일정), 삭제(쓸 수 있는 과제만).
   foot.innerHTML = (ro ? '' : '<button type="button" class="btn danger pc-w" data-act="delete">삭제</button>') + '<span class="spacer"></span>'
     + '<button type="button" class="btn pc-w" data-act="copy">' + ICON.copy + ' 개인 일정에 등록</button>'
@@ -25219,7 +25222,7 @@ function pcOpenForm(opt){
     $id('pcfProjHint').textContent = want ? '' : '저장할 과제를 고르세요. 종료된 과제는 목록에 없습니다.';
   }
   const d0 = o.date || PCAL.anchor || todayYmd();
-  pcFormFill(e || { title: '', startDate: d0, endDate: d0, startTime: null, endTime: null, location: '', memo: '' });
+  pcFormFill(e || { title: '', startDate: d0, endDate: d0, startTime: null, endTime: null, location: '', memo: '' }, !e);
   $id('pcfErr').textContent = '';
   pcFormBusy(false);
   pcRenderConflict();
@@ -25228,11 +25231,16 @@ function pcOpenForm(opt){
   openModal(ov);
   setTimeout(() => { const t = (!sel.disabled && !sel.value) ? sel : $id('pcfTitle'); try{ t.focus(); }catch(_){} }, 40);
 }
-function pcFormFill(e){
+function pcFormFill(e, isNew){
   const $id = id => document.getElementById(id);
   $id('pcfTitle').value = e.title || '';
   $id('pcfStart').value = e.startDate || ''; $id('pcfEnd').value = e.endDate || e.startDate || '';
+  pcfAdShown = false; pcfKeep = null; $id('pcfST').disabled = $id('pcfET').disabled = false;
   $id('pcfST').value = e.startTime || ''; $id('pcfET').value = e.endTime || '';
+  //  과제 일정은 종일 칸이 없다. 새 일정은 종일 꺼짐(개인 폼과 같음), 고칠 일정은 시작 시각이 없으면 종일로 연다.
+  //  이미 있는 종료는 사용자가 정한 값이라 자동 채움으로 덮지 않는다.
+  const ad = $id('pcfAllDay'); ad.disabled = false; ad.checked = !isNew && !e.startTime;
+  pcfEndDirty = !!e.endTime;
   locSet('pcf', e.location || '');
   $id('pcfMemo').value = e.memo || '';
   pcFormSync();
@@ -25240,14 +25248,46 @@ function pcFormFill(e){
 function pcFormRead(){
   const $id = id => document.getElementById(id);
   const F = PCAL.form || {};
+  const allDay = $id('pcfAllDay').checked;   // 종일이면 시각을 비운다(날짜만 있는 일정). 칸의 00:00, 24:00 은 표시일 뿐
   return { projectUid: F.mode === 'edit' ? F.projectUid : $id('pcfProj').value, title: $id('pcfTitle').value, startDate: $id('pcfStart').value, endDate: $id('pcfEnd').value,
-    startTime: $id('pcfST').value, endTime: $id('pcfET').value, location: locRead('pcf'), memo: $id('pcfMemo').value };
+    startTime: allDay ? '' : $id('pcfST').value, endTime: allDay ? '' : $id('pcfET').value, location: locRead('pcf'), memo: $id('pcfMemo').value };
+}
+//  종료 시각 자동 채움(개인 폼 qaAutoEnd, qaEndChanged 와 같은 규칙). 종료를 직접 바꾸기 전까지 시작 + 1시간.
+let pcfEndDirty = false, pcfAllDayUser = false, pcfAdShown = false, pcfKeep = null;
+function pcAutoEnd(){
+  if(pcfEndDirty) return;
+  const s = readTimeIn(document.getElementById('pcfST')); if(!s) return;
+  writeTimeIn(document.getElementById('pcfET'), plusOneHM(s));
+}
+function pcEndChanged(){
+  pcfEndDirty = true;
+  const st = document.getElementById('pcfST'), et = document.getElementById('pcfET');
+  const s = readTimeIn(st), en = readTimeIn(et);
+  if(s && en && en < s) writeTimeIn(et, plusOneHM(s));
+}
+//  종일이면 시각 칸은 보인 채 00:00 ~ 24:00 으로 잠근다(24:00 은 시각 목록에 없어 값만 넣는다). 끄면 켜기 전 시각과 자동 채움 상태를 되살린다.
+function pcAllDayShow(on){
+  if(on === pcfAdShown) return;
+  const st = document.getElementById('pcfST'), et = document.getElementById('pcfET');
+  if(on){
+    pcfKeep = { st: st.value, et: et.value, dirty: pcfEndDirty };
+    st.value = '00:00'; et.value = '24:00';
+  } else {
+    const k = pcfKeep || { st: '', et: '', dirty: false };
+    st.value = k.st; et.value = k.et; pcfEndDirty = k.dirty; pcfKeep = null;
+  }
+  st.disabled = et.disabled = on;
+  pcfAdShown = on;
 }
 function pcFormSync(){
   const $id = id => document.getElementById(id);
-  const s = $id('pcfStart').value, e = $id('pcfEnd').value, on = !!($id('pcfST').value || $id('pcfET').value);
-  $id('pcfTimeHint').textContent = on && s !== e ? '시각은 하루 일정에서만 적습니다. 여러 날 일정이면 시각을 비우세요.'
-    : (on ? '' : '시각을 비우면 날짜만 있는 일정입니다(예: 기능 구현 10/19 ~ 10/23).');
+  const s = $id('pcfStart').value, e = $id('pcfEnd').value;
+  //  여러 날 일정은 시각을 못 적는다(서버 규칙). 종일을 켜고 잠근다. 하루로 돌아와도 종일은 켜진 채 다시 고를 수 있다.
+  const ad = $id('pcfAllDay'), multi = !!s && !!e && s !== e;
+  if(!ad.disabled) pcfAllDayUser = ad.checked;
+  if(multi) pcfAllDayUser = true;
+  ad.disabled = multi; ad.checked = pcfAllDayUser;
+  pcAllDayShow(ad.checked);
   $id('pcfCount').textContent = pcLen($id('pcfMemo').value).toLocaleString('ko-KR') + ' / ' + PCAL_LIMITS.memo.toLocaleString('ko-KR') + '자';
 }
 function pcFormBusy(on){
@@ -25678,7 +25718,11 @@ function pcInit(){
   if(fm){
     locBind('pcf');
     fm.addEventListener('input', ev => { if(ev.target.id === 'pcfMemo') pcFormSync(); });
-    fm.addEventListener('change', ev => { if(['pcfStart', 'pcfEnd', 'pcfST', 'pcfET'].indexOf(ev.target.id) >= 0) pcFormSync(); });
+    fm.addEventListener('change', ev => {
+      const id = ev.target.id;
+      if(id === 'pcfST') pcAutoEnd(); else if(id === 'pcfET') pcEndChanged();
+      if(['pcfStart', 'pcfEnd', 'pcfST', 'pcfET', 'pcfAllDay'].indexOf(id) >= 0) pcFormSync();
+    });
     fm.addEventListener('click', ev => {
       const a = ev.target.closest('[data-act]'); if(!a) return;
       if(a.dataset.act === 'cfLatest') pcConflictLatest();

@@ -916,6 +916,103 @@ if (!JSDOM) {
     assert.strictEqual(W.last('projectCalendarSave').expectedVersion, 5);
   }));
 
+  //  2026-10-30 사용자: 과제 폼도 개인 폼처럼 시작을 넣으면 종료가 1시간 뒤, 종일 체크(시각 칸은 보인 채 00:00, 24:00 으로 잠김), 상세의 안내 문구 없음.
+  //  시각 칸 위젯은 고르면 input change 를 낸다(personal-improve R⑨). 여기서는 값을 넣고 change 를 낸다.
+  const setT = async (W, id, v) => { const el = W.el(id); el.value = v; el.dispatchEvent(new W.w.Event('change', { bubbles: true })); await settle(); };
+  const tv = (W) => [W.el('pcfST').value, W.el('pcfET').value];
+  async function checkAutoEnd(W) {
+    await W.enter([EV(1, { title: '시각 있음', startTime: '09:00', endTime: '09:30' }), EV(2, { title: '시각 없음' })]);
+    await W.click('#pcView [data-act="new"]');
+    await setT(W, 'pcfST', '09:00');
+    assert.deepStrictEqual(tv(W), ['09:00', '10:00'], '시작을 넣어도 종료가 1시간 뒤로 채워지지 않는다');
+    await setT(W, 'pcfST', '13:20');
+    assert.deepStrictEqual(tv(W), ['13:20', '14:20'], '종료를 건드리기 전에는 시작을 바꿀 때마다 따라가야 한다');
+    await setT(W, 'pcfET', '15:00');
+    await setT(W, 'pcfST', '10:00');
+    assert.deepStrictEqual(tv(W), ['10:00', '15:00'], '종료를 직접 바꾼 뒤에도 자동 채움이 종료를 덮었다');
+    await setT(W, 'pcfET', '09:00');
+    assert.deepStrictEqual(tv(W), ['10:00', '11:00'], '종료가 시작보다 빠른데 시작 + 1시간으로 맞추지 않았다');
+    W.ev("closeOverlay(document.getElementById('pcFormModal'))"); W.clock.advance(500); await settle();
+    //  다시 열면 dirty 가 풀린다. 23:30 은 하루를 넘지 않게 23:59
+    await W.click('#pcView [data-act="new"]');
+    assert.deepStrictEqual(tv(W), ['', ''], '새 폼의 시각 칸이 비어 있지 않다');
+    await setT(W, 'pcfST', '23:30');
+    assert.deepStrictEqual(tv(W), ['23:30', '23:59'], '폼을 다시 열어도 dirty 가 남았거나 23:30 의 종료가 23:59 가 아니다');
+    W.ev("closeOverlay(document.getElementById('pcFormModal'))"); W.clock.advance(500); await settle();
+    //  수정으로 연 일정의 종료는 사용자가 정한 값이다
+    W.ev(`pcOpenForm({ uid: ${JSON.stringify(U(1))} })`); await settle();
+    assert.deepStrictEqual(tv(W), ['09:00', '09:30']);
+    await setT(W, 'pcfST', '08:00');
+    assert.deepStrictEqual(tv(W), ['08:00', '09:30'], '수정으로 연 일정의 종료를 자동 채움이 덮었다');
+  }
+  async function checkAllDay(W) {
+    const t0 = today(), t1 = W.ev(`addDays(${JSON.stringify(t0)}, 1)`);
+    await W.enter([EV(2, { title: '시각 없음' })]);
+    await W.click('#pcView [data-act="new"]');
+    const ad = W.el('pcfAllDay'), st = W.el('pcfST'), et = W.el('pcfET');
+    assert.ok(ad && ad.closest('label.qa-chk') && /종일/.test(ad.closest('label').textContent), '과제 폼에 종일 체크(label.qa-chk)가 없다');
+    assert.deepStrictEqual([ad.checked, ad.disabled, st.disabled], [false, false, false], '새 일정은 종일 꺼짐이 기본이다');
+    await setT(W, 'pcfST', '09:00');
+    ad.checked = true; ad.dispatchEvent(new W.w.Event('change', { bubbles: true })); await settle();
+    assert.deepStrictEqual([st.disabled, et.disabled, ...tv(W)], [true, true, '00:00', '24:00'], '종일을 켜면 시각 칸이 00:00, 24:00 으로 잠기지 않는다');
+    assert.ok(W.el('pcfTimeRow').style.display !== 'none' && !W.el('pcfWhen').classList.contains('hidden'), '종일을 켜도 시각 칸은 보여야 한다');
+    st.click(); await settle();
+    assert.ok(st.__tf.pop.classList.contains('hidden'), '잠긴 시각 칸에서 목록이 열린다');
+    ad.checked = false; ad.dispatchEvent(new W.w.Event('change', { bubbles: true })); await settle();
+    assert.deepStrictEqual([st.disabled, ...tv(W)], [false, '09:00', '10:00'], '종일을 끄면 켜기 전 시각을 되살려야 한다');
+    //  끄면 자동 채움 상태도 켜기 전 그대로(직접 바꾼 종료는 계속 지킨다)
+    await setT(W, 'pcfET', '12:00');
+    ad.checked = true; ad.dispatchEvent(new W.w.Event('change', { bubbles: true })); await settle();
+    ad.checked = false; ad.dispatchEvent(new W.w.Event('change', { bubbles: true })); await settle();
+    await setT(W, 'pcfST', '10:00');
+    assert.deepStrictEqual(tv(W), ['10:00', '12:00'], '종일을 껐다 켠 뒤 직접 바꾼 종료가 자동 채움에 덮였다');
+    //  여러 날이면 종일 고정, 하루로 돌아와도 켜진 채 다시 고를 수 있다
+    W.el('pcfEnd').value = t1; W.el('pcfEnd').dispatchEvent(new W.w.Event('change', { bubbles: true })); await settle();
+    assert.deepStrictEqual([ad.checked, ad.disabled, st.disabled, ...tv(W)], [true, true, true, '00:00', '24:00'], '여러 날인데 종일 고정이 아니다');
+    W.el('pcfEnd').value = t0; W.el('pcfEnd').dispatchEvent(new W.w.Event('change', { bubbles: true })); await settle();
+    assert.deepStrictEqual([ad.checked, ad.disabled, st.disabled], [true, false, true], '하루로 돌아오면 종일이 켜진 채 체크를 쓸 수 있어야 한다');
+    //  종일이면 저장 데이터는 시각 없음(00:00 ~ 24:00 은 표시일 뿐)
+    W.el('pcfProj').value = P1; W.el('pcfTitle').value = '종일 일정';
+    await W.click('#pcfSave');
+    const s = W.last('projectCalendarSave');
+    assert.ok(s, '종일 일정이 저장되지 않았다: ' + W.el('pcfErr').textContent);
+    assert.deepStrictEqual([s.event.startTime, s.event.endTime], [null, null], '종일인데 시각을 저장했다');
+    await W.reply('projectCalendarSave', { ok: true, data: { event: EV(9, { eventUid: s.eventUid, title: '종일 일정' }), rowVersion: 1, replayed: false } });
+    W.clock.advance(500); await settle();
+    //  수정으로 연 시각 없는 일정은 종일 켜짐
+    W.ev(`pcOpenForm({ uid: ${JSON.stringify(U(2))} })`); await settle();
+    assert.deepStrictEqual([ad.checked, ad.disabled, st.disabled, ...tv(W)], [true, false, true, '00:00', '24:00'], '수정으로 연 시각 없는 일정이 종일 켜짐이 아니다');
+    ad.checked = false; ad.dispatchEvent(new W.w.Event('change', { bubbles: true })); await settle();
+    await setT(W, 'pcfST', '08:00');
+    assert.deepStrictEqual(tv(W), ['08:00', '09:00'], '시각 없던 일정은 종일을 끄면 빈 칸이고 종료가 자동으로 채워져야 한다');
+  }
+  async function checkDetailNote(W) {
+    await W.enter([EV(1, { title: '쓰는 과제' }), EV(3, { projectUid: P3, title: '읽기 전용 과제' })]);
+    for (const uid of [U(1), U(3)]) {
+      W.ev(`pcOpenDetail(${JSON.stringify(uid)})`); await settle();
+      const body = W.el('pcDetailBody');
+      assert.ok(/쓰는 과제|읽기 전용 과제/.test(body.textContent), '상세가 그려지지 않았다');
+      assert.ok(!body.querySelector('.pcd-note') && !/공용 일정입니다|종료된 과제라 읽기 전용입니다/.test(body.textContent), `상세에 안내 문구가 남아 있다(${uid})`);
+    }
+    assert.ok(/숨긴 과제, 읽기 전용/.test(W.el('pcDetailBody').textContent), '읽기 전용 표시(.pc-ro)가 없다');
+    W.ev("PCAL.detail = 'zz'; pcRenderDetail()");
+    assert.ok(W.q('#pcDetailBody .pcd-note'), '범위에 없는 일정의 오류 안내는 남아야 한다');
+  }
+  test('화면⑧b: 과제 폼의 종료 시각 자동(시작 + 1시간, 직접 바꾼 종료는 지킴, 종료가 빠르면 보정, 다시 열면 초기화, 23:59 상한, 수정은 기존 종료 유지)', () => withBoot({}, checkAutoEnd));
+  test('화면⑧c: 과제 폼의 종일(새 일정 꺼짐, 켜면 00:00 ~ 24:00 잠김과 칸 보임, 끄면 되살림, 여러 날 고정, 저장은 시각 없음, 시각 없는 일정 수정은 켜짐)', () => withBoot({}, checkAllDay));
+  test('화면⑦e: 상세 창에 공용 일정과 읽기 전용 안내 문구가 없다(쓰는 과제, 읽기 전용 과제), 범위 밖 오류 안내는 남는다', () => withBoot({}, checkDetailNote));
+  for (const [name, from, to, fn, re] of [
+    ['종료 자동 채움을 빼면', "  writeTimeIn(document.getElementById('pcfET'), plusOneHM(s));\n}", '}', checkAutoEnd, /1시간 뒤로 채워지지/],
+    ['dirty 를 무시하면', "  if(pcfEndDirty) return;\n  const s = readTimeIn", '  const s = readTimeIn', checkAutoEnd, /자동 채움이 종료를 덮었다/],
+    ['종일인데 시각을 읽으면', "startTime: allDay ? '' : $id('pcfST').value, endTime: allDay ? '' : $id('pcfET').value", "startTime: $id('pcfST').value, endTime: $id('pcfET').value", checkAllDay, /종일인데 시각을 저장했다/],
+    ['상세 안내 문구를 되살리면', `'<div class="pcd-memo none">메모 없음</div>');`, `'<div class="pcd-memo none">메모 없음</div>') + '<p class="pcd-note">' + (ro ? '종료된 과제라 읽기 전용입니다.' : '공용 일정입니다.') + '</p>';`, checkDetailNote, /안내 문구가 남아 있다/],
+  ]) {
+    test(`변이R⑩: ${name} 화면⑧b, ⑧c, ⑦e 가 잡는다`, async () => {
+      const W = await boot({ source: mutate(from, to) });
+      try { await assert.rejects(() => fn(W), re); } finally { W.close(); }
+    });
+  }
+
   test('화면⑪: 최근 변경은 표시 중인 과제만, 종류 필터(전체, 추가, 수정, 삭제)를 보낸다, 전과 후, 긴 메모 펼치기, 더 보기 커서', () => withBoot({}, async (W) => {
     await W.enter([EV(1, { title: '지금 제목' })]);
     await W.click(`#pcView input[data-uid="${P3}"]`); await W.load([EV(1, { title: '지금 제목' })]);

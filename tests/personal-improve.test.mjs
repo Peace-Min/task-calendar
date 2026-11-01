@@ -624,22 +624,25 @@ if (!JSDOM) {
         //  종일은 시각 줄을 숨긴다(예전 그대로)
         W.ev("document.getElementById('quickAdd').classList.remove('closing'); document.getElementById('quickAdd').classList.add('hidden'); openQuickAdd('2026-10-16', 'event'); $('#qaAllDay').checked = true; $('#qaAllDay').dispatchEvent(new Event('change', { bubbles: true }))");
         assert.strictEqual(W.$('#qaTimeRow').style.display, 'none', '종일인데 시각 줄이 보인다');
-        //  과제 폼: 고르면 pcFormSync(안내)가 돌고, 둘 다 또는 둘 다 비움, 하루 일정만 규칙이 그대로
-        const ps = W.$('#pcfST'), pe = W.$('#pcfET');
+        //  과제 폼: 여러 날이면 종일 고정(시각 칸은 00:00, 24:00 으로 잠김, 목록 안 열림), 하루로 돌아와 종일을 끄면 고를 수 있고
+        //  종료는 1시간 뒤로 채워진다(pcAutoEnd). 둘 다 또는 둘 다 비움 규칙은 그대로
+        const ps = W.$('#pcfST'), pe = W.$('#pcfET'), pad = W.$('#pcfAllDay');
         W.ev("document.getElementById('pcfTitle').value = '(예시)'; document.getElementById('pcfStart').value = '2026-10-21'; document.getElementById('pcfEnd').value = '2026-10-22'; writeTimeIn($('#pcfST'), ''); writeTimeIn($('#pcfET'), ''); pcFormSync();");
         const pv = () => W.evJSON("pcValidate(Object.assign(pcFormRead(), { projectUid: 'p1' }), PCAL_LIMITS)");
         assert.strictEqual(pv().ok, true, '시각 없는 여러 날 일정이 막힌다');
-        ps.focus(); click(ps); click(opt(ps, 'H', '09')); key(ps, 'Escape');
-        assert.strictEqual(ps.value, '09:00');
-        assert.ok(/하루 일정에서만/.test(W.$('#pcfTimeHint').textContent), '과제 폼 시각을 골라도 안내(pcFormSync)가 돌지 않았다: ' + W.$('#pcfTimeHint').textContent);
-        assert.ok(/둘 다 적거나 둘 다 비웁니다/.test(pv().error || pv().msg || JSON.stringify(pv())), '시작 시각만 있는데 막지 않는다: ' + JSON.stringify(pv()));
-        pe.focus(); click(pe); click(opt(pe, 'H', '10')); click(opt(pe, 'M', '00'));
-        assert.ok(/하루 일정에서만/.test(JSON.stringify(pv())), '여러 날 일정에 시각이 있는데 막지 않는다: ' + JSON.stringify(pv()));
+        assert.deepStrictEqual([pad.checked, pad.disabled, ps.disabled, pe.disabled, ps.value, pe.value], [true, true, true, true, '00:00', '24:00'], '여러 날인데 종일 고정과 잠긴 시각 칸이 아니다');
+        click(ps); assert.ok(!isOpen(ps), '잠긴 시각 칸에서 목록이 열린다');
         W.ev("document.getElementById('pcfEnd').value = '2026-10-21'; document.getElementById('pcfEnd').dispatchEvent(new Event('change', { bubbles: true }))");
+        assert.deepStrictEqual([pad.checked, pad.disabled], [true, false], '하루로 돌아오면 종일이 켜진 채 다시 고를 수 있어야 한다');
+        pad.checked = false; pad.dispatchEvent(new W.w.Event('change', { bubbles: true }));
+        assert.deepStrictEqual([ps.disabled, ps.value, pe.value], [false, '', ''], '종일을 끄면 칸이 풀리고 켜기 전(빈) 값이어야 한다');
+        ps.focus(); click(ps); click(opt(ps, 'H', '09')); key(ps, 'Escape');
+        assert.deepStrictEqual([ps.value, pe.value], ['09:00', '10:00'], '과제 폼 시작을 골라도 종료가 1시간 뒤로 채워지지 않는다');
         assert.strictEqual(pv().ok, true, '하루 일정 09:00~10:00 이 막힌다: ' + JSON.stringify(pv()));
-        click(ps); click(pop(ps).querySelector('.tf-clr')); click(pe); click(pop(pe).querySelector('.tf-clr'));
+        click(ps); click(pop(ps).querySelector('.tf-clr'));
+        assert.ok(/둘 다 적거나 둘 다 비웁니다/.test(JSON.stringify(pv())), '종료 시각만 있는데 막지 않는다: ' + JSON.stringify(pv()));
+        click(pe); click(pop(pe).querySelector('.tf-clr'));
         assert.deepStrictEqual([ps.value, pe.value, pv().ok], ['', '', true], '지우기로 날짜만 있는 일정이 되지 않는다');
-        assert.ok(/날짜만 있는 일정/.test(W.$('#pcfTimeHint').textContent), '시각을 비워도 안내가 바뀌지 않는다');
       });
     },
   };
