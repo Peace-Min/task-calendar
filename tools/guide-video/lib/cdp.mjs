@@ -14,7 +14,7 @@ export async function findTarget(kind = 'main', timeoutMs = 30000) {
   while (Date.now() - t0 < timeoutMs) {
     try {
       const list = await listTargets();
-      const hit = list.find(t => kind === 'peer' ? /peerwin=1/.test(t.url) : (/tcapp\.local/.test(t.url) && !/peerwin=1|peer=1/.test(t.url)));
+      const hit = list.find(t => kind === 'peer' ? /peerwin=1/.test(t.url) : kind === 'attend' ? /win=attend/.test(t.url) : (/tcapp\.local/.test(t.url) && !/peerwin=1|peer=1|[?&]win=/.test(t.url)));
       if (hit) return hit;
     } catch {}
     await sleep(300);

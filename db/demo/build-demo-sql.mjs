@@ -76,6 +76,8 @@ export function sqlStr(s) {
   if (/[\x00-\x1f\x7f]/.test(t)) throw new Error('SQL 문자열에 제어 문자가 있습니다: ' + JSON.stringify(t));
   return "'" + t.replace(/\\/g, '\\\\').replace(/'/g, "''") + "'";
 }
+// 줄바꿈이 든 글: 줄마다 따옴표 글자로 쓰고 CHAR(10)으로 잇는다(SQL 문자열에 제어 문자를 넣지 않는다).
+export const sqlMulti = (s) => { const parts = String(s).split('\n'); return parts.length === 1 ? sqlStr(s) : `CONCAT(${parts.map(sqlStr).join(', CHAR(10 USING utf8mb4), ')})`; };
 const lit = (v) => (v === null || v === undefined ? 'NULL' : typeof v === 'number' ? String(v) : sqlStr(v));
 const hexUtf8 = (s) => Buffer.from(String(s), 'utf8').toString('hex').toUpperCase();
 // 가드: 조건이 참이면 DO 0, 거짓이면 없는 표를 SELECT 해 ERROR 1146 으로 멈춘다. 표 이름 자리의 문장은 64자 이내.
@@ -301,6 +303,165 @@ export function personCalendar(person, baseDate, projects) {
   return { cats, entries, todos, hours, catNo: (key) => catOf(key).no };
 }
 
+// ── 과제 공용 일정(구조 16, 20: cal_project_event, cal_project_event_except, cal_project_change) ──────────
+// 2026-11-02(사용 영상 v5): 과제 탭, 최근 변경, 날짜 목록, 참여자 명단이 비지 않도록 공식 과제마다 공용 일정을 만든다.
+//   글쓴이는 그 과제를 내 과제로 가진 사람(녹화 계정과 동료 셋). 이름은 SQL 안에서 app_user 에서 읽는다(실제 이름을 파일에 적지 않는다).
+const hhmm = (s) => s;
+export function projectEvents(baseDate, projects) {
+  const { base, prevStart, curEnd } = dateRange(baseDate);
+  const rng = mulberry32(7001);
+  const wdays = [];
+  for (let d = prevStart; d <= curEnd; d = addDays(d, 1)) if (isWorkday(d)) wdays.push(d);
+  const rows = [], excepts = [], changes = [];
+  let id = 0;
+  const bd = ymd(base);
+  const clampDay = (d) => (ymd(d) < bd ? d : addDays(base, -1));
+  const mk = (p, who, f, extra = {}) => {
+    id += 1;
+    const created = ymd(clampDay(addDays(utc(+f.startDate.slice(0, 4), +f.startDate.slice(5, 7) - 1, +f.startDate.slice(8, 10)), -4)));
+    const e = { id, uid: uuidFrom('pevent:' + id), projectId: p.id, who, f: { endDate: null, startTime: null, endTime: null, location: '', memo: '', recurFreq: null, ...f },
+      version: 1, deleted: 0, createdAt: created + ' 00:30:00.000', updatedAt: created + ' 00:30:00.000', deletedAt: null, ...extra };
+    rows.push(e);
+    changes.push({ projectId: p.id, eventId: id, uid: uuidFrom('pchange:' + id + ':c'), action: 'create', who, title: e.f.title, before: null, after: e.f, at: e.createdAt });
+    return e;
+  };
+  for (const p of projects) {
+    const members = D.DEMO_PEOPLE.filter((x) => x.projects.includes(p.key)).map((x) => x.who);
+    const creators = members.length ? members : ['c1'];
+    const lo = p.startDate && p.startDate > ymd(prevStart) ? p.startDate : ymd(prevStart);
+    const hi = p.endDate && p.endDate < ymd(curEnd) ? p.endDate : ymd(curEnd);
+    const elig = wdays.filter((d) => ymd(d) >= lo && ymd(d) <= hi);
+    if (!elig.length) continue;
+    const n = p.statusId === 2 ? 2 : 5;
+    for (let k = 0; k < n; k++) {
+      const d = elig[Math.floor(rng() * elig.length)];
+      const who = creators[k % creators.length];
+      const title = pick(rng, D.PROJECT_TITLES);
+      const timed = rng() < 0.6;
+      if (timed) {
+        const s = SLOTS[Math.floor(rng() * SLOTS.length)];
+        mk(p, who, { title, startDate: ymd(d), startTime: hhmm(s[0]), endTime: hhmm(s[1]), location: rng() < 0.5 ? pick(rng, D.ROOMS.slice(0, 2)) : '', memo: rng() < 0.3 ? '(예시) 자료는 공유 폴더에 있습니다.' : '' });
+      } else {
+        const multi = rng() < 0.25 && elig.some((x) => ymd(x) === ymd(addDays(d, 1)));
+        mk(p, who, { title, startDate: ymd(d), endDate: multi ? ymd(addDays(d, 1)) : null, location: '', memo: '' });
+      }
+    }
+    // 대표 반복 일정: 장비 개발은 매주 화요일 점검(지난달 한 회차는 건너뜀), 그룹웨어 개선은 매월 운영 회의
+    if (p.key === 'equip') {
+      let d = prevStart; while (d.getUTCDay() !== 2) d = addDays(d, 1);
+      const e = mk(p, creators[0], { title: '주간 진행 점검', startDate: ymd(d), startTime: '14:00', endTime: '15:00', location: D.ROOMS[0], recurFreq: 'weekly', memo: '(예시) 매주 화요일 진행 상황을 점검합니다.' });
+      excepts.push({ eventId: e.id, date: ymd(addDays(d, 14)) });
+    }
+    if (p.key === 'gw') {
+      // 매월 같은 날짜에 오므로 지난달과 이번 달 모두 평일인 날(12일부터 한 칸씩)을 고른다
+      let d = utc(prevStart.getUTCFullYear(), prevStart.getUTCMonth(), 12);
+      for (let k = 0; k < 8; k++, d = addDays(d, 1)) {
+        const nx = utc(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+        if (isWorkday(d) && isWorkday(nx)) break;
+      }
+      mk(p, creators[0], { title: '월간 운영 회의', startDate: ymd(d), startTime: '10:00', endTime: '11:00', location: D.ROOMS[1], recurFreq: 'monthly' });
+    }
+  }
+  // 최근 변경: 시각이나 장소를 바꾼 수정 넷과 지운 일정 하나(삭제 이력). 기준 날짜 가까이에 둔다.
+  const pickIdx = [3, 8, 13, 20].filter((i) => i < rows.length);
+  pickIdx.forEach((i, j) => {
+    const e = rows[i];
+    const before = { ...e.f };
+    const after = e.f.startTime ? { ...e.f, location: e.f.location ? '' : D.ROOMS[0] } : { ...e.f, memo: '(예시) 일정 범위를 확인했습니다.' };
+    const diff = (a, b) => Object.fromEntries(Object.keys(a).filter((k) => a[k] !== b[k]).map((k) => [k, a[k]]));
+    const at = ymd(addDays(base, -(j + 1))) + ` 0${2 + j}:10:00.000`;
+    changes.push({ projectId: e.projectId, eventId: e.id, uid: uuidFrom('pchange:' + e.id + ':u'), action: 'update', who: e.who === 'me' ? 'c1' : e.who, title: e.f.title,
+      before: diff(before, after), after: diff(after, before), at });
+    e.f = after; e.version = 2; e.updatedAt = at;
+  });
+  if (rows.length > 6) {
+    const e = rows[6];
+    const at = ymd(addDays(base, -2)) + ' 05:40:00.000';
+    changes.push({ projectId: e.projectId, eventId: e.id, uid: uuidFrom('pchange:' + e.id + ':d'), action: 'delete', who: e.who, title: e.f.title, before: null, after: null, at });
+    e.deleted = 1; e.version = 2; e.deletedAt = at; e.updatedAt = at;
+  }
+  return { rows, excepts, changes };
+}
+
+// ── 근태와 보낸 보고(cal_attendance, cal_report_daily, cal_report_hours, cal_report_weekly, cal_report_weekly_hours) ──
+// 2026-11-02(사용 영상 v5): 근태 탭 달력과 주간보고 목록이 비지 않도록 녹화 계정에게만 만든다. 보낸 글은 가상 일정 제목만 쓴다.
+//   일간 보고는 기준 날짜 전날까지, 주간 보고는 기준 날짜가 든 주의 두 주 전까지(그 뒤는 영상에서 직접 쓴다).
+function entriesOn(cal, dayStr) {
+  const d = utc(+dayStr.slice(0, 4), +dayStr.slice(5, 7) - 1, +dayStr.slice(8, 10));
+  return cal.entries.filter((e) => {
+    if (e.recur) { const s = utc(+e.date.slice(0, 4), +e.date.slice(5, 7) - 1, +e.date.slice(8, 10)); return d >= s && d.getUTCDay() === s.getUTCDay(); }
+    if (e.endDate) return e.date <= dayStr && dayStr <= e.endDate;
+    return e.date === dayStr;
+  });
+}
+const fmtH = (h) => (Number.isInteger(h) ? String(h) : String(h));
+export function attendanceReports(cal, baseDate) {
+  const { base, prevStart } = dateRange(baseDate);
+  const rng = mulberry32(9101);
+  const bd = ymd(base);
+  const attend = new Map();   // date -> { status, overtime }
+  for (const e of cal.entries) {
+    if (e.cat === 'leave') {
+      if (e.allDay) for (let d = utc(+e.date.slice(0, 4), +e.date.slice(5, 7) - 1, +e.date.slice(8, 10)); ymd(d) <= (e.endDate || e.date); d = addDays(d, 1)) attend.set(ymd(d), { status: '6', overtime: 0 });
+      else attend.set(e.date, { status: '12', overtime: 0 });
+    } else if (e.allDay && e.endDate && e.title === '고객사 현장 지원') {
+      for (let d = utc(+e.date.slice(0, 4), +e.date.slice(5, 7) - 1, +e.date.slice(8, 10)); ymd(d) <= e.endDate; d = addDays(d, 1)) attend.set(ymd(d), { status: '4', overtime: 0 });
+    }
+  }
+  const hoursByDate = new Map();
+  for (const h of cal.hours) { if (!hoursByDate.has(h.date)) hoursByDate.set(h.date, []); hoursByDate.get(h.date).push(h); }
+  const days = [...hoursByDate.keys()].sort().filter((d) => d < bd);
+  // 야근 사흘(정근인 날 중에서)
+  const plain = days.filter((d) => !attend.has(d));
+  for (let k = 0; k < 3 && plain.length; k++) attend.set(plain.splice(Math.floor(rng() * plain.length), 1)[0], { status: '2', overtime: 2 + (k % 2) });
+  const attendRows = [...attend.entries()].filter(([d]) => d <= bd).sort().map(([date, v]) => ({ date, ...v }));
+
+  const catByNo = new Map(cal.cats.map((c) => [c.no, c]));
+  const daily = [];
+  for (const date of days) {
+    if (rng() < 0.05) continue;   // 보고하지 않은 날도 있다
+    const hs = hoursByDate.get(date).slice().sort((a, b) => cal.catNo(a.cat) - cal.catNo(b.cat));
+    const ents = entriesOn(cal, date);
+    const lines = [], parts = [];
+    for (const h of hs) {
+      const c = cal.cats.find((x) => x.key === h.cat);
+      const titles = [...new Set(ents.filter((e) => e.cat === h.cat).map((e) => e.title))].slice(0, 3);
+      parts.push(`[${c.name}] : ${fmtH(h.hours)}` + (h.cat === 'leave' ? '' : '\n' + (titles.length ? titles.map((t) => '- ' + t).join('\n') : '- 업무 진행')));
+      lines.push({ name: c.name, catNo: c.no, hours: h.hours });
+    }
+    const a = attend.get(date) || { status: '1', overtime: 0 };
+    daily.push({ date, status: a.status, overtime: a.overtime, content: parts.join('\n\n'), lines, sentAt: date + ' 09:30:00.000' });
+  }
+
+  // 주간: 월요일 시작, 기준 날짜가 든 주의 두 주 전 월요일까지
+  const mondayOf = (d) => addDays(d, -((d.getUTCDay() + 6) % 7));
+  const lastMonday = addDays(mondayOf(base), -14);
+  const weekly = [];
+  for (let m = mondayOf(prevStart); m <= lastMonday; m = addDays(m, 7)) {
+    if (m < prevStart) continue;
+    const start = ymd(m), end = ymd(addDays(m, 6));
+    const first = mondayOf(utc(m.getUTCFullYear(), m.getUTCMonth(), 1));
+    const nth = Math.floor((m - first) / 86400000 / 7) + 1;
+    const ORD = ['', '첫째', '둘째', '셋째', '넷째', '다섯째'];
+    const byCat = new Map();
+    for (const h of cal.hours) if (h.date >= start && h.date <= end) byCat.set(h.cat, (byCat.get(h.cat) || 0) + h.hours);
+    const cats = cal.cats.filter((c) => byCat.has(c.key));
+    const hoursRows = cats.map((c) => ({ name: c.name, projectUid: c.projectUid, hours: byCat.get(c.key) }));
+    const total = hoursRows.reduce((a, x) => a + x.hours, 0);
+    const content = hoursRows.map((x) => `[${x.name}] : ${fmtH(x.hours)}`).join('\n') + '\n-----\n합계 : ' + fmtH(total);
+    const prog = [], plan = [];
+    for (const c of cats.filter((x) => x.key !== 'leave' && x.key !== 'meeting')) {
+      const ts = new Set();
+      for (let d = m; ymd(d) <= end; d = addDays(d, 1)) for (const e of entriesOn(cal, ymd(d))) if (e.cat === c.key) ts.add(e.title);
+      prog.push(`[${c.name}]\n` + ([...ts].slice(0, 3).map((t) => '- ' + t).join('\n') || '- 업무 진행'));
+      plan.push(`[${c.name}]\n- ` + pick(rng, D.PROJECT_TITLES));
+    }
+    weekly.push({ start, end, subject: `${m.getUTCMonth() + 1}월 ${ORD[nth] || nth + '번째'}주`, content, endwork: prog.join('\n\n'), plan: plan.join('\n\n'),
+      meeting: '(예시) 주간 팀 회의\n- 일정 점검, 이슈 공유', composedAt: ymd(addDays(m, 4)) + ' 08:50:00.000', hours: hoursRows });
+  }
+  return { attendRows, daily, weekly, catByNo };
+}
+
 // ── SQL 조립 ───────────────────────────────────────────────────────────
 export function buildDemoSql({ myLogin, baseDate }) {
   if (!LOGIN_RE.test(String(myLogin || ''))) throw new Error('--my-login 이 login_id 모양이 아닙니다(영문, 숫자, . _ @ - 1~50자).');
@@ -430,6 +591,34 @@ export function buildDemoSql({ myLogin, baseDate }) {
     expect[person.who] = { cats: cal.cats.length, entries: cal.entries.length, todos: cal.todos.length, notes: notes.length, hours: cal.hours.length };
   }
 
+  // 4b) 과제 공용 일정(구조 16, 20), 근태와 보낸 보고(녹화 계정만). 이름은 SQL 안에서 읽는다.
+  const pe = projectEvents(baseDate, projects);
+  // 글쓴이 이름은 변수로 먼저 읽어 둔다(INSERT 문 안에서 app_user 를 읽지 않는다)
+  const nameOf = (who) => `@pn_${who}`;
+  push('', '-- 글쓴이 이름(사람은 이미 가상 이름으로 바뀐 뒤다. 녹화 계정은 그대로)', ...D.DEMO_PEOPLE.map((p) => `SET @pn_${p.who} := (SELECT name FROM app_user WHERE user_id = ${uvar(p.who)});`),
+    '', '-- 과제 공용 일정', 'INSERT INTO cal_project_event (event_id, uid, project_id, title, start_date, end_date, start_time, end_time, location, memo, recur_freq, row_version, is_deleted, created_by_name, updated_by_name, created_at, updated_at, deleted_at) VALUES',
+    pe.rows.map((e) => `  (${e.id}, ${sqlStr(e.uid)}, ${e.projectId}, ${sqlStr(e.f.title)}, ${sqlStr(e.f.startDate)}, ${lit(e.f.endDate)}, ${lit(e.f.startTime)}, ${lit(e.f.endTime)}, ${sqlStr(e.f.location)}, ${sqlStr(e.f.memo)}, ${lit(e.f.recurFreq)}, ${e.version}, ${e.deleted}, ${nameOf(e.who)}, ${nameOf(e.who)}, ${sqlStr(e.createdAt)}, ${sqlStr(e.updatedAt)}, ${lit(e.deletedAt)})`).join(',\n') + ';');
+  if (pe.excepts.length) push('INSERT INTO cal_project_event_except (event_id, except_date) VALUES', pe.excepts.map((x) => `  (${x.eventId}, ${sqlStr(x.date)})`).join(',\n') + ';');
+  push('INSERT INTO cal_project_change (project_id, event_id, mutation_uid, action, actor_name, title_snapshot, before_json, after_json, changed_at) VALUES',
+    pe.changes.map((c) => `  (${c.projectId}, ${c.eventId}, ${sqlStr(c.uid)}, '${c.action}', ${nameOf(c.who)}, ${sqlStr(c.title)}, ${c.before ? sqlStr(JSON.stringify(c.before)) : 'NULL'}, ${c.after ? sqlStr(JSON.stringify(c.after)) : 'NULL'}, ${sqlStr(c.at)})`).join(',\n') + ';');
+  const meCal = people.find((x) => x.person.who === 'me').cal;
+  const ar = attendanceReports(meCal, baseDate);
+  const um = uvar('me');
+  push('', '-- 근태와 보낸 보고(녹화 계정)');
+  push('INSERT INTO cal_attendance (user_id, work_date, status, overtime, updated_at) VALUES',
+    ar.attendRows.map((a) => `  (${um}, ${sqlStr(a.date)}, ${sqlStr(a.status)}, ${a.overtime}, @now)`).join(',\n') + ';');
+  push('INSERT INTO cal_report_daily (user_id, work_date, status, overtime, content, sent_at) VALUES',
+    ar.daily.map((r) => `  (${um}, ${sqlStr(r.date)}, ${sqlStr(r.status)}, ${r.overtime}, ${sqlMulti(r.content)}, ${sqlStr(r.sentAt)})`).join(',\n') + ';');
+  push('INSERT INTO cal_report_hours (user_id, work_date, line_no, task_name, cat_no, hours) VALUES',
+    ar.daily.flatMap((r) => r.lines.map((l, i) => `  (${um}, ${sqlStr(r.date)}, ${i}, ${sqlStr(l.name)}, ${l.catNo}, ${l.hours.toFixed(2)})`)).join(',\n') + ';');
+  if (ar.weekly.length) {
+    push('INSERT INTO cal_report_weekly (user_id, period_start, period_end, subject, content, endwork, plan, meeting, composed_at) VALUES',
+      ar.weekly.map((w) => `  (${um}, ${sqlStr(w.start)}, ${sqlStr(w.end)}, ${sqlStr(w.subject)}, ${sqlMulti(w.content)}, ${sqlMulti(w.endwork)}, ${sqlMulti(w.plan)}, ${sqlMulti(w.meeting)}, ${sqlStr(w.composedAt)})`).join(',\n') + ';');
+    push('INSERT INTO cal_report_weekly_hours (user_id, period_start, line_no, task_name, project_uid, hours) VALUES',
+      ar.weekly.flatMap((w) => w.hours.map((h, i) => `  (${um}, ${sqlStr(w.start)}, ${i}, ${sqlStr(h.name)}, ${lit(h.projectUid)}, ${h.hours.toFixed(2)})`)).join(',\n') + ';');
+  }
+  const extra = { events: pe.rows.length, changes: pe.changes.length, attend: ar.attendRows.length, daily: ar.daily.length, weekly: ar.weekly.length };
+
   const tot = (k) => Object.values(expect).reduce((a, x) => a + x[k], 0);
   push(
     '',
@@ -452,6 +641,8 @@ export function buildDemoSql({ myLogin, baseDate }) {
     guard(`(SELECT COUNT(*) FROM cal_todo) = ${tot('todos')} AND (SELECT COUNT(*) FROM cal_task_hours) = ${tot('hours')}`, '할 일이나 과제별 시간 행 수가 기대와 다르다'),
     guard("(SELECT COUNT(*) FROM cal_category c LEFT JOIN project p ON p.uid = c.project_uid WHERE c.source = 'db' AND p.id IS NULL) = 0", '공식 과제를 가리키지 않는 내 과제가 있다'),
     guard("(SELECT COUNT(*) FROM cal_category WHERE source = 'local' AND name IN ('휴가','기타')) = 8", '기본 과제(휴가, 기타)가 네 사람에게 하나씩 있지 않다'),
+    guard(`(SELECT COUNT(*) FROM cal_project_event) = ${extra.events} AND (SELECT COUNT(*) FROM cal_project_change) = ${extra.changes}`, '과제 공용 일정 행 수가 기대와 다르다'),
+    guard(`(SELECT COUNT(*) FROM cal_attendance) = ${extra.attend} AND (SELECT COUNT(*) FROM cal_report_daily) = ${extra.daily} AND (SELECT COUNT(*) FROM cal_report_weekly) = ${extra.weekly}`, '근태나 보낸 보고 행 수가 기대와 다르다'),
     guard('(SELECT COUNT(*) FROM app_user u LEFT JOIN cal_user_rev r ON r.user_id = u.user_id WHERE r.user_id IS NULL) = 0', 'cal_user_rev 행이 없는 사람이 있다'),
     guard(`(SELECT v FROM cal_schema_meta WHERE k = 'db_structure_version') <=> '${SCHEMA_VERSION}'`, '구조 번호가 바뀌었다'),
     'COMMIT;',
@@ -467,6 +658,7 @@ export function buildDemoSql({ myLogin, baseDate }) {
     `SELECT 'demo:projects=${projects.length}';`,
     `SELECT 'demo:customers=${D.CUSTOMERS.length}';`,
     ...D.DEMO_PEOPLE.map((p) => { const x = expect[p.who]; return `SELECT 'demo:cal_${p.who}=cats ${x.cats}, entries ${x.entries}, todos ${x.todos}, hours ${x.hours}';`; }),
+    `SELECT 'demo:project_events=${extra.events}, changes ${extra.changes}, attendance ${extra.attend}, daily ${extra.daily}, weekly ${extra.weekly}';`,
     "SELECT CONCAT('demo:my_view_scope=', view_scope) FROM app_user WHERE user_id = @u_me;",
     '',
   );

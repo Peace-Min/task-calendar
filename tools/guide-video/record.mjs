@@ -32,19 +32,23 @@ const LETTER = 24;                 // 1032 → 1080 위아래 띠
 const BAND = '0x161b26';           // 띠 색(앱 위쪽 막대와 어울리는 어두운 남색)
 // 회사 사이트로 가는 조작 금지(대본 검사). 자막(cap), 카드 글(html), 강조 이름(label)은 검사하지 않는다(설명은 해도 된다).
 //   조작 필드(sel, js, text, if, value)에만 걸고, 강조(highlight)와 커서 이동(move)은 누르지 않으므로 sel 검사를 하지 않는다.
-const FORBIDDEN = ['#btnRptSend', 'btnRptSend', 'netcus', '로그아웃', 'logout', 'btnLogout', '주간보고 작성', '일간보고 전송', '보고 전송', 'data-rsrc=net', 'data-rsrc="net"', 'data-rsrc=week', 'data-rsrc="week"'];
+const FORBIDDEN = ['#btnRptSend', 'btnRptSend', 'netcus', '로그아웃', 'logout', 'btnLogout', '주간보고 작성', '일간보고 전송', '보고 전송', 'data-rsrc=net', 'data-rsrc="net"', 'data-rsrc=week', 'data-rsrc="week"',
+  // v5 근태 쪽 회사 사이트 단추(근태 창의 보고, 주간 폼 채우기, 인트라넷에서 확인, 회사 출처 가져오기)와 그 호스트 명령
+  '#atSend', '#awSend', '#atIntra', '#ncProbe', 'atSend', 'awSend', 'atIntra', 'netcusSubmit', 'netcusWeekSubmit', 'netcusViewMonth', 'netcusWeekMerge', 'data-msrc=week', 'data-msrc="week"', '인트라넷에서 확인'];
 // 실제로 누르기 직전에 누를 자리의 요소를 다시 본다(대본 검사를 지나도 막는다).
 const GUARD_JS = (x, y) => `(() => {
   const el = document.elementFromPoint(${x}, ${y}); if (!el) return '';
   const b = el.closest('button, a, [role=button], input[type=button], input[type=submit]') || el;
   const id = b.id || '', t = (b.textContent || b.value || '').replace(/\\s+/g, ' ').trim();
   if (id === 'btnRptSend' || id === 'btnLogout' || b.closest('#btnRptSend, #btnLogout')) return id || 'send';
-  if (/주간보고 작성|일간보고 전송|보고 전송|로그아웃/.test(t)) return t.slice(0, 30);
-  if (b.matches('[data-rsrc=net], [data-rsrc=week]')) return 'netcus 출처';
+  if (b.closest('#atSend, #awSend, #atIntra, #ncProbe')) return 'attend-send';
+  if (/주간보고 작성|일간보고 전송|보고 전송|로그아웃|인트라넷에서 확인/.test(t)) return t.slice(0, 30);
+  if (b.closest('#atEd, #awEd') && /^보고(하는 중.*)?$/.test(t)) return 'attend-send-text';
+  if (b.matches('[data-rsrc=net], [data-rsrc=week], [data-msrc=week]')) return 'netcus 출처';
   return '';
 })()`;
 const GUARD_FOCUS_JS = `(() => { const b = document.activeElement; if (!b) return ''; const t = (b.textContent || '').replace(/\\s+/g, ' ').trim();
-  return (b.id === 'btnRptSend' || /주간보고 작성|일간보고 전송|로그아웃/.test(t) || (b.matches && b.matches('[data-rsrc=net], [data-rsrc=week]'))) ? (b.id || t.slice(0, 30)) : ''; })()`;
+  return (b.id === 'btnRptSend' || /^(atSend|awSend|atIntra|ncProbe)$/.test(b.id) || /주간보고 작성|일간보고 전송|로그아웃|인트라넷에서 확인/.test(t) || (b.matches && b.matches('[data-rsrc=net], [data-rsrc=week], [data-msrc=week]'))) ? (b.id || t.slice(0, 30)) : ''; })()`;
 function scanForbidden(steps) {
   const ops = ['sel', 'js', 'text', 'if', 'value', 'to', 'label'];
   const walk = (list, where) => {
@@ -142,7 +146,7 @@ const union = rs => { const x = Math.min(...rs.map(r => r.x)), y = Math.min(...r
 class Session {
   constructor(script, appPid) {
     this.script = script; this.appPid = appPid;
-    this.pages = { main: null, peer: null };
+    this.pages = { main: null, peer: null, attend: null };
     this.active = 'main';
     this.rec = false; this.seg = null; this.segs = []; this.caps = []; this.capOpen = null;
     this.casting = null; this.frameNo = 0;
@@ -313,6 +317,40 @@ class Session {
     await this.reshowCap('peer');
     await this.beginSeg(ctx);
   }
+  // 근태 창(v5, 위젯의 별도 창, CDP 대상 url 에 win=attend). 창 틀은 웹 밖이라 찍지 않고 웹 영역만 1920x1080 에 맞춘다.
+  //   창이 뜨는 순간(약 1초)은 잘라 낸다. 회사 전송 단추는 이 창에서도 같은 검사로 막는다(GUARD_JS, scanForbidden).
+  async toAttend(step) {
+    const [mx, my] = await this.ev('__gv.pos()', 'main');
+    this.endSeg();
+    await this.ev('__gv.caption(""); __gv.punch && __gv.punch(""); __gv.hideCursor(true); 1', 'main');
+    const t = await findTarget('attend', 15000);
+    if (!t) throw new Error('근태 창 CDP 대상 없음');
+    this.pages.attend = await connect('attend', 5000);
+    for (let i = 0; i < 80; i++) {
+      const ok = await this.pages.attend.ev("!!document.querySelector('#atEd:not(.hidden), #awEd:not(.hidden), #awList:not(.hidden)') && document.querySelectorAll('#atBlocks > *, #awProg, #awList > *').length > 0").catch(() => false);
+      if (ok) break; await sleep(150);
+    }
+    await sleep(step.settle ?? this.P.settle);
+    await this.inject('attend');
+    this.active = 'attend';
+    const W = await this.ev('innerWidth'), H = await this.ev('innerHeight');
+    await this.ev(`__gv.place(${Math.max(10, Math.min(W - 10, mx))},${Math.max(10, Math.min(H - 10, my))}); __gv.hideCursor(false); 1`);
+    await this.reshowCap('attend');
+    await this.beginSeg({ kind: 'main' });
+  }
+  async fromAttend(step) {
+    this.endSeg();
+    if (this.casting === 'attend') this.casting = null;
+    // 근태 창은 닫아도 숨겨진 채 남을 수 있어(같은 대상을 다음에 다시 쓴다) 겹침 층은 지우고 간다.
+    try { await this.ev('window.__gv && __gv.remove(); 1', 'attend'); } catch {}
+    try { this.pages.attend && this.pages.attend.close(); } catch {}
+    this.pages.attend = null; this.active = 'main';
+    for (let i = 0; i < 8; i++) { const t = await findTarget('attend', 200); if (!t) break; await sleep(150); }
+    await sleep(step?.settle ?? 500);
+    await this.ev('__gv.hideCursor(false); 1', 'main');
+    await this.reshowCap('main');
+    await this.beginSeg({ kind: 'main' });
+  }
   async toMain() {
     this.endSeg();
     if (this.casting === 'peer') this.casting = null;
@@ -433,6 +471,9 @@ class Session {
       }
       case 'js': { const v = await this.ev(st.js); if (st.expect !== undefined && v !== st.expect) throw new Error(`js 결과 ${v} (기대 ${st.expect}): ${st.js}`); break; }
       case 'toPeer': await this.toPeer(st); break;
+      case 'toAttend': await this.toAttend(st); break;
+      case 'fromAttend': await this.fromAttend(st); break;
+      case 'titleOff': await sleep(st.ms ?? 1800); await this.ev('__gv.title(""); 1'); await sleep(st.fade ?? 380); break;
       case 'os': await this.osAction(st); break;
       case 'cut': {
         // 화면에 넣지 않을 구간: 구간을 닫고 js 와 do(단계 목록)를 녹화 없이 실행한 뒤 새 구간을 연다(빠른 장면 전환).
@@ -446,7 +487,7 @@ class Session {
         }
         this.quiet = false;
         await sleep(st.settle ?? 300);
-        await this.beginSeg(this.active === 'main' ? { kind: 'main' } : await this.peerCtx()); break;
+        await this.beginSeg(this.active === 'peer' ? await this.peerCtx() : { kind: 'main' }); break;
       }
       case 'punch': await this.caption(st.text, null, st.where, 'punch', st.sub); await sleep(st.ms ?? 0); break;
       case 'title': {
@@ -633,6 +674,8 @@ async function main() {
   if (script.prepare) for (const st of script.prepare) { log('준비', st.act || 'js'); await S.ev(st.js); await sleep(st.ms ?? 200); }
   await S.inject('main');
   await S.ev(`__gv.place(${script.cursorStart?.[0] ?? 960},${script.cursorStart?.[1] ?? 560}); 1`);
+  // 0초 제목 카드(v5): 첫 프레임부터 효과 없이 전면 제목 카드가 보이게 녹화 시작 전에 올려 둔다. 첫 단계(titleOff)가 걷는다.
+  if (script.openTitle) await S.ev(`__gv.hideCursor(true); __gv.titleNow(${JSON.stringify(script.openTitle)}); 1`);
   await sleep(600);
 
   let failed = null;
@@ -644,7 +687,7 @@ async function main() {
   S.endSeg();
   const srt = S.srt();
   // 겹침 층 걷기
-  for (const k of ['main', 'peer']) if (S.pages[k] && !S.pages[k].closed) await S.ev('window.__gv && __gv.remove(); 1', k).catch(() => {});
+  for (const k of ['main', 'peer', 'attend']) if (S.pages[k] && !S.pages[k].closed) await S.ev('window.__gv && __gv.remove(); 1', k).catch(() => {});
   if (S.casting) await S.stopCast();
   if (script.closePeerAfter && await findTarget('peer', 500)) { await S.win.cmd('close', '님의 일정'); await sleep(1000); }
   if (script.resetPeer) await resetPeerWindow(S, script.resetPeer).catch(e => log('열람 창 크기 되돌리기 실패', e.message));
@@ -652,7 +695,7 @@ async function main() {
   fs.writeFileSync(path.join(S.dir, 'timeline.json'), JSON.stringify({ script: script.name, segs: S.segs.map(s => ({ ctx: { ...s.ctx, bg: s.ctx.bg ? path.basename(s.ctx.bg) : null }, start: s.start, end: s.end, frames: s.frames.length, marks: s.marks })), caps: srt.rows, events: S.events, warnings: S.warnings }, null, 1));
   S.win.quit();
   if (failed) { console.error('녹화 실패: ' + failed.stack); process.exit(1); }
-  if (DRY) { log('dry 끝(굽지 않음)'); return; }
+  if (DRY) { log('dry 끝(굽지 않음)'); mainPg.close(); process.exit(0); }
   log('굽는 중...', S.segs.length, '구간', S.segs.reduce((a, s) => a + s.frames.length, 0), '프레임');
   const mp4 = S.encode(cursorPng);
   log('완료', mp4, (srt.total / 1000).toFixed(1) + 's', srt.f);

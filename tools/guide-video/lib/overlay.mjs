@@ -66,6 +66,8 @@ const CSS = `
   background: radial-gradient(1200px 700px at 30% 20%, #1d4ed8 0%, rgba(29,78,216,0) 60%), radial-gradient(900px 600px at 85% 90%, #0ea5e9 0%, rgba(14,165,233,0) 55%), #0b1222;
   color: #fff; opacity: 0; transition: opacity .3s ease; }
 #__gv .gv-title.on { opacity: 1; }
+/* 첫 프레임용: 효과 없이 처음부터 보이는 제목 카드(titleNow) */
+#__gv .gv-title.now, #__gv .gv-title.now > * { transition: none !important; }
 #__gv .gv-title > * { transform: translateY(18px) scale(1.04); opacity: 0; transition: transform .6s cubic-bezier(.16,1,.3,1), opacity .45s ease; }
 #__gv .gv-title.on > * { transform: none; opacity: 1; }
 #__gv .gv-title.on > :nth-child(2) { transition-delay: .08s; }
@@ -152,7 +154,8 @@ function overlayMain(CSS) {
       if (punch.classList.contains('on')) { punch.classList.remove('on'); setTimeout(show, 160); } else show();
     },
     // 전면 제목 카드(홍보 영상 처음과 끝)
-    title(html) { if (!html) { title.classList.remove('on'); return; } title.innerHTML = html; void title.offsetWidth; title.classList.add('on'); },
+    title(html) { if (!html) { title.classList.remove('on', 'now'); return; } title.innerHTML = html; void title.offsetWidth; title.classList.add('on'); },
+    titleNow(html) { title.innerHTML = html; title.classList.add('on', 'now'); void title.offsetWidth; },
     // 화면 확대와 이동: body 에 transform 을 건다(겹침 층은 html 바로 아래라 확대되지 않는다). 다시 그려서 글자가 선명하다.
     //   r = 보여 줄 영역(뷰포트 좌표, 확대 전 기준), s = 배율, ms = 이동 시간
     zoom(r, s, ms) {
