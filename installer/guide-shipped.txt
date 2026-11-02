@@ -1,2 +1,2 @@
-guide=2026-10-25-core-v4
-app=0.23.0
+guide=2026-11-02-core-v5
+app=0.25.1

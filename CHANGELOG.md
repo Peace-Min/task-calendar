@@ -7,15 +7,15 @@
 
 ---
 
-## 🆕 2026-11-02 (다음 판, 번호는 배포 때): 근태 창 다시 쓰기
+## 🆕 2026-11-02, v0.25.1: 근태 창 다시 쓰기
 
 근태 창(일간, 주간)을 닫으면 없애지 않고 숨기고(`WinKind.ReuseOnClose`, `AppWindow.CloseByUser`/`HideForReuse`), 다시 열면 payload 만 넣어 바로 보인다. 숨기기 직전 웹의 `__attendWinHidden` 이 임시 저장을 남기고 편집 상태, 하위 팝업, 타이머를 비운다. 처음 열 때는 WPF "불러오는 중" 겹침(`BuildCover`, 웹은 창 밖으로 밀어 둔다. Visibility 로 숨기면 화면 읽기가 열 배 느려져 쓰지 않는다)이 준비까지 보인다. 닫힌 창 참조는 `WinOf` 가 비우고, 숨긴 동안 ProcessFailed 와 못 쓰는 창은 버려 다음 열기에 새로 만든다. 로그아웃, 계정 바뀜, 종료는 숨긴 창도 진짜로 닫는다. `widget.log` 에 `열기 요청`, `보임`, `화면 준비`(ms, 첫 열기와 다시 열기)를 남긴다(열람 창과 관리 창은 요청, 준비 두 줄). 개발 PC 실측: 첫 열기 화면 준비 약 0.3초, 다시 열기 약 0.02초. 시험 `tests/attend-window-reuse.test.mjs`, 기존 admin-window, peer-window 시험의 닫기 경로 기대를 새 이름(CloseByUser, SaveBounds, `_closed`)에 맞춤.
 
-## 🆕 2026-11-02 (다음 판, 번호는 배포 때): 과제 일정 폼 날짜와 종일 정리
+## 🆕 2026-11-02, v0.25.1: 과제 일정 폼 날짜와 종일 정리
 
 `pcStartChanged`: 시작일을 옮기면 종료일도 같은 만큼(개인 폼과 같다). `pcFormSync`: 여러 날 판정을 `e > s` 로(종료가 빠르면 여러 날로 치지 않고 `PCF_RANGE_ERR` 오류 줄), 잠긴 동안의 강제 켬이 `pcfAllDayUser` 를 덮지 않게 해 하루로 돌아오면 사용자 값과 시각이 돌아온다. v5 녹화 보고를 실제 위젯에서 재현해 고쳤다. 시험: `tests/pcf-range.test.mjs`, project-calendar-web 화면⑧c 갱신.
 
-## 🆕 2026-11-02 (다음 판, 번호는 배포 때): 공용 달력, 주간보고 기간 월~토
+## 🆕 2026-11-02, v0.25.1: 공용 달력, 주간보고 기간 월~토
 
 주 규칙을 웹의 공용 달력 한 곳(`CAL_DOW`, `calRowWeek`, `calViewWeek`, `calReportPeriod`, `calMonthGrid`, `calWeekTitle`, 칸 클래스 `calCellCls`, `calNumCls`, `calTone`, `calAria`)에 모았다. 설계는 [docs/CALENDAR-COMMON.md](docs/CALENDAR-COMMON.md). 달력 한 주 = 일~토(월 달력, 주간보고 주 고르기, 주 제목, 보고서 이번 주와 지난주 단추), 주간 보기 = 월~일(동작 그대로), 회사 보고 기간 = 그 줄의 월~토.
 
@@ -26,7 +26,7 @@
 - 알고 받아들인 표시 차이: 일요일 당일에는 보고서 이번 주 단추와 주간보고 기본 주가 그날 시작하는 줄(다음 날 월요일부터)이다. 월간에서 일요일을 골라 주간 보기로 바꾸면 그 일요일로 끝나는 주가 열린다.
 - 시험: `tests/cal-common.test.mjs` 새로(공용 함수 실행, 정적, 변이, jsdom 주 고르기). 월요일 시작이나 일요일 종료일을 기대하던 기존 시험(`attendance-weekly-web`, `weekly-edit`, `report-group`, `pure-logic` 의 weekRange 절, `nav-layout-c`, `personal-peer-week-view`, `project-calendar-web`)은 새 정책에 맞게 고쳤다. 시험 harness 에 `extractCalCommon` 을 더했다.
 
-## 🆕 2026-11-02 (다음 판, 번호는 배포 때): 첫 설치 기본값 트레이 켬, 부착 끔
+## 🆕 2026-11-02, v0.25.1: 첫 설치 기본값 트레이 켬, 부착 끔
 
 설정 파일이 없는 첫 설치의 `WidgetSettings` 기본값을 `TrayEnabled = true`(일반 앱 창), `Pinned = false` 로 바꿨다. 바탕화면 위젯 모드(작업 표시줄, Alt+Tab 없음, 늘 맨 아래)로 최대화되어 뜨면 다른 창 뒤에 깔려 처음 쓰는 사람이 앱이 뜬 줄 몰랐다(2026-11-02 사용자). 기존 사용자는 설정 파일 값 그대로. 시험: window-buttons 첫 설치 기본값.
 
