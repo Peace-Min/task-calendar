@@ -152,9 +152,11 @@ const S = {
     const ask = member(aw, 'private async Task AskCloseAsync()');
     assert.match(ask, /window\.__winCloseRequest/, '닫기 확인을 웹에 묻지 않는다');
     assert.match(ask, /Task\.WhenAny\(t, Task\.Delay\(3000\)\)/, '웹이 답하지 않을 때 닫을 길이 없다');
-    assert.match(ask, /if \(ans\.Contains\("ask"\) \|\| ans\.Contains\("busy"\)\) return;\s*CloseNow\(\);/);
+    assert.match(ask, /if \(ans\.Contains\("ask"\) \|\| ans\.Contains\("busy"\)\) return;\s*CloseByUser\(\);/);
+    //  사용자가 닫은 것(CloseByUser): 숨기는 종류(근태 창, ReuseOnClose)만 숨기고 관리 창과 열람 창은 그대로 닫는다(WINDOW-INPAGE)
+    assert.match(member(aw, 'private void CloseByUser()'), /if \(Kind\.ReuseOnClose\) HideForReuse\(\);\s*else CloseNow\(\);/, '관리 창의 닫기가 닫기가 아니다');
     assert.match(member(aw, 'public void CloseNow()'), /_closeOk = true;\s*try \{ Close\(\); \} catch \{ \}/);
-    assert.match(member(aw, 'private async Task InitAsync()'), /core\.WindowCloseRequested \+= \(_, _\) => Dispatcher\.BeginInvoke\(new Action\(CloseNow\)\);/, '웹이 확인한 닫기(window.close)를 묻지 않고 받지 않는다');
+    assert.match(member(aw, 'private async Task InitAsync()'), /core\.WindowCloseRequested \+= \(_, _\) => Dispatcher\.BeginInvoke\(new Action\(CloseByUser\)\);/, '웹이 확인한 닫기(window.close)를 묻지 않고 받지 않는다');
   },
 };
 test('(S) 창 종류 등록: 열람 창과 관리 창(주소, 제목, 최소 720x520, 처음 1200x800, aw:, 준비 알림, 목록 알림, 닫기 확인, 자리 키)', () => S.registry(AW, CS));

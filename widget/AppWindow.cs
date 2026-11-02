@@ -4,6 +4,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using Microsoft.Web.WebView2.Core;
@@ -39,6 +40,8 @@ namespace TaskCalendarWidget
         public string ActivatedFn { get; private init; } = "";      // 창이 앞으로 올 때 부르는 웹 함수(없으면 "")
         public bool GetsCatalog { get; private init; }              // 목록 갱신 알림(__applyProjects 등)을 메인 창과 함께 받는다
         public bool AskBeforeClose { get; private init; }           // 창을 닫기 전에 웹에 묻는다(저장 안 한 입력, ADMIN-WINDOW §2.2)
+        public bool ReuseOnClose { get; private init; }             // 닫기 = 숨기기(WINDOW-INPAGE). 다음 열기는 payload 만 넣고 바로 보인다. 처음 열 때는 웹이 준비될 때까지 "불러오는 중"을 보인다
+        public string HiddenFn { get; private init; } = "";          // 숨기기 직전에 부르는 웹 함수(화면 비우기). ReuseOnClose 종류만 쓴다
         public Func<WidgetSettings, PeerWindowBounds?> GetBounds { get; private init; } = _ => null;
         public Action<WidgetSettings, PeerWindowBounds> SetBounds { get; private init; } = (_, _) => { };
 
@@ -68,7 +71,7 @@ namespace TaskCalendarWidget
             TitleFollowsDocument = false, MinWidth = 720, MinHeight = 520, DefaultWidth = 1200, DefaultHeight = 860,
             ReqPrefix = MainWindow.AttendReqPrefix, ReadyCmd = "attendWinReady", AnyCmdWithoutReq = true,
             Commands = MainWindow.AttendWinCommands, OpenFn = "__attendWinOpen", ActivatedFn = "__attendWinActivated",
-            GetsCatalog = false, AskBeforeClose = true,
+            GetsCatalog = false, AskBeforeClose = true, ReuseOnClose = true, HiddenFn = "__attendWinHidden",
             GetBounds = s => s.Attend, SetBounds = (s, b) => s.Attend = b,
         };
         //  종류 등록. 새 종류는 여기에 더한다(번호 머리가 서로 겹치지 않아야 한다).
@@ -105,8 +108,13 @@ namespace TaskCalendarWidget
         private bool _dark;                  // 제목줄을 어둡게(다크 테마)
         private bool _closeOk;               // 묻지 않고 닫는다(웹이 확인했다, 로그아웃, 앱 종료). AskBeforeClose 종류만 본다
         private bool _asking;                // 닫아도 되는지 웹에 묻는 중
+        private bool _closed;                // 창이 닫혔다(Closed). 닫힌 창은 다시 쓰지 않는다(MainWindow.WinOf 가 참조를 비운다)
+        private Border? _cover;              // ReuseOnClose 종류: 웹이 준비되기 전 "불러오는 중" 겹침(WPF 로 그린다)
+        private ProgressBar? _coverBar;
 
         public WinKind Kind { get; }
+        public bool IsClosed => _closed;
+        public bool IsReady => _ready;
 
         //  닫히는 중이거나 없앤(Dispose) 창에서는 CoreWebView2 를 읽으면 던질 수 있다. 그때는 null(회신과 메시지 가르기가 버린다).
         public CoreWebView2? Core
@@ -137,7 +145,8 @@ namespace TaskCalendarWidget
             var bg = dark ? Color.FromRgb(0x0f, 0x14, 0x20) : Color.FromRgb(0xf3, 0xf4, 0xf7);   // 앱의 --bg(다크, 라이트)
             Background = new SolidColorBrush(bg);
             _web.DefaultBackgroundColor = System.Drawing.Color.FromArgb(bg.R, bg.G, bg.B);
-            Content = _web;
+            if (kind.ReuseOnClose) BuildCover(bg, dark);
+            else Content = _web;
 
             SourceInitialized += (_, _) => SetDark(_dark);
             Loaded += async (_, _) => await InitAsync();
@@ -154,11 +163,58 @@ namespace TaskCalendarWidget
                     _ = AskCloseAsync();
                     return;
                 }
-                //  최대화나 최소화 중이면 RestoreBounds 가 평소 창 자리다. 최소화로 닫았으면 그 직전 상태를 최대화 여부로 쓴다.
-                var r = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
-                _host.RememberWinBounds(Kind, r, _shownState == WindowState.Maximized);
+                SaveBounds();
             };
-            Closed += (_, _) => { try { _web.Dispose(); } catch { } };
+            Closed += (_, _) => { _closed = true; try { _web.Dispose(); } catch { } };
+        }
+
+        //  최대화나 최소화 중이면 RestoreBounds 가 평소 창 자리다. 최소화로 닫았으면 그 직전 상태를 최대화 여부로 쓴다.
+        private void SaveBounds()
+        {
+            var r = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+            _host.RememberWinBounds(Kind, r, _shownState == WindowState.Maximized);
+        }
+
+        //  처음 열 때의 로딩 표시. 웹이 준비되기 전에는 WebView2 를 창 밖으로 밀어 두고(HWND 가 WPF 겹침을 가린다) 메인 창 시작 표시(loadingBar)와 같은 모양을 보인다.
+        //  ★ Visibility 로 숨기면 안 된다. 숨긴 웹은 화면 읽기가 열 배 가까이 느려진다(실측 2.2초 대 0.2초). 크기는 그대로 두고 자리만 민다.
+        private void BuildCover(Color bg, bool dark)
+        {
+            var text = new TextBlock
+            {
+                Text = "불러오는 중…", FontFamily = new FontFamily("Malgun Gothic"), FontSize = 12,
+                Foreground = new SolidColorBrush(dark ? Color.FromRgb(0xA9, 0xB4, 0xC8) : Color.FromRgb(0x5B, 0x63, 0x73)),
+                HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 14),
+            };
+            _coverBar = new ProgressBar
+            {
+                IsIndeterminate = true, Width = 150, Height = 3, BorderThickness = new Thickness(0),
+                Foreground = new SolidColorBrush(Color.FromRgb(0x37, 0x8A, 0xDD)),
+                Background = new SolidColorBrush(dark ? Color.FromRgb(0x24, 0x30, 0x49) : Color.FromRgb(0xF1, 0xEF, 0xE8)),
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            stack.Children.Add(text);
+            stack.Children.Add(_coverBar);
+            _cover = new Border { Background = new SolidColorBrush(bg), IsHitTestVisible = false, Child = stack };
+            _web.Margin = new Thickness(-30000, 0, 30000, 0);
+            var grid = new Grid();
+            grid.Children.Add(_web);
+            grid.Children.Add(_cover);
+            Content = grid;
+        }
+
+        //  로딩 표시를 걷고 웹을 보인다(시각 트리에서 내려 애니메이션 타이머도 멈춘다).
+        private void RevealWeb()
+        {
+            if (_cover == null) return;
+            try
+            {
+                if (_coverBar != null) _coverBar.IsIndeterminate = false;
+                _cover.Visibility = Visibility.Collapsed;
+                _web.Margin = new Thickness(0);
+            }
+            catch { }
+            _cover = null;
         }
 
         private async Task InitAsync()
@@ -188,7 +244,7 @@ namespace TaskCalendarWidget
                 core.NewWindowRequested += (_, e) => e.Handled = true;
                 //  웹의 window.close() = 창 닫기. 버전 관문 차단 카드의 [이 창 닫기](VERSION-GATE §3)와, 관리 창이 닫기를 확인한 뒤에 쓴다.
                 //  웹이 이미 확인했으므로 다시 묻지 않는다(CloseNow).
-                core.WindowCloseRequested += (_, _) => Dispatcher.BeginInvoke(new Action(CloseNow));
+                core.WindowCloseRequested += (_, _) => Dispatcher.BeginInvoke(new Action(CloseByUser));
                 core.ProcessFailed += (_, e) => OnProcessFailed(core, e.ProcessFailedKind);
                 core.SetVirtualHostNameToFolderMapping("tcapp.local", _appDir, CoreWebView2HostResourceAccessKind.Allow);
                 core.Navigate(Kind.Url);
@@ -205,6 +261,12 @@ namespace TaskCalendarWidget
         private void OnProcessFailed(CoreWebView2 core, CoreWebView2ProcessFailedKind kind)
         {
             _host.WinLog(Kind.Name + " WebView2 프로세스 실패: " + kind);
+            //  숨겨 둔 창(ReuseOnClose)은 어떤 실패든 다시 읽지 않고 버린다. 다음 열기 때 새로 만든다(WINDOW-INPAGE §4).
+            if (Kind.ReuseOnClose && !IsVisible)
+            {
+                Dispatcher.BeginInvoke(new Action(CloseNow));
+                return;
+            }
             if (kind == CoreWebView2ProcessFailedKind.BrowserProcessExited)
             {
                 Dispatcher.BeginInvoke(new Action(CloseNow));
@@ -238,10 +300,36 @@ namespace TaskCalendarWidget
             catch { ans = "close"; }
             finally { _asking = false; }
             if (ans.Contains("ask") || ans.Contains("busy")) return;
-            CloseNow();
+            CloseByUser();
         }
 
-        //  묻지 않고 닫는다(웹이 확인했다, 로그아웃, 계정 바뀜, 앱 종료, WebView2 실패). 닫히면서 자리를 남긴다(Closing).
+        //  사용자가 닫았다(웹이 확인했다). ReuseOnClose 종류는 없애지 않고 숨긴다. 그 밖은 닫는다.
+        private void CloseByUser()
+        {
+            if (Kind.ReuseOnClose) HideForReuse();
+            else CloseNow();
+        }
+
+        //  숨기기. 자리를 먼저 남기고(숨기면 Closing 이 안 돈다), 웹 화면을 비운 뒤 Hide 한다. 실패하면 이 창을 버린다(다음 열기 때 새로 만든다).
+        private void HideForReuse()
+        {
+            if (_closed || !IsVisible) return;
+            try
+            {
+                SaveBounds();
+                if (Kind.HiddenFn.Length > 0) Js("window." + Kind.HiddenFn + " && window." + Kind.HiddenFn + "()");
+                _pending = "";
+                _host.WinHidden(Kind);
+                Hide();
+            }
+            catch (Exception ex)
+            {
+                _host.WinLog(Kind.Name + " 숨기기 실패, 창을 버림: " + ex.Message);
+                CloseNow();
+            }
+        }
+
+        //  묻지 않고 진짜로 닫는다(로그아웃, 계정 바뀜, 앱 종료, WebView2 실패, 처음 뜨기 전의 닫기). 숨겨 둔 근태 창도 여기서 닫힌다. 닫히면서 자리를 남긴다(Closing).
         public void CloseNow()
         {
             _closeOk = true;
@@ -252,17 +340,30 @@ namespace TaskCalendarWidget
         public void ShowTarget(string json)
         {
             _pending = json;
-            if (_ready) Push();
+            if (_ready) _ = PushAsync();
         }
 
         //  웹이 준비를 알렸다. 페이지를 다시 읽었어도 마지막 대상을 다시 넘긴다.
         public void OnWebReady()
         {
             _ready = true;
-            if (_pending.Length > 0) Push();
+            if (_pending.Length > 0) _ = PushAsync();
+            else RevealWeb();
         }
 
-        private void Push() => Js("window." + Kind.OpenFn + " && window." + Kind.OpenFn + "(" + _pending + ")");
+        //  대상을 넣고 끝나면 로딩 표시를 걷는다(웹이 그려진 뒤에 걷어 "불러오는 중"에서 바로 내용으로 바뀐다). 끝난 시각은 열기 시각 로그에 남는다.
+        private async Task PushAsync()
+        {
+            try
+            {
+                var core = Core;
+                if (core != null)
+                    await core.ExecuteScriptAsync("window." + Kind.OpenFn + " && window." + Kind.OpenFn + "(" + _pending + ")");
+            }
+            catch { }
+            RevealWeb();
+            _host.TraceOpenReady(Kind);
+        }
 
         //  앞으로 가져온다. 최소화돼 있으면 최소화 직전 상태(최대화 또는 평소)로 되살린다.
         //  Topmost 는 메인 창의 맨 앞에 띄우기를 따른다(켜고 끌 때는 MainWindow.SyncWinTopmost 가 맞춘다).

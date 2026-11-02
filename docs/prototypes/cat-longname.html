@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>내 과제 긴 이름 개선 프로토타입</title>
+<style>
+:root{--bg:#f4f5f8;--card:#fff;--line:#dfe2ea;--text:#1d2433;--muted:#6b7385;--accent:#3b5bdb;--accent-soft:#e7ecff;--danger:#c92a2a;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 "Malgun Gothic",system-ui,sans-serif;padding:20px}
+h1{font-size:18px;margin:0 0 4px}
+.lead{color:var(--muted);margin:0 0 18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:18px;align-items:start}
+.col h2{font-size:14px;margin:0 0 2px}
+.col .why{font-size:12px;color:var(--muted);margin:0 0 10px;min-height:34px}
+.frame{width:380px;max-width:100%;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px}
+.row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px;background:var(--card)}
+.dot{width:14px;height:14px;border-radius:50%;flex:none}
+.body{min-width:0;flex:1}
+.name{font-weight:600}
+.desc{font-size:12px;color:var(--muted)}
+.cnt{font-size:12px;color:var(--muted);flex:none}
+.ord{display:inline-flex;gap:2px;flex:none}
+.btn,.lk{font:inherit;border:1px solid var(--line);background:#fff;border-radius:6px;padding:2px 7px;cursor:pointer;color:var(--text)}
+.lk{border:0;background:none;color:var(--accent);padding:2px 4px;white-space:nowrap}
+.lk.d{color:var(--danger)}
+.badge{font-size:11px;font-weight:700;padding:0 6px;border-radius:4px;background:#eceef3;color:var(--muted);margin-left:6px;white-space:nowrap}
+
+/* 현재: 이름이 줄바꿈된다 */
+.now .name{white-space:normal}
+
+/* 안 A: 한 줄 말줄임 + 전체 이름 툴팁 + ⋯ 메뉴 */
+.a .name,.a .desc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu{position:relative;flex:none}
+.pop{position:absolute;right:0;top:30px;z-index:5;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(20,30,60,.16);padding:4px;display:none;min-width:110px}
+.pop.on{display:block}
+.pop button{display:block;width:100%;text-align:left;border:0;background:none;padding:7px 10px;border-radius:6px;font:inherit;cursor:pointer}
+.pop button:hover{background:var(--accent-soft)}
+.pop .d{color:var(--danger)}
+
+/* 안 B: 두 줄까지만 보이고 누르면 펼침 */
+.b .name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+.b .row.open .name{-webkit-line-clamp:unset}
+.b .desc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 안 C: 평소엔 동작을 숨기고 올리거나 선택하면 보임 */
+.c .name,.c .desc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.c .acts{display:none;gap:2px;flex:none}
+.c .row:hover .acts,.c .row.sel .acts{display:inline-flex}
+.c .row:hover .cnt,.c .row.sel .cnt{display:none}
+.note{margin-top:22px;padding:14px 16px;background:#fff;border:1px solid var(--line);border-radius:12px;max-width:900px}
+.note h3{margin:0 0 6px;font-size:14px}
+.note li{margin:3px 0}
+.rec{background:var(--accent-soft);border-color:#b8c6ff}
+</style>
+</head>
+<body>
+<h1>내 과제 긴 이름 개선 프로토타입</h1>
+<p class="lead">폭 380px(실제 위젯 폭)에서 같은 데이터를 네 가지 모양으로 비교합니다. 이름 칸에 마우스를 올리면 안 A, C는 전체 이름이 툴팁으로 뜹니다.</p>
+
+<div class="grid" id="grid"></div>
+
+<div class="note rec">
+  <h3>권장: 안 A (한 줄 말줄임 + ⋯ 메뉴)</h3>
+  <ul>
+    <li>행 높이가 모든 과제에서 같아져 목록이 가지런합니다. ▲▼ 위치도 행마다 같은 자리에 고정됩니다.</li>
+    <li>동작이 다섯 개(▲▼, 옮기기, 수정, 삭제)에서 ▲▼와 ⋯ 하나로 줄어 이름이 쓸 수 있는 폭이 두 배 가까이 늘어납니다.</li>
+    <li>전체 이름은 툴팁(마우스)과 이름 줄 누르기(터치)로 봅니다. 수정을 누르면 아래 입력칸에 전체 이름이 그대로 나옵니다.</li>
+  </ul>
+</div>
+<div class="note">
+  <h3>조사한 상용 앱과 디자인 시스템의 공통 원칙</h3>
+  <ul>
+    <li>목록 항목은 한 줄에서 자르고 전체 이름은 툴팁이나 상세로 보여 줍니다(Workday Canvas, Carbon, Maersk).</li>
+    <li>끝을 자르는 방식은 앞부분이 서로 다른 이름에 맞습니다. 앞이 같은 이름이 많으면 가운데를 줄입니다(Basis). 우리 과제명은 "[샘플] ..."처럼 앞이 같을 수 있어 가운데 줄임을 후속 옵션으로 둡니다.</li>
+    <li>보조 동작은 ⋯ 메뉴로 모읍니다(Carbon, SAP Fiori). 터치에는 hover가 없으니 hover 전용 동작은 피합니다(Maersk).</li>
+    <li>잘린 글자가 4자 이상은 남아야 알아봅니다(PatternFly).</li>
+  </ul>
+</div>
+
+<script>
+const DATA=[
+ {n:'[샘플] 프로젝트 A',c:'#5b6cf0',d:'초기 설치 예시 과제입니다',k:2},
+ {n:'휴가',c:'#2f9e6a',d:'',k:0,def:1},
+ {n:'2026년 차세대 통합 관제 시스템 고도화 및 대외 연동 인터페이스 개선 과제 (1차 사업)',c:'#4f7cff',d:'설명이 길어도 한 줄 말줄임 처리됩니다 설명 설명',k:3},
+ {n:'기타',c:'#6b7385',d:'',k:0,def:1},
+];
+const esc=s=>s.replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const ord='<span class="ord"><button class="btn">▲</button><button class="btn">▼</button></span>';
+const V={
+ now:{t:'현재',w:'이름이 줄바꿈되고 링크 폭에 밀려 4줄까지 늘어납니다. 행 높이와 ▲▼ 위치가 제각각입니다.',
+  row:o=>`<div class="row"><span class="dot" style="background:${o.c}"></span><div class="body"><div class="name">${esc(o.n)}${o.def?'<span class="badge">기본</span>':''}</div>${o.d?`<div class="desc">${esc(o.d)}</div>`:''}</div><span class="cnt">${o.k}건</span>${ord}<button class="lk">옮기기</button><button class="lk">수정</button>${o.def?'':'<button class="lk d">삭제</button>'}</div>`},
+ a:{t:'안 A 한 줄 말줄임 + ⋯ 메뉴',w:'행 높이 고정. 옮기기, 수정, 삭제는 ⋯ 메뉴로. 이름은 툴팁으로 전체 확인.',cls:'a',
+  row:o=>`<div class="row"><span class="dot" style="background:${o.c}"></span><div class="body" title="${esc(o.n)}"><div class="name">${esc(o.n)}</div>${o.d?`<div class="desc">${esc(o.d)}</div>`:''}</div>${o.def?'<span class="badge">기본</span>':''}<span class="cnt">${o.k}건</span>${ord}<div class="menu"><button class="btn mb" aria-label="더보기">⋯</button><div class="pop"><button>수정</button><button>옮기기</button>${o.def?'':'<button class="d">삭제</button>'}</div></div></div>`},
+ b:{t:'안 B 두 줄까지 + 누르면 펼침',w:'이름 전체를 읽을 수 있지만 행 높이가 둘로 갈립니다. 동작 줄은 그대로라 폭은 여전히 좁습니다.',cls:'b',
+  row:o=>`<div class="row"><span class="dot" style="background:${o.c}"></span><div class="body"><div class="name">${esc(o.n)}${o.def?'<span class="badge">기본</span>':''}</div>${o.d?`<div class="desc">${esc(o.d)}</div>`:''}</div><span class="cnt">${o.k}건</span>${ord}<div class="menu"><button class="btn mb" aria-label="더보기">⋯</button><div class="pop"><button>수정</button><button>옮기기</button>${o.def?'':'<button class="d">삭제</button>'}</div></div></div>`},
+ c:{t:'안 C 동작은 올릴 때만 보임',w:'평소엔 이름이 가장 넓습니다. 터치에는 hover가 없어 눌러서 선택해야 하고, 숨은 동작을 찾기 어렵습니다.',cls:'c',
+  row:o=>`<div class="row"><span class="dot" style="background:${o.c}"></span><div class="body" title="${esc(o.n)}"><div class="name">${esc(o.n)}</div>${o.d?`<div class="desc">${esc(o.d)}</div>`:''}</div>${o.def?'<span class="badge">기본</span>':''}<span class="cnt">${o.k}건</span><span class="acts">${ord}<button class="lk">수정</button><button class="lk">옮기기</button>${o.def?'':'<button class="lk d">삭제</button>'}</span></div>`}
+};
+document.getElementById('grid').innerHTML=Object.entries(V).map(([k,v])=>
+ `<div class="col"><h2>${v.t}</h2><p class="why">${v.w}</p><div class="frame ${v.cls||k}" id="f-${k}">${DATA.map(v.row).join('')}</div></div>`).join('');
+document.addEventListener('click',e=>{
+ const mb=e.target.closest('.mb');
+ document.querySelectorAll('.pop.on').forEach(p=>{ if(!mb||p!==mb.nextElementSibling) p.classList.remove('on'); });
+ if(mb) mb.nextElementSibling.classList.toggle('on');
+ const row=e.target.closest('.row');
+ if(row&&!e.target.closest('button')){
+  if(row.closest('.b')) row.classList.toggle('open');
+  if(row.closest('.c')){ row.parentElement.querySelectorAll('.row.sel').forEach(r=>r!==row&&r.classList.remove('sel')); row.classList.toggle('sel'); }
+ }
+});
+</script>
+</body>
+</html>

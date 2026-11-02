@@ -497,7 +497,13 @@ namespace TaskCalendarWidget
         internal const string AdminReqPrefix = "aw:";
         internal const string AttendReqPrefix = "tw:";
 
-        private AppWindow? WinOf(WinKind k) => _wins.TryGetValue(k, out var w) ? w : null;
+        //  그 종류의 살아 있는 창. 이미 닫힌 창(밖에서 닫혔다)이 남아 있으면 참조를 비우고 null 이다(닫힌 창을 다시 쓰지 않는다).
+        private AppWindow? WinOf(WinKind k)
+        {
+            if (!_wins.TryGetValue(k, out var w)) return null;
+            if (w.IsClosed) { _wins.Remove(k); return null; }
+            return w;
+        }
 
         //  이 CoreWebView2 가 어느 종류의 창인가. 메인 창이거나 모르는 창이면 null.
         private WinKind? KindOfCore(CoreWebView2? origin)
@@ -1891,24 +1897,72 @@ namespace TaskCalendarWidget
             ShowWin(WinKind.Peer, json);
         }
 
-        //  그 종류의 창을 띄운다. 창은 종류마다 하나다: 없으면 만들어 띄우고, 있으면 앞으로 가져와(최소화면 되살려) 대상만 바꾼다.
+        //  그 종류의 창을 띄운다. 창은 종류마다 하나다: 없으면 만들어 띄우고, 있으면 앞으로 가져와(최소화면 되살려, 숨겨 둔 근태 창이면 보여) 대상만 바꾼다.
+        //  ★ 만들기, 보이기, 대상 넣기가 던지면 로그를 남기고 그 창을 버린다(다음 열기 때 새로 만든다). 메인 창은 영향이 없다.
+        //  열기 시각(요청, 보임, 화면 준비)은 widget.log 에 ms 와 함께 남긴다(첫 열기와 다시 열기 비교, TraceOpenReady).
+        private readonly Dictionary<WinKind, (long t0, bool first)> _openTrace = new();
+
         private AppWindow? ShowWin(WinKind k, string json)
         {
             if (_cwvEnv == null || _appDir == null) { Log(k.Name + ": WebView2 환경이나 가상 호스트가 없어 열지 않음"); return null; }
             var w = WinOf(k);
-            if (w == null)
+            //  숨겨 둔 창을 믿을 수 없으면(화면 엔진이 없다, 숨긴 채 준비가 풀렸다) 버리고 새로 만든다(WINDOW-INPAGE §4).
+            if (w != null && k.ReuseOnClose && (w.Core == null || (!w.IsVisible && !w.IsReady)))
             {
-                var (r, max) = WinStartBounds(k);
-                var made = new AppWindow(this, k, _cwvEnv, _appDir, r, max, _remTheme == "dark");
-                made.Closed += (_, _) => { if (ReferenceEquals(WinOf(k), made)) _wins.Remove(k); ForgetWinReqs(k); };
-                _wins[k] = made;
-                made.Show();
-                Log($"{k.Name} 열기 ({r.Left:0},{r.Top:0} {r.Width:0}x{r.Height:0}{(max ? " 최대화" : "")})");
-                w = made;
+                Log(k.Name + " 숨겨 둔 창을 쓸 수 없어 버림");
+                _wins.Remove(k);
+                ForgetWinReqs(k);
+                try { w.CloseNow(); } catch { }
+                w = null;
             }
-            w.ShowTarget(json);
-            w.BringToFront();   // 맨 앞에 띄우기 중이면 이 창도 맨 위 띠에 둔다(BringToFront 가 FrontActive 를 본다)
-            return w;
+            bool first = w == null;
+            long t0 = Environment.TickCount64;
+            _openTrace[k] = (t0, first);
+            Log($"{k.Name} 열기 요청 ({(first ? "첫 열기" : "다시 열기")})");
+            try
+            {
+                if (w == null)
+                {
+                    var (r, max) = WinStartBounds(k);
+                    var made = new AppWindow(this, k, _cwvEnv, _appDir, r, max, _remTheme == "dark");
+                    made.Closed += (_, _) => { if (ReferenceEquals(WinOf(k), made)) _wins.Remove(k); ForgetWinReqs(k); };
+                    _wins[k] = made;
+                    w = made;
+                    made.Show();
+                    Log($"{k.Name} 열기 ({r.Left:0},{r.Top:0} {r.Width:0}x{r.Height:0}{(max ? " 최대화" : "")})");
+                }
+                w.ShowTarget(json);
+                w.BringToFront();   // 맨 앞에 띄우기 중이면 이 창도 맨 위 띠에 둔다(BringToFront 가 FrontActive 를 본다)
+                if (k.ReuseOnClose) Log($"{k.Name} 보임 ({(first ? "첫 열기" : "다시 열기")}) +{Environment.TickCount64 - t0}ms");
+                return w;
+            }
+            catch (Exception ex)
+            {
+                Log(k.Name + " 열기 실패, 창을 버림: " + ex.Message);
+                _openTrace.Remove(k);
+                if (w != null)
+                {
+                    if (ReferenceEquals(WinOf(k), w)) _wins.Remove(k);
+                    ForgetWinReqs(k);
+                    try { w.CloseNow(); } catch { }
+                }
+                return null;
+            }
+        }
+
+        //  대상이 웹에 들어갔다(AppWindow.PushAsync). 요청부터의 ms 를 남긴다. 근태 창은 "근태 화면 준비", 그 밖은 "<창 이름> 화면 준비".
+        internal void TraceOpenReady(WinKind k)
+        {
+            if (!_openTrace.Remove(k, out var t)) return;
+            string label = k == WinKind.Attend ? "근태 화면 준비" : k.Name + " 화면 준비";
+            Log($"{label} ({(t.first ? "첫 열기" : "다시 열기")}) +{Environment.TickCount64 - t.t0}ms");
+        }
+
+        //  AppWindow 가 숨겨졌다(ReuseOnClose). 그 창에 갈 회신은 이제 없다. 창은 _wins 에 남는다(다시 열 때 쓴다).
+        internal void WinHidden(WinKind k)
+        {
+            ForgetWinReqs(k);
+            Log(k.Name + " 숨김");
         }
 
         // ============ 관리 창(ADMIN-WINDOW) ============
@@ -2085,7 +2139,8 @@ namespace TaskCalendarWidget
             }
         }
 
-        //  앱 종료, 로그아웃, 계정 바뀜. 따로 뜨는 창을 모두 묻지 않고 닫는다. 닫히면서 자리를 남긴다(AppWindow.Closing 이 RememberWinBounds 를 부른다).
+        //  앱 종료, 로그아웃, 계정 바뀜. 따로 뜨는 창을 모두 묻지 않고 진짜로 닫는다(숨겨 둔 근태 창도 _wins 에 있으므로 함께 닫힌다, WINDOW-INPAGE §4).
+        //  닫히면서 자리를 남긴다(AppWindow.Closing 이 RememberWinBounds 를 부른다).
         //  메인 창을 트레이로 숨기는 것과는 무관하다(거기서는 부르지 않는다).
         private void CloseSubWindows()
         {

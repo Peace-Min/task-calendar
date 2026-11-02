@@ -1060,6 +1060,7 @@ git/svn 작성자, **근태·초과시간**(`<attendance>` → 신규 `cal_atten
 | **`cal_report_daily`** | 없음 (캘린더가 **보낸** 일간보고, §5.9) |
 | **`cal_report_hours`** | 없음 (보고한 과제별 시간 = 공수계산기의 원천, §5.9) |
 | **`cal_report_weekly`** | 없음 (캘린더가 **작성한** 주간보고, §5.9) |
+| **`cal_report_weekly_hours`** | 없음 (주간보고 과제투입시간, 맨먼스 원천, §5.9, 구조 20) |
 | `cal_user_pref` | **`<prefs>`**(보고서 서식). 루트 `gitAuthor`·`svnAuthor` 는 2026-10-26 구조 18 에서 칸째 지웠다 |
 | `cal_user_rev` | 없음 (동시성·동기화, §3.1) |
 | `cal_migration_log` | 없음 (이관 재실행 방지, §8) |
@@ -2388,6 +2389,8 @@ buildNetcusHoursText()      :7887  주간 = Σ hoursByDate   ← 파생값
 > 그래서 주간 표의 칸은 `user_id`, `period_start`, `period_end`, `subject`, `content`(과제투입시간), `endwork`(진행사항),
 > `plan`(차주계획), `meeting`(회의내용), `composed_at` 과 감사 칸 둘이다. 이관은 `db/deploy/migrations/v20-weekly-meeting.sql`.
 
+> **2026-11-02, 주간보고 기간 = 월~토(구조 변경 없음,** [`../docs/CALENDAR-COMMON.md`](../docs/CALENDAR-COMMON.md)**).** 인트라넷 주간보고 기간 칸이 그 주 월요일~토요일이라 `period_start` 는 월요일 그대로, `period_end` 는 토요일로 쓴다(0.25.0 까지는 일요일을 썼다, 그 주를 다시 저장하면 토요일로 덮인다). 같은 주 글 찾기가 기간 정확 일치라 회사 폼과 같아야 한다. 앱 안의 한 주(달력 줄)는 일~토이고 이 표의 기간은 그 주의 회사 보고 기간이다.
+>
 > **2026-10-30, 주간 과제투입시간 표 `cal_report_weekly_hours`(구조 20 에 합침, 결정 14).**
 > 칸: `user_id`, `period_start`, `line_no`, `task_name`(보낸 과제명), `project_uid`(공식 과제면 `project.uid`, 개인 과제는 `NULL`), `hours DECIMAL(5,2)`(0 초과 168 이하).
 > PK `(user_id, period_start, line_no)`, FK `(user_id, period_start)` → `cal_report_weekly` `ON DELETE CASCADE ON UPDATE CASCADE`(일간 `fk_crh_daily` 와 같은 결).

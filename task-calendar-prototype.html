@@ -2988,6 +2988,7 @@ html[data-attendwin] body > :not(#atEd):not(#awEd):not(#awList):not(#confirmModa
 html[data-attendwin] body{ overflow:hidden; background:var(--panel) }
 html[data-attendwin] #atEd{ height:100% }
 html[data-attendwin] #atBack{ display:none }
+html.at-idle #atEd,html.at-idle #awEd,html.at-idle #awList{ visibility:hidden }   /* 숨겨 둔 근태 창(__attendWinHidden). 다음 payload 가 오면 걷힌다 */
 /* ===== 근태 주간보고(docs/ATTENDANCE-PLAN.md §13). 새 규칙은 .aw- 와 .nf 다 =====
    목록(#awList)은 근태 달력 자리에, 편집 화면(#awEd)은 일간 보고 화면(.at-ed)의 틀을 그대로 쓴다(머리, 왼쪽, 오른쪽 패널, 바닥). */
 .at-kind{flex:none}
@@ -23653,6 +23654,7 @@ function attendWinBoot(){
 //  payload 의 kind 가 'week' 이면 주간보고 편집(결정 13), 아니면 일간 보고다. 주간 화면에서 일간 새로고침 회신이 오면 과제 목록만 받는다.
 window.__attendWinOpen = function(o){
   if(!ATTENDWIN || !o || typeof o !== 'object') return;
+  document.documentElement.classList.remove('at-idle');
   if(o.kind === 'week'){ awWinOpen(o); return; }
   if(ATW.view !== 'day'){
     if(o.refresh === true){ awFromRefresh(o); return; }
@@ -23660,6 +23662,18 @@ window.__attendWinOpen = function(o){
     awDraftFlushNow(); awCloseEditor(); atwShow('day');
   }
   atEdOpen(o);
+};
+//  호스트가 근태 창을 숨기기 직전에 부른다(WINDOW-INPAGE §3). 닫기 확인을 이미 지났다. 쓰던 글은 임시 저장에 남기고 편집 상태, 하위 팝업, 타이머를 비워
+//  다음에 다른 날짜가 깨끗이 열리게 한다. 다시 보일 때는 호스트가 새 payload 를 넣는다(__attendWinOpen).
+window.__attendWinHidden = function(){
+  if(!ATTENDWIN) return;
+  try{ if(!ATE.sending && atDirty()) atDraftFlushNow(); if(!AWE.sending && awDirty()) awDraftFlushNow(); }catch(_){}
+  try{ clearTimeout(ATE.pvT); ATE.pvT = null; clearTimeout(AWE.pvT); AWE.pvT = null; clearTimeout(AWE.timer); AWE.timer = null; }catch(_){}
+  try{ atCloseEditor(); }catch(_){}
+  try{ awCloseEditor(); }catch(_){}
+  try{ ATE.prev = { date: '', content: null, loading: false, err: '', gen: ATE.prev.gen + 1 }; ATE.intra = false; ATE.armed = false; }catch(_){}
+  try{ closeOverlay(document.getElementById('confirmModal')); }catch(_){}
+  try{ ATW.view = 'day'; atwSync(); document.title = '근태 보고'; document.documentElement.classList.add('at-idle'); }catch(_){}
 };
 window.__attendWinActivated = function(){ if(ATTENDWIN) atWinRefresh(); };
 

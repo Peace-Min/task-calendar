@@ -115,7 +115,7 @@ function checkOpenAndLifecycle(cs) {
   assert.match(o, /me = UserPayload\(s\)/, '내 신원(me)을 세션에서 싣지 않는다');
   assert.match(o, /ShowWin\(WinKind\.Peer, json\);/, '열람 창 종류로 띄우지 않는다');
   const sw = member(cs, 'private AppWindow? ShowWin(WinKind k, string json)');
-  assert.match(sw, /var w = WinOf\(k\);\s*if \(w == null\)\s*\{[\s\S]*new AppWindow\(this, k, _cwvEnv, _appDir, r, max, _remTheme == "dark"\);[\s\S]*made\.Show\(\);[\s\S]*\}\s*w\.ShowTarget\(json\);\s*w\.BringToFront\(\);/,
+  assert.match(sw, /var w = WinOf\(k\);[\s\S]*if \(w == null\)\s*\{[\s\S]*new AppWindow\(this, k, _cwvEnv, _appDir, r, max, _remTheme == "dark"\);[\s\S]*made\.Show\(\);[\s\S]*\}\s*w\.ShowTarget\(json\);\s*w\.BringToFront\(\);/,
     '창이 하나가 아니다(있으면 다시 쓰고 앞으로 가져와야 한다)');
   assert.match(sw, /made\.Closed \+= \(_, _\) => \{ if \(ReferenceEquals\(WinOf\(k\), made\)\) _wins\.Remove\(k\); ForgetWinReqs\(k\); \};/, '닫힌 창을 잊지 않는다(또는 그 창의 요청 기록을 남긴다)');
   const close = member(cs, 'private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)');
@@ -130,8 +130,9 @@ function checkOpenAndLifecycle(cs) {
   assert.match(ctor, /ShowInTaskbar = true;/, '작업 표시줄에 따로 뜨지 않는다');
   assert.ok(!/\bOwner\s*=/.test(stripCsComments(PW)), 'Owner 를 둔다(메인 창과 독립이어야 한다)');
   assert.match(ctor, /if \(maximized\) WindowState = WindowState\.Maximized;/, '최대화로 닫았으면 최대화로 열지 않는다');
-  assert.match(ctor, /var r = WindowState == WindowState\.Normal \? new Rect\(Left, Top, Width, Height\) : RestoreBounds;\s*_host\.RememberWinBounds\(Kind, r, _shownState == WindowState\.Maximized\);/, '닫을 때 평소 창 자리와 최대화 여부를 남기지 않는다');
-  assert.match(ctor, /Closed \+= \(_, _\) => \{ try \{ _web\.Dispose\(\); \} catch \{ \} \};/, '닫힌 창의 WebView2 를 없애지 않는다(남의 데이터를 실은 문서가 남는다)');
+  assert.match(ctor, /SaveBounds\(\);\s*\};/, '닫을 때 자리를 남기지 않는다');
+  assert.match(extractCsMember(PW, 'private void SaveBounds()'), /var r = WindowState == WindowState\.Normal \? new Rect\(Left, Top, Width, Height\) : RestoreBounds;\s*_host\.RememberWinBounds\(Kind, r, _shownState == WindowState\.Maximized\);/, '닫을 때 평소 창 자리와 최대화 여부를 남기지 않는다');
+  assert.match(ctor, /Closed \+= \(_, _\) => \{ _closed = true; try \{ _web\.Dispose\(\); \} catch \{ \} \};/, '닫힌 창의 WebView2 를 없애지 않는다(남의 데이터를 실은 문서가 남는다)');
   assert.match(ctor, /MinWidth = kind\.MinWidth;\s*MinHeight = kind\.MinHeight;/, '종류의 최소 크기를 쓰지 않는다');
   const init = extractCsMember(PW, 'private async Task InitAsync()');
   assert.match(init, /await _web\.EnsureCoreWebView2Async\(_env\);/, '메인 창과 같은 WebView2 환경을 쓰지 않는다(localStorage 가 갈라진다)');
