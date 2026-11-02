@@ -309,29 +309,45 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(B) 과제 추가: 내 과제 목록에서 검색해 고른다(이미 있는 과제는 흐림, 중복 금지), 새 블록은 0시간, Esc 는 메뉴만 닫는다', () => {
+  test('(B) 과제 추가: 체크 목록(주간과 같은 모양). 블록이 있으면 체크, 체크하면 0시간 빈 블록, 빈 블록만 체크를 풀어 지우고, 열어 둔 채 이어서 고른다. Esc 는 메뉴만 닫는다', () => {
     const X = bootBrowser();
     try {
       openB(X);
+      X.ev("ATE.blocks.find(function(b){ return b.name === '감마'; }).hours = 0; ATE.blocks.find(function(b){ return b.name === '감마'; }).text = ''; atBlocksRender()");   // 감마만 빈 블록으로
       X.$('#atAdd').click();
       assert.ok(shown(X, '#atAddMenu'), '과제 추가 메뉴가 열리지 않았다');
-      const items = () => X.evJSON("[].map.call(document.querySelectorAll('#atAddList [data-addname]'), function(b){ return b.dataset.addname + (b.disabled ? ':x' : ''); })");
-      assert.deepStrictEqual(items(), ['알파:x', '베타:x', '감마:x', '델타'], '목록이 내 과제 순서가 아니거나 이미 있는 과제가 흐리지 않다');
+      const items = () => X.evJSON("[].map.call(document.querySelectorAll('#atAddList [data-addname]'), function(b){ return b.dataset.addname + (b.getAttribute('aria-checked') === 'true' ? ':v' : '') + (b.getAttribute('aria-disabled') === 'true' ? ':x' : ''); })");
+      //  알파(6시간), 베타(2.5시간)는 내용이 있어 체크된 채 잠기고, 감마(빈 블록)는 체크만 되고 잠기지 않는다
+      assert.deepStrictEqual(items(), ['알파:v:x', '베타:v:x', '감마:v', '델타'], '목록이 내 과제 순서가 아니거나 체크, 잠금이 맞지 않다');
+      assert.ok(!X.$('#atAddList').textContent.includes('이미 있음'), '이미 있음 글이 남아 있다');
+      assert.strictEqual(X.$('#atAddList [data-addname="알파"]').title, '내용이 있는 블록은 블록의 ✕ 로 지웁니다', '잠긴 줄의 안내가 없다');
       X.$('#atAddList [data-addname="알파"]').click();
-      assert.deepStrictEqual(names(X), ['알파', '베타', '감마'], '이미 있는 과제를 또 더했다');
+      assert.deepStrictEqual(names(X), ['알파', '베타', '감마'], '내용이 있는 블록을 체크 해제로 지웠다');
       X.ev("atAddPick('알파'); atAddPick('없는 과제')");
-      assert.deepStrictEqual(names(X), ['알파', '베타', '감마'], '중복이나 내 과제에 없는 이름을 더했다');
+      assert.deepStrictEqual(names(X), ['알파', '베타', '감마'], '내용 있는 블록이나 내 과제에 없는 이름을 건드렸다');
+      X.$('#atAddList [data-addname="감마"]').click();
+      assert.deepStrictEqual(names(X), ['알파', '베타'], '빈 블록의 체크를 풀어도 지워지지 않았다');
+      assert.ok(shown(X, '#atAddMenu'), '고른 뒤 메뉴가 닫혔다');
+      assert.deepStrictEqual(items(), ['알파:v:x', '베타:v:x', '감마', '델타']);
       input(X, '#atAddQ', '델');
       assert.deepStrictEqual(items(), ['델타'], '검색이 거르지 않았다');
       X.$('#atAddQ').dispatchEvent(new X.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-      assert.deepStrictEqual(blk(X)[3], { name: '델타', hours: 0, text: '' }, '새 블록이 0시간 빈 블록이 아니다');
-      assert.ok(!shown(X, '#atAddMenu'), '고른 뒤 메뉴가 닫히지 않았다');
-      assert.strictEqual(X.doc.activeElement, X.$('#atBlocks textarea[data-bt="3"]'), '새 블록 내용 칸으로 가지 않았다');
-      assert.strictEqual(X.$('#atHours').textContent, '합계 3시간');
+      assert.deepStrictEqual(blk(X)[2], { name: '델타', hours: 0, text: '' }, '새 블록이 0시간 빈 블록이 아니다');
+      assert.ok(shown(X, '#atAddMenu'), 'Enter 로 고른 뒤 메뉴가 닫혔다');
+      //  전체 선택은 빠진 과제를 모두 넣고, 전체 해제는 빈 블록만 지운다
+      input(X, '#atAddQ', '');
+      X.$('#atAddAll').click();
+      assert.deepStrictEqual(names(X), ['알파', '베타', '감마', '델타'], '전체 선택이 빠진 과제를 넣지 않았다');
+      X.$('#atAddNone').click();
+      assert.deepStrictEqual(names(X), ['알파', '베타'], '전체 해제가 빈 블록만 지우지 않았다');
+      assert.ok(shown(X, '#atAddMenu'));
+      X.$('#atAddDone').click();
+      assert.ok(!shown(X, '#atAddMenu'), '[닫기]가 메뉴를 닫지 않았다');
+      assert.strictEqual(X.doc.activeElement, X.$('#atAdd'), '[닫기] 뒤 포커스가 추가 단추로 돌아가지 않았다');
       X.$('#atAdd').click();
-      assert.deepStrictEqual(items(), ['알파:x', '베타:x', '감마:x', '델타:x']);
       esc(X);
       assert.ok(!shown(X, '#atAddMenu') && shown(X, '#atEd'), 'Esc 가 메뉴만 닫지 않았다');
+      assert.strictEqual(X.doc.activeElement, X.$('#atAdd'), 'Esc 뒤 포커스가 추가 단추로 돌아가지 않았다');
       //  브라우저의 새 과제 만들기는 같은 화면의 과제 추가 창(일반 과제 탭)을 연다. 만든 과제는 바로 목록에 나온다(지금 내 달력을 본다)
       X.$('#atAdd').click(); X.$('#atAddNew').click();
       assert.ok(shown(X, '#categoryModal') && shown(X, '#catAddModal'), '브라우저에서 과제 추가 창이 열리지 않았다');
@@ -1242,7 +1258,7 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
   test('변이 M9: 과제 추가 뒤 정렬을 빼면 새 블록이 맨 끝에 붙는다(순서 검사가 잡는다)', () => {
-    const bad = mutate(app, '  const moved = atSortBlocks();' + NL + '  atBlocksRender();' + NL + '  atFlash(moved.includes(nb)', '  const moved = [];' + NL + '  atBlocksRender();' + NL + '  atFlash(moved.includes(nb)');
+    const bad = mutate(app, '  const moved = atSortBlocks();' + NL + '  atBlocksRender();' + NL + '  if(added.length) atFlash(', '  const moved = [];' + NL + '  atBlocksRender();' + NL + '  if(added.length) atFlash(');
     const X = bootBrowser(bad);
     try {
       openB(X);

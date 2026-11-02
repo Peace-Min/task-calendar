@@ -227,12 +227,13 @@ const setBlocks = (memo, list) => A.ev(`(function(){
   let guard = 50; while (ATE.blocks.length && guard--) document.querySelector('#atBlocks [data-bx="0"]').click();
   const L = ${JSON.stringify(list)};
   for (let i = 0; i < L.length; i++) {
-    document.getElementById('atAdd').click();
+    if (document.getElementById('atAddMenu').classList.contains('hidden')) document.getElementById('atAdd').click();   // 체크 목록은 열어 둔 채 이어서 고른다
     const it = [].find.call(document.querySelectorAll('#atAddList [data-addname]'), function(b){ return b.dataset.addname === L[i].name; });
-    if (!it || it.disabled) return 'noitem:' + L[i].name; it.click();
+    if (!it || it.getAttribute('aria-checked') === 'true') return 'noitem:' + L[i].name; it.click();
     const t = document.querySelector('#atBlocks textarea[data-bt="' + i + '"]'); t.value = L[i].text; t.dispatchEvent(new Event('input', { bubbles: true }));
     const h = document.querySelector('#atBlocks input[data-bh="' + i + '"]'); h.value = String(L[i].hours); h.dispatchEvent(new Event('input', { bubbles: true }));
   }
+  if (!document.getElementById('atAddMenu').classList.contains('hidden')) document.getElementById('atAddDone').click();
   const m = document.querySelector('#atBlocks textarea[data-memo]'); m.value = ${JSON.stringify(memo)}; m.dispatchEvent(new Event('input', { bubbles: true }));
   return 'ok'; })()`);
 //  지금 블록과 메모(비교용)
@@ -375,17 +376,18 @@ async function main() {
   await sleep(150);
   ok('A3 묻지 않고 바로 불러온 블록으로 바뀐다(덮어쓰기 확인 없음)', !(await A.ev(`!!document.getElementById('atConfirm')`)) && same(await curBlocks(), t3));
   //  과제 추가 메뉴: 이미 있는 과제는 흐리고, 없는 과제를 고르면 0시간 블록이 맨 끝에 생긴다
-  const add3 = await A.J(`(function(){ document.getElementById('atAdd').click(); const L = [].map.call(document.querySelectorAll('#atAddList [data-addname]'), function(b){ return { n: b.dataset.addname, off: b.disabled }; });
+  const add3 = await A.J(`(function(){ document.getElementById('atAdd').click(); const L = [].map.call(document.querySelectorAll('#atAddList [data-addname]'), function(b){ return { n: b.dataset.addname, off: b.getAttribute('aria-checked') === 'true' }; });
     return { open: !document.getElementById('atAddMenu').classList.contains('hidden'), L: L }; })()`);
   const used3 = new Set(t3.blocks.map((b) => b.name));
-  ok('A3 과제 추가 메뉴 = 내 과제 목록, 이미 블록이 있는 과제는 흐림', add3.open && same(add3.L.map((x) => x.n), p3.projects) && add3.L.every((x) => x.off === used3.has(x.n)), JSON.stringify(add3.L.slice(0, 4)));
+  ok('A3 과제 추가 메뉴 = 내 과제 목록(체크 목록), 이미 블록이 있는 과제는 체크됨', add3.open && same(add3.L.map((x) => x.n), p3.projects) && add3.L.every((x) => x.off === used3.has(x.n)), JSON.stringify(add3.L.slice(0, 4)));
   const free3 = add3.L.find((x) => !x.off);
   if (free3) {
     await A.ev(`(function(){ [].find.call(document.querySelectorAll('#atAddList [data-addname]'), function(b){ return b.dataset.addname === ${JSON.stringify(free3.n)}; }).click(); return 1; })()`);
     const a3 = await curBlocks();
     const order3 = a3.blocks.map((b) => p3.projects.indexOf(b.name)).filter((i) => i >= 0);
-    ok('A3 고른 과제가 0시간 빈 블록으로 캘린더 순서 자리에 생기고 메뉴가 닫힌다', a3.blocks.some((b) => same(b, { name: free3.n, hours: 0, text: '' })) && same(order3, order3.slice().sort((x, y) => x - y)) && !(await shown(A, 'atAddMenu')),
+    ok('A3 고른 과제가 0시간 빈 블록으로 캘린더 순서 자리에 생기고 메뉴는 열려 있다', a3.blocks.some((b) => same(b, { name: free3.n, hours: 0, text: '' })) && same(order3, order3.slice().sort((x, y) => x - y)) && (await shown(A, 'atAddMenu')),
       JSON.stringify(a3.blocks.map((b) => b.name)));
+    await click(A, 'atAddDone');
   } else { await A.ev(`(function(){ document.getElementById('atAdd').click(); return 1; })()`); note('모든 과제에 블록이 있어 과제 추가는 건너뛴다'); }
   //  미리보기 탭: 보낼 때와 같은 조립 글(읽기만, 0.2초 모아 그린다). [글로 보기]는 없다
   ok('A3 [글로 보기]가 없다', await A.ev(`!document.getElementById('atAsText')`));

@@ -2893,9 +2893,14 @@ body:not(.at-on) #atView{display:none !important}
 .at-ed-date{font-size:var(--fs-emph);font-weight:600;white-space:nowrap}
 .at-fold{border:0;background:none;color:var(--muted);cursor:pointer;font:inherit;font-size:var(--fs-meta);padding:4px 8px;border-radius:var(--r-sm)}
 .at-fold:hover{background:var(--hover-bg);color:var(--text)}
-.at-ed-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 360px}
+/* 오른쪽 패널 폭은 --atpw(기본 360px, 일간과 주간이 함께 쓴다). 끌개(.at-split)로 바꾸고, 너무 넓어도 몸통의 60% 를 넘지 않게 CSS 에서도 한 번 더 묶는다 */
+.at-ed-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 6px minmax(280px,min(var(--atpw,360px),60%))}
 .at-ed-body.folded{grid-template-columns:minmax(0,1fr)}
-.at-ed-body.folded .at-panel{display:none}
+.at-ed-body.folded .at-panel,.at-ed-body.folded .at-split{display:none}
+.at-split{position:relative;cursor:col-resize;touch-action:none;outline:none;background:transparent}
+.at-split::before{content:"";position:absolute;top:0;bottom:0;left:50%;width:1px;margin-left:-.5px;background:var(--line)}
+.at-split:hover::before,.at-split.dragging::before,.at-split:focus-visible::before{background:var(--accent);width:2px;margin-left:-1px}
+.at-split + .at-panel{border-left:0}
 .at-left{display:flex;flex-direction:column;gap:10px;padding:14px 16px;min-height:0;min-width:0}
 .at-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .at-lb{font-size:var(--fs-meta);color:var(--muted);font-weight:600}
@@ -2936,6 +2941,11 @@ body:not(.at-on) #atView{display:none !important}
 .at-mi:hover,.at-mi:focus-visible{background:var(--hover-bg)}
 .at-mi:disabled{color:var(--faint-text);cursor:default;background:none}
 .at-mi small{margin-left:auto;color:var(--faint-text)}
+.at-mi .cat-nm{flex:1;min-width:0}
+.aw-mi[aria-disabled="true"]{cursor:default;opacity:.6}
+.aw-mi[aria-disabled="true"]:hover{background:none}
+/* 일간 [+ 과제 추가] 체크 목록: 목록이 스크롤되는 칸 안에 있어도 잘리지 않게 화면 기준(fixed)으로 둔다. 자리는 atAddPlace 가 [+ 과제 추가] 줄의 오른쪽 끝에 맞춘다 */
+#atAddMenu{position:fixed;left:auto;top:auto;width:300px;max-height:360px;z-index:30}
 .at-mnew{border-top:1px solid var(--line);border-radius:0;padding-top:7px;color:var(--accent-2)}
 /* 오른쪽 패널: [미리보기][가져오기] 탭. 미리보기는 회사로 나갈 글(본문 글꼴, 읽기만). 색 표시는 하지 않는다. */
 .at-ptabs{margin:12px 14px 0;flex:none;align-self:flex-start}
@@ -3078,6 +3088,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
 @media (max-width:760px){ .aw-form{grid-template-columns:72px minmax(0,1fr)} }
 @media (max-width:760px){
   .at-ed-body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(320px,1fr) auto;overflow:auto}
+  .at-split{display:none}
   .at-panel{border-left:0;border-top:1px solid var(--line)}
   .at-grid{grid-auto-rows:minmax(84px,1fr)}
   .at-day{padding:2px 3px}
@@ -3414,13 +3425,15 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
             <button type="button" class="btn at-addb" id="atAdd" aria-expanded="false" aria-controls="atAddMenu">+ 과제 추가</button>
             <div class="at-menu hidden" id="atAddMenu" role="dialog" aria-label="과제 추가">
               <input type="search" id="atAddQ" class="at-sel" placeholder="과제 검색" aria-label="과제 검색" autocomplete="off">
+              <div class="aw-mall"><button type="button" class="at-lnk" id="atAddAll">전체 선택</button><button type="button" class="at-lnk" id="atAddNone">전체 해제</button></div>
               <div class="at-mlist" id="atAddList"></div>
-              <button type="button" class="at-mi at-mnew" id="atAddNew">+ 캘린더에 새 과제 만들기</button>
+              <div class="aw-mfoot"><button type="button" class="at-mi at-mnew" id="atAddNew">+ 캘린더에 새 과제 만들기</button><button type="button" class="btn sm" id="atAddDone">닫기</button></div>
             </div>
           </div>
           </div>
           <div class="at-stat"><span id="atHours"></span><span id="atSent"></span><span class="at-saved" id="atSaved"></span></div>
         </div>
+        <div class="at-split" role="separator" aria-orientation="vertical" aria-label="패널 폭" tabindex="0" title="끌어서 폭 조절, 두 번 누르면 기본 폭" data-atsplit="d"></div>
         <aside class="at-panel" id="atPanel" aria-label="미리보기와 가져오기 패널">
           <div class="seg at-ptabs" role="tablist" aria-label="오른쪽 패널">
             <button type="button" class="seg-b" role="tab" data-attab="pv" aria-selected="false">미리보기</button>
@@ -3505,6 +3518,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
           </div>
           <div class="at-stat"><span id="awSent"></span><span class="at-saved" id="awSaved"></span></div>
         </div>
+        <div class="at-split" role="separator" aria-orientation="vertical" aria-label="패널 폭" tabindex="0" title="끌어서 폭 조절, 두 번 누르면 기본 폭" data-atsplit="w"></div>
         <aside class="at-panel" id="awPanel" aria-label="미리보기와 가져오기 패널">
           <div class="seg at-ptabs" role="tablist" aria-label="오른쪽 패널">
             <button type="button" class="seg-b" role="tab" data-awtab="pv" aria-selected="false">미리보기</button>
@@ -22220,6 +22234,73 @@ function setupSplitter(){
   commitPanelW(curPanelW());   // 초기 aria 값 확정(저장값 복원 직후 상태를 그대로 노출)
 }
 
+/* ---------- 근태 편집 창(일간 #atEdBody, 주간 #awBody)의 오른쪽 패널 폭 끌개 ----------
+ *  폭은 --atpw 하나(기본 360px)를 두 화면이 함께 쓴다. 저장은 localStorage tc_attPanelW.
+ *  한계는 비율: 패널은 280px 이상, 몸통의 60% 이하(왼쪽 편집 칸이 40% 이상 남는다). 창 크기가 바뀌면 다시 묶는다(저장값은 그대로).
+ *  끄는 동안은 CSS 변수만 바꾸고(rAF), 놓을 때 저장한다. 접힌 일간 패널과 좁은 쌓기 배치에서는 끌개가 숨는다(CSS). */
+const AT_PW_KEY = 'tc_attPanelW', AT_PW_DEF = 360, AT_PW_MIN = 280, AT_PW_RATIO = 0.6;
+function setupAttSplit(){
+  const splits = [].slice.call(document.querySelectorAll('.at-split'));
+  if(!splits.length) return;
+  const root = document.documentElement;
+  let want = AT_PW_DEF;
+  try{ const sv = parseInt(localStorage.getItem(AT_PW_KEY), 10); if(sv >= AT_PW_MIN && sv <= 4000) want = sv; }catch(_){}
+  const bodyOf = sp => sp.parentElement;
+  const bounds = () => {
+    const sp = splits.find(x => { const b = bodyOf(x); return b && b.offsetWidth > 0 && getComputedStyle(x).display !== 'none'; });
+    const w = sp ? bodyOf(sp).getBoundingClientRect().width : 0;
+    return { min: AT_PW_MIN, max: w ? Math.max(AT_PW_MIN, Math.floor(w * AT_PW_RATIO)) : 4000 };
+  };
+  const clamp = v => { const b = bounds(); return Math.round(Math.max(b.min, Math.min(v, b.max))); };
+  const apply = v => {   // 보이는 폭 = 바라는 폭을 한계 안으로 묶은 값. aria 도 함께 고친다
+    const b = bounds(), cur = Math.round(Math.max(b.min, Math.min(v, b.max)));
+    root.style.setProperty('--atpw', cur + 'px');
+    for(const sp of splits){
+      sp.setAttribute('aria-valuenow', String(cur)); sp.setAttribute('aria-valuemin', String(b.min));
+      sp.setAttribute('aria-valuemax', String(b.max === 4000 ? Math.max(b.min, cur) : b.max)); sp.setAttribute('aria-valuetext', cur + '픽셀');
+    }
+    return cur;
+  };
+  const save = v => { try{ localStorage.setItem(AT_PW_KEY, String(v)); }catch(_){} };
+  const commit = v => { want = clamp(v); const cur = apply(want); save(cur); return cur; };
+  apply(want);
+  window.addEventListener('resize', () => apply(want));
+  for(const sp of splits){
+    const body = bodyOf(sp);
+    let active = false, raf = 0, nextW = 0;
+    sp.addEventListener('pointerdown', e => {
+      if(e.button !== 0) return;
+      active = true; try{ sp.setPointerCapture(e.pointerId); }catch(_){}
+      sp.classList.add('dragging'); e.preventDefault(); apply(want);
+    });
+    sp.addEventListener('pointermove', e => {
+      if(!active) return;
+      nextW = body.getBoundingClientRect().right - e.clientX - 3;   // 끌개 가운데가 패널의 왼쪽 가장자리
+      if(raf) return;
+      raf = requestAnimationFrame(() => { raf = 0; want = clamp(nextW); apply(want); });
+    });
+    const end = e => {
+      if(!active) return; active = false; sp.classList.remove('dragging');
+      try{ sp.releasePointerCapture(e.pointerId); }catch(_){}
+      if(raf){ try{ cancelAnimationFrame(raf); }catch(_){} raf = 0; want = clamp(nextW); }
+      save(apply(want));
+    };
+    sp.addEventListener('pointerup', end);
+    sp.addEventListener('pointercancel', end);
+    sp.addEventListener('dblclick', () => commit(AT_PW_DEF));
+    sp.addEventListener('focus', () => apply(want));
+    sp.addEventListener('keydown', ev => {   // ← 는 패널을 넓히고 → 는 좁힌다(메인 끌개와 같은 방향). Shift 는 큰 걸음
+      const STEP = ev.shiftKey ? 96 : 24;
+      let w;
+      if(ev.key === 'ArrowLeft') w = apply(want) + STEP;
+      else if(ev.key === 'ArrowRight') w = apply(want) - STEP;
+      else return;
+      ev.preventDefault(); ev.stopPropagation();
+      commit(w);
+    });
+  }
+}
+
 function setupGuideResize(){
   const h = $('#guideResize'), modal = $('#guideModal .modal');
   if(!h || !modal) return;
@@ -22941,6 +23022,7 @@ function atBlocksRender(){
   if(ATE.sending) box.querySelectorAll('input, select, textarea, button').forEach(e => { e.disabled = true; });
   if(keep) atFocusRestore(keep);
   atStatRender();
+  if(atAddShown()) atAddPlace();   // [+ 과제 추가] 줄이 내려가거나 올라가면 체크 목록도 따라간다
 }
 //  다시 그린 뒤 포커스를 같은 자리로(같은 블록의 같은 칸, 글이면 커서까지).
 function atFocusKey(el){
@@ -23036,8 +23118,33 @@ function atBlockPick(i, name){
   atFocusBlock(ATE.blocks.indexOf(b), b.text.trim() && b.hours === 0 ? 'hours' : 'text');
   atOnEdit();
 }
-/* ── [+ 과제 추가] 메뉴: 내 캘린더 과제에서 검색해 고른다(이미 있는 과제는 흐림). 맨 아래는 캘린더에 새 과제 만들기 ── */
+/* ── [+ 과제 추가] 체크 목록(일간, 주간과 같은 모양): 체크 = 그 과제의 블록이 있음 ──
+ *  체크하면 캘린더 순서 자리에 0시간 빈 블록이 생기고, 체크를 풀면 빈 블록(0시간, 글 없음)만 지워진다.
+ *  내용이 있는 블록은 체크된 채 잠긴다(aria-disabled). 블록의 ✕ 로만 지운다. 열어 둔 채 이어서 고른다. */
+const AT_CK_LOCK_TIP = '내용이 있는 블록은 블록의 ✕ 로 지웁니다';
+//  체크 목록 한 줄(일간, 주간 공용). attr = 과제 이름을 담는 data 속성 이름, 긴 이름은 두 줄까지(catFitName)
+function atCkItem(x, attr, checked, locked){
+  return '<button type="button" class="at-mi aw-mi" role="menuitemcheckbox" aria-checked="' + !!checked + '" ' + attr + '="' + esc(x.name) + '"'
+    + (locked ? ' aria-disabled="true" title="' + AT_CK_LOCK_TIP + '"' : '') + '>'
+    + '<span class="aw-ck" aria-hidden="true">✓</span><i class="at-dot" style="background:' + x.color + '" aria-hidden="true"></i>'
+    + '<span class="cat-nm" data-full="' + esc(x.name) + '"' + (locked ? '' : ' title="' + esc(x.name) + '"') + '>' + esc(x.name) + '</span></button>';
+}
+function atCkFit(L){ try{ if(L && typeof catFitNames === 'function') catFitNames(L); }catch(_){} }
+const atBlockEmpty = b => !String(b.text || '').trim() && !b.hours;
 function atAddShown(){ const m = $('#atAddMenu'); return !!m && !m.classList.contains('hidden'); }
+//  자리: [+ 과제 추가] 줄의 오른쪽 끝에 맞춘 화면 기준(fixed) 상자. 스크롤 칸에 잘리지 않고, 아래가 좁으면 줄 위로 연다.
+function atAddPlace(){
+  const m = $('#atAddMenu'), w = $('#atAddWrap'); if(!m || !w || m.classList.contains('hidden')) return;
+  const r = w.getBoundingClientRect(), vh = window.innerHeight || document.documentElement.clientHeight || 600, vw = window.innerWidth || document.documentElement.clientWidth || 800;
+  const W = Math.min(300, vw - 16), H = 360, below = vh - r.bottom - 12, above = r.top - 12;
+  m.style.width = W + 'px';
+  m.style.left = Math.max(8, Math.min(r.right - W, vw - W - 8)) + 'px';
+  if(below >= Math.min(H, 260) || below >= above){
+    m.style.bottom = 'auto'; m.style.top = Math.max(8, Math.min(r.bottom + 4, vh - 160)) + 'px'; m.style.maxHeight = Math.max(160, Math.min(H, below)) + 'px';
+  } else {
+    m.style.top = 'auto'; m.style.bottom = Math.max(8, vh - r.top + 4) + 'px'; m.style.maxHeight = Math.max(160, Math.min(H, above)) + 'px';
+  }
+}
 function atAddOpen(on){
   const m = $('#atAddMenu'), b = $('#atAdd'); if(!m) return;
   if(on && (ATE.sending || !ATE.p)) return;
@@ -23045,31 +23152,47 @@ function atAddOpen(on){
   if(b) b.setAttribute('aria-expanded', String(!!on));
   if(!on) return;
   const q = $('#atAddQ'); if(q) q.value = '';
+  const w = $('#atAddWrap'); try{ if(w) w.scrollIntoView({ block: 'nearest' }); }catch(_){}   // [+ 과제 추가] 줄이 스크롤 밖에 있지 않게
+  atAddPlace();
   atAddRender();
-  try{ m.scrollIntoView({ block: 'nearest' }); }catch(_){}   // 목록 끝의 메뉴가 스크롤 밖으로 나가지 않게
   if(q) try{ q.focus({ preventScroll: true }); }catch(_){}
 }
 function atAddRender(){
   const L = $('#atAddList'); if(!L) return;
   const qe = $('#atAddQ'), q = (qe ? qe.value : '').trim().toLowerCase();
-  const used = new Set(ATE.blocks.map(b => b.name).filter(Boolean));
+  const byName = new Map(ATE.blocks.filter(b => b.name).map(b => [b.name, b]));
   const list = atProjects().filter(x => !q || x.name.toLowerCase().includes(q));
-  L.innerHTML = list.length ? list.map(x => '<button type="button" class="at-mi" data-addname="' + esc(x.name) + '"' + (used.has(x.name) ? ' disabled' : '') + '>'
-      + '<i class="at-dot" style="background:' + x.color + '" aria-hidden="true"></i><span>' + esc(x.name) + '</span>' + (used.has(x.name) ? '<small>이미 있음</small>' : '') + '</button>').join('')
+  L.innerHTML = list.length ? list.map(x => { const b = byName.get(x.name); return atCkItem(x, 'data-addname', !!b, !!b && !atBlockEmpty(b)); }).join('')
     : '<div class="at-none">' + (atProjects().length ? '맞는 과제가 없습니다.' : '내 과제가 없습니다.') + '</div>';
+  atCkFit(L);
 }
-//  새 블록은 0시간 빈 블록이고 캘린더 순서 자리에 들어간다(반짝임).
-function atAddPick(name){
-  if(ATE.sending || !ATE.p || !name || ATE.blocks.some(b => b.name === name) || !atProjNames().includes(name)) return;
-  const nb = { name, hours: 0, text: '', raw: '' };
-  ATE.blocks.push(nb);
-  atAddOpen(false);
+//  블록 목록이 바뀐 뒤: 순서 정렬, 블록 목록만 다시 그리고(반짝임) 체크 목록도 다시 그린다. 메뉴는 닫지 않는다.
+function atAddApplied(added){
   const moved = atSortBlocks();
   atBlocksRender();
-  atFlash(moved.includes(nb) ? moved : moved.concat([nb]));
-  const t = document.querySelector('#atBlocks [data-bt="' + ATE.blocks.indexOf(nb) + '"]');
-  if(t) try{ t.focus(); t.scrollIntoView({ block: 'nearest' }); }catch(_){}
+  if(added.length) atFlash(moved.concat(added.filter(x => !moved.includes(x))));
+  atAddRender();
+  atAddPlace();
   atOnEdit();
+}
+function atAddPick(name){
+  if(ATE.sending || !ATE.p || !name || !atProjNames().includes(name)) return;
+  const cur = ATE.blocks.find(b => b.name === name), added = [];
+  if(cur){
+    if(!atBlockEmpty(cur)) return;   // 내용이 있는 블록은 ✕ 로만 지운다
+    ATE.blocks.splice(ATE.blocks.indexOf(cur), 1);
+  } else { const nb = { name, hours: 0, text: '', raw: '' }; ATE.blocks.push(nb); added.push(nb); }
+  atAddApplied(added);
+  const it = [].find.call(document.querySelectorAll('#atAddList [data-addname]'), x => x.dataset.addname === name); if(it) try{ it.focus({ preventScroll: true }); }catch(_){}
+}
+//  [전체 선택] [전체 해제]: 지금 목록에 보이는 과제(검색어로 거른 것)에만. 해제는 빈 블록만 지운다.
+function atAddAll(on){
+  if(ATE.sending || !ATE.p) return;
+  const names = [].map.call(document.querySelectorAll('#atAddList [data-addname]'), b => b.dataset.addname).filter(n => atProjNames().includes(n));
+  const added = [];
+  if(on){ for(const n of names) if(!ATE.blocks.some(b => b.name === n)){ const nb = { name: n, hours: 0, text: '', raw: '' }; ATE.blocks.push(nb); added.push(nb); } if(!added.length) return; }
+  else { const keep = ATE.blocks.filter(b => !(names.includes(b.name) && atBlockEmpty(b))); if(keep.length === ATE.blocks.length) return; ATE.blocks = keep; }
+  atAddApplied(added);
 }
 //  [+ 캘린더에 새 과제 만들기]: 근태 창은 메인 창의 과제 창을 연다(attendCatNew, 호스트가 메인 창을 앞으로 가져온다).
 //    만들고 이 창으로 돌아오면 새로고침(attendNav refresh)이 과제 목록을 바꾼다. 브라우저는 같은 화면에서 과제 추가 창(일반 과제 탭)을 연다.
@@ -23306,6 +23429,7 @@ function atToggleFold(){
   //  접힌 동안 이름은 "미리보기 열기", 펼치면 미리보기 탭으로 연다(2026-10-29 사용자 2차)
   const f = $('#atFold'); if(f){ f.textContent = ATE.folded ? '미리보기 열기 ›' : '패널 접기 ›'; f.setAttribute('aria-expanded', String(!ATE.folded)); }
   if(!ATE.folded) atPTabSet('pv', true);
+  if(!ATE.folded){ try{ window.dispatchEvent(new Event('resize')); }catch(_){} }   // 펼치면 기억한 폭을 다시 묶어 적용한다(끌개 aria 포함)
   atGrowAll();   // 폭이 바뀌어 내용 칸의 줄 수가 달라진다
 }
 //  ‹ › 날짜 이동(쓰기, 보기 모두): 쓰던 글은 먼저 임시 저장한다. 근태 창은 메인 창에 그 날짜의 payload 를 청하고(attendNav), 브라우저는 그 자리에서 다시 만든다.
@@ -23518,18 +23642,22 @@ function atInit(){
     });
     on('atAdd', 'click', () => atAddOpen(!atAddShown()));
     on('atAddQ', 'input', atAddRender);
-    on('atAddQ', 'keydown', ev => {   // Enter = 맞는 과제 중 첫 번째(이미 있는 과제는 건너뛴다)
+    on('atAddQ', 'keydown', ev => {   // Enter = 맞는 과제 중 첫 번째를 넣거나 뺀다(주간과 같다)
       if(ev.key !== 'Enter') return;
       ev.preventDefault();
-      const it = document.querySelector('#atAddList [data-addname]:not([disabled])'); if(it) atAddPick(it.dataset.addname);
+      const it = document.querySelector('#atAddList [data-addname]'); if(it) atAddPick(it.dataset.addname);
     });
-    on('atAddList', 'click', ev => { const it = ev.target.closest && ev.target.closest('[data-addname]'); if(it && !it.disabled) atAddPick(it.dataset.addname); });
+    on('atAddList', 'click', ev => { const it = ev.target.closest && ev.target.closest('[data-addname]'); if(it && it.getAttribute('aria-disabled') !== 'true') atAddPick(it.dataset.addname); });
+    on('atAddAll', 'click', () => atAddAll(true));
+    on('atAddNone', 'click', () => atAddAll(false));
+    on('atAddDone', 'click', () => { atAddOpen(false); const a = $('#atAdd'); if(a) try{ a.focus({ preventScroll: true }); }catch(_){} });
+    on('atList', 'scroll', () => { if(atAddShown()) atAddPlace(); });
     on('atAddNew', 'click', atCatNew);
     on('atReset', 'click', atReset);
     on('atPanel', 'click', ev => { const b = ev.target.closest && ev.target.closest('[data-attab]'); if(b && !b.disabled) atPTabSet(b.dataset.attab, true); });
     //  메뉴 바깥을 누르면 닫는다
     document.addEventListener('mousedown', ev => { if(atAddShown() && !(ev.target.closest && ev.target.closest('#atAddWrap'))) atAddOpen(false); });
-    window.addEventListener('resize', () => { if(atEdShown()) atGrowAll(); });
+    window.addEventListener('resize', () => { if(atEdShown()) atGrowAll(); if(atAddShown()) atAddPlace(); });
     on('atStatus', 'change', () => atOnEdit());
     on('atOt', 'change', () => atOnEdit());
     on('atFold', 'click', atToggleFold);
@@ -24153,9 +24281,9 @@ function awAddRender(){
   const qe = $('#awAddQ'), q = (qe ? qe.value : '').trim().toLowerCase();
   const used = new Set(AWE.hrs), all = awProjects();
   const list = all.filter(x => !q || x.name.toLowerCase().includes(q));
-  L.innerHTML = list.length ? list.map(x => '<button type="button" class="at-mi aw-mi" role="menuitemcheckbox" aria-checked="' + used.has(x.name) + '" data-awaddname="' + esc(x.name) + '">'
-      + '<span class="aw-ck" aria-hidden="true">✓</span><i class="at-dot" style="background:' + x.color + '" aria-hidden="true"></i><span>' + esc(x.name) + '</span></button>').join('')
+  L.innerHTML = list.length ? list.map(x => atCkItem(x, 'data-awaddname', used.has(x.name), false)).join('')
     : '<div class="at-none">' + (all.length ? '맞는 과제가 없습니다.' : '내 과제가 없습니다.') + '</div>';
+  atCkFit(L);
 }
 //  체크 목록에서 과제를 넣거나 뺀다(2026-10-30 사용자: 패널을 열어 둔 채 이어서). 새 과제는 캘린더 순서 자리, 시간은 그 주 일간 합계(없으면 0, §14.1).
 //    시간 목록과 체크 목록만 다시 그린다(화면 전체를 다시 그리면 글 칸 높이가 다시 계산되며 출렁인다). 패널은 닫지 않는다.
@@ -25894,6 +26022,7 @@ setupModalA11y();
 pcInit();                 // 과제 탭(개인 / 과제 탭 줄, 과제 화면, 모달 배선). 모달 접근성 감시가 선 다음
 atInit();                 // 근태 탭 달력과 근태 보고 화면 배선(ATTENDANCE-PLAN). 근태 창에서도 보고 화면 배선은 돈다
 setupSplitter();
+setupAttSplit();          // 근태 편집 창(일간, 주간)의 오른쪽 패널 폭 끌개. 근태 창(?win=attend)에서도 같은 코드가 돈다
 setupGuideResize();
 renderAll();
 //  WINDOW-UI §4 — 열람 창(?peerwin=1)은 내 달력을 부팅하지 않는다(호스트바, 로그인, ready, 과제 목록 모두 없음). 열람 껍데기만 편다.
