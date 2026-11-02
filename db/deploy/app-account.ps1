@@ -78,6 +78,12 @@ try {
     if((Exec "GRANT SELECT, INSERT, UPDATE ON ``$DbName``.cal_project_event TO '$AppUser'@'%'; GRANT SELECT, INSERT ON ``$DbName``.cal_project_change TO '$AppUser'@'%'; FLUSH PRIVILEGES;") -ne 0){ Die "과제 캘린더 표 권한 부여 실패." }
     Ok "과제 캘린더 표 둘 권한(DELETE 없음)"
   } else { Info "과제 캘린더 표가 아직 없습니다(구조 16 전). 그 권한은 건너뜁니다." }
+  # 과제 반복 일정의 예외일 표(2026-11-02 구조 번호 20, docs/PC-RECUR.md). 개인 cal_entry_except 와 같은 SELECT, INSERT, DELETE. 정본은 grants-calendar.sql.
+  $pxHas = [int](Q "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='cal_project_event_except';")
+  if($pxHas -eq 1){
+    if((Exec "GRANT SELECT, INSERT, DELETE ON ``$DbName``.cal_project_event_except TO '$AppUser'@'%'; FLUSH PRIVILEGES;") -ne 0){ Die "과제 반복 예외일 표 권한 부여 실패." }
+    Ok "과제 반복 예외일 표 권한"
+  } else { Info "과제 반복 예외일 표가 아직 없습니다(구조 20 전). 그 권한은 건너뜁니다." }
   # 월간보고 개발 일정 그림 표(2026-10-22 구조 번호 17, MONTHLY-REPORT-PLAN §6.4). 삭제가 실제 행 삭제라 DELETE 까지. 정본은 grants-calendar.sql.
   #   표가 아직 없는 DB(구조 16 이하)에 GRANT 하면 1146 이라, 표가 있을 때만 준다.
   $siHas = [int](Q "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='project_schedule_image';")

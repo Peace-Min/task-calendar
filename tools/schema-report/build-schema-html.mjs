@@ -182,6 +182,7 @@ const MIGRATIONS = [
   ['10-22', '월간보고(v17)', 'project 에 개발시작일(dev_start_date, end_date 와 dev_end_date 사이)과 개발 기간 순서 CHECK 를 더하고, 과제별 개발 일정 그림 표 project_schedule_image(바이트 MEDIUMBLOB, 과제 CASCADE, 등록자 RESTRICT)를 만들었다. 백업은 --hex-blob 으로 뜬다. 이관 조각 db/deploy/migrations/v17-monthly-report.sql.'],
   ['10-29', '회의내용(v20)', 'cal_report_weekly 에 회의내용 칸 meeting(MEDIUMTEXT NULL, plan 뒤)을 더했다. 근태 창의 주간보고가 회사 폼의 회의내용도 채우게 되어 그 글을 함께 남긴다. 기존 행은 NULL 로 두고(이 칸이 생기기 전에 작성한 주) 앱은 빈 글로 읽는다. 이관 조각 db/deploy/migrations/v20-weekly-meeting.sql.'],
   ['10-30', '주간 과제투입시간(v20)', '같은 판 20 에 cal_report_weekly_hours 를 더했다(결정 14). 주간보고의 과제별 시간 줄(과제명, 공식 과제 id project_uid, 시간 0 초과 168 이하)로 맨먼스 집계의 원천이다. cal_report_weekly 의 자식(CASCADE)이고 주간보고 행과 한 트랜잭션으로 쓰며 다시 보내면 그 주 줄을 바꾼다. project_uid 는 과제가 지워져도 남도록 FK 를 걸지 않았다. 같은 이관 조각 v20-weekly-meeting.sql 이 표가 없을 때만 만든다.'],
+  ['11-02', '과제 일정 반복(v20)', '같은 판 20 에 cal_project_event.recur_freq(매주, 매월, NULL 이면 반복 아님, memo 뒤)와 예외일 표 cal_project_event_except(이 날짜만 삭제, cal_project_event 의 CASCADE 자식)를 더했다. 끝 날짜, 횟수, 간격은 두지 않는다. 개인 cal_entry_except 와 같은 결이고 앱 계정은 SELECT, INSERT, DELETE. 같은 이관 조각 v20-weekly-meeting.sql 이 칸과 표가 없을 때만 만든다.'],
 ];
 
 const html = `<!DOCTYPE html>

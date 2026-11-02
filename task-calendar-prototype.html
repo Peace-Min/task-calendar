@@ -2694,6 +2694,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
 .pc-span{margin-left:auto;font-size:var(--fs-micro);color:var(--muted);flex:none;padding-left:8px}
 .pc-mi{flex:none;display:inline-flex;color:var(--muted)}
 .pc-mi .ic{width:11px;height:11px;vertical-align:0}
+.pc-l1>.ic,.pc-dl-tt>.ic,.pcd-grid dd>.ic{width:13px;height:13px;vertical-align:-2px;margin-right:1px}   /* 반복 회차 표시(개인 칩 .chip .ic 와 같은 크기) */
 .pc-mline{flex:0 1000 auto;min-width:0;margin-left:6px;font-weight:400;font-size:var(--fs-micro);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pc-l2{font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;padding-left:12px;min-height:14px}
 .pc-more{position:relative;z-index:1;border:none;background:none;font:inherit;font-size:var(--fs-micro);color:var(--muted);text-align:left;padding:0 6px;cursor:pointer;border-radius:var(--r-sm);white-space:nowrap;overflow:hidden;line-height:14px}
@@ -5265,6 +5266,9 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
             <label class="pcf-f">시작 시각<input type="text" id="pcfST" data-time-field></label>
             <label class="pcf-f">종료 시각<input type="text" id="pcfET" data-time-field></label>
           </div>
+        </div>
+        <div class="pcf-full" id="pcfRecurWrap">
+          <label class="pcf-f"><span class="qa-recur-lb">반복</span><select id="pcfRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select></label>
         </div>
         <div class="pcf-f pcf-full"><label for="pcfLoc">장소</label>
           <div class="loc-combo" data-pfx="pcf"><input type="text" class="loc-in" id="pcfLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pcfLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="고르거나 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="pcfLocPop" role="listbox" aria-label="장소 추천"></div></div>
@@ -20043,7 +20047,24 @@ function writeTimeIn(el, hhmm){ if(el) el.value = HM_RE.test(hhmm || '') ? hhmm 
 function plusOneHM(hhmm){ const [h,m]=hhmm.split(':').map(Number); let t=h*60+m+60; if(t>=1440) t=1439; return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`; }
 let qaEndDirty = false, _qaAutoEndWriting = false;
 const qaTimeEls = () => ({ s:$('#qaStart'), e:$('#qaEnd') });
-function qaSyncTimeRow(){ const ad=$('#qaAllDay'); const row=$('#qaTimeRow'); if(row) row.style.display = (ad && ad.checked) ? 'none' : '';
+//  종일(2026-11-02, 과제 폼 pcAllDayShow 와 같은 규칙): 시각 줄은 숨기지 않고 00:00 ~ 24:00 으로 잠근다(폼이 출렁이지 않게).
+//  24:00 은 시각 목록에 없어 값만 넣는다. 끄면 켜기 전 시각과 종료 자동 채움 상태(qaEndDirty)를 되살린다. 저장은 그대로 종일, 시각 없음.
+let qaAdShown = false, qaKeep = null;
+function qaAllDayShow(on){
+  if(on === qaAdShown) return;
+  const t = qaTimeEls();
+  if(!t.s || !t.e) return;
+  if(on){
+    qaKeep = { s: t.s.value, e: t.e.value, dirty: qaEndDirty };
+    t.s.value = '00:00'; t.e.value = '24:00';
+  } else {
+    const k = qaKeep || { s: '', e: '', dirty: false };
+    t.s.value = k.s; t.e.value = k.e; qaEndDirty = k.dirty; qaKeep = null;
+  }
+  t.s.disabled = t.e.disabled = on;
+  qaAdShown = on;
+}
+function qaSyncTimeRow(){ const ad=$('#qaAllDay'); qaAllDayShow(!!(ad && ad.checked));
   // 미리알림은 일정(할 일 아님) + 종일 아님이면 활성. 시작 시각 미입력은 조건으로 걸지 않는다(시각을 먼저 넣어야만 열리면 고장으로 보인다).
   // 미리알림 행은 상시 표시(#qaWhen 안 → 할 일 모드에선 통째 숨김). qaRemResync가 활성/흐림 반영.
   qaRemResync(); qaSyncRange(); }
@@ -20075,6 +20096,7 @@ function openQuickAdd(date, type, entryId){
   qaRecurOrig = (e && e.recur && e.recur.freq) ? normRecur(e.recur) : null;
   qaRecurExcept = (e && Array.isArray(e.recurExcept)) ? e.recurExcept.slice() : [];
   const t = qaTimeEls();
+  qaAdShown = false; qaKeep = null; if(t.s) t.s.disabled = false; if(t.e) t.e.disabled = false;   // 종일 잠금은 아래 qaSyncType 이 값에 맞춰 다시 건다
   if(e){
     $('#qaTitle').value = e.title;
     $('#qaDate').value = e.date;
@@ -24493,6 +24515,7 @@ const PCAL = {
   drawer: false,
   form: null,           // 등록과 수정 폼
   detail: null,         // 상세 창의 eventUid
+  detailOcc: '',        // 상세 창을 연 회차 날짜(반복 일정, 구조 20). 반복이 아니면 빈 글자
   rc: { group: 'project', proj: 'all', days: '7', kind: 'all', rows: [], cursor: null, more: false, busy: false, err: '', gen: 0 },
   mb: { uid: '', status: '', err: '', groups: [], total: 0, gen: 0 },   // 참여자 명단 창(기획 §6.9). 열 때마다 읽고 기억하지 않는다
   resizeT: 0,
@@ -24526,7 +24549,7 @@ function pcEvSort(a, b, order){
   return a.eventUid < b.eventUid ? -1 : (a.eventUid > b.eventUid ? 1 : 0);
 }
 //  한 주(from 부터 7일)의 배치. 입력: 일정(startDate, endDate 포함), 그 주 첫날, 과제 순서. 출력: 조각(c0~c1 칸, 앞뒤로 이어짐 cl/cr, 차선 lane)과 차선 수.
-//  ★ 공용 일정은 반복이 없어 한 일정이 한 주에 조각 하나다. 주 경계에서 잘리고 다음 주에 같은 일정의 조각이 또 생긴다.
+//  ★ 입력은 회차로 펼친 일정이다(pcOccurrences). 반복 일정은 회차마다 조각이 하나씩 생기고, 주 경계에서 잘리면 다음 주에 같은 회차의 조각이 또 생긴다.
 function pcLayoutWeek(evs, from, order){
   const to = addDays(from, 6);
   const items = (evs || []).filter(e => e.startDate <= to && e.endDate >= from).slice()
@@ -24581,13 +24604,36 @@ function pcFromDto(e){
   return { eventUid: s(o.eventUid), projectUid: s(o.projectUid), title: s(o.title), startDate: sd, endDate: s(o.endDate) || sd,
     startTime: s(o.startTime) || null, endTime: s(o.endTime) || null, location: s(o.location), memo: s(o.memo),
     rowVersion: Number(o.rowVersion) || 0, deleted: o.deleted === true, createdBy: s(o.createdBy), updatedBy: s(o.updatedBy),
-    createdAt: s(o.createdAt), updatedAt: s(o.updatedAt) };
+    createdAt: s(o.createdAt), updatedAt: s(o.updatedAt),
+    //  반복(구조 20): weekly, monthly 아니면 null. 예외일은 실재 날짜 모양만, 겹친 것은 하나로.
+    recurFreq: (o.recurFreq === 'weekly' || o.recurFreq === 'monthly') ? o.recurFreq : null,
+    recurExcept: [...new Set((Array.isArray(o.recurExcept) ? o.recurExcept : []).filter(x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x)))].sort() };
+}
+//  반복 일정을 [from, to] 안의 회차로 펼친다(구조 20). 월간 막대, 주간 줄, 그날 목록, 상세가 이 함수 하나를 쓴다.
+//  규칙은 개인 expandOccurrences 그대로다(매주, 매월, 예외일 제외, 그날이 없는 달은 건너뜀). 끝, 횟수, 간격은 없다(간격 1, 끝 없음).
+//  돌려주는 회차는 일정의 사본에 startDate, endDate 를 그 회차로 바꾸고 occDate(회차 시작일)를 단 것이다. 반복이 아니면 occDate 는 빈 글자.
+function pcOccurrences(evs, from, to){
+  const out = [];
+  for(const e of (evs || [])){
+    if(!e.recurFreq){ if(e.startDate <= to && e.endDate >= from) out.push({ ...e, occDate: '' }); continue; }
+    const x = { id: e.eventUid, date: e.startDate, endDate: e.endDate > e.startDate ? e.endDate : '',
+      recur: { freq: e.recurFreq, interval: 1, until: '', count: 0 }, recurExcept: e.recurExcept || [] };
+    for(const o of expandOccurrences(x, from, to)) out.push({ ...e, startDate: o._occStart, endDate: o._occEnd, occDate: o._occStart });
+  }
+  return out;
+}
+//  반복 한 줄(상세, 확인 창). 개인 recurLabel 에서 끝 표시를 뺀 것: '매주 월요일', '매월 2일'.
+function pcRecurText(e){
+  if(!e || !e.recurFreq) return '';
+  const d = parseYmd(e.startDate);
+  return e.recurFreq === 'weekly' ? '매주 ' + PC_DOW[d.getDay()] + '요일' : '매월 ' + d.getDate() + '일';
 }
 //  폼 값 → 저장 요청의 event(호스트 ValidateFields 와 같은 모양). 제목과 장소는 앞뒤 공백만 걷는다. 시각이 없으면 null.
 function pcEventPayload(v){
   const st = String(v.startTime || '').slice(0, 5), et = String(v.endTime || '').slice(0, 5);
   return { title: String(v.title || '').trim(), startDate: String(v.startDate || ''), endDate: String(v.endDate || v.startDate || ''),
-    startTime: st || null, endTime: et || null, location: String(v.location || '').trim(), memo: String(v.memo == null ? '' : v.memo) };
+    startTime: st || null, endTime: et || null, location: String(v.location || '').trim(), memo: String(v.memo == null ? '' : v.memo),
+    recurFreq: (v.recurFreq === 'weekly' || v.recurFreq === 'monthly') ? v.recurFreq : null };
 }
 //  저장 전 검사. 서버도 같은 규칙으로 다시 본다(넘으면 자르지 않고 거절). 돌려주는 값: { ok } 또는 { ok:false, field, msg }.
 function pcValidate(v, limits){
@@ -24624,8 +24670,11 @@ function pcDiffRows(action, before, after){
     if(o.startTime) put('시간', o.startTime + ' ~ ' + (o.endTime || ''));
     if(o.location) put('장소', String(o.location));
     if(o.memo) put('메모', String(o.memo), true);
+    if(o.recurFreq) put('반복', PC_RECUR_NAME[o.recurFreq] || '');
     return rows;
   }
+  //  반복 일정의 이 날짜만 삭제(구조 20): update 이고 뒤 값이 { exceptDate } 하나다. 지운 날짜를 지운 모양으로 보인다.
+  if(action === 'update' && D.test(a.exceptDate || '')) return [{ label: '날짜', b: fd(a.exceptDate), a: null, memo: false }];
   const has = k => Object.prototype.hasOwnProperty.call(a, k) || Object.prototype.hasOwnProperty.call(b, k);
   const val = (o, k) => (o[k] == null ? '' : String(o[k]));
   if(has('title')) rows.push({ label: '제목', b: val(b, 'title'), a: val(a, 'title'), memo: false });
@@ -24640,8 +24689,10 @@ function pcDiffRows(action, before, after){
   }
   if(has('location')) rows.push({ label: '장소', b: val(b, 'location'), a: val(a, 'location'), memo: false });
   if(has('memo')) rows.push({ label: '메모', b: val(b, 'memo'), a: val(a, 'memo'), memo: true });
+  if(has('recurFreq')) rows.push({ label: '반복', b: PC_RECUR_NAME[b.recurFreq] || '안 함', a: PC_RECUR_NAME[a.recurFreq] || '안 함', memo: false });
   return rows;
 }
+const PC_RECUR_NAME = Object.freeze({ weekly: '매주', monthly: '매월' });
 //  'M월 D일 (요일)'
 function pcMd(ds){ const d = parseYmd(ds); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + PC_DOW[d.getDay()] + ')'; }
 //  기간과 시각 한 줄(상세, 확인 창).
@@ -24722,7 +24773,7 @@ function pcResetFor(user){
   const p = pcPrefsLoad();
   Object.assign(PCAL, { view: p.view, anchor: todayYmd(), memoLine: p.memo, sel: p.sel, known: p.known,
     projects: [], loaded: false, booting: false, bootErr: '', events: [], loading: false, loadErr: '', checkedAt: 0,
-    drawer: false, detail: null });
+    drawer: false, detail: null, detailOcc: '' });
   return p;
 }
 
@@ -24937,13 +24988,14 @@ function pcEvHtml(it, mode, style){
   const timed = !!e.startTime && e.startDate === e.endDate;
   const m1 = pcFirstLine(e.memo);
   const mi = m1 ? '<span class="pc-mi" title="메모 있음">' + PC_IC.memo + '</span>' : '';
-  const aria = p.name + ', ' + e.title + ', ' + pcWhenText(e) + (m1 ? ', 메모 있음' : '') + (it.cl ? ', 앞에서 이어짐' : '') + (it.cr ? ', 뒤로 이어짐' : '');
+  const aria = p.name + ', ' + e.title + ', ' + pcWhenText(e) + (e.recurFreq ? ', 반복' : '') + (m1 ? ', 메모 있음' : '') + (it.cl ? ', 앞에서 이어짐' : '') + (it.cr ? ', 뒤로 이어짐' : '');
   const cls = 'pc-ev' + (timed ? ' timed' : '') + (it.cl ? ' cl' : '') + (it.cr ? ' cr' : '');
   const st = '--c:' + p.color + ';--cb:' + tint(p.color, .2) + ';' + (style || '');
-  const data = 'data-ev="' + esc(e.eventUid) + '" data-c0="' + it.c0 + '" data-c1="' + it.c1 + '"';
+  const data = 'data-ev="' + esc(e.eventUid) + '"' + (e.occDate ? ' data-occ="' + e.occDate + '"' : '') + ' data-c0="' + it.c0 + '" data-c1="' + it.c1 + '"';
+  const rp = e.recurFreq ? ICON.repeat : '';   // 반복 표시(개인 칩과 같다)
   if(mode === 'w'){
-    const l1 = timed ? '<span class="pc-edot"></span><span class="pc-time">' + esc(e.startTime) + '</span>' + mi
-      : (it.cl ? '<span class="pc-arrow" aria-hidden="true">◂</span>' : '') + '<span class="pc-t">' + esc(e.title) + '</span>' + mi + (it.cr ? '<span class="pc-arrow" aria-hidden="true" style="margin-left:auto">▸</span>' : '');
+    const l1 = timed ? '<span class="pc-edot"></span><span class="pc-time">' + esc(e.startTime) + '</span>' + rp + mi
+      : (it.cl ? '<span class="pc-arrow" aria-hidden="true">◂</span>' : '') + rp + '<span class="pc-t">' + esc(e.title) + '</span>' + mi + (it.cr ? '<span class="pc-arrow" aria-hidden="true" style="margin-left:auto">▸</span>' : '');
     const l2 = '<span class="pc-l2">' + (PCAL.memoLine && m1 ? esc(m1) : '') + '</span>';
     const l1b = timed ? '<span class="pc-l1b pc-t">' + esc(e.title) + '</span>' : '';
     return '<button type="button" class="' + cls + '" ' + data + ' style="' + st + '" aria-label="' + esc(aria) + '"><span class="pc-l1">' + l1 + '</span>' + l1b + l2 + '</button>';
@@ -24951,8 +25003,8 @@ function pcEvHtml(it, mode, style){
   const mline = (PCAL.memoLine && m1) ? '<span class="pc-mline">' + esc(m1) + '</span>' : '';
   const span = (!timed && it.c1 - it.c0 >= 2) ? '<span class="pc-span">' + esc(fmtShort(e.startDate) + ' ~ ' + fmtShort(e.endDate)) + '</span>' : '';
   const inner = timed
-    ? '<span class="pc-edot"></span><span class="pc-time">' + esc(e.startTime) + '</span><span class="pc-t">' + esc(e.title) + '</span>' + mline + mi
-    : (it.cl ? '<span class="pc-arrow" aria-hidden="true">◂</span>' : '') + '<span class="pc-t">' + esc(e.title) + '</span>' + mline + mi + span
+    ? '<span class="pc-edot"></span><span class="pc-time">' + esc(e.startTime) + '</span>' + rp + '<span class="pc-t">' + esc(e.title) + '</span>' + mline + mi
+    : (it.cl ? '<span class="pc-arrow" aria-hidden="true">◂</span>' : '') + rp + '<span class="pc-t">' + esc(e.title) + '</span>' + mline + mi + span
       + (it.cr ? '<span class="pc-arrow" aria-hidden="true" style="margin-left:' + (span ? '4px' : 'auto') + '">▸</span>' : '');
   return '<button type="button" class="' + cls + '" ' + data + ' style="' + st + '" aria-label="' + esc(aria) + '"><span class="pc-l1">' + inner + '</span></button>';
 }
@@ -24966,7 +25018,7 @@ function pcRenderMonth(body){
     + '<div class="pc-grid" id="pcGrid" role="grid" aria-label="과제 월 달력(날짜나 일정을 누르면 그날 일정 목록)"></div>';
   const grid = document.getElementById('pcGrid');
   const weekH = (grid.clientHeight - (R.weeks - 1)) / R.weeks;
-  const evs = pcVisEvents(), order = pcOrder();
+  const evs = pcOccurrences(pcVisEvents(), R.from, R.to), order = pcOrder();
   let html = '';
   for(let w = 0; w < R.weeks; w++){
     const from = addDays(R.from, w * 7);
@@ -25011,7 +25063,7 @@ function pcRenderWeek(body){
   }).join('') + '</div>';
   if(!ps.length) h += '<div class="pc-wnone">표시할 과제를 선택하세요</div>';
   for(const p of ps){
-    const L = pcLayoutWeek(PCAL.events.filter(e => !e.deleted && e.projectUid === p.projectUid), R.from, order);
+    const L = pcLayoutWeek(pcOccurrences(PCAL.events.filter(e => !e.deleted && e.projectUid === p.projectUid), R.from, R.to), R.from, order);
     h += '<div class="pc-wname" style="--c:' + p.color + '"><span class="pc-wpn">' + esc(p.name) + '</span><span class="pc-wmeta">' + p.members + '명, 이번 주 ' + L.items.length + '건</span>'
       + (p.writable ? '' : '<span class="pc-state">숨긴 과제, 읽기 전용</span>') + '</div>';
     h += '<div class="pc-wcells" data-from="' + R.from + '" data-proj="' + esc(p.projectUid) + '" style="grid-template-rows:4px' + (L.lanes ? ' repeat(' + L.lanes + ', auto)' : '') + ' minmax(20px,1fr)">';
@@ -25102,11 +25154,11 @@ function pcDayRowHtml(e){
   const m1 = pcFirstLine(e.memo);
   const mi = m1 ? '<span class="pc-mi" title="메모 있음">' + PC_IC.memo + '</span>' : '';
   const tip = p.name + ', ' + when;
-  const aria = tip + ', ' + e.title + (m1 ? ', 메모 있음' : '') + (p.writable ? '' : ', 읽기 전용');
+  const aria = tip + ', ' + e.title + (e.recurFreq ? ', 반복' : '') + (m1 ? ', 메모 있음' : '') + (p.writable ? '' : ', 읽기 전용');
   const pre = timed ? '<span class="pc-dl-tm">' + esc(e.startTime + (e.endTime ? '~' + e.endTime : '')) + '</span>'
     : e.startDate !== e.endDate ? '<span class="pc-dl-rg">' + fmtShort(e.startDate) + '~' + fmtShort(e.endDate) + '</span>' : '';
-  return '<button type="button" class="pc-dl-row" data-act="dlOpen" data-ev="' + esc(e.eventUid) + '" title="' + esc(tip) + '" aria-label="' + esc(aria) + '">'
-    + '<span class="pc-dl-tt">' + pre + esc(e.title) + '</span>' + mi + '</button>';
+  return '<button type="button" class="pc-dl-row" data-act="dlOpen" data-ev="' + esc(e.eventUid) + '"' + (e.occDate ? ' data-occ="' + e.occDate + '"' : '') + ' title="' + esc(tip) + '" aria-label="' + esc(aria) + '">'
+    + '<span class="pc-dl-tt">' + pre + (e.recurFreq ? ICON.repeat : '') + esc(e.title) + '</span>' + mi + '</button>';
 }
 //  그날 일정 목록. 머리 "M월 D일 (요일)" 과 오른쪽 작은 "등록", 아래는 과제별 묶음(왼쪽 과제 목록 순서, 한 과제뿐이어도 묶음 머리를 둔다).
 //  읽기 전용(숨긴) 과제는 묶음 머리 이름 뒤에 작은 "읽기 전용" 만 붙이고 줄 모양은 같다. 빈 날은 머리와 등록만.
@@ -25115,7 +25167,7 @@ function pcDayRowHtml(e){
 function pcOpenDayList(ds, anchor, opt){
   const o = opt || {};
   const order = pcOrder();
-  const evs = pcVisEvents().filter(e => e.startDate <= ds && e.endDate >= ds);
+  const evs = pcOccurrences(pcVisEvents(), ds, ds);
   const hit = o.hit && evs.some(e => e.eventUid === o.hit) ? o.hit : '';
   const ord = u => order[u] != null ? order[u] : 1e9;
   const uids = [...new Set(evs.map(e => e.projectUid))].sort((a, b) => ord(a) - ord(b) || (a < b ? -1 : a > b ? 1 : 0));
@@ -25161,10 +25213,13 @@ function pcPopKey(ev){
 }
 
 /* ── 상세 창 ──────────────────────────────────────────────────── */
-function pcOpenDetail(uid){
+//  occ: 반복 일정의 그 회차 날짜(그날 목록에서 연 경우). 없거나 회차가 아니면 시작일(첫 회차)로 본다.
+function pcOpenDetail(uid, occ){
   pcClosePop(true);
-  if(!pcEv(uid)) return;
+  const e = pcEv(uid);
+  if(!e) return;
   PCAL.detail = uid;
+  PCAL.detailOcc = e.recurFreq ? (/^\d{4}-\d{2}-\d{2}$/.test(occ || '') ? occ : e.startDate) : '';
   pcRenderDetail();
   openModal('#pcDetailModal');
 }
@@ -25176,10 +25231,12 @@ function pcRenderDetail(){
   const p = pcProj(e.projectUid) || { name: '', color: '#8a93a6', writable: false };
   const ro = !p.writable;
   const none = t => '<span class="none">' + t + '</span>';
+  const o = pcDetailOcc(e);   // 반복 일정이면 연 회차의 날짜(구조 20)
   body.innerHTML = '<div class="pcd-proj"><span class="pc-dot" style="--c:' + p.color + '" aria-hidden="true"></span>' + esc(p.name) + (ro ? '<span class="pc-ro" style="margin-left:0">숨긴 과제, 읽기 전용</span>' : '') + '</div>'
     + '<h3 class="pcd-title">' + esc(e.title) + '</h3>'
     + '<dl class="pcd-grid">'
-    + '<dt>날짜</dt><dd>' + esc(e.startDate === e.endDate ? pcMd(e.startDate) : pcMd(e.startDate) + ' ~ ' + pcMd(e.endDate) + ', ' + (diffDays(e.startDate, e.endDate) + 1) + '일') + '</dd>'
+    + '<dt>날짜</dt><dd>' + esc(o.startDate === o.endDate ? pcMd(o.startDate) : pcMd(o.startDate) + ' ~ ' + pcMd(o.endDate) + ', ' + (diffDays(o.startDate, o.endDate) + 1) + '일') + '</dd>'
+    + (e.recurFreq ? '<dt>반복</dt><dd>' + ICON.repeat + ' ' + esc(pcRecurText(e)) + '</dd>' : '')
     + '<dt>시간</dt><dd>' + (e.startTime ? esc(e.startTime + ' ~ ' + (e.endTime || '')) : none('시간 지정 없음')) + '</dd>'
     + '<dt>장소</dt><dd>' + (e.location ? esc(e.location) : none('없음')) + '</dd>'
     + '<dt>글쓴이</dt><dd>' + (e.createdBy ? esc(e.createdBy) : none('알 수 없음')) + '</dd>'
@@ -25191,6 +25248,13 @@ function pcRenderDetail(){
   foot.innerHTML = (ro ? '' : '<button type="button" class="btn danger pc-w" data-act="delete">삭제</button>') + '<span class="spacer"></span>'
     + '<button type="button" class="btn pc-w" data-act="copy">' + ICON.copy + ' 개인 일정에 등록</button>'
     + (ro ? '' : '<button type="button" class="btn primary pc-w" data-act="edit">수정</button>');
+}
+
+//  상세 창이 보이는 회차: 반복 일정이면 연 회차 날짜와 같은 길이, 아니면 일정 그대로.
+function pcDetailOcc(e){
+  const occ = e && e.recurFreq ? (PCAL.detailOcc || e.startDate) : '';
+  if(!occ || occ === e.startDate) return { startDate: e.startDate, endDate: e.endDate, occDate: occ };
+  return { startDate: occ, endDate: addDays(occ, diffDays(e.startDate, e.endDate)), occDate: occ };
 }
 
 /* ── 등록과 수정 폼 ───────────────────────────────────────────── */
@@ -25222,7 +25286,7 @@ function pcOpenForm(opt){
     $id('pcfProjHint').textContent = want ? '' : '저장할 과제를 고르세요. 종료된 과제는 목록에 없습니다.';
   }
   const d0 = o.date || PCAL.anchor || todayYmd();
-  pcFormFill(e || { title: '', startDate: d0, endDate: d0, startTime: null, endTime: null, location: '', memo: '' }, !e);
+  pcFormFill(e || { title: '', startDate: d0, endDate: d0, startTime: null, endTime: null, location: '', memo: '', recurFreq: null }, !e);
   $id('pcfErr').textContent = '';
   pcFormBusy(false);
   pcRenderConflict();
@@ -25243,6 +25307,7 @@ function pcFormFill(e, isNew){
   pcfEndDirty = !!e.endTime;
   locSet('pcf', e.location || '');
   $id('pcfMemo').value = e.memo || '';
+  $id('pcfRecur').value = (e.recurFreq === 'weekly' || e.recurFreq === 'monthly') ? e.recurFreq : '';   // 수정은 반복 전체(PC-RECUR §2 2번)
   pcFormSync();
 }
 function pcFormRead(){
@@ -25250,7 +25315,8 @@ function pcFormRead(){
   const F = PCAL.form || {};
   const allDay = $id('pcfAllDay').checked;   // 종일이면 시각을 비운다(날짜만 있는 일정). 칸의 00:00, 24:00 은 표시일 뿐
   return { projectUid: F.mode === 'edit' ? F.projectUid : $id('pcfProj').value, title: $id('pcfTitle').value, startDate: $id('pcfStart').value, endDate: $id('pcfEnd').value,
-    startTime: allDay ? '' : $id('pcfST').value, endTime: allDay ? '' : $id('pcfET').value, location: locRead('pcf'), memo: $id('pcfMemo').value };
+    startTime: allDay ? '' : $id('pcfST').value, endTime: allDay ? '' : $id('pcfET').value, location: locRead('pcf'), memo: $id('pcfMemo').value,
+    recurFreq: $id('pcfRecur').value || null };
 }
 //  종료 시각 자동 채움(개인 폼 qaAutoEnd, qaEndChanged 와 같은 규칙). 종료를 직접 바꾸기 전까지 시작 + 1시간.
 let pcfEndDirty = false, pcfAllDayUser = false, pcfAdShown = false, pcfKeep = null;
@@ -25342,7 +25408,8 @@ async function pcSaveForm(){
       PCAL.sel.push(saved.projectUid); pcPrefsSave(); toast('저장한 과제를 표시 목록에 켰습니다.', 'info');
     }
     const rg = pcRange();
-    if(saved.startDate && !(saved.startDate <= rg.to && saved.endDate >= rg.from)) PCAL.anchor = saved.startDate;
+    //  반복 일정은 시작일이 지금 범위보다 앞이어도 회차가 보일 수 있다. 시작일이 범위 뒤일 때만 옮긴다.
+    if(saved.startDate && !(saved.startDate <= rg.to && (saved.recurFreq || saved.endDate >= rg.from))) PCAL.anchor = saved.startDate;
     toast(d.unchanged ? '바뀐 것이 없어 저장하지 않았습니다.' : (F.mode === 'edit' ? '수정했습니다.' : '등록했습니다. 이 과제를 내 과제에 넣은 사람 모두에게 보입니다.'), d.unchanged ? 'info' : 'success');
     pcRender();
     pcLoad();   // 저장 직후 확인(기획 §5.6): 남이 그 사이 바꾼 것도 함께 들어온다
@@ -25387,11 +25454,23 @@ async function pcDelete(uid){
   const p = pcProj(e.projectUid);
   if(!p || !p.writable){ toast('숨긴 과제라 읽기 전용입니다.', 'warn'); return; }
   if(guardEdit()) return;
-  const ok = await confirmBox('이 일정을 삭제할까요?', e.title + '. 모든 참여자의 과제 캘린더에서 사라집니다. 개인 일정에 복사해 둔 것은 그대로 남습니다. 누가 언제 지웠는지는 최근 변경에 남습니다.', '삭제');
-  if(ok !== 'ok' || guardEdit()) return;
+  let occDate = '';
+  if(e.recurFreq){
+    //  두 선택지 모두 파괴적(범위만 다름)이라 alt 도 danger(개인 반복 삭제와 같은 창, 같은 문구).
+    const occ = pcDetailOcc(e).occDate || e.startDate;
+    const rr = await confirmBox('반복 일정 삭제', `'${e.title}' (${pcRecurText(e)})`, `이 날짜(${fmtShort(occ)})만 삭제`, '반복 전체 삭제', { alt: 'danger' });
+    if(rr === 'ok') occDate = occ;
+    else if(rr !== 'alt') return;
+    if(guardEdit()) return;
+  } else {
+    const ok = await confirmBox('이 일정을 삭제할까요?', e.title + '. 모든 참여자의 과제 캘린더에서 사라집니다. 개인 일정에 복사해 둔 것은 그대로 남습니다. 누가 언제 지웠는지는 최근 변경에 남습니다.', '삭제');
+    if(ok !== 'ok' || guardEdit()) return;
+  }
   const ov = document.getElementById('pcDetailModal');
   if(ov) ov.dataset.busy = '1';
-  const r = await pcReq('projectCalendarDelete', { projectUid: e.projectUid, eventUid: e.eventUid, expectedVersion: e.rowVersion, mutationUid: pcUuid() });
+  const req = { projectUid: e.projectUid, eventUid: e.eventUid, expectedVersion: e.rowVersion, mutationUid: pcUuid() };
+  if(occDate) req.occDate = occDate;
+  const r = await pcReq('projectCalendarDelete', req);
   if(ov) delete ov.dataset.busy;
   if(!r.ok){
     if(r.error.kind === 'gate') return;
@@ -25400,8 +25479,16 @@ async function pcDelete(uid){
     return;
   }
   closeModal('#pcDetailModal');
-  PCAL.events = PCAL.events.filter(x => x.eventUid !== uid);
-  toast('삭제했습니다.', 'success');
+  if(occDate){
+    //  이 날짜만 삭제: 일정은 남고 판과 예외일만 바뀐다. 다시 읽기 전에 그 회차를 바로 감춘다.
+    const d = r.data || {};
+    e.rowVersion = Number(d.rowVersion) || e.rowVersion;
+    e.recurExcept = Array.isArray(d.recurExcept) ? pcFromDto({ recurExcept: d.recurExcept }).recurExcept : [...new Set([...(e.recurExcept || []), occDate])].sort();
+    toast('이 날짜의 반복을 건너뜁니다', 'success');
+  } else {
+    PCAL.events = PCAL.events.filter(x => x.eventUid !== uid);
+    toast('삭제했습니다.', 'success');
+  }
   pcRender();
   pcLoad();
 }
@@ -25421,7 +25508,9 @@ async function pcCopy(uid){
   const ov = document.getElementById('pcDetailModal'), btn = ov && ov.querySelector('[data-act="copy"]');
   if(ov) ov.dataset.busy = '1';
   if(btn) btn.disabled = true;
-  const r = await pcReq('projectCalendarCopy', { projectUid: e.projectUid, eventUid: e.eventUid, expectedVersion: e.rowVersion, mutationUid: pcUuid() }, 30000);
+  const creq = { projectUid: e.projectUid, eventUid: e.eventUid, expectedVersion: e.rowVersion, mutationUid: pcUuid() };
+  if(e.recurFreq) creq.occDate = pcDetailOcc(e).occDate || e.startDate;   // 누른 그 회차 하루를 반복 없이(PC-RECUR §2 4번)
+  const r = await pcReq('projectCalendarCopy', creq, 30000);
   if(ov) delete ov.dataset.busy;
   if(btn && btn.isConnected) btn.disabled = false;
   if(!r.ok){
@@ -25536,7 +25625,8 @@ function pcRenderChangesMeta(){
 function pcRcRowHtml(c, withProj, gone){
   const p = pcProj(c.projectUid) || { name: '', color: '#8a93a6' };
   const at = new Date(Date.parse(c.changedAt || '') || 0);
-  const act = { create: '추가', update: '수정', delete: '삭제' }[c.action] || '';
+  const occDel = c.action === 'update' && c.after && /^\d{4}-\d{2}-\d{2}$/.test(c.after.exceptDate || '');   // 이 날짜만 삭제(구조 20)
+  const act = occDel ? '이 날짜만 삭제' : ({ create: '추가', update: '수정', delete: '삭제' }[c.action] || '');
   const cur = pcEv(c.eventUid);
   const title = gone.has(c.eventUid) ? '<span class="pcc-gone">' + esc(c.title) + ' (삭제됨)</span>'
     : (cur ? '<button type="button" class="link pcc-ev" data-act="rcOpen" data-ev="' + esc(c.eventUid) + '">' + esc(cur.title) + '</button>' : '<span class="pcc-ev">' + esc(c.title) + '</span>');
@@ -25553,7 +25643,7 @@ function pcRcRowHtml(c, withProj, gone){
       + (d.a != null ? '<ins>' + show(d.a) + '</ins>' : '') + '</li>';
   }).join('');
   return '<div class="pcc-row"><div class="pcc-time">' + pad(at.getHours()) + ':' + pad(at.getMinutes()) + '</div><div><div class="pcc-line"><span class="pcc-who">' + esc(c.actor) + '</span>'
-    + '<span class="pcc-act ' + esc(c.action) + '">' + act + '</span>'
+    + '<span class="pcc-act ' + (occDel ? 'delete' : esc(c.action)) + '">' + act + '</span>'
     + (withProj ? '<span class="pcc-proj"><span class="pc-dot" style="--c:' + p.color + '" aria-hidden="true"></span>' + esc(p.name) + '</span>' : '')
     + title + '</div><ul class="pcc-diffs">' + diffs + '</ul></div></div>';
 }
@@ -25650,7 +25740,7 @@ function pcOnViewClick(ev){
 function pcOnPopClick(ev){
   const a = ev.target.closest('[data-act]'); if(!a) return;
   switch(a.dataset.act){
-    case 'dlOpen': pcOpenDetail(a.dataset.ev); break;   // 줄 전체가 상세 창(수정, 개인 일정에 등록, 삭제는 상세에서)
+    case 'dlOpen': pcOpenDetail(a.dataset.ev, a.dataset.occ || ''); break;   // 줄 전체가 상세 창(수정, 개인 일정에 등록, 삭제는 상세에서)
     case 'newOn': pcOpenForm({ date: a.dataset.date, projectUid: a.dataset.proj || '' }); break;
   }
 }

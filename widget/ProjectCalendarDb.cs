@@ -41,6 +41,13 @@ namespace TaskCalendarWidget
     //    - 멱등: 같은 (과제, mutationUid) 이력이 있으면 그 결과를 돌려준다. 생성은 같은 eventUid 가 있으면 같다.
     //    - 낙관적 잠금: row_version. 판이 다르면 conflict 와 최신 행. 자동 덮어쓰기는 없다.
     //    - 글자 상한(Limits)을 넘으면 자르지 않고 invalid.
+    //
+    //  【반복】 구조 20(2026-11-02, docs/PC-RECUR.md). 개인 일정 반복 폼과 같은 두 값(weekly, monthly)이고 끝이 없다.
+    //    - 칸은 cal_project_event.recur_freq(NULL = 반복 아님), "이 날짜만 삭제" 는 cal_project_event_except 에 날짜를 더한다.
+    //    - 회차 규칙(IsOccurrence)은 화면(pcOccurrences, 개인 expandOccurrences)과 같다: 매주는 시작일부터 7일마다,
+    //      매월은 시작일과 같은 날(그날이 없는 달은 건너뛴다). 예외일과 개인 복사의 회차 날짜는 이 규칙으로 거른다.
+    //    - 수정은 반복 전체에 걸린다. 반복 종류를 바꾸거나 끄면 그 일정의 예외일을 지운다(날짜가 뜻을 잃는다, 개인 폼과 같다).
+    //    - 범위 읽기는 반복 일정이면 시작일만 본다(끝이 없어 종료일로 거를 수 없다). 회차를 펼치는 것은 화면이다.
     // ================================================================================
     internal sealed class ProjectCalendarDb
     {
@@ -119,7 +126,10 @@ namespace TaskCalendarWidget
             "e.event_id, e.uid, p.uid AS project_uid, e.project_id, e.title, " +
             "DATE_FORMAT(e.start_date, '%Y-%m-%d') AS sd, DATE_FORMAT(COALESCE(e.end_date, e.start_date), '%Y-%m-%d') AS ed, " +
             "TIME_FORMAT(e.start_time, '%H:%i') AS st, TIME_FORMAT(e.end_time, '%H:%i') AS et, " +
-            "e.location, e.memo, e.row_version, e.is_deleted, e.created_by_name, e.updated_by_name, e.created_at, e.updated_at";
+            "e.location, e.memo, e.recur_freq, e.row_version, e.is_deleted, e.created_by_name, e.updated_by_name, e.created_at, e.updated_at";
+
+        //  반복 값 둘(정본 recur_freq ENUM 과 같은 글자). null 은 반복 아님.
+        internal static readonly string[] RecurFreqs = { "weekly", "monthly" };
 
         // ── 내부 형 ───────────────────────────────────────────────────────────
         private sealed class Me { public int UserId; public string Name = ""; }
@@ -136,12 +146,14 @@ namespace TaskCalendarWidget
         {
             public string Title = ""; public string StartDate = ""; public string EndDate = "";
             public string? StartTime; public string? EndTime; public string Location = ""; public string Memo = "";
+            public string? RecurFreq;   // weekly, monthly, null(반복 아님). 구조 20
         }
 
         private sealed class Ev
         {
             public uint EventId; public string Uid = ""; public string ProjectUid = ""; public uint ProjectId;
             public Fields F = new Fields(); public long RowVersion; public bool Deleted;
+            public List<string> Except = new List<string>();   // 반복 일정의 예외일(YYYY-MM-DD, 오름차순). 읽은 뒤 따로 채운다
             public string CreatedBy = ""; public string UpdatedBy = ""; public DateTime CreatedAt; public DateTime UpdatedAt;
         }
 
@@ -163,6 +175,10 @@ namespace TaskCalendarWidget
         internal const string MsgGone = "이미 지워졌거나 없는 일정입니다.";
         internal const string MsgOtherProject = "다른 과제의 일정입니다.";
         internal const string MsgBusy = "다른 저장과 겹쳤습니다. 잠시 뒤 다시 시도하세요.";
+        //  반복(구조 20). 회차 날짜는 화면이 펼친 값을 그대로 보내므로 보통 닿지 않는다(낡은 화면, 다른 사람이 반복을 바꾼 뒤).
+        internal const string MsgNotRecurring = "반복 일정이 아닙니다. 최신 내용을 확인하세요.";
+        internal const string MsgNotOccurrence = "그 날짜에는 이 일정이 없습니다. 최신 내용을 확인하세요.";
+        internal const string MsgOccGone = "이미 지운 날짜입니다.";
         //  쓰는 사이 과제가 영구 삭제되었거나(FK 1452) 지우려는 쪽과 엇갈렸다(1451). 원문 오류 대신 이 문장으로 거부한다.
         internal const string MsgProjectGone = "과제가 지워졌거나 내 과제에서 빠져 저장하지 못했습니다. 과제 목록을 다시 읽으세요.";
 
@@ -426,15 +442,21 @@ namespace TaskCalendarWidget
             if (take.Count > 0)
             {
                 string ids = string.Join(",", take.ConvertAll(p => p.Id.ToString(CultureInfo.InvariantCulture)));
-                await using var cmd = new MySqlCommand(
+                var evs = new List<Ev>();
+                //  반복 일정(구조 20)은 끝이 없어 시작일만 본다. 회차를 펼치는 것은 화면이다(pcOccurrences).
+                await using (var cmd = new MySqlCommand(
                     "SELECT " + EventCols + " FROM cal_project_event e JOIN project p ON p.id = e.project_id " +
                     "WHERE e.project_id IN (" + ids + ") AND e.is_deleted = 0 " +
-                    "AND e.start_date <= @to AND COALESCE(e.end_date, e.start_date) >= @from " +
-                    "ORDER BY e.start_date, e.uid", conn);
-                cmd.Parameters.AddWithValue("@from", from);
-                cmd.Parameters.AddWithValue("@to", to);
-                await using var rd = await cmd.ExecuteReaderAsync(ct);
-                while (await rd.ReadAsync(ct)) events.Add(EventDto(ReadEvent(rd)));
+                    "AND e.start_date <= @to AND (e.recur_freq IS NOT NULL OR COALESCE(e.end_date, e.start_date) >= @from) " +
+                    "ORDER BY e.start_date, e.uid", conn))
+                {
+                    cmd.Parameters.AddWithValue("@from", from);
+                    cmd.Parameters.AddWithValue("@to", to);
+                    await using var rd = await cmd.ExecuteReaderAsync(ct);
+                    while (await rd.ReadAsync(ct)) evs.Add(ReadEvent(rd));
+                }
+                await FillExceptAsync(conn, null, evs, ct);
+                foreach (var e in evs) events.Add(EventDto(e));
             }
             var projects = new List<object>();
             foreach (var p in take)
@@ -489,9 +511,9 @@ namespace TaskCalendarWidget
                     try
                     {
                         await Exec(conn, tx,
-                            "INSERT INTO cal_project_event (uid, project_id, title, start_date, end_date, start_time, end_time, location, memo, " +
+                            "INSERT INTO cal_project_event (uid, project_id, title, start_date, end_date, start_time, end_time, location, memo, recur_freq, " +
                             "row_version, is_deleted, created_by_name, updated_by_name, created_at, updated_at, deleted_at) " +
-                            "VALUES (@uid, @p, @t, @sd, @ed, @st, @et, @loc, @memo, 1, 0, @who, @who, @now, @now, NULL)", ct,
+                            "VALUES (@uid, @p, @t, @sd, @ed, @st, @et, @loc, @memo, @rf, 1, 0, @who, @who, @now, @now, NULL)", ct,
                             FieldParams(f, P("@uid", eventUid), P("@p", projectId), P("@who", me.Name), P("@now", now)));
                     }
                     catch (MySqlException dx) when (dx.Number == 1062)
@@ -523,11 +545,14 @@ namespace TaskCalendarWidget
                     return same;
                 }
                 int n = await Exec(conn, tx,
-                    "UPDATE cal_project_event SET title=@t, start_date=@sd, end_date=@ed, start_time=@st, end_time=@et, location=@loc, memo=@memo, " +
+                    "UPDATE cal_project_event SET title=@t, start_date=@sd, end_date=@ed, start_time=@st, end_time=@et, location=@loc, memo=@memo, recur_freq=@rf, " +
                     "row_version = row_version + 1, updated_by_name=@who, updated_at=@now " +
                     "WHERE event_id=@e AND row_version=@exp AND is_deleted=0", ct,
                     FieldParams(f, P("@e", cur.EventId), P("@exp", expected.Value), P("@who", me.Name), P("@now", now)));
                 if (n == 0) throw new PcFail(Kind.Conflict, MsgConflict, ConflictData(await EventByUidForUpdateAsync(conn, tx, eventUid, ct)));
+                //  반복 종류를 바꾸거나 껐으면 예외일이 뜻을 잃는다(개인 폼의 recurExcept 규칙과 같다). 그 일정의 날짜를 지운다.
+                if (!string.Equals(cur.F.RecurFreq, f.RecurFreq, StringComparison.Ordinal) && cur.Except.Count > 0)
+                    await Exec(conn, tx, "DELETE FROM cal_project_event_except WHERE event_id=@e", ct, P("@e", cur.EventId));
                 await InsertChangeAsync(conn, tx, projectId, cur.EventId, mutationUid, "update", me.Name, f.Title, FieldMap(cur.F, f), changed, now, ct);
                 var after = await EventByUidForUpdateAsync(conn, tx, eventUid, ct) ?? throw new InvalidOperationException("방금 고친 일정을 읽지 못했다");
                 await CommitWithGateAsync(conn, tx, ct);
@@ -538,7 +563,8 @@ namespace TaskCalendarWidget
         }
 
         // ================================================================================
-        //  4. projectCalendarDelete: { projectUid, eventUid, expectedVersion, mutationUid } → 소프트 삭제
+        //  4. projectCalendarDelete: { projectUid, eventUid, expectedVersion, mutationUid, occDate? } → 소프트 삭제
+        //     occDate 가 있으면(반복 일정의 이 날짜만 삭제, 구조 20) 그 회차를 예외일로 더하고 판만 올린다.
         // ================================================================================
         private async Task<object> DeleteAsync(JsonElement q, CancellationToken ct)
         {
@@ -546,6 +572,8 @@ namespace TaskCalendarWidget
             string eventUid = ReqClientId(q, "eventUid", "일정 id");
             string mutationUid = ReqClientId(q, "mutationUid", "변경 id");
             long expected = OptVersion(q, "expectedVersion") ?? throw new PcFail(Kind.Invalid, "지울 일정의 판(expectedVersion)이 없습니다.");
+            //  반복 일정의 "이 날짜만 삭제"(구조 20). 있으면 그 회차 날짜를 예외일로 더하고 일정 행은 그대로 둔다.
+            string? occDate = OptOccDate(q);
 
             string login = SessionLoginId();
             string now = NowDb();
@@ -563,6 +591,28 @@ namespace TaskCalendarWidget
                 if (cur == null) throw new PcFail(Kind.Conflict, MsgGone, ConflictData(null));
                 if (cur.ProjectId != projectId) throw new PcFail(Kind.Invalid, MsgOtherProject);
                 if (cur.Deleted || cur.RowVersion != expected) throw new PcFail(Kind.Conflict, cur.Deleted ? MsgGone : MsgConflict, ConflictData(cur));
+                if (occDate != null)
+                {
+                    //  이 날짜만 삭제: 반복 일정의 실제 회차여야 한다(화면과 같은 규칙). 판을 올리고 이력에 한 줄(update, 뒤 값 exceptDate).
+                    if (cur.F.RecurFreq == null) throw new PcFail(Kind.Invalid, MsgNotRecurring);
+                    if (!IsOccurrence(cur.F.StartDate, cur.F.RecurFreq, occDate)) throw new PcFail(Kind.Invalid, MsgNotOccurrence);
+                    if (cur.Except.Contains(occDate)) throw new PcFail(Kind.Conflict, MsgOccGone, ConflictData(cur));
+                    int nv = await Exec(conn, tx,
+                        "UPDATE cal_project_event SET row_version = row_version + 1, updated_by_name=@who, updated_at=@now " +
+                        "WHERE event_id=@e AND row_version=@exp AND is_deleted=0", ct,
+                        P("@e", cur.EventId), P("@exp", expected), P("@who", me.Name), P("@now", now));
+                    if (nv == 0) throw new PcFail(Kind.Conflict, MsgConflict, ConflictData(await EventByUidForUpdateAsync(conn, tx, eventUid, ct)));
+                    await Exec(conn, tx, "INSERT IGNORE INTO cal_project_event_except (event_id, except_date) VALUES (@e, @d)", ct,
+                        P("@e", cur.EventId), P("@d", occDate));
+                    await InsertChangeAsync(conn, tx, projectId, cur.EventId, mutationUid, "update", me.Name, cur.F.Title, null,
+                        new Dictionary<string, object?>(StringComparer.Ordinal) { ["exceptDate"] = occDate }, now, ct);
+                    var kept = await EventByUidForUpdateAsync(conn, tx, eventUid, ct) ?? throw new InvalidOperationException("방금 고친 일정을 읽지 못했다");
+                    await CommitWithGateAsync(conn, tx, ct);
+                    _log("과제 일정 이 날짜만 삭제: " + projectUid + " " + eventUid + " " + occDate);
+                    var od = (Dictionary<string, object?>)DeleteData(kept, replayed: false);
+                    od["exceptDate"] = occDate;
+                    return od;
+                }
                 int n = await Exec(conn, tx,
                     "UPDATE cal_project_event SET is_deleted=1, deleted_at=@now, row_version = row_version + 1, updated_by_name=@who, updated_at=@now " +
                     "WHERE event_id=@e AND row_version=@exp AND is_deleted=0", ct,
@@ -663,7 +713,7 @@ namespace TaskCalendarWidget
         }
 
         // ================================================================================
-        //  6. projectCalendarCopy: { projectUid, eventUid, expectedVersion?, mutationUid } → 개인 일정 한 건
+        //  6. projectCalendarCopy: { projectUid, eventUid, expectedVersion?, mutationUid, occDate? } → 개인 일정 한 건(반복 없음)
         // ================================================================================
         //  §5.5. 잠금 순서: 과제 행(공유), 원본 일정 행(공유), cal_user_rev(배타). 개인 저장은 cal_user_rev 만, 공용 쓰기는
         //  과제 행 다음 일정 행만 잡으므로 순환이 없다. 공용 이력에는 남기지 않는다.
@@ -676,6 +726,8 @@ namespace TaskCalendarWidget
             string eventUid = ReqClientId(q, "eventUid", "일정 id");
             ReqClientId(q, "mutationUid", "변경 id");
             long? expected = OptVersion(q, "expectedVersion");
+            //  반복 일정은 누른 그 회차 하루(여러 날 일정이면 같은 길이)를 반복 없이 복사한다(구조 20, PC-RECUR §2 4번).
+            string? occDate = OptOccDate(q);
 
             string login = SessionLoginId();
             string now = NowDb();
@@ -693,6 +745,15 @@ namespace TaskCalendarWidget
                 if (src.ProjectId != proj.Id) throw new PcFail(Kind.Invalid, MsgOtherProject);
                 if (src.Deleted) throw new PcFail(Kind.Conflict, MsgGone, ConflictData(src));
                 if (expected != null && src.RowVersion != expected.Value) throw new PcFail(Kind.Conflict, MsgConflict, ConflictData(src));
+                //  회차 날짜: 실제 회차이고 지운 날짜가 아니어야 한다. 없으면 시작일(반복 아님과 같다).
+                string copyStart = src.F.StartDate, copyEnd = src.F.EndDate;
+                if (occDate != null && occDate != src.F.StartDate)
+                {
+                    if (src.F.RecurFreq == null || !IsOccurrence(src.F.StartDate, src.F.RecurFreq, occDate)) throw new PcFail(Kind.Invalid, MsgNotOccurrence);
+                    copyStart = occDate;
+                    copyEnd = ParseDate(occDate).AddDays((ParseDate(src.F.EndDate) - ParseDate(src.F.StartDate)).TotalDays).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                }
+                if (src.F.RecurFreq != null && src.Except.Contains(copyStart)) throw new PcFail(Kind.Conflict, MsgOccGone, ConflictData(src));
 
                 //  잠금 3: 내 개인 rev(배타). 번호 발급(H-1)이 이 락에 기댄다. CalendarWriteDb 의 같은 문장을 쓴다.
                 long personalRev = await CalendarWriteDb.BumpUserRevInTxAsync(conn, tx, me.UserId, ct);
@@ -715,8 +776,8 @@ namespace TaskCalendarWidget
                 var entry = new Dictionary<string, object?>
                 {
                     ["id"] = entryUid,
-                    ["date"] = src.F.StartDate,
-                    ["endDate"] = src.F.EndDate == src.F.StartDate ? "" : src.F.EndDate,
+                    ["date"] = copyStart,
+                    ["endDate"] = copyEnd == copyStart ? "" : copyEnd,
                     ["allDay"] = false,
                     ["startTime"] = src.F.StartTime ?? "",
                     ["endTime"] = src.F.EndTime ?? "",
@@ -859,8 +920,40 @@ namespace TaskCalendarWidget
         {
             await using var cmd = new MySqlCommand("SELECT " + EventCols + " FROM cal_project_event e JOIN project p ON p.id = e.project_id WHERE " + where, conn, tx);
             foreach (var (k, v) in ps) cmd.Parameters.AddWithValue(k, v ?? DBNull.Value);
+            Ev? e;
+            await using (var rd = await cmd.ExecuteReaderAsync(ct))
+                e = await rd.ReadAsync(ct) ? ReadEvent(rd) : null;
+            if (e != null) await FillExceptAsync(conn, tx, new List<Ev> { e }, ct);
+            return e;
+        }
+
+        //  반복 일정의 예외일을 채운다(구조 20). 반복이 아닌 일정은 읽지 않는다(반복을 끄면 예외일은 지워진다).
+        //  번호는 DB 에서 읽은 값이지만 그래도 매개변수로 넘긴다.
+        private static async Task FillExceptAsync(MySqlConnection conn, MySqlTransaction? tx, List<Ev> evs, CancellationToken ct)
+        {
+            var rec = evs.FindAll(x => x.F.RecurFreq != null);
+            if (rec.Count == 0) return;
+            var byId = new Dictionary<uint, Ev>();
+            foreach (var x in rec) byId[x.EventId] = x;
+            var (inSql, inPs) = InList("@x", rec.ConvertAll(x => (object)x.EventId));
+            await using var cmd = new MySqlCommand(
+                "SELECT event_id, DATE_FORMAT(except_date, '%Y-%m-%d') AS d FROM cal_project_event_except " +
+                "WHERE event_id IN (" + inSql + ") ORDER BY event_id, except_date", conn, tx);
+            foreach (var (k, v) in inPs) cmd.Parameters.AddWithValue(k, v);
             await using var rd = await cmd.ExecuteReaderAsync(ct);
-            return await rd.ReadAsync(ct) ? ReadEvent(rd) : null;
+            while (await rd.ReadAsync(ct))
+                if (byId.TryGetValue(Convert.ToUInt32(rd["event_id"], CultureInfo.InvariantCulture), out var x)) x.Except.Add(Str(rd, "d"));
+        }
+
+        //  회차 규칙(화면 pcOccurrences, 개인 expandOccurrences 와 같다). 매주: 시작일부터 7일마다. 매월: 시작일과 같은 날
+        //  (그날이 없는 달은 건너뛴다, addMonths 의 null). 시작일보다 앞은 회차가 아니다.
+        internal static bool IsOccurrence(string start, string freq, string date)
+        {
+            if (!IsDate(start) || !IsDate(date) || string.CompareOrdinal(date, start) < 0) return false;
+            DateTime s = ParseDate(start), d = ParseDate(date);
+            if (freq == "weekly") return ((int)(d - s).TotalDays) % 7 == 0;
+            if (freq == "monthly") return d.Day == s.Day;
+            return false;
         }
 
         private static Ev ReadEvent(MySqlDataReader rd) => new Ev
@@ -878,8 +971,9 @@ namespace TaskCalendarWidget
                 EndTime = NStr(rd, "et"),
                 Location = Str(rd, "location"),
                 Memo = Str(rd, "memo"),
+                RecurFreq = NStr(rd, "recur_freq"),
             },
-            RowVersion = Convert.ToInt64(rd["row_version"], CultureInfo.InvariantCulture),
+            RowVersion =Convert.ToInt64(rd["row_version"], CultureInfo.InvariantCulture),
             Deleted = Convert.ToInt32(rd["is_deleted"], CultureInfo.InvariantCulture) == 1,
             CreatedBy = Str(rd, "created_by_name"),
             UpdatedBy = Str(rd, "updated_by_name"),
@@ -926,6 +1020,7 @@ namespace TaskCalendarWidget
             Put("endTime", a.EndTime, b?.EndTime);
             Put("location", a.Location, b?.Location);
             Put("memo", a.Memo, b?.Memo);
+            Put("recurFreq", a.RecurFreq, b?.RecurFreq);   // 반복 전체 수정도 한 줄로 남는다(구조 20)
             return d;
         }
 
@@ -940,6 +1035,7 @@ namespace TaskCalendarWidget
                 ("@et", f.EndTime),
                 ("@loc", f.Location),
                 ("@memo", f.Memo),
+                ("@rf", f.RecurFreq),
             };
             l.AddRange(extra);
             return l;
@@ -956,6 +1052,8 @@ namespace TaskCalendarWidget
             ["endTime"] = e.F.EndTime,
             ["location"] = e.F.Location,
             ["memo"] = e.F.Memo,
+            ["recurFreq"] = e.F.RecurFreq,
+            ["recurExcept"] = e.Except,
             ["rowVersion"] = e.RowVersion,
             ["deleted"] = e.Deleted,
             ["createdBy"] = e.CreatedBy,
@@ -972,6 +1070,7 @@ namespace TaskCalendarWidget
         private static object DeleteData(Ev e, bool replayed) => new Dictionary<string, object?>
         {
             ["eventUid"] = e.Uid, ["rowVersion"] = e.RowVersion, ["deleted"] = e.Deleted, ["replayed"] = replayed,
+            ["recurExcept"] = e.Except,
         };
 
         private static object CopyData(string entryUid, string eventUid, string projectUid) => new Dictionary<string, object?>
@@ -1031,6 +1130,15 @@ namespace TaskCalendarWidget
             return v;
         }
 
+        //  회차 날짜(occDate, 구조 20). 없거나 null 이면 null, 있으면 실재하는 날짜여야 한다.
+        private static string? OptOccDate(JsonElement q)
+        {
+            if (!q.TryGetProperty("occDate", out var v) || v.ValueKind == JsonValueKind.Null) return null;
+            string s = v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "") : "";
+            if (!IsDate(s)) throw new PcFail(Kind.Invalid, "날짜 형식이 잘못되었습니다(occDate).");
+            return s;
+        }
+
         private static bool IsDate(string v) =>
             DateRe.IsMatch(v) && DateTime.TryParseExact(v, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
 
@@ -1061,6 +1169,12 @@ namespace TaskCalendarWidget
             string st = Str(e, "startTime"), et = Str(e, "endTime");
             f.StartTime = st.Length == 0 ? null : st;
             f.EndTime = et.Length == 0 ? null : et;
+            //  반복(구조 20): 없거나 null, 빈 글자면 반복 아님. weekly, monthly 밖의 값은 자르지 않고 거절한다(다른 칸과 같다).
+            string rf = Str(e, "recurFreq");
+            if (rf.Length > 0 && Array.IndexOf(RecurFreqs, rf) < 0) throw new PcFail(Kind.Invalid, "반복은 안 함, 매주, 매월 중 하나입니다.");
+            f.RecurFreq = rf.Length == 0 ? null : rf;
+            if (e.TryGetProperty("recurFreq", out var rfEl) && rfEl.ValueKind != JsonValueKind.String && rfEl.ValueKind != JsonValueKind.Null)
+                throw new PcFail(Kind.Invalid, "반복은 안 함, 매주, 매월 중 하나입니다.");
 
             if (f.Title.Length == 0) throw new PcFail(Kind.Invalid, "제목을 입력하세요.");
             if (CountChars(f.Title) > Limits.Title) throw new PcFail(Kind.Invalid, "제목은 " + Limits.Title + "자까지 쓸 수 있습니다.");

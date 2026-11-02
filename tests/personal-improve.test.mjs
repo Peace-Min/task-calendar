@@ -621,9 +621,33 @@ if (!JSDOM) {
         down(W.$('#qaTitle')); assert.ok(!isOpen(s), '바깥을 눌러도 목록이 닫히지 않는다');
         click(s); W.ev("closeOverlay(document.getElementById('quickAdd'))");
         assert.ok(!isOpen(s), '창을 닫아도 목록이 남아 있다');
-        //  종일은 시각 줄을 숨긴다(예전 그대로)
-        W.ev("document.getElementById('quickAdd').classList.remove('closing'); document.getElementById('quickAdd').classList.add('hidden'); openQuickAdd('2026-10-16', 'event'); $('#qaAllDay').checked = true; $('#qaAllDay').dispatchEvent(new Event('change', { bubbles: true }))");
-        assert.strictEqual(W.$('#qaTimeRow').style.display, 'none', '종일인데 시각 줄이 보인다');
+        //  종일(2026-11-02, 과제 폼과 같은 규칙): 시각 줄은 보인 채 00:00 ~ 24:00 으로 잠기고(폼이 출렁이지 않게),
+        //  끄면 켜기 전 시각과 종료 자동 채움 상태를 되살린다. 저장은 그대로 종일, 시각 없음.
+        W.ev("document.getElementById('quickAdd').classList.remove('closing'); document.getElementById('quickAdd').classList.add('hidden'); openQuickAdd('2026-10-16', 'event')");
+        assert.deepStrictEqual([s.disabled, e.disabled, s.value, e.value], [false, false, '', ''], '새 일정의 시각 칸이 풀린 빈 칸으로 열리지 않는다');
+        click(s); click(opt(s, 'H', '13')); key(s, 'Escape');
+        assert.deepStrictEqual([s.value, e.value], ['13:00', '14:00'], '시작을 고르면 종료가 1시간 뒤로 채워져야 한다');
+        W.ev("$('#qaAllDay').checked = true; $('#qaAllDay').dispatchEvent(new Event('change', { bubbles: true }))");
+        assert.notStrictEqual(W.$('#qaTimeRow').style.display, 'none', '종일인데 시각 줄을 숨긴다(폼이 출렁인다)');
+        assert.ok(!W.$('#qaTimeRow').classList.contains('hidden'), '종일인데 시각 줄을 숨긴다(hidden)');
+        assert.deepStrictEqual([s.disabled, e.disabled, s.value, e.value], [true, true, '00:00', '24:00'], '종일인데 시각 칸이 00:00 ~ 24:00 으로 잠기지 않았다');
+        click(s); assert.ok(!isOpen(s), '잠긴 시각 칸에서 목록이 열린다');
+        W.ev("$('#qaTitle').value = '(예시) 종일'");
+        assert.deepStrictEqual(W.evJSON("(function(){ const d = qaEventFormData(); return [d.allDay, d.startTime, d.endTime]; })()"), [true, '', ''], '종일 저장 값이 시각 없음이 아니다(표시만 바뀌어야 한다)');
+        W.ev("$('#qaAllDay').checked = false; $('#qaAllDay').dispatchEvent(new Event('change', { bubbles: true }))");
+        assert.deepStrictEqual([s.disabled, e.disabled, s.value, e.value], [false, false, '13:00', '14:00'], '종일을 끄면 켜기 전 시각이 돌아와야 한다');
+        click(s); click(opt(s, 'H', '15')); key(s, 'Escape');
+        assert.strictEqual(e.value, '16:00', '종일을 껐다 켠 뒤에도 종료 자동 채움(직접 바꾸지 않은 상태)이 살아 있어야 한다');
+        //  직접 바꾼 종료는 종일을 거쳐도 지킨다(qaEndDirty 되살림)
+        click(e); click(opt(e, 'H', '18')); key(e, 'Escape');
+        W.ev("$('#qaAllDay').checked = true; $('#qaAllDay').dispatchEvent(new Event('change', { bubbles: true })); $('#qaAllDay').checked = false; $('#qaAllDay').dispatchEvent(new Event('change', { bubbles: true }))");
+        click(s); click(opt(s, 'H', '10')); key(s, 'Escape');
+        assert.deepStrictEqual([s.value, e.value], ['10:00', '18:00'], '직접 바꾼 종료가 종일을 거친 뒤 자동 채움으로 덮였다');
+        assert.strictEqual(W.evJSON('qaEndDirty'), true, '직접 바꾼 종료의 상태가 종일을 거치며 사라졌다');
+        //  종일로 저장된 일정을 고치면 잠긴 채로 열린다
+        W.ev("closeOverlay(document.getElementById('quickAdd')); document.getElementById('quickAdd').classList.remove('closing'); document.getElementById('quickAdd').classList.add('hidden'); state.entries.push({ id: 'e-ad-1', date: '2026-10-16', endDate: '', title: '(예시) 종일 일정', categoryId: state.categories[0] ? state.categories[0].id : null, allDay: true, startTime: '', endTime: '', memo: '', location: '', recur: null, recurExcept: [], remind: null, createdAt: '', updatedAt: '' }); openQuickAdd('2026-10-16', 'event', 'e-ad-1')");
+        assert.deepStrictEqual([W.$('#qaAllDay').checked, s.disabled, e.disabled, s.value, e.value], [true, true, true, '00:00', '24:00'], '종일 일정을 고칠 때 잠긴 채로 열리지 않는다');
+        W.ev("closeOverlay(document.getElementById('quickAdd'))");
         //  과제 폼: 여러 날이면 종일 고정(시각 칸은 00:00, 24:00 으로 잠김, 목록 안 열림), 하루로 돌아와 종일을 끄면 고를 수 있고
         //  종료는 1시간 뒤로 채워진다(pcAutoEnd). 둘 다 또는 둘 다 비움 규칙은 그대로
         const ps = W.$('#pcfST'), pe = W.$('#pcfET'), pad = W.$('#pcfAllDay');

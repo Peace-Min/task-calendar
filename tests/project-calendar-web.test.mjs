@@ -187,7 +187,7 @@ test('변이S②: 목록 밖 명령을 보내거나 열람 창 목록에 넣거�
 test('변이S③: 주기 확인을 넣거나 띠 자리를 되돌리거나 esc 를 빼면 정적③ 이 잡는다', () => {
   assert.throws(() => statics.wiring(mutate('function pcOnActivate(){', 'function pcOnActivate(){ setInterval(pcLoad, 30000);')), /주기 확인/);
   assert.throws(() => statics.wiring(mutate("const bar = document.getElementById('pcTabs') || document.querySelector('header.topbar')", "const bar = document.querySelector('header.topbar')")), /탭 줄 아래/);
-  assert.throws(() => statics.wiring(mutate("'<span class=\"pc-dl-tt\">' + pre + esc(e.title) + '</span>'", "'<span class=\"pc-dl-tt\">' + pre + e.title + '</span>'")), /title 를 esc 없이/);
+  assert.throws(() => statics.wiring(mutate("(e.recurFreq ? ICON.repeat : '') + esc(e.title) + '</span>'", "(e.recurFreq ? ICON.repeat : '') + e.title + '</span>'")), /title 를 esc 없이/);
 });
 
 /* ── (P) 순수 계산 ───────────────────────────────────────────────────── */
@@ -264,15 +264,16 @@ test('순수⑤: 메모 첫 줄, DTO 왕복(호스트 회신 → 화면 → 저�
   assert.strictEqual(P.pcFirstLine('\n   \n  첫 줄 \r\n둘째'), '첫 줄');
   assert.strictEqual(P.pcFirstLine(''), '');
   const dto = { eventUid: 'e1', projectUid: 'p1', title: '회의', startDate: '2026-10-22', endDate: '2026-10-22', startTime: '09:00', endTime: '10:00',
-    location: '3층', memo: '안건\n둘째', rowVersion: 4, deleted: false, createdBy: '가', updatedBy: '나', createdAt: '2026-10-21T01:00:00.000Z', updatedAt: '2026-10-22T01:00:00.000Z' };
+    location: '3층', memo: '안건\n둘째', rowVersion: 4, deleted: false, createdBy: '가', updatedBy: '나', createdAt: '2026-10-21T01:00:00.000Z', updatedAt: '2026-10-22T01:00:00.000Z',
+    recurFreq: null, recurExcept: [] };
   const e = P.pcFromDto(dto);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(e)), dto, 'DTO 를 화면 모양으로 바꾸며 값이 변했다');
   const back = P.pcEventPayload(e);
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(back)), { title: '회의', startDate: '2026-10-22', endDate: '2026-10-22', startTime: '09:00', endTime: '10:00', location: '3층', memo: '안건\n둘째' });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(back)), { title: '회의', startDate: '2026-10-22', endDate: '2026-10-22', startTime: '09:00', endTime: '10:00', location: '3층', memo: '안건\n둘째', recurFreq: null });
   const day = P.pcFromDto({ eventUid: 'e2', startDate: '2026-10-01', endDate: null, startTime: null });
   assert.deepStrictEqual([day.endDate, day.startTime, day.endTime], ['2026-10-01', null, null], '하루 일정의 종료일이나 빈 시각 처리가 다르다');
   assert.deepStrictEqual(JSON.parse(JSON.stringify(P.pcEventPayload({ title: '  t  ', startDate: '2026-10-01', endDate: '', startTime: '09:00:00', endTime: '', location: ' 곳 ', memo: ' m ' }))),
-    { title: 't', startDate: '2026-10-01', endDate: '2026-10-01', startTime: '09:00', endTime: null, location: '곳', memo: ' m ' });
+    { title: 't', startDate: '2026-10-01', endDate: '2026-10-01', startTime: '09:00', endTime: null, location: '곳', memo: ' m ', recurFreq: null });
   assert.strictEqual(P.pcLen('가😀'), 2, '서로게이트 쌍을 두 글자로 셌다');
 });
 test('순수⑥: 폼 검사(과제, 제목, 날짜, 기간, 시각 둘 다, 하루 일정만, 종료 시각, 장소와 메모 상한)', () => {
@@ -865,7 +866,7 @@ if (!JSDOM) {
     assert.strictEqual(s.projectUid, P1);
     assert.ok(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(s.eventUid) && /^[0-9a-f-]{36}$/.test(s.mutationUid), '일정 id 나 변경 id 가 uuid 가 아니다');
     assert.ok(!('expectedVersion' in s), '새 일정인데 판을 보냈다');
-    assert.deepStrictEqual(s.event, { title: '새 일정', startDate: today(), endDate: today(), startTime: '09:00', endTime: '10:00', location: '3층', memo: '메모' });
+    assert.deepStrictEqual(s.event, { title: '새 일정', startDate: today(), endDate: today(), startTime: '09:00', endTime: '10:00', location: '3층', memo: '메모', recurFreq: null });
     assert.strictEqual(W.el('pcfSave').disabled, true, '저장 중에 다시 누를 수 있다');
     const l0 = W.cmds('projectCalendarLoad').length;
     await W.reply('projectCalendarSave', { ok: true, data: { event: EV(5, { eventUid: s.eventUid, title: '새 일정' }), rowVersion: 1, replayed: false } });

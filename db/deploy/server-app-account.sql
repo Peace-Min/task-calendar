@@ -11,6 +11,7 @@
 --   그림은 사람마다 따로다(2026-10-23). 행을 가르는 것은 앱(세션의 사람)이고 권한은 그대로다.
 -- 2026-10-26 Git, SVN 삭제(구조 번호 18): cal_entry_commit 을 지웠다. 그 GRANT 줄도 뺐다(docs/GIT-SVN-REMOVAL.md §2).
 -- 2026-10-30 주간 과제투입시간(구조 번호 20, 결정 14): cal_report_weekly_hours 를 더했다. 다시 보내기가 그 주 줄을 지우고 넣어 DELETE 까지(grants-calendar.sql).
+-- 2026-11-02 과제 일정 반복(구조 번호 20, docs/PC-RECUR.md): cal_project_event_except 를 더했다. 개인 cal_entry_except 와 같은 SELECT, INSERT, DELETE(grants-calendar.sql).
 -- 파일에 바꾼 비밀번호를 남기지 말 것. 실행 뒤 이 줄을 다시 자리표시로 되돌린다.
 
 CREATE USER IF NOT EXISTS 'taskmgr_app'@'%' IDENTIFIED BY 'CHANGE_ME_ON_DEPLOY';
@@ -23,6 +24,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_entry` TO 'taskmgr_a
 GRANT SELECT, INSERT ON `taskcalendar`.`cal_migration_log` TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT ON `taskcalendar`.`cal_project_change` TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE ON `taskcalendar`.`cal_project_event` TO 'taskmgr_app'@'%';
+GRANT SELECT, INSERT, DELETE ON `taskcalendar`.`cal_project_event_except` TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE ON `taskcalendar`.`cal_report_daily` TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_report_hours` TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE ON `taskcalendar`.`cal_report_weekly` TO 'taskmgr_app'@'%';

@@ -21,6 +21,7 @@
    "GRANT SELECT, INSERT ON `taskcalendar`.`cal_migration_log` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT ON `taskcalendar`.`cal_project_change` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE ON `taskcalendar`.`cal_project_event` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, DELETE ON `taskcalendar`.`cal_project_event_except` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE ON `taskcalendar`.`cal_report_daily` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_report_hours` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE ON `taskcalendar`.`cal_report_weekly` TO `taskmgr_app`@`%`",
@@ -1104,6 +1105,15 @@
      "comment": "메모(앱 상한 8,000자)"
     },
     {
+     "name": "recur_freq",
+     "type": "enum('weekly','monthly')",
+     "nullable": true,
+     "def": null,
+     "key": "",
+     "extra": "",
+     "comment": "반복(구조 20). NULL 이면 반복 아님. 끝 없이 반복하고 예외일은 cal_project_event_except"
+    },
+    {
      "name": "row_version",
      "type": "bigint unsigned",
      "nullable": false,
@@ -1221,6 +1231,52 @@
      "clause": "(`uid` <> _utf8mb4\\\\'\\\\')"
     }
    ]
+  },
+  {
+   "name": "cal_project_event_except",
+   "engine": "InnoDB",
+   "rows": 0,
+   "comment": "과제 반복 일정의 예외일(이 날짜만 삭제). PK=(event_id,except_date). 부모 삭제 시 CASCADE",
+   "coll": "utf8mb4_0900_ai_ci",
+   "exact": 0,
+   "columns": [
+    {
+     "name": "event_id",
+     "type": "int unsigned",
+     "nullable": false,
+     "def": null,
+     "key": "PRI",
+     "extra": "",
+     "comment": "과제 일정 번호(cal_project_event.event_id)"
+    },
+    {
+     "name": "except_date",
+     "type": "date",
+     "nullable": false,
+     "def": null,
+     "key": "PRI",
+     "extra": "",
+     "comment": "건너뛸 회차 날짜. 실제 회차만(호스트가 거른다)"
+    }
+   ],
+   "indexes": [
+    {
+     "name": "PRIMARY",
+     "unique": true,
+     "cols": "event_id,except_date"
+    }
+   ],
+   "fks": [
+    {
+     "name": "fk_cal_project_event_except_event",
+     "cols": "event_id",
+     "ref": "cal_project_event",
+     "refCols": "event_id",
+     "upd": "CASCADE",
+     "del": "CASCADE"
+    }
+   ],
+   "checks": []
   },
   {
    "name": "cal_report_daily",

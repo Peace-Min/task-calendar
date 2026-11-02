@@ -13,7 +13,7 @@
 //      edit_role 을 보지 않는다. 판정 SQL 은 한 함수(EligibleProjectsAsync)에만 있고 모든 명령이 그것을 거친다.
 //   ⑦ 글자 상한 상수(호스트 Limits)가 DDL 칸 폭과 같다(정본과 조각 둘 다).
 //   ⑧ 휴지통 과제 영구 삭제가 공용 일정이 있으면 고정 문구로 거부하고, 목록 힌트도 같은 문장을 쓴다.
-//   ⑨ 권한: 두 표 모두 DELETE 없음(정본 권한 파일, 서버 계정 파일), 호스트에도 DELETE 문이 없다.
+//   ⑨ 권한: 일정과 이력 표는 DELETE 없음(정본 권한 파일, 서버 계정 파일), 호스트의 DELETE 문은 반복 예외일 표(구조 20)뿐이다.
 //   ⑩ 개인 복사가 개인 저장과 같은 행 투영과 INSERT 문(CalendarWriteDb)을 쓴다.
 //   ⑪ 개인 복사는 한 번 찍는 사본이다(2026-10-22 저녁 결정): 대응표 cal_project_copy 가 어디에도 없고, "이미 복사했나" 로
 //      먼저 돌아가는 길이 없으며, 부트스트랩이 copies 를 돌려주지 않는다. 성공하면 늘 개인 스냅샷을 다시 싣는다.
@@ -52,6 +52,10 @@ function canonDef(canon, t) {
   assert.ok(m, `정본 schema-calendar.sql 에 ${t} 정의가 없다`);
   return m[1];
 }
+//  v16 때의 정의: 정본에서 반복 칸 줄(recur_freq, 구조 20 의 v20 조각이 ALTER 로 더한다, docs/PC-RECUR.md)을 뺀 것.
+//  v16 조각은 지난 판이라 고치지 않는다. 반복 칸 줄과 v20 조각의 ADD COLUMN 대조는 tests/release-sql.test.mjs ③p3 가 한다.
+const RECUR_LINE = /^  recur_freq .*\n/m;
+function canonDefV16(canon, t) { return canonDef(canon, t).replace(RECUR_LINE, ''); }
 // 조각의 PREPARE 문자열 안 CREATE TABLE IF NOT EXISTS 한 개(작은따옴표를 한 겹으로 되돌린 것)
 function fragDef(frag, t) {
   const m = new RegExp(`SET @s := IF\\(@go,\\n  'CREATE TABLE IF NOT EXISTS ${t} \\(([\\s\\S]*?\\) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci\\s+COMMENT=''(?:[^']|'')*'')',\\n  'DO 0'\\);\\nPREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;`).exec(frag);
@@ -64,7 +68,7 @@ const checks = {
   // ══ ① 정본과 조각 ══════════════════════════════════════════════════
   sameDefs(canon, frag) {
     for (const t of TABLES) {
-      const c = canonDef(canon, t), f = fragDef(frag, t);
+      const c = canonDefV16(canon, t), f = fragDef(frag, t);
       assert.strictEqual(f, c, `${t}: 이관 조각의 정의가 정본(schema-calendar.sql)과 글자까지 같지 않다`);
       assert.ok(!/--/.test(c), `${t}: 정본 정의 안에 -- 주석이 있다(조각 문자열과 글자로 맞출 수 없다)`);
     }
@@ -88,7 +92,7 @@ const checks = {
     //  검증: 표마다 열 수와 FK 수(information_schema)가 정본 정의에서 센 값과 같다. 표 수보다 큰 번호의 변수는 없다
     assert.ok(!new RegExp('@m_[cf]' + (TABLES.length + 1) + '\b').test(code), '조각 검증에 표 수보다 많은 번호의 변수가 남아 있다');
     TABLES.forEach((t, i) => {
-      const d = defOf(`CREATE TABLE ${t} (` + canonDef(canon, t));
+      const d = defOf(`CREATE TABLE ${t} (` + canonDefV16(canon, t));
       assert.ok(new RegExp(`SET @m_c${i + 1} := \\(SELECT COUNT\\(\\*\\) FROM information_schema\\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\\(\\) AND TABLE_NAME = '${t}'\\);`).test(code), `${t} 의 열 수 검증이 없다`);
       assert.ok(new RegExp(`SET @m_f${i + 1} := \\(SELECT COUNT\\(\\*\\) FROM information_schema\\.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\\(\\) AND TABLE_NAME = '${t}'\\);`).test(code), `${t} 의 FK 수 검증이 없다`);
       assert.ok(new RegExp(`@m_c${i + 1} = ${d.cols} AND @m_f${i + 1} = ${d.fks}\\b`).test(code), `${t} 검증의 기대값이 정본 정의(열 ${d.cols}, FK ${d.fks})와 다르다`);
@@ -203,7 +207,8 @@ const checks = {
     const code = stripCsComments(pcdb);
     const ALLOWED = new Set(['projectUid', 'eventUid', 'mutationUid', 'expectedVersion', 'event', 'title', 'startDate', 'endDate',
       'startTime', 'endTime', 'location', 'memo', 'projectUids', 'from', 'to', 'changedFrom', 'changedTo', 'kind', 'fieldFilter',
-      'cursor', 'changedAt', 'changeNo', 'limit']);
+      'cursor', 'changedAt', 'changeNo', 'limit',
+      'recurFreq', 'occDate']);   // 반복(구조 20, docs/PC-RECUR.md): 저장의 반복 값, 이 날짜만 삭제와 개인 복사의 회차 날짜
     //  요청 JSON 에서 읽는 키: Str(q|e|cur, "k"), ReqUid/ReqClientId/OptVersion/ReqDate/UidList/OptInstant(q, "k"), TryGetProperty("k")
     const keys = new Set();
     for (const m of code.matchAll(/\b(?:Str|ReqUid|ReqClientId|OptVersion|ReqDate|UidList|OptInstant)\((?:q|e|cur|evEl), "(\w+)"/g)) keys.add(m[1]);
@@ -276,16 +281,19 @@ const checks = {
   // ══ ⑨ 권한(DELETE 없음) ═════════════════════════════════════════════
   grants(grants, server, pcdb) {
     const g = noLineComments(grants), s = noLineComments(server);
-    const want = { cal_project_event: 'SELECT, INSERT, UPDATE', cal_project_change: 'SELECT, INSERT' };
-    //  과제 캘린더 권한 줄은 정확히 이 둘이다(대응표 cal_project_copy 와 감시점 cal_project_rev 는 2026-10-22 저녁에 뺐다)
-    assert.strictEqual((g.match(/^GRANT [^;]*cal_project_/gm) || []).length, 2, 'grants-calendar.sql 의 과제 캘린더 권한 줄이 둘이 아니다');
-    assert.strictEqual((s.match(/^GRANT [^;]*cal_project_/gm) || []).length, 2, 'server-app-account.sql 의 과제 캘린더 권한 줄이 둘이 아니다');
+    //  2026-11-02 과제 일정 반복(구조 20, docs/PC-RECUR.md): 예외일 표는 개인 cal_entry_except 와 같은 SELECT, INSERT, DELETE.
+    const want = { cal_project_event: 'SELECT, INSERT, UPDATE', cal_project_change: 'SELECT, INSERT', cal_project_event_except: 'SELECT, INSERT, DELETE' };
+    //  과제 캘린더 권한 줄은 정확히 이 셋이다(대응표 cal_project_copy 와 감시점 cal_project_rev 는 2026-10-22 저녁에 뺐다)
+    assert.strictEqual((g.match(/^GRANT [^;]*cal_project_/gm) || []).length, 3, 'grants-calendar.sql 의 과제 캘린더 권한 줄이 셋이 아니다');
+    assert.strictEqual((s.match(/^GRANT [^;]*cal_project_/gm) || []).length, 3, 'server-app-account.sql 의 과제 캘린더 권한 줄이 셋이 아니다');
     for (const [t, verbs] of Object.entries(want)) {
       assert.ok(new RegExp(`^GRANT ${verbs} ON taskmgr\\.${t}\\s+TO 'taskmgr_app'@'%';`, 'm').test(g), `grants-calendar.sql 의 ${t} 권한이 ${verbs} 가 아니다`);
       assert.ok(new RegExp(`^GRANT ${verbs} ON \`taskcalendar\`\\.\`${t}\` TO 'taskmgr_app'@'%';`, 'm').test(s), `server-app-account.sql 의 ${t} 권한이 ${verbs} 가 아니다`);
     }
-    assert.ok(!/DELETE[^;]*cal_project_/i.test(g) && !/DELETE[^;]*cal_project_/i.test(s), '권한 파일이 과제 캘린더 표에 DELETE 를 준다');
-    assert.ok(!/\bDELETE\s+FROM\b/i.test(stripCsComments(pcdb)), 'ProjectCalendarDb 에 DELETE 문이 있다(소프트 삭제, 지우지 않는 기록)');
+    assert.ok(!/DELETE[^;]*cal_project_(event|change)\b/i.test(g) && !/DELETE[^;]*cal_project_(event|change)\b/i.test(s), '권한 파일이 과제 일정이나 이력 표에 DELETE 를 준다');
+    //  호스트의 DELETE 문은 예외일 표 하나뿐이다(반복 종류를 바꾸거나 끈 저장이 그 일정의 예외일을 지운다). 일정과 이력 행은 지우지 않는다.
+    const dels = [...stripCsComments(pcdb).matchAll(/\bDELETE\s+FROM\s+(\w+)/gi)].map((m) => m[1]);
+    assert.ok(dels.every((t) => t === 'cal_project_event_except'), `ProjectCalendarDb 가 예외일 표 말고 다른 표를 지운다(소프트 삭제, 지우지 않는 기록): ${dels}`);
   },
 
   // ══ ⑩ 개인 복사의 행 투영 ══════════════════════════════════════════
@@ -401,7 +409,7 @@ test('과제캘린더⑤: 명령 일곱은 메인 창 전용이다(관리 창, �
 test('과제캘린더⑥: 웹이 보낸 사용자 값을 쓰지 않고, 신원은 세션, 판정은 함수 하나를 모든 명령이 거친다', () => checks.identity(src.pcdb));
 test('과제캘린더⑦: 글자 상한(제목, 장소, 이름 200, 메모 8,000)이 DDL 칸 폭과 같고, 넘으면 자르지 않고 거절한다', () => checks.limits(src.pcdb, src.canon, src.frag));
 test('과제캘린더⑧: 휴지통 과제 영구 삭제는 공용 일정이 있으면 고정 문구로 거부한다(목록 힌트도 같은 문장)', () => checks.trash(src.pdb));
-test('과제캘린더⑨: 새 표 둘에 DELETE 권한이 없고 호스트에도 DELETE 문이 없다', () => checks.grants(src.grants, src.server, src.pcdb));
+test('과제캘린더⑨: 일정과 이력 표에 DELETE 권한이 없고 호스트의 DELETE 문은 반복 예외일 표뿐이다', () => checks.grants(src.grants, src.server, src.pcdb));
 test('과제캘린더⑩: 개인 복사가 개인 저장과 같은 행 투영, INSERT 문, rev 증가를 쓴다', () => checks.copyProjection(src.cwdb));
 test('과제캘린더⑪: 개인 복사는 한 번 찍는 사본이다(대응표 없음, 먼저 돌아가는 길 없음, copies 없음, 늘 개인 재적재, 미리알림은 새 기록 기본값)', () => checks.copySnapshot(src.pcdb, src.host, src.canon, src.frag, src.grants, src.server));
 test('과제캘린더⑫: 과제별 감시점과 판이 없고, 과제 영구 삭제와 엇갈린 FK 오류는 고정 문구 forbidden 이다', () => checks.noProjectRev(src.pcdb, src.canon, src.frag, src.grants, src.server));
@@ -465,7 +473,7 @@ test('변이PC17: 개인 복사의 미리알림을 0(알림 없음)으로 되돌
 test('변이PC12: 대응표 권한 줄을 되살리면 ⑨ 와 ⑪ 이 실패한다', () => {
   const bad = mutate(src.grants, "GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';",
     "GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';\nGRANT SELECT, INSERT ON taskmgr.cal_project_copy TO 'taskmgr_app'@'%';");
-  assert.throws(() => checks.grants(bad, src.server, src.pcdb), /권한 줄이 둘이 아니다/);
+  assert.throws(() => checks.grants(bad, src.server, src.pcdb), /권한 줄이 셋이 아니다/);
   assert.throws(() => checks.copySnapshot(src.pcdb, src.host, src.canon, src.frag, bad, src.server), /cal_project_copy/);
 });
 test('변이PC13: FK 1452/1451 을 고정 문구로 바꾸는 catch 를 빼면 ⑫ 가 실패한다', () => {
@@ -475,7 +483,7 @@ test('변이PC13: FK 1452/1451 을 고정 문구로 바꾸는 catch 를 빼면 �
 test('변이PC14: 감시점 권한 줄을 되살리면 ⑨ 와 ⑫ 가 실패한다', () => {
   const bad = mutate(src.grants, "GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';",
     "GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';\nGRANT SELECT, INSERT, UPDATE ON taskmgr.cal_project_rev TO 'taskmgr_app'@'%';");
-  assert.throws(() => checks.grants(bad, src.server, src.pcdb), /권한 줄이 둘이 아니다/);
+  assert.throws(() => checks.grants(bad, src.server, src.pcdb), /권한 줄이 셋이 아니다/);
   assert.throws(() => checks.noProjectRev(src.pcdb, src.canon, src.frag, bad, src.server), /cal_project_rev/);
 });
 test('변이PC15: 판정 SQL 의 과제 행 공유 잠금(FOR SHARE OF p)을 빼면 ③ 이 실패한다', () => {

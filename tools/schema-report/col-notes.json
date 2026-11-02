@@ -87,5 +87,11 @@
     "task_name": "보낸 과제명 그대로입니다. 과제 이름이 나중에 바뀌어도 지난 줄은 그대로 남습니다.",
     "project_uid": "공식 과제면 <code>project.uid</code>, 개인 과제는 NULL 입니다. <b>외래키가 없습니다.</b> 과제를 숨기거나 휴지통에서 영구 삭제해도 지난 공수는 남아야 하기 때문입니다. 과제별 맨먼스 집계는 이 값과 <code>ix_crwh_project</code> 로 합니다.",
     "hours": "그 주 그 과제의 시간 합계. 0 초과 168(한 주) 이하만 들어갑니다(CHECK). 0 시간 줄은 두지 않습니다."
+  },
+  "cal_project_event": {
+    "recur_freq": "반복. <code>weekly</code>(매주), <code>monthly</code>(매월), NULL 이면 반복 아님. 끝 날짜, 횟수, 간격은 없고 끝 없이 반복합니다. 회차는 화면이 펼치고, 이 날짜만 지운 회차는 <code>cal_project_event_except</code> 에 있습니다."
+  },
+  "cal_project_event_except": {
+    "except_date": "반복 일정에서 건너뛸 회차 날짜. 실제 회차 날짜만 들어갑니다(호스트가 반복 규칙으로 거릅니다). 반복 종류를 바꾸거나 끄면 그 일정의 날짜를 지웁니다."
   }
 }

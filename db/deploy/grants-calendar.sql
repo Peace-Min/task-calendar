@@ -212,13 +212,17 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_report_weekly_hours TO 'task
 GRANT SELECT ON taskmgr.cal_schema_meta TO 'taskmgr_app'@'%';
 
 -- ---------- 과제 캘린더(공용 트랙, 구조 번호 16, docs/PROJECT-CALENDAR-PLAN.md §4.6) ----------
--- 두 표 모두 DELETE 를 주지 않는다. 앱(ProjectCalendarDb)에 DELETE 문이 없다.
+-- 두 표 모두 DELETE 를 주지 않는다. 앱(ProjectCalendarDb)의 DELETE 문은 아래 예외일 표 하나에만 있다.
 --   cal_project_event   SELECT, INSERT, UPDATE  삭제는 소프트 삭제(is_deleted = 1)라 UPDATE 다
 --   cal_project_change  SELECT, INSERT          지우지 않는 기록. 고치지도 않는다
 -- ★ 과제 영구 삭제(휴지통)는 공용 일정이 없을 때만 된다(그때는 이 표들에 그 과제의 행이 없다).
 -- ★ 배포 SQL(release-v<버전>.sql)은 GRANT 를 하지 않는다. 표마다 권한을 주는 환경은 이 줄들을 root 로 따로 돌린다.
 GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_project_event  TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';
+-- ★ cal_project_event_except(과제 반복 일정의 예외일, 구조 20, 2026-11-02 docs/PC-RECUR.md)는 개인 cal_entry_except 와 같은 SELECT, INSERT, DELETE.
+--   "이 날짜만 삭제" 가 넣고, 반복 종류를 바꾸거나 끈 저장이 그 일정의 날짜를 지운다(날짜가 뜻을 잃는다). 일정 행 자체는 여전히 지우지 않는다.
+-- ★ 배포 SQL 은 GRANT 를 하지 않는다. 표마다 권한을 주는 환경은 이 줄을 root 로 따로 돌린다(개발 PC 는 dist/rehearsal/apply-v20c-dev.sql).
+GRANT SELECT, INSERT, DELETE ON taskmgr.cal_project_event_except TO 'taskmgr_app'@'%';
 
 -- ---------- 월간보고 개발 일정 그림(구조 번호 17, docs/MONTHLY-REPORT-PLAN.md §6.4) ----------
 -- project_schedule_image 는 이름이 cal_ 로 시작하지 않지만 schema-calendar.sql 이 만드는 표라 권한도 이 파일이 정본이다.

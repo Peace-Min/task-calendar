@@ -160,8 +160,8 @@ footer p{margin:0 0 4px; max-width:none}
   <li>데이터베이스 <b>taskcalendar</b></li>
   <li>엔진 <b>MySQL 8.4.9 / InnoDB</b></li>
   <li>문자셋 <b>utf8mb4_0900_ai_ci</b></li>
-  <li>표 <b>26</b> <span class="ko">과제 6, 사용자·조직 3, 캘린더 17</span></li>
-  <li>컬럼 <b>214</b>, 외래키 <b>29</b>, CHECK <b>53</b></li>
+  <li>표 <b>27</b> <span class="ko">과제 6, 사용자·조직 3, 캘린더 18</span></li>
+  <li>컬럼 <b>217</b>, 외래키 <b>30</b>, CHECK <b>53</b></li>
   <li>db_structure_version <b>20</b></li>
   <li>기준 <b>2026-10-26</b></li>
 </ul>
@@ -574,7 +574,7 @@ footer p{margin:0 0 4px; max-width:none}
 <p class="sub">CHECK 2개: <code>chk_title_code_active</code> <code>(`is_active` in (0,1))</code>, <code>chk_title_code_name</code> <code>(`name` &lt;&gt; '')</code></p>
 </section>
 
-<p class="grp">캘린더 <span class="ko">17표: 개인 일정, 할 일, 근태, 보고</span></p>
+<p class="grp">캘린더 <span class="ko">18표: 개인 일정, 할 일, 근태, 보고</span></p>
 
 <section id="calendar">
 <!-- PROSE:calendar.head -->
@@ -750,6 +750,7 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">end_time</td><td class="type">TIME</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_project_event_time</code> 제약이 걸려 있습니다.</td></tr>
 <tr><td class="col">location</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다.</td></tr>
 <tr><td class="col">memo</td><td class="type">TEXT</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
+<tr><td class="col">recur_freq</td><td class="type">ENUM('WEEKLY','MONTHLY')</td><td><span class="k">NULL 허용</span></td><td class="note">반복. <code>weekly</code>(매주), <code>monthly</code>(매월), NULL 이면 반복 아님. 끝 날짜, 횟수, 간격은 없고 끝 없이 반복합니다. 회차는 화면이 펼치고, 이 날짜만 지운 회차는 <code>cal_project_event_except</code> 에 있습니다.</td></tr>
 <tr><td class="col">row_version</td><td class="type">BIGINT UNSIGNED</td><td><span class="k nn">NOT NULL</span><span class="k">기본 1</span></td><td class="note auto">필수입니다. 기본값은 <code>1</code>입니다.</td></tr>
 <tr><td class="col">is_deleted</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 0</span><span class="k">CHECK</span><span class="k ix">INDEX</span></td><td class="note auto">필수입니다. 기본값은 <code>0</code>입니다. 허용값은 <code>0</code>, <code>1</code>뿐입니다.</td></tr>
 <tr><td class="col">created_by_name</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
@@ -762,6 +763,22 @@ footer p{margin:0 0 4px; max-width:none}
 </div>
 <p class="sub">인덱스: <code>project_id, is_deleted, start_date, end_date</code> <span class="ko">ix_cal_project_event_range</span>, <code>project_id, updated_at, event_id</code> <span class="ko">ix_cal_project_event_updated</span>, UNIQUE <code>uid</code> <span class="ko">uq_cal_project_event_uid</span></p>
 <p class="sub">CHECK 5개: <code>chk_cal_project_event_deleted</code> <code>(`is_deleted` in (0,1))</code>, <code>chk_cal_project_event_enddate</code> <code>((`end_date` is null) or (`end_date` &gt; `start_date`))</code>, <code>chk_cal_project_event_time</code> <code>(((`start_time` is null) and (`end_time` is null)) or ((`end_date` is null) and (`start_time` is not null) and (`end_time` is not null) and (`end_time` &gt; `start_time`)))</code>, <code>chk_cal_project_event_title</code> <code>(`title` &lt;&gt; '')</code>, <code>chk_cal_project_event_uid</code> <code>(`uid` &lt;&gt; '')</code></p>
+</section>
+
+<section id="cal_project_event_except">
+<h2><span class="tname">cal_project_event_except</span> <span class="ko">과제 반복 일정의 예외일(이 날짜만 삭제)</span></h2>
+
+<p class="sub">DB 주석: PK=(event_id,except_date). 부모 삭제 시 CASCADE</p>
+
+<div class="tw">
+<table>
+<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+<tbody>
+<tr class="pk"><td class="col">event_id</td><td class="type">INT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span></td><td class="note auto">기본키 <code>(event_id, except_date)</code>의 일부입니다. <code>cal_project_event.event_id</code>에 있는 값만 들어갑니다. 부모 행이 지워지면 이 행도 함께 지워집니다. 부모 값이 바뀌면 따라 바뀝니다.</td></tr>
+<tr class="pk"><td class="col">except_date</td><td class="type">DATE</td><td><span class="k pk">PK</span></td><td class="note">반복 일정에서 건너뛸 회차 날짜. 실제 회차 날짜만 들어갑니다(호스트가 반복 규칙으로 거릅니다). 반복 종류를 바꾸거나 끄면 그 일정의 날짜를 지웁니다.</td></tr>
+</tbody>
+</table>
+</div>
 </section>
 
 <section id="cal_report_daily">
@@ -1003,7 +1020,7 @@ footer p{margin:0 0 4px; max-width:none}
 <tbody>
 <tr><td class="col">과제</td><td class="type">6표, 32행</td><td class="note"><code>project</code>, <code>customer</code>, <code>section_code</code>, <code>status_code</code>, <code>room_code</code>, <code>project_schedule_image</code></td></tr>
 <tr><td class="col">사용자·조직</td><td class="type">3표, 112행</td><td class="note"><code>app_user</code>, <code>org_unit</code>, <code>title_code</code></td></tr>
-<tr><td class="col">캘린더</td><td class="type">17표, 17,891행</td><td class="note"><code>cal_attendance</code>, <code>cal_category</code>, <code>cal_entry</code>, <code>cal_entry_except</code>, <code>cal_migration_log</code>, <code>cal_project_change</code>, <code>cal_project_event</code>, <code>cal_report_daily</code>, <code>cal_report_hours</code>, <code>cal_report_weekly</code>, <code>cal_report_weekly_hours</code>, <code>cal_schema_meta</code>, <code>cal_task_hours</code>, <code>cal_todo</code>, <code>cal_todo_day_note</code>, <code>cal_user_pref</code>, <code>cal_user_rev</code></td></tr>
+<tr><td class="col">캘린더</td><td class="type">18표, 17,891행</td><td class="note"><code>cal_attendance</code>, <code>cal_category</code>, <code>cal_entry</code>, <code>cal_entry_except</code>, <code>cal_migration_log</code>, <code>cal_project_change</code>, <code>cal_project_event</code>, <code>cal_project_event_except</code>, <code>cal_report_daily</code>, <code>cal_report_hours</code>, <code>cal_report_weekly</code>, <code>cal_report_weekly_hours</code>, <code>cal_schema_meta</code>, <code>cal_task_hours</code>, <code>cal_todo</code>, <code>cal_todo_day_note</code>, <code>cal_user_pref</code>, <code>cal_user_rev</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -1021,6 +1038,7 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">cal_migration_log</td><td class="type">1</td><td class="note">data.xml→DB 1회성 이관 마커(사람 단위)</td></tr>
 <tr><td class="col">cal_project_change</td><td class="type">91</td><td class="note">과제 일정 변경 이력(지우지 않는 기록)</td></tr>
 <tr><td class="col">cal_project_event</td><td class="type">39</td><td class="note">과제 일정(과제 캘린더 공용 트랙)</td></tr>
+<tr><td class="col">cal_project_event_except</td><td class="type">0</td><td class="note">과제 반복 일정의 예외일(이 날짜만 삭제)</td></tr>
 <tr><td class="col">cal_report_daily</td><td class="type">0</td><td class="note">캘린더가 보낸 일간보고</td></tr>
 <tr><td class="col">cal_report_hours</td><td class="type">0</td><td class="note">보낸 과제별 시간 — 공수계산기의 원천</td></tr>
 <tr><td class="col">cal_report_weekly</td><td class="type">0</td><td class="note">캘린더가 작성한 주간보고</td></tr>

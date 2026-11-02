@@ -32,9 +32,10 @@ export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 //   실제 사용자(app_user)를 주인(user_id)으로 RESTRICT 로 붙들고 실제 그림 바이트가 데모에 남지 않게 먼저 비운다. 데모는 그림을 채우지 않는다.
 // 주간 과제투입시간(cal_report_weekly_hours, 구조 20)은 cal_report_weekly 의 자식이라 그 앞에서 지운다(CASCADE 로도 지워지지만
 //   표를 이름으로 적어 두어야 시험이 정본의 cal_* 명부와 대조할 수 있다). 데모는 주간보고를 채우지 않는다.
+// 과제 반복 일정의 예외일(cal_project_event_except, 구조 20)은 cal_project_event 의 자식이라 그 앞에서 지운다(같은 까닭으로 이름을 적는다).
 export const WIPE_TABLES = [
   'project_schedule_image',
-  'cal_project_change', 'cal_project_event',
+  'cal_project_change', 'cal_project_event_except', 'cal_project_event',
   'cal_report_hours', 'cal_report_daily', 'cal_report_weekly_hours', 'cal_report_weekly',
   'cal_task_hours', 'cal_todo_day_note', 'cal_todo',
   'cal_entry_except', 'cal_entry', 'cal_category',

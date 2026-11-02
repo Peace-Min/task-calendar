@@ -5,6 +5,8 @@
 --  cal_report_weekly 에 회의내용 칸(meeting)을 더한다.
 --  2026-10-30 결정 14(§14.4): 같은 판에 주간 과제투입시간 표 cal_report_weekly_hours 를 더한다(MM 집계의 원천).
 --    구조 20 은 운영에 배포하기 전이라 번호를 올리지 않고 이 조각에 합쳤다. 파일 이름도 그대로 둔다.
+--  2026-11-02(docs/PC-RECUR.md): 같은 판에 과제 일정 반복 칸 cal_project_event.recur_freq 와 예외일 표
+--    cal_project_event_except 를 더한다(같은 까닭으로 번호 그대로).
 -- =====================================================================
 --
 --  이 파일은 혼자 실행하지 않는다.
@@ -30,8 +32,15 @@
 --       사용자가 어느 주를 썼는지 보지도 못했다. 원본은 회사 인트라넷에 남는다. 근태 탭은 이 판부터 새로 쌓는다.
 --       일간 기록(cal_report_daily, cal_report_hours)은 건드리지 않는다. 일간과 주간 사이에는 FK 가 없다.
 --       새 시간 표는 방금 만들어 비어 있어 CASCADE 로 함께 지워질 줄이 없다.
+--    2-3) cal_project_event.recur_freq ENUM('weekly','monthly') NULL 을 memo 뒤에 더한다(없을 때만, INSTANT). 정본과 같은 자리, 같은 줄.
+--       NULL 이면 반복 아님. 있는 일정은 NULL(반복 아님)로 생길 뿐 값 채우기가 없다.
+--    2-4) 새 표 cal_project_event_except(반복 일정의 이 날짜만 삭제)를 만든다. 없을 때만(IF NOT EXISTS).
+--       정의는 정본 schema-calendar.sql 의 cal_project_event_except 와 글자까지 같다(작은따옴표만 두 겹).
+--       부모 cal_project_event 를 event_id 로 CASCADE 참조한다(개인 cal_entry_except 와 같은 결). 옮길 데이터는 없다.
 --    3) 검증(information_schema): 새 칸이 있고 mediumtext, NULL 허용이며 plan 바로 뒤에 있다.
 --       새 표가 있고 열 수(6), 기본 키 열 수(3), FK 수(1, cal_report_weekly 를 CASCADE 로), CHECK chk_crwh_hours 가 정본과 같다.
+--       반복 칸이 enum('weekly','monthly'), NULL 허용, 기본값 NULL 이고 memo 바로 뒤에 있다.
+--       예외일 표가 있고 열 수(2), 기본 키 열 수(2), FK 수(1, cal_project_event 를 CASCADE 로)가 정본과 같다.
 --    4) 구조 번호 20.
 --
 --  ★ 되돌릴 수 없다: 2-2 는 옛 주간 기록을 지운다. 운영 DB 를 백업한 뒤 돌린다(DB-RELEASE-OPS 의 배포 전 백업).
@@ -40,19 +49,23 @@
 --    회의내용 칸은 표가 그대로라 앱 계정의 SELECT, INSERT, UPDATE 가 새 칸에도 닿는다.
 --    새 표: 폐쇄망 서버 앱 계정은 taskcalendar 전체 권한이라 바로 쓴다. 표마다 권한을 주는 환경(개발 PC 의 최소 권한 앱 계정)은
 --    정본 권한 파일(grants-calendar.sql)의 cal_report_weekly_hours 줄(SELECT, INSERT, UPDATE, DELETE)을 root 로 따로 준다(안 주면 1142).
+--    반복 칸은 표가 그대로라 앱 계정의 SELECT, INSERT, UPDATE 가 닿는다. 예외일 표는 같은 식으로 grants-calendar.sql 의
+--    cal_project_event_except 줄(SELECT, INSERT, DELETE)을 따로 준다.
 --
 --  다시 돌리기: 안전하다.
 --    - 구조 번호가 이미 20 이상이면 아무것도 하지 않는다(건너뛴 배포를 몰아서 올릴 때, 끝난 뒤 다시 돌릴 때).
 --    - 앞선 실행이 중간에 멈췄으면 이어서 끝낸다. 칸은 information_schema 로 있는지 보고 없을 때만 더하고, 표는 IF NOT EXISTS 로 만든다.
 --    - ★ 이미 20 인 DB(2026-10-29 에 회의내용 칸만 받은 개발 PC DB)도 건너뛴다. 새 표는 그런 DB 에 생기지 않으므로
 --      그 DB 는 일회용 SQL(dist/rehearsal/apply-v20b-dev.sql)로 표만 따로 만든다. 운영 DB 는 19 라 이 조각이 함께 만든다.
+--      2026-11-02 의 반복 칸과 예외일 표도 같다. 이미 20 인 개발 DB 는 dist/rehearsal/apply-v20c-dev.sql 로 따로 만든다.
 --    - 19 도 20 이상도 아니면 멈춘다(앞 판이 빠졌거나 손댄 값).
 --
 --  멈추는 방법: 저장 프로그램을 쓰지 않는다. 조건으로 실행할 문장을 고르고(PREPARE/EXECUTE),
 --    조건이 틀리면 없는 표 이름을 SELECT 해 ERROR 1146 을 낸다. 그 표 이름이 멈춘 이유다.
 --
---  앱 쪽 짝: DbGate.AppStructureVersion 20, 정본 schema-calendar.sql 의 cal_report_weekly, cal_report_weekly_hours 와 시딩 20
---    (tests/release-sql.test.mjs, tests/schema-guards.test.mjs, tests/version-gate-host.test.mjs).
+--  앱 쪽 짝: DbGate.AppStructureVersion 20, 정본 schema-calendar.sql 의 cal_report_weekly, cal_report_weekly_hours,
+--    cal_project_event(recur_freq), cal_project_event_except 와 시딩 20
+--    (tests/release-sql.test.mjs, tests/schema-guards.test.mjs, tests/version-gate-host.test.mjs, tests/pc-recur.test.mjs).
 --  조각 규칙(DB-RELEASE-OPS §5.2): 변수는 @go, @skip, @g, @s 와 @m_ 만 쓴다(@r_ 는 감싸개 몫).
 --    잠금 대기 상한(lock_wait_timeout)은 release SQL 맨 위에서 한 번 건다. 조각은 걸지 않는다.
 -- =====================================================================
@@ -69,7 +82,7 @@ SET @g := IF(NOT @go OR @m_upd <=> '1', 'DO 0',
              'SELECT 1 FROM `중단: v20 조각 - 닫히지 않았다 - release SQL 로만 돌린다`');
 PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 
-SELECT IF(@go, '19 에서 20 으로 올린다(주간보고 회의내용, 주간 시간 표)', '이미 20 이상이다. 건너뛴다') AS `v20 조각`;
+SELECT IF(@go, '19 에서 20 으로 올린다(주간보고 회의내용, 주간 시간 표, 과제 일정 반복)', '이미 20 이상이다. 건너뛴다') AS `v20 조각`;
 
 -- 2) cal_report_weekly.meeting: 없을 때만 더한다(MySQL 에는 ADD COLUMN IF NOT EXISTS 가 없다)
 --    구조 변경 문장이라 트랜잭션으로 묶지 않는다(자동 확정된다). 중간에 멈추면 다시 돌릴 때 여기서 건너뛴다.
@@ -108,6 +121,29 @@ PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
 
 SELECT IF(@go, '옛 주간보고 기록을 지웠다(일간은 그대로)', '지울 것이 없다') AS `v20 옛 주간 기록`;
 
+-- 3-3) cal_project_event.recur_freq: 없을 때만 더한다(정본 schema-calendar.sql 의 그 줄과 같은 형, 기본값, 설명, 자리).
+--    구조 변경 문장이라 트랜잭션으로 묶지 않는다. 중간에 멈추면 다시 돌릴 때 여기서 건너뛴다.
+SET @m_rcol := (SELECT COUNT(*) FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cal_project_event' AND COLUMN_NAME = 'recur_freq');
+SET @s := IF(@go AND @m_rcol = 0,
+  'ALTER TABLE cal_project_event ADD COLUMN recur_freq ENUM(''weekly'',''monthly'') NULL DEFAULT NULL COMMENT ''반복(구조 20). NULL 이면 반복 아님. 끝 없이 반복하고 예외일은 cal_project_event_except'' AFTER memo, ALGORITHM=INSTANT',
+  'DO 0');
+PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
+
+-- 3-4) 과제 반복 일정의 예외일 표: 없을 때만 만든다(정본 schema-calendar.sql 의 cal_project_event_except 와 글자까지 같은 정의).
+--    부모 cal_project_event 는 이 DB 에 이미 있다(구조 16 부터).
+SET @s := IF(@go,
+  'CREATE TABLE IF NOT EXISTS cal_project_event_except (
+  event_id     INT UNSIGNED    NOT NULL    COMMENT ''과제 일정 번호(cal_project_event.event_id)'',
+  except_date  DATE            NOT NULL    COMMENT ''건너뛸 회차 날짜. 실제 회차만(호스트가 거른다)'',
+  PRIMARY KEY (event_id, except_date),
+  CONSTRAINT fk_cal_project_event_except_event FOREIGN KEY (event_id) REFERENCES cal_project_event (event_id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT=''과제 반복 일정의 예외일(이 날짜만 삭제). PK=(event_id,except_date). 부모 삭제 시 CASCADE''',
+  'DO 0');
+PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
+
 -- 4) 검증: 칸(형, NULL 허용, 자리). 틀리면 db_updating = 1 인 채로 멈춘다(앱은 계속 기다린다).
 --    information_schema 로 다시 보는 이유: 이름이 같은 다른 모양의 칸이 이미 있으면 위 단계가 건너뛰기 때문이다.
 SET @m_mty := (SELECT COUNT(*) FROM information_schema.COLUMNS
@@ -134,6 +170,23 @@ SET @g := IF(NOT @go OR (@m_hc = 6 AND @m_hp = 3 AND @m_hf = 1 AND @m_hr = 1 AND
 PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 
 SELECT IF(@go, '주간 과제투입시간 표를 만들었다', '만들 것이 없다') AS `v20 주간 시간 표`;
+
+-- 4-3) 검증: 과제 일정 반복 칸(형, NULL 허용, 기본값 NULL, memo 바로 뒤)과 예외일 표의 모양(열 수, 기본 키 열 수, FK 와 그 대상과 규칙).
+SET @m_rty := (SELECT COUNT(*) FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cal_project_event' AND COLUMN_NAME = 'recur_freq'
+                  AND COLUMN_TYPE = 'enum(''weekly'',''monthly'')' AND IS_NULLABLE = 'YES' AND COLUMN_DEFAULT IS NULL);
+SET @m_rpos := (SELECT COUNT(*) FROM information_schema.COLUMNS a JOIN information_schema.COLUMNS b
+                   ON b.TABLE_SCHEMA = a.TABLE_SCHEMA AND b.TABLE_NAME = a.TABLE_NAME AND b.ORDINAL_POSITION = a.ORDINAL_POSITION + 1
+                 WHERE a.TABLE_SCHEMA = DATABASE() AND a.TABLE_NAME = 'cal_project_event' AND a.COLUMN_NAME = 'memo' AND b.COLUMN_NAME = 'recur_freq');
+SET @m_xc := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cal_project_event_except');
+SET @m_xp := (SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cal_project_event_except' AND CONSTRAINT_NAME = 'PRIMARY');
+SET @m_xf := (SELECT COUNT(*) FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'cal_project_event_except');
+SET @m_xr := (SELECT COUNT(*) FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'cal_project_event_except' AND REFERENCED_TABLE_NAME = 'cal_project_event' AND DELETE_RULE = 'CASCADE' AND UPDATE_RULE = 'CASCADE');
+SET @g := IF(NOT @go OR (@m_rty = 1 AND @m_rpos = 1 AND @m_xc = 2 AND @m_xp = 2 AND @m_xf = 1 AND @m_xr = 1), 'DO 0',
+             'SELECT 1 FROM `중단: v20 조각 검증 실패 - 과제 일정 반복 칸이나 예외일 표의 모양이 다르다`');
+PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
+
+SELECT IF(@go, '과제 일정에 반복 칸과 예외일 표를 더했다', '만들 것이 없다') AS `v20 과제 일정 반복`;
 
 -- 5) 구조 번호 올리기: 19 일 때만 20 으로. 이미 20 이상이면 0행이다.
 --    db_updating 은 그대로 1 이다. 앱은 release SQL 의 마지막 열기까지 계속 기다린다.

@@ -44,6 +44,10 @@
 //   CREATE TABLE IF NOT EXISTS 의 정의에서 열 수, FK 수와 함께 기본 키 열 수, CHECK 이름, FK 의 대상과 규칙을 읽고
 //   information_schema.KEY_COLUMN_USAGE(PRIMARY), TABLE_CONSTRAINTS(CHECK 이름), REFERENTIAL_CONSTRAINTS(대상, DELETE_RULE,
 //   UPDATE_RULE) 의 표별 COUNT(*) 하위 질의에 그 값으로 답한다.
+//   과제 일정 반복(같은 v20 조각, 2026-11-02 docs/PC-RECUR.md): 예외일 표 cal_project_event_except 도 위와 같은 표 모양(defs)이고,
+//   cal_project_event 의 반복 칸은 defs 의 열 목록(list: 이름, 형, NULL 허용)으로 흉내 낸다.
+//   ALTER TABLE cal_project_event ADD COLUMN recur_freq ENUM(...) NULL DEFAULT NULL COMMENT '...' AFTER memo, ALGORITHM=INSTANT 가
+//   목록에 칸을 끼우고 열 수를 하나 올린다. information_schema.COLUMNS 의 이름, 형과 NULL 허용과 기본값 NULL, 바로 앞 칸 자리를 그 목록으로 답한다.
 //
 // ★ *.test.mjs 가 아니다(러너가 수집하지 않는다. ps-guard-lib.mjs 머리말과 같은 이유).
 
@@ -207,7 +211,7 @@ const ROOM_COUNTS = {
 
 // ── 표 정의의 모양(v16): 열 수와 FK 수 ────────────────────────────────────
 //  CREATE TABLE 문 하나에서 괄호 안의 열 정의 줄(이름 + 형)과 FOREIGN KEY 를 센다. 정본과 조각의 정의를 같은 함수로 센다.
-const COL_LINE = /^\s*[a-z_][a-z0-9_]*\s+(TINYINT|SMALLINT|INT|BIGINT|VARCHAR|CHAR|DATE|DATETIME|TIME|TEXT|MEDIUMTEXT|MEDIUMBLOB|JSON|DECIMAL)\b/i;
+const COL_LINE = /^\s*[a-z_][a-z0-9_]*\s+(TINYINT|SMALLINT|INT|BIGINT|VARCHAR|CHAR|DATE|DATETIME|TIME|TEXT|MEDIUMTEXT|MEDIUMBLOB|JSON|DECIMAL|ENUM)\b/i;
 //  표 모양을 세는(defs) 새 표: 과제 캘린더(v16), 월간보고 그림 표(v17), 주간 과제투입시간 표(v20)
 const SHAPED = (n) => n.startsWith('cal_project_') || n === 'project_schedule_image' || n === 'cal_report_weekly_hours';
 
@@ -287,9 +291,15 @@ export function defShape(createSql) {
       const rule = (w) => ((new RegExp(`ON\\s+${w}\\s+${RULE}`, 'i').exec(m[2]) || [])[1] || 'NO ACTION').toUpperCase();
       return `${m[1]}:${rule('DELETE')}:${rule('UPDATE')}`;
     });
+  //  v20(과제 일정 반복): 열 목록. 형은 information_schema.COLUMNS.COLUMN_TYPE 처럼 ENUM 은 값까지(enum('weekly','monthly')), 나머지는 첫 낱말.
+  const list = body.split('\n').filter((l) => COL_LINE.test(l)).map((l) => {
+    const x = /^\s*([a-z_][a-z0-9_]*)\s+(ENUM\([^)]*\)|\w+)/i.exec(l);
+    const noCmt = l.replace(/COMMENT\s+'(?:[^']|'')*'/i, '');
+    return { name: x[1], type: x[2].toLowerCase(), nullable: !/\bNOT NULL\b/i.test(noCmt) };
+  });
   return {
-    cols: body.split('\n').filter((l) => COL_LINE.test(l)).length, fks: (body.match(/\bFOREIGN KEY\b/g) || []).length,
-    pk: pk ? pk[1].split(',').length : 0, checks, refs,
+    cols: list.length, fks: (body.match(/\bFOREIGN KEY\b/g) || []).length,
+    pk: pk ? pk[1].split(',').length : 0, checks, refs, list,
   };
 }
 
@@ -394,12 +404,29 @@ export class FakeDb {
       return m[1].toUpperCase() === 'COLUMNS' ? d.cols : d.fks;
     }
     //  v20: 주간 과제투입시간 표의 기본 키 열 수, CHECK 이름, 대상과 규칙을 붙인 FK 수(모양은 defs. 모르면 판정 불가로 실패)
-    m = /^SELECT COUNT\(\*\) FROM information_schema\.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours)' AND CONSTRAINT_NAME = 'PRIMARY'$/.exec(s);
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours|cal_project_event_except)' AND CONSTRAINT_NAME = 'PRIMARY'$/.exec(s);
     if (m) return this.shapeOf(m[1], 'pk', (d) => d.pk);
     m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours)' AND CONSTRAINT_NAME = '(\w+)' AND CONSTRAINT_TYPE = 'CHECK'$/.exec(s);
     if (m) { const c = m[2]; return this.shapeOf(m[1], 'checks', (d) => d.checks.filter((x) => x === c).length); }
-    m = /^SELECT COUNT\(\*\) FROM information_schema\.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours)' AND REFERENCED_TABLE_NAME = '(\w+)' AND DELETE_RULE = '([A-Z ]+)' AND UPDATE_RULE = '([A-Z ]+)'$/.exec(s);
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours|cal_project_event_except)' AND REFERENCED_TABLE_NAME = '(\w+)' AND DELETE_RULE = '([A-Z ]+)' AND UPDATE_RULE = '([A-Z ]+)'$/.exec(s);
     if (m) { const want = `${m[2]}:${m[3]}:${m[4]}`; return this.shapeOf(m[1], 'refs', (d) => d.refs.filter((x) => x === want).length); }
+    //  v20(과제 일정 반복): cal_project_event 의 칸(이름만, 또는 형과 NULL 허용과 기본값 NULL)과 바로 앞 칸 자리. 열 목록은 defs.list.
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_project_event)' AND COLUMN_NAME = '(\w+)'(?: AND COLUMN_TYPE = '((?:[^']|'')+)' AND IS_NULLABLE = '(YES|NO)' AND COLUMN_DEFAULT IS NULL)?$/.exec(s);
+    if (m) {
+      const list = this.pcList(m[1]);
+      if (!list) return 0;
+      const c = list.find((x) => x.name === m[2]);
+      if (!c) return 0;
+      if (m[3] === undefined) return 1;
+      return c.type === m[3].replace(/''/g, "'") && c.nullable === (m[4] === 'YES') ? 1 : 0;
+    }
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS a JOIN information_schema\.COLUMNS b ON b\.TABLE_SCHEMA = a\.TABLE_SCHEMA AND b\.TABLE_NAME = a\.TABLE_NAME AND b\.ORDINAL_POSITION = a\.ORDINAL_POSITION \+ 1 WHERE a\.TABLE_SCHEMA = DATABASE\(\) AND a\.TABLE_NAME = '(cal_project_event)' AND a\.COLUMN_NAME = '(\w+)' AND b\.COLUMN_NAME = '(\w+)'$/.exec(s);
+    if (m) {
+      const list = this.pcList(m[1]);
+      if (!list) return 0;
+      const i = list.findIndex((x) => x.name === m[2]);
+      return i >= 0 && list[i + 1] && list[i + 1].name === m[3] ? 1 : 0;
+    }
     //  v18: 일정, 과제, 설정 표의 지울 칸(이름 하나 또는 IN 목록)과 CHECK 이름. 지울 칸 목록에 없는 이름을 물으면 모르는 질의다.
     m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_entry|cal_category|cal_user_pref)' AND COLUMN_NAME (?:= '(\w+)'|IN \(([^)]*)\))$/.exec(s);
     if (m) {
@@ -444,6 +471,14 @@ export class FakeDb {
     m = /^SELECT COUNT\(\*\) FROM cal_schema_meta WHERE k IN \(([^)]*)\)$/.exec(s);
     if (m) return [...m[1].matchAll(/'([a-z_0-9]+)'/g)].filter((x) => this.rows.has(x[1])).length;
     throw new Error(`모르는 하위 질의: ${s}`);
+  }
+  //  v20(과제 일정 반복): cal_project_event 의 열 목록. 표가 없으면 null. 시험이 손으로 만든 모양(열 목록 없음)은 MySQL 에서라면
+  //  다른 모양의 표라 질의 결과를 알 수 없다. 통과로 치지 않고 멈춘다(SqlStop).
+  pcList(t) {
+    if (!this.schema || !this.hasTable(t)) return null;
+    const d = this.defs[t];
+    if (!d || !d.list) throw new SqlStop('모양을 모르는 ' + t + '(열 목록 없음)');
+    return d.list;
   }
   //  defs 로 모양을 아는 표의 한 가지 값. 표가 없으면 0, 그 값을 모르면 판정 불가로 실패한다(통과가 아니다).
   shapeOf(t, field, f) {
@@ -548,6 +583,24 @@ export class FakeDb {
       this.weekly.cols.splice(at + 1, 0, `${m[1]}:${m[2].toLowerCase()}?`);
       if (this.hasTable('cal_report_weekly')) for (const r of this.tables.cal_report_weekly) r[m[1]] = null;
       this.writes.push({ k: `col:cal_report_weekly.${m[1]}`, v: 'add' });
+      return;
+    }
+    //  v20(과제 일정 반복): cal_project_event 에 칸 하나(AFTER). 모양은 defs(열 수와 열 목록)로 흉내 낸다. 이미 있으면 1060.
+    //  defs 객체는 시험의 상수와 같은 것일 수 있어 고치지 않고 새 객체로 바꾼다.
+    if ((m = /^ALTER TABLE cal_project_event ADD COLUMN (\w+) (ENUM\([^)]*\)) NULL DEFAULT NULL COMMENT '(?:[^']|'')*' AFTER (\w+), ALGORITHM=INSTANT$/.exec(q))) {
+      if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
+      this.mutating(s, opts);
+      this.need('cal_project_event');
+      const d = this.defs.cal_project_event;
+      if (!d || !d.list) throw new Error('모양을 모르는 표를 바꾼다(defs 에 cal_project_event.list 가 없다)');
+      const names = d.list.map((c) => c.name);
+      if (names.includes(m[1])) throw new SqlStop('1060 칸 ' + m[1] + ' 이 이미 있다');
+      const at = names.indexOf(m[3]);
+      if (at < 0) throw new SqlStop('1054 칸 ' + m[3] + ' 이 없다');
+      const list = [...d.list];
+      list.splice(at + 1, 0, { name: m[1], type: m[2].toLowerCase(), nullable: true });
+      this.defs.cal_project_event = { ...d, cols: d.cols + 1, list };
+      this.writes.push({ k: 'col:cal_project_event.' + m[1], v: 'add' });
       return;
     }
     if ((m = /^ALTER TABLE project ADD CONSTRAINT (\w+) CHECK \(.+\)$/.exec(q))) {

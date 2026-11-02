@@ -1066,6 +1066,7 @@ git/svn 작성자, **근태·초과시간**(`<attendance>` → 신규 `cal_atten
 | `cal_schema_meta` | 없음 (스키마 버전 행, §5.5) |
 | **`cal_project_event`** | 없음 (과제 일정, 공용 트랙, §5.10, 구조 16) |
 | **`cal_project_change`** | 없음 (과제 일정 변경 이력, §5.10) |
+| **`cal_project_event_except`** | 없음 (과제 반복 일정의 예외일, §5.10, 구조 20) |
 
 > **2026-08-31, 보고 기록 3표가 들어왔다(13 → 16).** 이 셋은 `<attendance>`·`<prefs>` 와 달리
 > **XML 에 원본이 없다**: 옮겨 온 것이 아니라 새로 생기는 사실(위젯이 netcus 로 무엇을 보냈는가)이라
@@ -2547,6 +2548,11 @@ GRANT SELECT, INSERT, UPDATE         ON taskmgr.cal_report_weekly TO 'taskmgr_ap
 |---|---|---|
 | `cal_project_event` | PK `event_id`, UNIQUE `uid`(웹이 만든 안정 id) | 과제 일정. 소프트 삭제(`is_deleted`), 낙관적 잠금 `row_version`. `project_id` FK **RESTRICT** |
 | `cal_project_change` | PK `change_no`, UNIQUE `(project_id, mutation_uid)` | 지우지 않는 변경 이력. 한 저장의 **바뀐 필드만** `before_json`/`after_json` 에. 바뀐 것이 없으면 행이 없다 |
+| `cal_project_event_except` | PK `(event_id, except_date)` | 반복 일정의 "이 날짜만 삭제" 날짜(구조 20). `event_id` FK **CASCADE**. 개인 `cal_entry_except` 와 같은 결 |
+
+> **2026-11-02, 과제 일정 반복(구조 20 에 합침,** [`../docs/PC-RECUR.md`](../docs/PC-RECUR.md)**).** `cal_project_event.recur_freq` ENUM('weekly','monthly') NULL(memo 뒤)과 예외일 표 `cal_project_event_except` 를 더했다.
+> 끝 날짜, 횟수, 간격은 두지 않는다(개인 폼과 같아 폼이 쓰지 않는다). 수정은 반복 전체에 걸리고, 이 날짜만 삭제는 예외일을 더하며, 반복 종류를 바꾸거나 끄면 그 일정의 예외일을 지운다(앱 계정 SELECT, INSERT, DELETE).
+> 예외일은 실제 회차 날짜만 들어간다(호스트가 반복 규칙으로 거른다). 반복 일정의 범위 조회는 끝이 없어 `start_date <= @to` 만 본다. 이관은 `db/deploy/migrations/v20-weekly-meeting.sql` 이 칸과 표가 없을 때만 만든다.
 
 **개인 트랙과 다른 점(일부러 다르다)**
 - **외래키가 가리키는 기본키는 번호**다(`project.id`, `event_id`, CODE-TABLE-IDS). 웹과 호스트 사이는 `projectUid`, `eventUid` 로 주고받고 호스트가 번호로 바꾼다. 개인 `cal_category` 는 `project_uid` 글자로 과제를 가리키지만(FK 아님) 공용 표는 진짜 FK 다.
@@ -3348,6 +3354,9 @@ binlog 는 **변경 이력**이다. *"어느 상태에서 출발해 이 변경�
 ---
 
 ## 정정 이력
+
+- **2026-11-02, 과제 일정 반복**([`../docs/PC-RECUR.md`](../docs/PC-RECUR.md), 구조 번호 20 그대로).
+  - §5.10 의 표 목록과 XML 대응 표에 `cal_project_event_except` 를, 주에 `cal_project_event.recur_freq` 와 예외일 규칙을 적었다.
 
 - **2026-10-30, 주간 과제투입시간**([`../docs/ATTENDANCE-PLAN.md`](../docs/ATTENDANCE-PLAN.md) §14.4, 결정 14, 구조 번호 20 그대로).
   - §5.9.4 의 '주간 공수는 저장하지 않는다' 를 뒤집었다는 주와 §5.9.5 에 `cal_report_weekly_hours` 의 칸, 키, FK, 인덱스를 적었다.

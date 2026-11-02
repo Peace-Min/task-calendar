@@ -863,6 +863,7 @@ PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 DROP TABLE IF EXISTS cal_audit_trash;   -- 폐지(§7.5). 옛 배포분 정리용. 재생성하지 않는다
 DROP TABLE IF EXISTS project_schedule_image; -- 월간보고 개발 일정 그림(구조 17). project, app_user 를 참조(둘 다 이 파일이 지우지 않는다)
 DROP TABLE IF EXISTS cal_project_change;    -- 과제 캘린더(구조 16). cal_project_event 를 참조, 자식 먼저
+DROP TABLE IF EXISTS cal_project_event_except; -- 과제 반복 일정의 예외일(구조 20). cal_project_event 를 참조, 자식 먼저
 DROP TABLE IF EXISTS cal_project_event;     -- project 를 참조(project 는 이 파일이 지우지 않는다)
 DROP TABLE IF EXISTS cal_schema_meta;   -- FK 없음, 순서 무관
 DROP TABLE IF EXISTS cal_migration_log;
@@ -1806,6 +1807,8 @@ CREATE TABLE cal_schema_meta (
 --       cal_report_weekly.meeting(MEDIUMTEXT NULL, plan 뒤)을 더한다. 기존 행은 NULL 로 두고 앱은 빈 글로 읽는다.
 --       2026-10-30 결정 14(docs/ATTENDANCE-PLAN.md §14.4)로 같은 판에 주간 과제투입시간 표 cal_report_weekly_hours 를 더했다
 --       (MM 집계의 원천. 구조 20 은 운영 배포 전이라 번호를 올리지 않고 같은 조각에 합쳤다). 표 수가 하나 는다.
+--       2026-11-02(docs/PC-RECUR.md)로 같은 판에 과제 일정 반복 칸 cal_project_event.recur_freq 와 예외일 표
+--       cal_project_event_except(아래 14-2)를 더했다(같은 조각, 번호 그대로). 표 수가 하나 더 는다.
 --       앱 상수는 DbGate.AppStructureVersion(20).
 --   ★ app_ 세 키는 빈 값으로 시딩한다(새 버전 없음). 배포 때 release-v<버전>.sql 이 채운다(DB-RELEASE-OPS §4).
 --   ★ 첫 줄(db_structure_version)의 모양을 바꾸지 말 것. setup-taskcalendar.ps1 과 시험이 이 줄에서 기대값을 읽는다.
@@ -1862,7 +1865,7 @@ SELECT user_id, 0 FROM app_user;
 --   **글자까지 같다**(작은따옴표만 두 겹). 한쪽만 고치면 시험이 실패한다. 그래서 정의 안에 -- 주석을 두지 않고
 --   설명은 COMMENT 로 적는다.
 -- ★ 앱 계정 권한(grants-calendar.sql): event 는 SELECT, INSERT, UPDATE(DELETE 없음, 소프트 삭제),
---   change 는 SELECT, INSERT(지우지 않는 기록).
+--   change 는 SELECT, INSERT(지우지 않는 기록). 반복 예외일 표(14-2, 구조 20)는 SELECT, INSERT, DELETE.
 -- ★ 과제별 감시점 표는 두지 않는다(2026-10-22 저녁 결정, 처음의 cal_project_rev 는 배포 전에 뺐다). 동시 수정은 일정 행의
 --   row_version 이, 재시도 중복은 이력의 (project_id, mutation_uid) UNIQUE 가, 과제 영구 삭제와의 경합은 FK RESTRICT 가 막는다.
 
@@ -1872,6 +1875,12 @@ SELECT user_id, 0 FROM app_user;
 -- 범위 조회 조건: start_date <= @to AND COALESCE(end_date, start_date) >= @from.
 -- 종료일과 시각 규칙은 개인 cal_entry 와 같다: 하루 일정은 end_date NULL, 시각은 하루 일정에서만 둘 다 있거나 둘 다 없다.
 -- 삭제는 is_deleted = 1(행을 지우지 않는다). 이력이 이 번호를 RESTRICT 로 붙든다.
+-- ★ 반복 recur_freq(구조 20, 2026-11-02, docs/PC-RECUR.md): 개인 일정의 반복 폼과 같은 두 값(매주, 매월)이고 끝 날짜, 횟수, 간격은 두지 않는다
+--   (폼이 쓰지 않는다. 개인 cal_entry 의 recur_interval, recur_until, recur_count 는 여기 없다). 회차는 화면이 펼친다.
+--   반복 일정의 범위 조회는 start_date <= @to 만 본다(끝이 없어 종료일로 거를 수 없다).
+--   ★ 이 칸은 v16 조각의 CREATE 에 없다. v20 조각이 memo 뒤에 ALTER 로 더한다(INSTANT). 그래서 v16 조각의 정의는 이 정의에서
+--     recur_freq 줄 하나를 뺀 것과 글자까지 같고, v20 조각의 ADD COLUMN 은 이 줄과 같다(tests/project-calendar-host.test.mjs,
+--     tests/pc-recur.test.mjs 가 대조한다).
 CREATE TABLE cal_project_event (
   event_id         INT UNSIGNED    NOT NULL AUTO_INCREMENT                                      COMMENT '내부 번호. 이력이 가리킨다',
   uid              CHAR(36)        CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL           COMMENT '클라이언트가 만든 안정 id. 생성 재시도의 멱등 키',
@@ -1883,6 +1892,7 @@ CREATE TABLE cal_project_event (
   end_time         TIME            NULL DEFAULT NULL                                            COMMENT '종료 시각. 날짜만 있는 일정은 NULL',
   location         VARCHAR(200)    NOT NULL DEFAULT ''                                          COMMENT '장소(앱 상한 200자)',
   memo             TEXT            NOT NULL                                                     COMMENT '메모(앱 상한 8,000자)',
+  recur_freq       ENUM('weekly','monthly') NULL DEFAULT NULL                                   COMMENT '반복(구조 20). NULL 이면 반복 아님. 끝 없이 반복하고 예외일은 cal_project_event_except',
   row_version      BIGINT UNSIGNED NOT NULL DEFAULT 1                                           COMMENT '낙관적 잠금 판. 저장과 삭제마다 1씩 오른다',
   is_deleted       TINYINT(1)      NOT NULL DEFAULT 0                                           COMMENT '소프트 삭제. 행을 지우지 않는다',
   created_by_name  VARCHAR(200)    NOT NULL                                                     COMMENT '글쓴이 이름(사용자 FK 없음)',
@@ -1904,6 +1914,27 @@ CREATE TABLE cal_project_event (
   CONSTRAINT chk_cal_project_event_deleted CHECK (is_deleted IN (0,1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='과제 일정(과제 캘린더 공용 트랙). PK=event_id, 웹과의 정체성은 uid. 소프트 삭제, row_version 낙관적 잠금.';
+
+-- ---------------------------------------------------------------------
+--  14-2. cal_project_event_except: 과제 반복 일정의 예외일(구조 20, 2026-11-02, docs/PC-RECUR.md)
+-- ---------------------------------------------------------------------
+-- 반복 일정의 "이 날짜만 삭제" 가 더하는 날짜다. 개인 cal_entry_except 와 같은 결: 자기 번호가 없고 (부모, 날짜) 가 신원이다.
+-- ★ 날짜는 실제 회차만 들어간다(호스트 ProjectCalendarDb 가 반복 규칙으로 거른다). 화면은 이 날짜의 회차를 펼치지 않는다.
+-- ★ 행은 더하기만 한다. 지우는 길은 반복 종류를 바꾸거나 끈 저장 하나다(날짜가 뜻을 잃는다. 개인 폼의 recurExcept 규칙과 같다).
+--   그래서 앱 계정 권한은 SELECT, INSERT, DELETE(grants-calendar.sql, 개인 cal_entry_except 와 같다).
+-- ★ 소프트 삭제된 일정의 예외일은 그대로 둔다. FK 가 CASCADE 인 이유는 cal_entry_except 와 같다(부모 없이는 뜻이 없는 값).
+--   부모 행은 이력(cal_project_change)이 RESTRICT 로 붙들고 있어 실제로 지워질 일은 거의 없다.
+-- ★ PK 의 선두(event_id)가 FK 의 받침 인덱스를 겸한다. 따로 KEY 를 두지 않는다.
+-- ★ 이 정의는 이관 조각 db/deploy/migrations/v20-weekly-meeting.sql 의 CREATE TABLE IF NOT EXISTS 와 **글자까지 같다**
+--   (작은따옴표만 두 겹). 그래서 정의 안에 -- 주석을 두지 않고 설명은 COMMENT 로 적는다.
+CREATE TABLE cal_project_event_except (
+  event_id     INT UNSIGNED    NOT NULL    COMMENT '과제 일정 번호(cal_project_event.event_id)',
+  except_date  DATE            NOT NULL    COMMENT '건너뛸 회차 날짜. 실제 회차만(호스트가 거른다)',
+  PRIMARY KEY (event_id, except_date),
+  CONSTRAINT fk_cal_project_event_except_event FOREIGN KEY (event_id) REFERENCES cal_project_event (event_id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT='과제 반복 일정의 예외일(이 날짜만 삭제). PK=(event_id,except_date). 부모 삭제 시 CASCADE';
 
 -- ---------------------------------------------------------------------
 --  15. cal_project_change: 과제 일정 변경 이력(지우지 않는 기록)
