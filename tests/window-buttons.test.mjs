@@ -127,7 +127,7 @@ function checkPersist(cs) {
   assert.match(save, /:\s*WindowState != WindowState\.Minimized && GetWindowRect\(hwnd, out r\)\)/, 'SaveSettings 가 최소화 중의 좌표(-32000)를 저장한다');
   assert.match(save, /_settings\.Maximized = _maximized;/, 'SaveSettings 가 최대화 여부를 저장하지 않는다');
   assert.match(stripCsComments(cs), /public bool Maximized \{ get; set; \} = false;/, 'WidgetSettings 에 Maximized 가 없다');
-  assert.match(member(cs, 'private void Window_SourceInitialized('), /if \(_settings\.Maximized\) MaximizeCore\(\);/, '켤 때 최대화로 닫았으면 최대화로 열지 않는다');
+  assert.match(member(cs, 'private void Window_SourceInitialized('), /if \(_settings\.Maximized \|\| _firstRun\) MaximizeCore\(\);/, '켤 때 최대화로 닫았으면 최대화로 열지 않는다(첫 실행도 최대화, 2026-11-02)');
   assert.match(member(cs, 'private void MaximizeWindow()'), /if \(!IsVisible\) Show\(\);[\s\S]*MaximizeCore\(\);\s*SaveSettings\(\);/, 'MaximizeWindow 가 보이게 한 뒤 최대화하고 저장하지 않는다');
 }
 function checkGestures(cs) {

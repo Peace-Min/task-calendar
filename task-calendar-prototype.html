@@ -503,6 +503,9 @@ body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 �
   font-size:var(--fs-body);color:var(--muted);margin-top:4px;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;line-height:1.5;
   max-height:72px;overflow:hidden;
 }
+/*  메모 링크(linkifyHtml). --accent-2 = 라이트는 진한 파랑, 다크는 밝은 파랑이라 두 테마 모두 본문 위에서 읽힌다 */
+.memo-link{color:var(--accent-2);text-decoration:underline;text-underline-offset:2px;cursor:pointer;overflow-wrap:anywhere}
+.memo-link:hover{text-decoration-thickness:2px}
 .card-actions{display:flex;gap:12px;margin-top:8px}
 .link{border:none;background:none;color:var(--accent-2);font-size:var(--fs-meta);cursor:pointer;display:inline-flex;align-items:center;min-height:24px;padding:3px 6px;margin:-3px -6px;vertical-align:middle}
 .link:hover{text-decoration:underline}
@@ -5402,6 +5405,38 @@ const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/*  메모 링크(2026-11-02 사용자). 메모 속 http, https 주소를 누르면 기본 브라우저로 연다(클라우디움 공유 주소 등).
+ *  ★ 주소 밖 글자는 esc 로 이스케이프한다. 주소 끝의 문장부호와 닫는 괄호는 주소에서 뺀다.
+ *  ★ href 는 '#' 이고 진짜 주소는 data-url 에 둔다. 웹뷰 안에서 바로 이동하지 않게 하고, 여는 길은 openMemoLink 하나다. */
+const MEMO_URL_RE = /\bhttps?:\/\/[^\s<>"']+/g;
+function linkifyHtml(text){
+  const s = String(text ?? '');
+  let out = '', last = 0;
+  for(const m of s.matchAll(MEMO_URL_RE)){
+    let url = m[0];
+    while(/[.,;:!?)\]}>]$/.test(url)) url = url.slice(0, -1);
+    if(url.length < 10) continue;
+    out += esc(s.slice(last, m.index)) + '<a class="memo-link" href="#" data-url="' + esc(url) + '" title="' + esc(url) + '">' + esc(url) + '</a>';
+    last = m.index + url.length;
+  }
+  return out + esc(s.slice(last));
+}
+function openMemoLink(url){
+  if(!/^https?:\/\//i.test(url || '')) return;
+  if(!HOST){ try{ window.open(url, '_blank', 'noopener'); }catch(_){} return; }
+  //  열람 프레임은 호스트에 직접 보낼 수 없다(hpost 가 막는다). 같은 출처인 바깥 열람 창이 대신 보낸다.
+  if(PEER){ try{ window.parent.__openUrl(url); }catch(_){} return; }
+  //  hostRequest 로 보낸다. 열람 창 호스트는 pw: 번호 없는 명령을 거절한다(준비 알림만 예외).
+  hostRequest('openUrl', {url}, 5000);
+}
+window.__openUrl = url => { if(PEERWIN) openMemoLink(url); };
+//  잡기 단계에서 받는다. 할 일 메모의 누르면 고치기, 카드 열기 같은 바깥 클릭 처리가 같이 돌지 않게 여기서 멈춘다.
+document.addEventListener('click', ev => {
+  const a = ev.target && ev.target.closest && ev.target.closest('a.memo-link');
+  if(!a) return;
+  ev.preventDefault(); ev.stopPropagation();
+  openMemoLink(a.dataset.url);
+}, true);
 const pad = n => String(n).padStart(2, '0');
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const parseYmd = s => { const [y,m,dd] = s.split('-').map(Number); return new Date(y, m-1, dd); };
@@ -5596,7 +5631,7 @@ const PEER = (() => { try { return new URLSearchParams(location.search).get('pee
  *  ★ html[data-peerwin] 은 CSS 스위치다(메인 화면을 통째로 감추고 #peerWin 만 창 전체에 편다). */
 const PEERWIN = (() => { try { return HOST && !PEER && new URLSearchParams(location.search).get('peerwin') === '1'; }
                          catch (_) { return false; } })();
-const PEERWIN_CMD = new Set(['peerWinReady','peerSchedule','membersGet','peerMine','gateRecheck']);   // gateRecheck = 차단 카드의 재확인(VERSION-GATE §2.5, 읽기 하나)
+const PEERWIN_CMD = new Set(['peerWinReady','peerSchedule','membersGet','peerMine','gateRecheck','openUrl']);   // openUrl = 메모 링크(열람 프레임이 이 창을 거쳐 연다)   // gateRecheck = 차단 카드의 재확인(VERSION-GATE §2.5, 읽기 하나)
 if(PEERWIN){ try{ document.documentElement.dataset.peerwin = '1'; }catch(_){} }
 /*  ADMIN-WINDOW(2026-10-22). ⚙ 관리 독립 창(호스트 AppWindow, 관리 창)이 이 파일을 ?win=admin 으로 띄운 쪽이다.
  *  ★ 이 창이 그리는 것은 관리 허브(#adminHub) 하나다. 허브가 문서 전체를 채우고 창을 따라 커진다. 내 달력은 부팅하지 않는다
@@ -12561,7 +12596,7 @@ function cardHtml(e, overlaps){
     <div class="card-title">${esc(e.title)}</div>
     ${whenRow}
     ${rangeLine}${recurLine}
-    ${e.memo?`<div class="card-memo">${esc(e.memo)}</div>`:''}
+    ${e.memo?`<div class="card-memo">${linkifyHtml(e.memo)}</div>`:''}
     <div class="card-actions">
       <button class="link" data-act="edit">수정</button>
       <button class="link danger" data-act="del">삭제</button>
@@ -19756,7 +19791,7 @@ function todoRowHtml(t){
   const del = ro ? '' : `<button class="todo-del" data-act="del" title="삭제" aria-label="삭제">${ICON.xmark}</button>`;
   return `<div class="todo-row${t.done ? ' done' : ''}${flashTodoId===t.id?' flash':''}" data-id="${esc(t.id)}">
     ${check}
-    <div class="todo-main"><span class="todo-text"${editAttr}>${esc(t.text)}</span>${dayNote ? `<div class="todo-daymemo"${ro ? '' : ' data-act="edit"'} title="${esc(fmtShort(noteDate))} 설명">${esc(dayNote)}</div>` : ''}${t.note ? `<div class="todo-memo"${editAttr}>${esc(t.note)}</div>` : ''}</div>
+    <div class="todo-main"><span class="todo-text"${editAttr}>${esc(t.text)}</span>${dayNote ? `<div class="todo-daymemo"${ro ? '' : ' data-act="edit"'} title="${esc(fmtShort(noteDate))} 설명">${esc(dayNote)}</div>` : ''}${t.note ? `<div class="todo-memo"${editAttr}>${linkifyHtml(t.note)}</div>` : ''}</div>
     ${due}${cat ? `<span class="todo-dot" style="background:${validColor(cat.color)}" title="${esc(cat.name)}"></span>` : ''}
     ${star}
     ${del}
@@ -25371,7 +25406,7 @@ function pcRenderDetail(){
     + '<dt>마지막 수정</dt><dd>' + esc([e.updatedBy, pcAtText(e.updatedAt)].filter(Boolean).join(', ') || '알 수 없음') + '</dd>'
     + '</dl>'
     + '<div class="pcd-memo-h">메모</div>'
-    + (e.memo ? '<div class="pcd-memo" tabindex="0">' + esc(e.memo) + '</div>' : '<div class="pcd-memo none">메모 없음</div>');
+    + (e.memo ? '<div class="pcd-memo" tabindex="0">' + linkifyHtml(e.memo) + '</div>' : '<div class="pcd-memo none">메모 없음</div>');
   //  단추: 수정(쓸 수 있는 과제만), 개인 일정에 등록(늘, 누를 때마다 확인 창 없이 새 개인 일정), 삭제(쓸 수 있는 과제만).
   foot.innerHTML = (ro ? '' : '<button type="button" class="btn danger pc-w" data-act="delete">삭제</button>') + '<span class="spacer"></span>'
     + '<button type="button" class="btn pc-w" data-act="copy">' + ICON.copy + ' 개인 일정에 등록</button>'

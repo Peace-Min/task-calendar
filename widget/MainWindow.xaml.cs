@@ -143,11 +143,17 @@ namespace TaskCalendarWidget
             }
             else
             {
+                //  첫 실행(기억한 자리가 없음): 작업 영역 7할 크기로 가운데에 놓고 최대화로 연다(Window_SourceInitialized).
+                //  복원 단추를 누르면 이 가운데 창으로 돌아온다. 예전엔 오른쪽 아래 작은 창이라 처음 쓰는 사람이 창을 못 찾았다(2026-11-02 사용자).
                 var wa = SystemParameters.WorkArea;
-                Left = wa.Right - Width - 16;
-                Top = wa.Bottom - Height - 16;
+                Width = Math.Max(MinWidth, Math.Round(wa.Width * 0.7));
+                Height = Math.Max(MinHeight, Math.Round(wa.Height * 0.7));
+                Left = wa.Left + (wa.Width - Width) / 2;
+                Top = wa.Top + (wa.Height - Height) / 2;
+                _firstRun = true;
             }
         }
+        private bool _firstRun;
 
         private void ResetBounds()
         {
@@ -457,6 +463,7 @@ namespace TaskCalendarWidget
         {
             "peerWinReady", "peerSchedule", "membersGet", "peerMine",
             "gateRecheck",   // 버전 관문 재확인(VERSION-GATE §2.5). 읽기 하나라 열람 창의 차단 카드도 쓴다
+            "openUrl",       // 메모 링크 열기(2026-11-02). 열람 프레임의 메모 링크도 이 창을 거쳐 연다. http, https 만
         };
         //  관리 창: 관리 화면(⚙ 관리 허브와 거기 붙는 화면들)이 쓰는 명령만(ADMIN-WINDOW §3).
         //  ★ 관리자 판정은 여기서 하지 않는다. 쓰기마다 지금처럼 ProjectDb.OpenAdminAsync(또는 편집 관문)가 요청 시점에 판정한다.
@@ -1036,6 +1043,14 @@ namespace TaskCalendarWidget
                         break;
                     }
 
+                    case "openUrl":   // 메모 속 링크(2026-11-02). 기본 브라우저로 연다. http, https 절대 주소만(파일, 실행 경로는 버린다)
+                    {
+                        OpenUrlSafe(GetStr(doc, "url"));
+                        string urq = GetStr(doc, "reqId");
+                        if (urq.Length > 0) HostReply(urq, new { ok = true });   // 열람 창은 번호를 달아야 받아 준다. 기다리는 쪽을 풀어 준다
+                        break;
+                    }
+
                     case "openLogFolder":   // 문의 모달의 '로그 폴더 열기' — ★ 웹이 경로를 보내지 않는다(doc에서 아무것도 읽지 않음)
                     {
                         OpenLogFolder();    // 호스트 자신의 _dataDir/_logFile만 연다 → 웹발 문자열이 explorer 인자로 샐 표면이 0
@@ -1392,6 +1407,19 @@ namespace TaskCalendarWidget
 
         // 폴더 열기 — 웹에서 온 문자열이므로 '실재하는 디렉터리'만 통과시킨다. UseShellExecute에 임의 문자열을
         // 그대로 넘기면 exe·URL 실행으로 새는 경로가 되므로, explorer.exe에 인자로만 건넨다.
+        private void OpenUrlSafe(string url)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(url) || url.Length > 2048) return;
+                if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u)) return;
+                if (u.Scheme != Uri.UriSchemeHttp && u.Scheme != Uri.UriSchemeHttps) return;
+                Process.Start(new ProcessStartInfo(u.AbsoluteUri) { UseShellExecute = true });
+                Log("openUrl " + u.Host);   // 주소 전체(키 값)는 남기지 않는다
+            }
+            catch (Exception ex) { Log("openUrl 실패: " + ex.Message); }
+        }
+
         private static void OpenFolderSafe(string path)
         {
             try
@@ -2866,7 +2894,7 @@ namespace TaskCalendarWidget
         {
             ApplyWindowMode();   // 트레이 모드면 일반 앱 창(작업표시줄+Alt+Tab), 아니면 도구 창(제외)
             HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(WndProc);   // 작업 영역, 해상도 바뀜(최대화 다시 맞추기)
-            if (_settings.Maximized) MaximizeCore();   // 최대화로 닫았으면 최대화로 연다(평소 창은 ApplyWindowBounds 가 이미 놓았다)
+            if (_settings.Maximized || _firstRun) MaximizeCore();   // 최대화로 닫았으면 최대화로 연다(평소 창은 ApplyWindowBounds 가 이미 놓았다)
         }
 
         // 창 노출 모드: 트레이 모드 = '일반 앱 창'(작업표시줄+Alt+Tab 노출, 최하위 강제 해제 → 다른 앱 쓰는 중 Alt+Tab으로 불러와 볼 수 있음).

@@ -7,6 +7,10 @@
 
 ---
 
+## 🆕 2026-11-02 (다음 판, 번호는 배포 때): 첫 실행 최대화, 메모 링크
+
+창: 기억한 자리가 없으면(첫 실행) `ApplyWindowBounds` 가 작업 영역 7할 크기를 가운데 놓고 `_firstRun` 을 세워 `Window_SourceInitialized` 에서 `MaximizeCore` 한다. 복원하면 그 가운데 창으로 돌아온다. 메모: `linkifyHtml` 이 개인 상세 `.card-memo`, 과제 일정 상세 `.pcd-memo`, 할 일 `.todo-memo` 의 http, https 주소를 `a.memo-link`(href #, data-url)로 바꾼다. 잡기 단계 클릭이 막고 `openMemoLink` 로 연다: 메인 창과 열람 창은 `hostRequest('openUrl')`(열람 창 호스트는 pw: 번호 없는 명령을 거절하므로 번호를 단다, 호스트는 ok 회신), 열람 프레임은 바깥 열람 창의 `__openUrl` 을 거친다, 브라우저는 window.open. 호스트 `OpenUrlSafe` 는 http, https 절대 주소(2048자 이하)만 셸로 열고 로그에는 호스트 이름만 남긴다. `openUrl` 을 열람 창 허용 목록 양쪽(`PEERWIN_CMD`, `PeerWinCommands`)에 더했다. 시험: `tests/memo-link.test.mjs`.
+
 ## 🆕 2026-11-02 (다음 판, 번호는 배포 때): 근태 창 좌우 폭 조절, 일간 과제 추가를 주간 체크 목록으로 통일
 
 근태 창 일간과 주간의 편집 칸과 오른쪽 패널 사이에 끌기 막대(`.at-split`, `setupAttSplit`)를 넣었다. 폭은 `--atpw`, 이 PC 에 `tc_attPanelW` 로 기억하고 일간과 주간이 같다. 패널 280px 이상, 몸통 폭 60% 이하. 키보드 좌우, 두 번 누르면 기본 폭. 접기와 좁은 쌓기 배치에서는 숨는다. 일간 [+ 과제 추가]를 주간과 같은 체크 목록 패널(공용 `atCkItem`)로 바꿨다. 체크하면 블록 추가, 풀면 빈 블록만 빠지고 내용 있는 블록은 잠긴다. 전체 선택과 해제, 닫기, 캘린더에 새 과제 만들기. 두 패널 모두 긴 이름은 두 줄 + 끝 8자.

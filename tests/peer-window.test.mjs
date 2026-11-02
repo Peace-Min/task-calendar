@@ -43,7 +43,7 @@ const member = (src, sig) => extractCsMember(src, sig);
 //  ★ 2026-10-22(docs/ADMIN-WINDOW.md) — 따로 뜨는 창의 구조를 창 종류(WinKind: 열람 창, 관리 창)로 넓혔다(widget/AppWindow.cs).
 //    열람 창의 동작은 그대로다: 같은 명령 넷(+관문 재확인), 'pw:' 번호, 준비 알림만 번호 없이, 보낸 창으로만 회신, 같은 자리 기억.
 //    이 파일은 열람 창 쪽 계약을 지키고, 관리 창 쪽은 tests/admin-window.test.mjs 가 지킨다.
-const READ_FOUR = ['gateRecheck', 'membersGet', 'peerMine', 'peerSchedule', 'peerWinReady'];
+const READ_FOUR = ['gateRecheck', 'membersGet', 'openUrl', 'peerMine', 'peerSchedule', 'peerWinReady'];   // openUrl = 메모 링크(2026-11-02, 쓰기 아님)
 function peerCommands(cs) {
   const m = /internal static readonly HashSet<string> PeerWinCommands = new\(StringComparer\.Ordinal\)\s*\{([^}]*)\}/.exec(stripCsComments(cs));
   assert.ok(m, 'PeerWinCommands 목록을 찾지 못했다');

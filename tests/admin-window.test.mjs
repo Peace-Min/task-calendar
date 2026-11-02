@@ -50,7 +50,7 @@ const NEVER = ['ready', 'reloadState', 'saveState', 'replaceAllState', 'unsavedS
   'peerOpen', 'adminOpen', 'peerSchedule', 'peerMine', 'peerWinReady', 'netcusSubmit', 'netcusWeekSubmit', 'reminderSync',
   'updateApply', 'updateCheck', 'updateSetSource', 'close', 'hide', 'menu', 'pin', 'focus', 'winMinimize', 'winMaximizeToggle',
   'dragbegin', 'resizebegin', 'pickImportXml', 'exportResearch', 'openLogFolder', '__dbFault', 'dbPing'];   // pickfolder 는 2026-10-26 Git, SVN 삭제로 명령째 없앴다
-const PEER_CMDS = ['gateRecheck', 'membersGet', 'peerMine', 'peerSchedule', 'peerWinReady'];
+const PEER_CMDS = ['gateRecheck', 'membersGet', 'openUrl', 'peerMine', 'peerSchedule', 'peerWinReady'];   // openUrl = 메모 링크(2026-11-02)
 
 function hostSet(cs, name) {
   const m = new RegExp(`internal static readonly HashSet<string> ${name} = new\\(StringComparer\\.Ordinal\\)\\s*\\{([^}]*)\\}`).exec(stripCsComments(cs));
