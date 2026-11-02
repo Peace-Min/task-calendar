@@ -353,3 +353,10 @@ if (!JSDOM) {
     test('R 정리: 부팅한 위젯 창을 닫는다', async () => { await M.close(); });
   }
 }
+
+//  2026-11-02 사용자: 첫 설치(설정 파일 없음)는 트레이 켬 = 일반 앱 창, 바탕화면 부착 끔. 위젯 모드로 깔리면 처음 쓰는 사람이 앱이 뜬 줄 모른다.
+test('첫 설치 기본값: 트레이 켬, 부착 끔(설정 파일이 있는 사람은 그대로)', () => {
+  const s = stripCsComments(CS);
+  assert.match(s, /public bool TrayEnabled \{ get; set; \} = true;/, '첫 설치 트레이 기본값이 켬이 아니다');
+  assert.match(s, /public bool Pinned \{ get; set; \} = false;/, '첫 설치 부착 기본값이 끔이 아니다');
+});

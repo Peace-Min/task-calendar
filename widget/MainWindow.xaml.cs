@@ -3465,8 +3465,8 @@ namespace TaskCalendarWidget
         public double Height { get; set; } = 470;
         public bool AutoStart { get; set; } = true;
         public bool FirstRun { get; set; } = true;
-        public bool Pinned { get; set; } = true;
-        public bool TrayEnabled { get; set; } = false;   // 기본 OFF(위젯 우선)
+        public bool Pinned { get; set; } = false;   // 첫 설치 기본: 부착 끔(옮기고 크기 바꿀 수 있게, 2026-11-02)
+        public bool TrayEnabled { get; set; } = true;   // 첫 설치 기본: 트레이 켬 = 일반 앱 창(작업 표시줄, Alt+Tab). 위젯 모드로 깔리면 처음 쓰는 사람이 앱이 뜬 줄 모른다(2026-11-02 사용자). 설정 파일이 있는 사람은 그대로
         public bool TrayHintShown { get; set; } = false;  // '트레이로 숨김' 안내는 1회만
         public bool Maximized { get; set; } = false;      // 창 버튼 최대화로 닫았는지. Left..Height 는 그때도 최대화 직전 평소 창이다
         // 자동 업데이트 소스 폴더 URL(ftp:// · http(s):// · UNC/로컬 경로). 빈 값 = 업데이트 기능 휴면.

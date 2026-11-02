@@ -7,6 +7,10 @@
 
 ---
 
+## 🆕 2026-11-02 (다음 판, 번호는 배포 때): 첫 설치 기본값 트레이 켬, 부착 끔
+
+설정 파일이 없는 첫 설치의 `WidgetSettings` 기본값을 `TrayEnabled = true`(일반 앱 창), `Pinned = false` 로 바꿨다. 바탕화면 위젯 모드(작업 표시줄, Alt+Tab 없음, 늘 맨 아래)로 최대화되어 뜨면 다른 창 뒤에 깔려 처음 쓰는 사람이 앱이 뜬 줄 몰랐다(2026-11-02 사용자). 기존 사용자는 설정 파일 값 그대로. 시험: window-buttons 첫 설치 기본값.
+
 ## 🆕 2026-11-02, v0.25.0: 첫 실행 최대화, 메모 링크
 
 창: 기억한 자리가 없으면(첫 실행) `ApplyWindowBounds` 가 작업 영역 7할 크기를 가운데 놓고 `_firstRun` 을 세워 `Window_SourceInitialized` 에서 `MaximizeCore` 한다. 복원하면 그 가운데 창으로 돌아온다. 메모: `linkifyHtml` 이 개인 상세 `.card-memo`, 과제 일정 상세 `.pcd-memo`, 할 일 `.todo-memo` 의 http, https 주소를 `a.memo-link`(href #, data-url)로 바꾼다. 잡기 단계 클릭이 막고 `openMemoLink` 로 연다: 메인 창과 열람 창은 `hostRequest('openUrl')`(열람 창 호스트는 pw: 번호 없는 명령을 거절하므로 번호를 단다, 호스트는 ok 회신), 열람 프레임은 바깥 열람 창의 `__openUrl` 을 거친다, 브라우저는 window.open. 호스트 `OpenUrlSafe` 는 http, https 절대 주소(2048자 이하)만 셸로 열고 로그에는 호스트 이름만 남긴다. `openUrl` 을 열람 창 허용 목록 양쪽(`PEERWIN_CMD`, `PeerWinCommands`)에 더했다. 시험: `tests/memo-link.test.mjs`.
