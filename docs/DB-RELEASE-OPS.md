@@ -112,6 +112,10 @@
    - 과제 데이터 최신화 SQL 을 함께 받은 배포(0.24.0)는 **배포 SQL 이 끝난 다음에** 그것을 돌린다. 그 SQL 은 비공개 저장소 taskmgr-company-data 의 `project-data/` 에 있고 과제 순서(`sort_no`)를 채우므로 구조 19 이상에서만 돈다(18 이하 DB 에는 그 칸이 없다).
 5. 내 PC 에서 업데이트 버튼을 눌러 새 버전이 정상 동작하는지 본다.
 
+**Setup 과 SQL 은 같은 빌드에서 나온 짝이어야 한다.** `release-v<버전>.sql` 은 그 빌드의 Setup 해시를 `app_installer_sha256` 에 적는다. 같은 소스라도 빌드할 때마다 Setup 해시가 달라지므로, 공유 폴더에 올린 Setup 을 만든 바로 그 빌드의 SQL 을 쓴다(폐쇄망에서 빌드했으면 폐쇄망 `dist\installer\` 의 SQL). 다른 PC 나 다른 빌드의 SQL 을 쓰면 DB 이관은 되지만 0.23 이상 앱의 자동 업데이트가 해시 불일치로 실패한다(2026-11-02 사고 기록).
+- SQL 만 다시 만들어야 하면(조각을 고쳤을 때) **빌드를 다시 돌리지 않는다.** 올린 Setup 의 해시로 조립기만 돌린다: `installer\release-sql.ps1 -FragmentDir db\deploy\migrations -Structure <앱 구조 번호> -Version <버전> -InstallerFile TaskCalendarWidget-Setup-v<버전>.exe -Sha256 <올린 Setup 해시> -Notes "<요약>" -OutFile dist\installer\release-v<버전>.sql`. 해시는 같은 빌드의 `latest.json` 의 `sha256` 과 같다.
+- 이미 다른 해시로 실행했으면 Workbench 에서 한 줄로 바로잡는다: `UPDATE cal_schema_meta SET v = '<올린 Setup 해시>', updated_at = UTC_TIMESTAMP(3) WHERE k = 'app_installer_sha256';`
+
 이 SQL 이 하는 일(순서대로):
 
 | 단계 | 내용 |
@@ -150,6 +154,7 @@
    - 값이 바뀌는 열: 새 열 추가, 트랜잭션으로 변환해 채우기, 검증, 필수로 바꾸기, 옛 열 삭제.
    - 큰 변경: 새 표(`X_new`)를 만들어 채우고 검증한 뒤 `RENAME TABLE X TO X_old, X_new TO X` 한 문장으로 바꿔 끼운다(여러 표를 원자적으로 바꾼다). 앞서 실패한 실행의 잔여물(`X_new`)이 있으면 먼저 지운다.
    - 값 바꾸기(INSERT, UPDATE, DELETE)는 `START TRANSACTION ... COMMIT` 으로 묶는다. 그 사이에 구조 변경 문장을 섞지 않는다(자동 확정된다).
+   - **DELETE, UPDATE 에는 늘 키 칸 조건이 든 WHERE 를 붙인다**(예: `WHERE user_id > 0`, `WHERE id > 0`). 표를 통째로 비울 때도 같다. Workbench 는 안전 갱신 모드가 기본으로 켜져 있어 키 칸 조건 없는 DELETE, UPDATE 를 1175 로 거부하고, 그러면 release SQL 이 닫힌 채(`db_updating = 1`) 멈춘다. 2026-11-02 0.25.0 운용 실행에서 v20 의 `DELETE FROM cal_report_weekly` 가 실제로 이렇게 멈췄다(6절 뒤 사고 기록). `tests/release-sql.test.mjs` 의 안전 갱신 모드 시험이 모든 조각을 검사한다. 흉내 실행(`release-sql-sim.mjs`)은 안전 모드를 흉내 내지 않으므로 이 시험이 유일한 그물이다.
    - "지우고 다시 넣기" 로 저장하는 표(`cal_todo_day_note`, `cal_entry_except`)는 앱의 저장 방식을 함께 확인한다. (`cal_entry_commit` 도 그랬으나 구조 18 에서 표째 지웠다.)
 4. **검증:** 행 수, 남은 NULL 등. 틀리면 오류로 멈춘다(`db_updating = 1` 인 채로).
 5. **구조 번호 올리기(끝에서 한 줄):** `UPDATE cal_schema_meta SET v = 'N+1', updated_at = UTC_TIMESTAMP(3)` 다음 줄 `WHERE k = 'db_structure_version' AND v = 'N';`. 이미 올라가 있으면 0행이다. `db_updating` 은 그대로 1 이라 앱은 끝의 열기까지 계속 기다린다.
@@ -194,6 +199,11 @@
 
 - 모든 PC 가 접근할 수 있는 공유 폴더나 FTP 경로(필수).
 - 관리자에게 서버 매일 자동 백업을 요청할지. 없으면 배포 직전 Data Export 가 유일한 안전망이다.
+
+## 6-1. 사고 기록
+
+- **2026-11-02 0.25.0 배포, 안전 갱신 모드 1175.** v20 조각의 `DELETE FROM cal_report_weekly`(WHERE 없음)가 Workbench 안전 갱신 모드에 막혀 `db_updating = 1` 인 채 멈췄다(구조 19, 회의내용 칸과 주간 시간 표까지 만든 상태). 조각을 `WHERE user_id > 0` 으로 고친 SQL 을 다시 돌려 이어서 끝냈다. 재발 방지: 5.2 규칙 3 의 WHERE 규칙과 `tests/release-sql.test.mjs` 의 안전 갱신 모드 시험(커밋 756a22b).
+- **2026-11-02 0.25.0 배포, 해시 불일치.** 공유 폴더 Setup 은 폐쇄망에서 빌드했는데, 고친 SQL 은 외부망 개발 PC 빌드의 것을 옮겨 실행해 `app_installer_sha256` 에 다른 해시가 들어갔다. 폐쇄망 `latest.json` 의 `sha256` 으로 그 키를 UPDATE 해 바로잡았다. 재발 방지: 4.2 의 "Setup 과 SQL 은 같은 빌드의 짝" 규칙. 같은 날 외부망에서도 녹화 작업이 빌드를 다시 돌려 `dist\installer\` 의 Setup 해시가 바뀌었다. 배포 산출물을 만든 뒤에는 빌드 스크립트를 다시 돌리지 않는다.
 
 ## 10. 결정 이력
 
