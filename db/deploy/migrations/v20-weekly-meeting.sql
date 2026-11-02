@@ -116,7 +116,8 @@ PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
 
 -- 3-2) 옛 주간보고 기록 지우기(19 에서 올릴 때만). 일간 기록은 그대로다.
 --    중간에 멈춰 다시 돌려도 같다(닫힌 동안 새 주간 기록은 생기지 않는다). 20 이상이면 건너뛰어 근태 탭이 쓴 기록은 남는다.
-SET @s := IF(@go, 'DELETE FROM cal_report_weekly', 'DO 0');
+--    WHERE 에 user_id > 0 을 적는다. Workbench 안전 갱신 모드가 키 칸 없는 DELETE 를 1175 로 거부한다(2026-11-02 운용 실행에서 실제로 멈춤, v18 과 같은 처리).
+SET @s := IF(@go, 'DELETE FROM cal_report_weekly WHERE user_id > 0', 'DO 0');
 PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
 
 SELECT IF(@go, '옛 주간보고 기록을 지웠다(일간은 그대로)', '지울 것이 없다') AS `v20 옛 주간 기록`;

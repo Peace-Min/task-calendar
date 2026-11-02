@@ -1070,3 +1070,18 @@ test('변이R20: v18 이 CHECK 보다 칸을 먼저 지우면 17 에서 올리�
   const bad = sql.slice(0, a) + sql.slice(c, e) + sql.slice(a, c) + sql.slice(e);
   assert.throws(() => checks.gitRemoved(bad), /끝나지 않는다/);
 });
+
+//  2026-11-02 운용 실행에서 v20 의 'DELETE FROM cal_report_weekly'(WHERE 없음)가 Workbench 안전 갱신 모드(1175)에 막혀 닫힌 채 멈췄다.
+//  모든 이관 조각의 DELETE, UPDATE 는 WHERE 를 가져야 한다(키 칸 조건, 예: user_id > 0, id > 0).
+test('안전 갱신 모드: 이관 조각의 DELETE, UPDATE 에는 모두 WHERE 가 있다(1175 방지)', () => {
+  const dir = fileURLToPath(new URL('../db/deploy/migrations/', import.meta.url));
+  const bad = [];
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql'))) {
+    const body = readFileSync(join(dir, f), 'utf8').split('\n').filter((l) => !/^\s*--/.test(l)).join('\n');
+    //  문장(; 단위)마다 본다. 동적 SQL(SET @s := IF(@go, 'DELETE FROM x', 'DO 0'))도 한 문장이다.
+    for (const st of body.replace(/ON DUPLICATE KEY UPDATE|ON (UPDATE|DELETE) (RESTRICT|CASCADE|SET NULL|NO ACTION|CURRENT_TIMESTAMP)/gi, '').split(';')) {
+      if (/\b(DELETE\s+FROM|UPDATE)\s+[`\w]/i.test(st) && !/\bWHERE\b/i.test(st)) bad.push(f + ': ' + st.replace(/\s+/g, ' ').trim().slice(0, 90));
+    }
+  }
+  assert.deepStrictEqual(bad, [], 'WHERE 없는 DELETE/UPDATE:\n' + bad.join('\n'));
+});

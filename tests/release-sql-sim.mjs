@@ -620,7 +620,7 @@ export class FakeDb {
       return;
     }
     //  v20 3-2: 옛 주간보고 기록 모두 지우기. FK CASCADE 로 주간 시간 표의 줄도(행을 흉내 내는 경우) 함께 지운다.
-    if (q === 'DELETE FROM cal_report_weekly') {
+    if (q === 'DELETE FROM cal_report_weekly WHERE user_id > 0') {
       this.mutating(s, opts);
       const rows = this.need('cal_report_weekly');
       this.tables.cal_report_weekly = [];
