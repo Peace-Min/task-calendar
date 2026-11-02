@@ -43,7 +43,7 @@ const S = {
   sendWraps(src) {
     const wf = extractFunction(src, 'buildWeeklyFields');
     assert.ok(wf.startsWith('function buildWeeklyFields(from, to, sources){'), 'buildWeeklyFields 시그니처가 바뀌었다');
-    assert.ok(wf.includes('return { content, endwork, planwork, subject: weekSubjectGuess(from) };'), 'buildWeeklyFields 반환 키가 바뀌었다');
+    assert.ok(wf.includes('return { content, endwork, planwork, subject: calWeekTitle(from) };'), 'buildWeeklyFields 반환 키가 바뀌었다');
     const o = extractFunction(src, 'rptWOutFields');
     assert.ok(o.includes('base = buildWeeklyFields(from, to, rptSources());') && o.includes('buildNetcusSendText(p)') && o.includes('buildNetcusHoursText(p)') && o.includes('buildNetcusPlanText(p)'), 'rptWOutFields 가 예전 조립을 감싸지 않는다');
     assert.ok(/if\(!L\.any\) return base;/.test(o), '초안이 닿지 않으면 예전 결과를 그대로 돌려주지 않는다');
@@ -192,7 +192,7 @@ if (!JSDOM) {
   const CA = '2026-07-01T00:00:00.000Z';
   const E = (o) => Object.assign({ allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: null,
     endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }, o);
-  const MON = '2026-07-13', SUN = '2026-07-19', MON2 = '2026-07-20', SUN2 = '2026-07-26';
+  const MON = '2026-07-13', SUN = '2026-07-18', MON2 = '2026-07-20', SUN2 = '2026-07-25';   // 보고 기간 월~토(이름은 예전 그대로)
   //  알파: 일정(메모) + 일정(메모, 들여쓴 메모 줄) + 기간 할 일(날짜 메모) · 베타: 일정 · 감마: 시간만 · 델타: 아무것도 없음 · '알 파'(동명, 정규화 같음)
   const stateFor = () => ({
     categories: [
@@ -353,7 +353,7 @@ if (!JSDOM) {
     test('WB5 (§5): 임시 저장 — 접두 tc_rptDraftW:, 닫고 열기, 재시작, 기간별, 채우기 성공 회신으로 안 지워짐', async () => {
       fresh();
       //  이번 주로 연다: 보고서를 열 때 기간 끝이 14일 넘게 지난 주간 키는 정리되므로(§5) 닫고 열기는 지금 주로 본다.
-      const [C0, C1] = B.evJSON('weekRange(new Date(), 0)'), P0 = B.ev(`addDays(${JSON.stringify(C0)}, -7)`), P1 = B.ev(`addDays(${JSON.stringify(C0)}, -1)`);
+      const [C0, C1] = B.evJSON('(function(){ var p = calReportPeriod(todayYmd()); return [p.mon, p.sat]; })()'), P0 = B.ev(`addDays(${JSON.stringify(C0)}, -7)`), P1 = B.ev(`addDays(${JSON.stringify(C0)}, -2)`);
       const KC = B.ev(`rptWKey(${JSON.stringify(C0)}, ${JSON.stringify(C1)})`);
       openWeekly(B, C0);
       try {
@@ -524,7 +524,7 @@ if (!JSDOM) {
     function checkSubjectAuto(m) {
       const K = m.ev(`rptWKey(${JSON.stringify(MON)}, ${JSON.stringify(SUN)})`);
       m.ev(`localStorage.setItem(${JSON.stringify(K)}, JSON.stringify({ v:1, from:${JSON.stringify(MON)}, to:${JSON.stringify(SUN)}, subject:'예전에 고친 제목', prog:{}, progBase:{}, plan:{}, out:[], savedAt:'2026-01-01T00:00:00.000Z' })); buildReport();`);
-      const auto = m.ev(`weekSubjectGuess(${JSON.stringify(MON)})`);
+      const auto = m.ev(`calWeekTitle(${JSON.stringify(MON)})`);
       assert.strictEqual(m.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)').subject, auto, '예전 저장본의 제목이 나간다(늘 자동이어야 한다)');
       const cap = sendW(m);
       assert.strictEqual(cap.fields.subject, auto, '실제 채우기 payload 의 제목이 자동 제목이 아니다');
@@ -632,7 +632,7 @@ if (!JSDOM) {
     M.ev(`netcusMerge = { key: ncMergeKey(${JSON.stringify(MON)}, ${JSON.stringify(SUN)}), parsed: parseNetcusWeek(${JSON.stringify(NET_DAYS)}, state.categories, { sumTime: true }), at: '09:00' }; state.reportSource = 'net'; syncReportSourceSeg(); buildReport();`);
     return M;
   }
-  const netBase = (m) => m.evJSON('(function(){ var p = netcusMerge.parsed; return { content: buildNetcusHoursText(p), endwork: buildNetcusSendText(p), planwork: buildNetcusPlanText(p), subject: weekSubjectGuess($("#rptFrom").value) }; })()');
+  const netBase = (m) => m.evJSON('(function(){ var p = netcusMerge.parsed; return { content: buildNetcusHoursText(p), endwork: buildNetcusSendText(p), planwork: buildNetcusPlanText(p), subject: calWeekTitle($("#rptFrom").value) }; })()');
   //  net 바이트 같음 검사기 — 변이 시험이 재사용
   function assertNetSame(m) {
     for (const [mk, cu, ind] of FORMATS.slice(0, 3)) {

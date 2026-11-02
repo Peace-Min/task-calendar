@@ -18,7 +18,7 @@
 //   (M) 변이: 핵심 줄을 빼면 위 검사가 잡는다.
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 등록되지 않고 skip(판정 없음)으로 계수된다(러너 exit 2).
 import vm from 'node:vm';
-import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
+import { test, skip, assert, loadAppSource, extractFunction, extractCalCommon, importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 
 const src = loadAppSource();
 const R = (p) => new URL('../' + p, import.meta.url);
@@ -194,9 +194,9 @@ test('변이S③: 주기 확인을 넣거나 띠 자리를 되돌리거나 esc �
 const PURE_FNS = ['pcLen', 'pcFirstLine', 'pcEvSort', 'pcLayoutWeek', 'pcMonthCap', 'pcMonthRange', 'pcWeekRange', 'pcPrefsNorm',
   'pcSelReconcile', 'pcFromDto', 'pcEventPayload', 'pcValidate', 'pcDiffRows', 'pcMd', 'pcWhenText'];
 function pureCtx(app = src) {
-  const consts = ['const pad = ', 'const ymd = ', 'const parseYmd = ', 'const fmtShort = ', 'const addDays = ', 'const diffDays = ', 'const PC_DOW = ', 'const PCAL_LIMITS = ']
+  const consts = ['const pad = ', 'const ymd = ', 'const parseYmd = ', 'const fmtShort = ', 'const addDays = ', 'const diffDays = ', 'const PCAL_LIMITS = ']
     .map((k) => { const i = app.indexOf(k); assert.ok(i >= 0, k + ' 를 찾지 못했다'); return app.slice(i, app.indexOf('\n', i)); });
-  const code = consts.join('\n') + '\n' + PURE_FNS.map((f) => extractFunction(app, f)).join('\n')
+  const code = consts.join('\n') + '\n' + extractCalCommon(app) + '\n' + PURE_FNS.map((f) => extractFunction(app, f)).join('\n')
     + '\n;globalThis.__x = {' + PURE_FNS.join(',') + ', PCAL_LIMITS };';
   const ctx = vm.createContext({});
   vm.runInContext(code, ctx);
@@ -967,11 +967,12 @@ if (!JSDOM) {
     ad.checked = false; ad.dispatchEvent(new W.w.Event('change', { bubbles: true })); await settle();
     await setT(W, 'pcfST', '10:00');
     assert.deepStrictEqual(tv(W), ['10:00', '12:00'], '종일을 껐다 켠 뒤 직접 바꾼 종료가 자동 채움에 덮였다');
-    //  여러 날이면 종일 고정, 하루로 돌아와도 켜진 채 다시 고를 수 있다
+    //  여러 날이면 종일 고정, 하루로 돌아오면 그 전에 고른 값(꺼짐)과 시각이 돌아온다(2026-11-02, tests/pcf-range)
     W.el('pcfEnd').value = t1; W.el('pcfEnd').dispatchEvent(new W.w.Event('change', { bubbles: true })); await settle();
     assert.deepStrictEqual([ad.checked, ad.disabled, st.disabled, ...tv(W)], [true, true, true, '00:00', '24:00'], '여러 날인데 종일 고정이 아니다');
     W.el('pcfEnd').value = t0; W.el('pcfEnd').dispatchEvent(new W.w.Event('change', { bubbles: true })); await settle();
-    assert.deepStrictEqual([ad.checked, ad.disabled, st.disabled], [true, false, true], '하루로 돌아오면 종일이 켜진 채 체크를 쓸 수 있어야 한다');
+    assert.deepStrictEqual([ad.checked, ad.disabled, st.disabled, ...tv(W)], [false, false, false, '10:00', '12:00'], '하루로 돌아오면 그 전에 고른 종일 값과 시각이 돌아와야 한다');
+    ad.checked = true; ad.dispatchEvent(new W.w.Event('change', { bubbles: true })); await settle();
     //  종일이면 저장 데이터는 시각 없음(00:00 ~ 24:00 은 표시일 뿐)
     W.el('pcfProj').value = P1; W.el('pcfTitle').value = '종일 일정';
     await W.click('#pcfSave');

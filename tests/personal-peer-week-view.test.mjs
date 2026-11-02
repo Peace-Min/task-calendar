@@ -19,7 +19,7 @@
 //       주간 모드에서 #btnPrev / #btnNext 클릭 시 ±7일 이동하고, 월간 모드에서는 기존처럼 ±1달 이동함
 //   (M) 변이 시험(mutation test):
 //       calViewKey 에서 PEER 분기 제거, calWeekRange 의 월요일 시작 오프셋 변경, stepCal 에서 moveWeek 호출 제거 시 실패 검증.
-import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
+import { test, skip, assert, loadAppSource, extractFunction, extractCalCommon, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 
 const app = loadAppSource();
 
@@ -77,6 +77,8 @@ test('단위③: calWeekRange 는 주어진 날짜가 속한 월요일부터 일
     'function parseYmd(s){ const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }',
     'function addDays(s, n){ const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); }',
     'function todayYmd(){ return "2026-10-30"; }',
+    'function diffDays(a, b){ return Math.round((parseYmd(b) - parseYmd(a)) / 86400000); }',
+    extractCalCommon(app),
   ].join('\n');
   const code = helpers + '\n' + extractFunction(app, 'calWeekRange');
   const fn = new Function(code + '\nreturn calWeekRange;');
@@ -106,6 +108,8 @@ test('단위④: calTitleLabel 은 월간 모드와 주간 모드(같은 달, �
     'function parseYmd(s){ const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }',
     'function addDays(s, n){ const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); }',
     'function todayYmd(){ return "2026-10-30"; }',
+    'function diffDays(a, b){ return Math.round((parseYmd(b) - parseYmd(a)) / 86400000); }',
+    extractCalCommon(app),
     extractFunction(app, 'calWeekRange'),
   ].join('\n');
   const code = helpers + '\n' + extractFunction(app, 'calTitleLabel');
@@ -426,8 +430,8 @@ test('변이M①: calViewKey 에서 PEER 분기를 제거하고 tc_calView 만 �
 test('변이M②: calWeekRange 에서 월요일 시작 오프셋을 일요일 시작으로 바꾸면 검증이 실패한다', () => {
   const mutated = mutate(
     app,
-    'const from = addDays(ds, -((parseYmd(ds).getDay() + 6) % 7));',
-    'const from = addDays(ds, -parseYmd(ds).getDay());'
+    'const mon = addDays(ds, -((calDow(ds) + 6) % 7));',
+    'const mon = addDays(ds, -calDow(ds));'
   );
   const helpers = [
     'function pad(n){ return String(n).padStart(2, "0"); }',
@@ -435,6 +439,8 @@ test('변이M②: calWeekRange 에서 월요일 시작 오프셋을 일요일 �
     'function parseYmd(s){ const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }',
     'function addDays(s, n){ const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); }',
     'function todayYmd(){ return "2026-10-30"; }',
+    'function diffDays(a, b){ return Math.round((parseYmd(b) - parseYmd(a)) / 86400000); }',
+    extractCalCommon(mutated),
   ].join('\n');
   const code = helpers + '\n' + extractFunction(mutated, 'calWeekRange');
   const fn = new Function(code + '\nreturn calWeekRange;');

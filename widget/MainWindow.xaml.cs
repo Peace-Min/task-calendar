@@ -2031,7 +2031,7 @@ namespace TaskCalendarWidget
 
         //  그 기간에 이 앱으로 작성한 주간보고 목록(결정 13, ATTENDANCE-PLAN §13.3). 일간 목록(RunReportDailyListAsync)과 같은 틀이다:
         //  사람은 세션에서 읽고(웹이 정하지 않는다), 기간은 'YYYY-MM-DD' 두 개에 ReportDb.ListMaxDays 일까지, 회신은 ReplyOnUi.
-        //  기간은 period_start(월요일) 기준이다. 회신: { ok:true, rows:[{periodStart, periodEnd, subject, content, endwork, plan, meeting, composedAt}] } | { ok:false, error }
+        //  기간은 period_start(월요일) 기준이고 period_end 는 토요일이다(회사 보고 기간 월~토, 웹이 준 sdate, edate 를 그대로 쓴다). 회신: { ok:true, rows:[{periodStart, periodEnd, subject, content, endwork, plan, meeting, composedAt}] } | { ok:false, error }
         private async Task RunReportWeeklyListAsync(string reqId, string from, string to)
         {
             if (!ReportDb.TryParseYmd(from, out var f) || !ReportDb.TryParseYmd(to, out var t) || f > t)

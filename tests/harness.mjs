@@ -213,6 +213,17 @@ export function loadAppSource() {
   return readText(new URL('../task-calendar-prototype.html', import.meta.url));
 }
 
+// ── 공용 달력(docs/CALENDAR-COMMON.md) ────────────────────────────────
+// 웹의 공용 달력 구간('/* ---------- 공용 달력' ~ '/* ---------- /공용 달력')을 그대로 떼어 준다.
+//   주 계산을 시험하는 파일이 앱과 같은 글자의 CAL_DOW, calRowWeek, calViewWeek, calReportPeriod, calMonthGrid, calWeekTitle 을 갖게 한다.
+//   ymd, parseYmd, addDays, diffDays, holidayOn 은 호출하는 쪽이 먼저 준다(holidayOn 은 calTone, calAria 를 부를 때만 쓴다).
+export function extractCalCommon(source) {
+  const a = source.indexOf('/* ---------- 공용 달력');
+  const b = a < 0 ? -1 : source.indexOf('/* ---------- /공용 달력', a);
+  if (a < 0 || b < 0) throw new Error('extractCalCommon: 공용 달력 구간을 찾지 못함');
+  return source.slice(a, source.indexOf('\n', b));
+}
+
 // ── 코드값 고정 번호 머리(CODE-TABLE-IDS §3) ─────────────────────────
 // 웹의 `const CODE_ID = ` 부터 `function sectionColor(` 줄까지를 그대로 떼어 준다.
 //   함수만 떼어 심는 시험이 번호 판정(CODE_ID, codeIdOf, DB_SECTION_COLORS, sectionColor)을 앱과 같은 글자로

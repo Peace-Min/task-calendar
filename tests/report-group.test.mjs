@@ -1014,7 +1014,7 @@ if (!JSDOM) {
     });
 
     // ───────────────────────── 주간(캘린더 출처) ─────────────────────────
-    const MON = '2026-07-13', SUN = '2026-07-19', MON2 = '2026-07-20', SUN2 = '2026-07-26';
+    const MON = '2026-07-13', SUN = '2026-07-18', MON2 = '2026-07-20', SUN2 = '2026-07-25';   // 주간 보고 기간은 월~토(공용 달력). 이름은 예전 그대로 둔다
     //  weekly-edit 과 같은 상태: 알파(3.5), 베타(1), 감마(0.5), 델타(없음), '알 파'(동명, 키 알파#c-a2)
     const weekState = () => ({
       categories: [
@@ -1282,7 +1282,7 @@ if (!JSDOM) {
   });
 
   //  주간 net 출처: 바이트 같음(낡은 흔적) + 묶음(미등록과제 → 베타). net 본문은 원문 줄이라 이름 줄에 들여쓰기가 없다.
-  const MONn = '2026-07-13', SUNn = '2026-07-19';
+  const MONn = '2026-07-13', SUNn = '2026-07-18';   // 월~토
   const NET_DAYS = [
     { date: MONn, content: '[알파] : 2\n• 로그인 리뷰\n    - UI 확인\n[베타]\n• 고객 회신', ok: true },
     { date: '2026-07-14', content: '선행 메모\n[알파] : 1.5\n• 로그인 리뷰\n• 추가 작업\n[미등록과제] : 1\n탐색', ok: true },
@@ -1302,7 +1302,7 @@ if (!JSDOM) {
     M.ev(`netcusMerge = { key: ncMergeKey(${JSON.stringify(MONn)}, ${JSON.stringify(SUNn)}), parsed: parseNetcusWeek(${JSON.stringify(NET_DAYS)}, state.categories, { sumTime: true }), at: '09:00' }; state.reportSource = 'net'; syncReportSourceSeg(); buildReport();`);
     return M;
   }
-  const netBase = (m) => m.evJSON('(function(){ var p = netcusMerge.parsed; return { content: buildNetcusHoursText(p), endwork: buildNetcusSendText(p), planwork: buildNetcusPlanText(p), subject: weekSubjectGuess($("#rptFrom").value) }; })()');
+  const netBase = (m) => m.evJSON('(function(){ var p = netcusMerge.parsed; return { content: buildNetcusHoursText(p), endwork: buildNetcusSendText(p), planwork: buildNetcusPlanText(p), subject: calWeekTitle($("#rptFrom").value) }; })()');
   function sendWN(m) { m.ev('window.__capW = null; Platform.report.submitWeekly = function(p){ window.__capW = JSON.parse(JSON.stringify(p)); };'); m.doc.getElementById('btnRptSend').click(); m.ev('clearTimeout(Netcus.watchdog)'); return m.evJSON('window.__capW'); }
   async function assertNetGrouped(M) {
     const base = netBase(M);
@@ -1372,7 +1372,7 @@ if (!JSDOM) {
     P.doc.getElementById('rptGroupOpen').click(); await tick();
     assert.ok(overlayClosed(P, 'rptGroupModal'), '열람 창에서 설정 창이 열렸다');
     assert.strictEqual(P.ev("rptGroupSet('c-b', 'c-a')"), false, '열람 창에서 묶음을 정할 수 있다');
-    P.ev(`reportMode = 'weekly'; $('#rptFrom').value = '2026-07-13'; $('#rptTo').value = '2026-07-19'; buildReport();`);
+    P.ev(`reportMode = 'weekly'; $('#rptFrom').value = '2026-07-13'; $('#rptTo').value = '2026-07-18'; buildReport();`);
     assert.ok(P.doc.getElementById('rptGroupRow').classList.contains('hidden'), '열람 창 주간에 "보고서 묶음" 줄이 보인다');
     assert.deepStrictEqual(P.evJSON('window.__acc'), [], '열람 창이 임시 저장(묶음)을 읽거나 썼다');
   }

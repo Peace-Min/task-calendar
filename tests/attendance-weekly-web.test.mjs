@@ -113,7 +113,7 @@ if (!JSDOM) {
   ];
   const NAMES = CATS.map((c) => c.name);
   const stateFor = () => ({ categories: CATS, entries: [], todos: [], rooms: [], attendance: {}, taskHours: {}, reportMarker: '-', reportMarkerCustom: '', reportIndent: 2 });
-  const MON = '2026-10-26';   // 한 주 = 10/26(월) ~ 11/1(일). 10월 달력 다섯째 줄, 월요일이 든 달 = 10월
+  const MON = '2026-10-26', SAT = '2026-10-31';   // 회사 보고 기간 = 10/26(월) ~ 10/31(토). 10월 달력 다섯째 줄, 월요일이 든 달 = 10월
   function bootBrowser() {
     const X = boot(app, 'https://tcapp.local/', false);
     X.T = X.ev('todayYmd()');
@@ -146,17 +146,20 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(U) 제목 규칙 둘: 달력에서 고르면 그 달 달력의 몇째 줄, 고르지 않으면 월요일이 든 달(weekSubjectGuess). 달력 줄은 월요일 시작', () => {
+  test('(U) 제목 규칙 둘: 달력에서 고르면 그 달 달력의 몇째 줄, 고르지 않으면 월요일이 든 달(calWeekTitle). 달력 줄은 일요일 시작, 기간은 월~토', () => {
     const X = bootBrowser();
     try {
-      assert.deepStrictEqual(X.evJSON('awMonthRows(2026, 9)'), ['2026-09-28', '2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26'], '10월 달력 줄이 다르다');
-      assert.deepStrictEqual(X.evJSON('awMonthRows(2026, 8)'), ['2026-08-31', '2026-09-07', '2026-09-14', '2026-09-21', '2026-09-28'], '9월 달력 줄이 다르다');
-      assert.strictEqual(X.ev('awPickTitle(8, 4)'), '9월 다섯째주', '같은 주의 9월 달력 마지막 줄 제목');
-      assert.strictEqual(X.ev('awPickTitle(9, 0)'), '10월 첫째주', '같은 주의 10월 달력 첫 줄 제목');
-      assert.strictEqual(X.ev("weekSubjectGuess('2026-09-28')"), '9월 다섯째주', '고르지 않으면 월요일이 든 달 기준');
-      assert.strictEqual(X.ev(`weekSubjectGuess('${MON}')`), '10월 다섯째주');
-      assert.strictEqual(X.ev("awMonOf('2026-11-01')"), MON, '일요일의 월요일이 다르다');
-      assert.strictEqual(X.ev("awMonOf('2026-10-26')"), MON);
+      assert.deepStrictEqual(X.evJSON('(function(){ var g = calMonthGrid(2026, 9), o = []; for(var r = 0; r < g.weeks; r++) o.push(calReportPeriod(addDays(g.from, r * 7)).mon); return o; })()'),
+        ['2026-09-28', '2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26'], '10월 달력 줄이 다르다');
+      assert.deepStrictEqual(X.evJSON('(function(){ var g = calMonthGrid(2026, 8), o = []; for(var r = 0; r < g.weeks; r++) o.push(calReportPeriod(addDays(g.from, r * 7)).mon); return o; })()'),
+        ['2026-08-31', '2026-09-07', '2026-09-14', '2026-09-21', '2026-09-28'], '9월 달력 줄이 다르다');
+      assert.strictEqual(X.ev("calWeekTitle('2026-09-28', 2026, 8)"), '9월 다섯째주', '같은 주의 9월 달력 마지막 줄 제목');
+      assert.strictEqual(X.ev("calWeekTitle('2026-09-28', 2026, 9)"), '10월 첫째주', '같은 주의 10월 달력 첫 줄 제목');
+      assert.strictEqual(X.ev("calWeekTitle('2026-09-28')"), '9월 다섯째주', '고르지 않으면 월요일이 든 달 기준');
+      assert.strictEqual(X.ev(`calWeekTitle('${MON}')`), '10월 다섯째주');
+      assert.strictEqual(X.ev("calReportPeriod('2026-11-01').mon"), '2026-11-02', '일요일 당일은 그날 시작하는 줄의 월요일(2026-11-02)');
+      assert.strictEqual(X.ev("calReportPeriod('2026-10-26').mon"), MON);
+      assert.strictEqual(X.ev("calReportPeriod('2026-10-31').mon"), MON, '토요일은 같은 줄의 월요일');
       assert.strictEqual(X.ev("awIsMon('2026-10-27')"), false);
     } finally { X.close(); }
   });
@@ -221,14 +224,14 @@ if (!JSDOM) {
     const X = bootBrowser();
     try {
       //  날짜는 오늘에서 센다(이번 주는 비워 두고 지난주와 그 전 주에 임시 저장). 남의 계정 키는 목록에 나오지 않는다
-      const TM = X.ev('awMonOf(todayYmd())'), W1 = X.ev(`addDays('${TM}', -7)`), W2 = X.ev(`addDays('${TM}', -14)`);
-      X.ev(`localStorage.setItem('tc_attWDraft:me:${W2}', JSON.stringify({ v:1, subj:'앞 제목', subjAuto:true, prog:[], plan:[], hours:{}, meet:'', savedAt:'2026-10-23T01:00:00.000Z' }))`);
-      X.ev(`localStorage.setItem('tc_attWDraft:me:${W1}', JSON.stringify({ v:1, subj:'손 제목', subjAuto:false, prog:[], plan:[], hours:{}, meet:'x', savedAt:'2026-10-29T01:00:00.000Z' }))`);
+      const TM = X.ev('calReportPeriod(todayYmd()).mon'), W1 = X.ev(`addDays('${TM}', -7)`), W2 = X.ev(`addDays('${TM}', -14)`);
+      X.ev(`localStorage.setItem('tc_attWDraft:me:${W2}', JSON.stringify({ v:1, subj:'앞 제목', prog:[], plan:[], hours:{}, meet:'', savedAt:'2026-10-23T01:00:00.000Z' }))`);
+      X.ev(`localStorage.setItem('tc_attWDraft:me:${W1}', JSON.stringify({ v:1, subj:'1월 첫째주', picked:'1월 첫째주', prog:[], plan:[], hours:{}, meet:'x', savedAt:'2026-10-29T01:00:00.000Z' }))`);
       X.ev(`localStorage.setItem('tc_attWDraft:other:${W1}', JSON.stringify({ v:1, subj:'남의 것', prog:[], plan:[], hours:{}, meet:'', savedAt:'' }))`);
       X.ev("localStorage.setItem('tc_attKind', 'week'); pcSetTab('attend')");
       const rows = X.evJSON("[].map.call(document.querySelectorAll('#awList tr.aw-row'), function(r){ return [].map.call(r.cells, function(c){ return c.textContent; }); })");
       const per = (m) => X.ev(`awPeriodLabel('${m}')`);
-      assert.deepStrictEqual(rows, [['2', '손 제목', per(W1), '작성 중', '2026-10-29'], ['1', '앞 제목', per(W2), '작성 중', '2026-10-23']], '목록 줄이 다르다');
+      assert.deepStrictEqual(rows, [['2', '1월 첫째주', per(W1), '작성 중', '2026-10-29'], ['1', X.ev(`calWeekTitle('${W2}')`), per(W2), '작성 중', '2026-10-23']], '목록 줄이 다르다');
       assert.strictEqual(X.$('#awList .aw-cnt').textContent, '2건');
       //  목록 아래 안내 줄은 없고 그 말은 [작성] 의 title 에 있다. [작성]은 작은 단추(머리 세그와 같은 높이)
       assert.ok(!X.$('#awList .aw-lnote'), '목록 안내 줄이 남아 있다');
@@ -239,7 +242,7 @@ if (!JSDOM) {
       assert.ok(shown(X, '#awEd') && !shown(X, '#awList') && !shown(X, '#atMonth'), '[작성]이 편집 화면으로 바뀌지 않았다');
       assert.strictEqual(X.ev('AWE.mon'), mon, '[작성]이 이번 주가 아니다');
       assert.strictEqual(X.ev('ATT.screen'), 'wedit');
-      assert.ok(X.$('#awTitle').textContent.startsWith(X.ev(`weekSubjectGuess('${mon}')`)), '제목이 월요일이 든 달 기준이 아니다');
+      assert.ok(X.$('#awTitle').textContent.startsWith(X.ev(`calWeekTitle('${mon}')`)), '제목이 월요일이 든 달 기준이 아니다');
       //  편집 화면: 표 네 줄과 단추들
       assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#awEd .aw-k'), function(k){ return k.textContent; })"), ['진행사항', '과제투입시간', '차주계획', '회의내용']);
       //  머리: [‹ 목록](앱의 ‹ 아이콘) | 주간 보고 ‹ 제목 (기간) ›, [전체 초기화]는 기간, 제목 줄 끝
@@ -263,7 +266,7 @@ if (!JSDOM) {
       assert.ok(shown(X, '#awList'), '← 주간 목록이 목록으로 돌아가지 않았다');
       X.$(`#awList tr[data-awmon="${W1}"]`).click();
       assert.strictEqual(X.ev('AWE.mon'), W1);
-      assert.deepStrictEqual([X.$('#awSubj').value, X.$('#awMeet').value, X.ev('AWE.subjAuto')], ['손 제목', 'x', false], '임시 저장으로 열리지 않았다');
+      assert.deepStrictEqual([X.$('#awSubj').value, X.$('#awMeet').value], ['1월 첫째주', 'x'], '임시 저장으로 열리지 않았다(제목은 주 고르기로 정한 것만 잇는다)');
       assert.strictEqual(X.$('#awMsg').textContent, '', '임시 저장을 이어서 열며 안내를 띄웠다(일간처럼 안내 없이)');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
@@ -345,7 +348,7 @@ if (!JSDOM) {
       assert.strictEqual(nfBox(X, '회의내용'), '- 주간회의');
       assert.strictEqual(nfBox(X, '미처리사항'), ''); assert.strictEqual(nfBox(X, '문제점 및건의사항'), '');
       assert.ok(X.$('#awNf .nf-box[data-nf="미처리사항"]').classList.contains('empty'));
-      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#awNf .nf-in'), function(e){ return e.textContent; })"), [MON, '2026-11-01', '10월 다섯째주']);
+      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#awNf .nf-in'), function(e){ return e.textContent; })"), [MON, SAT, '10월 다섯째주']);
       assert.ok(X.$('#awNf').classList.contains('nf'));
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
@@ -372,7 +375,7 @@ if (!JSDOM) {
       X.$('#awWCal [data-awcm="1"]').click();
       X.$('#awWCal tr[data-awpick="2026-09-28"]').click();
       assert.strictEqual(X.$('#awSubj').value, '10월 첫째주');
-      assert.ok(X.$('#awTitle').textContent === '10월 첫째주 (9/28~10/4)', '머리 제목(기간)이 다르다: ' + X.$('#awTitle').textContent);
+      assert.ok(X.$('#awTitle').textContent === '10월 첫째주 (9/28~10/3)', '머리 제목(기간)이 다르다: ' + X.$('#awTitle').textContent);
       //  ‹ › 는 고르지 않은 주라 월요일이 든 달 기준
       X.$('#awNext').click();
       assert.strictEqual(X.ev('AWE.mon'), '2026-10-05');
@@ -380,11 +383,11 @@ if (!JSDOM) {
       X.$('#awPrev').click(); X.$('#awPrev').click();
       assert.strictEqual(X.ev('AWE.mon'), '2026-09-21');
       assert.strictEqual(X.$('#awSubj').value, '9월 넷째주');
-      //  손으로 고친 제목은 그 값(빈 칸으로 떠나면 규칙대로)
-      input(X, '#awSubj', '내 제목');
-      assert.ok(X.$('#awTitle').textContent.startsWith('내 제목'));
-      const s = X.$('#awSubj'); s.value = '  '; s.dispatchEvent(new X.w.Event('input', { bubbles: true })); s.dispatchEvent(new X.w.Event('change', { bubbles: true }));
-      assert.strictEqual(X.$('#awSubj').value, '9월 넷째주');
+      //  제목 칸은 읽기 전용이다: 입력 이벤트가 와도 제목은 그대로
+      const s = X.$('#awSubj'); assert.strictEqual(s.readOnly, true, '제목 칸이 읽기 전용이 아니다');
+      s.value = '내 제목'; s.dispatchEvent(new X.w.Event('input', { bubbles: true })); s.dispatchEvent(new X.w.Event('change', { bubbles: true }));
+      assert.strictEqual(X.ev('AWE.subj'), '9월 넷째주', '읽기 전용 제목이 입력으로 바뀌었다');
+      assert.ok(X.$('#awTitle').textContent.startsWith('9월 넷째주'));
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });
@@ -405,7 +408,7 @@ if (!JSDOM) {
       assert.strictEqual(sent.length, 1, '과제가 있는데 보내지 않았다(진행사항이 비어도 보낸다)');
       assert.strictEqual(sent[0].kind, 'weekly');
       assert.deepStrictEqual(Object.keys(sent[0].fields).sort(), ['content', 'edate', 'endwork', 'planwork', 'resultwork', 'sdate', 'subject']);
-      assert.deepStrictEqual([sent[0].fields.sdate, sent[0].fields.edate, sent[0].fields.content, sent[0].fields.endwork], [MON, '2026-11-01', '[알파] : 0\n-----\n합계 : 0', '']);
+      assert.deepStrictEqual([sent[0].fields.sdate, sent[0].fields.edate, sent[0].fields.content, sent[0].fields.endwork], [MON, SAT, '[알파] : 0\n-----\n합계 : 0', '']);
       assert.deepStrictEqual(sent[0].hours, [], '0 시간 과제는 기록용 hours 에 넣지 않는다');
       assert.strictEqual(X.$('#awSend').disabled, false, '브라우저 보내기가 잠갔다');
       assert.ok(X.$('#awMsg').textContent.includes('브라우저에서는'), '브라우저 안내가 없다');
@@ -494,7 +497,7 @@ if (!JSDOM) {
   test('(W) 목록: reportWeeklyList(52주) 회신과 이 PC 임시 저장을 합쳐 완료와 작성 중, [작성]과 행은 attendOpen(kind week) 하나, __reportWeeklySaved 는 다시 읽는다', async () => {
     const X = await bootMain();
     try {
-      const thisMon = X.ev('awMonOf(todayYmd())');
+      const thisMon = X.ev('calReportPeriod(todayYmd()).mon');
       stubHost(X, `{ reportWeeklyList: { ok: true, rows: ${JSON.stringify([WROW('2026-10-19', { subject: '10월 넷째주' }), WROW('2026-10-12', { subject: '10월 셋째주' }), { periodStart: '2026-10-14', subject: '월요일 아님' }])} }, attendOpen: { ok: true, error: '' } }`);
       X.ev(`localStorage.setItem('tc_attWDraft:7:${MON}', JSON.stringify({ v:1, subj:'10월 다섯째주', prog:[], plan:[], hours:{}, meet:'', savedAt:'2026-10-29T01:00:00.000Z' }))`);
       X.ev("localStorage.setItem('tc_attKind', 'week')");
@@ -556,7 +559,7 @@ if (!JSDOM) {
       assert.strictEqual(A.$('#awEd').parentElement, A.doc.body, '주간 편집이 창 전체로 옮겨지지 않았다');
       const calls = A.evJSON('__calls');
       assert.deepStrictEqual(calls.map((c) => c[0]), ['reportDailyList', 'reportWeeklyList'], '두 가져오기를 하지 않았다');
-      assert.deepStrictEqual(calls[0][1], { from: MON, to: '2026-11-01' });
+      assert.deepStrictEqual(calls[0][1], { from: MON, to: SAT });
       assert.deepStrictEqual(calls[1][1], { from: '2026-10-19', to: '2026-10-19' });
       assert.strictEqual(A.ev('AWE.prog'), '[알파]\n  - 연동 환경 구축 중\n- 요구사항 구현\n\n[베타]\n- 회신\n\n[휴가]\n-', '진행사항 초안이 [과제명] 머리 글이 아니다');
       assert.strictEqual(A.$('#awProg').value, A.ev('AWE.prog'));
@@ -624,7 +627,7 @@ if (!JSDOM) {
       const NB = '&nbsp;';
       assert.deepStrictEqual(Object.keys(s).sort(), ['cmd', 'content', 'edate', 'endwork', 'hours', 'planwork', 'resultwork', 'sdate', 'subject']);
       assert.deepStrictEqual(s.hours, [{ name: '알파', projectUid: '', hours: 10 }, { name: '베타', projectUid: '', hours: 4 }, { name: '휴가', projectUid: '', hours: 2 }], '과제투입시간 구조(hours)가 다르다');
-      assert.deepStrictEqual([s.sdate, s.edate, s.subject], [MON, '2026-11-01', '10월 다섯째주']);
+      assert.deepStrictEqual([s.sdate, s.edate, s.subject], [MON, SAT, '10월 다섯째주']);
       assert.strictEqual(s.endwork, '[알파]\n' + NB.repeat(2) + '- 연동 환경 구축 중\n- 요구사항 구현\n\n[베타]\n- 회신\n\n[휴가]\n-\n' + NB.repeat(4) + '- 연차');
       assert.strictEqual(s.content, '[알파] : 10\n[베타] : 4\n[휴가] : 2\n-----\n합계 : 16');
       assert.strictEqual(s.planwork, '[베타]\n' + NB.repeat(2) + '- 다음 일');

@@ -4,7 +4,7 @@
 //   (U) 단위: calTitleLabel, pcRangeLabel (월간, 같은 달 주, 달이 걸친 주, 해가 걸친 주 2026-12-28)
 //   (R) 런타임(jsdom): 월간 주간 전환에도 제목 글자와 최소 폭이 같고 필터 묶음 자리가 그대로, 열람 창도 같다
 //   (M) 변이: 주간 제목을 범위로 되돌림, 필터 묶음을 날짜 줄 밖으로 뺌, 제목 폭을 1월 하나만 잼, 600px 단추 폭 규칙을 되살림
-import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
+import { test, skip, assert, loadAppSource, extractFunction, extractCalCommon, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 
 const app = loadAppSource();
 
@@ -72,6 +72,8 @@ const helpers = [
   'function parseYmd(s){ const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }',
   'function addDays(s, n){ const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); }',
   'function todayYmd(){ return "2026-10-30"; }',
+  'function diffDays(a, b){ return Math.round((parseYmd(b) - parseYmd(a)) / 86400000); }',
+  extractCalCommon(app),
 ].join('\n');
 
 function titleOf(src, mode, viewVal, sel) {

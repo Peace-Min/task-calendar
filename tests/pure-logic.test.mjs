@@ -1,7 +1,7 @@
 // Layer 1 — 의존성 0 순수 함수 단위테스트.
 // 앱 소스에서 함수 선언을 extractFunction으로 잘라 eval/new Function으로 되살려 단독 검증한다.
 // (브라우저·jsdom 불필요 — Node 내장만. 값 의미는 소스를 읽어 '실제 동작'을 그대로 단언한다.)
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction, extractCalCommon } from './harness.mjs';
 
 const src = loadAppSource();
 
@@ -11,7 +11,7 @@ const src = loadAppSource();
 //   그 폴백은 load()의 정규화 블록(e.date = String(e.date ?? '') …) 밖에 있다 —
 //   즉 여기서 깨진 date/끊긴 categoryId는 아무 하류 보정 없이 렌더 경로로 그대로 들어간다.
 //
-// ymd/pad는 소스와 '같은 정의'를 주입한다(아래 weekRange 절과 동일 원칙).
+// ymd/pad는 소스와 '같은 정의'를 주입한다(아래 calRowWeek 절과 동일 원칙).
 // 날짜 '값'을 판정하려면 헬퍼가 소스 그대로여야 하므로, 정의가 갈라지면
 // '하네스 충실도' 계약(바로 아래 test)이 운다.
 const PAD_SRC = "const pad = n => String(n).padStart(2, '0');";
@@ -241,38 +241,34 @@ test('numMin: 반올림·클램프(0~1440분) — "2.51"→151, "100"→1440, "2
   assert.strictEqual(numMin('24.5'), 1440); // 1470 → 1440 클램프
 });
 
-// ── weekRange / monthRange: 소스가 실제로 쓰는 주/월 경계(ymd·pad 헬퍼 주입) ──────────
-// weekRange/monthRange는 ymd(→pad)에 의존 → 두 헬퍼를 소스와 동일 정의로 주입해 함수 본문만 실측.
-// (주 시작 규약은 '추정 금지' 원칙에 따라 소스에서 확인: back=(getDay()+6)%7 → 월요일 시작 ISO 주)
-const { weekRange, monthRange } = (function () {
+// ── calRowWeek / monthRange: 소스가 실제로 쓰는 주/월 경계(ymd, pad, parseYmd, addDays 헬퍼 주입) ──────────
+// 달력 한 주는 일~토(공용 달력 docs/CALENDAR-COMMON.md). 이 파일은 보고서 창의 이번 주, 지난주 단추가 쓰는 calRowWeek 와 monthRange 만 본다.
+// 공용 달력 전체의 시험은 cal-common.test.mjs.
+const { calRowWeek, monthRange } = (function () {
   const helperSrc =
     "const pad = n => String(n).padStart(2, '0');\n" +
-    "const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;\n";
+    "const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;\n" +
+    "const parseYmd = s => { const [y,m,dd] = s.split('-').map(Number); return new Date(y, m-1, dd); };\n" +
+    "const addDays = (s, n) => { const d = parseYmd(s); return ymd(new Date(d.getFullYear(), d.getMonth(), d.getDate()+n)); };\n" +
+    "const diffDays = (a, b) => Math.round((parseYmd(b) - parseYmd(a)) / 86400000);\n";
   const factory = new Function(
     helperSrc +
-    extractFunction(src, 'weekRange') + '\n' +
+    extractCalCommon(src) + '\n' +
     extractFunction(src, 'monthRange') + '\n' +
-    'return { weekRange, monthRange };'
+    'return { calRowWeek, monthRange };'
   );
   return factory();
 })();
 
-test('weekRange: 수요일(2026-07-08) 기준 이번 주 = 월~일 [2026-07-06, 2026-07-12]', () => {
-  const base = new Date(2026, 6, 8);           // 2026-07-08 (수)
-  assert.deepStrictEqual(weekRange(base, 0), ['2026-07-06', '2026-07-12']);
-  assert.deepStrictEqual(weekRange(base, -1), ['2026-06-29', '2026-07-05']);  // 지난 주
-  assert.deepStrictEqual(weekRange(base, 1), ['2026-07-13', '2026-07-19']);   // 다음 주
+test('calRowWeek: 수요일(2026-07-08) 기준 이번 주 = 일~토 [2026-07-05, 2026-07-11]', () => {
+  assert.deepStrictEqual(calRowWeek('2026-07-08'), { sun: '2026-07-05', sat: '2026-07-11' });
+  assert.deepStrictEqual(calRowWeek('2026-07-01'), { sun: '2026-06-28', sat: '2026-07-04' });   // 지난 주 단추는 7일 전 날짜로 부른다
 });
 
-test('weekRange: 월요일 시작 규약 — 월요일/일요일 모두 같은 주로 귀속', () => {
-  const mon = new Date(2026, 6, 6);            // 2026-07-06 (월)
-  const sun = new Date(2026, 6, 12);           // 2026-07-12 (일)
-  assert.deepStrictEqual(weekRange(mon, 0), ['2026-07-06', '2026-07-12']);
-  assert.deepStrictEqual(weekRange(sun, 0), ['2026-07-06', '2026-07-12']);   // 일요일은 이전 월요일 주
-  // 시작일은 월요일(getDay()===1)
-  const [s] = weekRange(new Date(2026, 6, 8), 0);
-  const [y, m, d] = s.split('-').map(Number);
-  assert.strictEqual(new Date(y, m - 1, d).getDay(), 1);
+test('calRowWeek: 일요일 시작 규약, 일요일은 그날 시작하는 주, 토요일은 같은 주 끝', () => {
+  assert.deepStrictEqual(calRowWeek('2026-07-05'), { sun: '2026-07-05', sat: '2026-07-11' });   // 일요일 당일
+  assert.deepStrictEqual(calRowWeek('2026-07-11'), { sun: '2026-07-05', sat: '2026-07-11' });   // 토요일
+  assert.strictEqual(new Date(2026, 6, 5).getDay(), 0);
 });
 
 test('monthRange: 이번 달/지난 달, 연도 경계', () => {

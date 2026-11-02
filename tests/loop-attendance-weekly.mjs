@@ -362,7 +362,7 @@ async function main() {
   ok('W6 처리 중 잠금(보고하는 중…, 회의내용, 목록, 이동)', r6.disabled && r6.label === '보고하는 중…' && r6.meet && r6.back && r6.next && r6.sending, JSON.stringify(r6));
   ok('W6 연속 클릭과 다시 부르기에도 한 번만 붙잡았다', (await A.ev('__awLoopW.cap.length')) === n6 + 1);
   const cap6 = await A.J('__awLoopW.cap[__awLoopW.cap.length - 1]');
-  ok('W6 payload kind weekly, 기간(월~일), 제목', !!cap6 && cap6.kind === 'weekly' && cap6.fields.sdate === W && cap6.fields.edate === '2099-12-13' && cap6.fields.subject === '12월 둘째주', JSON.stringify(cap6 && cap6.fields));
+  ok('W6 payload kind weekly, 기간(월~토), 제목', !!cap6 && cap6.kind === 'weekly' && cap6.fields.sdate === W && cap6.fields.edate === '2099-12-12' && cap6.fields.subject === '12월 둘째주', JSON.stringify(cap6 && cap6.fields));
   ok('W6 네 칸(endwork, content, planwork, resultwork), 줄 앞 공백은 &nbsp;', !!cap6 && cap6.fields.endwork === nbsp(pv3.c.endwork) && cap6.fields.content === pv3.c.content
     && cap6.fields.planwork === LIST.plan && cap6.fields.resultwork === MEET, JSON.stringify(cap6 && cap6.fields));
   const PK = await A.J('ATW.ctx.projects.slice(0, 2).map(function(x){ return x.key; })');
@@ -392,7 +392,7 @@ async function main() {
   ok('W7 reportWeeklyList(시간 줄 표를 읽는 질의 포함)가 오류 없이 돌아왔다(읽기만)', (await A.ev('AWL.err')) === '');
   ok('W7 창 안의 목록이 보이고 reportWeeklyList 를 읽었다', got7 && (await shown(A, 'awList')) && (await A.J('__awLoopW.log')).slice(n7).some((x) => x.req === 'reportWeeklyList' && x.ok));
   ok('W7 근태 창 목록에는 [일간][주간]이 없다', !(await A.ev(`!!document.querySelector('#awList [data-atkind]')`)));
-  const TM = await A.ev('awMonOf(todayYmd())');
+  const TM = await A.ev('calReportPeriod(todayYmd()).mon');
   await A.ev(`(function(){ document.querySelector('#awList [data-awact="new"]').click(); return 1; })()`);
   ok('W7 [작성]이 이번 주를 그 창에서 연다', !!(await attachWeek(TM, 25000)));
   if ((await A.ev('awDirty()')) === false) await A.ev(`awGoWeek(${JSON.stringify(W)}); 1`);

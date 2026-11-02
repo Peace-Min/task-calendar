@@ -7,6 +7,21 @@
 
 ---
 
+## 🆕 2026-11-02 (다음 판, 번호는 배포 때): 과제 일정 폼 날짜와 종일 정리
+
+`pcStartChanged`: 시작일을 옮기면 종료일도 같은 만큼(개인 폼과 같다). `pcFormSync`: 여러 날 판정을 `e > s` 로(종료가 빠르면 여러 날로 치지 않고 `PCF_RANGE_ERR` 오류 줄), 잠긴 동안의 강제 켬이 `pcfAllDayUser` 를 덮지 않게 해 하루로 돌아오면 사용자 값과 시각이 돌아온다. v5 녹화 보고를 실제 위젯에서 재현해 고쳤다. 시험: `tests/pcf-range.test.mjs`, project-calendar-web 화면⑧c 갱신.
+
+## 🆕 2026-11-02 (다음 판, 번호는 배포 때): 공용 달력, 주간보고 기간 월~토
+
+주 규칙을 웹의 공용 달력 한 곳(`CAL_DOW`, `calRowWeek`, `calViewWeek`, `calReportPeriod`, `calMonthGrid`, `calWeekTitle`, 칸 클래스 `calCellCls`, `calNumCls`, `calTone`, `calAria`)에 모았다. 설계는 [docs/CALENDAR-COMMON.md](docs/CALENDAR-COMMON.md). 달력 한 주 = 일~토(월 달력, 주간보고 주 고르기, 주 제목, 보고서 이번 주와 지난주 단추), 주간 보기 = 월~일(동작 그대로), 회사 보고 기간 = 그 줄의 월~토.
+
+- **결함 수정**: 0.25.0 은 주간 폼 종료일(`edate`)을 일요일로 보냈다(`awBuildSubmit`, 옛 보고서 창 주간 전송). 인트라넷은 토요일이라 같은 주 글 찾기(`NcPickSameWeek`, 기간 정확 일치)가 인트라넷에서 직접 쓴 글을 못 알아봤다. 이제 `edate` 와 `period_end` 는 토요일이다. 호스트와 DB 구조는 그대로다(웹이 준 `sdate`, `edate` 를 그대로 쓴다). 저장된 옛 기록의 종료일은 다시 저장할 때 토요일로 덮인다.
+- 주 고르기(`awCalRender`): 개인 달력과 같은 일요일 시작 격자에 줄 머리(n째주). 보고 있는 달의 월~토만 누르고 일요일 칸과 앞뒤 달 날짜는 막는다. 주말, 공휴일 색과 오늘 표시는 공용 칸 클래스와 토큰. 옛 `.aw-ct` 는 `.cal-pk` 로 바뀌었다.
+- 주간보고 제목 칸(`#awSubj`)은 읽기 전용이다. 손으로 고친 제목을 기억하던 `subjAuto` 와 입력 처리기를 지웠다. 제목은 주 고르기에서 고른 값(`picked`), 저장된 주의 기록 제목, 아니면 `calWeekTitle` 이다. 옛 임시 저장의 손으로 고친 제목은 무시한다.
+- 월 격자 셋(`renderMonthBars`, `renderMonthGrid`, `pcMonthRange`, `atRenderMonth`)과 칸 클래스를 공용 함수로. 요일 이름 배열 7벌(`WEEKDAYS`, `DOW_K` 셋, `WD`, `PC_DOW`, 주간 머리 배열)을 `CAL_DOW` 하나로. 옛 `weekRange`, `weekSubjectGuess`, `awMonOf`, `awMonthRows`, `awPickTitle`, `AW_ORD` 는 없어졌다.
+- 알고 받아들인 표시 차이: 일요일 당일에는 보고서 이번 주 단추와 주간보고 기본 주가 그날 시작하는 줄(다음 날 월요일부터)이다. 월간에서 일요일을 골라 주간 보기로 바꾸면 그 일요일로 끝나는 주가 열린다.
+- 시험: `tests/cal-common.test.mjs` 새로(공용 함수 실행, 정적, 변이, jsdom 주 고르기). 월요일 시작이나 일요일 종료일을 기대하던 기존 시험(`attendance-weekly-web`, `weekly-edit`, `report-group`, `pure-logic` 의 weekRange 절, `nav-layout-c`, `personal-peer-week-view`, `project-calendar-web`)은 새 정책에 맞게 고쳤다. 시험 harness 에 `extractCalCommon` 을 더했다.
+
 ## 🆕 2026-11-02 (다음 판, 번호는 배포 때): 첫 설치 기본값 트레이 켬, 부착 끔
 
 설정 파일이 없는 첫 설치의 `WidgetSettings` 기본값을 `TrayEnabled = true`(일반 앱 창), `Pinned = false` 로 바꿨다. 바탕화면 위젯 모드(작업 표시줄, Alt+Tab 없음, 늘 맨 아래)로 최대화되어 뜨면 다른 창 뒤에 깔려 처음 쓰는 사람이 앱이 뜬 줄 몰랐다(2026-11-02 사용자). 기존 사용자는 설정 파일 값 그대로. 시험: window-buttons 첫 설치 기본값.

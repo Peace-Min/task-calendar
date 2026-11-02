@@ -316,8 +316,19 @@ main{flex:1;display:flex;min-height:0;position:relative}
   cursor:pointer;min-height:0;overflow:hidden;position:relative;transition:background .12s;
 }
 .cell:hover{background:var(--hover-bg)}
-.cell.dim{background:var(--dim-bg)}
-.cell.dim .num{color:var(--faint-text)}   /* 약화된 본문 토큰 — --dim-bg(#fafbfd) 위 4.52:1(AA). 하드코딩 #7a8294는 3.72:1이었다 */
+/* ===== 공용 달력 칸 디자인(docs/CALENDAR-COMMON.md): 칸 CSS 는 여기 한 블록뿐이다 =====
+   모든 달력 칸은 calCellCls 가 붙이는 .cal-c 로 이 규칙을 따른다. 화면별 CSS 는 크기, 여백, 칩/막대 배치만 갖는다.
+   다른 달(.dim): 배경 --dim-bg, 숫자 --faint-text(--dim-bg 위 AA, 하드코딩 #7a8294는 3.72:1이었다). hover 에도 흐림을 유지한다.
+   주말 틴트: 선택(.sel), 다른 달(.dim), hover 일 때만 빠진다. 오늘 칸도 주말이면 틴트한다.
+   ★ 반투명 금지: 칸 배경을 rgba로 덮으면 뒤가 --panel이 아니라 격자의 --line이라 테마마다 엉뚱한 색이 나온다(--wknd-*-bg 는 미리 합성한 값).
+   오늘 = 숫자에 솔리드 accent 배지, 선택 = 중립 프레임(채널 분리). 숫자 색 .num.sun/.num.sat(공휴일 포함)도 여기. */
+.cal-c.dim,.cal-c.dim:hover{background:var(--dim-bg)}
+.cal-c.dim .num{color:var(--faint-text)}
+.cal-c.wknd-sat:not(.sel):not(.dim):not(:hover){background:var(--wknd-sat-bg)}
+.cal-c.wknd-sun:not(.sel):not(.dim):not(:hover){background:var(--wknd-sun-bg)}
+.num.sun{color:var(--sun)} .num.sat{color:var(--sat)}
+.cal-c.today .num{background:var(--accent-fill);color:var(--on-accent);font-weight:700}
+/* ===== /공용 달력 칸 디자인 ===== */
 /* 선택 = 중립 프레임(오늘의 솔리드 파랑 배지와 채널 분리). 경계색은 --line-2가 아니라 --ctl-border다:
    --line-2는 셀 배경 대비 1.39~1.64:1이라 5개 중 4개 테마에서 비텍스트 3:1 미달이고, 위젯 투명도를 낮추면 사실상 사라진다.
    이 앱에서 '선택'은 우측 패널·보고서·빠른등록이 모두 물고 있는 최상위 상태라 가장 약한 색을 쓸 자리가 아니다. */
@@ -331,13 +342,6 @@ main{flex:1;display:flex;min-height:0;position:relative}
   font-size:var(--fs-body);font-weight:600;width:22px;height:22px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
 }
-.num.sun{color:var(--sun)} .num.sat{color:var(--sat)}
-/* D. 오늘 = 숫자에 솔리드 accent 배지, 선택 = 중립 회색 프레임 → 채널 분리로 파랑-온-파랑 충돌 해소 */
-.cell.today .num{background:var(--accent-fill);color:var(--on-accent);font-weight:700}
-/* D. 주말 컬럼 옅은 틴트 — 토/일이 '블록'으로 읽힘(선택·오늘·타월·hover 제외).
-   ★ 반투명 금지: .cell 배경을 rgba로 덮으면 뒤가 --panel이 아니라 .grid의 --line이라 테마마다 엉뚱한 색이 나온다. */
-.cell.wknd-sat:not(.sel):not(.today):not(.dim):not(:hover){background:var(--wknd-sat-bg)}
-.cell.wknd-sun:not(.sel):not(.today):not(.dim):not(:hover){background:var(--wknd-sun-bg)}
 .hol{font-size:var(--fs-micro);color:var(--sun);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chips{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0;flex:1;container-type:inline-size}  /* flex:1 → 셀 남은 높이를 fitChips가 측정 / container → 칩 시간 표기 적응형 */
 .chip{
@@ -2450,7 +2454,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 :root[data-theme="forest"]{ --bg:#eef4ef; --panel:#ffffff; --line:#d9e6dc; --line-2:#c3d6c8; --text:#1d2a22; --muted:#54665b; --accent:#2e9e6b; --accent-2:#1f7a50; --accent-soft:#e2f1e8; --accent-fill:#1f7a50; --ctl-border:#84958a; --dim-bg:#f2f7f3; --danger-line:#e6c6c8; --mine-bar:#5a6886; --mine-bg:#eceff5; --mine-text:#394357; --mine-sep:#cfd8d2; --ovl-bg:#fbefd0; --ovl-ink:#7a5600; --ovl-dot:#b97d00; }   /* --accent는 흰 글자에서 3.38:1(AA 미달) → 채움만 --accent-2급으로(5.31:1). 컨트롤 경계 3.16:1 */
 :root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#75664f; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; --sun:#b3353a; --wknd-sun-bg:#f5e5dc; --wknd-sat-bg:#ebe9e5; --dim-bg:#f4ecdd; --faint-text:#5f6779; --danger-line:#e0c6b4; --mine-bar:#5f6a84; --mine-bg:#e9e8e8; --mine-text:#3a4254; --mine-sep:#d8ccb6; --ovl-bg:#f5e4bd; --ovl-ink:#6e4c05; --ovl-dot:#a8720a; }   /* accent는 흰 글자 4.52:1로 AA 충족 → 채움 리맵 불필요. 컨트롤 경계는 세피아 패널 대비 3.08:1.
    --muted 재맵(2026-09-18): #7a6a52 는 --dim-bg(#f4ecdd) 위의 흐린 글자(.rl-hrow 의 span.rl-h)에서 4.46:1 로 AA(4.5) 를 아슬하게 밑돌았다 — loop-ui-visual V8 이 기준선 근처로 잡던 그 한 건이다. 색상각(R:G:B = 122:106:82)을 그대로 두고 밝기만 4% 낮춘 #75664f 로 옮겼다: --dim-bg 4.75:1 · --panel(#fbf6ec) 5.17:1 · --bg(#f3ead9) 4.66:1 — 세 바탕 모두 AA 충족이다. 찬 --faint-text 를 재활용하지 않은 이유는 그 색이 크림 위에서 회청색으로 떠 세피아의 온기를 깨기 때문이다.
-   --faint-text 재맵(2026-09-10): --dim-bg 를 세피아 크림(#f4ecdd)으로 두자 :root 의 #6c7488 이 다른 달 날짜(.cell.dim .num)에서 3.98:1 로 AA 미달 → #5f6779 (4.83:1). loop-ui-visual 이 잡았다.
+   --faint-text 재맵(2026-09-10): --dim-bg 를 세피아 크림(#f4ecdd)으로 두자 :root 의 #6c7488 이 다른 달 날짜(.cal-c.dim .num)에서 3.98:1 로 AA 미달 → #5f6779 (4.83:1). loop-ui-visual 이 잡았다.
    --sun 재맵: 크림색 패널·배경에서 #c43a3f는 요일머리 4.37:1·주말 숫자 4.27:1로 AA 미달 → 같은 색상각을 유지한 채 한 단계만 어둡게(5.04:1·4.91:1). --sat(#4b62a0)는 4.87~4.95:1로 충족해 그대로 둔다.
    --wknd-*-bg: 세피아 패널(#fbf6ec) 기준으로 미리 합성한 값 */
 :root[data-theme="contrast"]{ --bg:#ffffff; --panel:#ffffff; --line:#444; --line-2:#111; --text:#000; --muted:#2a2a2a; --faint:#555; --faint-text:#1f1f1f; --accent:#0b3d91; --accent-2:#06296b; --accent-soft:#e6edf9; --danger-text:#a3000a; --danger-line:#a3000a; --ctl-border:#111; --dim-bg:#ededed; --star:#8a5a00; --mark-ink:#000; --mine-bar:#26304a; --mine-bg:#e9ecf2; --mine-text:#000; --mine-sep:#444; --ovl-bg:#fff0c2; --ovl-ink:#4d3300; --ovl-dot:#8a5a00; /* 고대비 — 골드도 흰 배경 5.93:1까지 낮춰 별표가 텍스트급 대비. --dim-bg 는 흰 패널과 확실히 갈리는 회색(읽기전용 칸이 흰칸으로 보이면 안 된다) */ }
@@ -2673,10 +2677,6 @@ body.db-locked .pc-w{opacity:.5}
 .pc-week{flex:1 1 0;min-height:0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));column-gap:1px;row-gap:2px;background:var(--line);overflow:hidden}
 .pc-day{background:var(--panel);padding:2px 6px;cursor:pointer;display:flex;align-items:flex-start;gap:5px;min-width:0}
 .pc-day:hover{background:var(--hover-bg)}
-.pc-day.dim{background:var(--dim-bg)} .pc-day.dim .num{color:var(--faint-text)}
-.pc-day.wknd-sat:not(.sel):not(.dim):not(:hover){background:var(--wknd-sat-bg)}
-.pc-day.wknd-sun:not(.sel):not(.dim):not(:hover){background:var(--wknd-sun-bg)}
-.pc-day.today .num{background:var(--accent-fill);color:var(--on-accent);font-weight:700}
 .pc-day.sel,.pc-wday.sel{box-shadow:inset 0 0 0 2px var(--ctl-border)}
 .pc-day:focus-visible,.pc-wday:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .pc-day .hol{line-height:22px}
@@ -2714,7 +2714,6 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
 .pc-whdays,.pc-wcells{display:grid;grid-template-columns:repeat(7,minmax(var(--cw),1fr));column-gap:1px;background:var(--line)}
 .pc-whday{background:var(--panel);display:flex;align-items:center;justify-content:center;gap:5px;padding:6px 2px;font-size:var(--fs-meta);color:var(--muted);font-weight:600}
 .pc-whday.sun{color:var(--sun)} .pc-whday.sat{color:var(--sat)}
-.pc-whday.today .num{background:var(--accent-fill);color:var(--on-accent)}
 .pc-whday.sel{box-shadow:inset 0 -2px 0 var(--ctl-border)}
 .pc-wname{position:sticky;left:0;z-index:2;background:var(--panel);padding:8px 10px;display:flex;flex-direction:column;gap:3px;min-width:0;border-left:3px solid var(--c)}
 .pc-wpn{font-size:var(--fs-body);font-weight:700;line-height:1.35}
@@ -2722,8 +2721,6 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
 .pc-wcells{row-gap:3px;min-height:64px}
 .pc-wday{background:var(--panel);cursor:pointer}
 .pc-wday:hover{background:var(--hover-bg)}
-.pc-wday.wknd-sat:not(.sel):not(:hover){background:var(--wknd-sat-bg)}
-.pc-wday.wknd-sun:not(.sel):not(:hover){background:var(--wknd-sun-bg)}
 .pc-wcells .pc-ev{height:38px;justify-content:flex-start;padding-top:3px;padding-bottom:2px}
 .pc-wcells .pc-ev.timed{height:auto;min-height:38px}
 .pc-l1b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;padding-left:12px;line-height:1.3;white-space:normal;word-break:keep-all;overflow-wrap:anywhere;text-align:left}
@@ -2876,10 +2873,6 @@ body:not(.at-on) #atView{display:none !important}
 .at-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:minmax(112px,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;min-height:100%}
 .at-day{background:var(--panel);padding:3px 6px 5px;cursor:pointer;display:flex;flex-direction:column;gap:2px;min-width:0;min-height:0;overflow:hidden}
 .at-day:hover{background:var(--hover-bg)}
-.at-day.dim{background:var(--dim-bg)} .at-day.dim .num{color:var(--faint-text)}
-.at-day.wknd-sat:not(.dim):not(:hover){background:var(--wknd-sat-bg)}
-.at-day.wknd-sun:not(.dim):not(:hover){background:var(--wknd-sun-bg)}
-.at-day.today .num{background:var(--accent-fill);color:var(--on-accent);font-weight:700}
 .at-day:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .at-day .cell-top{min-width:0}
 .at-st{font-size:var(--fs-micro);font-weight:700;color:var(--accent-2);line-height:var(--lh-tight)}
@@ -3028,19 +3021,27 @@ html[data-attendwin] #atBack{ display:none }
 .aw-ed input[type=text]{font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 8px;color:var(--text);background:var(--panel)}
 .aw-ed input[type=text]:disabled{opacity:.6}
 .aw-subj{width:200px}
+.aw-ed input[type=text].aw-subj{background:var(--dim-bg);color:var(--muted);cursor:default}   /* 읽기 전용: 제목은 주 고르기로만 정해진다 */
 .aw-wpick{position:relative;display:inline-block}
 .aw-wcal{position:absolute;left:0;top:calc(100% + 4px);z-index:7;width:300px;background:var(--panel);border:1px solid var(--accent);border-radius:var(--r-md);box-shadow:var(--shadow);padding:8px}
 .aw-cmh{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:var(--fs-body)}
-.aw-ct{width:100%;border-collapse:collapse;font-size:var(--fs-meta)}
-.aw-ct th{color:var(--faint-text);font-weight:400;padding:2px 0}
-.aw-ct td{text-align:center;padding:4px 0}
-.aw-ct td.o{color:var(--faint-text)}
-.aw-ct tr.aw-cw{cursor:pointer}
-.aw-ct tr.aw-cw:hover td,.aw-ct tr.aw-cw:focus-visible td{background:var(--accent-soft)}
-.aw-ct tr.aw-cw:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.aw-ct tr.aw-cw.sel td{background:var(--accent-fill);color:var(--on-accent)}
-.aw-ct td.aw-clab{text-align:left;padding-left:4px;color:var(--muted);width:58px}
-.aw-ct tr.aw-cw.sel td.aw-clab{color:var(--on-accent)}
+/* 주 고르기: 개인 달력과 같은 일요일 시작 격자(칸 클래스 calCellCls, 날짜 .num). 한 줄이 한 주, 그 줄의 월~토(.inp)가 회사 보고 기간이다.
+   보고 있는 달의 월~토만 누른다(일요일, 앞뒤 달 날짜는 .off). */
+.cal-pk{width:100%;border-collapse:collapse;font-size:var(--fs-meta)}
+.cal-pk th{color:var(--faint-text);font-weight:400;padding:2px 0}
+.cal-pk th.sun{color:var(--sun)} .cal-pk th.sat{color:var(--sat)}
+.cal-pk td{text-align:center;padding:2px 0;border-top:1px solid var(--line)}
+.cal-pk td .num{margin:0 auto}
+.cal-pk td.off{cursor:default}
+.cal-pk tr.aw-cw{cursor:pointer}
+/* 줄 단위 hover, 선택은 공용 주말 틴트(.cal-c.wknd-*:not(...) 특정성 0,5,0)에 덮이면 안 된다. 월~토 칸(.inp.cal-c)에서 틴트보다 높은 특정성으로 이긴다 */
+.cal-pk tr.aw-cw:hover td.inp.cal-c,.cal-pk tr.aw-cw:focus-visible td.inp.cal-c{background:var(--accent-soft)}
+.cal-pk tr.aw-cw:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.cal-pk tr.aw-cw.sel td.inp.cal-c{background:var(--accent-fill)}
+.cal-pk tr.aw-cw.sel td.inp .num{color:var(--on-accent)}
+.cal-pk tr.aw-cw.sel td.inp.dim .num{opacity:.65}
+.cal-pk tr.aw-cw.sel td.inp.today .num{background:var(--on-accent);color:var(--accent-fill)}
+.cal-pk td.aw-clab{text-align:left;padding-left:4px;color:var(--muted);width:58px;font-size:var(--fs-micro)}
 /* 표 네 줄: 왼쪽 항목명, 오른쪽 칸(회사 폼의 표 구조) */
 /* overflow 를 숨기지 않는다: 과제 추가 패널이 표 밖으로 나가도 잘리지 않게(2026-10-30 사용자). 둥근 모서리는 왼쪽 첫 칸과 끝 칸에 직접 준다 */
 .aw-form{display:grid;grid-template-columns:96px minmax(0,1fr);border:1px solid var(--line);border-radius:var(--r-md);flex:none}
@@ -3492,9 +3493,9 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
         <div class="at-left">
           <div class="at-row aw-meta">
             <span class="at-lb">기간</span>
-            <span class="aw-wpick"><button type="button" class="btn sm" id="awWeekBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="awWCal" title="달력에서 주를 고릅니다(월요일 시작 줄)"></button>
+            <span class="aw-wpick"><button type="button" class="btn sm" id="awWeekBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="awWCal" title="달력에서 주를 고릅니다(일요일 시작 줄, 기간은 월~토)"></button>
               <div class="aw-wcal hidden" id="awWCal" role="dialog" aria-label="주 고르기"></div></span>
-            <label class="at-lb" for="awSubj">제목</label><input type="text" id="awSubj" class="aw-subj" maxlength="200" autocomplete="off" spellcheck="false">
+            <label class="at-lb" for="awSubj">제목</label><input type="text" id="awSubj" class="aw-subj" readonly tabindex="-1" autocomplete="off" spellcheck="false" title="제목은 기간 옆 달력에서 주를 고르면 정해집니다">
             <span class="spacer"></span>
             <button type="button" class="at-lnk" id="awReset" title="진행사항, 과제투입시간, 차주계획, 회의내용을 모두 비웁니다(기간과 제목은 그대로)">전체 초기화</button>
           </div>
@@ -5458,9 +5459,8 @@ const todayYmd = () => ymd(new Date());
 const uid = p => (p||'x') + '-' + (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,10));
 const nowIso = () => new Date().toISOString();
-const WEEKDAYS = ['일','월','화','수','목','금','토'];
 const fmtDateK = s => { const d = parseYmd(s);
-  return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]})`; };
+  return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${CAL_DOW[d.getDay()]})`; };
 const fmtShort = s => { const d = parseYmd(s); return `${d.getMonth()+1}/${d.getDate()}`; };
 
 /* ---------- 기간·반복 날짜 계산 (전부 로컬, TZ 없음) ---------- */
@@ -5473,6 +5473,47 @@ function addMonths(s, n){ // 해당 일이 없는 달(예: 31→2월)은 null(�
   if(day > last) return null;
   return ymd(new Date(t.getFullYear(), t.getMonth(), day));
 }
+/* ---------- 공용 달력 (docs/CALENDAR-COMMON.md) ----------
+   달력 한 주 = 일~토(일요일 시작 한 줄), 주간 보기 = 월~일, 회사 보고 기간 = 그 달력 한 주의 월~토.
+   요일 이름과 주 계산은 여기만 쓴다. 화면은 getDay() 로 주를 따로 세지 말고 이 함수들을 부른다. */
+const CAL_DOW = ['일','월','화','수','목','금','토'];
+const CAL_ORD = ['첫째','둘째','셋째','넷째','다섯째','여섯째'];
+const calDow = ds => parseYmd(ds).getDay();
+//  달력 한 주 { sun, sat }
+function calRowWeek(ds){ const sun = addDays(ds, -calDow(ds)); return { sun, sat: addDays(sun, 6) }; }
+//  주간 보기 범위 { mon, sun }
+function calViewWeek(ds){ const mon = addDays(ds, -((calDow(ds) + 6) % 7)); return { mon, sun: addDays(mon, 6) }; }
+//  회사 보고 기간 { mon, sat }: 그 날이 든 달력 한 주의 월~토. 주간보고 DB 의 period_start 는 mon.
+function calReportPeriod(ds){ const sun = calRowWeek(ds).sun; return { mon: addDays(sun, 1), sat: addDays(sun, 6) }; }
+//  월 격자(m 은 0부터) { from, to, weeks }: 1일이 든 주의 일요일부터 말일이 든 주의 토요일까지
+function calMonthGrid(y, m){
+  const first = new Date(y, m, 1), last = new Date(y, m + 1, 0), lead = first.getDay();
+  const from = addDays(ymd(first), -lead), weeks = Math.ceil((lead + last.getDate()) / 7);
+  return { from, to: addDays(from, weeks * 7 - 1), weeks };
+}
+//  주 제목 "m월 n째주": 보고 있는 달(vy, vm) + 일요일 시작 줄 번호(1일이 든 줄이 첫째). 달을 안 주면 그 주 월요일이 든 달.
+function calWeekTitle(ds, vy, vm){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(ds || '')) return '';
+  if(vy == null){ const d = parseYmd(calReportPeriod(ds).mon); vy = d.getFullYear(); vm = d.getMonth(); }
+  const r = Math.round(diffDays(calMonthGrid(vy, vm).from, calRowWeek(ds).sun) / 7);
+  return (vm + 1) + '월 ' + (CAL_ORD[r] || (r + 1) + '째') + '주';
+}
+//  글자 색 갈래: 일요일과 공휴일 'sun', 토요일 'sat', 그 밖에 ''
+function calTone(ds){ const w = calDow(ds); return (w === 0 || holidayOn(ds)) ? 'sun' : w === 6 ? 'sat' : ''; }
+//  칸 클래스. base = 화면의 칸 클래스('cell', 'at-day', 'pc-day'), o = { m: 보고 있는 달(0부터), today, sel }. 공용 칸 디자인 클래스 cal-c 를 늘 앞에 붙인다(CSS 는 .cal-c 블록 하나).
+//  o.m 이 있으면 다른 달 칸은 dim, 주말 틴트는 wknd-sun, wknd-sat.
+function calCellCls(ds, base, o){
+  o = o || {};
+  const w = calDow(ds);
+  return 'cal-c ' + base + (o.m != null && parseYmd(ds).getMonth() !== o.m ? ' dim' : '') + (ds === o.today ? ' today' : '') + (ds === o.sel ? ' sel' : '')
+    + (w === 0 ? ' wknd-sun' : w === 6 ? ' wknd-sat' : '');
+}
+//  날짜 숫자 클래스: 'num' + 일요일, 공휴일은 sun, 토요일은 sat
+function calNumCls(ds){ const t = calTone(ds); return 'num' + (t ? ' ' + t : ''); }
+//  칸의 읽어 주는 이름 "11월 2일 월요일, 공휴일, 오늘"
+function calAria(ds, today){ const d = parseYmd(ds), hol = holidayOn(ds); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + CAL_DOW[d.getDay()] + '요일' + (hol ? ', ' + hol : '') + (ds === today ? ', 오늘' : ''); }
+/* ---------- /공용 달력 ---------- */
+
 const intersects = (s1,e1,s2,e2) => s1 <= e2 && s2 <= e1;   // 'YYYY-MM-DD' 사전순 비교 유효
 const maxStr = (a,b) => a > b ? a : b;
 const minStr = (a,b) => a < b ? a : b;
@@ -5522,7 +5563,7 @@ function recurLabel(e){
   if(!e.recur) return '';
   const r = e.recur, d = parseYmd(e.date);
   const head = r.freq === 'weekly'
-    ? `${r.interval>1 ? r.interval+'주마다 ' : '매주 '}${WEEKDAYS[d.getDay()]}요일`
+    ? `${r.interval>1 ? r.interval+'주마다 ' : '매주 '}${CAL_DOW[d.getDay()]}요일`
     : `${r.interval>1 ? r.interval+'개월마다 ' : '매월 '}${d.getDate()}일`;
   const end = r.until ? `, ${fmtShort(r.until)}까지` : (r.count ? `, 총 ${r.count}회` : ', 계속');
   return head + end;
@@ -11453,7 +11494,7 @@ function renderAll(){ renderFilterbar(); renderGrid(); renderDayPanel(); }
 
 function renderWeekdays(){
   const wk = calView() === 'week';
-  const days = wk ? ['월','화','수','목','금','토','일'] : WEEKDAYS;
+  const days = wk ? CAL_DOW.slice(1).concat(CAL_DOW[0]) : CAL_DOW;
   $('#weekdays').innerHTML = days.map((w,i) =>
     `<div class="${wk ? (i===6?'sun':i===5?'sat':'') : (i===0?'sun':i===6?'sat':'')}" aria-hidden="true">${w}</div>`).join('');
   //  S2 — 나란히 보기의 오른쪽 달력도 제 요일 머리줄을 가진다(평소엔 감춰진 자리 · 같은 마크업).
@@ -11851,8 +11892,8 @@ function calView(){
 }
 function calWeekRange(anchor){
   const ds = /^\d{4}-\d{2}-\d{2}$/.test(anchor || '') ? anchor : todayYmd();
-  const from = addDays(ds, -((parseYmd(ds).getDay() + 6) % 7));
-  return { from, to: addDays(from, 6), weeks: 1 };
+  const w = calViewWeek(ds);
+  return { from: w.mon, to: w.sun, weeks: 1 };
 }
 //  제목은 월간도 주간도 "YYYY년 M월" 이다. 주간은 그 주 월요일이 든 달(docs/NAV-LAYOUT-C.md). 그래서 보기를 바꿔도 제목 폭이 같다.
 function calTitleLabel(){
@@ -11951,15 +11992,10 @@ function renderGrid(){
 //  달력 하나를 g 에 그린다. pick(e) = 이 달력에 실을 일정(없으면 전부) · opts.todos = 할 일 칩 · opts.roving = 키보드 roving tabindex(왼쪽 달력만, S11)
 //  · opts.sideOvl = 시간 겹침 점을 **두 달력의 기록을 합쳐** 판정한다(나란히 보기 S8 — 한 달력에는 한 사람 것뿐이라 칸 안 목록으로는 못 센다).
 function renderMonthGrid(g, dens, pick, opts){
-  const first = new Date(view.y, view.m, 1);
-  const start = new Date(view.y, view.m, 1 - first.getDay());
   const tY = todayYmd();
   // 실제 필요한 주 수만 렌더(5주 달에 6행 필러 낭비 제거 — 좁은 위젯의 세로 17% 회수)
-  const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
-  const totalCells = Math.ceil((first.getDay() + daysInMonth) / 7) * 7;
-
-  const startDs = ymd(start);
-  const endDs   = addDays(startDs, totalCells - 1);
+  const G = calMonthGrid(view.y, view.m), totalCells = G.weeks * 7;
+  const startDs = G.from, endDs = G.to;
   const byDate = {};
   const ranges = [];   // 멀티데이 막대 {key,start,end} — 레인 배치용(겹치는 기간을 셀 간 같은 행에 고정)
   for(const e of state.entries){
@@ -11973,7 +12009,7 @@ function renderMonthGrid(g, dens, pick, opts){
       for(let d = a; d <= b; d = addDays(d, 1)){
         const seg = single ? 'single' : (d === occ._occStart ? 'start' : (d === occ._occEnd ? 'end' : 'mid'));
         (byDate[d] = byDate[d] || []).push({ occ, seg, _key:key,
-          weekStart: parseYmd(d).getDay() === 0,   // 주가 바뀌면 막대에 제목 재표기(무명 색줄 방지)
+          weekStart: calDow(d) === 0,   // 주가 바뀌면 막대에 제목 재표기(무명 색줄 방지)
           clipLeft:  (d === startDs && occ._occStart < startDs),
           clipRight: (d === endDs   && occ._occEnd   > endDs) });
       }
@@ -11993,7 +12029,7 @@ function renderMonthGrid(g, dens, pick, opts){
       for(let d = a; d <= b; d = addDays(d, 1)){
         const seg = single ? 'single' : (d === t.due ? 'start' : (d === tEnd ? 'end' : 'mid'));
         (byDate[d] = byDate[d] || []).push({ todoItem:t, _occStart:t.due, seg, _key:key,
-          weekStart: parseYmd(d).getDay() === 0,
+          weekStart: calDow(d) === 0,
           clipLeft:  (d === startDs && t.due < startDs),
           clipRight: (d === endDs   && tEnd   > endDs) });
       }
@@ -12060,25 +12096,16 @@ function renderMonthGrid(g, dens, pick, opts){
   let tabDs = focusDs || selectedDate;
   if(tabDs < startDs || tabDs > endDs) tabDs = (tY >= startDs && tY <= endDs) ? tY : startDs;
   if(opts.roving) focusDs = tabDs;
-  const DOW_K = ['일','월','화','수','목','금','토'];
   //  S8 — 나란히 보기: 그날 그 사람 ↔ 내 시간 일정이 겹치면 **두 달력의 그 칸 모두**에 점.
   const ovlDays = opts.sideOvl ? peerOverlapDays(startDs, endDs) : null;
 
   let html = '';
   for(let i=0;i<totalCells;i++){
     if(i % 7 === 0) html += '<div class="gridrow" role="row">';
-    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate()+i);
-    const ds = ymd(d);
-    const inMonth = d.getMonth() === view.m;
-    const dow = d.getDay();
+    const ds = addDays(startDs, i), d = parseYmd(ds);
     const hol = holidayOn(ds);
-    let cls = 'cell';
-    if(!inMonth) cls += ' dim';
-    if(ds === tY) cls += ' today';
-    if(ds === selectedDate) cls += ' sel';
-    if(dow===0) cls += ' wknd-sun'; else if(dow===6) cls += ' wknd-sat';   // D. 주말 컬럼 틴트
-    let numCls = 'num';
-    if(dow===0 || hol) numCls += ' sun'; else if(dow===6) numCls += ' sat';
+    const cls = calCellCls(ds, 'cell', { m: view.m, today: tY, sel: selectedDate });   // D. 주말 컬럼 틴트 포함
+    const numCls = calNumCls(ds);
     const list = byDate[ds] || [];
     // C. 칩을 (성능상 최대 12개까지) 렌더 → fitChips가 셀 높이에 맞춰 들어갈 만큼만 표시하고 나머지는 +N으로 접음
     const RENDER_CAP = dens === 'expand' ? 60 : 12;
@@ -12094,8 +12121,7 @@ function renderMonthGrid(g, dens, pick, opts){
     //  O5 — 그날 상대 ↔ 내 시간 일정이 겹치면 날짜 옆에 작은 점(겹이 켜져 있고 내 일정이 있는 날만 따진다).
     const ovl = ovlDays ? ovlDays.has(ds) : (!!(PEER && __peerOverlay && L.mine)
       && Object.keys(peerTimeOverlaps(list.filter(it => it.occ).map(it => it.occ))).length > 0);
-    const aria = `${d.getMonth()+1}월 ${d.getDate()}일 ${DOW_K[dow]}요일`
-      + (hol ? `, ${hol}` : '') + (ds === tY ? ', 오늘' : '')
+    const aria = calAria(ds, tY)
       + (list.length ? `, 기록 ${list.length}건` : ', 기록 없음')
       + (ovl ? ', 시간이 겹치는 일정 있음' : '');
     const ovlDot = ovl ? '<span class="ovl-dot" role="img" aria-label="시간이 겹치는 일정이 있습니다" title="시간이 겹치는 일정이 있습니다"></span>' : '';
@@ -12222,17 +12248,13 @@ function barChipHtml(it, pos){
 }
 function renderMonthBars(g, dens, pick, opts){
   const o = opts || { todos: true, roving: true, sideOvl: false };
-  const first = new Date(view.y, view.m, 1);
-  const startDs = ymd(new Date(view.y, view.m, 1 - first.getDay()));
-  const weeks = Math.ceil((first.getDay() + new Date(view.y, view.m + 1, 0).getDate()) / 7);
-  const endDs = addDays(startDs, weeks * 7 - 1);
+  const G = calMonthGrid(view.y, view.m), startDs = G.from, weeks = G.weeks, endDs = G.to;
   const tY = todayYmd();
   const all = pmMonthItems(startDs, endDs, pick, o);
   let tabDs = focusDs || selectedDate;   // 키보드 포커스(roving tabindex) 대상 칸, renderMonthGrid 와 같은 규칙
   if(tabDs < startDs || tabDs > endDs) tabDs = (tY >= startDs && tY <= endDs) ? tY : startDs;
   if(o.roving !== false) focusDs = tabDs;
   const RCAP = dens === 'expand' ? 60 : 12;   // 그리는 차선 한도(성능). 넘는 기록은 그 칸의 +N 에 든다
-  const DOW_K = ['일','월','화','수','목','금','토'];
   const cmp = (a, b) => entrySort(a.occ || a.todo, b.occ || b.todo);
   const ovlDays = (o.sideOvl || (PEER && __peerOverlay)) ? peerOverlapDays(startDs, endDs) : null;
   const mineItems = all.filter(x => x.mine);
@@ -12254,16 +12276,11 @@ function renderMonthBars(g, dens, pick, opts){
     html += `<div class="gridrow" role="row" data-from="${from}" data-lanes="${nL}" data-extra="${extra.join(',')}" style="grid-template-rows:${PM_HEAD}px${nL ? ` repeat(${nL}, 19px)` : ''} minmax(0,1fr)">`;
     for(let i = 0; i < 7; i++){
       const ds = addDays(from, i), d = parseYmd(ds);
-      const inMonth = d.getMonth() === view.m, dow = d.getDay(), hol = holidayOn(ds);
-      let cls = 'cell';
-      if(!inMonth) cls += ' dim';
-      if(ds === tY) cls += ' today';
-      if(ds === selectedDate) cls += ' sel';
-      if(dow === 0) cls += ' wknd-sun'; else if(dow === 6) cls += ' wknd-sat';
-      let numCls = 'num';
-      if(dow === 0 || hol) numCls += ' sun'; else if(dow === 6) numCls += ' sat';
+      const hol = holidayOn(ds);
+      const cls = calCellCls(ds, 'cell', { m: view.m, today: tY, sel: selectedDate });
+      const numCls = calNumCls(ds);
       const ovl = !!(ovlDays && ovlDays.has(ds));
-      const aria = `${d.getMonth()+1}월 ${d.getDate()}일 ${DOW_K[dow]}요일` + (hol ? `, ${hol}` : '') + (ds === tY ? ', 오늘' : '')
+      const aria = calAria(ds, tY)
         + (cnt[i] ? `, 기록 ${cnt[i]}건` : ', 기록 없음') + (ovl ? ', 시간이 겹치는 일정 있음' : '');
       const ovlDot = ovl ? '<span class="ovl-dot" role="img" aria-label="시간이 겹치는 일정이 있습니다" title="시간이 겹치는 일정이 있습니다"></span>' : '';
       html += `<div class="${cls}" data-date="${ds}" role="gridcell"${o.roving !== false ? ` tabindex="${ds === tabDs ? 0 : -1}"` : ''} aria-selected="${ds === selectedDate}" aria-label="${esc(aria)}" style="grid-column:${i + 1};grid-row:1 / -1">
@@ -12310,7 +12327,7 @@ function wrCatOf(it){ const x = it.occ || it.todo; return x ? x.categoryId : nul
 function wrMineKey(it){ const c = it.occ && it.occ._cat; return c && c.key ? String(c.key) : ''; }
 function renderWeekRows(g, part){
   const wr = calWeekRange(selectedDate), from = wr.from, to = wr.to;
-  const tY = todayYmd(), DOW_K = ['일','월','화','수','목','금','토'];
+  const tY = todayYmd();
   const cmp = (a, b) => entrySort(a.occ || a.todo, b.occ || b.todo);
   const all = pmMonthItems(from, to, null, { todos: true });
   const theirs = all.filter(x => !x.mine), mineAll = all.filter(x => x.mine);
@@ -12326,12 +12343,10 @@ function renderWeekRows(g, part){
   let html = '<div class="wr-table" role="presentation"><div class="wr-corner">과제</div><div class="wr-days" role="row">';
   for(let i = 0; i < 7; i++){
     const ds = addDays(from, i), d = parseYmd(ds), dow = d.getDay(), hol = holidayOn(ds);
-    let cls = 'cell wr-hd';
-    if(ds === tY) cls += ' today';
-    if(ds === selectedDate) cls += ' sel';
-    if(dow === 0 || hol) cls += ' sun'; else if(dow === 6) cls += ' sat';
-    const aria = `${d.getMonth()+1}월 ${d.getDate()}일 ${DOW_K[dow]}요일` + (hol ? `, ${hol}` : '') + (ds === tY ? ', 오늘' : '');
-    html += `<div class="${cls}" data-date="${ds}" role="columnheader"${part !== 'mine' ? ` tabindex="${ds === tabDs ? 0 : -1}"` : ''} aria-selected="${ds === selectedDate}" aria-label="${esc(aria)}"${hol ? ` title="${esc(hol)}"` : ''}>${DOW_K[dow]} <span class="num">${d.getDate()}</span></div>`;
+    let cls = calCellCls(ds, 'cell wr-hd', { today: tY, sel: selectedDate });   // 칸 디자인은 공용 .cal-c 블록(주말 틴트, 오늘 배지)
+    if(calTone(ds)) cls += ' ' + calTone(ds);
+    const aria = calAria(ds, tY);
+    html += `<div class="${cls}" data-date="${ds}" role="columnheader"${part !== 'mine' ? ` tabindex="${ds === tabDs ? 0 : -1}"` : ''} aria-selected="${ds === selectedDate}" aria-label="${esc(aria)}"${hol ? ` title="${esc(hol)}"` : ''}>${CAL_DOW[dow]} <span class="num">${d.getDate()}</span></div>`;
   }
   html += '</div>';
   //  한 과제 줄. groups 를 위에서 아래로 차선을 쌓는다(앞 묶음 차선 수만큼 뒤 묶음을 내린다). minN = 나란히 보기에서 반대편과 맞출 차선 수.
@@ -12345,8 +12360,8 @@ function renderWeekRows(g, part){
     const n = Math.max(off, minN || 0, 1);
     let cells = '';
     for(let i = 0; i < 7; i++){
-      const ds = addDays(from, i), dow = parseYmd(ds).getDay();
-      cells += `<div class="cell wr-c${ds === selectedDate ? ' sel' : ''}${dow === 0 ? ' wknd-sun' : dow === 6 ? ' wknd-sat' : ''}" data-date="${ds}" style="grid-column:${i + 1};grid-row:1 / -1"></div>`;
+      const ds = addDays(from, i);
+      cells += `<div class="${calCellCls(ds, 'cell wr-c', { sel: selectedDate })}" data-date="${ds}" style="grid-column:${i + 1};grid-row:1 / -1"></div>`;
     }
     return `<div class="wr-name${cls ? ' ' + cls : ''}" style="--c:${color}" title="${esc(name)}"><span data-full="${esc(name)}">${esc(name)}</span></div>`
       + `<div class="gridrow" role="row" data-from="${from}" style="grid-template-rows:3px repeat(${n}, 19px) minmax(4px,1fr)">${cells}${chips}</div>`;
@@ -12627,7 +12642,7 @@ function dayDetailHtml(){
   const dowCls = (dow===0||hol) ? 'sun' : (dow===6 ? 'sat' : '');
   let html = `<div class="dp-head">
     <div>
-      <div class="dp-date">${d.getMonth()+1}월 ${d.getDate()}일 <span class="dp-dow ${dowCls}">${WEEKDAYS[dow]}요일</span></div>
+      <div class="dp-date">${d.getMonth()+1}월 ${d.getDate()}일 <span class="dp-dow ${dowCls}">${CAL_DOW[dow]}요일</span></div>
       ${hol?`<div class="dp-hol">${ICON.flag} ${esc(hol)}</div>`:''}
       <div class="dp-count">${list.length ? `${list.length}개의 기록${filterCats !== null?' (필터 적용 중)':''}` : '기록 없음'}</div>
     </div>
@@ -16676,21 +16691,16 @@ async function clearAll(){
 }
 
 /* ---------- 보고서 초안 (기간 → 과제별 기록 묶음) ---------- */
-function weekRange(base, offsetWeeks){ // 월요일 시작 주(ISO) — 회사 주간보고가 월요일 기준
-  const back = (base.getDay() + 6) % 7;   // 월=0,화=1,…,일=6 → 이번 주 월요일까지 되돌릴 일수
-  const s = new Date(base.getFullYear(), base.getMonth(), base.getDate() - back + (offsetWeeks||0)*7);
-  const e = new Date(s.getFullYear(), s.getMonth(), s.getDate() + 6);   // 월~일(7일)
-  return [ymd(s), ymd(e)];
-}
 function monthRange(base, offsetMonths){
   const y = base.getFullYear(), m = base.getMonth() + (offsetMonths||0);
   return [ymd(new Date(y, m, 1)), ymd(new Date(y, m+1, 0))];
 }
+function calRowRange(ds){ const w = calRowWeek(ds); return [w.sun, w.sat]; }
 function setReportRange(preset){
   const t = new Date();
   const r = preset==='today' ? [todayYmd(), todayYmd()]
-    : preset==='thisweek'  ? weekRange(t, 0)
-    : preset==='lastweek'  ? weekRange(t, -1)
+    : preset==='thisweek'  ? calRowRange(todayYmd())                  // 달력 한 주(일~토)
+    : preset==='lastweek'  ? calRowRange(addDays(todayYmd(), -7))
     : preset==='thismonth' ? monthRange(t, 0)
     : preset==='lastmonth' ? monthRange(t, -1) : null;
   if(!r) return;
@@ -16715,7 +16725,7 @@ function reportDetailsHtml(meta){
   return lines.length ? `<div class="rtask-desc">${lines.map(esc).join('<br>')}</div>` : '';
 }
 // 기간 할일 dayNote 병합 접두 — "월 7/13"(요일 + M/D). 기간 보고에서 날짜별 dayNote를 날짜순 라인으로.
-function reportDayPrefix(dateYmd){ const d = parseYmd(dateYmd); return `${WEEKDAYS[d.getDay()]} ${d.getMonth()+1}/${d.getDate()}`; }
+function reportDayPrefix(dateYmd){ const d = parseYmd(dateYmd); return `${CAL_DOW[d.getDay()]} ${d.getMonth()+1}/${d.getDate()}`; }
 // 보고서 — 기간 할일 날짜별 dayNote 라인 HTML(주간/일간 공통). editable=true면 클릭 편집 개방(주간 제목은 여전히 읽기전용).
 // showPrefix=true(기간 보고)면 "요일 M/D" 접두, false(일간·from==to)면 원문만. editingDayNoteKey===todoId|date면 textarea.
 function reportDayLinesHtml(m, editable, showPrefix){
@@ -16879,7 +16889,7 @@ function buildCalendarExportMd(cat, from, to){
     if(h) return h + '시간';
     return r + '분';
   };
-  const koreanWeekday = d => WEEKDAYS[new Date(d + 'T00:00:00').getDay()];
+  const koreanWeekday = d => CAL_DOW[calDow(d)];
   const out = [];
   out.push('# 과제 데이터: ' + cat.name);
   out.push('- 기간: ' + from + ' ~ ' + to);
@@ -16966,8 +16976,8 @@ function setReportMode(mode){
     from.disabled = false; to.disabled = true; from.max = t; from.removeAttribute('min');
     const sep = $('#rptDateSep'); if(sep) sep.style.display = 'none'; to.style.display = 'none';
   } else if(mode === 'weekly'){
-    const r = weekRange(new Date(), 0); from.value = r[0]; to.value = r[1];
-    from.disabled = false; to.disabled = true;   // from 편집 → 고른 날짜의 그 주(월~일)로 스냅(과거주 가능). to는 계산값
+    const r = calReportPeriod(todayYmd()); from.value = r.mon; to.value = r.sat;
+    from.disabled = false; to.disabled = true;   // from 편집 → 고른 날짜의 그 주(월~토, 회사 보고 기간)로 스냅(과거주 가능). to는 계산값
     from.max = todayYmd(); from.removeAttribute('min'); { const sep = $('#rptDateSep'); if(sep) sep.style.display = ''; to.style.display = ''; }
   } else { // custom — 범위 직접 지정 가능, 전송은 비활성
     from.disabled = to.disabled = false;
@@ -17044,15 +17054,7 @@ function buildWeeklyFields(from, to, sources){
     return _pad + _pfx + t + reportTextDetails(m, _sub);   // 설명도 복사와 같은 함수로 — 미리보기에 있는 것이 전송에도 간다
   }).join('\n') : '-')).join('\n\n');
   const planwork = rows.map(r => `[${r.name}]`).join('\n');
-  return { content, endwork, planwork, subject: weekSubjectGuess(from) };
-}
-function weekSubjectGuess(from){
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(from); if(!m) return '';
-  const mon = Number(m[2]), day = Number(m[3]);
-  const firstDow = (new Date(m[1]*1, m[2]*1 - 1, 1).getDay() + 6) % 7;   // 그 달 1일의 요일(월=0)
-  const wk = Math.ceil((day + firstDow) / 7);                            // 1일이 낀 주 = 1주차
-  const ord = ['', '첫째', '둘째', '셋째', '넷째', '다섯째', '여섯째'][wk] || (wk + '째');
-  return `${mon}월 ${ord}주`;
+  return { content, endwork, planwork, subject: calWeekTitle(from) };
 }
 // ── netcus 주간 병합 파서(Phase2) — 순수 함수(전역·DOM 무의존 → Layer1 테스트 대상) ──
 // days=[{date:'YYYY-MM-DD', content:string, ok:bool}], categories=[{id,name}], opts={sumTime:false}
@@ -17774,7 +17776,7 @@ function rptWCompose(M, d){
   const planwork = anyPlan
     ? prows.map(r => { const b = _rptOwn(d.plan, r.k) ? reportEditedBodyOut(d.plan[r.k], U) : ''; return `[${r.name}]` + (b ? '\n' + b : ''); }).join('\n\n')
     : prows.map(r => `[${r.name}]`).join('\n');
-  const subject = weekSubjectGuess(M.from);   // 제목은 늘 자동(회사 폼과 같다). 초안에 제목이 있어도 쓰지 않는다
+  const subject = calWeekTitle(M.from);   // 제목은 늘 자동(회사 폼과 같다). 초안에 제목이 있어도 쓰지 않는다
   return { content, endwork, planwork, subject, liveCount: live.length };
 }
 // 지금 주간 모델(출처별). net 은 그 기간 병합 캐시가 있을 때만(전송 경로와 같은 대조).
@@ -17790,7 +17792,7 @@ function rptWModelNow(from, to){
 function rptWOutFields(from, to){
   const M = rptWModelNow(from, to); if(!M) return null;
   let base;
-  if(M.src === 'net'){ const p = netcusMerge.parsed; base = { content: buildNetcusHoursText(p), endwork: buildNetcusSendText(p), planwork: buildNetcusPlanText(p), subject: weekSubjectGuess(from) }; }
+  if(M.src === 'net'){ const p = netcusMerge.parsed; base = { content: buildNetcusHoursText(p), endwork: buildNetcusSendText(p), planwork: buildNetcusPlanText(p), subject: calWeekTitle(from) }; }
   else base = buildWeeklyFields(from, to, rptSources());
   if(!base) return null;
   const d = rptWDraftGet(from, to), L = rptWLive(M, d);
@@ -18548,8 +18550,7 @@ function renderNetcusPreview(parsed, at){
   if(st.unregistered) parts.push('미등록 ' + st.unregistered);
   parts.push(st.daysRead + '일 읽음');
   if(st.emptyDays.length){
-    const WD = ['일','월','화','수','목','금','토'];
-    parts.push('빈 날: ' + st.emptyDays.map(d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d); return m ? WD[new Date(+m[1], +m[2]-1, +m[3]).getDay()] : d; }).join('·'));
+    parts.push('빈 날: ' + st.emptyDays.map(d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d); return m ? CAL_DOW[calDow(d)] : d; }).join('·'));
   }
   if(st.readFailedDays && st.readFailedDays.length) parts.push('읽기 실패 ' + st.readFailedDays.length + '일');
   if(_weekly){ const _n = _wm.rows.filter(w => _wd.out.includes(w.k)).length; if(_n) parts.push(_n + '개 뺌'); if(_ngl) parts.push('묶은 과제 ' + _ngl.size + '개'); }
@@ -18965,8 +18966,7 @@ function rptMDays(from, to){
 function rptMPlanDefault(from, to){
   if(!_rptMValid(from) || !_rptMValid(to) || from > to) return { from: '', to: '' };
   const weeks = Math.max(1, Math.ceil(rptMDays(from, to) / 7));
-  let m = addDays(to, 1);
-  while(parseYmd(m).getDay() !== 1) m = addDays(m, 1);
+  const m = calViewWeek(addDays(to, 7)).mon;   // 실적 끝 다음 날 이후 첫 월요일
   return { from: m, to: addDays(m, weeks * 7 - 3) };
 }
 function rptMName(){ return (currentUser && currentUser.name) ? String(currentUser.name) : ''; }
@@ -21885,7 +21885,7 @@ function bind(){
   $('#rptFrom').addEventListener('change', () => {
     clearNetcusMerge(); clearNetcusWeeklyMerge();   // 기간 변경 → netcus 병합 캐시(일간·주간 둘 다) 무효화 — 캐시는 그 기간의 것일 때만 참이다
     if(reportMode === 'daily'){ $('#rptTo').value = $('#rptFrom').value; }
-    else if(reportMode === 'weekly'){ const v = $('#rptFrom').value; const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v); if(m){ const r = weekRange(new Date(+m[1], +m[2]-1, +m[3]), 0); $('#rptFrom').value = r[0]; $('#rptTo').value = r[1]; } }   // 주간: 고른 날짜를 그 주(월~일)로 스냅
+    else if(reportMode === 'weekly'){ const v = $('#rptFrom').value; const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v); if(m){ const r = calReportPeriod(v); $('#rptFrom').value = r.mon; $('#rptTo').value = r.sat; } }   // 주간: 고른 날짜를 그 주(월~토)로 스냅
     buildReport();
   });
   $('#rptTo').addEventListener('change', () => { clearNetcusMerge(); clearNetcusWeeklyMerge(); buildReport(); });
@@ -22438,7 +22438,7 @@ function atStatusLabel(status, overtime){
 //  보고한 글을 다시 열 때: 보낼 때 줄 앞 공백을 &nbsp; 로 바꿨으니 공백으로 되돌린다(§2.5).
 //    회사 근태관리에서 읽은 글(textarea 값)은 &nbsp; 가 U+00A0 으로 올 수 있어 그것도 보통 공백으로 바꾼다.
 function atDecode(content){ return String(content == null ? '' : content).replace(/&nbsp;/gi, ' ').replace(/ /g, ' ').replace(/\r\n?/g, '\n'); }
-function atDateLabel(date){ const d = parseYmd(date); return d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + WEEKDAYS[d.getDay()] + ')'; }
+function atDateLabel(date){ const d = parseYmd(date); return d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + CAL_DOW[d.getDay()] + ')'; }
 function atHHMM(iso){ const d = iso ? new Date(iso) : null; return (d && !isNaN(d)) ? pad(d.getHours()) + ':' + pad(d.getMinutes()) : ''; }
 //  보낸 시각(보기 화면): 'YYYY-MM-DD HH:MM'(이 PC 시각). 모르면 빈 값.
 function atSentLabel(iso){ const d = iso ? new Date(iso) : null; return (d && !isNaN(d)) ? ymd(d) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) : ''; }
@@ -22761,21 +22761,18 @@ function atRenderMonth(){
     + '<span class="at-sum" id="atSum" title="이 앱으로 보낸 보고만 셉니다. 회사 사이트에서 직접 쓴 보고는 여기 없습니다.">'
     + '<span>이 달 앱으로 보고 <b>' + nRep + '</b>일</span><span>초과 합계 <b>' + otSum + '</b>시간</span></span></div>'
     + note
-    + '<div class="weekdays" role="presentation">' + WEEKDAYS.map((w, i) => '<div class="' + (i === 0 ? 'sun' : i === 6 ? 'sat' : '') + '">' + w + '</div>').join('') + '</div>'
+    + '<div class="weekdays" role="presentation">' + CAL_DOW.map((w, i) => '<div class="' + (i === 0 ? 'sun' : i === 6 ? 'sat' : '') + '">' + w + '</div>').join('') + '</div>'
     + '<div class="at-gridwrap"><div class="at-grid" id="atGrid" role="grid" aria-label="근태 월 달력(날짜를 누르면 근태 보고)">';
   for(let i = 0; i < R.weeks * 7; i++){
-    const ds = addDays(R.from, i), d = parseYmd(ds), dw = d.getDay(), hol = holidayOn(ds) || '';
+    const ds = addDays(R.from, i), d = parseYmd(ds), hol = holidayOn(ds) || '';
     const row = ATT.rows.get(ds) || null, dr = attDraftGet(ds);
-    let cls = 'at-day';
-    if(d.getMonth() !== R.m) cls += ' dim';
-    if(ds === today) cls += ' today';
-    if(dw === 0) cls += ' wknd-sun'; else if(dw === 6) cls += ' wknd-sat';
+    const cls = calCellCls(ds, 'at-day', { m: R.m, today });
     const lab = row ? atStatusLabel(row.status, row.overtime) : '';
     const txt = row ? atDecode(row.content).replace(/\s+$/, '') : '';
     html += '<div class="' + cls + '" role="gridcell" tabindex="' + (ds === today ? 0 : -1) + '" data-date="' + ds + '"' + (row ? ' data-has="1"' : '')
-      + ' aria-label="' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + WEEKDAYS[dw] + '요일' + (hol ? ', ' + esc(hol) : '') + (ds === today ? ', 오늘' : '')
+      + ' aria-label="' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + CAL_DOW[d.getDay()] + '요일' + (hol ? ', ' + esc(hol) : '') + (ds === today ? ', 오늘' : '')
       + (row ? ', 보고함' + (lab ? ', ' + esc(lab) : '') : '') + (dr ? ', 작성 중' : '') + '">'
-      + '<div class="cell-top"><span class="num' + ((dw === 0 || hol) ? ' sun' : dw === 6 ? ' sat' : '') + '">' + d.getDate() + '</span>' + (hol ? '<span class="hol">' + esc(hol) + '</span>' : '') + '</div>'
+      + '<div class="cell-top"><span class="' + calNumCls(ds) + '">' + d.getDate() + '</span>' + (hol ? '<span class="hol">' + esc(hol) + '</span>' : '') + '</div>'
       + (lab ? '<span class="at-st">' + esc(lab) + '</span>' : '')
       + (txt ? '<div class="at-txt">' + esc(txt) + '</div>' : '')
       + (dr ? '<span class="at-drf">✎ 작성 중</span>' : '')
@@ -23776,15 +23773,14 @@ const AW_DRAFT_PREFIX = 'tc_attWDraft:';   // 키 = tc_attWDraft:<who>:<월요�
 const AW_DRAFT_KEEP_DAYS = 120;            // 편집 화면을 열 때 이보다 오래된 주의 임시 저장은 지운다(목록에 남은 옛 작성 중을 치운다)
 const AW_LIST_WEEKS = 52;                  // 목록 기간: 이번 주 월요일에서 52주 전부터 다음 주까지(371일, 호스트 상한 400일 안)
 const AW_HOURS_MAX = 168;                  // 과제투입시간 칸의 상한(한 주 = 168시간). 합계 검사는 하지 않는다
-const AW_ORD = ['첫째', '둘째', '셋째', '넷째', '다섯째', '여섯째'];   // weekSubjectGuess 와 같은 말
 const AW_PTAB_KEY = 'tc_attWPanelTab';      // 주간 편집 오른쪽 패널의 마지막 탭(미리보기 | 가져오기)
 //  목록(메인 창, 브라우저, 근태 창의 목록 화면). rows = 이 앱으로 작성한 주간보고 기록(DB), from, to = 읽은 범위.
 const AWL = { rows: [], from: '', to: '', loading: false, err: '', gen: 0 };
 //  편집 화면 상태. p = payload { kind:'week', mon, me, saved, projects }, base = 처음 상태(고쳤는지 판단의 기준).
-//    subj = 제목, subjAuto = 사람이 고치지 않았다(기간을 바꾸면 규칙대로 다시 정한다), picked = 주 고르기 달력에서 고른 제목.
+//    subj = 제목(고칠 수 없다. 주 고르기 달력에서 고른 제목, 아니면 완료한 주의 기록 제목, 아니면 calWeekTitle), picked = 주 고르기 달력에서 고른 제목.
 //    prog, plan = 진행사항, 차주계획 글(결정 14), hrs = 과제투입시간 과제명 목록, hours = 과제명 → 시간, meet = 회의내용.
 //    gen = 주를 바꿀 때마다 늘린다(늦게 온 가져오기 회신을 버린다). daily = 이번 주 일간 보고(진행사항 과제를 더할 때 시간 칸의 처음 값).
-const AWE = { p: null, mon: '', base: null, subj: '', subjAuto: true, picked: '', prog: '', plan: '', hrs: [], hours: {}, meet: '',
+const AWE = { p: null, mon: '', base: null, subj: '', picked: '', prog: '', plan: '', hrs: [], hours: {}, meet: '',
   ptab: 'pv', pvT: null, sending: false, armed: false, timer: null, wd: null, savedAt: '', gen: 0, busy: false,
   cal: { open: false, y: 0, m: 0 }, add: '', daily: { mon: '', rows: null }, nav: false, showErr: false };
 //  근태 창의 화면('day' 일간 보고 | 'wlist' 주간 목록 | 'wedit' 주간 편집)과 받은 신원, 과제 목록(주간 목록에서 다른 주를 열 때 쓴다).
@@ -23792,19 +23788,10 @@ const ATW = { view: 'day', ctx: { me: null, projects: [] } };
 const __awDraftMem = new Map();            // 저장소가 막혔을 때만 쓰는 메모리본(일간 __attDraftMem 과 같다)
 const __awSentSig = new Map();             // 월요일 → 폼을 채워 보낸 상태의 모양. DB 저장 알림이 오면 이 모양 그대로인 임시 저장만 지운다
 
-//  날짜: 한 주 = 월요일 ~ 일요일(§13.2).
-function awMonOf(d){ const t = parseYmd(d); return addDays(d, -((t.getDay() + 6) % 7)); }
-function awIsMon(s){ return atIsYmd(s) && parseYmd(s).getDay() === 1; }
+//  날짜: 한 주 = 달력 한 줄(일~토), 회사 보고 기간 = 그 줄의 월~토, DB 키(period_start)는 월요일(§13.2, 공용 달력 docs/CALENDAR-COMMON.md).
+function awIsMon(s){ return atIsYmd(s) && calDow(s) === 1; }
 function awMD(s){ return Number(s.slice(5, 7)) + '/' + Number(s.slice(8, 10)); }
-function awPeriodLabel(mon){ return awMD(mon) + ' ~ ' + awMD(addDays(mon, 6)); }
-//  주 고르기 달력의 줄(월요일 시작). 그달 1일이 든 줄부터, 월요일이 그달인 줄까지(9월 달력의 마지막 줄 = 10월 달력의 첫 줄일 수 있다).
-function awMonthRows(y, m){
-  const first = new Date(y, m, 1), start = addDays(ymd(first), -((first.getDay() + 6) % 7)), rows = [];
-  for(let r = 0; r < 6; r++){ const mon = addDays(start, r * 7); if(r > 0 && parseYmd(mon).getMonth() !== m) break; rows.push(mon); }
-  return rows;
-}
-//  달력에서 고른 제목: 그 달 달력의 몇째 줄(같은 주라도 9월 달력 마지막 줄 = 9월 다섯째주, 10월 달력 첫 줄 = 10월 첫째주, 결정 13).
-function awPickTitle(m, r){ return (m + 1) + '월 ' + (AW_ORD[r] || (r + 1) + '째') + '주'; }
+function awPeriodLabel(mon){ return awMD(mon) + ' ~ ' + awMD(calReportPeriod(mon).sat); }
 
 /* ── 순수: 조립, 되살리기(시험 대상) ──
  *  결정 14(2026-10-30): 진행사항(prog), 차주계획(plan)은 자유 글이다. 과제투입시간은 진행사항과 따로 움직이는 목록이다:
@@ -23897,13 +23884,13 @@ function awProjects(){
 function awProjNames(){ return awProjects().map(x => x.name); }
 function awProjColor(name){ const x = awProjects().find(p => p.name === name); return x ? x.color : validColor(''); }
 function awDraftKey(mon){ return AW_DRAFT_PREFIX + awWho() + ':' + mon; }
-//  v2(결정 14) = { v:2, subj, subjAuto, picked, prog:'글', plan:'글', hrs:[과제명], hours:{과제명: 시간}, meet, savedAt }. 과제는 이름으로 저장한다.
+//  v2(결정 14) = { v:2, subj, picked, prog:'글', plan:'글', hrs:[과제명], hours:{과제명: 시간}, meet, savedAt }. 과제는 이름으로 저장한다.
 //  v1(결정 13 의 블록) = { v:1, prog:[{name, text}], plan:[...], hours, ... }: 블록을 `[과제명]` 글로 바꾸고, 진행사항 블록의 과제를 과제투입시간 목록으로 옮긴다.
 function awDraftNorm(o){
   if(!o || typeof o !== 'object' || (o.v !== 1 && o.v !== 2)) return null;
   const hours = {};
   if(o.hours && typeof o.hours === 'object') for(const k of Object.keys(o.hours)){ const n = Number(o.hours[k]); if(isFinite(n)) hours[k] = n; }
-  const base = { v: 2, subj: String(o.subj == null ? '' : o.subj), subjAuto: o.subjAuto !== false, picked: String(o.picked || ''), hours,
+  const base = { v: 2, subj: o.picked ? String(o.subj == null ? '' : o.subj) : '', picked: String(o.picked || ''), hours,
                  meet: String(o.meet == null ? '' : o.meet), savedAt: typeof o.savedAt === 'string' ? o.savedAt : '' };
   if(o.v === 2) return Object.assign(base, { prog: String(o.prog == null ? '' : o.prog), plan: String(o.plan == null ? '' : o.plan),
                                              hrs: (Array.isArray(o.hrs) ? o.hrs : []).filter(n => typeof n === 'string') });
@@ -23920,7 +23907,7 @@ function awDraftGet(mon){
 function awDraftPut(mon, s){
   if(PEER || !awIsMon(mon) || !s) return null;
   const k = awDraftKey(mon);
-  const v = { v: 2, subj: String(s.subj || ''), subjAuto: s.subjAuto !== false, picked: String(s.picked || ''), prog: String(s.prog || ''), plan: String(s.plan || ''),
+  const v = { v: 2, subj: String(s.subj || ''), picked: String(s.picked || ''), prog: String(s.prog || ''), plan: String(s.plan || ''),
               hrs: (s.hrs || []).slice(), hours: awHoursFor(s.hrs, s.hours), meet: String(s.meet || ''), savedAt: new Date().toISOString() };
   try{ localStorage.setItem(k, JSON.stringify(v)); __awDraftMem.delete(k); return v; }
   catch(_){ __awDraftMem.set(k, v); return null; }
@@ -23967,7 +23954,7 @@ function awRowNorm(x){
   const ps = String(x.periodStart || '').slice(0, 10);
   if(!awIsMon(ps)) return null;   // 한 주 = 월~일. 월요일에 시작하지 않는 옛 기록(보고서 창의 아무 기간)은 이 목록에 넣지 않는다
   const s = k => String(x[k] == null ? '' : x[k]);
-  return { periodStart: ps, periodEnd: atIsYmd(s('periodEnd').slice(0, 10)) ? s('periodEnd').slice(0, 10) : addDays(ps, 6),
+  return { periodStart: ps, periodEnd: atIsYmd(s('periodEnd').slice(0, 10)) ? s('periodEnd').slice(0, 10) : calReportPeriod(ps).sat,
            subject: s('subject'), content: s('content'), endwork: s('endwork'), plan: s('plan'), meeting: s('meeting'), composedAt: s('composedAt'),
            //  과제투입시간 줄(결정 14). 시간 표가 없는 DB(호스트가 hours 를 싣지 않음)면 null 이고, 그때는 글(content)에서 되살린다
            hours: Array.isArray(x.hours) ? x.hours.filter(h => h && typeof h === 'object' && h.name != null)
@@ -23982,7 +23969,7 @@ function awListItems(){
   const items = [...map.values()].sort((a, b) => a.mon < b.mon ? 1 : a.mon > b.mon ? -1 : 0);
   items.forEach((it, i) => {
     it.no = items.length - i;
-    it.title = (it.draft && it.draft.subj) || (it.row && it.row.subject) || weekSubjectGuess(it.mon);
+    it.title = (it.draft && it.draft.subj) || (it.row && it.row.subject) || calWeekTitle(it.mon);
     it.status = it.draft ? 'draft' : 'done';
     const at = it.row && it.row.composedAt ? new Date(it.row.composedAt) : (it.draft && it.draft.savedAt ? new Date(it.draft.savedAt) : null);
     it.date = at && !isNaN(at) ? ymd(at) : '';
@@ -23990,7 +23977,7 @@ function awListItems(){
   return items;
 }
 async function awListLoad(){
-  const mon = awMonOf(todayYmd()), from = addDays(mon, -7 * AW_LIST_WEEKS), to = addDays(mon, 7);
+  const mon = calReportPeriod(todayYmd()).mon, from = addDays(mon, -7 * AW_LIST_WEEKS), to = addDays(mon, 7);
   if(!HOST || PEER || (SUBWIN && !ATTENDWIN)){ awListRender(); return; }
   const g = ++AWL.gen;
   AWL.loading = true; awListRender();
@@ -24027,7 +24014,7 @@ function awListRender(){
   box.innerHTML = html;
 }
 //  [작성] = 이번 주(이미 목록에 있으면 그 주를 연다. 같은 주 글을 두 번 만들지 않는다, §13.1).
-function awNewWeek(){ awOpen(awMonOf(todayYmd())); }
+function awNewWeek(){ awOpen(calReportPeriod(todayYmd()).mon); }
 //  목록의 행이나 [작성]. 위젯 메인 창은 근태 창을 주간 모드로 열고(attendOpen, kind 'week'), 브라우저와 근태 창은 그 자리에서 편집 화면으로 바꾼다.
 async function awOpen(mon){
   if(PEER || (SUBWIN && !ATTENDWIN) || !awIsMon(mon)) return;
@@ -24068,22 +24055,22 @@ function awNormPayload(o){
 }
 
 /* ── 편집 화면 열기 ── */
-function awEmpty(mon, picked){ return { subj: picked || weekSubjectGuess(mon), subjAuto: true, picked: picked || '', prog: '', plan: '', hrs: [], hours: {}, meet: '' }; }
+function awEmpty(mon, picked){ return { subj: picked || calWeekTitle(mon), picked: picked || '', prog: '', plan: '', hrs: [], hours: {}, meet: '' }; }
 //  완료한 주(DB 기록)를 편집 상태로 되살린다. 제목은 달력에서 막 고른 것이 있으면 그것, 아니면 기록의 제목.
 function awFromSaved(sv, names, mon, picked){
-  const guess = weekSubjectGuess(mon), subj = picked || sv.subject || guess;
+  const subj = picked || sv.subject || calWeekTitle(mon);
   //  과제투입시간: 시간 줄(DB 표)이 있으면 그것 그대로, 없으면(옛 기록, 표가 없는 DB) 글(content)의 `[과제] : 시간` 줄에서.
   let hrs, hours = {};
   if(Array.isArray(sv.hours) && sv.hours.length){ hrs = sv.hours.map(h => h.name); for(const h of sv.hours) hours[h.name] = h.hours; }
   else { hours = awParseHours(sv.content); hrs = Object.keys(hours); }
-  return { subj, subjAuto: !!picked || !sv.subject || sv.subject === guess, picked: picked || '',
+  return { subj, picked: picked || '',
            prog: atDecode(sv.endwork).replace(/\s+$/, ''), plan: atDecode(sv.plan).replace(/\s+$/, ''), hrs: awSortHrs(hrs, names), hours, meet: atDecode(sv.meeting).replace(/\s+$/, '') };
 }
 function awCur(){
-  return { subj: AWE.subj, subjAuto: AWE.subjAuto, picked: AWE.picked, prog: AWE.prog, plan: AWE.plan, hrs: AWE.hrs.slice(), hours: Object.assign({}, AWE.hours), meet: AWE.meet };
+  return { subj: AWE.subj, picked: AWE.picked, prog: AWE.prog, plan: AWE.plan, hrs: AWE.hrs.slice(), hours: Object.assign({}, AWE.hours), meet: AWE.meet };
 }
 function awApply(s){
-  AWE.subj = String(s.subj || ''); AWE.subjAuto = s.subjAuto !== false; AWE.picked = String(s.picked || '');
+  AWE.subj = String(s.subj || ''); AWE.picked = String(s.picked || '');
   AWE.prog = String(s.prog || ''); AWE.plan = String(s.plan || '');
   AWE.hrs = awSortHrs(s.hrs, awProjNames()); AWE.hours = Object.assign({}, s.hours || {}); AWE.meet = String(s.meet || '');
 }
@@ -24115,8 +24102,8 @@ function awEdOpen(raw, opt){
   AWE.base.hrs = awSortHrs(AWE.base.hrs, names);
   let dr = awDraftGet(p.mon);
   if(dr){
-    dr = Object.assign({}, dr, { hrs: awSortHrs(dr.hrs, names) });
-    if(picked && dr.subjAuto){ dr.subj = picked; dr.picked = picked; }
+    //  제목은 고칠 수 없다: 임시 저장의 제목은 주 고르기로 정한 것만 잇고, 아니면 처음 상태의 제목(옛 임시 저장의 손으로 고친 제목은 버린다)
+    dr = Object.assign({}, dr, { hrs: awSortHrs(dr.hrs, names), subj: picked || dr.picked || AWE.base.subj, picked: picked || dr.picked });
   }
   if(dr && awSig(dr) === awSig(AWE.base)){ awDraftDel(p.mon); dr = null; }   // 처음 상태와 같은 임시 저장은 남길 까닭이 없다
   awApply(dr || AWE.base);
@@ -24135,10 +24122,10 @@ async function awDailyLoad(force){
   const mon = AWE.mon, g = AWE.gen;
   if(!force && AWE.daily.mon === mon && AWE.daily.rows) return AWE.daily.rows;
   let r = null;
-  try{ r = await hostRequest('reportDailyList', { from: mon, to: addDays(mon, 6) }); }catch(_){ r = null; }
+  try{ r = await hostRequest('reportDailyList', { from: mon, to: calReportPeriod(mon).sat }); }catch(_){ r = null; }
   if(g !== AWE.gen) return null;
   if(!r || r.ok !== true || !Array.isArray(r.rows)) return null;
-  const rows = r.rows.map(atRowNorm).filter(x => x && x.date >= mon && x.date <= addDays(mon, 6));
+  const rows = r.rows.map(atRowNorm).filter(x => x && x.date >= mon && x.date <= calReportPeriod(mon).sat);
   AWE.daily = { mon, rows };
   return rows;
 }
@@ -24200,11 +24187,11 @@ async function awImpPlan(auto){
 }
 
 /* ── 그리기 ── */
-function awTitleText(){ return (AWE.subj || weekSubjectGuess(AWE.mon)) + ' (' + awMD(AWE.mon) + '~' + awMD(addDays(AWE.mon, 6)) + ')'; }
+function awTitleText(){ return (AWE.subj || calWeekTitle(AWE.mon)) + ' (' + awMD(AWE.mon) + '~' + awMD(calReportPeriod(AWE.mon).sat) + ')'; }
 function awRender(){
   if(!AWE.p) return;
   const t = $('#awTitle'); if(t) t.textContent = awTitleText();
-  const wb = $('#awWeekBtn'); if(wb) wb.textContent = AWE.mon + ' ~ ' + addDays(AWE.mon, 6) + ' ▾';
+  const wb = $('#awWeekBtn'); if(wb) wb.textContent = AWE.mon + ' ~ ' + calReportPeriod(AWE.mon).sat + ' ▾';
   const sj = $('#awSubj'); if(sj && sj.value !== AWE.subj) sj.value = AWE.subj;
   if(ATTENDWIN) document.title = '주간보고 ' + awTitleText();
   for(const [id, v] of [['awProg', AWE.prog], ['awPlan', AWE.plan], ['awMeet', AWE.meet]]){ const e = document.getElementById(id); if(e){ if(e.value !== v) e.value = v; atGrow(e); } }
@@ -24252,7 +24239,8 @@ function awSetBusy(on){
   if(!on && AWE.p){ awRender(); }
 }
 
-/* ── 주 고르기 달력(§13.2): 월요일 시작 줄을 누르면 그 주. 제목 = 그 달 달력의 몇째 줄 ── */
+/* ── 주 고르기 달력(§13.2): 일요일 시작 달력, 보고 있는 달의 월~토 날짜를 누르면 그 줄이 그 주. 제목 = 그 달 달력의 몇째 줄(calWeekTitle) ──
+   일요일 칸과 앞뒤 달 날짜는 흐리고 누를 수 없다. 걸친 주는 사용자가 달을 골라 정한다(7월 27~31 = 7월 다섯째주, 8월 1일 = 8월 첫째주). */
 function awCalToggle(on){
   if(on && (!AWE.p || AWE.sending || AWE.busy)) return;
   AWE.cal.open = !!on;
@@ -24266,22 +24254,33 @@ function awCalRender(){
   box.classList.toggle('hidden', !AWE.cal.open);
   if(btn) btn.setAttribute('aria-expanded', String(!!AWE.cal.open));
   if(!AWE.cal.open){ box.innerHTML = ''; return; }
-  const { y, m } = AWE.cal, rows = awMonthRows(y, m);
+  const { y, m } = AWE.cal, G = calMonthGrid(y, m), today = todayYmd();
+  let rows = '';
+  for(let r = 0; r < G.weeks; r++){
+    const sun = addDays(G.from, r * 7), per = calReportPeriod(sun), ttl = calWeekTitle(sun, y, m);
+    let tds = '', any = false;
+    for(let i = 0; i < 7; i++){
+      const ds = addDays(sun, i), hol = holidayOn(ds), inPer = ds >= per.mon && ds <= per.sat;
+      const ok = inPer && parseYmd(ds).getMonth() === m;   // 보고 있는 달의 월~토만 누른다
+      if(ok) any = true;
+      tds += '<td class="' + calCellCls(ds, 'cal-pkc', { m, today }) + (inPer ? ' inp' : '') + (ok ? '' : ' off') + '" data-pd="' + ds + '"' + (hol ? ' title="' + esc(hol) + '"' : '') + '>'
+        + '<span class="' + calNumCls(ds) + '">' + Number(ds.slice(8)) + '</span></td>';
+    }
+    const lab = '<td class="aw-clab">' + esc(CAL_ORD[r] + '주') + '</td>';
+    rows += any ? '<tr class="aw-cw' + (per.mon === AWE.mon ? ' sel' : '') + '" data-awpick="' + per.mon + '" data-awttl="' + esc(ttl) + '" tabindex="0" aria-label="' + esc(ttl) + ', ' + awPeriodLabel(per.mon) + '">' + lab + tds + '</tr>'
+      : '<tr>' + lab + tds + '</tr>';
+  }
   box.innerHTML = '<div class="aw-cmh"><button type="button" class="btn icon sm" data-awcm="-1" aria-label="이전 달" title="이전 달">‹</button><b>' + y + '년 ' + (m + 1) + '월</b>'
     + '<button type="button" class="btn icon sm" data-awcm="1" aria-label="다음 달" title="다음 달">›</button></div>'
-    + '<table class="aw-ct"><thead><tr><th></th>' + ['월', '화', '수', '목', '금', '토', '일'].map(w => '<th>' + w + '</th>').join('') + '</tr></thead><tbody>'
-    + rows.map((mon, r) => { const ttl = awPickTitle(m, r);
-        return '<tr class="aw-cw' + (mon === AWE.mon ? ' sel' : '') + '" data-awpick="' + mon + '" data-awttl="' + esc(ttl) + '" tabindex="0" aria-label="' + esc(ttl) + ', ' + awPeriodLabel(mon) + '">'
-          + '<td class="aw-clab">' + esc((AW_ORD[r] || '') + '주') + '</td>'
-          + [0, 1, 2, 3, 4, 5, 6].map(k => { const d = addDays(mon, k); return '<td' + (parseYmd(d).getMonth() !== m ? ' class="o"' : '') + '>' + Number(d.slice(8)) + '</td>'; }).join('') + '</tr>'; }).join('')
-    + '</tbody></table>';
+    + '<table class="cal-pk"><thead><tr><th></th>' + CAL_DOW.map((w, i) => '<th class="' + (i === 0 ? 'sun' : i === 6 ? 'sat' : '') + '">' + w + '</th>').join('') + '</tr></thead><tbody>'
+    + rows + '</tbody></table>';
 }
-//  달력에서 주를 골랐다. 같은 주면 제목만 그 달 기준으로 바꾸고(손으로 고친 제목도 바꾼다. 같은 주를 다시 고르는 것은 그 달 기준으로 하겠다는 뜻이다), 다른 주면 그 주를 연다(쓰던 글은 먼저 임시 저장).
+//  달력에서 주를 골랐다. 같은 주면 제목만 그 달 기준으로 바꾸고(같은 주를 다시 고르는 것은 그 달 기준으로 하겠다는 뜻이다), 다른 주면 그 주를 연다(쓰던 글은 먼저 임시 저장).
 function awCalPick(mon, ttl){
   AWE.cal.open = false; awCalRender();
   if(!awIsMon(mon) || !ttl) return;
   if(mon === AWE.mon){
-    AWE.subj = ttl; AWE.subjAuto = true; AWE.picked = ttl;
+    AWE.subj = ttl; AWE.picked = ttl;
     awRender(); awOnEdit();
     return;
   }
@@ -24391,11 +24390,11 @@ function awPvSchedule(){ clearTimeout(AWE.pvT); AWE.pvT = setTimeout(awPvRender,
 function awPvRender(){
   clearTimeout(AWE.pvT); AWE.pvT = null;
   const box = $('#awNf'); if(!box || !AWE.p) return;
-  const s = awCur(), c = awCompose(s), sun = addDays(AWE.mon, 6), me = (AWE.p && AWE.p.me) || ATW.ctx.me || null;
+  const s = awCur(), c = awCompose(s), sat = calReportPeriod(AWE.mon).sat, me = (AWE.p && AWE.p.me) || ATW.ctx.me || null;
   const cell = (k, v) => '<tr><th>' + k + '</th><td><div class="nf-box' + (v ? '' : ' empty') + '" data-nf="' + esc(k.replace(/<br>/g, '')) + '">' + esc(v) + '</div></td></tr>';
   box.innerHTML = '<div class="nf-who">' + esc((me && me.name) || '') + '</div><table class="nf-t">'
-    + '<tr><th>기간</th><td><span class="nf-in">' + AWE.mon + '</span> ~ <span class="nf-in">' + sun + '</span></td></tr>'
-    + '<tr><th>제목</th><td><span class="nf-in nf-subj">' + esc(s.subj || weekSubjectGuess(AWE.mon)) + '</span></td></tr>'
+    + '<tr><th>기간</th><td><span class="nf-in">' + AWE.mon + '</span> ~ <span class="nf-in">' + sat + '</span></td></tr>'
+    + '<tr><th>제목</th><td><span class="nf-in nf-subj">' + esc(s.subj || calWeekTitle(AWE.mon)) + '</span></td></tr>'
     + cell('진행사항', c.endwork) + cell('과제<br>투입시간', c.content) + cell('미처리사항', '') + cell('차주계획', c.planwork)
     + cell('문제점 및<br>건의사항', '') + cell('회의내용', c.resultwork) + '</table>';
 }
@@ -24436,7 +24435,7 @@ function awBuildSubmit(){
   const s = awCur(), c = awCompose(s);
   //  hours = 보고 기록용 과제투입시간 구조(결정 14). 회사 폼에는 쓰지 않고(폼은 content 글) cal_report_weekly_hours 에만 남는다.
   return { __tc: 'netcus-report', v: 1, kind: 'weekly',
-           fields: { sdate: AWE.mon, edate: addDays(AWE.mon, 6), subject: s.subj.trim() || weekSubjectGuess(AWE.mon), content: c.content,
+           fields: { sdate: AWE.mon, edate: calReportPeriod(AWE.mon).sat, subject: s.subj.trim() || calWeekTitle(AWE.mon), content: c.content,
                      endwork: reportEditedBodyOut(c.endwork, '&nbsp;'), planwork: reportEditedBodyOut(c.planwork, '&nbsp;'), resultwork: reportEditedBodyOut(c.resultwork, '&nbsp;') },
            hours: awHoursPayload(s.hrs, s.hours, awProjects()) };
 }
@@ -24503,7 +24502,7 @@ window.__reportWeeklySaved = function(o){
   if(AWE.p && AWE.mon === mon){
     const c = awCompose(AWE.base || awCur());
     const b = AWE.base || awCur();
-    AWE.p.saved = { periodStart: mon, periodEnd: addDays(mon, 6), subject: b.subj, content: c.content, endwork: c.endwork, plan: c.planwork, meeting: c.resultwork, composedAt: new Date().toISOString(),
+    AWE.p.saved = { periodStart: mon, periodEnd: calReportPeriod(mon).sat, subject: b.subj, content: c.content, endwork: c.endwork, plan: c.planwork, meeting: c.resultwork, composedAt: new Date().toISOString(),
                     hours: awHoursPayload(b.hrs, b.hours, awProjects()) };
     if(!awDirty()){ AWE.savedAt = ''; awSavedRender(); }
     awSentRender();
@@ -24600,11 +24599,8 @@ function awInit(){
       if(t.id === 'awProg'){ AWE.prog = t.value; atGrow(t); awOnEdit(); return; }
       if(t.id === 'awPlan'){ AWE.plan = t.value; atGrow(t); awOnEdit(); return; }
       if(t.id === 'awMeet'){ AWE.meet = t.value; atGrow(t); awOnEdit(); return; }
-      if(t.id === 'awSubj'){ AWE.subj = t.value; AWE.subjAuto = false; const tt = $('#awTitle'); if(tt) tt.textContent = awTitleText(); awOnEdit(); return; }
       if(t.id === 'awAddQ') awAddRender();
     });
-    //  제목을 비우고 떠나면 규칙대로 다시 정한다(빈 제목은 회사 폼이 받지 않는다).
-    on('awSubj', 'change', ev => { if(!ev.target.value.trim()){ AWE.subjAuto = true; AWE.subj = AWE.picked || weekSubjectGuess(AWE.mon); awRender(); awOnEdit(); } });
     ed.addEventListener('focusout', ev => { const t = ev.target; if(t.dataset && t.dataset.wh != null) awHoursBlur(t); });
     ed.addEventListener('wheel', ev => { const t = ev.target; if(t && t.dataset && t.dataset.wh != null && t === document.activeElement) ev.preventDefault(); }, { passive: false });
     ed.addEventListener('keydown', ev => {
@@ -24623,7 +24619,7 @@ function awInit(){
       if(c('#awAddNone')){ awAddAll(false); return; }
       if(c('#awAddDone')){ awAddOpen(''); const a = document.querySelector('#awEd [data-awadd="hours"]'); if(a) try{ a.focus({ preventScroll: true }); }catch(_){} return; }
       if((b = c('[data-awcm]'))){ awCalMove(Number(b.dataset.awcm)); return; }
-      if((b = c('tr[data-awpick]'))){ awCalPick(b.dataset.awpick, b.dataset.awttl); return; }
+      if((b = c('tr[data-awpick]'))){ if(!c('td.off')) awCalPick(b.dataset.awpick, b.dataset.awttl); return; }
       if((b = c('[data-awtab]')) && !b.disabled){ awPTabSet(b.dataset.awtab, true); return; }
     });
     on('awAddNew', 'click', awCatNew);
@@ -24697,7 +24693,6 @@ const PCAL = {
   mb: { uid: '', status: '', err: '', groups: [], total: 0, gen: 0 },   // 참여자 명단 창(기획 §6.9). 열 때마다 읽고 기억하지 않는다
   resizeT: 0,
 };
-const PC_DOW = ['일', '월', '화', '수', '목', '금', '토'];
 //  이 화면만 쓰는 단색 글리프(ICON 과 같은 svgIc). 메모 있음, 최근 변경, 목록 펼침.
 const PC_IC = {
   memo: svgIc('<path d="M5 6h14M5 11h14M5 16h9"/>', 2.2),
@@ -24748,15 +24743,12 @@ function pcMonthCap(weekH, lanes){
 //  월간 범위: 그 달 1일이 든 주의 일요일부터 마지막 날이 든 주의 토요일까지.
 function pcMonthRange(anchor){
   const d = parseYmd(anchor), y = d.getFullYear(), m = d.getMonth();
-  const first = new Date(y, m, 1), last = new Date(y, m + 1, 0);
-  const from = addDays(ymd(first), -first.getDay());
-  const weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
-  return { from, to: addDays(from, weeks * 7 - 1), weeks, y, m };
+  return Object.assign(calMonthGrid(y, m), { y, m });
 }
 //  주간 범위: 월요일부터 일요일까지(기획 §6.6 기본값).
 function pcWeekRange(anchor){
-  const from = addDays(anchor, -((parseYmd(anchor).getDay() + 6) % 7));
-  return { from, to: addDays(from, 6), weeks: 1 };
+  const w = calViewWeek(anchor);
+  return { from: w.mon, to: w.sun, weeks: 1 };
 }
 //  저장해 둔 화면 설정을 고친다. sel 은 배열이면 그 선택(빈 배열 = 아무것도 안 봄), 아니면 null(설정 없음 = 전체).
 function pcPrefsNorm(raw){
@@ -24803,7 +24795,7 @@ function pcOccurrences(evs, from, to){
 function pcRecurText(e){
   if(!e || !e.recurFreq) return '';
   const d = parseYmd(e.startDate);
-  return e.recurFreq === 'weekly' ? '매주 ' + PC_DOW[d.getDay()] + '요일' : '매월 ' + d.getDate() + '일';
+  return e.recurFreq === 'weekly' ? '매주 ' + CAL_DOW[d.getDay()] + '요일' : '매월 ' + d.getDate() + '일';
 }
 //  폼 값 → 저장 요청의 event(호스트 ValidateFields 와 같은 모양). 제목과 장소는 앞뒤 공백만 걷는다. 시각이 없으면 null.
 function pcEventPayload(v){
@@ -24871,7 +24863,7 @@ function pcDiffRows(action, before, after){
 }
 const PC_RECUR_NAME = Object.freeze({ weekly: '매주', monthly: '매월' });
 //  'M월 D일 (요일)'
-function pcMd(ds){ const d = parseYmd(ds); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + PC_DOW[d.getDay()] + ')'; }
+function pcMd(ds){ const d = parseYmd(ds); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + CAL_DOW[d.getDay()] + ')'; }
 //  기간과 시각 한 줄(상세, 확인 창).
 function pcWhenText(e){
   if(e.startDate === e.endDate) return pcMd(e.startDate) + (e.startTime ? ' ' + e.startTime + ' ~ ' + (e.endTime || '') : '');
@@ -25191,7 +25183,7 @@ function pcVisEvents(projectUid){
 }
 function pcRenderMonth(body){
   const R = pcMonthRange(PCAL.anchor), today = todayYmd();
-  body.innerHTML = '<div class="weekdays" role="presentation">' + PC_DOW.map((w, i) => '<div class="' + (i === 0 ? 'sun' : i === 6 ? 'sat' : '') + '">' + w + '</div>').join('') + '</div>'
+  body.innerHTML = '<div class="weekdays" role="presentation">' + CAL_DOW.map((w, i) => '<div class="' + (i === 0 ? 'sun' : i === 6 ? 'sat' : '') + '">' + w + '</div>').join('') + '</div>'
     + '<div class="pc-grid" id="pcGrid" role="grid" aria-label="과제 월 달력(날짜나 일정을 누르면 그날 일정 목록)"></div>';
   const grid = document.getElementById('pcGrid');
   const weekH = (grid.clientHeight - (R.weeks - 1)) / R.weeks;
@@ -25207,16 +25199,12 @@ function pcRenderMonth(body){
     const rows = '22px' + (nVis ? ' repeat(' + nVis + ', 20px)' : '') + (anyHidden ? ' 14px' : '') + ' minmax(0,1fr)';
     html += '<div class="pc-week" role="row" data-from="' + from + '" style="grid-template-rows:' + rows + '">';
     for(let i = 0; i < 7; i++){
-      const ds = addDays(from, i), d = parseYmd(ds), dw = d.getDay(), hol = holidayOn(ds) || '';
-      let cls = 'pc-day';
-      if(d.getMonth() !== R.m) cls += ' dim';
-      if(ds === today) cls += ' today';
-      if(ds === PCAL.anchor) cls += ' sel';
-      if(dw === 0) cls += ' wknd-sun'; else if(dw === 6) cls += ' wknd-sat';
+      const ds = addDays(from, i), d = parseYmd(ds), hol = holidayOn(ds) || '';
+      const cls = calCellCls(ds, 'pc-day', { m: R.m, today, sel: PCAL.anchor });
       const n = L.items.filter(it => it.c0 <= i && it.c1 >= i).length;
       html += '<div class="' + cls + '" role="gridcell" tabindex="' + (ds === PCAL.anchor ? 0 : -1) + '" data-date="' + ds + '" style="grid-column:' + (i + 1) + ';grid-row:1 / -1"'
-        + ' aria-label="' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + PC_DOW[dw] + '요일' + (hol ? ', ' + esc(hol) : '') + (ds === today ? ', 오늘' : '') + ', 일정 ' + n + '건">'
-        + '<span class="num' + ((dw === 0 || hol) ? ' sun' : dw === 6 ? ' sat' : '') + '">' + d.getDate() + '</span>' + (hol ? '<span class="hol">' + esc(hol) + '</span>' : '') + '</div>';
+        + ' aria-label="' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + CAL_DOW[d.getDay()] + '요일' + (hol ? ', ' + esc(hol) : '') + (ds === today ? ', 오늘' : '') + ', 일정 ' + n + '건">'
+        + '<span class="' + calNumCls(ds) + '">' + d.getDate() + '</span>' + (hol ? '<span class="hol">' + esc(hol) + '</span>' : '') + '</div>';
     }
     for(const it of L.items) if(it.lane < cap) html += pcEvHtml(it, 'm', 'grid-column:' + (it.c0 + 1) + ' / ' + (it.c1 + 2) + ';grid-row:' + (it.lane + 2));
     if(anyHidden) hiddenBy.forEach((n, c) => {
@@ -25234,9 +25222,9 @@ function pcRenderWeek(body){
   const ps = pcVisible(), order = pcOrder();
   let h = '<div class="pc-wscroll" id="pcWScroll"><div class="pc-wtable" role="grid" aria-label="과제 주간 보기">';
   h += '<div class="pc-wcorner">과제</div><div class="pc-whdays">' + days.map(ds => {
-    const d = parseYmd(ds), dw = d.getDay(), hol = holidayOn(ds);
-    return '<div class="pc-whday' + ((dw === 0 || hol) ? ' sun' : dw === 6 ? ' sat' : '') + (ds === today ? ' today' : '') + (ds === PCAL.anchor ? ' sel' : '') + '" data-hdate="' + ds + '">'
-      + PC_DOW[dw] + ' <span class="num">' + d.getDate() + '</span></div>';
+    const d = parseYmd(ds), dw = d.getDay();
+    return '<div class="' + calCellCls(ds, 'pc-whday', { today, sel: PCAL.anchor }) + (calTone(ds) ? ' ' + calTone(ds) : '') + '" data-hdate="' + ds + '">'
+      + CAL_DOW[dw] + ' <span class="num">' + d.getDate() + '</span></div>';
   }).join('') + '</div>';
   if(!ps.length) h += '<div class="pc-wnone">표시할 과제를 선택하세요</div>';
   for(const p of ps){
@@ -25245,8 +25233,7 @@ function pcRenderWeek(body){
       + (p.writable ? '' : '<span class="pc-state">숨긴 과제, 읽기 전용</span>') + '</div>';
     h += '<div class="pc-wcells" data-from="' + R.from + '" data-proj="' + esc(p.projectUid) + '" style="grid-template-rows:4px' + (L.lanes ? ' repeat(' + L.lanes + ', auto)' : '') + ' minmax(20px,1fr)">';
     days.forEach((ds, i) => {
-      const dw = parseYmd(ds).getDay();
-      h += '<div class="pc-wday' + (dw === 0 ? ' wknd-sun' : dw === 6 ? ' wknd-sat' : '') + (ds === PCAL.anchor ? ' sel' : '') + '" data-date="' + ds + '" style="grid-column:' + (i + 1) + ';grid-row:1 / -1" aria-hidden="true"></div>';
+      h += '<div class="' + calCellCls(ds, 'pc-wday', { sel: PCAL.anchor }) + '" data-date="' + ds + '" style="grid-column:' + (i + 1) + ';grid-row:1 / -1" aria-hidden="true"></div>';
     });
     for(const it of L.items) h += pcEvHtml(it, 'w', 'grid-column:' + (it.c0 + 1) + ' / ' + (it.c1 + 2) + ';grid-row:' + (it.lane + 2));
     h += '</div>';
@@ -25476,6 +25463,7 @@ function pcFormFill(e, isNew){
   const $id = id => document.getElementById(id);
   $id('pcfTitle').value = e.title || '';
   $id('pcfStart').value = e.startDate || ''; $id('pcfEnd').value = e.endDate || e.startDate || '';
+  pcfPrevStart = e.startDate || ''; pcfAllDayUser = !isNew && !e.startTime;
   pcfAdShown = false; pcfKeep = null; $id('pcfST').disabled = $id('pcfET').disabled = false;
   $id('pcfST').value = e.startTime || ''; $id('pcfET').value = e.endTime || '';
   //  과제 일정은 종일 칸이 없다. 새 일정은 종일 꺼짐(개인 폼과 같음), 고칠 일정은 시작 시각이 없으면 종일로 연다.
@@ -25496,7 +25484,15 @@ function pcFormRead(){
     recurFreq: $id('pcfRecur').value || null };
 }
 //  종료 시각 자동 채움(개인 폼 qaAutoEnd, qaEndChanged 와 같은 규칙). 종료를 직접 바꾸기 전까지 시작 + 1시간.
-let pcfEndDirty = false, pcfAllDayUser = false, pcfAdShown = false, pcfKeep = null;
+let pcfEndDirty = false, pcfAllDayUser = false, pcfAdShown = false, pcfKeep = null, pcfPrevStart = '';
+const PCF_RANGE_ERR = '종료일이 시작일보다 빠를 수 없습니다';
+//  시작일을 옮기면 종료일도 같은 만큼 옮긴다(기간 길이 유지, 개인 폼 qaBindForm 과 같다).
+function pcStartChanged(){
+  const sd = document.getElementById('pcfStart'), ed = document.getElementById('pcfEnd'), s = sd.value;
+  const ok = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+  if(ok(s) && ok(pcfPrevStart) && ok(ed.value)) ed.value = addDays(ed.value, diffDays(pcfPrevStart, s));
+  if(ok(s)) pcfPrevStart = s;
+}
 function pcAutoEnd(){
   if(pcfEndDirty) return;
   const s = readTimeIn(document.getElementById('pcfST')); if(!s) return;
@@ -25526,10 +25522,13 @@ function pcFormSync(){
   const $id = id => document.getElementById(id);
   const s = $id('pcfStart').value, e = $id('pcfEnd').value;
   //  여러 날 일정은 시각을 못 적는다(서버 규칙). 종일을 켜고 잠근다. 하루로 돌아와도 종일은 켜진 채 다시 고를 수 있다.
-  const ad = $id('pcfAllDay'), multi = !!s && !!e && s !== e;
+  //  하루로 돌아오면 사용자가 그 전에 고른 종일 값을 되살린다(잠긴 동안의 강제 켬은 사용자 선택이 아니다, 2026-11-02).
+  //  종료일이 시작일보다 빠르면 여러 날로 치지 않고 개인 폼처럼 오류 줄만 보인다.
+  const ad = $id('pcfAllDay'), bad = !!s && !!e && e < s, multi = !!s && !!e && e > s;
   if(!ad.disabled) pcfAllDayUser = ad.checked;
-  if(multi) pcfAllDayUser = true;
-  ad.disabled = multi; ad.checked = pcfAllDayUser;
+  ad.disabled = multi; ad.checked = multi || pcfAllDayUser;
+  const er = $id('pcfErr');
+  if(bad){ er.textContent = PCF_RANGE_ERR; } else if(er.textContent === PCF_RANGE_ERR) er.textContent = '';
   pcAllDayShow(ad.checked);
   $id('pcfCount').textContent = pcLen($id('pcfMemo').value).toLocaleString('ko-KR') + ' / ' + PCAL_LIMITS.memo.toLocaleString('ko-KR') + '자';
 }
@@ -25987,7 +25986,7 @@ function pcInit(){
     fm.addEventListener('input', ev => { if(ev.target.id === 'pcfMemo') pcFormSync(); });
     fm.addEventListener('change', ev => {
       const id = ev.target.id;
-      if(id === 'pcfST') pcAutoEnd(); else if(id === 'pcfET') pcEndChanged();
+      if(id === 'pcfST') pcAutoEnd(); else if(id === 'pcfET') pcEndChanged(); else if(id === 'pcfStart') pcStartChanged();
       if(['pcfStart', 'pcfEnd', 'pcfST', 'pcfET', 'pcfAllDay'].indexOf(id) >= 0) pcFormSync();
     });
     fm.addEventListener('click', ev => {

@@ -657,7 +657,8 @@ if (!JSDOM) {
         assert.deepStrictEqual([pad.checked, pad.disabled, ps.disabled, pe.disabled, ps.value, pe.value], [true, true, true, true, '00:00', '24:00'], '여러 날인데 종일 고정과 잠긴 시각 칸이 아니다');
         click(ps); assert.ok(!isOpen(ps), '잠긴 시각 칸에서 목록이 열린다');
         W.ev("document.getElementById('pcfEnd').value = '2026-10-21'; document.getElementById('pcfEnd').dispatchEvent(new Event('change', { bubbles: true }))");
-        assert.deepStrictEqual([pad.checked, pad.disabled], [true, false], '하루로 돌아오면 종일이 켜진 채 다시 고를 수 있어야 한다');
+        //  하루로 돌아오면 잠기기 전 사용자 값(꺼짐)으로 돌아온다(2026-11-02, tests/pcf-range)
+        assert.deepStrictEqual([pad.checked, pad.disabled], [false, false], '하루로 돌아오면 그 전에 고른 종일 값(꺼짐)이어야 한다');
         pad.checked = false; pad.dispatchEvent(new W.w.Event('change', { bubbles: true }));
         assert.deepStrictEqual([ps.disabled, ps.value, pe.value], [false, '', ''], '종일을 끄면 칸이 풀리고 켜기 전(빈) 값이어야 한다');
         ps.focus(); click(ps); click(opt(ps, 'H', '09')); key(ps, 'Escape');
