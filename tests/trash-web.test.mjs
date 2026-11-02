@@ -19,7 +19,7 @@
 //   ★ 앱 전체를 부팅하지 않는다 — 그리는 함수만 떼어 내 빈 문서에 심는다. 부팅하면 호스트 브리지·
 //     세션·타이머가 딸려 와 이 계약과 무관한 이유로 깨진다.
 //   ★ 검사와 변이가 **같은 함수**를 쓴다. 변이로 안 깨지는 검사는 장식이다.
-import { test, assert, loadAppSource, extractFunction, extractCodeIdsBlock, importOptional, useJsdom, runInJsdom, SKIP_NO_JSDOM } from './harness.mjs';
+import { test, skip, assert, loadAppSource, extractFunction, extractCodeIdsBlock, importOptional, useJsdom, runInJsdom, SKIP_NO_JSDOM } from './harness.mjs';
 
 const app = loadAppSource();
 

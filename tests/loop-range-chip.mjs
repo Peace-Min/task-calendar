@@ -40,12 +40,15 @@ const countMine = () => ev(`state.entries.filter(e => String(e.title||'').starts
 (async () => {
   if (!(await connect())) { console.log('판정 없음: CDP 페이지 없음(TC_DEBUG_PORT 로 띄운 위젯 필요)'); process.exit(2); }
   console.log(`[loop-range-chip] seed=${SEED} tag=${TAG}`);
-  let made = null;
+  let made = null, tab0 = null;
   try {
     // O0 전제
     if (!(await ev(`typeof selectDate === 'function' && typeof chipHtml === 'function'`))) { undecide('O0 앱', '함수 없음'); return; }
     if (!(await waitFor(healthy, 5000))) { await ev(`(() => { const b = document.getElementById('dsErrorRetry'); if (b) b.click(); else hpost({cmd:'reloadState'}); return 1; })()`); }
     //  월간 막대를 보는 루프다. 위젯이 주간 보기를 기억하고 있으면 월간으로 돌린다(2026-10-30 주간 과제별 줄)
+    //  위젯이 과제/근태 탭에 남아 있으면 개인 달력(#cal)이 숨겨져 막대를 누를 수 없다. 개인 탭으로 돌리고(저장 안 함) 끝나면 원래 탭으로 되돌린다.
+    tab0 = await ev("(typeof PCAL !== 'undefined' && PCAL.tab) || 'personal'");
+    if (tab0 !== 'personal') await ev("(pcSetTab('personal', { quiet: true }), 1)");
     await ev("(typeof calView === 'function' && calView() !== 'month') ? (setCalView('month'), 1) : 1");
     if (!(await waitFor(healthy, 30000))) { undecide('O0 정상 연결', JSON.stringify(await J(`{conn, bootOk, unsaved}`))); return; }
     ok('O0 conn ok · bootOk', true);

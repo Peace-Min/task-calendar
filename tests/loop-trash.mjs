@@ -695,7 +695,11 @@ async function main() {
   mainCdp = await Cdp.attach(OPT.port);
   try { await openAdminWindow(OPT.port, (e) => mainCdp.ev(e), 'members'); }
   catch (e) { console.error('[판정 없음] ' + e.message); process.exit(2); }
-  cdp = await Cdp.attach(OPT.port, 'admin');
+  //  관리 창은 열기 요청 뒤 늦게 뜰 수 있다(seed=4 에서 한 번 못 찾고 중단, 재실행은 통과). 최대 15초 기다리며 다시 붙는다.
+  for (let t = 0; ; t++) {
+    try { cdp = await Cdp.attach(OPT.port, 'admin'); break; }
+    catch (e) { if (t >= 30 || !/page 타겟이 없다/.test(e.message)) { console.error('[판정 없음] ' + e.message); process.exit(2); } await sleep(500); }
+  }
   for (let i = 0; i < 100 && !(await ev(ADMIN_HUB_OPEN_JS)); i++) await sleep(150);
   await ev(HIDE_HUB_JS);   // 허브를 내리고 단독 흐름으로(창은 그대로)
   await sleep(300);

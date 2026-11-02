@@ -857,6 +857,9 @@ async function waitList(sel, timeout = 8000) {
   }
 }
 
+let TAB0 = null;
+async function restoreTab() { if (TAB0 && TAB0 !== 'personal') { try { await cdp.evaluate(`(pcSetTab(${JSON.stringify(TAB0)}, { quiet: true }), 1)`); } catch (_) { } } }
+
 async function main() {
   console.log('=== loop-ui-visual — 실제 화면 기반 UI 루프 테스트 ===');
   cdp = await Cdp.attach(OPT.port);
@@ -873,6 +876,11 @@ async function main() {
   const boot = await ev(`(function(){return {ver:(typeof APP_VERSION!=='undefined'?APP_VERSION:'?'),host:(typeof HOST!=='undefined'&&!!HOST),role:(typeof getRole==='function'?getRole():'?'),online:!!dbOnline,catalog:dbCatalog.length,cats:state.categories.length};})()`);
   log(`앱 상태: v${boot.ver} · HOST=${boot.host} · role=${boot.role} · dbOnline=${boot.online} · 카탈로그 ${boot.catalog}건 · 과제 ${boot.cats}개`);
   if (!boot.host) log('  ⚠ HOST=false — 위젯이 아닌 브라우저입니다. 위젯 전용 화면(구분·상태 등)이 열리지 않습니다.');
+
+  //  기준 화면은 개인 탭이다. 앞선 루프(근태 등)가 위젯을 다른 탭에 남기면 같은 'base' 가 근태 화면을 재서 결과가 앞 루프에 좌우된다(2026-11-02).
+  //  개인 탭으로 맞추고(저장 안 함) 끝나면 원래 탭으로 되돌린다. 다른 탭의 화면 점검은 별개다.
+  TAB0 = await ev("(typeof PCAL !== 'undefined' && PCAL.tab) || 'personal'");
+  if (TAB0 !== 'personal') { await ev("(pcSetTab('personal', { quiet: true }), 1)"); await sleep(400); log('  · 위젯이 ' + TAB0 + ' 탭이라 개인 탭으로 맞춤(끝나면 되돌림)'); }
 
   if (OPT.selftest) { await selftest(); cdp.close(); return; }
 
@@ -943,6 +951,7 @@ async function main() {
     } catch (e) { log('복원 실패(수동 확인 필요): ' + e.message); }
   }
 
+  await restoreTab();
   summarize(plan);
   cdp.close();
 }
@@ -1053,6 +1062,7 @@ async function emergencyRestore() {
   if (restoring || !cdp || !OPT.restore) return;
   restoring = true;
   try { await cdp.evaluate('__vt && __vt.restore()'); } catch (_) { }
+  await restoreTab();
   try { await cdp.send('Emulation.clearDeviceMetricsOverride'); } catch (_) { }
   try { await cdp.send('Emulation.setEmulatedMedia', { features: [] }); } catch (_) { }
 }

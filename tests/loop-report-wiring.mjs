@@ -165,7 +165,8 @@ class R {
         e.GetProperty("loginId").GetString(),
         e.GetProperty("sdate").GetString(), e.GetProperty("edate").GetString(),
         e.GetProperty("subject").GetString(), e.GetProperty("content").GetString(),
-        e.GetProperty("endwork").GetString(), e.GetProperty("plan").GetString());
+        e.GetProperty("endwork").GetString(), e.GetProperty("plan").GetString(),
+        e.TryGetProperty("meeting", out var mt) && mt.ValueKind == JsonValueKind.String ? mt.GetString() : null);   // 구조 20: 회의내용. 없으면 null = 옛 보고서 창 전송(있던 값 유지)
     }
     Console.Out.Write(JsonSerializer.Serialize(new { ok = okr, logs }));
     return 0;

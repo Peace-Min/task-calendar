@@ -1830,7 +1830,7 @@ function scanNameEverywhere(name) {
       WHERE TABLE_SCHEMA=DATABASE() AND DATA_TYPE IN ('char','varchar','tinytext','text','mediumtext','longtext')
       ORDER BY TABLE_NAME, COLUMN_NAME`, '텍스트 컬럼 목록');
   if (!cols.length) return [];
-  const parts = cols.map(([t, c]) => `SELECT ${q(t + '.' + c)}, COUNT(*) FROM \`${t}\` WHERE \`${c}\` = ${q(name)}`);
+  const parts = cols.map(([t, c]) => `SELECT ${q(t + '.' + c)}, COUNT(*) FROM \`${t}\` WHERE \`${c}\` = ${q(name)} COLLATE utf8mb4_0900_ai_ci`);
   const res = mustQuery('SET NAMES utf8mb4;\n' + parts.join('\nUNION ALL\n'), '조직명 잔존 검색');
   return res.filter((r) => Number(r[1]) > 0).map((r) => `${r[0]}=${r[1]}행`);
 }

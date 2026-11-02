@@ -474,6 +474,7 @@ let REF_SKIP = null;   // 호스트 거름 시험이 일부러 낸 거절 로그
 //  사람이 골라 둔 보기 방식(tc_peerLayout) — 시험이 라운드마다 겹쳐 보기·나란히 보기를 오가므로 끝나면 이 값으로 되돌린다.
 //  undefined = 아직 못 읽음(되돌리지 않는다) · null = 저장값 없음(지운다).
 let LAYOUT0;
+let PEERVIEW0;  //  열람 프레임 월간/주간 보기(tc_peerView) 시작 전 값 — 루프는 월간(격자 35칸)을 전제하므로 월간으로 맞추고 끝나면 되돌린다.
 //  사람 고르기(R10)가 쓰는 내 계정별 키 — 즐겨찾기·최근(tc_peerFav:<me> · tc_peerRecent:<me>). 시작 전 값을 떠 두고 끝나면 되돌린다.
 //  undefined = 아직 못 읽음(되돌리지 않는다).
 let PK0, PK_KEYS = null;
@@ -485,6 +486,9 @@ try {
   if ((await peerWinTargets(PORT)).length) { closePeerWinOs(); await sleep(1200); }
   //  ★ 메인 창, 열람 창, 열람 프레임은 같은 출처·같은 WebView2 환경이라 localStorage 가 하나다 — 메인 창에서 읽고 되돌린다.
   LAYOUT0 = await main.ev("(()=>{ try{ return localStorage.getItem('tc_peerLayout'); }catch(_){ return null; } })()");
+
+  PEERVIEW0 = await main.ev("(()=>{ try{ return localStorage.getItem('tc_peerView'); }catch(_){ return null; } })()");
+  await main.ev("(()=>{ try{ localStorage.setItem('tc_peerView','month'); }catch(_){} return 1; })()");
 
   const me = String(await main.ev("(typeof currentUser!=='undefined' && currentUser && currentUser.loginId) || ''")).trim();
   PK_KEYS = { fav: 'tc_peerFav:' + me, recent: 'tc_peerRecent:' + me };
@@ -1155,6 +1159,11 @@ try {
       console.log(`  · 보기 방식 되돌림: tc_peerLayout = ${JSON.stringify(back)}(시작 전 ${JSON.stringify(LAYOUT0)})`);
     }
   } catch (e) { console.log('  ! 보기 방식 되돌리기 실패: ' + e.message); }
+  try {
+    if (main && PEERVIEW0 !== undefined) await main.ev(PEERVIEW0 === null
+      ? "(()=>{ localStorage.removeItem('tc_peerView'); return 1; })()"
+      : `(()=>{ localStorage.setItem('tc_peerView', ${JSON.stringify(String(PEERVIEW0))}); return 1; })()`);
+  } catch (e) { console.log('  ! tc_peerView 되돌리기 실패: ' + e.message); }
   //  사람 고르기 저장 키 원상 복구(R10) — 시작 전 값으로(없었으면 지운다). 시험 대상이 내 즐겨찾기·최근에 남지 않게.
   try {
     if (main && PK0 !== undefined && PK_KEYS) {
