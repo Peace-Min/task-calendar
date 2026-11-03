@@ -147,9 +147,9 @@ async function main() {
     await cdp.ev(`pcSetTab('attend'); atKindSet('sum'); atSumInit(); 1`);
     ok('M1 근태 탭 [취합] 화면(#atSum)이 보인다', await waitFor(shown('div#atSum'), 5000));
     await cdp.ev(`document.querySelector('#asOut [data-aso="doc"]').click(); 1`);
-    ok('M1 결과 형태 월간 보고 문서(#asMon, #asDoc 보임)', await waitFor(`${shown('#asMon')} && ${shown('#asDoc')}`, 3000));
-    const vis = await J(`({ mon: ${shown('#asMon')}, doc: ${shown('#asDoc')}, text: ${shown('#asText')}, copy: ${shown('#btnRptCopy')}, send: !!document.getElementById('btnRptSend'), save: ${shown('#rptmSave')}, dir: !!document.getElementById('rptmOpenDir'), act: ${shown('#asDocAct')} })`);
-    ok('M1 월간 설정, 문서 미리 보기, 저장 단추가 보이고, 과제별 글 미리 보기와 복사 단추는 숨고, 보내기 단추는 없다', vis.mon && vis.doc && vis.act && vis.save && vis.dir && !vis.text && !vis.copy && !vis.send, JSON.stringify(vis));
+    ok('M1 결과 형태 월간 보고 문서(#asBand, #asDoc 보임)', await waitFor(`${shown('#asBand')} && ${shown('#asDoc')}`, 3000));
+    const vis = await J(`({ band: ${shown('#asBand')}, doc: ${shown('#asDoc')}, text: ${shown('#asText')}, copy: ${shown('#btnRptCopy')}, send: !!document.getElementById('btnRptSend'), save: ${shown('#rptmSave')}, dir: !!document.getElementById('rptmOpenDir'), act: ${shown('#asDocAct')} })`);
+    ok('M1 문서 설정 띠, 문서 미리 보기, 저장 단추가 보이고, 과제별 글 미리 보기와 복사 단추는 숨고, 보내기 단추는 없다', vis.band && vis.doc && vis.act && vis.save && vis.dir && !vis.text && !vis.copy && !vis.send, JSON.stringify(vis));
     const gone = await J(`({ pane: !!document.getElementById('rptMonthlyPane'), grid: !!document.querySelector('.rptm-grid'), sub: !!document.getElementById('rptmSub'), rf: !!document.getElementById('rptmFrom'), rt: !!document.getElementById('rptmTo'), src: !!document.getElementById('rptmSrc'), load: !!document.getElementById('rptmLoad') })`);
     ok('M1 사라진 것이 없다(#rptMonthlyPane, .rptm-grid, #rptmSub, #rptmFrom, #rptmTo, #rptmSrc, #rptmLoad)', Object.values(gone).every((v) => v === false), JSON.stringify(gone));
 
@@ -160,9 +160,9 @@ async function main() {
     head('M2 기간과 과제');
     const st = await J(`({ from: __rptM.from, to: __rptM.to, lm: monthRange(new Date(), -1), plan: [__rptM.pFrom, __rptM.pTo], pd: rptMPlanDefault(__rptM.from, __rptM.to),
       fromTo: [document.getElementById('rptFrom').value, document.getElementById('rptTo').value],
-      arrows: (document.getElementById('asMon').textContent.match(/[▲▼]/g) || []).length + document.querySelectorAll('#asMon [data-act="up"], #asMon [data-act="down"]').length,
+      arrows: (document.getElementById('asBand').textContent.match(/[▲▼]/g) || []).length + document.querySelectorAll('#asBand [data-act="up"], #asBand [data-act="down"]').length,
       order: __rptM.order, off: rptMOfficial().map(function(c){ return c.id; }), picked: rptMPicked(__rptM), cards: [].map.call(document.querySelectorAll('#rptmSheet table[data-pv-uid]'), function(c){ return c.dataset.pvUid; }),
-      editors: [].filter.call(document.querySelectorAll('#asMon input, #asMon textarea, #asMon select, #asMon [contenteditable]'), function(i){ return !((i.type === 'date') || (i.type === 'checkbox' && (i.matches('#rptmPick input[data-act="pick"]') || i.matches('#rptmEtc input[data-etc]')))); }).length,
+      editors: [].filter.call(document.querySelectorAll('#asBand input, #asBand textarea, #asBand select, #asBand [contenteditable]'), function(i){ return !((i.type === 'date') || (i.type === 'checkbox' && (i.matches('#rptmPick input[data-act="pick"]') || i.matches('#rptmEtc input[data-etc]')))); }).length,
       terms: rptMPicked(__rptM).map(function(id){ return rptMTerm(id).text; }) })`);
     vlogJSON(st);
     ok('M2 실적 기간 = 지난달(기억하는 값이 없다), 날짜 칸 #rptFrom, #rptTo 하나뿐', st.from === st.lm[0] && st.to === st.lm[1] && st.fromTo[0] === st.from && st.fromTo[1] === st.to, JSON.stringify([st.from, st.to, st.fromTo]));

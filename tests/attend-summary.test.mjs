@@ -1,7 +1,7 @@
 // 근태 탭 취합(docs/ATTEND-SUMMARY.md, 2026-11-03)과 주간보고 목록 찾기 시험.
 //
 //   (S) 정적: 보고서 버튼과 창이 없고, 취합 화면(#atSum)이 근태 탭 안에 있고, 출처는 둘(netcus 일간 없음), 기간 빠른 단추 없음,
-//       결과 형태 seg 가 오른쪽 위에 있고 월간 설정은 왼쪽 맨 아래(#asMon), 기간 취합 함수는 한 벌.
+//       결과 형태 seg 가 오른쪽 위에 있고 월간 설정은 오른쪽 탭 줄 아래 띠(#asBand, 2026-11-03 결정), 기간 취합 함수는 한 벌.
 //   (B) jsdom 브라우저: [취합] 진입, 처음 값(지난달), 출처 둘(포함 항목 칸은 없다), 읽어 오기 전에는 호스트 요청이 없다,
 //       캘린더 기록 = 이 앱 주간보고 DB 읽기(reportWeeklyList, 겹치는 주만, 나눠 읽기, hours 줄, 글 미리 보기와 월간 문서가 읽기 한 번의 결과를 같이 쓴다,
 //       collectReportData 와 회사 사이트 명령 0, 빈 결과 문구), 결과 형태에 따라 단추와 월간 설정이 바뀐다, 주간보고 목록의 기간 겹침과 찾기와 쪽.
@@ -39,7 +39,15 @@ function checkStatic(src) {
   assert.ok(right.indexOf('id="asOut"') >= 0 && right.indexOf('id="asOut"') < right.indexOf('id="btnRptCopy"'), '결과 형태 seg 가 오른쪽 위 줄에 없다');
   const left = view.slice(view.indexOf('id="asLeft"'), view.indexOf('id="asRight"'));
   assert.ok(!left.includes('id="asOut"'), '결과 형태 탭이 왼쪽에 있다');
-  assert.ok(left.lastIndexOf('id="asMon"') > left.indexOf('id="asLoad"'), '월간 설정이 왼쪽 맨 아래가 아니다');
+  //  2026-11-03 사용자 결정: 월간 설정은 오른쪽 [과제별 글 | 월간 보고 문서] 탭 줄 바로 아래 띠. 왼쪽은 늘 기간, 출처, 서식, 읽어 오기만.
+  assert.ok(!/id="(asMon|asBand|rptmPFrom|rptmDate|rptmPick|rptmEtc|rptmUnid)"/.test(left), '월간 설정이 왼쪽에 남았다');
+  const rh = right.indexOf('class="as-rh"'), bd = right.indexOf('id="asBand"'), pane = right.indexOf('id="asText"');
+  assert.ok(rh >= 0 && bd > rh && right.indexOf('id="asOut"') < bd && bd < pane, '문서 설정 띠가 오른쪽 탭 줄 아래, 미리 보기 위에 없다');
+  assert.ok(/id="asBand"[^>]*class="[^"]*hidden|class="as-band hidden" id="asBand"/.test(right), '문서 설정 띠가 처음에 숨어 있지 않다');
+  const band = right.slice(bd, right.indexOf('id="asText"'));
+  for (const id of ['asBandH', 'asBandSum', 'asBandTg', 'rptmPFrom', 'rptmPTo', 'rptmPlanDef', 'rptmDate', 'rptmName', 'rptmPickCnt', 'rptmPick', 'rptmEtcSum', 'rptmEtcTog', 'rptmEtc', 'rptmUnid']) assert.ok(band.includes('id="' + id + '"'), '띠에 없다: ' + id);
+  assert.ok(/\.as-band \.rptm-list\{[^}]*repeat\(auto-fill,minmax\(230px,1fr\)\)[^}]*max-height:132px[^}]*overflow:auto/.test(src), '과제 격자 CSS(230px 칸, 높이 132px, 안에서 스크롤)가 아니다');
+  assert.ok(!/\.as-view \.rptm-set|\.as-mon/.test(src), '왼쪽 패널용 옛 월간 설정 CSS(.rptm-set, .as-mon)가 남았다');
   assert.ok(view.includes('class="at-split as-split"'), '공용 끌개(.at-split)가 아니다');
   const one = (n) => (src.match(new RegExp('function ' + n + '\\(', 'g')) || []).length;
   for (const n of ['buildReport', 'buildReportText', 'collectReportData', 'copyReport', 'rptMSave']) assert.strictEqual(one(n), 1, n + ' 이 한 벌이 아니다');
@@ -72,7 +80,10 @@ test('(M) 변이: 지운 것을 되살리면 정적 계약이 잡는다', () => 
     ['포함 항목 칸', (s) => s.replace('<details class="as-sec as-fmt" id="asFmt">', '<div class="as-sec" id="asInc"><input type="checkbox" id="rptSrcEvent"></div><details class="as-sec as-fmt" id="asFmt">')],
     ['buildReport 가 일정을 모음', (s) => mutate(s, "  atSumSub();\n  if(!/^", "  atSumSub();\n  collectReportData('2026-01-01', '2026-01-02', {});\n  if(!/^")],
     ['읽기 함수 두 벌', (s) => mutate(s, "  const f = await awRowsFetch({ from, to }, null);", "  const f = { rows: [] }; await hostRequest('reportWeeklyList', { from, to });")],
-    ['월간 설정을 위로', (s) => mutate(s, '<div class="as-mon hidden" id="asMon">', '<div class="as-mon hidden" id="asMonX">').replace('<div class="as-left" id="asLeft">', '<div class="as-left" id="asLeft"><div id="asMon"></div>')],
+    ['월간 설정 띠를 왼쪽으로', (s) => mutate(s, '<div class="as-band hidden" id="asBand">', '<div class="as-band hidden" id="asBandX">').replace('<div class="as-left" id="asLeft">', '<div class="as-left" id="asLeft"><div id="asBand"></div>')],
+    ['띠가 탭 줄 위로', (s) => mutate(s, '<div class="as-band hidden" id="asBand">', '<div class="as-band hidden" id="asBandX">').replace('<div class="as-right" id="asRight">', '<div class="as-right" id="asRight"><div id="asBand"></div>')],
+    ['격자 높이 상한 없앰', (s) => mutate(s, 'gap:6px;max-height:132px;overflow:auto;border:0', 'gap:6px;border:0')],
+    ['옛 왼쪽 CSS 되살림', (s) => s.replace('.as-sep{', '.as-view .rptm-set{grid-template-columns:minmax(0,1fr)} .as-sep{')],
   ];
   for (const [name, f] of cases) {
     let caught = false;
@@ -114,7 +125,7 @@ if (!JSDOM) {
     const r = X.ev('monthRange(new Date(), -1)');
     assert.strictEqual(X.$('#rptFrom').value, r[0]); assert.strictEqual(X.$('#rptTo').value, r[1]);
     assert.strictEqual(X.$('#rptSrcSeg .active').dataset.rsrc, 'cal');
-    assert.ok(X.shown('#asText') && !X.shown('#asDoc') && !X.shown('#asMon') && X.shown('#btnRptCopy') && !X.shown('#asDocAct'));
+    assert.ok(X.shown('#asText') && !X.shown('#asDoc') && !X.shown('#asBand') && X.shown('#btnRptCopy') && !X.shown('#asDocAct'));
     assert.strictEqual(X.d.querySelectorAll('[id="atSum"]').length, 1, 'id atSum 이 둘이다');
     assert.ok(!X.$('#reportModal') && !X.$('#btnReportTop'));
     X.w.close();
@@ -270,16 +281,65 @@ if (!JSDOM) {
     assert.strictEqual(X.ev("__calls.filter(c => c[0] === 'netcusWeeklyRangeRead').length"), 1, '읽기는 한 번이어야 한다');
     X.w.close();
   });
-  test('(B) 결과 형태: 문서면 DOCX 저장과 월간 설정(#asMon)이 펼쳐지고 복사는 숨는다, 과제별 글이면 반대', async () => {
+  test('(B) 결과 형태: 문서면 DOCX 저장과 문서 설정 띠(#asBand)가 보이고 복사는 숨는다, 과제별 글이면 반대', async () => {
     const X = boot(app, false);
     await tick(200);
     await openSum(X);
     X.$('#asOut [data-aso="doc"]').click(); await tick();
-    assert.ok(X.shown('#asMon') && X.shown('#asDoc') && X.shown('#asDocAct') && !X.shown('#btnRptCopy') && !X.shown('#asText'));
+    assert.ok(X.shown('#asBand') && X.shown('#asDoc') && X.shown('#asDocAct') && !X.shown('#btnRptCopy') && !X.shown('#asText'));
     assert.ok(X.$('#rptmPick').children.length >= 1);
     X.$('#asOut [data-aso="text"]').click(); await tick();
-    assert.ok(!X.shown('#asMon') && X.shown('#asText') && X.shown('#btnRptCopy') && !X.shown('#asDocAct'));
+    assert.ok(!X.shown('#asBand') && X.shown('#asText') && X.shown('#btnRptCopy') && !X.shown('#asDocAct'));
     X.w.close();
+  });
+  test('(B) 문서 설정 띠: 요약(계획, 작성일, 과제, 기타 표), 머리를 누르면 접히고 접혀도 요약이 보이며 다시 누르면 펼친다, 격자 칸은 고른 것만 강조', async () => {
+    const X = boot(app, false);
+    await tick(200);
+    await openSum(X);
+    X.ev("state.categories = [{ id: 'p1', name: '과제 하나', source: 'db' }, { id: 'p2', name: '과제 둘', source: 'db' }, { id: 'e1', name: '기타 칸', source: 'local' }]; rptMOpen();");
+    X.$('#asOut [data-aso="doc"]').click(); await tick();
+    const sum = () => X.$('#asBandSum').textContent;
+    assert.ok(/^계획 \d{1,2}\/\d{1,2}~\d{1,2}\/\d{1,2}, 작성일 \d{1,2}\/\d{1,2}, 과제 \d+개, 기타 표 \d+개$/.test(sum()), '요약 글이 다르다: ' + sum());
+    assert.ok(X.shown('#asBandB') && X.$('#asBandTg').textContent === '접기' && X.$('#asBandH').getAttribute('aria-expanded') === 'true', '처음엔 펼쳐 있어야 한다');
+    X.$('#asBandH').click(); await tick();
+    assert.ok(!X.shown('#asBandB') && X.shown('#asBandSum') && sum().includes('과제') && X.$('#asBandTg').textContent === '펼치기' && X.$('#asBandH').getAttribute('aria-expanded') === 'false', '접어도 요약이 보여야 한다');
+    X.$('#asBandH').click(); await tick();
+    assert.ok(X.shown('#asBandB') && X.$('#asBandTg').textContent === '접기', '다시 눌러도 펼쳐지지 않는다');
+    const items = [...X.d.querySelectorAll('#rptmPick .rptm-it')];
+    assert.strictEqual(items.length, 2, '과제 격자 칸이 공식 과제 수와 다르다');
+    assert.ok(items.every((r) => r.classList.contains('off') === !r.querySelector('input[data-act="pick"]').checked), '칸의 강조(off)가 체크와 다르다');
+    //  왼쪽은 결과 형태와 상관없이 모양이 같다(월간 설정 칸이 없다)
+    const L = () => X.$('#asLeft').children.length;
+    const before = L();
+    X.$('#asOut [data-aso="text"]').click(); await tick();
+    assert.strictEqual(L(), before, '결과 형태를 바꾸니 왼쪽 칸 구성이 달라졌다');
+    assert.ok(!X.shown('#asBand'), '과제별 글인데 띠가 보인다');
+    X.w.close();
+  });
+  test('(M) 변이: 띠가 과제별 글에서도 보임, 접으면 요약이 사라짐, 접히지 않음을 되살리면 띠 시험이 잡는다', async () => {
+    const cases = [
+      ['과제별 글에서도 띠 보임', (t) => mutate(t, "$('#asBand').classList.toggle('hidden', !doc);", '')],
+      ['접으면 요약도 숨음', (t) => mutate(t, "  if(b) b.classList.toggle('hidden', !__asBandOpen);", "  if(b) b.classList.toggle('hidden', !__asBandOpen); const sm = $('#asBandSum'); if(sm) sm.classList.toggle('hidden', !__asBandOpen);")],
+      ['머리를 눌러도 안 접힘', (t) => mutate(t, "  $('#asBandH').addEventListener('click', () => asBandSet(!__asBandOpen));", '')],
+      ['요약에 기타 표 없음', (t) => mutate(t, ", '기타 표 ' + e + '개'", '')],
+    ];
+    for (const [name, f] of cases) {
+      let caught = false;
+      try {
+        const X = boot(f(app), false);
+        await tick(200);
+        await openSum(X);
+        X.$('#asOut [data-aso="doc"]').click(); await tick();
+        assert.ok(X.shown('#asBand'));
+        assert.ok(/기타 표 \d+개$/.test(X.$('#asBandSum').textContent));
+        X.$('#asBandH').click(); await tick();
+        assert.ok(!X.shown('#asBandB') && X.shown('#asBandSum'));
+        X.$('#asOut [data-aso="text"]').click(); await tick();
+        assert.ok(!X.shown('#asBand'));
+        X.w.close();
+      } catch (_) { caught = true; }
+      assert.ok(caught, '변이가 잡히지 않았다: ' + name);
+    }
   });
   test('(B) 주간보고 목록: 기간은 보고 대상 기간 겹침, 찾기(진행사항, 과제명), 쪽 20건, 호스트 상한을 나눠 읽는다', async () => {
     const X = boot(app, true);

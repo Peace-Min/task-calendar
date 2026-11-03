@@ -2825,16 +2825,38 @@ html.at-idle #atEd,html.at-idle #awEd,html.at-idle #awList{ visibility:hidden } 
 .as-sec{margin-bottom:14px}
 .as-sec > h3{font-size:var(--fs-meta);color:var(--muted);font-weight:600;margin:0 0 6px}
 .as-dates{display:flex;align-items:center;gap:6px}
-.as-dates input[type=date],.as-view .rptm-ctl input[type=date]{flex:1 1 0;min-width:0;max-width:148px}
-/* 왼쪽 패널은 좁아 이름 칸 옆에 날짜 둘과 ↺ 가 들어가면 날짜 글자가 잘린다(2026-11-03 실측). 이름을 위 줄로 올린다 */
-.as-view .rptm-set{grid-template-columns:minmax(0,1fr);gap:4px 0}
-.as-view .rptm-set .rptm-ctl+.rptm-lb{margin-top:6px}
+.as-dates input[type=date]{flex:1 1 0;min-width:0;max-width:148px}
 .as-sep{color:var(--muted);flex:none}
 .as-fmt > summary{cursor:pointer;font-size:var(--fs-meta);color:var(--muted);font-weight:600;margin-bottom:6px}
 .as-fmt > summary:focus-visible{outline:2px solid var(--accent)}
 .as-loadrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .as-loadrow .rptm-hint,.as-loadrow .rptm-msg{flex-basis:100%}
-.as-mon{border-top:1px dashed var(--line-2);padding-top:12px}
+/* 문서 설정 띠(2026-11-03): 결과 형태가 월간 보고 문서일 때만, 오른쪽 탭 줄 바로 아래. 머리 줄을 누르면 접히고 접혀도 요약이 보인다. 시안 dist/proto/monthly-settings-v2.html */
+.as-band{flex:none;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md)}
+.as-bandh{display:flex;align-items:center;gap:10px;width:100%;padding:8px 12px;border:0;background:transparent;font:inherit;color:var(--text);text-align:left;cursor:pointer;border-radius:var(--r-md)}
+.as-bandh:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.as-bandh b{font-size:var(--fs-emph);flex:none}
+.as-bandsum{flex:1 1 0;min-width:0;color:var(--muted);font-size:var(--fs-meta);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.as-bandtg{flex:none;margin-left:auto;color:var(--accent-2);font-size:var(--fs-meta)}   /* --accent-2: 포레스트의 --accent 는 흰 바탕 작은 글자에서 AA 미달(2026-11-03 화면 점검 V8) */
+.as-bandb{border-top:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.as-line1{display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap}
+.as-fld{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+.as-band .rptm-ctl{flex-wrap:wrap;min-width:0}   /* 좁은 폭에서 계획 날짜 둘과 ↺ 가 한 줄을 넘으면 줄바꿈(2026-11-03 화면 점검 V1, 320px 에서 86px 넘침) */
+.as-band input[type=date]{width:136px;flex:0 1 136px;min-width:0}
+.as-band .rptm-h{margin:0 0 6px}
+.as-band .rptm-etc{margin-top:0}
+.as-band .rptm-unid{margin-top:0}
+/* 과제 격자: 칸 폭 230px 이상으로 자동 채움, 높이 약 132px 를 넘기면 격자 안에서만 스크롤. 그림 서랍을 연 칸은 한 줄을 다 쓴다 */
+.as-band .rptm-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px;max-height:132px;overflow:auto;border:0;border-radius:0;align-content:start}
+.as-band .rptm-list:has(.rptm-drawer:not(.hidden)){max-height:none}
+.as-band .rptm-it{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--dim-bg)}
+.as-band .rptm-it:first-child{border-top:1px solid var(--line)}
+.as-band .rptm-it:not(.off){border-color:var(--accent);background:var(--accent-soft)}
+.as-band .rptm-it:has(.rptm-drawer:not(.hidden)){grid-column:1 / -1}
+.as-band .rptm-row{min-height:0;padding:5px 8px}
+.as-band .rptm-row:hover{background:transparent}
+.as-band .rptm-it .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal;display:block}
+.as-band .rptm-row .check{display:flex;align-items:center;gap:8px}
 .as-rh{display:flex;align-items:center;gap:10px;flex:none}
 .as-rh .seg,.as-rh .btn,.as-docact{flex:none}
 .as-sub{font-size:var(--fs-meta);color:var(--muted);min-width:0;flex:1 1 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2963,12 +2985,11 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
 }
 /* ===== 월간 보고 문서(docs/MONTHLY-REPORT-PLAN.md §5). 새 규칙은 모두 .rptm- 와 #rptm* 다 =====
    2026-10-23 결정: 모으기와 미리 보기만 한다(고치는 칸 없음). 개발 일정 그림은 과제 고르기 줄에서 다룬다.
-   2026-11-03: 보고서 창에서 근태 탭 [취합]으로 옮겼다. 설정은 왼쪽 맨 아래(#asMon), 미리 보기는 오른쪽(#rptmPv). 자리 규칙은 아래 .as-* 이다. */
+   2026-11-03: 보고서 창에서 근태 탭 [취합]으로 옮겼다. 설정은 오른쪽 탭 줄 아래 띠(#asBand), 미리 보기는 오른쪽(#rptmPv). 자리 규칙은 아래 .as-* 이다. */
 .rptm-note{margin-bottom:12px;padding:8px 12px;border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--accent-soft);color:var(--accent-2);font-size:var(--fs-body);line-height:1.5}
 /* 앱의 폼 라벨 규칙(.modal label: 위 16px, 아래 6px, 굵게 600, display:block)이 이 탭의 과제 줄과 기타 칩에도 걸려 줄 사이가 벌어졌다
    (2026-10-23 시안 docs/prototypes/monthly-report-layout.html 이 찾은 원인). 전역 규칙은 그대로 두고 이 탭 안의 라벨만 되돌린다. */
-/* 왼쪽 = 설정, 과제와 그림 서랍, 기타, 미식별. 오른쪽 = 문서 미리 보기(칸 폭에 맞춰 줄임, rptMFit). */
-.rptm-set{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 10px;align-items:center;padding:10px 12px;background:var(--dim-bg);border:1px solid var(--line);border-radius:var(--r-md)}
+/* 오른쪽 = 문서 설정 띠(과제와 그림 서랍, 기타, 미식별)와 문서 미리 보기(칸 폭에 맞춰 줄임, rptMFit). 왼쪽은 기간, 출처, 서식, 읽어 오기만. */
 .rptm-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted);white-space:nowrap}
 .rptm-ctl{display:flex;align-items:center;gap:4px;min-width:0}
 .rptm-ctl .btn.sm{height:32px}
@@ -2979,7 +3000,6 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
 .rptm-name small{font-weight:400;color:var(--muted);font-size:var(--fs-meta);margin-right:4px}
 .rptm-hint{font-size:var(--fs-meta);color:var(--muted);line-height:1.5}
 .rptm-hint:empty{display:none}
-.rptm-set .full{grid-column:1 / -1}
 .rptm-cnt{font-size:var(--fs-meta);font-weight:400;color:var(--muted);white-space:nowrap}
 .rptm-i{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--ctl-border);color:var(--muted);font-size:10px;font-weight:700;font-style:normal;cursor:help;flex:none}
 .rptm-tip{margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-meta);font-weight:400;color:var(--muted);min-width:0;cursor:help}
@@ -3293,24 +3313,6 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
             <div class="rptm-hint" id="rptmSrcHint"></div>
             <div class="rptm-msg" id="rptmSrcMsg" role="status" aria-live="polite"></div>
           </div>
-          <!-- 월간 보고 문서 설정: 결과 형태가 문서일 때만 펼친다. 그리는 일은 모두 rptM* 함수가 한다 -->
-          <div class="as-mon hidden" id="asMon">
-            <div class="as-sec"><h3>월간 보고 문서 설정</h3>
-              <div class="rptm-set">
-                <span class="rptm-lb">계획</span>
-                <div class="rptm-ctl"><input type="date" id="rptmPFrom" aria-label="계획 기간 시작일"><span class="rptm-sep">~</span><input type="date" id="rptmPTo" aria-label="계획 기간 종료일"><button type="button" class="btn rptm-ib" id="rptmPlanDef" title="기본값으로(실적 끝 다음 월요일부터 같은 주 수, 금요일 끝)" aria-label="계획 기간 기본값으로">↺</button></div>
-                <span class="rptm-lb">작성일</span>
-                <div class="rptm-ctl"><input type="date" id="rptmDate" aria-label="작성일"><span class="rptm-name" title="로그인 이름. 문서 제목과 파일 이름에 들어갑니다"><small>이름</small><span id="rptmName"></span></span></div>
-              </div>
-            </div>
-            <div class="rptm-h">과제 <span class="rptm-cnt" id="rptmPickCnt"></span></div>
-            <div class="rptm-list" id="rptmPick"></div>
-            <div class="rptm-etc">
-              <div class="rptm-etc-h"><span title="공식 과제가 아닌 카테고리의 기록이 문서 맨 끝 기타 표에 들어갑니다">기타 표</span> <span class="rptm-cnt" id="rptmEtcSum"></span><button type="button" class="lnk" id="rptmEtcTog" aria-expanded="false" aria-controls="rptmEtc">고르기</button></div>
-              <div class="rptm-etc-cats hidden" id="rptmEtc"></div>
-            </div>
-            <div id="rptmUnid"></div>
-          </div>
         </div>
         <div class="at-split as-split" role="separator" aria-orientation="vertical" aria-label="설정 폭" tabindex="0" title="끌어서 폭 조절, 두 번 누르면 기본 폭" data-atsplit="s"></div>
         <div class="as-right" id="asRight">
@@ -3325,6 +3327,26 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
               <button type="button" class="btn hidden" id="rptmOpenDir">폴더 열기</button>
               <button type="button" class="btn primary" id="rptmSave">DOCX 저장</button>
             </span>
+          </div>
+          <!-- 문서 설정 띠: 결과 형태가 월간 보고 문서일 때만 탭 줄 바로 아래에 보인다. 그리는 일은 모두 rptM* 함수가 한다 -->
+          <div class="as-band hidden" id="asBand">
+            <button type="button" class="as-bandh" id="asBandH" aria-expanded="true" aria-controls="asBandB"><b>문서 설정</b><span class="as-bandsum" id="asBandSum"></span><span class="as-bandtg" id="asBandTg">접기</span></button>
+            <div class="as-bandb" id="asBandB">
+              <div class="as-line1">
+                <span class="as-fld"><span class="rptm-lb">계획</span><span class="rptm-ctl"><input type="date" id="rptmPFrom" aria-label="계획 기간 시작일"><span class="rptm-sep">~</span><input type="date" id="rptmPTo" aria-label="계획 기간 종료일"><button type="button" class="btn rptm-ib" id="rptmPlanDef" title="기본값으로(실적 끝 다음 월요일부터 같은 주 수, 금요일 끝)" aria-label="계획 기간 기본값으로">↺</button></span></span>
+                <span class="as-fld"><span class="rptm-lb">작성일</span><input type="date" id="rptmDate" aria-label="작성일"></span>
+                <span class="as-fld rptm-name" title="로그인 이름. 문서 제목과 파일 이름에 들어갑니다"><small>이름</small><span id="rptmName"></span></span>
+              </div>
+              <div>
+                <div class="rptm-h">과제 <span class="rptm-cnt" id="rptmPickCnt"></span></div>
+                <div class="rptm-list" id="rptmPick"></div>
+              </div>
+              <div class="rptm-etc">
+                <div class="rptm-etc-h"><span title="공식 과제가 아닌 카테고리의 기록이 문서 맨 끝 기타 표에 들어갑니다">기타 표</span> <span class="rptm-cnt" id="rptmEtcSum"></span><button type="button" class="lnk" id="rptmEtcTog" aria-expanded="false" aria-controls="rptmEtc">고르기</button></div>
+                <div class="rptm-etc-cats hidden" id="rptmEtc"></div>
+              </div>
+              <div id="rptmUnid"></div>
+            </div>
           </div>
           <div class="as-pane" id="asText">
             <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -17135,7 +17157,7 @@ function atSumOutSet(kind){
   $$('#asOut [data-aso]').forEach(b => { const on = b.dataset.aso === AS.out; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   $('#asText').classList.toggle('hidden', doc);
   $('#asDoc').classList.toggle('hidden', !doc);
-  $('#asMon').classList.toggle('hidden', !doc);
+  $('#asBand').classList.toggle('hidden', !doc);
   $('#btnRptCopy').classList.toggle('hidden', doc);
   $('#asDocAct').classList.toggle('hidden', !doc);
   if(doc){ rptMRenderAll(); rptMFit(); }
@@ -17510,6 +17532,23 @@ function rptMRenderSettings(){
   const h = $('#rptmSrcHint');
   if(h) h.textContent = (S.fillSrc && S.src !== S.fillSrc) ? '읽어 오기를 누르면 이 출처로 바꿉니다.' : '';
 }
+//  문서 설정 띠 머리의 요약(접어도 보인다): 계획 기간, 작성일, 고른 과제 수, 넣을 기타 표 수. 월/일만 쓴다(2026-11-02 는 11/2).
+function rptMBandMd(iso){ const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(String(iso || '')); return m ? (+m[1]) + '/' + (+m[2]) : ''; }
+function rptMBandSum(S, n){
+  const sm = $('#asBandSum'); if(!sm || !S) return;
+  const cats = rptMEtcCats(), e = cats.filter(c => !S.etcOff.has(c.key)).length;
+  const plan = S.pFrom && S.pTo ? '계획 ' + rptMBandMd(S.pFrom) + '~' + rptMBandMd(S.pTo) : '';
+  sm.textContent = [plan, S.date ? '작성일 ' + rptMBandMd(S.date) : '', '과제 ' + n + '개', '기타 표 ' + e + '개'].filter(Boolean).join(', ');
+}
+//  띠 접기와 펼치기(사용자 동작). 접힘 상태는 이 창을 연 동안만 둔다(기억하지 않는다).
+let __asBandOpen = true;
+function asBandSet(open){
+  __asBandOpen = !!open;
+  const b = $('#asBandB'), h = $('#asBandH'), t = $('#asBandTg');
+  if(b) b.classList.toggle('hidden', !__asBandOpen);
+  if(h) h.setAttribute('aria-expanded', __asBandOpen ? 'true' : 'false');
+  if(t) t.textContent = __asBandOpen ? '접기' : '펼치기';
+}
 function rptMSrcMsg(text, kind){
   const m = $('#rptmSrcMsg'); if(!m) return;
   m.textContent = text || '';
@@ -17555,7 +17594,7 @@ function rptMRenderUnid(){
   const box = $('#rptmUnid'); if(!box) return;
   const S = __rptM;
   const prev = box.querySelector('details[data-unid]');
-  const open = prev ? prev.open : true;
+  const open = prev ? prev.open : false;
   if(!S){ box.innerHTML = ''; return; }
   const w = rptMAuto(S);
   const items = (w && w.unid) || [];
@@ -17881,6 +17920,7 @@ function rptMPreview(){
 function rptMCounts(S, p){
   const n = p.projects.length, e = p.etc.lines.length > 0;
   const pc = $('#rptmPickCnt'); if(pc) pc.textContent = S.order.length ? n + '/' + S.order.length : '';
+  rptMBandSum(S, n);
   const ps = $('#rptmPvSum'); if(ps) ps.textContent = (n ? '과제 ' + n + '개' : '') + (n && e ? ', ' : '') + (e ? '기타 표' : '');
 }
 //  미리 보기 종이(폭 1000px)를 오른쪽 칸 폭에 맞춰 줄인다(CSS zoom, --fz). 칸이 숨어 있으면(좁은 폭의 설정 화면) 그대로 둔다.
@@ -17898,6 +17938,7 @@ function rptMBind(){
   __rptMBound = true;
   const S = () => __rptM;
   const planCh = () => { const s = S(); if(!s) return; s.pFrom = $('#rptmPFrom').value; s.pTo = $('#rptmPTo').value; rptMPreview(); };
+  $('#asBandH').addEventListener('click', () => asBandSet(!__asBandOpen));
   $('#rptmPFrom').addEventListener('change', planCh);
   $('#rptmPTo').addEventListener('change', planCh);
   $('#rptmPlanDef').addEventListener('click', () => {

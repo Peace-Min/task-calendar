@@ -7,6 +7,17 @@
 
 ---
 
+## 🆕 2026-11-03 (다음 판, 번호는 배포 때): 취합의 월간 보고 문서 설정을 오른쪽 "문서 설정" 띠로
+
+사용자 결정(2026-11-03, 확정 시안 `dist/proto/monthly-settings-v2.html` 애프터). 화면만 바뀌고 DB 구조와 호스트(C#) 변경은 없다. 설계는 [docs/ATTEND-SUMMARY.md](docs/ATTEND-SUMMARY.md) 2.
+
+- **띠(`#asBand`)**: 월간 설정이 왼쪽 맨 아래(`#asMon`)에서 오른쪽 [과제별 글 | 월간 보고 문서] 탭 줄 바로 아래, 미리 보기 위로 옮겨졌다. 결과 형태가 문서일 때만 보이고(`atSumOutSet`) 과제별 글이면 없다. 왼쪽은 늘 기간, 출처, 서식, 읽어 오기만이라 탭을 바꿔도 모양이 안 바뀐다.
+- **머리 줄**(`#asBandH`, 눌러서 접기): "문서 설정" + 요약(`rptMBandSum`: 계획 11/2~12/4, 작성일 11/3, 과제 n개, 기타 표 n개) + 접기/펼치기(`asBandSet`). 처음엔 펼침, 접어도 요약이 보인다. 접힘은 기억하지 않는다.
+- **본문**: 계획, 작성일, 이름 한 줄(좁으면 줄바꿈), 과제 격자(`repeat(auto-fill,minmax(230px,1fr))`, 최대 높이 132px 넘으면 격자 안 스크롤, 고른 칸은 `--accent-soft` 배경과 `--accent` 테두리, 그림 서랍을 연 칸은 한 줄을 다 쓰고 그때는 높이 상한을 푼다), 기타 표 한 줄, 미식별 항목 한 줄(처음엔 접힘으로 바꿨다).
+- **옮겨 쓴 것**: `rptMRenderSettings`, `rptMRenderPick`, `rptMRenderEtc`, `rptMRenderUnid`, `rptMCounts`, `rptMBind` 와 id(`rptmPFrom`, `rptmPTo`, `rptmPlanDef`, `rptmDate`, `rptmName`, `rptmPick`, `rptmPickCnt`, `rptmEtc*`, `rptmUnid`)는 그대로, 담는 그릇과 CSS 만 바꿨다. 그림 넣기, 기타 표 고르기, 체크, 그림 줄 hover 와 Ctrl+V(`__rptMHover`는 `#rptmPick` 안 줄만 본다)는 그대로 된다.
+- **걷은 CSS**: `.as-view .rptm-set` 단일 열 두 줄(계획 날짜 잘림 보정), `.as-mon`, `.rptm-set`, `.rptm-set .full`, `.as-view .rptm-ctl input[type=date]` 폭 규칙.
+- 시험: `attend-summary`(월간 설정이 왼쪽에 없고 오른쪽 탭 줄 아래 띠, 과제별 글이면 숨음, 접기와 요약, 격자 CSS, 변이 8종: 띠를 왼쪽으로, 탭 줄 위로, 격자 높이 상한 없앰, 옛 CSS 되살림, 과제별 글에서도 띠, 접으면 요약 숨음, 머리를 눌러도 안 접힘, 요약에 기타 표 없음), `monthly-report`(`#asMon` 을 `#asBand` 로, 미식별 칸 처음 접힘), 루프 `loop-monthly-report`, `loop-ui-visual`(`atSumDoc` 화면 추가).
+
 ## 🆕 2026-11-03 (다음 판, 번호는 배포 때): 취합의 캘린더 기록은 이 앱 주간보고 DB
 
 사용자 결정(2026-11-03)으로 근태 [취합]의 내용 출처 두 개의 뜻을 바로잡았다. 설계는 [docs/ATTEND-SUMMARY.md](docs/ATTEND-SUMMARY.md) 7. DB 구조 변경과 호스트(C#) 변경 없음(화면만).
