@@ -354,6 +354,8 @@ if (!JSDOM) {
       const p = n.parentElement;
       if (!p || p.closest('script,style,template')) continue;
       if (p.closest('#rptMarker') && ALLOW_TEXT.has(n.nodeValue.trim())) continue;
+      //  월간 보고 문서 미리 보기 제목은 DocxWriter 와 같은 글자(U+2013)다(위 정적 허용 목록의 '월간보고 문서 미리 보기 제목' 과 짝)
+      if (p.closest('.rptm-sheet .ttl') && /^월간보고 (.*) – /.test(n.nodeValue.trim())) continue;
       const f = badOf(n.nodeValue);
       if (f.length) bad.push(`${where} 글 [${f.join(', ')}] ${JSON.stringify(n.nodeValue.trim().slice(0, 120))}`);
     }
@@ -372,7 +374,7 @@ if (!JSDOM) {
     ['패치노트', 'openPatch()', '#patchModal'],
     ['설정', 'openSettings()', '#settingsModal'],
     ['내 과제', 'openCatModal()', '#categoryModal'],
-    ['보고서', 'openReport()', '#reportModal'],
+    ['근태 취합', "pcSetTab('attend'); atKindSet('sum')", '#atView'],
     ['사용자 정보', 'openUserInfo()', '#userModal'],
     ['문의', 'openFeedback()', '#feedbackModal'],
     ['공식 과제', 'openOfficialModal()', '#officialModal'],

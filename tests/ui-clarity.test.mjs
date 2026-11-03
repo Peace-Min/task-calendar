@@ -2,12 +2,12 @@
 //
 // 이 파일이 지키는 것:
 //   (S) 정적 계약 — 「넓게 보기」 → 「맨 앞에 띄우기」(제목줄·☰ 메뉴·안내 · 과거 패치노트는 그대로) · 아이콘 교체 ·
-//       회사 전송은 늘 실제 제출(전송 모드 라디오·배지·버튼 톤 없음 · 예전 저장값 미독 · 제출 전 확인 한 번) ·
+//       회사 전송은 늘 실제 제출(전송 모드 라디오·배지·버튼 톤 없음 · 예전 저장값 미독 · 근태 화면의 일간 보내기 payload 는 dryRun:false 상수) ·
 //       제목줄 「_」(트레이로 숨기기) 없음 + ✕ 툴팁이 트레이 상태를 따른다 · 호스트 닫기/숨기기 동작 불변(U6).
-//   (R) jsdom 실행 — 위젯 모드(가짜 호스트)로 부팅해 제목줄·트레이 툴팁을 보고, 보고서 전송을 확인창 수락까지
-//       눌러 **호스트로 나가려던 메시지만** 붙잡아 dryRun === false 를 본다.
+//   (R) jsdom 실행 — 위젯 모드(가짜 호스트)로 부팅해 제목줄·트레이 툴팁과 설정에 전송 모드가 없음을 본다.
+//       보내기 실행(dryRun === false)은 attendance-web 의 (A) 보내기 시험이 가짜 호스트로 본다.
 //       ★ 실제 전송은 없다: 가짜 chrome.webview.postMessage 는 배열에 넣기만 한다(아무 데도 전달하지 않는다).
-//   (M) 변이 — #hbHide 복원 · dryRun:true · 옛 이름 복귀 · 확인 제거 · 예전 저장값 다시 읽기를 각각 잡는다.
+//   (M) 변이 — #hbHide 복원 · dryRun:true · 옛 이름 복귀 · 예전 저장값 다시 읽기를 각각 잡는다.
 //
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 등록되지 않고 skip(판정 없음)으로 계수된다(러너 exit 2).
 import { test, skip, assert, loadAppSource, extractFunction, stripCsComments,
@@ -23,7 +23,6 @@ const TIP = {
   closeTray: '닫기: 트레이로 숨깁니다. 미리알림은 계속 동작하고, 완전히 끄려면 ☰ 메뉴의 종료를 누릅니다.',
   closeQuit: '닫기(종료)',
 };
-const CONFIRM_MSG = '회사 보고 시스템에 실제로 제출합니다. 계속할까요?';
 
 // 앵커 하나를 정확히 한 번 바꾼다 — 없거나 여럿이면 실패(조용히 통과하는 껍데기 변이를 막는다).
 function mutate(text, find, repl) {
@@ -60,14 +59,17 @@ function windowFn(src, name) {
   assert.ok(b > a, name + ' 의 끝을 찾지 못했다');
   return src.slice(a, b + 3);
 }
-// #btnRptSend 핸들러의 일간 갈래(전송 직전까지).
+// 근태 화면의 일간 보내기(보고서 창의 [회사 전송]은 없앴다): payload 를 만드는 atBuildSubmit 과 보내는 atSubmit.
+//  제출 전 확인 창은 두지 않는다(UI-FEEDBACK-ATTENDANCE §2.2: 다시 하면 되는 동작은 묻지 않는다).
 function dailySendBranch(src) {
-  const a = src.indexOf("$('#btnRptSend').addEventListener('click'");
-  assert.ok(a > 0, '#btnRptSend 배선을 찾지 못했다');
-  const d = src.indexOf("if(mode === 'daily'){", a);
-  const e = src.indexOf('Platform.report.submitDaily(payload);', d);
-  assert.ok(d > a && e > d, '일간 전송 갈래를 찾지 못했다');
-  return src.slice(d, e + 'Platform.report.submitDaily(payload);'.length);
+  return windowFnDecl(src, 'atBuildSubmit') + '\n' + windowFnDecl(src, 'atSubmit');
+}
+function windowFnDecl(src, name) {
+  const a = src.indexOf('function ' + name + '(');
+  assert.ok(a > 0, name + ' 을 찾지 못했다');
+  const b = src.indexOf('\n}\n', a);
+  assert.ok(b > a, name + ' 의 끝을 찾지 못했다');
+  return src.slice(a, b + 3);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -124,20 +126,18 @@ const S = {
     assert.ok(!src.includes('tc_netcusMode'), '예전 전송 모드 저장값(tc_netcusMode)을 아직 읽거나 쓴다 — 무시해야 한다(U3)');
     assert.ok(!/\bncMode\s*\(/.test(src), 'ncMode() 가 남아 있다');
   },
-  // U3·U4 · V3 — 일간 전송은 늘 dryRun:false, 제출 전 확인은 한 번, 확인보다 먼저 버튼을 잠그거나 보내지 않는다.
+  // U3 · V3 — 일간 보내기는 늘 dryRun:false 상수, 모드 분기와 예전 저장값이 없고, 보내기는 막을 것을 거른 뒤에만 한다.
+  //  (U4 의 제출 전 확인 창은 보고서 창의 [회사 전송]과 함께 없앴다. 근태 화면은 묻지 않는다. 실행 쪽은 attendance-web 의 (A) 보내기 시험이 본다.)
   dailyAlwaysReal(src) {
     const d = dailySendBranch(src);
-    assert.ok(/\bdryRun: false \}/.test(d), '일간 전송 payload 가 dryRun:false 가 아니다');
+    const b = windowFnDecl(src, 'atBuildSubmit');
+    assert.ok(b.includes('dryRun: false }'), '일간 전송 payload 가 dryRun:false 가 아니다');
     assert.ok(!/dryRun:(?!\s*false\b)/.test(d), '일간 전송 payload 의 dryRun 이 false 상수가 아니다(모드 분기가 남았다)');
-    const c = d.indexOf(`await confirmBox('일간보고 제출', '${CONFIRM_MSG}'`);
-    assert.ok(c > 0, `실제 제출 전 확인(「${CONFIRM_MSG}」)이 없다(U4)`);
-    assert.strictEqual(countOf(d, 'confirmBox('), 1, '제출 확인이 한 번이 아니다');
-    assert.ok(/Platform\.caps\.reportAuto && await confirmBox\([^\n]*\) !== 'ok'\) return;/.test(d),
-      "확인을 거절해도 진행한다(!== 'ok' → return 이 아니다) — 또는 위젯 조건이 빠졌다");
-    const lock = d.indexOf('if(b) b.disabled = true;');
-    const send = d.indexOf('Platform.report.submitDaily(payload);');
-    assert.ok(lock > c && send > c, '확인보다 먼저 버튼을 잠그거나 전송한다');
-    assert.ok(/\$\('#btnRptSend'\)\.addEventListener\('click', async \(\) => \{/.test(src), '전송 핸들러가 async 가 아니다(확인을 기다릴 수 없다)');
+    assert.ok(!d.includes('localStorage') && !d.includes('tc_netcusMode'), '일간 보내기가 저장값을 읽는다(전송 모드 저장값은 없다)');
+    const s = windowFnDecl(src, 'atSubmit');
+    const blocked = s.indexOf('if(atSubmitBlocked()) return;');
+    const send = s.indexOf('Platform.report.submitDaily(payload);');
+    assert.ok(blocked > 0 && send > blocked, '막을 블록을 거르기 전에 보낸다');
     // 어댑터는 payload 의 값을 그대로 싣는다(여기서 다시 true 로 바꾸는 길이 없다).
     assert.ok(/submitDaily\(p\)\{ hpost\(\{ cmd: 'netcusSubmit',[^\n]*dryRun: p\.dryRun,/.test(src), 'WidgetPlatform.submitDaily 가 payload 의 dryRun 을 그대로 싣지 않는다');
     // 주간은 「채우고 열어두기」(직접 제출) — dryRun 개념이 없다. 그래도 true 를 싣는 길이 생기면 안 된다.
@@ -169,7 +169,7 @@ test('S1 (U2·V2): 「넓게 보기」 는 과거 패치노트(#patchModal)에�
 test('S2 (U1·V1): 제목줄 #hbFocus = 「맨 앞에 띄우기」 툴팁·aria + 겹친 창 아이콘(⤢ 없음)', () => S.hostBarFocus(app));
 test('S3 (U1·V1): 호스트 ☰ 메뉴 = 「맨 앞에 띄우기」 / 켜짐 「맨 앞 해제 (Esc)」', () => S.hostMenu(mainwin));
 test('S4 (U3·V3): 전송 모드 라디오·배지·버튼 톤·예전 저장값 읽기가 없다', () => S.noSendModeUi(app));
-test('S5 (U3·U4·V3): 일간 전송 payload 는 dryRun:false 상수 · 제출 전 확인 한 번 · 확인 뒤에야 잠금/전송', () => S.dailyAlwaysReal(app));
+test('S5 (U3·V3): 일간 전송 payload 는 dryRun:false 상수 · 막을 블록을 거른 뒤에만 보낸다', () => S.dailyAlwaysReal(app));
 test('S6 (U5·V4): 제목줄에 「_」(#hbHide) 없음 · ✕ 툴팁은 __setTray 가 트레이 상태로 정한다', () => S.trayCloseOnly(app));
 test('S7 (U6): 호스트 ✕/숨기기/종료 동작은 그대로다', () => S.hostCloseUnchanged(mainwin));
 test('S8 (V2): 사용 안내·설정 안내가 새 이름을 말한다', () => {
@@ -178,7 +178,7 @@ test('S8 (V2): 사용 안내·설정 안내가 새 이름을 말한다', () => {
   assert.ok(app.includes("'맨 앞에 띄우기'(크기는 그대로 다른 창 위에) 지원"), '도움말(창 모드)이 새 동작을 말하지 않는다');
   assert.ok(app.includes('제목줄의 최대화 버튼으로 창을 크게 펼치면 가장 잘 보입니다.'), '설정(월 보기 밀도) 안내가 최대화를 말하지 않는다');
   assert.ok(!/다른 창 위에 크게/.test(app.slice(0, patchRange(app)[0]) + app.slice(patchRange(app)[1])), '안내에 예전 동작(다른 창 위에 크게)이 남아 있다');
-  assert.ok(app.includes('<b>실제로 제출</b>합니다(제출 직전에 한 번 확인합니다)'), '설정(회사 일간보고) 안내가 「늘 실제 제출」을 말하지 않는다');
+  assert.ok(app.includes('<b>실제로 제출</b>합니다(근태 탭 일간의 [보고]를 누르면 바로 보냅니다)'), '설정(회사 일간보고) 안내가 「늘 실제 제출」을 말하지 않는다');
 });
 
 // ── (M) 정적 변이 ────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ test('변이 M1: #hbHide 를 되살리면 S6 이 잡는다', () => {
   assert.throws(() => S.trayCloseOnly(bad), /hbHide|data-host="hide"|4개/);
 });
 test('변이 M2: payload 를 dryRun:true 로 보내면 S5 가 잡는다', () => {
-  const bad = mutate(app, 'hours: rptHours, dryRun: false };', 'hours: rptHours, dryRun: true };');
+  const bad = mutate(app, 'hours: atHoursPayload(c.blocks), dryRun: false };', 'hours: atHoursPayload(c.blocks), dryRun: true };');
   assert.throws(() => S.dailyAlwaysReal(bad), /dryRun/);
 });
 test('변이 M3: 옛 이름(툴팁·안내·☰ 메뉴)을 되돌리면 S1·S2·S3 이 잡는다', () => {
@@ -202,16 +202,9 @@ test('변이 M3: 옛 이름(툴팁·안내·☰ 메뉴)을 되돌리면 S1·S2·
   const badMenu = mutate(mainwin, '"맨 앞 해제 (Esc)" : "맨 앞에 띄우기"', '"넓게 보기 닫기" : "넓게 보기"');
   assert.throws(() => S.hostMenu(badMenu), /맨 앞|넓게 보기/);
 });
-test('변이 M4: 제출 전 확인을 빼면 S5 가 잡는다', () => {
-  const at = app.indexOf("      if(Platform.caps.reportAuto && await confirmBox('일간보고 제출'");
-  assert.ok(at > 0);
-  const end = app.indexOf('\n', at) + 1;
-  const bad = app.slice(0, at) + app.slice(end);
-  assert.throws(() => S.dailyAlwaysReal(bad), /확인/);
-});
 test('변이 M5: 예전 저장값(tc_netcusMode)을 다시 읽으면 S4 가 잡는다', () => {
-  const bad = mutate(app, 'hours: rptHours, dryRun: false };',
-    "hours: rptHours, dryRun: (function(){ try{ return localStorage.getItem('tc_netcusMode') !== 'real'; }catch(_){ return true; } })() };");
+  const bad = mutate(app, 'hours: atHoursPayload(c.blocks), dryRun: false };',
+    "hours: atHoursPayload(c.blocks), dryRun: (function(){ try{ return localStorage.getItem('tc_netcusMode') !== 'real'; }catch(_){ return true; } })() };");
   assert.throws(() => S.noSendModeUi(bad), /tc_netcusMode/);
   assert.throws(() => S.dailyAlwaysReal(bad), /dryRun/);
 });
@@ -227,8 +220,6 @@ if (!JSDOM) {
        `이 파일의 test( 호출 ${countTestsBelow(import.meta.url, 'if (!JSDOM) {')}곳이 등록되지 않았다(정적 계수)`);
 } else {
   const quietConsole = () => (jsdomMod.VirtualConsole ? new jsdomMod.VirtualConsole() : undefined);
-  const META = { schemaVersion: '12', expectedSchema: '12', schemaMismatch: false, rev: 1, canWrite: true, userId: 7 };
-  const CA = '2026-09-01T00:00:00Z';
   const tick = () => new Promise((r) => setTimeout(r, 20));
   async function waitFor(pred, what, ms = 3000) {
     const t0 = Date.now();
@@ -267,55 +258,8 @@ if (!JSDOM) {
       close: async () => { await tick(); try { w.close(); } catch (_) {} },
     };
   }
-  // 오늘 날짜(앱의 todayYmd)에 일정 하나 — 일간 보고서 본문이 비지 않게.
-  function seed(m) {
-    const today = m.ev('todayYmd()');
-    const data = {
-      categories: [{ id: 'c-a', name: '알파', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
-      entries: [{ id: 'e-1', date: today, title: '보고 대상 업무', categoryId: 'c-a', allDay: true, startTime: '', endTime: '',
-                  memo: '', location: '', source: '', commits: [], createdAt: CA, updatedAt: CA }],
-      todos: [], rooms: [],
-    };
-    m.ev('__applyState(' + JSON.stringify(JSON.stringify(data)) + ',' + JSON.stringify(META) + ')');
-    return today;
-  }
-  const overlayOpen = (m, id) => { const o = m.doc.getElementById(id); return !!o && !o.classList.contains('hidden') && !o.classList.contains('closing'); };
-  //  닫힘 = 'hidden' 까지(닫는 애니메이션 'closing' 동안은 confirmBox 가 아직 결과를 돌려주지 않았다).
+  //  닫힘 = 'hidden' 까지(닫는 애니메이션 'closing' 동안은 아직 닫히지 않았다).
   const overlayClosed = (m, id) => { const o = m.doc.getElementById(id); return !o || o.classList.contains('hidden'); };
-  const submits = (m) => m.posted.filter((x) => x && /^netcus/.test(String(x.cmd || '')) && x.cmd !== 'netcusCredsGet');
-
-  // 보고서 열기 → 일간 전송 누르기 → (확인창) → 수락/거절. 반환: 확인창 상태 + 그 뒤 호스트로 나가려던 netcus 메시지.
-  async function sendDaily(m, accept) {
-    // 예전 사용자가 「미제출 테스트」를 골라 두었던 PC — 그 값은 이제 아무 영향이 없어야 한다(U3).
-    m.ev("try{ localStorage.setItem('tc_netcusMode', 'dry'); }catch(_){}");
-    const today = seed(m);
-    await tick();
-    m.ev("openReport(); setReportMode('daily'); ['#rptSrcEvent','#rptSrcTodo'].forEach(function(s){ var e=$(s); if(e) e.checked = true; }); buildReport(); updateRptSendVis();");
-    assert.strictEqual(m.ev("$('#btnRptSend').dataset.mode"), 'daily', '보고서가 일간으로 열리지 않았다');
-    const before = submits(m).length;
-    m.doc.getElementById('btnRptSend').click();
-    await waitFor(() => overlayOpen(m, 'confirmModal'), '제출 확인창이 뜬다');
-    const cf = { title: m.ev("$('#cfTitle').textContent"), msg: m.ev("$('#cfMsg').textContent"), ok: m.ev("$('#cfOk').textContent") };
-    const whileAsking = submits(m).length - before;
-    if (accept) m.doc.getElementById('cfOk').click();
-    else m.doc.querySelector('#confirmModal [data-close]').click();
-    await waitFor(() => overlayClosed(m, 'confirmModal'), '확인창이 닫힌다');
-    await tick(); await tick();
-    return { today, cf, whileAsking, sent: submits(m).slice(before) };
-  }
-  // 실행 검사기 — 변이 시험이 재사용한다.
-  function assertRealSubmit(r) {
-    assert.strictEqual(r.whileAsking, 0, '확인창이 떠 있는 동안 이미 호스트로 전송했다');
-    assert.strictEqual(r.cf.msg, CONFIRM_MSG, '확인창 문구가 다르다');
-    assert.strictEqual(r.sent.length, 1, '확인 뒤 netcus 메시지가 정확히 1건이 아니다: ' + JSON.stringify(r.sent.map((x) => x.cmd)));
-    const msg = r.sent[0];
-    assert.strictEqual(msg.cmd, 'netcusSubmit', '일간 전송 명령이 netcusSubmit 이 아니다');
-    assert.strictEqual(msg.dryRun, false, '일간 전송의 dryRun 이 false 가 아니다(예전 저장값 dry 가 남아 있어도 실제 제출이어야 한다)');
-    const [y, mo, d] = r.today.split('-').map(Number);
-    assert.deepStrictEqual([msg.y, msg.m, msg.d], [y, mo, d], '전송 날짜가 오늘이 아니다');
-    assert.ok(String(msg.content || '').includes('보고 대상 업무'), '전송 본문에 오늘 일정이 없다');
-  }
-
   let M = null, bootErr = null;
   try { M = boot(app); } catch (e) { bootErr = e; }
   if (bootErr) {
@@ -360,55 +304,15 @@ if (!JSDOM) {
       assert.strictEqual(c.getAttribute('aria-label'), TIP.closeQuit);
     });
 
-    test('R3 (V3): 설정에 전송 모드 라디오가 없고, 보고서 창에 모드 배지·실제 제출 톤이 없다', async () => {
+    test('R3 (V3): 설정에 전송 모드 라디오가 없고 전송 모드 배지도 없다', async () => {
       M.ev('openSettings()');
       assert.strictEqual(M.doc.querySelectorAll('#settingsModal input[name="ncMode"]').length, 0, '설정에 전송 모드 라디오가 있다');
       assert.ok(!M.doc.getElementById('settingsModal').textContent.includes('미제출 테스트'), '설정에 「미제출 테스트」 문구가 남아 있다');
       M.ev("closeModal('#settingsModal')");
       await waitFor(() => overlayClosed(M, 'settingsModal'), '설정이 닫힌다');
-      M.ev("try{ localStorage.setItem('tc_netcusMode', 'real'); }catch(_){}; openReport(); setReportMode('daily'); updateRptSendVis();");
-      assert.strictEqual(M.doc.getElementById('rptSendMode'), null, '보고서 창에 전송 모드 배지가 있다');
-      const b = M.doc.getElementById('btnRptSend');
-      assert.ok(!b.classList.contains('real'), '전송 버튼이 「실제 제출」 톤을 입었다(모드 분기가 남았다)');
-      assert.ok(b.title.includes('실제로 제출됩니다'), '위젯 일간 전송 버튼 툴팁이 「실제로 제출」을 말하지 않는다');
-      M.ev("closeModal('#reportModal')");
-      await waitFor(() => overlayClosed(M, 'reportModal'), '보고서가 닫힌다');
+      assert.strictEqual(M.doc.getElementById('rptSendMode'), null, '전송 모드 배지가 있다');
     });
 
-    test('R4 (V3·U4): 일간 전송 — 확인창 수락 뒤에만 netcusSubmit 1건 · dryRun === false(예전 저장값 dry 무시)', async () => {
-      const r = await sendDaily(M, true);
-      assert.strictEqual(r.cf.title, '일간보고 제출');
-      assert.strictEqual(r.cf.ok, '제출');
-      assertRealSubmit(r);
-      M.ev("window.__netcusResult(true, '시험 회신'); closeModal('#reportModal')");   // 버튼 잠금 해제(호스트 회신 흉내 — 아무것도 보내지 않는다)
-      await waitFor(() => overlayClosed(M, 'reportModal'), '보고서가 닫힌다');
-    });
-
-    test('R5 (U4): 확인창에서 취소하면 호스트로 아무것도 나가지 않고 버튼도 잠기지 않는다', async () => {
-      const r = await sendDaily(M, false);
-      assert.strictEqual(r.whileAsking, 0);
-      assert.strictEqual(r.sent.length, 0, '취소했는데 netcus 메시지가 나갔다: ' + JSON.stringify(r.sent.map((x) => x.cmd)));
-      assert.strictEqual(M.ev("$('#btnRptSend').disabled"), false, '취소했는데 전송 버튼이 잠겼다');
-      M.ev("closeModal('#reportModal')");
-      await waitFor(() => overlayClosed(M, 'reportModal'), '보고서가 닫힌다');
-    });
-
-    test('R6: 가짜 호스트는 받은 메시지를 어디에도 전달하지 않는다(실제 netcus 제출 경로 없음)', () => {
-      //  postMessage 는 배열 push 뿐 — 응답·전달 경로가 없다. netcus 메시지는 R4 의 netcusSubmit 1건뿐이어야 한다.
-      const nc = M.posted.filter((x) => /^netcus/.test(String(x.cmd || '')));
-      assert.deepStrictEqual(nc.map((x) => [x.cmd, x.dryRun]), [['netcusSubmit', false]]);
-    });
-
-    // ── (M) 실행 변이 ─────────────────────────────────────────────────
-    test('변이 R-M1: payload 를 dryRun:true 로 바꾸면 실행 계약(R4)이 잡는다', async () => {
-      const bad = mutate(app, 'hours: rptHours, dryRun: false };', 'hours: rptHours, dryRun: true };');
-      const B = boot(bad);
-      try {
-        const r = await sendDaily(B, true);
-        assert.strictEqual(r.sent.length, 1, '변이 앱에서 전송이 일어나지 않았다(변이가 경로에 닿지 않았다)');
-        assert.throws(() => assertRealSubmit(r), /dryRun/);
-      } finally { await B.close(); }
-    });
     test('변이 R-M2: #hbHide 를 되살리면 실행 계약(R2)이 잡는다', async () => {
       const bad = mutate(app, '      <button data-host="pin" id="hbPin"',
         '      <button data-host="hide" id="hbHide" title="트레이로 숨기기" style="display:none">_</button>\n      <button data-host="pin" id="hbPin"');

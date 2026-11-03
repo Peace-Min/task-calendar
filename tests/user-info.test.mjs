@@ -196,14 +196,7 @@ const checks = {
       '≤440px 숨김 목록에 #btnUser 가 없다 — 위젯 실폭에서 액션 줄이 넘쳐 ＋새 기록이 잘린다');
   },
 
-  // ③ 보고서 라벨 접기 경계는 739px 이다 — 679 로 되돌리면 690px 구간에서 헤더가 두 줄이 된다(실측).
-  reportLabelBreakpoint(source) {
-    const css = source.slice(source.indexOf('<style>'), source.indexOf('</style>'));
-    assert.ok(/@media \(max-width:739px\)\{\s*#btnReportTop \.btn-label\{display:none\}\s*\}/.test(css),
-      '보고서 라벨 접기 경계가 739px 이 아니다 — 👤가 늘어난 만큼(40+8px) 미리 접지 않으면 690px에서 헤더가 113→158px로 늘어난다');
-    assert.ok(!/@media \(max-width:679px\)/.test(css),
-      '옛 679px 경계가 남아 있다 — 경계가 둘이면 어느 쪽이 사는지 폭마다 달라진다');
-  },
+  // ③ (보고서 라벨 접기 경계 739px 은 툴바의 보고서 버튼과 함께 없앴다. 보고서 버튼이 없으니 접을 라벨도 없다.)
 
   // ④ ⋯ 접기 — 숨은 폭에서의 유일한 도달 경로. 동작 정의를 두 벌로 만들지 않고 원본 클릭을 위임한다.
   foldEntry(source) {
@@ -1004,7 +997,6 @@ test('사용자정보 ①: #btnUser 가 상단바에 있고 라벨이 없다(폭
 test('사용자정보 ⑲: 열람 모달이 명부 모달의 형제다(자식이면 0×0 으로 안 보인다)', () =>
   checks.peerModalIsSiblingNotChild(src));
 test('사용자정보 ②: ≤440px 에서 보조 버튼과 함께 접힌다', () => checks.narrowHidden(src));
-test('사용자정보 ③: 보고서 라벨 접기 경계가 739px 이다(690px 실측 상쇄)', () => checks.reportLabelBreakpoint(src));
 test('사용자정보 ④: ⋯ 접기 btnUserFold → #btnUser 위임', () => checks.foldEntry(src));
 test('사용자정보 ⑤: #userModal 은 닫을 수 있는 .overlay 다(게이트와 정반대)', () => checks.closableOverlay(src));
 test('사용자정보 ⑥: 옛 #accountSection·acct* 8종이 0건이다(복제 아닌 이동)', () => checks.oldAccountGone(src));
@@ -1096,13 +1088,8 @@ test('변이②: ≤440px 숨김 목록에서 #btnUser 를 빼면 narrowHidden �
   assert.throws(() => checks.narrowHidden(bad), /#btnUser 가 없다/);
 });
 
-test('변이③: 보고서 라벨 경계를 739 → 679 로 되돌리면 reportLabelBreakpoint 가 실패한다', () => {
-  const bad = mutate(src, '@media (max-width:739px){', '@media (max-width:679px){');
-  assert.throws(() => checks.reportLabelBreakpoint(bad), /739px 이 아니다/);
-});
-
 test('변이④: ⋯ 위임 맵에서 btnUserFold 를 빼면 foldEntry 가 실패한다', () => {
-  const bad = mutate(src, "btnUserFold:'#btnUser', ", '');
+  const bad = mutate(src, "btnUserFold:'#btnUser'", "btnUserFoldX:'#btnUser'");
   assert.throws(() => checks.foldEntry(bad), /위임 맵에 btnUserFold/);
 });
 

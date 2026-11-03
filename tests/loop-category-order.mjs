@@ -187,7 +187,7 @@ const isOpen = (sel) => `(function(){ const m = document.querySelector(${JSON.st
 const zzCats = () => J(`state.categories.filter(function(c){ return String(c.name || '').indexOf(${JSON.stringify(ZZ_ALL)}) === 0; }).map(function(c){ return { id: c.id, name: c.name }; })`);
 
 async function closeAll() {
-  await cdp.ev(`(function(){ try{ catMenuClose(false); }catch(_){} ['#confirmModal','#catEditModal','#catAddModal','#quickAdd','#reportModal','#categoryModal'].forEach(function(s){
+  await cdp.ev(`(function(){ try{ catMenuClose(false); }catch(_){} ['#confirmModal','#catEditModal','#catAddModal','#quickAdd','#categoryModal'].forEach(function(s){
     try { const m = document.querySelector(s); if (m && !m.classList.contains('hidden')) closeModal(s); } catch (_) {} }); return 1; })()`);
   await sleep(400);
 }
@@ -481,10 +481,10 @@ async function main() {
     //  같은 순서가 **옮긴 순서**에서 나온다(옮긴 행이 보고서에서도 맨 앞)
     if (cs[0]) ok('C4 맨 위로 옮긴 과제가 보고서 첫 행이다', keys[0] === cs[0].id || (src.skipEmpty && !keys.includes(cs[0].id)), JSON.stringify(keys.slice(0, 3)));
 
-    //  보고서 창을 사람이 여는 문(헤더 #btnReportTop)으로 연다 — 일간(오늘) 미리보기 카드 순서.
-    await cdp.ev(`(function(){ const b = document.getElementById('btnReportTop'); if (b) b.click(); else openReport(); return 1; })()`);
-    const opened = await waitFor(isOpen('#reportModal'), 3000, 100);
-    ok('C4 [보고서] 로 보고서 창이 열린다', opened);
+    //  근태 탭 [취합]을 사람이 여는 문(머리 단추)으로 연다 — 기간 취합 미리보기 카드 순서.
+    await cdp.ev(`(function(){ pcSetTab('attend'); atKindSet('sum'); return 1; })()`);
+    const opened = await waitFor("!document.getElementById('atSum').classList.contains('hidden')", 3000, 100);
+    ok('C4 근태 [취합] 이 열린다', opened);
     //  미리보기 카드(.rcard .rcard-nm) 순서 = 같은 기간·같은 포함 항목의 collectReportData 행 순서 = state.categories 순서.
     const checkPreview = async (label) => {
       await waitFor("document.querySelectorAll('#rptOut .rcard').length > 0", 5000, 150);
@@ -500,19 +500,12 @@ async function main() {
       ok(`C4 ${label} 미리보기의 행 = state.categories 순서 그대로`, same(pv.keys, expK), JSON.stringify({ keys: pv.keys, exp: expK }));
       ok(`C4 ${label} 미리보기에 미분류 합성 카드(__uncat__)가 없다`, !pv.keys.includes('__uncat__'), JSON.stringify(pv.keys));
     };
-    await checkPreview('일간(오늘)');
-    //  기록이 있는 기간이 오늘이 아니면 「기간 취합」 탭으로 그 기간을 그린다 — 내용 있는 카드까지 줄을 선다.
-    if (from !== to || from !== todayIso()) {
-      const net = await cdp.ev("state.reportSource === 'net' || state.reportSource === 'week'");
-      if (net) na('C4 기간 취합 미리보기', '내용 출처가 netcus 라 기간 취합은 netcus 미리보기다');
-      else {
-        await cdp.ev(`(function(){ const b = document.querySelector('#reportModal [data-rmode="custom"]'); b.click();
-          const f = document.getElementById('rptFrom'), t = document.getElementById('rptTo');
-          f.value = ${JSON.stringify(from)}; t.value = ${JSON.stringify(to)}; t.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
-        await sleep(300);
-        await checkPreview('기간 취합');
-      }
-    }
+    //  기록이 있는 기간으로 그린다 — 내용 있는 카드까지 줄을 선다.
+    await cdp.ev(`(function(){ state.reportSource = 'cal'; syncReportSourceSeg();
+      const f = document.getElementById('rptFrom'), t = document.getElementById('rptTo');
+      f.value = ${JSON.stringify(from)}; t.value = ${JSON.stringify(to)}; t.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
+    await sleep(300);
+    await checkPreview('기간 취합');
     await closeAll();
   }
 

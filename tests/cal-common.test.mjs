@@ -146,7 +146,6 @@ const statics = {
       pcRenderWeek: ['calCellCls(', 'CAL_DOW'],
       atRenderMonth: ['calCellCls(', 'calNumCls(', 'CAL_DOW'],
       rptMPlanDefault: ['calViewWeek('],
-      setReportRange: ['calRowRange('],
       calRowRange: ['calRowWeek('],
       awCalRender: ['calMonthGrid(', 'calReportPeriod(', 'calWeekTitle(', 'calCellCls(', 'calNumCls(', 'CAL_DOW', 'CAL_ORD'],
       awPeriodLabel: ['calReportPeriod('],
@@ -156,14 +155,12 @@ const statics = {
       const body = fnText(src, fn);
       for (const c of calls) assert.ok(body.includes(c), fn + ' 가 공용 ' + c + ' 를 부르지 않는다');
     }
-    assert.ok(/subject: calWeekTitle\(from\)/.test(fnText(src, 'buildWeeklyFields')), '보고서 창 주간 제목이 calWeekTitle 이 아니다');
-    assert.ok(src.includes('const mon = calReportPeriod(todayYmd()).mon') && src.includes('awOpen(calReportPeriod(todayYmd()).mon)'), '주간보고 목록, 새 주의 기본 주가 공용 함수가 아니다');
+    assert.ok(src.includes('awOpen(calReportPeriod(todayYmd()).mon)'), '새 주의 기본 주가 공용 함수가 아니다');
   },
   submitSaturday(src) {
     const body = fnText(src, 'awBuildSubmit');
     assert.ok(/edate:\s*calReportPeriod\(AWE\.mon\)\.sat\b/.test(body), 'awBuildSubmit 의 edate 가 회사 보고 기간의 토요일이 아니다');
     assert.ok(!/addDays\(AWE\.mon,\s*6\)/.test(src), 'AWE.mon + 6(일요일)로 기간 끝을 만드는 곳이 남아 있다');
-    assert.ok(/reportMode === 'weekly'[^\n]*calReportPeriod\(v\)[^\n]*\$\('#rptTo'\)\.value = r\.sat/.test(src), '보고서 창 주간 전송 기간이 월~토로 스냅되지 않는다');
   },
   subjectReadonly(src) {
     assert.ok(/<input type="text" id="awSubj"[^>]*\sreadonly[\s>]/.test(src), '주간보고 제목 칸(#awSubj)이 readonly 가 아니다');
@@ -180,7 +177,7 @@ const statics = {
 };
 test('(S) 화면 함수들이 공용 함수를 부른다', () => statics.screensUseCommon(app));
 test('(S) 공용 밖에 주 계산 식, 요일 배열, 옛 주 계산 함수가 없다', () => statics.noOwnWeekMath(app));
-test('(S) awBuildSubmit 의 edate 는 토요일이고 보고서 창 주간 전송도 월~토다', () => statics.submitSaturday(app));
+test('(S) awBuildSubmit 의 edate 는 토요일이다', () => statics.submitSaturday(app));
 test('(S) 주간보고 제목 칸은 readonly 이고 손으로 고친 제목 기억 로직이 없다', () => statics.subjectReadonly(app));
 test('(S) 주 고르기는 일요일 칸과 앞뒤 달 날짜를 막는다(정적)', () => statics.pickerBlocksOutOfRange(app));
 //  칸 디자인 CSS 는 .cal-c 공용 블록 하나뿐. 화면별 주말, 흐림, 오늘 규칙이 다시 생기면 실패한다.

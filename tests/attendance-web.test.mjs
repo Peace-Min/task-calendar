@@ -23,7 +23,8 @@
 //       내용 있는 0시간 막기 빼기, 새로고침의 과제 목록 바꾸기 빼기를 같은 검사가 잡는다.
 // ★ 회사 사이트에는 아무것도 보내지 않는다. Platform.report.submitDaily 와 chrome.webview.postMessage 를 가로채 보기만 한다.
 // 생략 규약: jsdom 이 없으면 (B)(W)(A)(M)은 등록되지 않고 skip(판정 없음)으로 계수된다.
-import { test, skip, assert, loadAppSource, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
+import vm from 'node:vm';
+import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 
 const app = loadAppSource();
 const NL = String.fromCharCode(10);
@@ -49,21 +50,43 @@ test('(S) 근태 창 허용 목록은 아홉이고(netcusWeekMerge 없음, atten
   assert.ok(/get\('win'\) === 'attend'/.test(app), '?win=attend 판별이 없다');
   assert.ok(/<button type="button" class="pc-tab" role="tab" id="pcTabAttend"[^>]*data-pctab="attend">근태<\/button>/.test(app), '탭 줄에 근태 탭이 없다');
 });
-test('(S) 보고서 창의 일간 작성, 주간 작성 입구는 숨기고(근태 탭으로 옮김, 2026-10-30) 열면 기간 취합부터', () => {
-  for (const k of ['daily', 'weekly']) assert.ok(new RegExp('<button class="btn sm hidden" data-rmode="' + k + '"').test(app), '보고서 창의 ' + k + ' 탭이 보인다');
-  for (const k of ['custom', 'monthly']) assert.ok(new RegExp('<button class="btn sm" data-rmode="' + k + '"').test(app), '보고서 창의 ' + k + ' 탭이 숨었다');
-  const o = app.slice(app.indexOf('function openReport(){'), app.indexOf('function openReport(){') + 1200);
-  assert.ok(o.includes("setReportMode('custom');") && !o.includes("setReportMode('daily');"), '보고서 창이 기간 취합으로 열리지 않는다');
-  assert.ok(app.includes("'[data-rmode]:not(.hidden)'"), '화살표 키가 숨긴 탭으로 간다');
-});
 test('(S) 근태 화면 문구에 엠 대시, en 대시, 낫표, 띄어 쓴 가운데 점이 없다', () => {
   const a = app.indexOf('<section class="at-view" id="atView"'), b = app.indexOf('</section>', a);
   const j0 = app.indexOf('/* ===== 근태 탭과 근태 보고 화면(docs/ATTENDANCE-PLAN.md, 2026-10-29'), j1 = app.indexOf('function atInit(){', j0);
   assert.ok(a > 0 && b > a && j0 > 0 && j1 > j0);
-  for (const part of [app.slice(a, b), app.slice(j0, j1)]) {
+  //  취합 화면의 머리기호 선택지(#rptMarker)는 보고 본문에 실제로 찍힐 글자(- ◦ · – 등)를 그대로 보여 주는 자리라 뺀다(ui-copy-punct 의 ALLOW_TEXT 와 같은 예외).
+  const html = app.slice(a, b).replace(/<select id="rptMarker"[\s\S]*?<\/select>/, '');
+  assert.ok(html.length < b - a, '#rptMarker 선택지를 찾지 못했다');
+  for (const part of [html, app.slice(j0, j1)]) {
     assert.ok(!/[—–「」]/.test(part), '금지 기호가 있다');
     assert.ok(!/(^|\s)·|·(\s|$)/m.test(part), '띄어 쓴 가운데 점이 있다');
   }
+});
+
+//  reportEditedBodyOut 다듬기(앞 빈 줄, 끝 공백, 가운데 공백뿐인 줄, CRLF, 줄 앞 탭). 근태 일간, 주간 보내기 글이 쓰는 순수 함수다.
+//  (옛 tests/report-edit.test.mjs 의 S11, SM9. 그 파일은 보고서 창의 글 편집과 함께 지웠고 살아 있는 이 함수의 시험만 옮겼다.)
+function bodyOutFn(src) {
+  const ctx = { out: null, RPT_TAB_UNITS: 4 };
+  vm.runInNewContext(extractFunction(src, 'reportEditedBodyOut') + '\nout = reportEditedBodyOut;', ctx);
+  return ctx.out;
+}
+function checkBodyOut(f) {
+  const NB = '&nbsp;';
+  assert.strictEqual(f('\n  \n\t\n• 첫 줄', NB), '• 첫 줄', '앞쪽 빈 줄(공백, 탭뿐인 줄 포함)을 걷지 않는다');
+  assert.strictEqual(f('• 끝 줄  \n\n \t\n', NB), '• 끝 줄', '끝 공백과 끝 빈 줄을 걷지 않는다');
+  assert.strictEqual(f('• 위\n   \n• 아래', NB), '• 위\n\n• 아래', '가운데 공백뿐인 줄이 빈 줄이 아니다(&nbsp; 만 있는 줄이 나간다)');
+  assert.strictEqual(f('• 위\r\n  - 아래\r\n', NB), '• 위\n' + NB + NB + '- 아래', 'CRLF 를 붙여 넣은 글이 \\n 로 정리되지 않는다');
+  assert.strictEqual(f('\t- 탭  안쪽  공백', NB), NB.repeat(4) + '- 탭  안쪽  공백', '줄 앞 탭은 단위 4개, 줄 안쪽 공백은 그대로여야 한다');
+  assert.strictEqual(f('   \n\t', NB), '', '공백뿐인 글은 빈 본문이어야 한다');
+}
+test('(S) reportEditedBodyOut: 앞 빈 줄, 끝 공백, 가운데 공백뿐인 줄, CRLF, 줄 앞 탭 다듬기', () => checkBodyOut(bodyOutFn(app)));
+test('변이: reportEditedBodyOut 의 앞 빈 줄 걷기나 끝 공백 걷기를 빼면 (S) 다듬기 검사가 잡는다', () => {
+  const bad1 = mutate(app, ".replace(/^(?:[ \\t\\u00A0]*\\n)+/, '')", '');
+  assert.throws(() => checkBodyOut(bodyOutFn(bad1)), /앞쪽 빈 줄/);
+  const bad2 = mutate(app, ".replace(/\\s+$/, '');\n  if(!t) return '';", ";\n  if(!t) return '';");
+  assert.throws(() => checkBodyOut(bodyOutFn(bad2)), /끝 공백/);
+  const bad3 = mutate(app, "    if(/^[ \\t\\u00A0]*$/.test(l)) return '';", '');
+  assert.throws(() => checkBodyOut(bodyOutFn(bad3)), /가운데 공백뿐인 줄/);
 });
 
 // ══ jsdom ═════════════════════════════════════════════════════════════
@@ -789,7 +812,7 @@ if (!JSDOM) {
       assert.strictEqual(cell.querySelector('.at-txt').textContent, '[알파] : 5\n    - 납품 준비\n[베타] : 3');
       assert.ok(X.$(`#atGrid .at-day[data-date="${Y}"] .at-drf`) || X.ev(`!document.querySelector('#atGrid .at-day[data-date="${Y}"]')`), '임시 저장이 있는 날에 작성 중 표시가 없다');
       if (X.$(`#atGrid .at-day[data-date="${Y}"]`)) assert.strictEqual(X.$(`#atGrid .at-day[data-date="${Y}"] .at-drf`).textContent, '✎ 작성 중');
-      const sum = X.$('#atSum').textContent;
+      const sum = X.$('#atMonSum').textContent;
       assert.ok(sum.includes('보고 1일') && sum.includes('초과 합계 2시간'), '요약 줄이 다르다: ' + sum);
       assert.ok(!X.$('#atMonth').textContent.includes('미보고'), '미보고 표시가 있다');
       //  마우스를 올리면 전체 글
@@ -859,7 +882,7 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(W) __reportDailySaved: 개인 캘린더 근태를 고치고(미기록이면 그대로), 보고서 창은 자기가 보내지 않은 회신에 토스트를 내지 않는다', async () => {
+  test('(W) __reportDailySaved: 개인 캘린더 근태를 고치고(미기록이면 그대로), 메인 창은 자기가 보내지 않은 회신에 토스트를 내지 않는다', async () => {
     const X = await bootMain();
     try {
       stubHost(X, `{ reportDailyList: { ok: true, rows: [] } }`);
@@ -869,12 +892,10 @@ if (!JSDOM) {
       assert.deepStrictEqual(X.evJSON(`getAttendance(${JSON.stringify(X.T)})`), { status: '2', overtime: 3 }, '미기록 보고가 개인 캘린더 근태를 지웠다');
       toastSpy(X);
       X.ev("__netcusProgress('근태 창의 진행'); __netcusResult(true, '회사 일간보고 전송 완료(근태 창)')");
-      assert.deepStrictEqual(X.evJSON('__toasts'), [], '보고서 창이 근태 창의 회신에 토스트를 냈다');
-      assert.ok(!X.$('#rptSendStatus').textContent.includes('근태 창'), '보고서 창 상태 줄에 근태 창 회신이 찍혔다');
-      X.ev('armRptSendWatchdog()');
-      X.ev("__netcusResult(false, '보고서 창의 실패')");
-      assert.deepStrictEqual(X.evJSON('__toasts'), [['보고서 창의 실패', 'error']], '보고서 창이 보낸 회신은 그대로 알려야 한다');
-      X.ev('clearTimeout(Netcus.watchdog)');
+      assert.deepStrictEqual(X.evJSON('__toasts'), [], '메인 창이 근태 창의 회신에 토스트를 냈다');
+      //  (보고서 창이 자기 전송의 회신을 알리던 쪽은 보고서 창의 [회사 전송]과 함께 없앴다. 취합 화면은 회사로 보내지 않는다.)
+      X.ev("__netcusResult(false, '다른 창의 실패')");
+      assert.deepStrictEqual(X.evJSON('__toasts'), [], '자기가 보내지 않은 실패 회신에도 토스트를 냈다');
     } finally { X.close(); }
   });
 

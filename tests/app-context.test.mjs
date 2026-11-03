@@ -86,14 +86,6 @@ test('보고서 미리보기: REPORT_MIRROR_BASE_PX는 --fs-emph 픽셀값과 �
 // ── 2026-09-18 4축 리뷰: 소스 계약 핀(jsdom 불필요) ─────────────────────
 // 아래 넷은 '어디서 무엇을 부르는가'가 곧 계약이라 실행으로 관측하기 어렵다(모달 z-order·타이핑 빈도·가드 순서).
 // 그래서 배선 자체를 못박는다 — 리팩터로 되돌아가면 즉시 빨개진다.
-test('보고서 → 「과제 관리」 링크는 보고서를 먼저 닫는다(중첩하면 뒤에서 열린다)', () => {
-  const s = loadAppSource();
-  assert.ok(s.includes("$('#rptCatLink').addEventListener('click', () => { closeModal('#reportModal'); openCatModal(); })"),
-    '#rptCatLink 가 openCatModal 만 부른다 — netcus 가드의 toSettings 와 같이 closeModal(#reportModal) 을 먼저 해야 한다');
-  assert.ok(s.includes("closeModal('#reportModal'); openSettings();"),
-    '대조군: 설정으로 가는 길도 보고서를 먼저 닫는다(이 파일의 관례)');
-});
-
 //  2026-10-01 UI-CLARITY U3 — 전송 모드(미제출 테스트/실제 제출)와 그 배지는 없앴다(늘 실제 제출).
 //  예전 시험(배지 → 설정 이동 · 라디오 → 배지 갱신)은 대상이 사라져 「흔적 없음」 시험으로 바뀌었다(정밀 계약은 tests/ui-clarity.test.mjs).
 test('보고서 전송 모드 배지·설정 라디오가 흔적 없이 사라졌다(2026-10-01 UI-CLARITY U3 — 늘 실제 제출)', () => {
@@ -439,7 +431,6 @@ if (!JSDOM) {
     });
     const collectDN = (from, to, src) => evJSON('collectReportData(' + JSON.stringify(from) + ',' + JSON.stringify(to) + ',' + JSON.stringify(src) + ')');
     const rowCp = r => r.rows.find(x => x.name === '기획');
-    const setWeekly = (f, t) => ev("reportMode='weekly'; $('#rptFrom').value='" + f + "'; $('#rptTo').value='" + t + "'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; editingDayNoteKey=null;");
     const setCustom = (f, t) => ev("reportMode='custom'; $('#rptFrom').value='" + f + "'; $('#rptTo').value='" + t + "'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; editingDayNoteKey=null;");   // WEEKLY-EDIT: 날짜 줄 ✎ 는 기간 취합에만 남는다
 
     test('기간 할일 dayNotes → 주간 보고: details=본문만(복사·전송), dayDetails=날짜 보존(미리보기)', () => {
@@ -561,18 +552,6 @@ if (!JSDOM) {
       ev("localStorage.removeItem('tc_rptSources'); reportMode='daily'; $('#rptSrcEvent').checked=true;");
     });
 
-    //  WEEKLY-EDIT §3.2(2026-10-08): 주간 작성 카드는 읽기 전용(날짜 줄 ✎ 없음, X 있음). 날짜 줄 ✎ 와 저장 왕복은 기간 취합(custom)에 남는다.
-    test('주간 보고 렌더: 날짜별 dayNote 라인은 읽기 전용(✎ 없음) + 요일 접두 + X', () => {
-      seed(dnState());
-      setWeekly('2026-07-13', '2026-07-19');
-      ev("rptViewW = 'card'; buildReport()");   // 주간 기본은 글 편집(회사 폼, 2026-10-08). 카드 보기에서 본다
-      const html = ev("$('#rptOut').innerHTML");
-      assert.ok(html.includes('초안 작성') && html.includes('월 7/13'), '전제: 날짜별 라인과 요일 접두');
-      assert.ok(!/data-dnact=|rdn-edit-btn|data-dnid=/.test(html), '주간 날짜 줄에 ✎(편집 앵커)가 있다');
-      assert.ok(/<div class="rdn ro">/.test(html), '주간 날짜 줄이 읽기 전용(.rdn.ro)이 아니다');
-      assert.ok(/class="rcard-x"/.test(html), '주간 카드에 X 가 없다');
-      ev("reportMode='daily'; rptViewW = 'doc';");
-    });
     test('기간 취합 렌더: 기간 할일 날짜별 dayNote 라인(.rdn) 편집 앵커 + 요일 접두 + 제목 읽기전용', () => {
       seed(dnState());
       setCustom('2026-07-13', '2026-07-19');
@@ -1025,13 +1004,13 @@ if (!JSDOM) {
       assert.ok(weeklyLines.some(l => l.startsWith(P + '1. ')), 'weekly uses its own indent+number marker');
       assert.ok(!weeklyLines.some(l => l.startsWith('- ')), 'weekly does not leak daily hyphen');
 
-      ev("setReportMode('custom'); $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31';");
+      ev("$('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31';");
       const customLines = ev('buildReportText()').split('\n');
       assert.ok(customLines.some(l => l.startsWith(P + '1. ')), 'custom range uses weekly formatting, not daily');
       assert.ok(!customLines.some(l => l.startsWith('- ')), 'custom range does not overwrite daily formatting');
     });
 
-    test('buildReportText/buildWeeklyFields: 설명 포함 시 제목 아래 설명 라인 출력', () => {
+    test('buildReportText: 설명 포함 시 제목 아래 설명 라인 출력', () => {
       const st = fmtState('-', '', 1);
       st.entries = [
         { id: 'd1', date: '2026-07-02', title: 'Alpha item', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: 'detail one\n• detail two', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
@@ -1040,38 +1019,10 @@ if (!JSDOM) {
       setRptRange('2026-07-01', '2026-07-31');
       ev("$('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false;");
 
-      let lines = ev('buildReportText()').split('\n').map(l => l.trim());
+      const lines = ev('buildReportText()').split('\n').map(l => l.trim());
       assert.ok(lines.includes('- Alpha item'));
       assert.ok(lines.includes('detail one'));
       assert.ok(lines.includes('detail two'));
-
-      const ewLines = ev('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value).endwork').split('\n').map(l => l.replace(/&nbsp;/g, '').trim());
-      assert.ok(ewLines.includes('- Alpha item'));
-      assert.ok(ewLines.includes('detail one'));
-      assert.ok(ewLines.includes('detail two'));
-    });
-
-    // F2c — buildWeeklyFields.endwork(netcus 자동전송 콘텐츠)도 복사와 동일 서식(머리기호+들여쓰기)
-    test('buildWeeklyFields.endwork: 전송 콘텐츠도 마커+들여쓰기(2단) 반영, 카드별 번호 리셋', () => {
-      seed(fmtState('가.', '', 2));
-      setRptRange('2026-07-01', '2026-07-31');
-      const NB = '&nbsp;'.repeat(4);   // netcus 전송 들여쓰기 = &nbsp; 4개(2단*2, euc-kr HTML collapse 방지)
-      const ew = ev('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value).endwork');
-      assert.ok(ew.includes(NB + '가. '), '4×&nbsp; 들여쓰기 + 가. 마커');
-      assert.ok((ew.split('\n' + NB + '가. ').length - 1) >= 2, '카드마다 가.로 번호 리셋');
-      assert.ok(!ew.includes('    가. '), '평문 4칸 공백 아님(&nbsp;여야)');
-      assert.ok(!/^- /m.test(ew), '옛 하드코딩 "- " 불릿 없음');
-      const planwork = ev('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value).planwork');
-      assert.strictEqual(planwork, '[에이]\n[비이]', '차주계획에 과제 머리표 자동 생성');
-    });
-
-    test('buildWeeklyFields.content: 일간 과제시간을 주간 합산하고 구분선 아래 전체 합계 표시', () => {
-      seed(reportState);
-      setRptRange('2026-07-06', '2026-07-12');
-      ev("setTaskHours('2026-07-06','c-1',2.5); setTaskHours('2026-07-07','c-1',1.5); setTaskHours('2026-07-08','c-2',3);");
-      const content = ev('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value).content');
-      assert.strictEqual(content, '[보고서 작성] : 4\n[시스템 점검] : 3\n-----\n합계 : 7');
-      ev("setTaskHours('2026-07-06','c-1',0); setTaskHours('2026-07-07','c-1',0); setTaskHours('2026-07-08','c-2',0);");
     });
 
     // F3 — XML 왕복: prefs 보존 + <prefs> 부재 시 기본값 + 데이터 무손실
@@ -1171,12 +1122,12 @@ if (!JSDOM) {
       assert.strictEqual(ev("$('#rptOut').style.fontSize"), '16pt', '기간 취합에서는 입혀야 한다');
       ev("state.reportFont = {family:'', size:0}; reportMode = 'daily'; syncReportFontUI();");
     });
-    test('reportFont: #rptFontRow 는 setReportMode(custom) 에서만 보인다', () => {
-      const disp = (m) => ev("setReportMode(" + JSON.stringify(m) + "); $('#rptFontRow').style.display");
-      assert.strictEqual(disp('daily'), 'none');
-      assert.strictEqual(disp('weekly'), 'none');
-      assert.strictEqual(disp('custom'), '');
-      ev("setReportMode('daily')");
+    test('reportFont: #rptFontRow 는 근태 [취합] 화면 안에 있고 기간 취합(custom)에서 숨지 않는다', () => {
+      const inSum = ev("(function(){ var r = document.getElementById('rptFontRow'); return !!(r && r.closest('.as-view')); })()");
+      assert.strictEqual(inSum, true, '글꼴 행이 근태 [취합] 화면(.as-view) 안에 없다');
+      ev("reportMode = 'custom'; syncReportFontUI();");
+      assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', '기간 취합에서 글꼴 행이 숨었다');
+      ev("reportMode = 'daily'");
     });
 
     test('reportFont roundtrip: <prefs fontFamily/fontSize> 보존 + 기본이면 속성 미기록(기존 파일 byte 동일)', () => {
@@ -1243,87 +1194,62 @@ if (!JSDOM) {
         '서식을 입혀도 라인 수 불변');
     });
 
-    // 2026-09-18 사용자 결정: 글꼴·크기는 **기간 취합 전용** — 일간·주간 작성 단계에는 불필요. 옛 규칙(3모드 전부)을 뒤집는다.
-    test('reportFont: 폰트 행·미리보기 서식은 기간 취합에서만 — 일간·주간은 행이 숨고 기본 서식', () => {
+    //  글꼴과 크기는 기간 취합(취합 화면) 전용이다. 일간 서식 쪽(atDailyFmt 가 잠깐 reportMode='daily')에서 입히지 않는 것은 위 syncReportFontUI 시험이 본다.
+    test('reportFont: 기간 취합에서는 저장값 서식이 미리보기에 입혀지고 기본값이면 걷힌다', () => {
       const st = fmtState('-', '', 2);
       st.reportFont = { family: 'Gulim', size: 13 };
       seed(st);
-      for(const mode of ['custom', 'daily', 'weekly']){
-        ev(`setReportMode(${JSON.stringify(mode)}); $('#rptFrom').value='2026-07-01'; $('#rptTo').value=${mode === 'daily' ? "'2026-07-01'" : "'2026-07-31'"}; buildReport();`);
-        const custom = (mode === 'custom');
-        assert.strictEqual(ev("$('#rptFontRow').style.display") === 'none', !custom, `${mode}: 폰트 행은 기간 취합에서만 보인다`);
-        assert.strictEqual(ev("$('#rptOut').style.fontFamily").includes('Gulim'), custom, `${mode}: 미리보기 폰트는 기간 취합에서만`);
-        assert.strictEqual(ev("$('#rptOut').style.fontSize"), custom ? '13pt' : '', `${mode}: 미리보기 크기는 기간 취합에서만`);
-        assert.ok(!/폰트|글꼴/.test(ev("$('#rptOptSum').textContent")), `${mode} 옵션 요약에는 글꼴이 없다`);
-        // 셀렉트는 어느 모드에서든 저장값과 동기(숨겨져 있어도 값이 사라지면 안 된다)
-        assert.strictEqual(ev("$('#rptFontFamily').value"), 'Gulim', `${mode} 폰트 셀렉트 동기`);
-        assert.strictEqual(ev("$('#rptFontSize').value"), '13', `${mode} 크기 셀렉트 동기`);
-      }
-      // 기본값이면 인라인 스타일을 걷어낸다 — 기간 취합에서도
-      ev("setReportMode('custom'); state.reportFont={family:'',size:0}; buildReport();");
+      ev("reportMode='custom'; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; buildReport();");
+      assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', '글꼴 행이 숨었다');
+      assert.ok(ev("$('#rptOut').style.fontFamily").includes('Gulim'), '미리보기 폰트가 입혀지지 않았다');
+      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '13pt', '미리보기 크기가 입혀지지 않았다');
+      assert.ok(!/폰트|글꼴/.test(ev("$('#rptSummary').textContent")), '요약에 글꼴이 있다');
+      assert.strictEqual(ev("$('#rptFontFamily').value"), 'Gulim', '폰트 셀렉트 동기');
+      assert.strictEqual(ev("$('#rptFontSize').value"), '13', '크기 셀렉트 동기');
+      // 기본값이면 인라인 스타일을 걷어낸다
+      ev("state.reportFont={family:'',size:0}; buildReport();");
       assert.strictEqual(ev("$('#rptOut').style.fontFamily"), '', '기본 폰트면 인라인 스타일 해제');
       assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
       ev("reportMode='daily'");   // 상태 원복(다른 테스트 보호)
     });
 
-    // 회귀 방지: 글꼴 행이 ⚙옵션(#rptOpt) 안으로 되돌아가면 netcus 출처에서 통째로 사라진다(옵션 패널이 숨겨지므로).
-    // 기간 취합 × 내용 출처 3 에서는 레일에 남아야 하고, 일간·주간에서는 출처와 무관하게 숨는다(2026-09-18 — 기간 취합 전용).
-    test('reportFont: 글꼴 행은 ⚙옵션 밖 레일에 있어 기간 취합 × 3출처에서 노출되고, 일간·주간 × 3출처에서는 숨는다', () => {
+    //  글꼴 행은 내용 출처(캘린더 기록, 인트라넷 주간)와 무관하게 남는다. 출처를 바꿔도 행이 사라지거나 서식이 풀리면 안 된다.
+    test('reportFont: 글꼴 행과 미리보기 서식은 내용 출처(캘린더 기록, 인트라넷 주간)와 무관하게 남는다', () => {
       const st = fmtState('-', '', 2);
       st.reportFont = { family: 'Gulim', size: 13 };
       seed(st);
-      assert.strictEqual(ev("!!$('#rptOpt').contains($('#rptFontRow'))"), false, '글꼴 행은 ⚙옵션 패널 밖');
-      assert.strictEqual(ev("$('#rptFontRow').parentElement.className"), 'rpt-rail', '레일 직속 자식');
-      for(const mode of ['daily', 'weekly', 'custom']){
-        for(const src of ['cal', 'net', 'week']){
-          ev(`setReportMode(${JSON.stringify(mode)}); state.reportSource=${JSON.stringify(src)};`
-            + `$('#rptFrom').value='2026-07-01'; $('#rptTo').value=${mode === 'daily' ? "'2026-07-01'" : "'2026-07-31'"}; buildReport();`);
-          const tag = `${mode}/${src}`, custom = (mode === 'custom');
-          assert.strictEqual(ev("$('#rptFontRow').style.display") === 'none', !custom, `${tag}: 글꼴 행은 기간 취합에서만`);
-          assert.strictEqual(ev("$('#rptFontFamily').value"), 'Gulim', `${tag}: 폰트 셀렉트 동기`);
-          assert.strictEqual(ev("$('#rptFontSize').value"), '13', `${tag}: 크기 셀렉트 동기`);
-          assert.strictEqual(ev("$('#rptOut').style.fontFamily").includes('Gulim'), custom, `${tag}: 미리보기 폰트는 기간 취합에서만`);
-          // netcus 출처(주간/커스텀)에서는 ⚙옵션이 숨는다 — 기간 취합이면 그래도 글꼴은 남아야 한다는 것이 이 테스트의 요지
-          const optHidden = (ev("$('#rptOpt').style.display") === 'none');
-          assert.strictEqual(optHidden, (src !== 'cal' && mode !== 'daily'), `${tag}: ⚙옵션 표시 규칙 유지`);
-        }
+      for(const src of ['cal', 'week']){
+        ev(`reportMode='custom'; state.reportSource=${JSON.stringify(src)}; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; buildReport();`);
+        assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', `${src}: 글꼴 행이 숨었다`);
+        assert.strictEqual(ev("$('#rptFontFamily').value"), 'Gulim', `${src}: 폰트 셀렉트 동기`);
+        assert.strictEqual(ev("$('#rptFontSize').value"), '13', `${src}: 크기 셀렉트 동기`);
+        assert.ok(ev("$('#rptOut').style.fontFamily").includes('Gulim'), `${src}: 미리보기 폰트`);
       }
       ev("state.reportSource='cal'; state.reportFont={family:'',size:0}; reportMode='daily'");   // 상태 원복
     });
 
-    // 폰트는 표시+복사 전용이라는 계약 — 전송 페이로드(회사 폼)와 평문 복사는 폰트에 1바이트도 반응하면 안 된다.
-    test('reportFont 불변식: buildReportText/buildWeeklyFields(전송 콘텐츠)는 폰트와 무관하게 바이트 동일', () => {
+    //  폰트는 표시+복사 전용이라는 계약 — 평문 복사는 폰트에 1바이트도 반응하면 안 된다.
+    test('reportFont 불변식: buildReportText(복사 글)는 폰트와 무관하게 바이트 동일', () => {
       const st = fmtState('-', '', 2);
       st.entries = st.entries.concat([{
         id: 'x2', date: '2026-07-07', title: '폰트 무관 확인', categoryId: 'ca', allDay: true,
-        startTime: '', endTime: '', location: '', memo: '메모', 
+        startTime: '', endTime: '', location: '', memo: '메모',
         hours: 90, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA,
       }]);
       seed(st);
-      setRptRange('2026-07-01', '2026-07-31');
-      // setReportMode가 기간을 그 모드 기본값으로 되돌리므로 from/to는 매번 다시 지정한다
-      ev("setReportMode('daily'); $('#rptFrom').value='2026-07-07'; $('#rptTo').value='2026-07-07';");
-      const plainDaily = ev('buildReportText()');
-      const sendDaily = ev("buildReportText('&nbsp;')");                       // netcus 일간 전송 content
-      ev("setReportMode('weekly'); $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31';");
-      const plainWeekly = ev('buildReportText()');
-      const sendWeekly = ev('JSON.stringify(buildWeeklyFields($("#rptFrom").value, $("#rptTo").value, rptSources()))');
-
+      ev("reportMode='custom'; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
+      const plain = ev('buildReportText()');
+      const sendLike = ev("buildReportText('&nbsp;')");                       // 줄 앞 공백을 &nbsp; 로 바꾼 글(근태 보내기와 같은 규칙)
       // 공허한 비교(양쪽 다 빈 문자열) 방지 — 기준값이 실제 내용을 담고 있어야 한다
-      assert.ok(plainDaily.includes('폰트 무관 확인') && plainWeekly.includes('폰트 무관 확인'), '기준 텍스트가 비어 있지 않음');
-      assert.ok(/endwork/.test(sendWeekly) && sendWeekly.includes('폰트 무관 확인'), '기준 주간 전송 필드가 비어 있지 않음');
+      assert.ok(plain.includes('폰트 무관 확인') && sendLike.includes('폰트 무관 확인'), '기준 텍스트가 비어 있지 않음');
 
-      ev("state.reportFont={family:'Batang',size:16}; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; buildReport();");   // 폰트 설정 후 동일 경로 재계산
-      assert.strictEqual(ev('buildReportText()'), plainWeekly, '주간 평문 복사 바이트 동일');
-      assert.strictEqual(ev('JSON.stringify(buildWeeklyFields($("#rptFrom").value, $("#rptTo").value, rptSources()))'), sendWeekly,
-        '주간 전송 필드(subject/content/endwork/planwork) 바이트 동일');
-      ev("setReportMode('daily'); $('#rptFrom').value='2026-07-07'; $('#rptTo').value='2026-07-07'; buildReport();");
-      assert.strictEqual(ev('buildReportText()'), plainDaily, '일간 평문 복사 바이트 동일');
-      assert.strictEqual(ev("buildReportText('&nbsp;')"), sendDaily, '일간 전송 content 바이트 동일');
+      ev("state.reportFont={family:'Batang',size:16}; buildReport();");   // 폰트 설정 후 동일 경로 재계산
+      assert.strictEqual(ev('buildReportText()'), plain, '평문 복사 바이트 동일');
+      assert.strictEqual(ev("buildReportText('&nbsp;')"), sendLike, '&nbsp; 들여쓰기 글 바이트 동일');
       // HTML 트윈에만 서식이 붙는다 — 같은 평문에서 파생됐음을 함께 확인
       const html = ev("buildReportHtml(buildReportText(), normalizeReportFont(state.reportFont))");
-      assert.ok(/font-family/.test(html) && /font-size:16pt/.test(html), '일간 HTML 트윈에는 폰트 적용');
-      assert.strictEqual((html.match(/<br>/g) || []).length, plainDaily.split('\n').length - 1, '라인 수 불변');
+      assert.ok(/font-family/.test(html) && /font-size:16pt/.test(html), 'HTML 트윈에는 폰트 적용');
+      assert.strictEqual((html.match(/<br>/g) || []).length, plain.split('\n').length - 1, '라인 수 불변');
       ev("state.reportFont={family:'',size:0}; reportMode='daily'");   // 상태 원복
     });
 
@@ -1358,45 +1284,44 @@ if (!JSDOM) {
       todos: [], rooms: [],
       reportMarker: marker, reportMarkerCustom: '', reportIndent: indent,
     });
-    const renderDaily = (marker, indent) => {
+    const renderCustom = (marker, indent) => {
       seed(gitDailyState(marker, indent));
-      ev("reportMode='daily';");
-      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
+      ev("reportMode='custom';");
+      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
       ev('buildReport()');
       return ev("$('#rptOut').innerHTML");
     };
-    test('regression: 일간 buildReport — 줄은 읽기 전용(✎, ✕, data-ract, 원본 앵커 없음), rtask-t=마커없는 원문', () => {
-      const html = renderDaily('1.', 3);
-      //  REPORT-EDIT §5: 일간 줄 ✎/✕ 는 캘린더 기록(일정, 할 일)을 고치거나 지웠다. 보고서와 캘린더는 따로라 없앴다.
-      assert.ok(!/rtask-edit-btn|rtask-del-btn|data-ract=/.test(html), '일간 줄에 ✎/✕ 가 되살아났다');
-      assert.ok(!/data-reid=|data-rhash=|data-rcidx=|data-rkind=/.test(html), '일간 줄에 캘린더 원본을 가리키는 앵커가 남아 있다');
-      assert.ok(/class="rtask rtask-ro"/.test(html), '일간 줄은 읽기 전용(.rtask-ro)이다');
-      const m = /<span class="rtask-t">([^<]*)<\/span>/.exec(html);
-      assert.ok(m, 'rtask-t span 존재');
-      assert.strictEqual(m[1], '유니크 일정', 'rtask-t는 마커 없는 원문만');
+    test('regression: 기간 취합 buildReport — 줄은 읽기 전용(✎, ✕, data-ract, 원본 앵커 없음), 줄 본문=마커 없는 원문', () => {
+      const html = renderCustom('1.', 3);
+      //  REPORT-EDIT §5: 줄 ✎/✕ 는 캘린더 기록(일정, 할 일)을 고치거나 지웠다. 보고서와 캘린더는 따로라 없앴다.
+      assert.ok(!/rtask-edit-btn|rtask-del-btn|data-ract=/.test(html), '줄에 ✎/✕ 가 되살아났다');
+      assert.ok(!/data-reid=|data-rhash=|data-rcidx=|data-rkind=/.test(html), '줄에 캘린더 원본을 가리키는 앵커가 남아 있다');
+      assert.ok(/class="rtask-roline"/.test(html), '줄은 읽기 전용(.rtask-roline)이다');
+      const m = /<span class="rtask-main">([^<]*)<\/span>/.exec(html);
+      assert.ok(m, 'rtask-main span 존재');
+      assert.strictEqual(m[1], '유니크 일정', 'rtask-main 은 마커 없는 원문만');
       assert.ok(/<span class="rtask-mk">1\. <\/span>/.test(html), '마커는 rtask-mk 별도 span');
       assert.ok(/padding-left:55px/.test(html), '들여쓰기 13+3*14=55px');
     });
-    test('regression: 무번호(none) — rtask-mk 생략, rtask-t 원문 유지, indent0=base 13px', () => {
-      const html = renderDaily('none', 0);
+    test('regression: 무번호(none) — rtask-mk 생략, 줄 본문 원문 유지, indent0=base 13px', () => {
+      const html = renderCustom('none', 0);
       assert.ok(!/rtask-mk/.test(html), '무번호는 마커 span 없음');
-      assert.ok(/<span class="rtask-t">유니크 일정<\/span>/.test(html), 'rtask-t 원문 유지');
+      assert.ok(/<span class="rtask-main">유니크 일정<\/span>/.test(html), '줄 본문 원문 유지');
       assert.ok(!/rtask-edit-btn/.test(html), '편집 버튼(✎)이 되살아났다(REPORT-EDIT §5)');
       assert.ok(/padding-left:13px/.test(html), 'indent0 → base 13px');
     });
 
     // 항목3 회귀 — 할일만 있는 카드(일정 0)는 흐림(rcard-empty) 아님.
     //   버그: 흐림 판정을 entries(일정)로 해서 할일-only가 '빈 카드'로 오판·흐려짐 → hasContent(titles)로 수정.
-    //   (카드마다 붙던 '오늘치는 여기서 바로 수정' 힌트는 줄 ✎ 와 함께 없앴다. 요약줄이 글 편집을 안내한다, REPORT-EDIT §2.1)
-    test('regression(항목3): 할일-only 카드 — rcard-empty 미부여 + 요약줄이 글 편집을 안내(카드 힌트 없음)', () => {
+    test('regression(항목3): 할일-only 카드 — rcard-empty 미부여, 줄 편집 힌트와 옛 요약 문구 없음', () => {
       seed({
         categories: [{ id: 'ct', name: '할일과제', color: '#3e5be0', desc: '', createdAt: CA }],
         entries: [],   // 일정 0 (할일만)
         todos: [{ id: 'td', text: '할일 항목', done: false, categoryId: 'ct', due: '2026-07-08', endDate: '', prio: 'normal', note: '', createdAt: CA, updatedAt: CA }],
         rooms: [], reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
       });
-      ev("reportMode='daily';");
-      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
+      ev("reportMode='custom';");
+      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
       ev('buildReport()');
       const html = ev("$('#rptOut').innerHTML");
       assert.ok(html.includes('할일 항목'), '할일 항목이 카드에 렌더됨');
@@ -1404,169 +1329,67 @@ if (!JSDOM) {
       assert.ok(!/class="rcard rcard-empty"/.test(html) && !/class="rcard [^"]*rcard-empty/.test(html), '할일-only 카드에 rcard-empty 미부여');
       assert.ok(!/오늘치는 여기서 바로 수정/.test(html) && !/rcard-note edit/.test(html), '옛 편집 힌트(줄 ✎ 를 가리키던 문구)가 되살아났다');
       const sum = ev("$('#rptSummary').textContent");
-      assert.ok(sum.includes('내용은 글 편집에서 고칩니다. 캘린더 기록은 바뀌지 않습니다'), '요약줄이 새 동작(글 편집, 캘린더 불변)을 말하지 않는다: ' + sum);
-      assert.ok(!sum.includes('수정 가능'), "요약줄에 옛 ', 하루(수정 가능)' 가 남아 있다");
+      assert.ok(sum.includes('업무 1건'), '요약줄이 할 일을 업무로 세지 않는다: ' + sum);
+      assert.ok(!sum.includes('수정 가능') && !sum.includes('글 편집'), "요약줄에 옛 ', 하루(수정 가능)' 나 글 편집 안내가 남아 있다: " + sum);
+      ev("reportMode='daily';");
     });
 
-    // ── Item1 — 일간 과제별 시간 입력(tc_taskHours) → buildReportText 헤더 "[과제] : n" ──
-    test('Item1(일간): setTaskHours → buildReportText "[과제] : 6.5" / 미입력이면 과제명만', () => {
+    // ── Item1 — 과제별 시간(tc_taskHours) 저장/정리. 기간 취합 글에는 시간이 붙지 않는다(시간은 근태 일간 화면의 블록이 정한다) ──
+    test('Item1: setTaskHours/getTaskHours 왕복·정리(6.50→6.5, 음수→null, 24 초과→24) · 기간 취합 복사 헤더에는 시간이 붙지 않는다', () => {
       seed(reportState);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
-      // 미입력 — 헤더에 시간 없음
-      ev("setTaskHours('2026-07-09','c-1',0); setTaskHours('2026-07-09','c-2',0);");
-      let lines = ev('buildReportText()').split('\n');
-      assert.ok(lines.includes('[보고서 작성]'), '미입력 → 과제명만');
-      assert.ok(!lines.some(l => /^\[보고서 작성\]\s*:/.test(l)), '미입력이면 " : " 안 붙음');
-      // 6.5 입력 → 헤더에 반영(소수 유지)
+      ev("reportMode='custom'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
       ev("setTaskHours('2026-07-09','c-1',6.5);");
-      lines = ev('buildReportText()').split('\n');
-      assert.ok(lines.includes('[보고서 작성] : 6.5'), '입력 시 "[과제] : 6.5"');
-      assert.ok(lines.includes('[시스템 점검]'), '시간 없는 과제는 과제명만');
-      assert.ok(!lines.some(l => /^\[시스템 점검\]\s*:/.test(l)), '시간 없는 과제 " : " 없음');
-      // getTaskHours 왕복 + 클램프/정리(6.50→6.5, 음수→null, 과대→24)
       assert.strictEqual(ev("getTaskHours('2026-07-09','c-1')"), 6.5, 'getTaskHours 반환값');
       ev("setTaskHours('2026-07-09','c-1',-3);"); assert.strictEqual(ev("getTaskHours('2026-07-09','c-1')"), null, '음수 → 미입력(null)');
       ev("setTaskHours('2026-07-09','c-1',30);"); assert.strictEqual(ev("getTaskHours('2026-07-09','c-1')"), 24, '24 초과 → 24 클램프');
-      // 주간/커스텀은 시간 안 붙음(일간 전용) — 같은 시간 저장돼 있어도 헤더엔 없음
-      ev("setTaskHours('2026-07-09','c-1',6.5); reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12';");
-      assert.ok(!/\]\s*:\s*\d/.test(ev('buildReportText()')), '주간 복사 텍스트 헤더에 시간 없음');
+      // 기간 취합은 시간 안 붙음(시간은 근태 일간 화면의 블록이 정한다) — 같은 시간 저장돼 있어도 헤더엔 없음
+      ev("setTaskHours('2026-07-09','c-1',6.5);");
+      assert.ok(!/\]\s*:\s*\d/.test(ev('buildReportText()')), '기간 취합 복사 텍스트 헤더에 시간 없음');
       // 정리(테스트 간 localStorage 격리)
       ev("setTaskHours('2026-07-09','c-1',0); reportMode='daily';");
     });
-    test('Item1: 일간 buildReport rcard 헤더에 시간 입력칸(.rcard-h-in) 렌더 / 주간엔 없음', () => {
-      seed(reportState);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
-      assert.ok(/class="rcard-h-in"/.test(ev("$('#rptOut').innerHTML")), '일간 rcard 헤더에 시간 입력칸');
-      assert.ok(/data-hcat="c-1"/.test(ev("$('#rptOut').innerHTML")), 'catId 앵커(data-hcat)');
-      ev("reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptTo').disabled=true; buildReport();");
-      assert.ok(!/rcard-h-in/.test(ev("$('#rptOut').innerHTML")), '주간엔 시간 입력칸 없음(읽기전용)');
-      ev("reportMode='daily'");
-    });
-
-    // ── Item2/재작업 → REPORT-EDIT §5(2026-10-07): 일간 줄의 삭제(✕, 원본 삭제)와 편집(✎)은 커밋·일정·할일 모두 없앴다 ──
-    //  보고서에서 빼고 싶으면 카드 X(이 보고서에서 빼기)를 쓴다. 캘린더 기록은 그대로 남는다.
-    test('Item2(일간): 줄 ✕/✎ 는 일정 라인 어디에도 없다(원본을 지우는 길이 보고서에 없다)', () => {
+    // ── Item2/재작업 → REPORT-EDIT §5(2026-10-07): 줄의 삭제(✕, 원본 삭제)와 편집(✎)은 커밋·일정·할일 모두 없앴다. 캘린더 기록은 그대로 남는다 ──
+    test('Item2: 줄 ✕/✎ 는 일정 라인 어디에도 없다(원본을 지우는 길이 보고서에 없다)', () => {
       seed(reportState);
       // 첫 일정 라인(2026-07-08, g1)
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
+      ev("reportMode='custom'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
       const firstHtml = ev("$('#rptOut').innerHTML");
-      assert.ok(/class="rtask rtask-ro"/.test(firstHtml), '전제: 일간 카드 줄이 그려졌다');
+      assert.ok(/class="rtask-roline"/.test(firstHtml), '전제: 카드 줄이 그려졌다');
       assert.ok(!/rtask-del-btn/.test(firstHtml), '일정 라인에 삭제 버튼이 되살아났다');
       assert.ok(!/data-ract=/.test(firstHtml), '삭제/편집 액션 앵커(data-ract)가 되살아났다');
-      assert.ok(/class="rcard-x"/.test(firstHtml), '대조군: 보고서에서 빼는 길은 카드 X 다');
       // 일정 라인(2026-07-09, v1) → 편집 + 삭제(원본 제거로 확장)
       ev("$('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; buildReport();");
       const evHtml = ev("$('#rptOut').innerHTML");
-      assert.ok(/class="rtask rtask-ro"/.test(evHtml), '전제: 일정 라인이 그려졌다');
+      assert.ok(/class="rtask-roline"/.test(evHtml), '전제: 일정 라인이 그려졌다');
       assert.ok(!/rtask-edit-btn/.test(evHtml), '일정 라인 편집 버튼이 되살아났다');
       assert.ok(!/rtask-del-btn/.test(evHtml), '일정 라인 삭제 버튼(원본 삭제)이 되살아났다');
       assert.ok(!/이 일정 삭제/.test(evHtml), '일정 삭제 라벨이 남아 있다');
       ev("reportMode='daily'");
     });
-    // ── 보고서 모달 재구성(레일+미리보기 / 근태 레일 슬롯 / ⚙옵션 / 내용 출처) ─────────
-    // 데이터 로직 불변, 구조/노출만 변경. 근태는 미리보기(#rptOut) 밖 좌측 레일 #rptAttendRail(일간만).
-    test('report UI: 내용 출처 행 — 일간 숨김 / 주간·커스텀 표시', () => {
-      seed(reportState);
-      ev("setReportMode('daily')");
-      assert.strictEqual(ev("$('#rptSourceRow').style.display"), 'none', '일간=숨김');
-      ev("setReportMode('weekly')");
-      assert.strictEqual(ev("$('#rptSourceRow').style.display"), 'flex', '주간=표시');
-      ev("setReportMode('custom')");
-      assert.strictEqual(ev("$('#rptSourceRow').style.display"), 'flex', '커스텀=표시');
-      ev("setReportMode('daily')");   // 상태 원복(테스트 간 간섭 방지)
-    });
-
-    test('report UI: 일간 buildReport — 근태(.rpt-attend)는 좌측 레일 #rptAttendRail, #rptOut엔 없음', () => {
-      seed(reportState);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
-      assert.ok(/rpt-attend/.test(ev("$('#rptAttendRail').innerHTML")), '근태 바가 레일 슬롯에 렌더');
-      assert.ok(/id="raStatus"/.test(ev("$('#rptAttendRail').innerHTML")), 'raStatus/raOT 존재');
-      assert.ok(!/rpt-attend/.test(ev("$('#rptOut').innerHTML")), '#rptOut엔 근태 없음(미리보기=순수 카드)');
-    });
-
-    test('report UI: 주간/커스텀 buildReport — #rptAttendRail 비움', () => {
-      seed(reportState);
-      ev("reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; buildReport();");
-      assert.strictEqual(ev("$('#rptAttendRail').innerHTML"), '', '주간=근태 없음');
-      ev("reportMode='custom'; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; $('#rptFrom').disabled=false; $('#rptTo').disabled=false; buildReport();");
-      assert.strictEqual(ev("$('#rptAttendRail').innerHTML"), '', '커스텀=근태 없음');
-      ev("reportMode='daily'");
-    });
-
-    test('report UI: #rptOptSum — 포함 항목 체크 수 반영(하나 해제 → 1/2)', () => {
-      seed(reportState);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
-      assert.ok(/포함 2\/2/.test(ev("$('#rptOptSum').textContent")), '2개 체크 → 2/2');
-      ev("$('#rptSrcTodo').checked=false; buildReport();");
-      assert.ok(/포함 1\/2/.test(ev("$('#rptOptSum').textContent")), '하나 해제 → 1/2');
-      ev("$('#rptSrcTodo').checked=true; buildReport();");   // 원복(포함 항목은 localStorage 로 새는 상태다)
-    });
-
     // ══ 2026-09-18 4축 리뷰 반영 계약 ═══════════════════════════════════
     // 규칙: 저장값 → 컨트롤 표시, 저장, 요약줄, 독립 슬롯(근태)은 본문 가드와 무관하게 buildReport 첫머리에서.
     //      렌더는 저장값을 읽기만 한다. 미리보기·복사·전송(일간·주간)은 같은 rows/flags 에서 나온다(WYSIWYG).
-    test('report UI: 기간이 잘못돼도 포함 항목은 저장되고 ⚙요약은 갱신된다(가드 앞 첫머리 계약)', () => {
+    test('report UI: 기간이 잘못돼도 포함 항목은 저장된다(가드 앞 첫머리 계약)', () => {
       seed(reportState);
-      ev("setReportMode('daily'); $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
-      assert.ok(/포함 2\/2/.test(ev("$('#rptOptSum').textContent")), '사전조건: 정상 기간에서 2/2');
+      ev("reportMode='custom'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
+      assert.strictEqual(evJSON("loadRptSourcePrefs().weekly.todo"), true, '사전조건: 정상 기간에서 포함');
       ev("$('#rptSrcTodo').checked=false; $('#rptFrom').value=''; $('#rptTo').value=''; buildReport();");
       assert.ok(/기간을 선택하세요/.test(ev("$('#rptSummary').textContent")), '전제: 날짜 가드가 켜져 있다');
-      assert.ok(/포함 1\/2/.test(ev("$('#rptOptSum').textContent")), '가드 화면에서도 ⚙요약이 지금 선택을 말한다');
-      assert.strictEqual(evJSON("loadRptSourcePrefs().daily.todo"), false, '가드 화면에서도 선택이 저장된다');
+      assert.strictEqual(evJSON("loadRptSourcePrefs().weekly.todo"), false, '가드 화면에서도 선택이 저장된다');
       ev("$('#rptSrcTodo').checked=true; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; buildReport();");
-      assert.strictEqual(evJSON("loadRptSourcePrefs().daily.todo"), true, '원복 확인(다음 테스트로 새지 않게)');
-      ev("setReportMode('daily')");
-    });
-
-    // 출처 'week'(netcus 주간보고 병합)는 기간 취합 전용 — 세그 칸이 숨는 모드로 나가면 출처도 돌아와야 한다.
-    test("report UI: 출처 'week' 는 기간 취합 전용 — 일간·주간으로 나가면 cal 로 되돌아온다", () => {
-      seed(reportState);
-      ev("setReportMode('custom'); state.reportSource='week'; syncReportSourceSeg();");
-      assert.strictEqual(ev('state.reportSource'), 'week', '사전조건: 기간 취합에서는 week 를 가질 수 있다');
-      ev("setReportMode('weekly')");
-      assert.strictEqual(ev('state.reportSource'), 'cal', '주간으로 나가면 캘린더 기록으로 되돌아온다');
-      assert.strictEqual(ev("$('#rptSourceRow').getAttribute('data-src')"), 'cal', '설명 강조(data-src)도 함께 따라온다');
-      assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"cal\"]').classList.contains('active')"), true, 'cal 칸이 켜진다');
-      ev("setReportMode('custom'); state.reportSource='week'; setReportMode('daily');");
-      assert.strictEqual(ev('state.reportSource'), 'cal', '일간으로 나가도 마찬가지');
-      ev("setReportMode('daily')");
+      assert.strictEqual(evJSON("loadRptSourcePrefs().weekly.todo"), true, '원복 확인(다음 테스트로 새지 않게)');
+      ev("reportMode='daily'");
     });
 
     // 세그 활성 표시는 '지금 출처'만 말한다 — disabled(읽기 잠금)와 AND 하면 켜진 칸이 하나도 없는 화면이 된다.
     test('report UI: 출처 세그 활성 표시는 잠금(disabled) 여부와 무관하다', () => {
       seed(reportState);
-      ev("setReportMode('weekly'); state.reportSource='net'; syncReportSourceSeg();");
-      assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"net\"]').classList.contains('active')"), true, '사전조건: net 칸이 켜진다');
+      ev("reportMode='custom'; state.reportSource='week'; syncReportSourceSeg();");
+      assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"week\"]').classList.contains('active')"), true, '사전조건: 인트라넷 주간 칸이 켜진다');
       ev("setNetcusLocked(true); syncReportSourceSeg();");
-      assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"net\"]').disabled"), true, '전제: 읽기 잠금이 걸렸다');
-      assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"net\"]').classList.contains('active')"), true, '잠겨 있어도 현재 출처 표시는 남는다');
-      ev("setNetcusLocked(false); state.reportSource='cal'; setReportMode('daily');");
-    });
-
-    // 2026-10-07 기본 과제(DEFAULT-TASKS §4.3) — 휴가, 기타는 진짜 과제라 카드마다 시간 입력칸이 있고, 그 시간이
-    //  일간 본문 '[기타] : n', 주간 과제투입시간 줄, 합계에 들어간다. 예전 미분류 '기타' 행 전용 안내(.rcard-hnote)는 지웠다.
-    test('report UI: 휴가, 기타 카드에도 시간 입력칸이 있고 그 시간이 일간 본문, 주간 과제투입시간, 합계에 들어간다', () => {
-      const E = (id, date, title, cat) => ({ id, date, title, categoryId: cat, allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA });
-      seed({
-        categories: [{ id: 'ca', name: '정상과제', color: '#3e5be0', desc: '', createdAt: CA },
-          { id: 'cv', name: '휴가', color: '#2e9e6b', desc: '', createdAt: CA },
-          { id: 'cg', name: '기타', color: '#5b6b7d', desc: '', createdAt: CA }],
-        entries: [E('n1', '2026-07-08', '정상 일정', 'ca'), E('g1', '2026-07-08', '사내 교육', 'cg')],
-        todos: [], rooms: [], taskHours: { '2026-07-08': { ca: 4, cg: 2.5, cv: 1 } }, attendance: {},
-      });
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSkipEmpty').checked=false; buildReport();");
-      const html = ev("$('#rptOut').innerHTML");
-      for (const k of ['ca', 'cv', 'cg']) assert.ok(new RegExp('data-hcat="' + k + '"').test(html), `과제 ${k} 카드에 시간 입력칸이 없다`);
-      assert.ok(!/rcard-hnote/.test(html) && !/__uncat__/.test(html), '미분류 전용 안내(.rcard-hnote)나 __uncat__ 이 되살아났다');
-      const daily = ev('buildReportText()');
-      assert.ok(daily.includes('[기타] : 2.5') && daily.includes('[휴가] : 1') && daily.includes('[정상과제] : 4'), '일간 본문에 기본 과제 시간이 없다: ' + daily);
-      const wf = evJSON("buildWeeklyFields('2026-07-06','2026-07-12',{event:true,todo:true,desc:true,skipEmpty:false})");
-      assert.ok(wf.content.includes('[기타] : 2.5') && wf.content.includes('[휴가] : 1'), '주간 과제투입시간에 기본 과제 시간이 없다: ' + wf.content);
-      assert.ok(/합계 : 7\.5/.test(wf.content), '주간 합계에 기본 과제 시간이 빠졌다(4 + 2.5 + 1 = 7.5): ' + wf.content);
-      //  입력칸으로 적은 값도 그 과제 키로 저장된다(setTaskHours 경로 · 예전 미분류 행은 저장할 곳이 없었다)
-      ev("(function(){ var i = document.querySelector('#rptOut .rcard-h-in[data-hcat=\"cg\"]'); i.value = '3'; i.dispatchEvent(new Event('change', { bubbles: true })); })()");
-      assert.strictEqual(ev("getTaskHours('2026-07-08','cg')"), 3, '기타 카드의 입력칸에 적은 시간이 기타 과제로 저장되지 않았다');
-      ev("reportMode='daily'");
+      assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"week\"]').disabled"), true, '전제: 읽기 잠금이 걸렸다');
+      assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"week\"]').classList.contains('active')"), true, '잠겨 있어도 현재 출처 표시는 남는다');
+      ev("setNetcusLocked(false); state.reportSource='cal'; syncReportSourceSeg(); reportMode='daily';");
     });
 
     test('검색: 결과 0건이어도 상자가 남고 안내 줄(.s-empty)이 선다', () => {
@@ -1587,23 +1410,6 @@ if (!JSDOM) {
       assert.strictEqual(ev("document.getElementById('usViewScope').textContent"), '확인 중…', '열람 범위 줄');
     });
 
-    // 2026-09-18 사용자 지적: 포함 항목을 전부 끄면 근태·초과시간이 사라졌다 — 근태 슬롯이 본문 가드 뒤에 그려지던 연동(지시한 적 없음).
-    test('report UI: 근태·초과시간은 포함 항목 0개·과제 0행 가드와 무관하게 일간이면 항상 그린다', () => {
-      seed(reportState);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=false; $('#rptSrcTodo').checked=false; $('#rptSkipEmpty').checked=false; buildReport();");
-      assert.ok(/포함할 항목을 한 개 이상/.test(ev("$('#rptSummary').textContent")), '전제: 포함 항목 0개 가드가 켜져 있다');
-      assert.ok(ev("!!document.getElementById('raStatus') && !!document.getElementById('raOT')"), '가드 화면에서도 근태·초과시간 셀렉트는 남아야 한다');
-      // 과제 0행(전부 끄고 빈 과제 제외까지) — 역시 남는다
-      ev("$('#rptSrcEvent').checked=true; $('#rptSkipEmpty').checked=true; state.categories=[]; state.entries=[]; state.todos=[]; buildReport();");   // 엔트리가 남으면 미분류 「기타」 행이 생겨 가드가 안 뜬다
-      assert.ok(/등록된 과제가 없습니다/.test(ev("$('#rptSummary').textContent")), '전제: 과제 0행 가드');
-      assert.ok(ev("!!document.getElementById('raStatus')"), '과제 0행 가드에서도 근태는 남는다');
-      // 주간에서는 없다(일간 전용 계약 그대로)
-      seed(reportState);
-      ev("reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSkipEmpty').checked=false; buildReport();");
-      assert.ok(!ev("!!document.getElementById('raStatus')"), '주간에는 근태 슬롯이 없다');
-      ev("reportMode='daily'");
-    });
-
     // 2026-09-18 사용자 지적: 포함 항목 0개면 들여쓰기 ± 가 표시에 안 먹고, 다시 켜면 값이 튀었다 — 컨트롤 동기화가 본문 가드 뒤에 있던 결함.
     test('report UI: 서식 컨트롤(들여쓰기·머리기호)은 포함 항목 0개 가드에서도 저장값을 즉시 반영한다', () => {
       seed(reportState);
@@ -1622,59 +1428,11 @@ if (!JSDOM) {
       ev("updateCurrentReportFormatPref({ indent: 2, marker: '-', markerCustom: '' }); $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
     });
 
-    test('report UI: ⚙옵션 토글 — #rptOpt .open 토글 + aria-expanded 플립(bind 배선)', () => {
-      ev("$('#rptOpt').classList.remove('open'); $('#rptOptBtn').setAttribute('aria-expanded','false');");
-      ev("$('#rptOptBtn').click()");
-      assert.ok(ev("$('#rptOpt').classList.contains('open')"), '클릭 → open');
-      assert.strictEqual(ev("$('#rptOptBtn').getAttribute('aria-expanded')"), 'true');
-      ev("$('#rptOptBtn').click()");
-      assert.ok(!ev("$('#rptOpt').classList.contains('open')"), '재클릭 → 닫힘');
-      assert.strictEqual(ev("$('#rptOptBtn').getAttribute('aria-expanded')"), 'false');
-    });
-
-    // ── netcus 주간 병합 미리보기(Phase2) — 렌더 브랜치(HOST=false=브라우저 경로) ─────
-    test('report UI(netcus): 파서·전송·렌더 함수 전역 도달', () => {
-      for(const fn of ['parseNetcusWeek', 'buildNetcusSendText', 'renderNetcusInto', 'renderNetcusPreview']){
+    // ── netcus 주간 병합(인트라넷 주간 출처) 함수 ─────
+    test('report UI(netcus): 파서·전송 글·주간 미리 보기 함수 전역 도달', () => {
+      for(const fn of ['parseNetcusWeek', 'buildNetcusSendText', 'renderNetcusWeeklyPreview']){
         assert.strictEqual(ev('typeof ' + fn), 'function', fn + ' 전역이어야 함');
       }
-    });
-
-    test('report UI(netcus): 브라우저(HOST=false) net 출처 → "위젯에서만" 안내(#rptOut), fetch 없음', () => {
-      seed(reportState);
-      ev("state.reportSource='net'; reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12';");
-      ev("renderNetcusInto('2026-07-06','2026-07-12')");   // HOST=false → 동기 가드 경로(hostRequest 안 탐)
-      const out = ev("$('#rptOut').innerHTML");
-      assert.ok(/위젯/.test(out), '위젯 전용 안내 문구');
-      assert.ok(/rpt-guard/.test(out), 'guard 카드로 렌더');
-      assert.strictEqual(ev("$('#rptSummary').textContent"), 'netcus 병합은 위젯에서만 됩니다');
-      ev("state.reportSource='cal'; reportMode='daily';");   // 상태 원복
-    });
-
-    test('report UI(netcus): net 세그 버튼 클릭 배선 — reportSource=net 전환 + 가드 렌더(비활성 해제 확인)', () => {
-      seed(reportState);
-      // 세그 버튼이 더 이상 disabled가 아니어야 함(Part C: 활성화)
-      assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"net\"]').disabled"), false, 'netcus 세그 활성화됨');
-      ev("state.reportSource='cal'; reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true;");
-      ev("$('#rptSrcSeg [data-rsrc=\"net\"]').click()");   // 실제 클릭(bind 배선) → state 전환 + buildReport
-      assert.strictEqual(ev("state.reportSource"), 'net', '클릭 → reportSource=net');
-      assert.strictEqual(ev("$('#rptSourceRow').getAttribute('data-src')"), 'net', '설명 강조 data-src 연동');
-      assert.ok(/위젯|rpt-guard/.test(ev("$('#rptOut').innerHTML")), 'net(브라우저) → 가드 미리보기 렌더');
-      ev("$('#rptSrcSeg [data-rsrc=\"cal\"]').click(); reportMode='daily';");   // 원복
-    });
-
-    test('report UI(netcus): renderNetcusPreview — 미등록 뱃지 + 미분류 // 사유(표시 전용) + 배너/상태라인', () => {
-      seed(reportState);
-      // 선행(no-header) → 미분류 / [미등록과제](카테고리 없음) → matched:false / 회의:2 → ambiguous
-      ev("renderNetcusPreview(parseNetcusWeek([{date:'2026-07-06',content:'선행 메모\\n[미등록과제] : 2\\n탐색 작업',ok:true},{date:'2026-07-07',content:'회의 : 2',ok:true}], state.categories, {}), '09:30')");
-      const out = ev("$('#rptOut').innerHTML");
-      assert.ok(/rnc-badge/.test(out), '미등록 뱃지 렌더');
-      assert.ok(/rnc-why/.test(out), '미분류 // 사유 span 렌더');
-      assert.ok(/읽기전용/.test(out), '읽기전용 배너');
-      assert.ok(/id="rncRefresh"/.test(out), '🔄 새로고침 버튼');
-      assert.ok(/조회 09:30/.test(out), '조회 시각 표시');
-      const sum = ev("$('#rptSummary').textContent");
-      assert.ok(/미등록 1/.test(sum), '상태라인 미등록 카운트');
-      assert.ok(/미분류 2건/.test(sum), '상태라인 미분류 카운트');
     });
 
     test('report UI(netcus): // 사유 주석은 화면 전용 — buildNetcusSendText엔 없음', () => {
@@ -2110,85 +1868,6 @@ if (!JSDOM) {
       assert.deepStrictEqual(evJSON("getAttendance('2026-07-13')"), { status: null, overtime: 0 }, '삭제 후 = 미기록');
     });
 
-    // 보고서 근태 드롭다운 — (미기록) 옵션 + 선택/삭제 왕복(실사용 경로 그대로 클릭)
-    test('근태 UI: 미기록 날짜는 (미기록) 옵션이 selected — 회사 근태를 덮지 않는다는 신호', () => {
-      seed(Object.assign({}, reportState, { taskHours: {}, attendance: {} }));
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
-      const html = ev("$('#rptAttendRail').innerHTML");
-      assert.ok(/<option value=""[^>]*>\(미기록\)<\/option>/.test(html), '(미기록) 옵션이 렌더돼야 함');
-      assert.strictEqual(ev("$('#raStatus').value"), '', '미기록 날짜 → (미기록)이 선택됨');
-      assert.ok(/미기록이면 회사 시스템의 기존 근태를 그대로 둡니다/.test(html), '안내 문구(.ra-hint) 노출');
-    });
-
-    test('근태 UI: 휴가 선택 → setAttendance 저장, 다시 (미기록) 선택 → 기록 삭제', () => {
-      seed(Object.assign({}, reportState, { taskHours: {}, attendance: {} }));
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
-      // 휴가(6) 선택 → change 이벤트로 실제 핸들러(setAttendance) 발화
-      ev("var _s=$('#raStatus'); _s.value='6'; _s.dispatchEvent(new window.Event('change'));");
-      assert.deepStrictEqual(evJSON('state.attendance'), { '2026-07-08': { status: '6', overtime: 0 } }, '휴가 저장');
-      assert.deepStrictEqual(evJSON("getAttendance('2026-07-08')"), { status: '6', overtime: 0 });
-      // 다시 렌더하면 휴가가 선택된 상태
-      ev('buildReport();');
-      assert.strictEqual(ev("$('#raStatus').value"), '6', '재렌더 시 저장값이 선택됨');
-      // (미기록)으로 되돌리면 기록이 삭제된다(빈 값 저장이 아님)
-      ev("var _s2=$('#raStatus'); _s2.value=''; _s2.dispatchEvent(new window.Event('change'));");
-      assert.deepStrictEqual(evJSON('state.attendance'), {}, '(미기록) → 기록 삭제');
-      assert.deepStrictEqual(evJSON("getAttendance('2026-07-08')"), { status: null, overtime: 0 });
-    });
-
-    // 전송 버튼 실클릭 → 어댑터가 받는 페이로드에 status:null이 그대로 실리는지(폴백이 끼면 실패)
-    test('근태 미기록: 일간 전송 페이로드가 status:null을 그대로 싣는다(어댑터 캡처)', () => {
-      seed(Object.assign({}, reportState, { taskHours: {}, attendance: {} }));
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport(); $('#btnRptSend').dataset.mode='daily';");
-      ev('globalThis.__origSD = Platform.report.submitDaily; globalThis.__cap = null;');
-      try {
-        ev('Platform.report.submitDaily = function(p){ globalThis.__cap = p; };');
-        ev("$('#btnRptSend').click();");
-        const cap = evJSON('globalThis.__cap');
-        assert.ok(cap, '전송 페이로드가 어댑터에 전달되지 않았다');
-        assert.ok(Object.prototype.hasOwnProperty.call(cap.fields, 'status'), 'fields.status 키가 없다');
-        assert.strictEqual(cap.fields.status, null, '미기록이면 status는 null이어야 한다(정근 폴백 금지)');
-        // 근태를 기록하면 그 코드값이 그대로 실린다(정상 경로 보존)
-        ev("setAttendance('2026-07-08','6','0'); buildReport(); $('#btnRptSend').click();");
-        assert.strictEqual(evJSON('globalThis.__cap').fields.status, '6', '기록된 근태는 코드값 그대로 전송');
-      } finally { ev('Platform.report.submitDaily = globalThis.__origSD;'); }
-    });
-
-    // 2026-09-23 §3.4-C-2 — payload.hours 는 본문 헤더와 같은 rows·같은 함수(reportDailyHours)에서 나온다.
-    const sendDailyCapture = (st) => {
-      seed(st);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport(); $('#btnRptSend').dataset.mode='daily';");
-      ev('globalThis.__origSD = Platform.report.submitDaily; globalThis.__cap = null;');
-      try {
-        ev('Platform.report.submitDaily = function(p){ globalThis.__cap = p; };');
-        ev("$('#btnRptSend').click();");
-        return evJSON('globalThis.__cap');
-      } finally { ev('Platform.report.submitDaily = globalThis.__origSD;'); }
-    };
-    test('일간 전송: payload.hours 는 본문 헤더와 같은 rows 에서 — 이름·값·순서가 본문과 같다', () => {
-      const cap = sendDailyCapture(Object.assign({}, reportState, { taskHours: { '2026-07-08': { 'c-2': 1.5, 'c-1': 2 } }, attendance: {} }));
-      assert.ok(cap, '전송 페이로드가 어댑터에 전달되지 않았다');
-      assert.deepStrictEqual(cap.hours, [{ name: '보고서 작성', hours: 2 }, { name: '시스템 점검', hours: 1.5 }],
-        '전송 hours 가 본문 과제 순서·값과 다르다 — 회사 기록의 과제별 시간이 본문과 어긋난다');
-      assert.deepStrictEqual(cap.hours,
-        evJSON("reportDailyHours(collectReportData('2026-07-08','2026-07-08',rptSources()).rows,'2026-07-08').map(x=>({name:x.name,hours:x.hours}))"),
-        'payload.hours 가 reportDailyHours(rows) 와 다르다 — 헤더와 payload 가 다른 길로 만들어진다');
-      assert.ok(cap.fields.content.includes('[보고서 작성] : 2') && cap.fields.content.includes('[시스템 점검] : 1.5'),
-        '본문 헤더에 같은 시간이 없다 — 본문과 payload 가 같은 값을 말해야 한다');
-    });
-    //  2026-10-07 기본 과제(DEFAULT-TASKS §4.3) — '기타는 맨 뒤' 규칙이 없어졌다. payload.hours 와 본문은 **같은 rows**(목록 순서)를 따른다.
-    test("일간 전송: '기타'를 먼저 등록하면 payload.hours 와 본문 모두 '기타'가 먼저다(목록 순서 = rows 순서)", () => {
-      const st = JSON.parse(JSON.stringify(reportState));
-      st.categories.unshift({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', createdAt: CA });
-      st.taskHours = { '2026-07-08': { 'c-etc': 3, 'c-1': 2 } }; st.attendance = {};
-      const cap = sendDailyCapture(st);
-      assert.ok(cap, '전송 페이로드가 어댑터에 전달되지 않았다');
-      assert.deepStrictEqual(cap.hours, [{ name: '기타', hours: 3 }, { name: '보고서 작성', hours: 2 }],
-        "payload 가 목록 순서를 따르지 않는다 — '기타는 맨 뒤' 규칙이 되살아났다");
-      const c = cap.fields.content;
-      assert.ok(c.indexOf('[기타] : 3') >= 0 && c.indexOf('[보고서 작성] : 2') > c.indexOf('[기타] : 3'), "본문도 목록 순서여야 한다('기타' 먼저)");
-    });
-
     // 2026-09-23 §3.4-C-11 — load() 는 reportSource 를 항상 cal 로(인메모리 전용 값)
     test("load(): 저장본에 reportSource:'net' 이 있어도 'cal' 로 돌아온다", () => {
       const fn = extractFunction(loadAppSource(), 'load');
@@ -2205,30 +1884,6 @@ if (!JSDOM) {
 
     // 2026-10-01 UI-CLARITY U3 — 전송 모드(배지·버튼 톤)는 없앴다. 예전 저장값이 무엇이든 전송 버튼은 같은 모양이다.
     //  (옛 시험 「보고서 전송 모드 배지: 위젯 일간에서만 보이고 dry/real 을 그대로 말한다」를 대체 — 정밀 계약은 tests/ui-clarity.test.mjs)
-    test('보고서 전송 버튼: 모드 톤·배지 없음 — 예전 저장값(real/dry)과 무관 · 위젯 일간 툴팁은 「실제로 제출」을 말한다', () => {
-      const origMode = ev("(function(){ try{ return localStorage.getItem('tc_netcusMode'); }catch(_){ return null; } })()");
-      const origAuto = ev('Platform.caps.reportAuto');
-      const origRM = ev('reportMode');
-      const look = () => evJSON("(function(){ var b=$('#btnRptSend'); return { badge: !!document.getElementById('rptSendMode'), real: b.classList.contains('real'), title: b.title, mode: b.dataset.mode }; })()");
-      try {
-        ev("try{localStorage.setItem('tc_netcusMode','real')}catch(_){}; reportMode='daily'; Platform.caps.reportAuto=true; updateRptSendVis();");
-        const realLook = look();
-        assert.strictEqual(realLook.badge, false, '전송 모드 배지가 있다');
-        assert.strictEqual(realLook.real, false, '전송 버튼이 「실제 제출」 톤(.real)을 입었다 — 모드 분기가 남았다');
-        assert.ok(realLook.title.includes('실제로 제출됩니다'), '위젯 일간 전송 버튼 툴팁이 「실제로 제출」을 말하지 않는다');
-        ev("try{localStorage.setItem('tc_netcusMode','dry')}catch(_){}; updateRptSendVis();");
-        assert.deepStrictEqual(look(), realLook, '예전 저장값(dry/real)에 따라 전송 버튼 모양이 달라진다 — 그 값은 읽지 않아야 한다');
-        ev("reportMode='weekly'; updateRptSendVis();");
-        assert.ok(!look().real && !look().title.includes('실제로 제출됩니다'), '주간(폼만 채우고 직접 제출)에 일간 실제 제출 안내가 남는다');
-        ev("reportMode='daily'; Platform.caps.reportAuto=false; updateRptSendVis();");
-        assert.ok(!look().real && !look().title.includes('실제로 제출됩니다'), '브라우저(자동 전송 없음)에서 실제 제출을 말한다 — 브라우저는 창만 연다');
-      } finally {
-        ev('Platform.caps.reportAuto = ' + JSON.stringify(origAuto) + '; reportMode = ' + JSON.stringify(origRM) + ';');
-        ev(origMode == null ? "try{localStorage.removeItem('tc_netcusMode')}catch(_){}" : "try{localStorage.setItem('tc_netcusMode'," + JSON.stringify(origMode) + ")}catch(_){}");
-        ev('updateRptSendVis();');
-      }
-    });
-
     //  ── 자동이관은 폐기됐다(2026-09-01) ────────────────────────────────────
     //  여기 네 건이 migrateLocalStores() 를 시험하고 있었다. 그 함수는 부팅 경로에서
     //  localStorage 를 훑어 state 에 병합하고 save() 까지 하는 **자동 1회 이관**이었고,

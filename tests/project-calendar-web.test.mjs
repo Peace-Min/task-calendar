@@ -92,7 +92,7 @@ const statics = {
     assert.ok(/<section class="pc-view" id="pcView"/.test(app) && /<div class="pc-tabs" id="pcTabs" role="tablist"/.test(app), '탭 줄이나 과제 화면 자리가 마크업에 없다');
     const css = app.slice(app.indexOf('<style>'), app.indexOf('</style>'));
     for (const sel of ['body.pc-on main > .cal', 'body.pc-on #dayPanel', 'body.pc-on .topbar .nav', 'body.pc-on #btnSearch',
-      'body.pc-on #btnPeerPick', 'body.pc-on #btnReportTop', 'body.pc-on #btnNew']) assert.ok(css.includes(sel), `과제 탭에서 ${sel} 를 숨기지 않는다`);
+      'body.pc-on #btnPeerPick', 'body.pc-on #btnNew']) assert.ok(css.includes(sel), `과제 탭에서 ${sel} 를 숨기지 않는다`);
     assert.ok(!/공식 과제 추가/.test(m), '과제 탭에 "공식 과제 추가" 진입이 생겼다(기획 §6.6: 내 과제 창에서만)');
     //  텍스트로만 그린다: 사용자 글을 담는 innerHTML 조립에 esc 없이 붙는 필드가 없다.
     for (const f of ['title', 'memo', 'location', 'name', 'actor', 'createdBy', 'updatedBy']) {
@@ -456,7 +456,7 @@ if (!JSDOM) {
     await W.tab('project');
     assert.ok(W.doc.body.classList.contains('pc-on'), '과제 탭 표시(body.pc-on)가 없다');
     assert.strictEqual(W.el('pcTabProject').getAttribute('aria-selected'), 'true');
-    for (const id of ['dayPanel', 'btnSearch', 'btnPeerPick', 'btnReportTop', 'btnNew']) {
+    for (const id of ['dayPanel', 'btnSearch', 'btnPeerPick', 'btnNew']) {
       assert.strictEqual(W.w.getComputedStyle(W.el(id)).display, 'none', `과제 탭에서 #${id} 가 보인다`);
     }
     assert.strictEqual(W.w.getComputedStyle(W.q('.topbar .nav')).display, 'none', '과제 탭에서 상단바 달 이동(과제 필터 묶음 포함)이 보인다');

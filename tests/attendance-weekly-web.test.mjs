@@ -204,7 +204,7 @@ if (!JSDOM) {
     try {
       X.ev("pcSetTab('attend')");
       assert.ok(shown(X, '#atMonth') && !shown(X, '#awList'), '처음은 일간(근태 달력)이어야 한다');
-      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#atMonth [data-atkind]'), function(b){ return b.textContent + (b.classList.contains('active') ? '*' : ''); })"), ['일간*', '주간']);
+      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#atMonth [data-atkind]'), function(b){ return b.textContent + (b.classList.contains('active') ? '*' : ''); })"), ['일간*', '주간', '취합']);
       X.$('#atMonth [data-atkind="week"]').click();
       assert.ok(!shown(X, '#atMonth') && shown(X, '#awList'), '[주간]을 눌렀는데 목록이 아니다');
       assert.strictEqual(X.ev("localStorage.getItem('tc_attKind')"), 'week', '고른 쪽을 기억하지 않았다');
@@ -494,7 +494,7 @@ if (!JSDOM) {
   const WROW = (mon, o) => Object.assign({ periodStart: mon, periodEnd: '', subject: '', content: '[알파] : 8\n-----\n합계 : 8', endwork: '[알파]\n&nbsp;&nbsp;- 한 일',
     plan: '[베타]\n- 다음 일', meeting: '- 회의', composedAt: '2026-10-23T09:00:00.000Z' }, o || {});
 
-  test('(W) 목록: reportWeeklyList(52주) 회신과 이 PC 임시 저장을 합쳐 완료와 작성 중, [작성]과 행은 attendOpen(kind week) 하나, __reportWeeklySaved 는 다시 읽는다', async () => {
+  test('(W) 목록: reportWeeklyList(처음은 최근 3개월, 고른 기간) 회신과 이 PC 임시 저장을 합쳐 완료와 작성 중, [작성]과 행은 attendOpen(kind week) 하나, __reportWeeklySaved 는 다시 읽는다', async () => {
     const X = await bootMain();
     try {
       const thisMon = X.ev('calReportPeriod(todayYmd()).mon');
@@ -503,11 +503,17 @@ if (!JSDOM) {
       X.ev("localStorage.setItem('tc_attKind', 'week')");
       X.$('#pcTabAttend').click(); await tick();
       const calls = X.evJSON('__calls');
-      assert.deepStrictEqual(calls[0], ['reportWeeklyList', { from: X.ev(`addDays('${thisMon}', -364)`), to: X.ev(`addDays('${thisMon}', 7)`) }], '목록 기간이 다르다');
+      //  처음은 최근 3개월(보고 대상 기간이 겹치는 주를 찾으려고 시작 쪽을 한 주 더 읽는다). 이 시험의 고정 날짜(2026-10)는 시간이 가면 3개월 밖이 되므로 직접 지정으로 바꿔 읽는다.
+      assert.deepStrictEqual(calls[0], ['reportWeeklyList', { from: X.ev(`addDays(awfM3(todayYmd()), -7)`), to: X.ev('todayYmd()') }], '처음 목록 기간이 최근 3개월이 아니다');
+      input(X, '#awfKind', 'custom');
+      for (const [id, v] of [['#awfFrom', '2026-10-01'], ['#awfTo', '2026-12-31']]) { X.$(id).value = v; X.$(id).dispatchEvent(new X.w.Event('change', { bubbles: true })); }
+      await tick();
+      assert.deepStrictEqual(X.evJSON('__calls').filter((c) => c[0] === 'reportWeeklyList').pop(), ['reportWeeklyList', { from: '2026-09-24', to: '2026-12-31' }], '직접 지정한 기간으로 읽지 않았다');
       const rows = X.evJSON("[].map.call(document.querySelectorAll('#awList tr.aw-row'), function(r){ return [].map.call(r.cells, function(c){ return c.textContent; }); })");
       assert.deepStrictEqual(rows.map((r) => [r[0], r[1], r[3]]), [['3', '10월 다섯째주', '작성 중'], ['2', '10월 넷째주', '완료'], ['1', '10월 셋째주', '완료']], '목록이 DB 기록과 임시 저장을 합치지 않았다(월요일이 아닌 기록은 빠진다)');
       assert.ok(/^\d{4}-\d\d-\d\d$/.test(rows[1][4]), '완료한 주의 날짜(작성한 날)가 없다');
       assert.ok(!shown(X, '#awEd'), '위젯 메인 창에서 편집 화면을 그 자리에 열었다');
+      const nList = X.evJSON("__calls.filter(function(c){ return c[0] === 'reportWeeklyList'; })").length;
       //  행 → 그 주의 기록을 실은 attendOpen
       X.$('#awList tr[data-awmon="2026-10-19"]').click(); await tick();
       let ops = X.evJSON("__calls.filter(function(c){ return c[0] === 'attendOpen'; })");
@@ -517,7 +523,7 @@ if (!JSDOM) {
       assert.deepStrictEqual(p.me, { userId: 7, loginId: 'tester', name: '시험자' });
       assert.strictEqual(p.saved.subject, '10월 넷째주', '목록 캐시의 기록을 싣지 않았다');
       assert.deepStrictEqual(p.projects.map((x) => x.name).slice(0, 4), NAMES, '과제 목록을 싣지 않았다');
-      assert.strictEqual(X.evJSON("__calls.filter(function(c){ return c[0] === 'reportWeeklyList'; })").length, 1, '캐시에 있는 주인데 다시 읽었다');
+      assert.strictEqual(nList, X.evJSON("__calls.filter(function(c){ return c[0] === 'reportWeeklyList'; })").length, '캐시에 있는 주인데 다시 읽었다');
       //  [작성] = 이번 주
       X.$('#awList [data-awact="new"]').click(); await tick();
       ops = X.evJSON("__calls.filter(function(c){ return c[0] === 'attendOpen'; })");

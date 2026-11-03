@@ -74,7 +74,7 @@ const SCREENS = [
   { id: 'relinkModal',             enter: '__vt.closeAll(); openRelinkModal()' },
   { id: 'relinkPickModal',         enter: '__vt.closeAll(); openRelinkPick(__vt.mineId())', needsCatalog: true },
   { id: 'settingsModal',           enter: '__vt.closeAll(); openSettings()' },
-  { id: 'reportModal',             enter: '__vt.closeAll(); openReport()' },
+  { id: 'atSum',                   enter: '__vt.closeAll(); pcSetTab("attend"); atKindSet("sum")' },   // 근태 탭 취합(보고서 창은 없다)
   { id: 'patchModal',              enter: '__vt.closeAll(); openPatch()' },
   { id: 'helpModal',               enter: '__vt.closeAll(); openHelp()' },
   // 문의(버그 리포트) — 로그 폴더 열기 버튼 + 반출 경고가 좁은 폭에서 잘리지 않아야 한다(320px 시트)
@@ -304,6 +304,7 @@ V.restore = function(){
 V.closeAll = function(){
   var ovs = document.querySelectorAll('.overlay');
   for (var i=0;i<ovs.length;i++){ ovs[i].classList.remove('closing'); ovs[i].classList.add('hidden'); }
+  try{ if(PCAL.tab !== 'personal') pcSetTab('personal'); }catch(_){}   // 근태 탭 화면(취합)에서 돌아온다
   return true;
 };
 /* 상태 순서 의존 제거 — 화면 진입 직전 편입 목록을 부팅 시점으로 되돌린다(ensureSub/ensureUnsub 잔상 방지) */
@@ -630,6 +631,7 @@ V.audit = function(opt){
       // ★ 인라인 요소는 제외 — 두 줄로 접힌 <b>/<span>의 getBoundingClientRect는 두 줄을 감싼 '합집합 상자'라
       //   서로 겹친 것처럼 보인다(실측: 패치노트 <li> 안의 <b> 형제들이 전부 오탐). 박스 요소만 본다.
       if(ks.display === 'inline') return false;
+      if(ks.display === 'table-column-group' || ks.display === 'table-column') return false;   // <colgroup> 은 그려지는 상자가 아니라 표 칸의 폭만 정한다(월간 문서 미리 보기에서 오탐)
       if(k.getClientRects && k.getClientRects().length > 1) return false;   // 줄바꿈된 인라인블록도 같은 이유로 제외
       return true;
     });
@@ -758,7 +760,7 @@ V.audit = function(opt){
         var bs = styles.get(body2) || getComputedStyle(body2);
         if (body2.scrollHeight > body2.clientHeight + 1 && bs.overflowY !== 'auto' && bs.overflowY !== 'scroll'){
           // 본문 자체는 안 스크롤해도 **자식 칼럼이 스크롤**하면 내용은 도달 가능하다
-          // (실측: 900x320 reportModal은 2단 레이아웃이라 .rpt-rail/.rpt-preview가 각자 스크롤한다) → 그건 warn.
+          // (실측: 900x320 보고서 창(지금은 취합 화면)은 2단 레이아웃이라 .as-left/.as-right가 각자 스크롤한다) → 그건 warn.
           var inner = false, cand2 = [].slice.call(body2.querySelectorAll('*'));
           for (var j=0;j<cand2.length;j++){
             var c2 = styles.get(cand2[j]) || getComputedStyle(cand2[j]);

@@ -20,7 +20,8 @@
 //   ⑨ (2026-09-10) 쓰기 직전에 09-09 CHECK 도메인 셋(근태코드·잔업·공수)을 호스트가 한 번 더 거른다.
 //     값 하나가 3819 를 내면 **그 날 보고 저장 트랜잭션 전체가 롤백**되는데, 전송은 이미 성공한 뒤다
 //     (ReportDb 가 "가장 나쁜 실패"라고 적어 둔 자리). 그래서 도메인 밖 값은 기록 직전에 안전한 값으로 내린다.
-//   ⑪ (2026-09-18) 주간 전송은 내용 출처 'week'(netcus 주간보고 병합)를 거부한다 — 그건 읽기 전용 취합이다.
+//   (옛 ⑪ 주간 전송이 출처 'week' 를 거부하는 가드와 보고서 창 닫기의 병합 캐시 비우기 시험은 보고서 창의 [회사 전송]과 함께 없앴다.
+//    취합 화면은 회사로 보내지 않는다.)
 import { test, assert, loadAppSource, extractFunction, extractCsMember, readText } from './harness.mjs';
 import { canonSql, canonStatusCodes } from './canon-schema.mjs';
 
@@ -29,21 +30,6 @@ const netcus = readText(new URL('../widget/NetcusService.cs', import.meta.url));
 const mainwin = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
 const reportdb = readText(new URL('../widget/ReportDb.cs', import.meta.url));
 const grants = readText(new URL('../db/deploy/grants-calendar.sql', import.meta.url));
-
-// ⑪ netcus 주간보고 출처('week')는 기간 취합 전용 — 주간 전송 경로가 거부한다.
-//   버튼(updateRptSendVis)은 보고 유형만 보므로 출처를 막지 못한다. 가드는 전송 핸들러 안에 있어야 한다.
-//   이건 실행으로 관측할 수 없다(누르면 회사 시스템에 실제 주간보고가 나간다) → 구조로 못박는다.
-test("배선⑪: 주간 전송은 출처 'week' 를 거부한다(기간 취합 전용 — 자기 보고를 자기가 덮어쓰는 길 차단)", () => {
-  const i = src.indexOf("$('#btnRptSend').addEventListener('click'");
-  assert.ok(i > 0, '#btnRptSend 배선을 찾지 못했다');
-  const body = src.slice(i, i + 8000);
-  const guard = body.indexOf("if(state.reportSource === 'week')");
-  const netBranch = body.indexOf("if(state.reportSource === 'net')");
-  assert.ok(guard > 0, "주간 전송 경로에 'week' 출처 가드가 없다 — netcus 주간 병합본이 그대로 주간보고로 나간다");
-  assert.ok(netBranch > 0, "'net' 분기를 찾지 못했다(경계 없음 — 앵커 재검토)");
-  assert.ok(guard < netBranch, "'week' 가드가 'net' 분기보다 뒤에 있다 — 순서가 뒤집혔다");
-  assert.ok(/전송할 수 없습니다/.test(body.slice(guard, netBranch)), '가드가 막기만 하고 이유를 말하지 않는다');
-});
 
 function mutate(from, to, base) {
   const out = base.replace(from, to);
@@ -141,18 +127,13 @@ const checks = {
 
   // ⑤ 웹→호스트 경계가 hours 를 실어 나른다
   hoursCrossesBoundary(app, cs) {
-    // 웹: 페이로드를 만들 때 getTaskHours 로 구조화한다(본문 되파싱이 아니다)
-    assert.ok(/const rptHours = reportDailyHours\(collectReportData\(from, to, rptSources\(\)\)\.rows, from\)/.test(app),
-      '웹이 hours 를 본문과 같은 rows 에서 만들지 않는다 — 호스트가 본문을 되파싱하게 되거나(전각 콜론·&nbsp;), 본문과 순서가 갈린다');
-    //  REPORT-EDIT §3.2(2026-10-07): X(이 보고서에서 빼기)로 본문에서 뺀 과제는 hours 에서도 빠진다. 같은 초안(rptDraftGet)의 out 을 본다.
-    assert.ok(/const _rptOut = new Set\(rptDraftGet\(from\)\.out\);\s*const rptHours = reportDailyHours\(collectReportData\(from, to, rptSources\(\)\)\.rows, from\)\s*\.filter\(x => !_rptOut\.has\(x\.key\)\)\s*\.map\(x => \(\{ name: x\.name, hours: x\.hours \}\)\);/.test(app),
-      'payload.hours 가 X 로 뺀 과제를 빼지 않는다 — 본문에는 없는 과제의 시간이 보고 기록에 남는다(머리 줄과 hours 가 갈린다)');
-    assert.ok(/rows\.filter\(r => !\(_dr && _dr\.out\.includes\(r\.key\)\)\)/.test(extractFunction(app, 'buildReportText')),
-      '본문(buildReportText)이 같은 초안의 out 으로 과제를 빼지 않는다 — hours 와 본문이 다른 기준을 쓴다');
+    // 웹: 근태 화면의 보내기가 블록의 시간으로 hours 를 만든다(본문 되파싱이 아니다). 0 초과만, 블록과 같은 과제명으로.
+    assert.ok(/hours: atHoursPayload\(c\.blocks\)/.test(extractFunction(app, 'atBuildSubmit')),
+      '근태 보내기 payload 가 hours 를 블록에서 만들지 않는다 — 호스트가 본문을 되파싱하게 되거나 본문과 보고 기록이 갈린다');
+    assert.ok(/b\.hours > 0/.test(extractFunction(app, 'atHoursPayload')) && /atCompose\(c\.blocks, c\.memo\)/.test(extractFunction(app, 'atBuildSubmit')),
+      'hours 와 본문이 같은 블록에서 나오지 않는다 — 머리 줄과 hours 가 갈린다');
     assert.ok(/getTaskHours\(date, r\.key\)/.test(extractFunction(app, 'reportDailyHours')),
       'reportDailyHours 가 getTaskHours 에서 값을 가져오지 않는다 — 이미 아는 값을 다시 파싱하는 셈이다');
-    assert.ok(/reportDailyHours\(rows, from\)/.test(extractFunction(app, 'buildReportText')),
-      '본문 헤더가 reportDailyHours 를 쓰지 않는다 — payload 와 헤더가 다른 함수에서 나와 갈릴 수 있다(§0-2)');
     assert.ok(/hours: p\.hours \|\| \[\]/.test(app),
       '어댑터가 hours 를 호스트로 넘기지 않는다');
     // 호스트: 받아서 SubmitDaily 로 넘긴다
@@ -240,34 +221,7 @@ const checks = {
 };
 
 // ── 계약 ─────────────────────────────────────────────────────────────
-//  ★ 닫기 부수효과는 **대칭**이다(2026-09-18 §3.3): netcus 병합 캐시는 일간·주간 두 벌인데 닫기에서
-//    일간만 비우면, 다시 열었을 때 주간 캐시가 **이전 기간의 것**으로 남아 그 내용이 복사된다
-//    (#rptFrom/#rptTo 변경은 이미 둘 다 비운다 — 그 짝이 여기서만 갈려 있었다).
 //  ★ 검사와 변이가 **같은 함수**를 쓴다 — 변이로 안 깨지는 검사는 장식이다.
-function closeClearsBothMerges(s) {
-  const co = s.slice(s.indexOf('function closeOverlay(ov){'));
-  const at = co.indexOf("ov.id === 'reportModal'");
-  assert.ok(at > 0, 'closeOverlay 의 reportModal 부수효과를 찾지 못했다 — 판정 불가');
-  const line = co.slice(at, co.indexOf('\n', at));
-  assert.ok(/clearNetcusMerge\(\)/.test(line), '닫기에서 일간 병합 캐시를 비우지 않는다');
-  assert.ok(/clearNetcusWeeklyMerge\(\)/.test(line),
-    '닫기에서 주간 병합 캐시를 비우지 않는다 — 다시 열면 이전 기간의 주간 취합이 그대로 복사된다');
-  const f = s.indexOf("$('#rptFrom').addEventListener('change'");
-  assert.ok(f > 0 && /clearNetcusMerge\(\); clearNetcusWeeklyMerge\(\);/.test(s.slice(f, f + 400)),
-    '대조군: 기간 변경은 두 캐시를 함께 비운다(닫기만 한쪽이면 그 짝이 갈린 것이다)');
-}
-
-test('배선⑫: 보고서 모달을 닫으면 netcus 병합 캐시를 일간·주간 **둘 다** 비운다', () => closeClearsBothMerges(src));
-
-test('변이⑭: 닫기에서 주간 캐시 비우기를 빼면 배선⑫ 가 실패한다(이전 기간의 주간 취합이 되살아난다)', () => {
-  const from = "if(ov.id === 'reportModal'){ clearNetcusMerge(); clearNetcusWeeklyMerge(); }";
-  const i = src.indexOf(from);
-  assert.ok(i > 0, '변이 대상 문자열을 찾지 못했다 — 판정 불가');
-  const bad = src.slice(0, i) + "if(ov.id === 'reportModal') clearNetcusMerge();" + src.slice(i + from.length);
-  assert.throws(() => closeClearsBothMerges(bad), /주간 병합 캐시를 비우지 않는다/);
-  assert.doesNotThrow(() => closeClearsBothMerges(src));   // 통제군
-});
-
 test('배선①: 일간 저장은 vr==1(전송 성공+되읽어 검증) 분기 안에서만 불린다', () => {
   checks.dailySaveInsideVerified(netcus);
 });
@@ -362,11 +316,6 @@ test('변이④: 주간 저장을 채우기 성공 통지 앞으로 옮기면 �
 test('변이⑤: 웹이 hours 를 안 실으면 배선⑤ 가 실패한다', () => {
   const bad = mutate('hours: p.hours || []', 'dummy: 0', src);
   assert.throws(() => checks.hoursCrossesBoundary(bad, mainwin), /호스트로 넘기지 않는다/);
-});
-
-test('변이⑤b: payload.hours 에서 X 로 뺀 과제 거르기를 지우면 배선⑤ 가 실패한다(REPORT-EDIT §3.2)', () => {
-  const bad = mutate('        .filter(x => !_rptOut.has(x.key))\n', '', src);
-  assert.throws(() => checks.hoursCrossesBoundary(bad, mainwin), /X 로 뺀 과제를 빼지 않는다/);
 });
 
 test('변이⑥: 호스트가 hours 를 안 읽으면 배선⑤ 가 실패한다', () => {
@@ -475,4 +424,25 @@ test('변이⑬: 과제 행 필터를 지우면 배선⑩ 이 실패한다(옵�
     '/* 행 필터 삭제 */', src);
   assert.throws(() => skipEmptyRowFilterOnly(bad), /행 필터/);
   assert.doesNotThrow(() => skipEmptyRowFilterOnly(src), '대조군: 현재 소스는 그대로 통과해야 한다');
+});
+
+//  ── 지운 보고서 창(docs/ATTEND-SUMMARY.md, 2026-11-03) ──────────────────────
+//  툴바의 보고서 버튼, 보고서 창, 보고서 묶음 창, 일간 작성과 주간 작성(옛 숨은 탭), 글 편집, 회사 전송 단추, 근태 슬롯, 옵션 접기는 없다.
+//  기간 취합과 월간 보고는 근태 탭 [취합] 화면(#atSum)이 같은 id 와 함수로 이어받았다. 되살아나면 이 시험이 잡는다(한 곳에서만 본다).
+test('지운 보고서 창: 단추, 창, 일간 주간 작성, 글 편집, 묶음, 회사 전송의 id 와 함수가 없다', () => {
+  const ids = ['btnReportTop', 'btnReportFold', 'reportModal', 'rptGroupModal', 'btnRptSend', 'rptAttendRail', 'rptOpt', 'rptOptBtn', 'rptOptSum', 'rptSendStatus'];
+  for (const id of ids) assert.ok(!new RegExp('id="' + id + '"').test(src), `지운 #${id} 가 되살아났다`);
+  const fns = ['openReport', 'setReportMode', 'setReportRange', 'buildWeeklyFields', 'updateRptSendVis', 'armRptSendWatchdog',
+    'renderNetcusInto', 'renderNetcusPreview', 'renderNetcusError', 'renderNetcusWeeklyInto', 'renderNetcusWeeklyError', 'clearNetcusMerge', 'netcusMerge',
+    'rptDraftKey', 'rptDraftGet', 'rptDraftSet', 'rptWKey', 'rptGroupOpen'];
+  for (const f of fns) assert.ok(!src.includes('function ' + f + '('), `지운 ${f}() 가 되살아났다`);
+  assert.ok(!/\brptGroup[A-Z]\w*\s*\(/.test(src) && !/\brptDraft(?!Who\b)[A-Z]\w*\s*\(/.test(src), '지운 보고서 묶음 또는 글 편집 함수 호출이 남았다(rptDraftWho 는 근태 임시 저장 계정에 쓰인다)');
+  //  살아 있는 것: 취합 화면이 쓰는 순수 함수와 파서
+  for (const f of ['collectReportData', 'reportRowBodyText', 'reportMarkerSpec', 'currentReportFormatPref', 'rptSources', 'parseNetcusWeek', 'buildNetcusSendText', 'buildReport', 'buildReportText', 'rptDraftWho', 'reportEditedBodyOut'])
+    assert.ok(src.includes('function ' + f + '('), `살아 있어야 할 ${f}() 가 없다`);
+});
+
+test('변이⑤c: 근태 보내기가 hours 를 안 실으면 배선⑤ 가 실패한다', () => {
+  const bad = mutate('hours: atHoursPayload(c.blocks), dryRun: false', 'dryRun: false', src);
+  assert.throws(() => checks.hoursCrossesBoundary(bad, mainwin), /hours 를 블록에서 만들지 않는다/);
 });

@@ -56,8 +56,7 @@ const GATED_HANDLERS = [
   ['할 일 인라인 편집 저장·삭제', 'const id = box.dataset.id, act = ev.target.dataset.act;', 'updateTodo(id,'],
   ['할 일 행 완료·삭제·중요', "const row = ev.target.closest('.todo-row'); if(!row) return;", 'toggleTodo(row.dataset.id)'],
   //  (과제 목록 #catList 위임의 unsub, del, movedata 는 2026-10-30 ⋯ 메뉴로 옮겼다. 관문은 함수(catUnsub, catDelete, openCatMoveModal)가 진다 → GATED_FUNCTIONS)
-  ['근태(보고서)', 'const svGuarded = () =>', 'sv(); };'],
-  ['과제별 시간(보고서)', "const from = $('#rptFrom').value; const cat = inp.dataset.hcat;", 'setTaskHours(from, cat, inp.value)'],
+  //  (보고서 창의 근태 셀렉트(svGuarded)와 과제별 시간 입력은 보고서 창과 함께 없앴다. 근태 화면의 저장은 attendance-web 시험이 본다.)
   ['머리기호', "$('#rptMarker').addEventListener('change'", 'save()'],
   ['머리기호(직접 입력)', "$('#rptMarkerCustom').addEventListener('change'", 'save()'],
   ['들여쓰기', 'const _setRptInd = d => {', 'save()'],
@@ -93,8 +92,6 @@ const statics = {
       assert.ok(j > i, `${name}: 쓰기 표지(${end})를 찾지 못했다`);
       assert.ok(app.slice(i, j).includes('guardEdit()'), `${name} 에 연결 잠금 관문(guardEdit)이 없다`);
     }
-    assert.ok(/a\.addEventListener\('change', svGuarded\)/.test(app) && /b\.addEventListener\('change', svGuarded\)/.test(app),
-      '근태 셀렉트가 관문 없는 sv 로 직접 배선돼 있다');
     assert.ok(app.includes("$('#btnNew').addEventListener('click', () => openQuickAdd(selectedDate));"),
       '「＋ 새 기록」 이 openQuickAdd(관문 있음)로 가지 않는다');
   },
@@ -109,11 +106,11 @@ const statics = {
 };
 
 test(`정적①: 편집 진입점 함수 ${GATED_FUNCTIONS.length}곳이 첫 쓰기 전에 guardEdit() 을 지난다`, () => statics.functionsGated(src));
-test(`정적②: 배선 진입점 ${GATED_HANDLERS.length}곳(끌어 옮기기·할 일·과제·보고서 서식·근태·시간·삭제)이 guardEdit() 을 지난다`, () => statics.handlersGated(src));
+test(`정적②: 배선 진입점 ${GATED_HANDLERS.length}곳(끌어 옮기기·할 일·과제·취합 서식·삭제)이 guardEdit() 을 지난다`, () => statics.handlersGated(src));
 test('정적③: 연결 상태 경로는 메모리 전용이다(로컬 저장소 대기열 없음)', () => statics.memoryOnly(src));
 test('정적⑤: 보고서 줄편집·삭제 진입점(setCommitSubject, setEntryTitle, setTodoText, 줄 ✎/✕)은 관문이 아니라 아예 없다(REPORT-EDIT §5)', () => statics.reportLineEditGone(src));
 test('변이⑤s: 보고서 줄 삭제 처리기를 되살리면 정적⑤ 가 실패한다', () => {
-  const bad = mutate("  $('#rptOut').addEventListener('input', ev => {",
+  const bad = mutate("  $('#rptMarker').addEventListener('change'",
     "  $('#rptOut').addEventListener('click', ev => { const b = ev.target.closest('[data-ract]'); if(b && b.dataset.ract === 'del') deleteCommitRow(b.dataset.reid, '', 0); });\n  $('#rptOut').addEventListener('input', ev => {", src);
   assert.throws(() => statics.reportLineEditGone(bad), /되살아났다/);
   assert.doesNotThrow(() => statics.reportLineEditGone(src), '대조군: 현재 소스는 통과해야 한다');

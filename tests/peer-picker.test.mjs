@@ -55,8 +55,8 @@ test('(정적) K1: 툴바 👥 버튼 — .actions 안 · has-label · aria-labe
   assert.match(m[1], /aria-expanded="false"/);
   const acts = app.slice(app.indexOf('<div class="actions">'), app.indexOf('</header>'));
   assert.ok(acts.includes('id="btnPeerPick"'), '입구가 상단 툴바(.actions) 밖에 있다');
-  assert.ok(acts.indexOf('id="btnSearch"') < acts.indexOf('id="btnPeerPick"') && acts.indexOf('id="btnPeerPick"') < acts.indexOf('id="btnReportTop"'),
-    '입구는 「검색」·「보고서」 줄에 있어야 한다');
+  assert.ok(acts.indexOf('id="btnSearch"') < acts.indexOf('id="btnPeerPick"') && acts.indexOf('id="btnPeerPick"') < acts.indexOf('id="btnCatsTop"'),
+    '입구는 「검색」·「내 과제」 줄에 있어야 한다');
   assert.match(app, /<div class="mm-fold-pk">\s*<button id="btnPeerPickFold">다른 사람 일정<\/button>/, '⋯ 메뉴의 접기 항목이 없다');
   assert.ok(/set\('btnPeerPick', label\(ICON\.users, '다른 사람 일정'\)\)/.test(app), 'applyIcons 가 라벨을 달지 않는다');
 });

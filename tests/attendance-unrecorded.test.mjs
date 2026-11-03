@@ -6,9 +6,9 @@
 //   → netcus에 직접 휴가·병가를 적어 둔 날짜에 캘린더로 일간보고를 보내면 '정근'으로 덮였다.
 //     근태는 로컬 data.xml에만 있으므로 다른 자리 PC에서 보내도 같은 사고가 난다.
 //
-// 그래서 잠그는 계약은 다섯이다:
+// 그래서 잠그는 계약은 넷이다(옛 ②: 근태 드롭다운의 (미기록) 선택과 안내 문구는 보고서 창 레일과 함께 없앴다):
 //   ① 웹: 미기록 = null (정근'1'로 흡수 금지) · (미기록) 선택 = 기록 삭제
-//   ② 웹→호스트: 페이로드가 null을 그대로 싣는다(|| '1' 같은 폴백 금지)
+//   ② 웹→호스트: 위젯 어댑터가 status 를 그대로 싣는다(폴백 금지)
 //   ③ 호스트 폼 채우기: 미기록이면 st.value에 아예 대입하지 않는다(페이지 값 보존)
 //   ④ 호스트 제출: 미기록이면 페이지의 현재 status 값을 읽어 되싣는다(필드 제거도, 하드코딩 '1'도 아님)
 //   ⑤ XML 왕복: toXML·fromXML 이 무효·미지 코드를 '1'(정근)로 흡수하지 않는다 — 미기록으로 떨어뜨린다
@@ -49,25 +49,6 @@ function mkSetAttendance(source) {
   const code = extractFunction(source, 'setAttendance');
   return (map) => new Function('loadAttendanceMap', 'ATTEND_STATUS_SET', 'save', code + '\nreturn setAttendance;')(
     () => map, statusSet(source), () => {});
-}
-
-// 근태 드롭다운 옵션 HTML — 실제 조립식(const stOpts = …)을 잘라 그대로 평가한다.
-function stOptsHtml(source, atStatus) {
-  const i = source.indexOf('const stOpts =');
-  assert.ok(i >= 0, 'const stOpts 선언을 찾지 못함');
-  const m = /;\r?\n/.exec(source.slice(i));
-  assert.ok(m, 'const stOpts 선언의 끝(;)을 찾지 못함');
-  const expr = source.slice(i + 'const stOpts ='.length, i + m.index);
-  assert.ok(/ATTEND_STATUS\.map/.test(expr), 'stOpts 조립식을 잘못 잘랐다(ATTEND_STATUS.map 없음)');
-  return new Function('at', 'ATTEND_STATUS', 'esc', 'return (' + expr + ');')(
-    { status: atStatus }, attendStatus(source), (s) => String(s));
-}
-
-// 전송 페이로드의 status 표현식(폴백이 끼었는지 보기 위해 원문 그대로 뽑는다).
-function payloadStatusExpr(source) {
-  const m = /fields:\s*\{\s*status:\s*([^,]+),\s*overtime:/.exec(source);
-  assert.ok(m, '일간 전송 페이로드의 fields.status를 찾지 못함');
-  return m[1].trim();
 }
 
 // ── C# → JS 재조립 ───────────────────────────────────────────────────
@@ -222,24 +203,9 @@ const checks = {
     assert.deepStrictEqual(map2, {}, '미지 코드 저장도 기록 삭제(정근으로 흡수 금지)');
   },
 
-  // ② 드롭다운에 value=""인 (미기록)이 있고, 미기록이면 그것이 selected.
-  dropdownHasUnrecordedOption(source) {
-    const html = stOptsHtml(source, null);
-    assert.ok(/<option value=""[^>]*>\(미기록\)<\/option>/.test(html),
-      '근태 드롭다운에 value=""인 (미기록) 옵션이 없다 — 사용자가 미기록으로 되돌릴 방법이 사라진다');
-    assert.ok(/<option value="" selected>/.test(html),
-      'at.status==null인데 (미기록)이 selected가 아니다 — 미기록인 날 정근이 선택된 것처럼 보인다');
-    assert.ok(!/<option value="1" selected>/.test(html), '미기록인데 정근(1)이 selected다');
-    // 유효 코드면 그 코드가 selected이고 (미기록)은 풀린다.
-    const h6 = stOptsHtml(source, '6');
-    assert.ok(/<option value="6" selected>/.test(h6), '저장된 근태 코드가 selected여야 한다');
-    assert.ok(!/<option value="" selected>/.test(h6), '저장된 근태가 있는데 (미기록)이 selected다');
-  },
-
-  // ③ 전송 페이로드는 null을 그대로 싣는다(|| '1' 같은 폴백 금지).
-  payloadCarriesNull(source) {
-    assert.strictEqual(payloadStatusExpr(source), 'at.status',
-      "일간 전송 페이로드의 fields.status에 폴백이 끼었다 — null(미기록)이 코드값으로 바뀌면 회사 근태가 덮인다");
+  // ② 위젯 어댑터는 p.fields.status 를 그대로 호스트에 넘긴다(여기서 폴백을 끼우면 빈 값 규약이 깨진다).
+  //    (근태 화면의 일간 보내기는 늘 코드 하나를 고르므로 미기록 선택과 안내 문구는 없다. 2026-10-29 사용자, 보고서 창 레일과 함께 없앴다.)
+  adapterPassesStatus(source) {
     assert.ok(/submitDaily\(p\)\{[^}]*status:\s*p\.fields\.status\s*,/.test(source),
       '위젯 어댑터가 p.fields.status를 그대로 넘기지 않는다');
   },
@@ -324,31 +290,6 @@ test('근태 미기록: setAttendance는 빈 값·미지 코드에 기록을 삭
   checks.setAttendanceDeletesOnUnrecorded(src);
 });
 
-test('근태 미기록: 드롭다운에 value=""인 (미기록)이 있고 미기록이면 selected', () => {
-  checks.dropdownHasUnrecordedOption(src);
-});
-
-test('근태 미기록: 안내 문구가 "기존 근태를 그대로 둔다"는 사실을 알린다(.ra-hint 자리)', () => {
-  assert.ok(/class="ra-hint"[^>]*>미기록이면 회사 시스템의 기존 근태를 그대로 둡니다</.test(src),
-    '(미기록)의 의미를 알리는 안내가 없다 — 사용자가 "안 보낸 것"으로 오해한다');
-});
-
-test('근태 미기록: 안내 문구는 미기록일 때만 보인다(근태를 고르면 숨는다)', () => {
-  assert.ok(/syncHint\s*=\s*\(\)\s*=>/.test(src),
-    'syncHint가 없다 — 근태를 고른 뒤에도 "미기록이면…"이 남아 현재 상태를 잘못 설명한다');
-  assert.ok(/classList\.toggle\('hidden',\s*!!\(s\s*&&\s*s\.value\)\)/.test(src),
-    '안내 문구 표시 조건이 status 값에 묶여 있지 않다');
-  assert.ok(/const sv = \(\) => \{ setAttendance\(.*?\); syncHint\(\); \}/.test(src),
-    'change 저장 경로에서 syncHint를 부르지 않는다 — 선택을 바꿔도 안내가 그대로 남는다');
-  // 레일에서 말줄임으로 잘리면 안내가 아니다
-  assert.ok(/\.rpt-attend-rail \.rpt-attend \.ra-hint\{[^}]*white-space:normal[^}]*\}/.test(src),
-    '레일의 안내 문구가 여전히 nowrap+ellipsis라 문장이 잘린다');
-});
-
-test('근태 미기록: 전송 페이로드가 status:null을 그대로 싣는다(폴백 금지)', () => {
-  checks.payloadCarriesNull(src);
-});
-
 test('근태 미기록: 웹→호스트 경계에서 미기록이 빈 문자열로 보존된다(GetStr·keepStatus)', () => {
   checks.hostBoundaryKeepsUnrecorded(mainwin, netcus);
 });
@@ -392,22 +333,8 @@ test('변이②: setAttendance가 (미기록)을 삭제 대신 정근으로 저�
   assert.throws(() => checks.setAttendanceDeletesOnUnrecorded(bad), /기록을 지우지 않는다|미지 코드 저장도 기록 삭제/);
 });
 
-test('변이③: 드롭다운에서 (미기록) 옵션을 빼면 검사가 실패한다', () => {
-  const bad = mutate('const stOpts = `<option value=""${at.status == null ? \' selected\' : \'\'}>(미기록)</option>`\n      + ',
-    'const stOpts = ', src);
-  assert.throws(() => checks.dropdownHasUnrecordedOption(bad), /\(미기록\) 옵션이 없다/);
-});
-
-test('변이④: (미기록)의 selected 판정을 지우면 검사가 실패한다(미기록인데 정근이 선택됨)', () => {
-  const bad = mutate("`<option value=\"\"${at.status == null ? ' selected' : ''}>(미기록)</option>`",
-    "`<option value=\"\">(미기록)</option>`", src);
-  assert.throws(() => checks.dropdownHasUnrecordedOption(bad), /\(미기록\)이 selected가 아니다/);
-});
-
-test('변이⑤: 전송 페이로드에 || \'1\' 폴백이 끼면 검사가 실패한다', () => {
-  const bad = mutate('fields: { status: at.status, overtime: at.overtime, content }',
-    "fields: { status: at.status || '1', overtime: at.overtime, content }", src);
-  assert.throws(() => checks.payloadCarriesNull(bad), /폴백이 끼었다/);
+test('근태 미기록: 위젯 어댑터가 status 를 그대로 호스트에 넘긴다', () => {
+  checks.adapterPassesStatus(src);
 });
 
 test('변이⑥: keepStatus 판정을 없애면(항상 기록으로 취급) 경계 검사가 실패한다', () => {

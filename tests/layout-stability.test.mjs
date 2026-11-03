@@ -42,11 +42,6 @@ test('#qaRecurHint 는 숨겨도 자리를 남긴다(visibility)', () => {
     '#qaRecurHint.hidden 자리 유지 규칙이 없다 — 반복을 고를 때마다 빠른등록 모달이 38px 튄다');
 });
 
-test('#raHint 는 숨겨도 자리를 남긴다(visibility)', () => {
-  assert.ok(/#raHint\.hidden\s*\{\s*display\s*:\s*block\s*!important\s*;\s*visibility\s*:\s*hidden/.test(src),
-    '#raHint.hidden 자리 유지 규칙이 없다 — 근태를 고르면 보고서 레일이 39px(좁은 폭 23px) 줄어 아래 컨트롤이 튄다');
-});
-
 test('할 일 설명칸은 종료일 지정으로 빠지지 않는다', () => {
   assertTodoNoteStays(src);
 });
@@ -88,22 +83,6 @@ test('검색 강조·날짜 머리 색은 테마 토큰을 쓴다', () => {
   assert.ok(!src.includes('html.dark mark{'), 'html.dark mark 하드코딩 재정의가 되살아났다 — 토큰 한 곳에서 관리해야 한다');
   const root = rule(src, '\n:root{');
   assert.ok(root.includes('--mark-bg:') && root.includes('--mark-ink:'), ':root 에 --mark-bg/--mark-ink 선언이 없다 — mark 가 색을 잃는다');
-});
-
-test('보고서 넓은 폭 격자는 flex-basis 로 높이를 받아 낮은 창에서 줄어든다', () => {
-  const opt = src.indexOf('#reportModal .rpt-optpanel{display:block!important}');
-  assert.ok(opt >= 0, '보고서 넓은 폭 미디어 블록 경계(.rpt-optpanel 강제 노출)를 찾지 못함');
-  const ms = src.lastIndexOf('@media (min-width:900px){', opt);
-  assert.ok(ms >= 0, '보고서 @media (min-width:900px) 블록 시작을 찾지 못함');
-  const block = src.slice(ms, src.indexOf('}', src.indexOf('}', opt) + 1) + 1);
-  const body = rule(block, '#reportModal .rpt-body{');
-  assert.ok(body.includes('flex:0 1 min(66vh,600px)') && body.includes('min-height:0'),
-    '.rpt-body 가 flex-basis 로 높이를 받지 않는다 — 넓고 낮은 창(1000×420)에서 레일·미리보기 아래가 잘려 닿을 수 없다');
-  assert.ok(!body.includes('height:min(66vh,600px)'),
-    '.rpt-body 에 고정 height 가 되살아났다 — 본문(overflow:hidden)보다 커지면 아랫부분이 잘린다');
-  const mb = rule(block, '#reportModal .modal-body{');
-  assert.ok(mb.includes('display:flex;flex-direction:column;min-height:0'),
-    '보고서 본문이 flex 열이 아니다 — .rpt-body 의 flex-basis 가 먹지 않아 낮은 창에서 잘린다');
 });
 
 //  2026-10-30(내 과제 목록 정리): 내 과제 창에는 푸터가 없다([🔗 공식 과제로 연결] 과 [닫기] 를 없앴다 — 연결은 줄 ⋯ 메뉴, 닫기는 머리 ✕).

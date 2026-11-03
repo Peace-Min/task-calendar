@@ -308,7 +308,7 @@ async function main() {
   ok('A1 reportDailyList 를 이번 달 범위로 실제로 읽었다(성공 회신)', loaded1 && L1.some((x) => x.from === R1.from && x.to === R1.to && x.ok === true), JSON.stringify(L1));
   const st1 = await M.J(`({ err: ATT.err, from: ATT.from, to: ATT.to, rows: ATT.rows.size, cells: document.querySelectorAll('#atGrid .at-day').length,
     has: document.querySelectorAll('#atGrid .at-day[data-has]').length, range: (document.querySelector('#atMonth .at-range') || {}).textContent,
-    sum: (document.getElementById('atSum') || {}).textContent, text: document.getElementById('atMonth').textContent })`);
+    sum: (document.getElementById('atMonSum') || {}).textContent, text: document.getElementById('atMonth').textContent })`);
   ok('A1 읽기 오류 없음, 읽은 범위 = 이번 달 격자', st1.err === '' && st1.from === R1.from && st1.to === R1.to, JSON.stringify({ err: st1.err, from: st1.from, to: st1.to }));
   ok('A1 격자 칸 수 = 주 수 x 7, 머리에 이번 달', st1.cells === R1.weeks * 7 && st1.range === `${R1.y}년 ${R1.m + 1}월`, `${st1.cells}칸 ${st1.range}`);
   ok('A1 보고 표시 칸 수 = 읽은 행 수', st1.has === st1.rows, `칸 ${st1.has}, 행 ${st1.rows}(${L1.map((x) => x.n).join(',')})`);
