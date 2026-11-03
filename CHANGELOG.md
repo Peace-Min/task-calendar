@@ -7,6 +7,19 @@
 
 ---
 
+## 🆕 2026-11-03 (다음 판, 번호는 배포 때): 취합의 캘린더 기록은 이 앱 주간보고 DB
+
+사용자 결정(2026-11-03)으로 근태 [취합]의 내용 출처 두 개의 뜻을 바로잡았다. 설계는 [docs/ATTEND-SUMMARY.md](docs/ATTEND-SUMMARY.md) 7. DB 구조 변경과 호스트(C#) 변경 없음(화면만).
+
+- **캘린더 기록 = 이 앱 주간보고 DB**: `reportWeeklyList` 로 기간과 겹치는 주(`periodStart`~`periodEnd`)를 읽어 `parseNetcusWeekly` 가 받는 모양으로 바꾸고(`rptMWeekFromRow`: endwork 그대로, content 는 hours 표가 있으면 `[과제] : 시간` 줄, 없으면 글 그대로, title=제목, period=`시작 ~ 끝`, regdate=작성 시각) 과제별로 모은다(`rptMReadApp`). 인트라넷 주간(회사 사이트 `netcusWeeklyRangeRead`)은 그대로다. 달력의 일정과 할 일을 하루 단위로 모으던 출처는 취합에서 없앴다.
+- **같은 그릇, 같은 화면 코드**: 두 출처 결과가 `netcusWeeklyMerge`(열쇠 `출처|시작|끝`, `ncMergeKey(from, to, src)`)에 담기고(`rptMStoreRead`), 과제별 글 미리 보기(`renderNetcusWeeklyPreview`), 복사(`buildReportText`), 월간 보고 문서(`rptMBuildWeek`, 미식별 항목)가 한 번 읽은 결과를 같이 쓴다. 옛 `__rptMWeek`, `__rptMCal` 은 없앴다.
+- **읽기 함수 하나**: 근태 주간 목록의 읽기를 `awRowsFetch` 로 빼서 목록과 취합이 같이 쓴다(호스트 상한을 넘으면 `AW_CHUNK` 일씩 나눠 읽기, 시작 쪽 한 주 더 읽기). 주 고르기는 인트라넷 주간(호스트 `NcCrawlWeekly` 의 `ps <= to && pe >= from`)과 같은 기간 겹침이다.
+- **읽어 오기는 둘 다 눌러야 읽는다**. 읽은 주가 없으면 `이 기간에 이 앱으로 쓴 주간보고가 없습니다.`, 브라우저(위젯 아님)는 위젯 안내. 읽기에 실패하면 이유만 보이고 읽어 둔 글은 그대로다(예전의 "캘린더로 되돌림"은 캘린더가 자동으로 모이던 때의 동작이라 없앴다). 월간 보고의 `기록 없음` 표시와 처음 체크는 읽은 주간보고에 글이 있는지로 정한다(읽기 전에는 표시하지 않음).
+- **없앤 것**: 포함 항목 칸(`#asInc`, `#rptSrcEvent`, `#rptSrcTodo`, `#rptWithDesc`, `#rptSkipEmpty`, 자리 고정 규칙 때문에 숨기지 않고 없앰)과 저장 함수, `atSumIncSync`, `rptMBuildCal`, 취합 미리 보기의 일정 글과 날짜별 설명 고치기(`commitDayNoteEdit`, `reportDayLinesHtml`, `reportDetailsHtml`, `editingDayNoteKey`, `.rdn` 스타일). 머리기호와 들여쓰기 칸은 취합 글에 쓰이지 않아 화면에서 숨겼다(요소는 근태 가져오기 서식 목록이 선택지를 복제해 가서 남김).
+- **남긴 것**: `collectReportData`, `reportRowBodyText`, `reportMarkerSpec` 은 근태 일간 가져오기가 쓴다.
+- 출처 단추 title: "이 앱 근태 탭에서 쓴 주간보고를 읽습니다" / "회사 인트라넷의 주간보고를 읽습니다". 위키 [근태 보고](docs/wiki/근태-보고.md), [월간 보고](docs/wiki/월간-보고.md), [지운 기능](docs/wiki/지운-기능.md) 정정.
+- 시험: `attend-summary`(캘린더 기록이 `reportWeeklyList` 를 부르고 `collectReportData` 와 회사 명령 0, 겹치는 주만, 나눠 읽기, hours 줄, 미리 보기와 복사와 월간 문서가 같은 결과, 빈 결과 문구, 포함 항목 칸 없음, 변이), `monthly-report`(주간보고 DB 흉내로 읽어 오고 실적 글이 읽은 주간보고 블록과 같음), `app-context`(옛 일정 글 만들기 시험을 `collectReportData` + `reportRowBodyText` 직접 호출로 옮김, 포함 항목 저장과 날짜별 설명 고치기 시험 삭제), `report-wiring`, `git-removal-web` 갱신.
+
 ## 🆕 2026-11-03 (다음 판, 0.26.0 예정, 번호는 배포 때): 개인 달력 우측 패널 정리와 보기 하나
 
 설계는 [docs/PERSONAL-PANEL.md](docs/PERSONAL-PANEL.md)(시안 `dist/proto/personal-panel.html`, 이슈 #15 1단계). 위키 [개인 달력 패널](docs/wiki/개인-달력-패널.md), [과제 필터와 보기](docs/wiki/과제-필터.md). DB 구조 변경 없음.

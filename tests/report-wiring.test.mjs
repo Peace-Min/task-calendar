@@ -437,8 +437,12 @@ test('지운 보고서 창: 단추, 창, 일간 주간 작성, 글 편집, 묶�
     'rptDraftKey', 'rptDraftGet', 'rptDraftSet', 'rptWKey', 'rptGroupOpen'];
   for (const f of fns) assert.ok(!src.includes('function ' + f + '('), `지운 ${f}() 가 되살아났다`);
   assert.ok(!/\brptGroup[A-Z]\w*\s*\(/.test(src) && !/\brptDraft(?!Who\b)[A-Z]\w*\s*\(/.test(src), '지운 보고서 묶음 또는 글 편집 함수 호출이 남았다(rptDraftWho 는 근태 임시 저장 계정에 쓰인다)');
-  //  살아 있는 것: 취합 화면이 쓰는 순수 함수와 파서
-  for (const f of ['collectReportData', 'reportRowBodyText', 'reportMarkerSpec', 'currentReportFormatPref', 'rptSources', 'parseNetcusWeek', 'buildNetcusSendText', 'buildReport', 'buildReportText', 'rptDraftWho', 'reportEditedBodyOut'])
+  //  2026-11-03: 취합은 달력 기록을 모으지 않는다(캘린더 기록 = 이 앱 주간보고 DB). 포함 항목 칸과 그 저장값 함수, 날짜별 설명 고치기는 없다.
+  for (const f of ['rptSources', 'normRptSrc', 'loadRptSourcePrefs', 'applyRptSourcePrefs', 'saveRptSourcePrefs', 'atSumIncSync', 'rptMBuildCal', 'commitDayNoteEdit', 'reportDayLinesHtml', 'reportDetailsHtml'])
+    assert.ok(!src.includes('function ' + f + '('), `지운 ${f}() 가 되살아났다`);
+  assert.ok(!/id="(asInc|rptSrcEvent|rptSrcTodo|rptWithDesc|rptSkipEmpty)"/.test(src), '지운 포함 항목 칸이 되살아났다');
+  //  살아 있는 것: 근태 일간 가져오기와 취합 화면이 쓰는 순수 함수와 파서
+  for (const f of ['collectReportData', 'reportRowBodyText', 'reportMarkerSpec', 'currentReportFormatPref', 'parseNetcusWeek', 'buildNetcusSendText', 'buildReport', 'buildReportText', 'rptDraftWho', 'reportEditedBodyOut'])
     assert.ok(src.includes('function ' + f + '('), `살아 있어야 할 ${f}() 가 없다`);
 });
 

@@ -431,7 +431,6 @@ if (!JSDOM) {
     });
     const collectDN = (from, to, src) => evJSON('collectReportData(' + JSON.stringify(from) + ',' + JSON.stringify(to) + ',' + JSON.stringify(src) + ')');
     const rowCp = r => r.rows.find(x => x.name === '기획');
-    const setCustom = (f, t) => ev("reportMode='custom'; $('#rptFrom').value='" + f + "'; $('#rptTo').value='" + t + "'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; editingDayNoteKey=null;");   // WEEKLY-EDIT: 날짜 줄 ✎ 는 기간 취합에만 남는다
 
     test('기간 할일 dayNotes → 주간 보고: details=본문만(복사·전송), dayDetails=날짜 보존(미리보기)', () => {
       seed(dnState());
@@ -527,66 +526,6 @@ if (!JSDOM) {
       assert.strictEqual(evJSON("reportSubIndent('1. ', ' ')"), '   ', '1+.+공백=3칸');
       assert.strictEqual(evJSON("reportSubIndent('10) ', ' ')"), '    ', '1+0+)+공백=4칸');
       assert.strictEqual(evJSON("reportSubIndent('', ' ')"), '  ', '마커 없으면 최소 2칸(중첩)');
-    });
-
-    test('포함 항목: 일간/주간 모드별 캐싱 + 구 포맷(단일) 하위호환', () => {
-      // 구 포맷(단일 객체) → 일간·주간 양쪽 이관
-      //  옛 저장값의 git 키(커밋 내역 출처, 2026-10-26 Git 기능 삭제)는 읽지 않고 버린다
-      ev("localStorage.setItem('tc_rptSources', JSON.stringify({event:false, todo:true, git:true, desc:true, skipEmpty:true}));");
-      let p = evJSON("loadRptSourcePrefs()");
-      assert.strictEqual(p.daily.event, false); assert.strictEqual(p.weekly.event, false);
-      assert.strictEqual(p.daily.skipEmpty, true); assert.strictEqual(p.weekly.skipEmpty, true);
-      assert.ok(!('git' in p.daily) && !('git' in p.weekly), '옛 git 키가 남았다');
-      // 모드별 저장 — 일간=일정 ON, 주간=일정 OFF (서로 독립)
-      ev("localStorage.removeItem('tc_rptSources'); reportMode='daily'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; saveRptSourcePrefs();");
-      ev("reportMode='weekly'; $('#rptSrcEvent').checked=false; saveRptSourcePrefs();");
-      p = evJSON("loadRptSourcePrefs()");
-      assert.strictEqual(p.daily.event, true, '일간 일정 ON 저장'); assert.strictEqual(p.weekly.event, false, '주간 일정 OFF 저장');
-      // applyRptSourcePrefs가 현재 모드값을 체크박스에 복원
-      ev("reportMode='daily'; applyRptSourcePrefs();");
-      assert.strictEqual(evJSON("$('#rptSrcEvent').checked"), true, '일간 복원 → 일정 ON');
-      ev("reportMode='weekly'; applyRptSourcePrefs();");
-      assert.strictEqual(evJSON("$('#rptSrcEvent').checked"), false, '주간 복원 → 일정 OFF');
-      ev("reportMode='custom'; applyRptSourcePrefs();");
-      assert.strictEqual(evJSON("$('#rptSrcEvent').checked"), false, 'custom=weekly 키 재사용');
-      ev("localStorage.removeItem('tc_rptSources'); reportMode='daily'; $('#rptSrcEvent').checked=true;");
-    });
-
-    test('기간 취합 렌더: 기간 할일 날짜별 dayNote 라인(.rdn) 편집 앵커 + 요일 접두 + 제목 읽기전용', () => {
-      seed(dnState());
-      setCustom('2026-07-13', '2026-07-19');
-      ev('buildReport()');
-      const html = ev("$('#rptOut').innerHTML");
-      assert.ok(html.includes('data-dnid="tp"') && html.includes('data-dndate="2026-07-13"'), '날짜별 편집 앵커(todoId/date)');
-      assert.ok(/data-dnact="edit"/.test(html), 'dayNote 라인 편집 버튼');
-      assert.ok(html.includes('초안 작성') && html.includes('마무리'), '날짜별 dayNote 텍스트 렌더');
-      assert.ok(html.includes('월 7/13') && html.includes('금 7/17'), '요일 M/D 접두');
-      assert.ok(/rtask-roline/.test(html), '제목은 읽기전용(.rtask-roline)');
-      assert.ok(!/rtask-edit-btn/.test(html), '주간 제목엔 편집 버튼 없음(제목 읽기전용 유지)');
-      assert.ok(evJSON("!!$('#rptOut').querySelector('.rtask-roline .rtask-main .rdn')"), 'dayNote 라인이 .rtask-main 안 → 제목 텍스트 아래 정렬(마커 폭 무관)');
-    });
-
-    test('기간 취합 날짜별 라인 저장: 클릭→편집→저장이 updateTodo(dayNotes) 왕복 반영', () => {
-      seed(dnState());
-      setCustom('2026-07-13', '2026-07-19');
-      ev('buildReport()');
-      ev("document.querySelector('#rptOut .rdn[data-dndate=\"2026-07-13\"] [data-dnact=\"edit\"]').click();");
-      assert.strictEqual(ev('editingDayNoteKey'), 'tp|2026-07-13', '클릭 시 편집 키 설정');
-      ev("var _ta=document.querySelector('#rptOut .rdn-edit'); _ta.value='초안 완료'; commitDayNoteEdit(_ta);");
-      const t = evJSON("todoById('tp')");
-      assert.strictEqual(t.dayNotes['2026-07-13'], '초안 완료', '원본 dayNotes 반영(단일 소스)');
-      assert.strictEqual(ev('editingDayNoteKey'), null, '저장 후 편집 상태 해제');
-    });
-
-    test('기간 취합 날짜별 라인 비우기: 빈 값 저장 시 그 날짜 dayNote 제거', () => {
-      seed(dnState());
-      setCustom('2026-07-13', '2026-07-19');
-      ev('buildReport()');
-      ev("document.querySelector('#rptOut .rdn[data-dndate=\"2026-07-15\"] [data-dnact=\"edit\"]').click();");
-      ev("var _ta=document.querySelector('#rptOut .rdn-edit'); _ta.value='   '; commitDayNoteEdit(_ta);");
-      const t = evJSON("todoById('tp')");
-      assert.ok(!Object.prototype.hasOwnProperty.call(t.dayNotes, '2026-07-15'), '빈 값 → 그 날짜 dayNote 제거');
-      assert.deepStrictEqual(Object.keys(t.dayNotes).sort(), ['2026-07-13', '2026-07-17']);
     });
 
     test('전환 이관: 단일→기간 — 전역 note가 시작일 dayNote로 이관되고 note 비움(무손실)', () => {
@@ -792,7 +731,9 @@ if (!JSDOM) {
         assert.ok(!new RegExp('\\b' + fn + '\\s*\\(').test(loadAppSource()), fn + '( 호출이나 정의가 소스에 남아 있다');
       }
       assert.strictEqual(ev('typeof editingReportKey'), 'undefined', '일간 보고서 줄편집 키(editingReportKey)가 되살아났다');
-      assert.strictEqual(ev('typeof commitDayNoteEdit'), 'function', '대조군: commitDayNoteEdit 는 그대로 있어야 한다(기간 취합 날짜 줄 ✎)');
+      //  2026-11-03: 취합은 달력 기록을 모으지 않는다. 취합 미리 보기의 날짜별 설명 고치기(✎)도 함께 없앴다(할 일 편집 폼에서 고친다).
+      for (const fn of ['commitDayNoteEdit', 'reportDayLinesHtml', 'reportDetailsHtml']) assert.strictEqual(ev('typeof ' + fn), 'undefined', fn + ' 가 되살아났다');
+      assert.strictEqual(ev('typeof editingDayNoteKey'), 'undefined');
     });
 
     // ── PART C: collectReportData titleMeta(라인별 출처) ─────────────
@@ -863,11 +804,6 @@ if (!JSDOM) {
       assert.deepStrictEqual(td.dayDetails, [{ date: '2026-07-13', text: 'B 설명' }, { date: '2026-07-14', text: 'A 설명' }],
         '같은 제목 기간 할일의 날짜별 설명이 사라졌다 — 기간 보고 미리보기에서 그날 한 일이 빠진다');
       assert.ok(td.details.includes('A 설명') && td.details.includes('B 설명'), '복사·전송(details)에도 두 설명이 모두 남아야 한다');
-      // 강등본의 날짜 라인은 읽기전용으로만 그려지고, plain details 로 한 번 더 그려지지 않는다(이중 렌더 금지)
-      const html = ev('reportDayLinesHtml(' + JSON.stringify(td) + ', true, true)');
-      assert.ok(html.includes('rdn ro') && html.includes('B 설명') && html.includes('A 설명'), '강등본의 날짜별 설명이 미리보기에 안 그려진다');
-      assert.ok(!html.includes('data-dnid'), '강등본(출처 둘)의 날짜 라인이 편집 가능으로 열린다 — 어느 할일을 고칠지 모른다');
-      assert.strictEqual(ev('reportDetailsHtml(' + JSON.stringify(td) + ')'), '', '날짜 라인과 plain 설명이 이중으로 그려진다');
     });
     test('titleMeta: 일정 제목·할일 제목 → editable true(출처 라우팅), titles/titleMeta 1:1 유지', () => {
       seed(metaState);
@@ -952,14 +888,20 @@ if (!JSDOM) {
       todos: [], rooms: [],
       reportMarker: marker, reportMarkerCustom: custom, reportIndent: indent,
     });
-    const setRptRange = (f, t) => ev(`$('#rptFrom').value=${JSON.stringify(f)}; $('#rptTo').value=${JSON.stringify(t)}; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;`);
+    const setRptRange = (f, t) => ev(`reportMode='custom'; $('#rptFrom').value=${JSON.stringify(f)}; $('#rptTo').value=${JSON.stringify(t)};`);
+    //  2026-11-03: 취합(buildReportText)은 달력의 일정과 할 일을 모으지 않는다(캘린더 기록 = 이 앱 주간보고 DB). 일정 글 만들기(collectReportData + reportRowBodyText)는
+    //  근태 일간 가져오기가 그대로 쓰므로, 옛 buildReportText 가 하던 일을 이 도우미로 직접 부른다(머리기호, 들여쓰기, 설명, 단위 U+00A0).
+    const calText = (src, unit) => ev(`(function(){ var f=$('#rptFrom').value, t=$('#rptTo').value;
+      var rows=collectReportData(f, t, ${JSON.stringify(src || { event: true, todo: true, desc: true })}).rows;
+      var mk=reportMarkerSpec(), fm=currentReportFormatPref(), ind=Math.max(0, Math.min(6, fm.indent!=null ? fm.indent : 2));
+      return rows.map(function(r){ var b=reportRowBodyText(r, ${JSON.stringify(unit || '\u00a0')}, mk, ind); return '['+r.name+']'+(b ? '\\n'+b : ''); }).join('\\n\\n')+'\\n'; })()`);
 
     // F2 — 라인 텍스트 빌더(카드×마커×들여쓰기): (indent*2 스페이스)+prefix+제목, 번호 카드별 리셋
-    test('buildReportText(복사): 숫자 마커+들여쓰기2 — (indent*2)U+00A0+prefix+제목, 카드별 번호 리셋', () => {
+    test('일정 글 만들기(근태 일간 가져오기 공용): 숫자 마커+들여쓰기2 — (indent*2)U+00A0+prefix+제목, 카드별 번호 리셋', () => {
       seed(fmtState('1.', '', 2));
       setRptRange('2026-07-01', '2026-07-31');
       const P = ' '.repeat(4);   // 복사 들여쓰기 = 비분리공백(2단*2) — netcus·평문 붙여넣기 양쪽 안전
-      const lines = ev('buildReportText()').split('\n');
+      const lines = calText().split('\n');
       assert.ok(lines.includes('[에이]'));            // 공수 제거 — 과제명만
       assert.ok(lines.includes(P + '1. 알파'));
       assert.ok(lines.includes(P + '2. 브라보'));
@@ -968,19 +910,19 @@ if (!JSDOM) {
       assert.ok(lines.includes(P + '1. 델타'));       // 카드 B — 번호 리셋
       assert.ok(lines.includes(P + '2. 에코'));
     });
-    test('buildReportText: 무번호(none) — 마커/접미 없이 들여쓰기만(공백도 마커 없음)', () => {
+    test('일정 글 만들기: 무번호(none) — 마커/접미 없이 들여쓰기만(공백도 마커 없음)', () => {
       seed(fmtState('none', '', 3));
       setRptRange('2026-07-01', '2026-07-31');
       const P6 = ' '.repeat(6);   // 3단*2 (비분리공백)
-      const lines = ev('buildReportText()').split('\n');
+      const lines = calText().split('\n');
       assert.ok(lines.includes(P6 + '알파'));
       assert.ok(lines.includes(P6 + '델타'));
       assert.ok(!lines.some(l => /^\s*[-•·]/.test(l) && l.includes('알파')));
     });
-    test('buildReportText: custom 마커 우선 — 그 문자, 들여쓰기0이면 스페이스 없음', () => {
+    test('일정 글 만들기: custom 마커 우선 — 그 문자, 들여쓰기0이면 스페이스 없음', () => {
       seed(fmtState('1.', '▶', 0));   // custom이 preset보다 우선
       setRptRange('2026-07-01', '2026-07-31');
-      const lines = ev('buildReportText()').split('\n');
+      const lines = calText().split('\n');
       assert.ok(lines.includes('▶ 알파'));
       assert.ok(lines.includes('▶ 델타'));
     });
@@ -994,32 +936,31 @@ if (!JSDOM) {
       setRptRange('2026-07-01', '2026-07-31');
 
       ev("reportMode='daily'");
-      const dailyLines = ev('buildReportText()').split('\n');
+      const dailyLines = calText().split('\n');
       assert.ok(dailyLines.some(l => l.startsWith('- ')), 'daily uses hyphen with indent 0');
       assert.ok(!dailyLines.some(l => l.startsWith('1. ')), 'daily does not leak weekly numbering');
 
       ev("reportMode='weekly'");
-      const weeklyLines = ev('buildReportText()').split('\n');
+      const weeklyLines = calText().split('\n');
       const P = ' '.repeat(4);
       assert.ok(weeklyLines.some(l => l.startsWith(P + '1. ')), 'weekly uses its own indent+number marker');
       assert.ok(!weeklyLines.some(l => l.startsWith('- ')), 'weekly does not leak daily hyphen');
 
       ev("$('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31';");
-      const customLines = ev('buildReportText()').split('\n');
+      const customLines = calText().split('\n');
       assert.ok(customLines.some(l => l.startsWith(P + '1. ')), 'custom range uses weekly formatting, not daily');
       assert.ok(!customLines.some(l => l.startsWith('- ')), 'custom range does not overwrite daily formatting');
     });
 
-    test('buildReportText: 설명 포함 시 제목 아래 설명 라인 출력', () => {
+    test('일정 글 만들기: 설명 포함 시 제목 아래 설명 라인 출력', () => {
       const st = fmtState('-', '', 1);
       st.entries = [
         { id: 'd1', date: '2026-07-02', title: 'Alpha item', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: 'detail one\n• detail two', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
       ];
       seed(st);
       setRptRange('2026-07-01', '2026-07-31');
-      ev("$('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false;");
 
-      const lines = ev('buildReportText()').split('\n').map(l => l.trim());
+      const lines = calText().split('\n').map(l => l.trim());
       assert.ok(lines.includes('- Alpha item'));
       assert.ok(lines.includes('detail one'));
       assert.ok(lines.includes('detail two'));
@@ -1162,11 +1103,11 @@ if (!JSDOM) {
       }]);
       seed(st);
       setRptRange('2026-07-01', '2026-07-31');
-      const text = ev('buildReportText()');
+      const text = calText();
       assert.ok(text.includes('<b>중요</b> & "인용"'), '평문에는 원문 그대로');
 
       // 폰트 없음 — 서식 속성 없이 white-space만
-      const plainHtml = ev('buildReportHtml(buildReportText(), {family:"",size:0})');
+      const plainHtml = ev('buildReportHtml(' + JSON.stringify(text) + ', {family:"",size:0})');
       assert.strictEqual((plainHtml.match(/<br>/g) || []).length, text.split('\n').length - 1,
         '<br> 수 = 평문 줄바꿈 수(라인 추가·손실 없음)');
       assert.ok(!/font-family/.test(plainHtml), '폰트 미설정이면 font-family 없음');
@@ -1185,7 +1126,7 @@ if (!JSDOM) {
       assert.strictEqual(unesc, text, '언이스케이프하면 평문과 바이트 동일');
 
       // 폰트 설정 — 서식만 추가되고 라인 수는 그대로
-      const styledHtml = ev('buildReportHtml(buildReportText(), {family:"Gulim",size:12})');
+      const styledHtml = ev('buildReportHtml(' + JSON.stringify(text) + ', {family:"Gulim",size:12})');
       assert.ok(/font-family/.test(styledHtml), '폰트 설정 시 font-family 부여');
       assert.ok(styledHtml.includes('Gulim'), '선택한 폰트명 포함');
       assert.ok(/Malgun Gothic/.test(styledHtml), '안전 폴백 스택 동반');
@@ -1230,16 +1171,12 @@ if (!JSDOM) {
 
     //  폰트는 표시+복사 전용이라는 계약 — 평문 복사는 폰트에 1바이트도 반응하면 안 된다.
     test('reportFont 불변식: buildReportText(복사 글)는 폰트와 무관하게 바이트 동일', () => {
-      const st = fmtState('-', '', 2);
-      st.entries = st.entries.concat([{
-        id: 'x2', date: '2026-07-07', title: '폰트 무관 확인', categoryId: 'ca', allDay: true,
-        startTime: '', endTime: '', location: '', memo: '메모',
-        hours: 90, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA,
-      }]);
-      seed(st);
-      ev("reportMode='custom'; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
+      seed(fmtState('-', '', 2));
+      ev("reportMode='custom'; state.reportSource='cal'; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31';");
+      //  읽어 둔 결과를 그릇에 두는 길(rptMStoreRead)은 시험이 직접 채운다. 복사 글은 이 그릇의 글이다(2026-11-03).
+      ev(`rptMStoreRead('cal', '2026-07-01', '2026-07-31', parseNetcusWeekly([{ endwork: '[에이]\\n  - 폰트 무관 확인\\n    메모', content: '[에이] : 3', title: '주간', period: '2026-06-29 ~ 2026-07-04', regdate: '' }], state.categories), 1)`);
       const plain = ev('buildReportText()');
-      const sendLike = ev("buildReportText('&nbsp;')");                       // 줄 앞 공백을 &nbsp; 로 바꾼 글(근태 보내기와 같은 규칙)
+      const sendLike = ev("buildReportText('&nbsp;')");
       // 공허한 비교(양쪽 다 빈 문자열) 방지 — 기준값이 실제 내용을 담고 있어야 한다
       assert.ok(plain.includes('폰트 무관 확인') && sendLike.includes('폰트 무관 확인'), '기준 텍스트가 비어 있지 않음');
 
@@ -1250,7 +1187,7 @@ if (!JSDOM) {
       const html = ev("buildReportHtml(buildReportText(), normalizeReportFont(state.reportFont))");
       assert.ok(/font-family/.test(html) && /font-size:16pt/.test(html), 'HTML 트윈에는 폰트 적용');
       assert.strictEqual((html.match(/<br>/g) || []).length, plain.split('\n').length - 1, '라인 수 불변');
-      ev("state.reportFont={family:'',size:0}; reportMode='daily'");   // 상태 원복
+      ev("state.reportFont={family:'',size:0}; reportMode='daily'; clearNetcusWeeklyMerge();");   // 상태 원복
     });
 
     test('prefs 부재 XML → 기본값(-,"",2) + entries/todos 무손실(가산적)', () => {
@@ -1277,110 +1214,20 @@ if (!JSDOM) {
       assert.strictEqual(p.reportMarkerCustom, '', 'len>8 custom은 무시→기본 빈값');
     });
 
-    // F4 — 회귀: buildReport 일간 출력은 읽기 전용(REPORT-EDIT §2.2) + rtask-t는 마커 없는 원문만
-    const gitDailyState = (marker, indent) => ({
-      categories: [{ id: 'cg', name: '단일과제', color: '#3e5be0', desc: '', createdAt: CA }],
-      entries: [{ id: 'gu', date: '2026-07-08', title: '유니크 일정', categoryId: 'cg', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
-      todos: [], rooms: [],
-      reportMarker: marker, reportMarkerCustom: '', reportIndent: indent,
-    });
-    const renderCustom = (marker, indent) => {
-      seed(gitDailyState(marker, indent));
-      ev("reportMode='custom';");
-      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
-      ev('buildReport()');
-      return ev("$('#rptOut').innerHTML");
-    };
-    test('regression: 기간 취합 buildReport — 줄은 읽기 전용(✎, ✕, data-ract, 원본 앵커 없음), 줄 본문=마커 없는 원문', () => {
-      const html = renderCustom('1.', 3);
-      //  REPORT-EDIT §5: 줄 ✎/✕ 는 캘린더 기록(일정, 할 일)을 고치거나 지웠다. 보고서와 캘린더는 따로라 없앴다.
-      assert.ok(!/rtask-edit-btn|rtask-del-btn|data-ract=/.test(html), '줄에 ✎/✕ 가 되살아났다');
-      assert.ok(!/data-reid=|data-rhash=|data-rcidx=|data-rkind=/.test(html), '줄에 캘린더 원본을 가리키는 앵커가 남아 있다');
-      assert.ok(/class="rtask-roline"/.test(html), '줄은 읽기 전용(.rtask-roline)이다');
-      const m = /<span class="rtask-main">([^<]*)<\/span>/.exec(html);
-      assert.ok(m, 'rtask-main span 존재');
-      assert.strictEqual(m[1], '유니크 일정', 'rtask-main 은 마커 없는 원문만');
-      assert.ok(/<span class="rtask-mk">1\. <\/span>/.test(html), '마커는 rtask-mk 별도 span');
-      assert.ok(/padding-left:55px/.test(html), '들여쓰기 13+3*14=55px');
-    });
-    test('regression: 무번호(none) — rtask-mk 생략, 줄 본문 원문 유지, indent0=base 13px', () => {
-      const html = renderCustom('none', 0);
-      assert.ok(!/rtask-mk/.test(html), '무번호는 마커 span 없음');
-      assert.ok(/<span class="rtask-main">유니크 일정<\/span>/.test(html), '줄 본문 원문 유지');
-      assert.ok(!/rtask-edit-btn/.test(html), '편집 버튼(✎)이 되살아났다(REPORT-EDIT §5)');
-      assert.ok(/padding-left:13px/.test(html), 'indent0 → base 13px');
-    });
-
-    // 항목3 회귀 — 할일만 있는 카드(일정 0)는 흐림(rcard-empty) 아님.
-    //   버그: 흐림 판정을 entries(일정)로 해서 할일-only가 '빈 카드'로 오판·흐려짐 → hasContent(titles)로 수정.
-    test('regression(항목3): 할일-only 카드 — rcard-empty 미부여, 줄 편집 힌트와 옛 요약 문구 없음', () => {
-      seed({
-        categories: [{ id: 'ct', name: '할일과제', color: '#3e5be0', desc: '', createdAt: CA }],
-        entries: [],   // 일정 0 (할일만)
-        todos: [{ id: 'td', text: '할일 항목', done: false, categoryId: 'ct', due: '2026-07-08', endDate: '', prio: 'normal', note: '', createdAt: CA, updatedAt: CA }],
-        rooms: [], reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
-      });
-      ev("reportMode='custom';");
-      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
-      ev('buildReport()');
-      const html = ev("$('#rptOut').innerHTML");
-      assert.ok(html.includes('할일 항목'), '할일 항목이 카드에 렌더됨');
-      // 할일과제 카드가 rcard-empty(흐림)가 아니어야 (일정이 없어도 내용은 있음)
-      assert.ok(!/class="rcard rcard-empty"/.test(html) && !/class="rcard [^"]*rcard-empty/.test(html), '할일-only 카드에 rcard-empty 미부여');
-      assert.ok(!/오늘치는 여기서 바로 수정/.test(html) && !/rcard-note edit/.test(html), '옛 편집 힌트(줄 ✎ 를 가리키던 문구)가 되살아났다');
-      const sum = ev("$('#rptSummary').textContent");
-      assert.ok(sum.includes('업무 1건'), '요약줄이 할 일을 업무로 세지 않는다: ' + sum);
-      assert.ok(!sum.includes('수정 가능') && !sum.includes('글 편집'), "요약줄에 옛 ', 하루(수정 가능)' 나 글 편집 안내가 남아 있다: " + sum);
-      ev("reportMode='daily';");
-    });
-
     // ── Item1 — 과제별 시간(tc_taskHours) 저장/정리. 기간 취합 글에는 시간이 붙지 않는다(시간은 근태 일간 화면의 블록이 정한다) ──
-    test('Item1: setTaskHours/getTaskHours 왕복·정리(6.50→6.5, 음수→null, 24 초과→24) · 기간 취합 복사 헤더에는 시간이 붙지 않는다', () => {
+    test('Item1: setTaskHours/getTaskHours 왕복·정리(6.50→6.5, 음수→null, 24 초과→24) · 일정 글 머리에는 시간이 붙지 않는다', () => {
       seed(reportState);
-      ev("reportMode='custom'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true;");
+      ev("reportMode='custom'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12';");
       ev("setTaskHours('2026-07-09','c-1',6.5);");
       assert.strictEqual(ev("getTaskHours('2026-07-09','c-1')"), 6.5, 'getTaskHours 반환값');
       ev("setTaskHours('2026-07-09','c-1',-3);"); assert.strictEqual(ev("getTaskHours('2026-07-09','c-1')"), null, '음수 → 미입력(null)');
       ev("setTaskHours('2026-07-09','c-1',30);"); assert.strictEqual(ev("getTaskHours('2026-07-09','c-1')"), 24, '24 초과 → 24 클램프');
       // 기간 취합은 시간 안 붙음(시간은 근태 일간 화면의 블록이 정한다) — 같은 시간 저장돼 있어도 헤더엔 없음
       ev("setTaskHours('2026-07-09','c-1',6.5);");
-      assert.ok(!/\]\s*:\s*\d/.test(ev('buildReportText()')), '기간 취합 복사 텍스트 헤더에 시간 없음');
+      assert.ok(!/\]\s*:\s*\d/.test(calText()), '일정 글 머리에 시간 없음');
       // 정리(테스트 간 localStorage 격리)
       ev("setTaskHours('2026-07-09','c-1',0); reportMode='daily';");
     });
-    // ── Item2/재작업 → REPORT-EDIT §5(2026-10-07): 줄의 삭제(✕, 원본 삭제)와 편집(✎)은 커밋·일정·할일 모두 없앴다. 캘린더 기록은 그대로 남는다 ──
-    test('Item2: 줄 ✕/✎ 는 일정 라인 어디에도 없다(원본을 지우는 길이 보고서에 없다)', () => {
-      seed(reportState);
-      // 첫 일정 라인(2026-07-08, g1)
-      ev("reportMode='custom'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
-      const firstHtml = ev("$('#rptOut').innerHTML");
-      assert.ok(/class="rtask-roline"/.test(firstHtml), '전제: 카드 줄이 그려졌다');
-      assert.ok(!/rtask-del-btn/.test(firstHtml), '일정 라인에 삭제 버튼이 되살아났다');
-      assert.ok(!/data-ract=/.test(firstHtml), '삭제/편집 액션 앵커(data-ract)가 되살아났다');
-      // 일정 라인(2026-07-09, v1) → 편집 + 삭제(원본 제거로 확장)
-      ev("$('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; buildReport();");
-      const evHtml = ev("$('#rptOut').innerHTML");
-      assert.ok(/class="rtask-roline"/.test(evHtml), '전제: 일정 라인이 그려졌다');
-      assert.ok(!/rtask-edit-btn/.test(evHtml), '일정 라인 편집 버튼이 되살아났다');
-      assert.ok(!/rtask-del-btn/.test(evHtml), '일정 라인 삭제 버튼(원본 삭제)이 되살아났다');
-      assert.ok(!/이 일정 삭제/.test(evHtml), '일정 삭제 라벨이 남아 있다');
-      ev("reportMode='daily'");
-    });
-    // ══ 2026-09-18 4축 리뷰 반영 계약 ═══════════════════════════════════
-    // 규칙: 저장값 → 컨트롤 표시, 저장, 요약줄, 독립 슬롯(근태)은 본문 가드와 무관하게 buildReport 첫머리에서.
-    //      렌더는 저장값을 읽기만 한다. 미리보기·복사·전송(일간·주간)은 같은 rows/flags 에서 나온다(WYSIWYG).
-    test('report UI: 기간이 잘못돼도 포함 항목은 저장된다(가드 앞 첫머리 계약)', () => {
-      seed(reportState);
-      ev("reportMode='custom'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
-      assert.strictEqual(evJSON("loadRptSourcePrefs().weekly.todo"), true, '사전조건: 정상 기간에서 포함');
-      ev("$('#rptSrcTodo').checked=false; $('#rptFrom').value=''; $('#rptTo').value=''; buildReport();");
-      assert.ok(/기간을 선택하세요/.test(ev("$('#rptSummary').textContent")), '전제: 날짜 가드가 켜져 있다');
-      assert.strictEqual(evJSON("loadRptSourcePrefs().weekly.todo"), false, '가드 화면에서도 선택이 저장된다');
-      ev("$('#rptSrcTodo').checked=true; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; buildReport();");
-      assert.strictEqual(evJSON("loadRptSourcePrefs().weekly.todo"), true, '원복 확인(다음 테스트로 새지 않게)');
-      ev("reportMode='daily'");
-    });
-
     // 세그 활성 표시는 '지금 출처'만 말한다 — disabled(읽기 잠금)와 AND 하면 켜진 칸이 하나도 없는 화면이 된다.
     test('report UI: 출처 세그 활성 표시는 잠금(disabled) 여부와 무관하다', () => {
       seed(reportState);
@@ -1411,21 +1258,21 @@ if (!JSDOM) {
     });
 
     // 2026-09-18 사용자 지적: 포함 항목 0개면 들여쓰기 ± 가 표시에 안 먹고, 다시 켜면 값이 튀었다 — 컨트롤 동기화가 본문 가드 뒤에 있던 결함.
-    test('report UI: 서식 컨트롤(들여쓰기·머리기호)은 포함 항목 0개 가드에서도 저장값을 즉시 반영한다', () => {
+    test('report UI: 서식 컨트롤(들여쓰기·머리기호)은 기간 가드 화면에서도 저장값을 즉시 반영한다', () => {
       seed(reportState);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; updateCurrentReportFormatPref({ indent: 2, marker: '-', markerCustom: '' }); buildReport();");
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; updateCurrentReportFormatPref({ indent: 2, marker: '-', markerCustom: '' }); buildReport();");
       assert.strictEqual(ev("$('#rptIndVal').textContent"), '2단', '전제');
-      ev("$('#rptSrcEvent').checked=false; $('#rptSrcTodo').checked=false; buildReport();");
-      assert.ok(/포함할 항목을 한 개 이상/.test(ev("$('#rptSummary').textContent")), '전제: 가드 화면');
+      ev("$('#rptFrom').value=''; $('#rptTo').value=''; buildReport();");
+      assert.ok(/기간을 선택하세요/.test(ev("$('#rptSummary').textContent")), '전제: 기간 가드 화면');
       ev("$('#rptIndPlus').click()");
       assert.strictEqual(ev("$('#rptIndVal').textContent"), '3단', '가드 화면에서 + 를 누르면 표시가 바로 3단이어야 한다');
       assert.strictEqual(evJSON('currentReportFormatPref()').indent, 3, '저장값도 3');
       ev("$('#rptMarker').value='1.'; $('#rptMarker').dispatchEvent(new Event('change',{bubbles:true}));");
       assert.strictEqual(evJSON('currentReportFormatPref()').marker, '1.');
-      ev("$('#rptSrcEvent').checked=true; buildReport();");
-      assert.strictEqual(ev("$('#rptIndVal').textContent"), '3단', '다시 켜도 값이 튀지 않는다(표시 = 저장값)');
+      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; buildReport();");
+      assert.strictEqual(ev("$('#rptIndVal').textContent"), '3단', '기간을 다시 넣어도 값이 튀지 않는다(표시 = 저장값)');
       assert.strictEqual(ev("$('#rptMarker').value"), '1.');
-      ev("updateCurrentReportFormatPref({ indent: 2, marker: '-', markerCustom: '' }); $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
+      ev("updateCurrentReportFormatPref({ indent: 2, marker: '-', markerCustom: '' }); buildReport();");
     });
 
     // ── netcus 주간 병합(인트라넷 주간 출처) 함수 ─────

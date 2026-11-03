@@ -56,12 +56,14 @@ const S = {
       assert.ok(!code.includes(bad), '월간 함수가 회사로 보내는 길을 부른다: ' + bad);
     }
     const allowed = new Set(JSON.parse(/const RPTM_HOST_CMDS = (\[[^\]]*\]);/.exec(src)[1].replace(/'/g, '"')));
-    assert.deepStrictEqual([...allowed].sort(), ['exportMonthlyDocx', 'netcusWeeklyRangeRead', 'openFolder', 'scheduleImageAdd', 'scheduleImageDelete', 'scheduleImageList', 'scheduleImageMove', 'scheduleImageThumb'], '호스트 명령 목록이 바뀌었다');
+    assert.deepStrictEqual([...allowed].sort(), ['exportMonthlyDocx', 'netcusWeeklyRangeRead', 'openFolder', 'reportWeeklyList', 'scheduleImageAdd', 'scheduleImageDelete', 'scheduleImageList', 'scheduleImageMove', 'scheduleImageThumb'], '호스트 명령 목록이 바뀌었다');
     const used = [...code.matchAll(/hostRequest\('(\w+)'/g)].map((m) => m[1]).concat([...code.matchAll(/hpost\(\{\s*cmd:\s*'(\w+)'/g)].map((m) => m[1]));
     assert.ok(used.length >= 7, '호스트 호출을 거의 찾지 못했다');
     for (const u of used) assert.ok(allowed.has(u), '목록 밖 호스트 명령: ' + u);
     assert.ok(!/hostRequest\((?!')/.test(code) && !/hpost\((?!\{ cmd: ')/.test(code), '명령 이름을 글자로 쓰지 않는 호스트 호출이 있다(검사를 피한다)');
     assert.ok(!/PCAL/.test(code), '월간 함수가 과제 캘린더 공용 일정(PCAL)을 읽는다(§4 끝: 개인 기록만)');
+    //  2026-11-03: 캘린더 기록 = 이 앱 주간보고 DB. 월간 함수는 일정과 할 일을 하루 단위로 모으지 않는다
+    assert.ok(!/collectReportData|reportRowBodyText|state\.entries|state\.todos/.test(code), '월간 함수가 달력의 일정과 할 일을 모은다(캘린더 기록은 주간보고 DB 에서 읽는다)');
   },
   imageCmds(src) {
     const code = rptMNames(src).filter((n) => /^rptMImg|^rptMThumbs/.test(n)).map((n) => extractFunction(src, n)).join('\n');
@@ -80,7 +82,7 @@ const S = {
     assert.ok(!/const RPTM_(SEL|ETC|DRAFT|NCMAP)_/.test(src), '월간 저장 키 상수(고른 것, 기타 제외, 초안, 이관)가 남아 있다');
     //  열 때마다 처음 값: rptMOpen 은 지난달로 새 상태를 만든다(기억에서 읽지 않는다)
     const open = extractFunction(src, 'rptMOpen');
-    assert.ok(open.includes('monthRange(new Date(), -1)') && open.includes("__rptM = rptMFresh(r[0], r[1], 'cal');"), 'rptMOpen 이 열 때마다 지난달, 캘린더로 새로 열지 않는다');
+    assert.ok(open.includes('monthRange(new Date(), -1)') && open.includes("__rptM = rptMFresh(r[0], r[1], 'cal');"), 'rptMOpen 이 열 때마다 지난달, 캘린더 기록으로 새로 열지 않는다');
   },
   removed(src) {
     const names = new Set(rptMNames(src));
@@ -126,6 +128,15 @@ S.sumStructure = function (src) {
   //  인트라넷 주간은 [읽어 오기] 를 눌러야 읽는다: 출처 고르기와 기간 바꾸기는 호스트 요청을 부르지 않는다
   for (const n of ['atSumSource', 'atSumPeriod']) assert.ok(!/hostRequest|netcusWeeklyRangeRead|rptMLoadClick|rptMFill|rptMReadNetcus/.test(extractFunction(src, n)), n + ' 이 회사 사이트 읽기를 부른다(읽어 오기를 눌러야 읽는다)');
   assert.ok(extractFunction(src, 'atSumLoad').includes('await rptMLoadClick()'), '읽어 오기(atSumLoad)가 rptMLoadClick 으로 읽지 않는다');
+  //  캘린더 기록은 이 앱 주간보고 DB(rptMReadApp), 인트라넷 주간은 회사 사이트(rptMReadNetcus). 어느 쪽도 일정 모으기(collectReportData)를 부르지 않는다
+  const fill = extractFunction(src, 'rptMFill');
+  assert.ok(fill.includes('rptMReadNetcus(') && fill.includes('rptMReadApp('), 'rptMFill 이 두 출처(주간보고 DB, 인트라넷)를 읽지 않는다');
+  for (const n of ['buildReport', 'buildReportText', 'rptMReadApp', 'rptMFill', 'rptMAuto', 'rptMHasSet']) assert.ok(!extractFunction(src, n).includes('collectReportData'), n + ' 이 달력의 일정과 할 일을 모은다');
+  const app2 = extractFunction(src, 'rptMReadApp');
+  assert.ok(app2.includes('awRowsFetch(') && !app2.includes("'reportWeeklyList'") && !app2.includes('netcus'), 'rptMReadApp 이 근태 주간 목록과 같은 읽기 함수(awRowsFetch)를 쓰지 않는다(두 벌)');
+  assert.ok(extractFunction(src, 'awListLoad').includes('awRowsFetch(') && !extractFunction(src, 'awListLoad').includes("'reportWeeklyList'"), '근태 주간 목록이 awRowsFetch 를 쓰지 않는다(두 벌)');
+  assert.ok(/r\.periodEnd >= from && r\.periodStart <= to/.test(app2), '주 고르기가 기간 겹침이 아니다(인트라넷 주간과 같은 규칙)');
+  assert.ok(app2.includes('parseNetcusWeekly(') && app2.includes("rptMStoreRead('cal'"), '캘린더 기록이 parseNetcusWeekly 와 같은 그릇(rptMStoreRead)을 쓰지 않는다');
 };
 test('MS11 (ATTEND-SUMMARY §2, §4): 보고서 창과 월간 탭이 없고, 출처 둘, 결과 형태 둘, atSumInit 이 월간 처음 값으로 열며, 출처와 기간 바꾸기는 회사 읽기를 부르지 않는다', () => S.sumStructure(app));
 test('변이 MSM1: 월간 저장에 Platform.report 를 넣거나 목록 밖 명령을 쓰면 MS3 이 잡는다', () => {
@@ -140,15 +151,15 @@ test('변이 MSM2: 그림 명령을 바꾸거나 저장소에 기억을 되살�
   assert.throws(() => S.noMemory(mutate(app, "  __rptM = rptMFresh(r[0], r[1], 'cal');\n", "  __rptM = __rptM || rptMFresh(r[0], r[1], 'cal');\n")), /새로 열지 않는다/);
 });
 test('변이 MSM3: 과제 줄에 글 칸이나 ▲ 를 넣거나 마크업에 textarea 를 넣거나 없앤 함수를 되살리면 MS7, MS8 이 잡는다', () => {
-  assert.throws(() => S.noEditors(mutate(app, "    + (has ? '' : '<span class=\"rptm-none\">기록 없음</span>')", "    + '<textarea data-f=\"memo\"></textarea>' + (has ? '' : '<span class=\"rptm-none\">기록 없음</span>')")), /고치는 칸/);
+  assert.throws(() => S.noEditors(mutate(app, "    + ((has || !rptMAuto(S)) ? '' : '<span class=\"rptm-none\">기록 없음</span>')", "    + '<textarea data-f=\"memo\"></textarea>' + ((has || !rptMAuto(S)) ? '' : '<span class=\"rptm-none\">기록 없음</span>')")), /고치는 칸/);
   assert.throws(() => S.noEditors(mutate(app, '<div class="rptm-list" id="rptmPick"></div>', '<div class="rptm-list" id="rptmPick"></div><input type="text" id="rptmTitle">')), /날짜 셋/);
   assert.throws(() => S.removed(mutate(app, 'function rptMEtcToggle(key, on){', 'function rptMSelSave(){}\nfunction rptMEtcToggle(key, on){')), /rptMSelSave/);
-  assert.throws(() => S.removed(mutate(app, "    + (has ? '' : '<span class=\"rptm-none\">기록 없음</span>')", "    + '<button type=\"button\" class=\"btn\" data-act=\"up\">▲</button>' + (has ? '' : '<span class=\"rptm-none\">기록 없음</span>')")), /▲▼|순서/);
+  assert.throws(() => S.removed(mutate(app, "    + ((has || !rptMAuto(S)) ? '' : '<span class=\"rptm-none\">기록 없음</span>')", "    + '<button type=\"button\" class=\"btn\" data-act=\"up\">▲</button>' + ((has || !rptMAuto(S)) ? '' : '<span class=\"rptm-none\">기록 없음</span>')")), /▲▼|순서/);
 });
 
 test('변이 MSM5: 읽어 오기 없이 읽거나 처음 열기에서 월간을 빼거나 보고서 창을 되살리면 MS11 이 잡는다', () => {
-  assert.throws(() => S.sumStructure(mutate(app, "  state.reportSource = src;\n  if(src === 'cal') clearNetcusWeeklyMerge();", "  state.reportSource = src;\n  if(src === 'week') rptMReadNetcus($('#rptFrom').value, $('#rptTo').value);\n  if(src === 'cal') clearNetcusWeeklyMerge();")), /읽어 오기를 눌러야/);
-  assert.throws(() => S.sumStructure(mutate(app, "  applyRptSourcePrefs();\n  rptMOpen();\n  syncReportSourceSeg();", "  applyRptSourcePrefs();\n  syncReportSourceSeg();")), /rptMOpen/);
+  assert.throws(() => S.sumStructure(mutate(app, "  state.reportSource = src;\n  syncReportSourceSeg();", "  state.reportSource = src;\n  if(src === 'week') rptMReadNetcus($('#rptFrom').value, $('#rptTo').value);\n  syncReportSourceSeg();")), /읽어 오기를 눌러야/);
+  assert.throws(() => S.sumStructure(mutate(app, "  clearNetcusWeeklyMerge();\n  const r = monthRange(new Date(), -1);\n  $('#rptFrom').value = r[0]; $('#rptTo').value = r[1];\n  rptMOpen();", "  clearNetcusWeeklyMerge();\n  const r = monthRange(new Date(), -1);\n  $('#rptFrom').value = r[0]; $('#rptTo').value = r[1];")), /rptMOpen/);
   assert.throws(() => S.sumStructure(app.replace('<div class="as-view hidden" id="atSum"', '<div id="reportModal"></div><div class="as-view hidden" id="atSum"')), /보고서 창/);
   assert.throws(() => S.sumStructure(mutate(app, '<button type="button" class="seg-b" data-rsrc="week" aria-pressed="false"', '<button type="button" class="seg-b" data-rsrc="day" aria-pressed="false"></button><button type="button" class="seg-b" data-rsrc="week" aria-pressed="false"')), /출처가/);
 });
@@ -234,11 +245,29 @@ if (!JSDOM) {
   //  근태 탭 [취합] 을 열고 결과 형태를 월간 보고 문서로 한다. atSumInit 은 처음 값(지난달, 캘린더, 과제별 글, 월간 처음 값)으로 새로 연다.
   const openSum = (m) => m.ev("pcSetTab('attend'); atKindSet('sum'); atSumInit(); atSumOutSet('doc');");
   const reopen = (m) => m.ev("atSumInit(); atSumOutSet('doc');");
+  //  이 앱 주간보고 읽기(reportWeeklyList)에 회신한다. 호스트는 period_start 가 from 이상 to 이하인 주를 준다. WEEK_FAIL 이면 실패 회신.
+  const weekly = { fail: null, calls: [] };
+  async function answerWeekly(m) {
+    for (let n = 0; n < 40; n++) {
+      await tick(5);
+      const list = pending(m, 'reportWeeklyList');
+      if (!list.length) { if (n > 1) break; continue; }
+      for (const x of list) {
+        m.answered.add(x.reqId); weekly.calls.push({ from: x.from, to: x.to });
+        const res = weekly.fail ? weekly.fail : { ok: true, rows: WEEK_ROWS.filter((r) => r.periodStart >= x.from && r.periodStart <= x.to) };
+        m.ev('__hostReply(' + JSON.stringify(x.reqId) + ', ' + JSON.stringify(res) + ')');
+      }
+    }
+    await tick();
+  }
   async function loadPeriod(m, from, to) {
     $id(m, 'rptFrom').value = from; $id(m, 'rptTo').value = to;
     $id(m, 'asLoad').click();
     await tick(); await tick();
+    await answerWeekly(m);
   }
+  //  같은 기간을 지금 출처로 다시 읽는다(읽어 오기)
+  async function readAgain(m) { $id(m, 'asLoad').click(); await tick(); await answerWeekly(m); drainImages(m); }
 
   // ── 지어낸 상태 ─────────────────────────────────────────────────────
   const U1 = 'aaaaaaaa-0000-4000-8000-000000000001', U2 = 'aaaaaaaa-0000-4000-8000-000000000002',
@@ -276,14 +305,22 @@ if (!JSDOM) {
     reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
     reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } },
   });
+  //  이 앱 주간보고 DB(cal_report_weekly)를 흉내 낸다. 캘린더 기록 출처는 이 행들을 reportWeeklyList 로 읽는다(2026-11-03).
+  //  읽는 기간은 시작 쪽을 한 주 더 읽으므로(9월이면 8월 25일부터) 8월 17일 주는 9월 읽기에 오지 않고, 8월 31일 주는 겹쳐서 온다.
+  const WK = (ps, pe, endwork, extra) => Object.assign({ periodStart: ps, periodEnd: pe, subject: ps + ' 주간보고', content: '', endwork, plan: '', meeting: '', composedAt: ps + 'T09:00:00.000Z', hours: null }, extra || {});
+  const WEEK_ROWS = [
+    WK('2026-08-17', '2026-08-22', '[(예시) 관제 고도화]\n  - 기간 밖 일'),
+    WK('2026-08-31', '2026-09-05', '[(예시) 관제 고도화]\n  - 화면 응답 속도 개선\n    목록 갱신 횟수 줄임\n    첫 화면 읽기 순서 정리\n[(예시) 사내 업무]\n  - 주간 회의 자료 정리\n    팀 공용 폴더 정리',
+       { hours: [{ name: '(예시) 관제 고도화', projectUid: U1, hours: 2 }] }),
+    WK('2026-09-07', '2026-09-12', '[(예시) 관제 고도화]\n  - 알람 기준값 화면 추가\n[(예시) 해양 관측 체계]\n  - 관측 자료 수신 모듈 정리\n  - 자료 보관 주기 설정\n[(예시) 교육]\n  - 보안 교육 이수\n[(예시) 보안 점검 도구]\n  - 점검 항목 도구 준비',
+       { content: '[(예시) 해양 관측 체계] : 1.5\n합계 : 1.5' }),
+    WK('2026-09-14', '2026-09-19', '[(예시) 관제 고도화]\n  - 중간 점검 회의 (09.15, 고객사)'),
+    WK('2026-10-12', '2026-10-17', '[(예시) 관제 고도화]\n  - 기간 뒤 일'),
+  ];
   const META = { schemaVersion: '17', expectedSchema: '17', schemaMismatch: false, rev: 1, canWrite: true, userId: 7 };
-  //  기간 취합(custom) 복사 글: 월간 실적 글의 기준
-  const customCopy = (m) => m.ev(`(function(){ $('#rptFrom').value = ${JSON.stringify(FROM)}; $('#rptTo').value = ${JSON.stringify(TO)}; buildReport(); return buildReportText(); })()`);
-  //  월간이 모은 글로 기간 취합 복사 글을 다시 짓는다: 내 카테고리 순서, [이름] + ('\n' + 그 글). 공식 과제 = 과제 글, 나머지 = 기타 항목 글.
-  const monthlyAsCopy = (m) => m.ev(`(function(){ var a = rptMAuto(__rptM, false); var blocks = state.categories.map(function(c){
-      var t = isOfficialCat(c) ? a.proj.get(c.id) : (a.etc.find(function(e){ return e.key === c.id; }) || { text: '' }).text;
-      return '[' + c.name + ']' + (t ? '\\n' + t : ''); }); return blocks.join('\\n\\n') + '\\n'; })()`);
-  const actualOf = (m, id) => m.ev(`rptMAuto(__rptM, false).proj.get(${JSON.stringify(id)}) || ''`);
+  //  읽어 둔 주간보고(그릇 netcusWeeklyMerge)의 과제별 글. 이름 -> 머리 줄을 뺀 글. 월간 실적 글의 기준이다.
+  const blocksOf = (m) => m.evJSON(`(function(){ var c = netcusWeeklyMerge, o = {}; (c.parsed ? c.parsed.tasks : []).forEach(function(t){ var b = buildNetcusWeeklyText({ tasks: [t] }, weeklyFlat); o[t.name] = b.slice(b.indexOf('\\n') + 1); }); return o; })()`);
+  const actualOf = (m, id) => m.ev(`((rptMAuto(__rptM) || { proj: new Map() }).proj.get(${JSON.stringify(id)})) || ''`);
   const payloadOf = (m) => m.evJSON('rptMPayload(__rptM)');
 
   async function widget() {
@@ -391,6 +428,7 @@ if (!JSDOM) {
       assert.ok(!$id(W, 'rptmSave').disabled, '회신 뒤 저장 버튼이 풀리지 않았다');
       //  취합 화면은 기간 칸을 바꾸면(change) 월간 문서도 그 기간으로 바로 새로 열린다(옛 월간 탭의 읽어 오기 전 저장 막기는 없다): 저장은 바꾼 기간으로 간다
       setVal(W, $id(W, 'rptFrom'), '2026-08-01', 'change'); drainImages(W);
+      await readAgain(W);   // 기간을 바꾸면 읽어 둔 글은 버려지고 문서가 비므로, 바꾼 기간을 읽어 온 뒤 저장한다
       $id(W, 'rptmSave').click(); await tick();
       const req2 = pending(W, 'exportMonthlyDocx')[0];
       assert.ok(req2 && req2.actual.from === '2026-08-01' && req2.actual.to === TO, '바꾼 기간이 저장 payload 에 따라가지 않았다(옛 기간으로 저장한다)');
@@ -415,27 +453,29 @@ if (!JSDOM) {
       assert.strictEqual(pvTable(W, P2).querySelector('td.bv').textContent.trim(), '2026/03 ~', '미리 보기 과제 수행 기간이 문서 값과 다르다');
     });
 
-    test('MW4 (§5.3-4): 실적 글 = 같은 기간 기간 취합 복사 글의 과제별 블록(글자 그대로, 서식 여러 벌), 공용 일정은 들어가지 않는다', async () => {
-      const FMTS = [['-', '', 2, true, true], ['1.', '', 3, true, false], ['none', '', 0, false, true], ['가.', '', 1, true, true], ['1.', '▶', 2, false, false]];
+    test('MW4 (§5.3-4, 2026-11-03): 캘린더 기록 실적 글 = 이 앱 주간보고 DB 에서 읽은 주를 과제별로 모은 글의 과제 블록(글자 그대로, 주차별과 평면), 겹치는 주만, 달력의 일정과 공용 일정은 들어가지 않는다', async () => {
       W.ev("PCAL.events = [{ eventUid: 'pe1', projectUid: " + JSON.stringify(U1) + ", title: '공용 착수 회의(시험)', date: '2026-09-09', endDate: '', allDay: true }];");
       try {
-        for (const [mk, cu, ind, desc, body] of FMTS) {
-          const tag = `${mk}/${cu}/${ind} desc=${desc} body=${body}`;
-          W.ev(`state.reportFormatPrefs.weekly = { marker: ${JSON.stringify(mk)}, markerCustom: ${JSON.stringify(cu)}, indent: ${ind} };`);
-          W.ev(`$('#rptWithDesc').checked = ${desc}; buildReport();`);
-          const copy = customCopy(W);
-          assert.ok(copy.includes('화면 응답 속도 개선') && copy.includes('관측 자료 수신 모듈 정리'), '전제: 기간 취합 글이 비었다 ' + tag);
-          W.ev("__rptM = rptMFresh(" + JSON.stringify(FROM) + ',' + JSON.stringify(TO) + ", 'cal'); rptMRenderAll();");
-          drainImages(W);
-          assert.strictEqual(monthlyAsCopy(W), copy, '월간 실적 글을 이어 붙인 것이 기간 취합 복사 글과 다르다: ' + tag);
+        for (const flat of [false, true]) {
+          W.ev('weeklyFlat = ' + flat + ';');
+          await fresh();
+          const want = blocksOf(W);
+          assert.ok(want['(예시) 관제 고도화'].includes('화면 응답 속도 개선') && want['(예시) 해양 관측 체계'].includes('관측 자료 수신 모듈 정리'), '전제: 읽은 주간보고 글이 비었다 flat=' + flat);
+          assert.strictEqual(actualOf(W, P1), want['(예시) 관제 고도화'], '관제 고도화 실적이 읽은 주간보고 과제 블록과 다르다 flat=' + flat);
+          assert.strictEqual(actualOf(W, P2), want['(예시) 해양 관측 체계'], '해양 관측 실적이 다르다 flat=' + flat);
           const a1 = actualOf(W, P1);
-          assert.ok(!a1.includes('공용 착수 회의') && !a1.includes('기간 밖 일'), '공용 일정이나 기간 밖 기록이 실적에 들어갔다: ' + tag);
-          assert.deepStrictEqual(payloadOf(W).projects.find((x) => x.uid === P1).actual, W.evJSON('rptMLines(' + JSON.stringify(a1) + ')'), 'payload 실적이 모은 글과 다르다: ' + tag);
+          assert.ok(!a1.includes('공용 착수 회의') && !a1.includes('기간 밖 일') && !a1.includes('기간 뒤 일'), '공용 일정이나 겹치지 않는 주의 글이 실적에 들어갔다 flat=' + flat);
+          assert.ok(a1.includes('중간 점검 회의') && a1.includes('알람 기준값 화면 추가'), '겹치는 주의 글이 실적에 없다');
+          //  달력의 일정은 실적에 들어가지 않는다(주간보고에 쓴 글만)
+          assert.ok(!a1.includes('점검 항목 화면 착수') && !actualOf(W, P3).includes('점검 항목 화면 착수'), '달력의 일정이 실적에 들어갔다');
+          assert.deepStrictEqual(payloadOf(W).projects.find((x) => x.uid === P1).actual, W.evJSON('rptMLines(' + JSON.stringify(a1) + ')'), 'payload 실적이 모은 글과 다르다 flat=' + flat);
           const pv = [...pvTable(W, P1).querySelectorAll('[data-pv="actual"] .ln')].map((x) => x.textContent);
-          assert.deepStrictEqual(pv, W.evJSON('rptMLines(' + JSON.stringify(a1) + ')').map((l) => l.text), '미리 보기 실적이 모은 글과 다르다: ' + tag);
+          assert.deepStrictEqual(pv, W.evJSON('rptMLines(' + JSON.stringify(a1) + ')').map((l) => l.text), '미리 보기 실적이 모은 글과 다르다 flat=' + flat);
+          //  과제별 글의 복사 글도 같은 읽기 한 번의 결과다
+          assert.ok(W.ev('buildReportText()').includes(want['(예시) 관제 고도화']), '복사 글이 같은 결과를 쓰지 않는다 flat=' + flat);
         }
       } finally {
-        W.ev("PCAL.events = []; state.reportFormatPrefs.weekly = { marker: '-', markerCustom: '', indent: 2 }; $('#rptWithDesc').checked = true; buildReport();");
+        W.ev("PCAL.events = []; weeklyFlat = false;");
         await fresh();
       }
     });
@@ -473,7 +513,7 @@ if (!JSDOM) {
       }
     });
 
-    test('MW6 (§4, §5, 2026-10-23): 고치는 칸이 없다(입력은 날짜 셋과 체크뿐), payload 의 계획 두 칸과 변경이력은 비고, 미리 보기도 빈칸, 같은 기간 읽어 오기는 확인 없이 다시 모은다', async () => {
+    test('MW6 (§4, §5, 2026-10-23): 고치는 칸이 없다(입력은 날짜 셋과 체크뿐), payload 의 계획 두 칸과 변경이력은 비고, 미리 보기도 빈칸, 같은 기간 읽어 오기는 확인 없이 다시 읽는다', async () => {
       await fresh();
       W.ev('rptMOfficial().forEach(function(c){ __rptMImgOpen.add(c.id); }); rptMRenderPick();'); drainImages(W); await tick();   // 그림 칸까지 펼쳐 본다
       //  월간 문서 영역 = 월간 문서 설정(#asMon)과 문서 미리 보기(#asDoc). 기간, 출처, 포함 항목, 서식은 취합 화면 공용이라 뺀다.
@@ -496,14 +536,18 @@ if (!JSDOM) {
       assert.strictEqual(t1.querySelectorAll('tr').length, 7, '미리 보기 과제 표 줄 수가 양식(변경이력 빈 줄 하나)과 다르다');
       assert.deepStrictEqual(['prev', 'next'].map((k) => t1.querySelector(`[data-pv="${k}"]`).textContent), ['', ''], '미리 보기 계획 칸이 비어 있지 않다');
       assert.strictEqual(t1.querySelector('[data-pv="chg"]').textContent, '', '미리 보기 변경이력 줄이 비어 있지 않다');
-      //  같은 기간 읽어 오기: 확인 창 없이 지금 기록으로 다시 모은다
-      W.ev(`state.entries.push(Object.assign({}, state.entries[0], { id: 'e9', date: '2026-09-21', title: '새로 넣은 기록(시험)', memo: '' }));`);
-      assert.ok(!actualOf(W, P1).includes('새로 넣은 기록'), '전제: 아직 모으지 않았다');
-      $id(W, 'asLoad').click(); await tick(); await tick(); drainImages(W);
-      assert.ok(overlayClosed(W, 'confirmModal'), '같은 기간 읽어 오기에 확인 창이 떴다(덮을 글이 없다)');
-      assert.ok(actualOf(W, P1).includes('새로 넣은 기록') && JSON.stringify(payloadOf(W)).includes('새로 넣은 기록'), '다시 읽어 오기가 지금 기록으로 다시 모으지 않았다');
-      assert.ok(pvTable(W, P1).textContent.includes('새로 넣은 기록'), '다시 읽어 오기 뒤 미리 보기가 바로 바뀌지 않았다');
-      W.ev("state.entries = state.entries.filter(function(e){ return e.id !== 'e9'; });");
+      //  같은 기간 읽어 오기: 확인 창 없이 주간보고 기록을 다시 읽는다
+      const extra = WK('2026-09-21', '2026-09-26', '[(예시) 관제 고도화]\n  - 새로 넣은 기록(시험)');
+      WEEK_ROWS.push(extra);
+      try {
+        assert.ok(!actualOf(W, P1).includes('새로 넣은 기록'), '전제: 아직 읽지 않았다');
+        const n0 = weekly.calls.length;
+        await readAgain(W);
+        assert.ok(overlayClosed(W, 'confirmModal'), '같은 기간 읽어 오기에 확인 창이 떴다(덮을 글이 없다)');
+        assert.ok(weekly.calls.length > n0, '다시 읽어 오기가 주간보고 기록을 다시 읽지 않았다');
+        assert.ok(actualOf(W, P1).includes('새로 넣은 기록') && JSON.stringify(payloadOf(W)).includes('새로 넣은 기록'), '다시 읽어 오기가 새로 읽은 글을 담지 않았다');
+        assert.ok(pvTable(W, P1).textContent.includes('새로 넣은 기록'), '다시 읽어 오기 뒤 미리 보기가 바로 바뀌지 않았다');
+      } finally { WEEK_ROWS.splice(WEEK_ROWS.indexOf(extra), 1); }
       W.ev('__rptMImgOpen.clear();');
       await fresh();
     });
@@ -711,12 +755,12 @@ if (!JSDOM) {
         const r0 = nRead();
         W.doc.querySelector('#rptSrcSeg [data-rsrc="week"]').click(); await tick();
         assert.strictEqual(W.ev('__rptM.src'), 'week');
+        assert.ok($id(W, 'rptmSrcHint').textContent.includes('읽어 오기를 누르면'), '다른 출처의 글이 떠 있을 때 출처 안내(짧게)가 없다');
         //  출처 단추를 누른 것, 기간 칸을 바꾼 것만으로는 회사 사이트를 읽지 않는다(읽어 오기를 눌러야 읽는다)
         setVal(W, $id(W, 'rptTo'), TO, 'change'); await tick(); drainImages(W);
         assert.strictEqual(W.ev('__rptM.src'), 'week', '기간 칸을 바꾸니 출처가 바뀌었다');
         assert.strictEqual(nRead(), r0, '읽어 오기를 누르기 전에 회사 사이트 읽기 요청이 나갔다');
         assert.ok($id(W, 'rptOut').textContent.includes('읽어 오기를 눌러 주세요'), '아직 안 읽은 과제별 글 쪽 안내가 없다');
-        assert.ok($id(W, 'rptmSrcHint').textContent.includes('읽어 오기를 누르면'), '아직 안 읽은 출처 안내(짧게)가 없다');
         $id(W, 'asLoad').click(); await tick();
         assert.ok(overlayClosed(W, 'confirmModal'), '읽어 오기에 확인 창이 떴다');
         assert.ok($id(W, 'asLoad').disabled, '읽는 동안 읽어 오기가 잠기지 않았다');
@@ -737,7 +781,7 @@ if (!JSDOM) {
         assert.ok($id(W, 'asLeft').contains(ui[0]) && !$id(W, 'asRight').contains(ui[0]), '미식별 항목이 왼쪽 칸(과제 고르는 자리)에 있지 않다');
         assert.strictEqual($id(W, 'rptmUnid').querySelectorAll('button, select, input, textarea').length, 0, '미식별 항목에 옮기기나 기억 같은 조작이 남았다(읽기만)');
         W.doc.querySelector('#rptSrcSeg [data-rsrc="cal"]').click(); await tick();
-        $id(W, 'asLoad').click(); await tick(); drainImages(W);
+        await readAgain(W);
       }
       W.ev('weeklyFlat = false;');
     });
@@ -779,7 +823,7 @@ if (!JSDOM) {
       const sent = W.posted.slice(n0).map((x) => x && x.cmd).filter(Boolean);
       assert.ok(!sent.some((c) => /netcusSubmit|netcusWeekSubmit|NetcusWeekFill/i.test(c)), '회사로 보내는 명령이 나갔다');
       W.doc.querySelector('#rptSrcSeg [data-rsrc="cal"]').click(); await tick();
-      $id(W, 'asLoad').click(); await tick(); drainImages(W);
+      await readAgain(W);
     });
 
     test('MW18 (§14, 2026-10-23): 예전에 기억한 이관(tc_rptMNcMap:)은 읽지 않는다. 그 머리도 미식별로 나오고 과제를 체크하지 않는다', async () => {
@@ -791,27 +835,25 @@ if (!JSDOM) {
       assert.ok(!/외부 지원 일|미정 업무 일/.test(payloadText()), '예전 기억으로 문서에 들어갔다');
       assert.ok(!$id(W, 'rptmUnid').textContent.includes('기억한 이관'), '기억한 이관 목록이 남았다');
       W.doc.querySelector('#rptSrcSeg [data-rsrc="cal"]').click(); await tick();
-      $id(W, 'asLoad').click(); await tick(); drainImages(W);
+      await readAgain(W);
       clearStore(W);
     });
 
-    test('MW12 (§5.2): 주간보고를 못 읽으면(로그인 없음, 400일 넘음, 시간 초과) 이유를 보이고 캘린더로 되돌린다(미리 보기는 그대로)', async () => {
+    test('MW12 (§5.2): 주간보고를 못 읽으면(로그인 없음, 400일 넘음, 시간 초과, 주간보고 기록 읽기 실패) 이유를 보이고, 읽어 둔 글과 미리 보기는 그대로다', async () => {
       await fresh();
       const a0 = actualOf(W, P1);
+      assert.ok(a0.includes('화면 응답 속도 개선'), '전제: 캘린더 기록 실적이 읽혀 있다');
       W.doc.querySelector('#rptSrcSeg [data-rsrc="week"]').click(); await tick();
       $id(W, 'asLoad').click(); await tick();
       reply(W, 'netcusWeeklyRangeRead', { ok: false, error: 'no-creds', weeks: [] }); await tick(); drainImages(W);
       assert.ok($id(W, 'rptmSrcMsg').textContent.includes('netcus 로그인 정보가 없습니다'), '로그인 없음 이유를 보이지 않는다');
-      assert.strictEqual(W.ev('__rptM.src'), 'cal', '실패 뒤 출처가 캘린더로 돌아오지 않았다');
-      assert.ok(W.doc.querySelector('#rptSrcSeg [data-rsrc="cal"]').classList.contains('active'), '캘린더 칸이 켜지지 않았다');
-      assert.strictEqual(actualOf(W, P1), a0, '실패했는데 실적이 바뀌었다');
-      //  400일 넘는 기간: 호스트에 묻지 않는다
-      W.doc.querySelector('#rptSrcSeg [data-rsrc="week"]').click(); await tick();
+      assert.strictEqual(actualOf(W, P1), a0, '실패했는데 실적이 바뀌었다(읽어 둔 글은 그대로여야 한다)');
+      assert.ok(!$id(W, 'asLoad').disabled, '실패한 뒤 읽어 오기가 풀리지 않았다');
+      //  400일 넘는 기간: 호스트에 묻지 않는다(인트라넷 주간만의 한도)
       const n0 = W.posted.filter((x) => x && x.cmd === 'netcusWeeklyRangeRead').length;
       await loadPeriod(W, '2025-01-01', '2026-03-01'); await tick(); drainImages(W);
       assert.strictEqual(W.posted.filter((x) => x && x.cmd === 'netcusWeeklyRangeRead').length, n0, '400일 넘는 기간을 호스트에 물었다');
       assert.ok($id(W, 'rptmSrcMsg').textContent.includes('400일'), '400일 한도 안내가 없다');
-      assert.strictEqual(W.ev('__rptM.src'), 'cal');
       //  시간 초과
       await loadPeriod(W, FROM, TO); drainImages(W);
       W.doc.querySelector('#rptSrcSeg [data-rsrc="week"]').click(); await tick();
@@ -821,6 +863,17 @@ if (!JSDOM) {
       assert.strictEqual(pending(W, 'exportMonthlyDocx').length, 0, '주간보고를 읽는 동안 저장했다');
       reply(W, 'netcusWeeklyRangeRead', { ok: false, error: '호스트 응답 시간 초과', timeout: true }); await tick(); drainImages(W);
       assert.ok($id(W, 'rptmSrcMsg').textContent.includes('시간이 지났습니다'), '시간 초과 안내가 없다');
+      //  이 앱 주간보고 기록 읽기 실패(캘린더 기록): 이유를 그대로, 읽어 둔 글은 그대로
+      W.doc.querySelector('#rptSrcSeg [data-rsrc="cal"]').click(); await tick();
+      await readAgain(W);
+      const a1 = actualOf(W, P1);
+      assert.ok(a1.includes('화면 응답 속도 개선'), '전제: 다시 읽었다');
+      weekly.fail = { ok: false, error: '서버에 연결할 수 없습니다.' };
+      try {
+        await readAgain(W);
+        assert.ok($id(W, 'rptmSrcMsg').textContent.includes('주간보고 기록을 읽지 못했습니다') && $id(W, 'rptmSrcMsg').textContent.includes('서버에 연결할 수 없습니다.'), '기록 읽기 실패 이유를 보이지 않는다');
+        assert.strictEqual(actualOf(W, P1), a1, '기록 읽기에 실패했는데 읽어 둔 글이 바뀌었다');
+      } finally { weekly.fail = null; }
       await fresh();
     });
 
@@ -850,6 +903,7 @@ if (!JSDOM) {
       await fresh();
       W.ev("atSumOutSet('text');");
       setVal(W, $id(W, 'rptFrom'), '2026-09-01', 'change'); setVal(W, $id(W, 'rptTo'), '2026-09-30', 'change'); drainImages(W);
+      await readAgain(W);
       W.ev('buildReport();');
       const snap = () => ({ copy: W.ev('buildReportText()'), out: $id(W, 'rptOut').innerHTML, sum: $id(W, 'rptSummary').textContent, period: [$id(W, 'rptFrom').value, $id(W, 'rptTo').value],
         src: W.ev('state.reportSource'), seg: W.doc.querySelector('#rptSrcSeg .seg-b.active').dataset.rsrc, fmt: W.evJSON('currentReportFormatPref()'), copyBtn: $id(W, 'btnRptCopy').classList.contains('hidden') });
@@ -931,11 +985,13 @@ if (!JSDOM) {
       //  기간 칸에 값만 넣고(change 없이) 읽어 오기를 누르면 그때 새 기간으로 바뀐다
       $id(W, 'rptFrom').value = '2026-08-01'; $id(W, 'rptTo').value = '2026-08-31';
       assert.ok(sheetText().includes('월간 실적: 09월 01일 ~ 09월 30일'), '읽어 오기 전에 기간이 바뀌었다');
-      $id(W, 'asLoad').click(); await tick(); drainImages(W);
+      await readAgain(W);
       assert.ok(sheetText().includes('월간 실적: 08월 01일 ~ 08월 31일') && sheetText().includes('기간 밖 일'), '읽어 오기 뒤 미리 보기가 새 기간으로 바뀌지 않았다');
-      //  날짜 칸을 고르면(change) 월간 문서도 그 기간으로 바로 새로 열린다(캘린더 기록은 요청이 없다)
+      //  날짜 칸을 고르면(change) 월간 문서도 그 기간으로 바로 새로 열린다(요청은 나가지 않는다)
       setVal(W, $id(W, 'rptFrom'), '2026-07-01', 'change'); setVal(W, $id(W, 'rptTo'), '2026-07-31', 'change'); drainImages(W);
-      assert.ok(sheetText().includes('월간 실적: 07월 01일 ~ 07월 31일'), '기간 칸을 고쳤는데 미리 보기가 새 기간으로 바뀌지 않았다');
+      //  읽어 둔 글이 없어 과제 표가 없으니(머리는 표 안에 있다) 새로 연 상태로 본다
+      assert.deepStrictEqual(W.evJSON('[__rptM.from, __rptM.to, rptMAuto(__rptM)]'), ['2026-07-01', '2026-07-31', null], '기간 칸을 고쳤는데 월간 문서가 새 기간으로 새로 열리지 않았다');
+      assert.ok(!$id(W, 'rptmPvEmpty').classList.contains('hidden') && $id(W, 'rptmSheet').textContent.includes('월간보고'), '읽기 전 미리 보기가 안내와 제목만이 아니다');
       await fresh();
     });
 
@@ -948,7 +1004,7 @@ if (!JSDOM) {
   if (bErr) {
     test('MB0: 브라우저 모드 부팅', () => { throw bErr; });
   } else {
-    test('MB1 (§5, 9번): 브라우저만 있을 때: 위젯 안내, 저장과 주간보고와 그림 막힘, 실적 모으기와 미리 보기는 동작', async () => {
+    test('MB1 (§5, 9번): 브라우저만 있을 때: 위젯 안내, 저장과 주간보고 읽기와 그림 막힘, 달력 일정은 취합에 나오지 않는다', async () => {
       clearStore(B);
       B.ev('state = ' + JSON.stringify(stateFor()) + ';');
       openSum(B); await tick();
@@ -956,14 +1012,15 @@ if (!JSDOM) {
       assert.ok(!$id(B, 'rptmHostNote').classList.contains('hidden'), '위젯 안내가 보이지 않는다');
       assert.ok($id(B, 'rptmSave').disabled, '브라우저에서 저장이 열려 있다');
       assert.ok(row(B, P1) && !B.doc.querySelector('#rptmPick [data-imgtog], #rptmPick [data-strip]'), '브라우저에서 그림 단추가 있다');
-      //  인트라넷 주간은 회사 사이트 읽기라 위젯에서만 된다: 읽어 오기를 눌러도 호스트 요청 없이 이유를 보이고 캘린더로 돌아온다
+      //  캘린더 기록(이 앱 주간보고 DB)과 인트라넷 주간(회사 사이트)은 둘 다 위젯에서만 읽는다: 읽어 오기를 눌러도 호스트 요청 없이 이유를 보인다
+      assert.ok($id(B, 'rptmSrcMsg').textContent.includes('위젯에서만') && B.ev('__rptM.src') === 'cal', '브라우저의 캘린더 기록 안내가 없다');
       B.doc.querySelector('#rptSrcSeg [data-rsrc="week"]').click(); await tick();
       $id(B, 'asLoad').click(); await tick(); await tick();
-      assert.ok($id(B, 'rptmSrcMsg').textContent.includes('위젯에서만') && B.ev('__rptM.src') === 'cal' && B.ev('state.reportSource') === 'cal', '브라우저의 주간보고 출처 안내가 없거나 캘린더로 돌아오지 않았다');
-      assert.ok(B.doc.querySelector('#rptSrcSeg [data-rsrc="cal"]').classList.contains('active'), '캘린더 칸이 켜지지 않았다');
-      assert.ok(!B.posted.length || !B.posted.some((x) => x && /^scheduleImage/.test(x.cmd || '')), '브라우저에서 그림 명령을 보냈다');
-      assert.ok(B.ev(`rptMAuto(__rptM, false).proj.get(${JSON.stringify(P1)})`).includes('화면 응답 속도 개선'), '브라우저에서 실적이 모이지 않았다');
-      assert.ok($id(B, 'rptmSheet').textContent.includes('화면 응답 속도 개선'), '브라우저에서 미리 보기가 안 된다');
+      assert.ok($id(B, 'rptmSrcMsg').textContent.includes('위젯에서만') && B.ev('__rptM.src') === 'week' && B.ev('state.reportSource') === 'week', '브라우저의 주간보고 출처 안내가 없다');
+      assert.ok(!B.posted.length || !B.posted.some((x) => x && (/^scheduleImage/.test(x.cmd || '') || x.cmd === 'reportWeeklyList' || x.cmd === 'netcusWeeklyRangeRead')), '브라우저에서 그림이나 주간보고 읽기 명령을 보냈다');
+      //  달력에 일정이 있어도 취합 글은 읽어 올 때까지 비어 있다(일정과 할 일을 모으지 않는다)
+      assert.ok(B.ev('rptMAuto(__rptM)') === null, '브라우저에서 읽지 않았는데 실적이 모였다');
+      assert.ok($id(B, 'rptOut').textContent.includes('읽어 오기를 눌러 주세요') && !$id(B, 'rptmSheet').textContent.includes('화면 응답 속도 개선'), '브라우저에서 달력의 일정이 취합 미리 보기에 나온다');
       B.ev('rptMSave()'); await tick();
       assert.ok(B.evJSON('__toasts').some((t) => t.includes('위젯에서만')), '브라우저 저장 시도에 안내가 없다');
       clearStore(B);

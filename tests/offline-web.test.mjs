@@ -34,7 +34,7 @@ const GATED_FUNCTIONS = [
   'openQuickAdd', 'qaSave', 'saveCatEdit',   // 과제 수정 창 저장(TASK-ADD-UX D4, 옛 saveCatFromForm)
   'startImport', 'showImportPreview', 'applyImport', 'clearAll',
   'offSubscribeFromCatalog', 'offUnsubscribeFromCatalog',
-  'commitDayNoteEdit',
+  //  (commitDayNoteEdit 는 2026-11-03 취합 미리 보기의 날짜별 설명 고치기와 함께 없앴다. 할 일의 날짜별 설명은 할 일 편집 폼이 고친다.)
   //  (openEntryModal, saveEntryFromForm, deleteCommitRow, setCommitMessage, runGitImport 는 2026-10-26 Git, SVN 기능과 함께 없앴다.)
   //  (setCommitSubject, setEntryTitle, setTodoText 는 일간 보고서 줄 ✎ 와 함께 없앴다(REPORT-EDIT §5). '없어졌다'는 아래 REPORT_EDIT_GONE 이 잠근다.)
   'legacyPromptImport',   // 이전 기록 「가져오기」 = 바로 교체(2026-10-01) — 읽기 전에 막는다

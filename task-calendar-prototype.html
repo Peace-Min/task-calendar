@@ -1206,18 +1206,6 @@ mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px;padding:0
 .rpt-mirror .rtask-roline{display:flex;align-items:flex-start;gap:4px}   /* 주간 읽기전용 줄도 마커(.rtask-mk)+본문(.rtask-main) 구조 → 설명·dayNote가 제목 아래 정렬 */
 .rpt-mirror .rcard-tasks .rtask-body{white-space:pre-wrap;font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);line-height:1.5;margin:0 0 3px;padding-left:14px;word-break:keep-all;overflow-wrap:anywhere}
 /* 보고서: 기간 할일 날짜별 dayNote 라인. 편집(✎)은 주간만 연다(일간은 읽기 전용, REPORT-EDIT §5). 제목 아래 한 단계 들여쓴 라인. */
-.rpt-mirror .rcard-tasks .rdn{display:flex;align-items:flex-start;gap:4px;margin:1px 0 1px 18px;color:var(--muted);font-size:calc(var(--m-scale) * var(--fs-meta));line-height:1.5;word-break:keep-all;overflow-wrap:anywhere}
-.rpt-mirror .rtask-main .rdn{margin-left:0}   /* .rtask-main 안(일간·주간 공통) → 제목 텍스트 아래 정렬(고정 18px 오프셋 제거, 마커 폭 무관) */
-.rpt-mirror .rdn .rdn-main{flex:1;min-width:0}
-.rpt-mirror .rdn .rdn-date{color:var(--faint-text);font-size:calc(var(--m-scale) * var(--fs-micro));font-weight:400;font-variant-numeric:tabular-nums;white-space:nowrap}
-.rpt-mirror .rdn .rdn-edit-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);cursor:pointer;opacity:.35;transition:opacity .12s,color .12s,background .12s}
-.rpt-mirror .rdn .rdn-edit-btn .ic{width:12px;height:12px}
-.rpt-mirror .rcard:hover .rdn-edit-btn,.rpt-mirror .rdn:focus-within .rdn-edit-btn{opacity:.7}
-.rpt-mirror .rdn .rdn-edit-btn:hover{opacity:1;color:var(--accent);background:var(--hover-bg)}
-.rpt-mirror .rdn.editing{display:block}
-.rpt-mirror .rdn.editing .nd-cedit-wrap{margin-top:2px}
-.rpt-mirror .rdn-edit{width:100%;box-sizing:border-box;min-height:48px;resize:vertical;font:inherit;font-size:calc(var(--m-scale) * var(--fs-body));line-height:1.5;padding:7px 9px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--panel);color:var(--text)}
-.rpt-mirror .rdn-edit:focus{outline:none;box-shadow:0 0 0 2px var(--accent-soft)}
 .rpt-mirror .rcard-note{font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);margin-top:5px;display:inline-block}
 /* 일간 글 편집(docs/REPORT-EDIT.md §2). 카드 X(이 보고서에서 빼기)는 카드를 지우지 않고 그 자리에 흐리게 남긴다(카드 순서, 수 불변). */
 /* 시간 칸과 X, 그리고 "이 보고서에서 뺌 되돌리기" 는 격자 한 칸에서 맞바꾼다. 감춘 쪽도 높이는 남겨 카드 높이가 바뀌지 않는다(폭만 내준다). */
@@ -2842,10 +2830,6 @@ html.at-idle #atEd,html.at-idle #awEd,html.at-idle #awList{ visibility:hidden } 
 .as-view .rptm-set{grid-template-columns:minmax(0,1fr);gap:4px 0}
 .as-view .rptm-set .rptm-ctl+.rptm-lb{margin-top:6px}
 .as-sep{color:var(--muted);flex:none}
-#asInc.off > h3{opacity:.45}
-#asInc.off .rpt-chip{cursor:default}
-#asInc.off .rpt-chip span{opacity:.45}
-#asInc.off .rpt-chip:hover span{border-color:var(--line-2);color:inherit}
 .as-fmt > summary{cursor:pointer;font-size:var(--fs-meta);color:var(--muted);font-weight:600;margin-bottom:6px}
 .as-fmt > summary:focus-visible{outline:2px solid var(--accent)}
 .as-loadrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -3246,23 +3230,16 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
           </div>
           <div class="as-sec"><h3>내용 출처</h3>
             <div class="seg seg-auto" id="rptSrcSeg" role="group" aria-label="내용 출처">
-              <button type="button" class="seg-b active" data-rsrc="cal" aria-pressed="true" title="이 앱에 정리한 일정과 할 일로 만듭니다">캘린더 기록</button>
-              <button type="button" class="seg-b" data-rsrc="week" aria-pressed="false" title="인트라넷에 올린 주간보고를 읽어 과제별로 모읍니다. 400일까지, 위젯 전용">인트라넷 주간</button>
-            </div>
-          </div>
-          <div class="as-sec" id="asInc"><h3>포함 항목</h3>
-            <div class="rpt-chips" role="group" aria-label="포함 항목">
-              <label class="rpt-chip"><input type="checkbox" id="rptSrcEvent" checked><span>일정</span></label>
-              <label class="rpt-chip"><input type="checkbox" id="rptSrcTodo" checked><span>할 일</span></label>
-              <label class="rpt-chip"><input type="checkbox" id="rptWithDesc" checked><span>설명</span></label>
-              <label class="rpt-chip" title="항목도 공수도 없는 과제를 뺍니다 (제목이 있는 일정, 할 일은 남습니다)"><input type="checkbox" id="rptSkipEmpty"><span>빈 과제 빼기</span></label>
+              <button type="button" class="seg-b active" data-rsrc="cal" aria-pressed="true" title="이 앱 근태 탭에서 쓴 주간보고를 읽습니다">캘린더 기록</button>
+              <button type="button" class="seg-b" data-rsrc="week" aria-pressed="false" title="회사 인트라넷의 주간보고를 읽습니다">인트라넷 주간</button>
             </div>
           </div>
           <details class="as-sec as-fmt" id="asFmt">
             <summary>서식</summary>
             <div class="rpt-optgrid">
-              <span class="rpt-opt-lb">머리기호</span>
-              <div class="rpt-ctl rpt-fmt">
+              <!-- 머리기호와 들여쓰기는 이제 취합 글에 쓰이지 않는다(2026-11-03, 과제별 글은 주간보고 원문). 화면에서는 숨기고, 머리기호 선택지는 근태 가져오기 서식 목록이 복제해 가므로 요소만 남긴다 -->
+              <span class="rpt-opt-lb" style="display:none">머리기호</span>
+              <div class="rpt-ctl rpt-fmt" style="display:none">
                 <select id="rptMarker" class="rpt-fmt-sel" aria-label="머리기호">
                   <optgroup label="불릿">
                     <option value="-">- 하이픈</option>
@@ -3296,8 +3273,8 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
                 </select>
                 <input type="text" id="rptMarkerCustom" class="rpt-fmt-custom" maxlength="8" placeholder="직접" aria-label="머리기호 직접 입력">
               </div>
-              <span class="rpt-opt-lb">들여쓰기</span>
-              <div class="rpt-ctl rpt-fmt">
+              <span class="rpt-opt-lb" style="display:none">들여쓰기</span>
+              <div class="rpt-ctl rpt-fmt" style="display:none">
                 <span class="rpt-fmt-stepper">
                   <button type="button" id="rptIndMinus" class="rpt-fmt-step" aria-label="들여쓰기 줄이기">−</button>
                   <span id="rptIndVal" class="rpt-fmt-ind">2단</span>
@@ -4566,7 +4543,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
           <li>달력 위 <b>근태</b> 탭을 엽니다. 머리에서 <b>일간</b>, <b>주간</b>, <b>취합</b>을 고릅니다.</li>
           <li><b>일간</b>: 과제별 블록에 내용과 시간을 적고 <b>보고</b>로 회사 일간보고에 보냅니다.</li>
           <li><b>주간</b>: 목록에서 기간과 찾기로 지난 보고를 찾고, <b>작성</b>으로 새 주간보고를 씁니다.</li>
-          <li><b>취합</b>: 기간과 내용 출처(캘린더 기록, 인트라넷 주간)를 고르고 <b>읽어 오기</b>를 누릅니다.</li>
+          <li><b>취합</b>: 기간과 내용 출처(캘린더 기록은 이 앱에서 쓴 주간보고, 인트라넷 주간은 회사 주간보고)를 고르고 <b>읽어 오기</b>를 누릅니다.</li>
           <li>오른쪽 위에서 <b>과제별 글</b>은 <b>복사</b>, <b>월간 보고 문서</b>는 <b>DOCX 저장</b>으로 내보냅니다.</li>
         </ol>
       </section>
@@ -11254,7 +11231,6 @@ let filterCats = null;
 //    내 창은 계정별로 이 PC 에 기억한다(viewSave, viewRestore). 열람 창은 기억하지 않는다(열 때마다 처음대로).
 let viewKinds = { ev: true, td: true };
 let editingTodoId = null;    // 인라인 편집 중인 TODO id
-let editingDayNoteKey = null; // 보고서 날짜별 dayNote 줄 편집 키. (일간 보고서 줄편집 키는 줄 ✎ 와 함께 없앴다, REPORT-EDIT §5)
 let panelSheetOpen = false;  // 좁은 폭(<=760)에서 하단 시트 열림 여부
 let searchMode = 'keyword';
 let pendingImport = null;
@@ -16470,30 +16446,6 @@ function reportDetailLines(v){
 function reportMetaDetails(meta){
   return Array.isArray(meta && meta.details) ? meta.details.filter(Boolean) : [];
 }
-function reportDetailsHtml(meta){
-  if(Array.isArray(meta && meta.dayDetails) && meta.dayDetails.length) return '';   // 날짜별 설명을 가진 메타(기간 할일·그 강등본)는 날짜별 라인(.rdn)이 담당 — 이중 렌더 방지
-  const lines = reportMetaDetails(meta);
-  return lines.length ? `<div class="rtask-desc">${lines.map(esc).join('<br>')}</div>` : '';
-}
-// 기간 할일 dayNote 병합 접두 — "월 7/13"(요일 + M/D). 기간 보고에서 날짜별 dayNote를 날짜순 라인으로.
-function reportDayPrefix(dateYmd){ const d = parseYmd(dateYmd); return `${CAL_DOW[d.getDay()]} ${d.getMonth()+1}/${d.getDate()}`; }
-// 보고서 — 기간 할일 날짜별 dayNote 라인 HTML(주간/일간 공통). editable=true면 클릭 편집 개방(주간 제목은 여전히 읽기전용).
-// showPrefix=true(기간 보고)면 "요일 M/D" 접두, false(일간·from==to)면 원문만. editingDayNoteKey===todoId|date면 textarea.
-function reportDayLinesHtml(m, editable, showPrefix){
-  if(!(m && Array.isArray(m.dayDetails) && m.dayDetails.length)) return '';
-  const canEdit = !!(editable && m.kind === 'todo' && m.todoId);   // 중복 제목으로 강등된 메타(kind:null)는 날짜 라인을 읽기전용으로만
-  return m.dayDetails.map(dd => {
-    const key = m.todoId + '|' + dd.date;
-    if(canEdit && editingDayNoteKey === key){
-      return `<div class="rdn editing" data-dnid="${esc(m.todoId)}" data-dndate="${esc(dd.date)}"><div class="nd-cedit-wrap"><textarea class="rdn-edit" maxlength="500" rows="2" aria-label="${esc(reportDayPrefix(dd.date))} 설명 수정">${esc(dd.text)}</textarea><div class="nd-cedit-acts"><button type="button" class="nd-cbtn2 rdn-cancel" data-dnact="cancel" aria-label="편집 취소">취소</button><button type="button" class="nd-cbtn2 nd-cedit-save rdn-save" data-dnact="save" aria-label="설명 저장">저장</button></div></div></div>`;
-    }
-    const pfx = showPrefix ? `<span class="rdn-date">${esc(reportDayPrefix(dd.date))}</span> ` : '';
-    if(canEdit){
-      return `<div class="rdn" data-dnid="${esc(m.todoId)}" data-dndate="${esc(dd.date)}"><span class="rdn-main">${pfx}${esc(dd.text)}</span><button type="button" class="rdn-edit-btn" data-dnact="edit" title="설명 수정" aria-label="${esc(reportDayPrefix(dd.date))} 설명 수정">${ICON.wrench}</button></div>`;
-    }
-    return `<div class="rdn ro">${pfx}${esc(dd.text)}</div>`;
-  }).join('');
-}
 function reportTextDetails(meta, pad){
   const lines = reportMetaDetails(meta);
   return lines.length ? lines.map(d => '\n' + pad + d).join('') : '';
@@ -16675,29 +16627,6 @@ function buildCalendarExportMd(cat, from, to){
     }
   }
   return out.join('\n');
-}
-// 보고서 폼 → 소스 선택 객체(순수 읽기, 부수효과 없음). 체크박스 없으면 전체 포함. 영속은 buildReport에서만.
-function rptSources(){
-  const ev = $('#rptSrcEvent'), td = $('#rptSrcTodo'), ds = $('#rptWithDesc'), se = $('#rptSkipEmpty');
-  return { event: ev ? ev.checked : true, todo: td ? td.checked : true, desc: ds ? ds.checked : true, skipEmpty: se ? se.checked : false };
-}
-//  ★ 옛 저장값의 git 키(커밋 내역 출처, 2026-10-26 Git 기능 삭제)는 normRptSrc 가 읽지 않고 버린다.
-// 포함 항목(일정/할일/설명포함/내용없는항목제외 = 항목도 공수도 없는 과제 행만 제외)을 일간/주간 모드별로 캐싱(#7 reportFormatPrefs와 동일 패턴, custom=weekly 재사용). 저장은 localStorage tc_rptSources={daily,weekly}.
-function normRptSrc(o){ o = o || {}; return { event: o.event !== false, todo: o.todo !== false, desc: o.desc !== false, skipEmpty: !!o.skipEmpty }; }
-function loadRptSourcePrefs(){
-  let raw = null; try{ raw = JSON.parse(localStorage.getItem('tc_rptSources') || 'null'); }catch(_){}
-  if(raw && (raw.daily || raw.weekly)) return { daily: normRptSrc(raw.daily), weekly: normRptSrc(raw.weekly) };   // 신 포맷(모드별)
-  if(raw && ('event' in raw || 'skipEmpty' in raw || 'desc' in raw)){ const m = normRptSrc(raw); return { daily: m, weekly: { ...m } }; }   // 구 포맷(단일) → 양쪽 이관(하위호환)
-  return { daily: normRptSrc(null), weekly: normRptSrc(null) };   // 기본(전체 ON, skipEmpty OFF)
-}
-function applyRptSourcePrefs(){   // 현재 보고 유형(reportMode)의 저장값을 체크박스에 반영
-  const s = loadRptSourcePrefs()[reportFormatKeyForMode(reportMode)];
-  const set = (id, v) => { const e = $(id); if(e) e.checked = v; };
-  set('#rptSrcEvent', s.event); set('#rptSrcTodo', s.todo); set('#rptWithDesc', s.desc); set('#rptSkipEmpty', s.skipEmpty);
-}
-function saveRptSourcePrefs(){   // 현재 체크박스를 현재 모드 키에 저장(다른 모드값은 보존)
-  const prefs = loadRptSourcePrefs(); prefs[reportFormatKeyForMode(reportMode)] = rptSources();
-  try{ localStorage.setItem('tc_rptSources', JSON.stringify(prefs)); }catch(_){}
 }
 // 서식 저장값을 고르는 열쇠(reportFormatKeyForMode). 취합은 늘 'custom'(주간 저장값을 쓴다). atDailyFmt 가 잠깐 'daily' 로 바꿔 일간 서식을 읽는다.
 let reportMode = 'custom';
@@ -17065,20 +16994,23 @@ function reportRowBodyText(r, indentUnit, mkSpec, indent){
 }
 // netcus 상호작용 모듈 상태 — 읽기 워치독 하나(근태 창의 전송이 쓴다).
 const Netcus = { watchdog: 0 };
-function ncMergeKey(from, to){ return from + '|' + to; }
-// 주간보고 범위 병합(Phase2) — 별도 캐시 슬롯(net 일간병합과 독립). key=from|to, 기간 바뀌면 무효화.
-let netcusWeeklyMerge = { key: '', parsed: null, at: '' };
+//  병합 열쇠 = 출처|시작|끝. 같은 그릇을 두 출처(캘린더 기록 = 이 앱 주간보고 DB, 인트라넷 주간 = 회사 사이트)가 쓰므로 출처가 열쇠에 들어간다(섞이지 않게).
+function ncMergeKey(from, to, src){ return (src === 'cal' ? 'cal' : 'week') + '|' + from + '|' + to; }
+// 주간보고 범위 병합(Phase2) — 별도 캐시 슬롯(net 일간병합과 독립). key=출처|from|to, 기간 바뀌면 무효화.
+//  src = 'cal' | 'week', weeksRead = 읽은 주 수(빈 주 포함), auto = 월간 보고 문서용 과제별 글(rptMBuildWeek).
+let netcusWeeklyMerge = { key: '', parsed: null, at: '', src: '', weeksRead: 0, auto: null };
 // 주간보고 병합 표시 형식 — false=주차별(주차 헤더+원문), true=평면(과제 아래 전 주 원문 나열). localStorage 영속.
 let weeklyFlat = (function(){ try{ return localStorage.getItem('tc_weeklyFlat') === '1'; }catch(_){ return false; } })();
-function clearNetcusWeeklyMerge(){ netcusWeeklyMerge = { key: '', parsed: null, at: '' }; }
+function clearNetcusWeeklyMerge(){ netcusWeeklyMerge = { key: '', parsed: null, at: '', src: '', weeksRead: 0, auto: null }; }
 function ncNow(){ const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
 // 읽기 진행바 골격 — #rncProg(진행 텍스트 + 채움바). __netcusStatus(login/reading)가 실시간 갱신.
 function ncLoadingHtml(label){ return '<div class="rnc-loading" id="rncProg">' + ICON.spinner + ' <span class="rnc-progtext">' + esc(label) + '</span><div class="rnc-progbar"><div class="rnc-progfill" style="width:4%"></div></div></div>'; }
-// 읽기전용 미리보기 — 과제별로 묶고 그 아래 주차별 소제목(· 제목 (기간)) + 진행사항 라인.
-function renderNetcusWeeklyPreview(parsed, at){
+// 읽기전용 미리보기 — 과제별로 묶고 그 아래 주차별 소제목(· 제목 (기간)) + 진행사항 라인. src 'cal' 은 이 앱 주간보고 기록, 그 밖은 인트라넷.
+function renderNetcusWeeklyPreview(parsed, at, src, weeksRead){
   const out = $('#rptOut'), sum = $('#rptSummary');
   if(!out) return;
-  let html = '<div class="rnc-banner"><span class="rnc-banner-t">' + ICON.book + ' 읽기전용: 인트라넷 주간보고를 과제별로 모음'
+  const app = src === 'cal';
+  let html = '<div class="rnc-banner"><span class="rnc-banner-t">' + ICON.book + (app ? ' 읽기전용: 이 앱의 주간보고 기록을 과제별로 모음' : ' 읽기전용: 인트라넷 주간보고를 과제별로 모음')
     + (at ? ' <span class="rnc-at">(조회 ' + esc(at) + ')</span>' : '') + '</span>'
     + '<span class="seg seg-auto seg-micro" role="group" aria-label="표시 형식">'
     + '<button type="button" class="seg-b' + (weeklyFlat ? '' : ' active') + '" data-wmode="week" aria-pressed="' + (weeklyFlat ? 'false' : 'true') + '" title="주차별 소제목 + 진행사항">주차별</button>'
@@ -17108,7 +17040,7 @@ function renderNetcusWeeklyPreview(parsed, at){
     html += '</div>';
   }
   if(!parsed.tasks.length){
-    html += '<div class="rpt-guard">그 기간 netcus 주간보고에서 과제별로 가져올 내용이 없습니다.</div>';
+    html += '<div class="rpt-guard">' + (app ? (weeksRead ? '이 기간 주간보고에서 과제별로 가져올 내용이 없습니다.' : '이 기간에 이 앱으로 쓴 주간보고가 없습니다.') : '그 기간 netcus 주간보고에서 과제별로 가져올 내용이 없습니다.') + '</div>';
   }
   out.innerHTML = html;
   const rb = $('#rncwRefresh'); if(rb) rb.addEventListener('click', atSumLoad);
@@ -17116,7 +17048,7 @@ function renderNetcusWeeklyPreview(parsed, at){
     const flat = b.dataset.wmode === 'flat';
     if(flat === weeklyFlat) return;
     weeklyFlat = flat; try{ localStorage.setItem('tc_weeklyFlat', flat ? '1' : '0'); }catch(_){}
-    renderNetcusWeeklyPreview(parsed, at);
+    renderNetcusWeeklyPreview(parsed, at, src, weeksRead);
   }));
   if(sum) sum.textContent = '과제 ' + parsed.tasks.length + '개, ' + (parsed.weekCount || 0) + '주 병합';
 }
@@ -17129,16 +17061,17 @@ function syncReportSourceSeg(){
     const on = x.dataset.rsrc === src; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
 }
 /* ===== 근태 탭 취합(docs/ATTEND-SUMMARY.md) =====
- *  보고서 창의 기간 취합 탭과 월간 보고 탭을 근태 탭 [취합] 한 화면으로 옮겼다. 글 만들기(buildReport, collectReportData)와
- *  월간 보고(rptM* 함수, DOCX 저장, 그림)는 그대로이고, 달라진 것은 담는 그릇(#atSum)과 기간, 출처를 한 곳에서 고르는 일뿐이다.
- *  ★ 인트라넷 주간(회사 사이트 읽기)은 [읽어 오기]를 눌렀을 때만 읽는다. 출처나 기간을 바꾸는 것만으로는 회사로 요청이 나가지 않는다.
- *  ★ 회사로 보내는 길은 없다(복사와 DOCX 저장뿐). 인트라넷 일간 출처와 기간 빠른 단추도 없다.
- *  ★ 월간 보고 문서의 수행 실적은 왼쪽 위 설정(출처, 포함 항목)으로 만든 그 글이다(rptMBuildCal 이 같은 저장값과 같은 함수를 쓴다). */
+ *  보고서 창의 기간 취합 탭과 월간 보고 탭을 근태 탭 [취합] 한 화면으로 옮겼다. 담는 그릇(#atSum)과 기간, 출처를 한 곳에서 고른다.
+ *  ★ 내용 출처 둘(2026-11-03 사용자): 캘린더 기록 = 이 앱의 주간보고 DB(cal_report_weekly, 근태 [주간]에서 쓰고 보낸 주)를 읽어 과제별로 모은다.
+ *    인트라넷 주간 = 회사 사이트의 주간보고. 둘 다 같은 파서(parseNetcusWeekly)와 같은 그릇(netcusWeeklyMerge)을 쓰고, 미리 보기, 복사, 월간 보고 문서가 한 번 읽은 결과를 같이 쓴다.
+ *    달력의 일정과 할 일을 하루 단위로 모으는 출처는 없다(collectReportData 는 근태 일간 가져오기와 기록 있음 판정이 쓴다).
+ *  ★ 읽는 것은 [읽어 오기]를 눌렀을 때만이다. 출처나 기간을 바꾸는 것만으로는 읽지 않고, 인트라넷 주간만 회사로 요청이 나간다.
+ *  ★ 회사로 보내는 길은 없다(복사와 DOCX 저장뿐). 인트라넷 일간 출처와 기간 빠른 단추도 없다. */
 const AS = { out: 'text', ready: false };
-// 월간 보고 문서의 실적 글이 지금 설정의 최신 글이 되게 한다(서식, 포함 항목, 기록이 바뀐 뒤). 캘린더 글을 보고 있을 때만 다시 모은다.
+// 월간 보고 문서를 지금 상태로 다시 그린다. '기록 있음'(달력 기록과 공수)이 바뀌었을 수 있어 같이 다시 센다.
 function atSumMonthlyRefresh(){
   const S = __rptM; if(!S || !AS.ready) return;
-  if(S.fillSrc === 'cal'){ rptMAuto(S, true); __rptMHas = rptMHasSet(S); }
+  __rptMHas = rptMHasSet(S);
   rptMRenderAll();
 }
 // 기록이 바뀌었다(과제 합치기, 순서 바꾸기, 날짜별 설명 고치기 등). 취합 화면이 떠 있을 때만 다시 그린다.
@@ -17147,100 +17080,37 @@ function atSumRefresh(){
   if(!box || !AS.ready || box.classList.contains('hidden')) return;
   buildReport();
 }
-// 포함 항목은 캘린더 기록의 입력이다. 인트라넷 주간이면 자리는 두고 막는다(칸이 출렁이지 않게).
-function atSumIncSync(){
-  const off = state.reportSource === 'week';
-  const box = $('#asInc'); if(box){ box.classList.toggle('off', off); if(off) box.title = '캘린더 기록일 때만 씁니다'; else box.removeAttribute('title'); }
-  $$('#asInc input').forEach(i => { i.disabled = off; });
-}
 function atSumSub(){
   const e = $('#asSub'); if(!e) return;
   const f = $('#rptFrom').value, t = $('#rptTo').value;
   e.textContent = (/^\d{4}-\d{2}-\d{2}$/.test(f) && /^\d{4}-\d{2}-\d{2}$/.test(t) ? f + ' ~ ' + t + ', ' : '') + (state.reportSource === 'week' ? '인트라넷 주간' : '캘린더 기록');
 }
-// 과제별 글 미리 보기(#rptOut). 캘린더 기록이면 지금 기록에서 만들고, 인트라넷 주간이면 읽어 둔 것을 보인다(없으면 읽어 오기를 기다린다).
+// 과제별 글 미리 보기(#rptOut). 두 출처 모두 읽어 둔 것을 보인다(없으면 읽어 오기를 기다린다).
 function buildReport(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   const out = $('#rptOut'), sum = $('#rptSummary');
   if(!out || !sum) return;
   syncReportFontUI();   // 조기 반환 경로들보다 앞: 가드 화면에서도 미리 보기 서식이 설정과 일치하게
   syncReportFormatUI();
-  //  ★ 규칙: 저장값 → 컨트롤 표시, 저장은 본문 가드와 무관하게 첫머리에서 한다. 렌더는 저장값을 읽기만 한다(미리 보기, 복사, 월간 보고가 같은 값).
-  const src = rptSources();
-  saveRptSourcePrefs();
-  atSumIncSync();
   atSumSub();
-  const week = (state.reportSource === 'week');
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){
     sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.innerHTML = ''; atSumMonthlyRefresh(); return;
   }
-  if(week){
-    const c = netcusWeeklyMerge;
-    if(c && c.parsed && c.key === ncMergeKey(from, to)) renderNetcusWeeklyPreview(c.parsed, c.at);
-    else { sum.textContent = ''; out.innerHTML = '<div class="rpt-guard">읽어 오기를 눌러 주세요.</div>'; }
-    atSumMonthlyRefresh(); return;
-  }
-  if(!src.event && !src.todo){
-    sum.textContent = '포함할 항목을 한 개 이상 선택하세요 (일정, 할 일).';
-    out.innerHTML = '<div class="rpt-guard">포함할 항목을 한 개 이상 선택하세요.<br>왼쪽에서 <b>일정, 할 일</b> 중 하나 이상을 켜세요.</div>';
-    atSumMonthlyRefresh(); return;
-  }
-  const { rows } = collectReportData(from, to, src);
-  if(!rows.length){
-    sum.textContent = '등록된 과제가 없습니다. [내 과제]에서 추가하세요.'; out.innerHTML = ''; atSumMonthlyRefresh(); return;
-  }
-  // 표시 설정(머리기호, 들여쓰기)은 표시와 복사 전용이다. 데이터는 바뀌지 않는다.
-  const _mkSpec = reportMarkerSpec();
-  const _fmt = currentReportFormatPref();
-  const _indent = Math.max(0, Math.min(6, _fmt.indent != null ? _fmt.indent : 2));
-  const _padL = 13 + _indent * 14;
-  const spanMulti = (from !== to);   // 여러 날이면 기간 할 일의 날짜별 설명에 "요일 M/D" 접두를 붙인다
-  let html = '';
-  for(const r of rows){
-    const hasContent = r.titles.length > 0;   // 할 일만 있어도 내용 있음(흐림은 내용 유무로)
-    html += `<div class="rcard${hasContent ? '' : ' rcard-empty'}">`
-      + `<div class="rcard-head"><span class="rc-dot" style="background:${validColor(r.color)}"></span><span class="rcard-nm">${esc(r.name)}</span></div>`;
-    if(r.titles.length){
-      html += `<div class="rcard-tasks" style="padding-left:${_padL}px">${r.titles.map((t, i) => {
-        const _mk = reportMarkerAt(_mkSpec, i);
-        const m = (r.titleMeta && r.titleMeta[i]) || null;
-        return `<div class="rtask-roline">${_mk ? `<span class="rtask-mk">${esc(_mk)} </span>` : ''}<span class="rtask-main">${esc(t)}${reportDetailsHtml(m)}${reportDayLinesHtml(m, true, spanMulti)}${(m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : ''}</span></div>`;
-      }).join('')}</div>`;
-    }
-    if(r.entries.length > 0) html += `<span class="rcard-note">여러 날 합산이라 날짜별로 수정</span>`;
-    html += `</div>`;
-  }
-  out.innerHTML = html;
-  const totalItems = rows.reduce((n, r) => n + r.titles.length, 0);
-  let line = `${from} ~ ${to}, 과제 ${rows.length}개, 업무 ${totalItems}건`;
-  const picked = [src.event && '일정', src.todo && '할 일'].filter(Boolean);
-  if(picked.length < 2) line += `, 포함: ${picked.join(', ')}`;
-  sum.textContent = line;
+  const c = netcusWeeklyMerge;
+  if(c && c.parsed && c.key === ncMergeKey(from, to, state.reportSource)) renderNetcusWeeklyPreview(c.parsed, c.at, c.src, c.weeksRead);
+  else { sum.textContent = ''; out.innerHTML = '<div class="rpt-guard">읽어 오기를 눌러 주세요.</div>'; }
   atSumMonthlyRefresh();
 }
-// 복사용 텍스트: 화면 DOM 이 아니라 데이터에서 다시 계산한다(드리프트 방지). 인트라넷 주간이면 화면 미리 보기와 같은 병합 글을 복사한다.
+// 복사용 텍스트: 화면 DOM 이 아니라 읽어 둔 데이터에서 다시 계산한다(드리프트 방지). 화면 미리 보기와 같은 병합 글을 복사한다.
 function buildReportText(indentUnit){
-  indentUnit = indentUnit || ' ';   // U+00A0: 복사한 글을 HTML, 평문 어디에 붙여도 들여쓰기가 남는다
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return '';
-  //  ★ 읽어 둔 글은 '그 기간의 것'일 때만 쓴다. 기간을 바꾼 직후 복사한 내용이 화면과 다른 기간의 것이 되지 않게.
-  if(state.reportSource === 'week'){
-    const c = netcusWeeklyMerge;
-    return (c && c.parsed && c.key === ncMergeKey(from, to)) ? buildNetcusWeeklyText(c.parsed, weeklyFlat) : '';
-  }
-  const { rows } = collectReportData(from, to, rptSources());
-  if(!rows.length) return '';
-  const _mkSpec = reportMarkerSpec();
-  const _fmt = currentReportFormatPref();
-  const _indent = Math.max(0, Math.min(6, _fmt.indent != null ? _fmt.indent : 2));
-  const blocks = rows.map(r => {
-    const _body = reportRowBodyText(r, indentUnit, _mkSpec, _indent);
-    return `[${r.name}]` + (_body ? '\n' + _body : '');
-  });
-  return blocks.join('\n\n') + '\n';
+  //  ★ 읽어 둔 글은 '그 기간, 그 출처의 것'일 때만 쓴다. 기간이나 출처를 바꾼 직후 복사한 내용이 화면과 다른 것이 되지 않게.
+  const c = netcusWeeklyMerge;
+  return (c && c.parsed && c.key === ncMergeKey(from, to, state.reportSource)) ? buildNetcusWeeklyText(c.parsed, weeklyFlat) : '';
 }
 /* ── 취합 화면 열기와 배선 ── */
-// 처음 열 때(앱을 켠 뒤 한 번): 기간은 지난달 1일~말일, 출처는 캘린더 기록, 결과 형태는 과제별 글. 월간 보고의 처음 값(rptMOpen)도 같다.
+// 처음 열 때(앱을 켠 뒤 한 번): 기간은 지난달 1일~말일, 출처는 캘린더 기록(읽어 오기를 눌러야 읽는다), 결과 형태는 과제별 글. 월간 보고의 처음 값(rptMOpen)도 같다.
 function atSumInit(){
   AS.ready = true;
   reportMode = 'custom';
@@ -17248,7 +17118,6 @@ function atSumInit(){
   clearNetcusWeeklyMerge();
   const r = monthRange(new Date(), -1);
   $('#rptFrom').value = r[0]; $('#rptTo').value = r[1];
-  applyRptSourcePrefs();
   rptMOpen();
   syncReportSourceSeg();
   atSumOutSet('text');
@@ -17256,7 +17125,7 @@ function atSumInit(){
 }
 function atSumEnter(){
   if(!AS.ready){ atSumInit(); return; }
-  if(__rptM && __rptM.fillSrc === 'cal'){ rptMAuto(__rptM, true); __rptMHas = rptMHasSet(__rptM); rptMRenderAll(); }
+  if(__rptM){ __rptMHas = rptMHasSet(__rptM); rptMRenderAll(); }
   buildReport();
 }
 // 결과 형태(과제별 글 | 월간 보고 문서): 오른쪽 미리 보기와 같은 줄 끝 단추가 같이 바뀐다. 월간 보고 전용 설정은 문서일 때만 펼친다.
@@ -17271,7 +17140,7 @@ function atSumOutSet(kind){
   $('#asDocAct').classList.toggle('hidden', !doc);
   if(doc){ rptMRenderAll(); rptMFit(); }
 }
-// 기간을 바꿨다: 월간 보고도 같은 기간으로 새로 연다. 인트라넷 주간은 읽어 둔 글을 버리고 읽어 오기를 기다린다(요청은 나가지 않는다).
+// 기간을 바꿨다: 월간 보고도 같은 기간으로 새로 연다. 읽어 둔 글은 버리고 읽어 오기를 기다린다(요청은 나가지 않는다).
 function atSumPeriod(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   clearNetcusWeeklyMerge();
@@ -17283,34 +17152,29 @@ function atSumPeriod(){
   }
   buildReport();
 }
-// 내용 출처를 골랐다. 회사로 요청이 나가지 않는다(읽는 것은 [읽어 오기]).
+// 내용 출처를 골랐다. 요청은 나가지 않는다(읽는 것은 [읽어 오기]). 다른 출처로 읽어 둔 글은 읽어 오기를 누를 때까지 월간 보고 문서에 그대로 남는다.
 function atSumSource(src){
   src = src === 'week' ? 'week' : 'cal';
   if(state.reportSource === src) return;
   state.reportSource = src;
-  if(src === 'cal') clearNetcusWeeklyMerge();
   syncReportSourceSeg();
   const S = __rptM;
-  if(S){
-    S.src = src;
-    if(src === 'cal'){ S.fillSrc = 'cal'; rptMAuto(S, true); __rptMHas = rptMHasSet(S); rptMRenderAll(); }
-    else { rptMRenderSettings(); rptMRenderUnid(); }
-  }
+  if(S){ S.src = src; rptMRenderSettings(); rptMRenderUnid(); }
   rptMSrcMsg('', '');
   buildReport();
 }
-// 읽어 오기: 캘린더 기록은 지금 기록으로 다시 모으고, 인트라넷 주간은 그 기간을 회사 사이트에서 한 번 읽는다(미리 보기와 월간 보고가 같은 결과를 쓴다).
+// 읽어 오기: 캘린더 기록은 이 앱 주간보고 DB 에서, 인트라넷 주간은 회사 사이트에서 그 기간을 한 번 읽는다(미리 보기와 월간 보고가 같은 결과를 쓴다).
 async function atSumLoad(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   if(!_rptMValid(from) || !_rptMValid(to) || from > to){ rptMSrcMsg('기간을 바르게 고르세요(시작이 끝보다 늦을 수 없습니다).', 'err'); return; }
   if(!AS.ready || !__rptM || __rptMReading) return;
-  if(state.reportSource === 'week'){
-    clearNetcusWeeklyMerge();   // 눌렀으니 새로 읽는다
-    const out = $('#rptOut'), sum = $('#rptSummary');
-    if(out){ if(sum) sum.textContent = ''; out.innerHTML = ncLoadingHtml('인트라넷 주간보고 읽는 중…'); }
+  const out = $('#rptOut'), sum = $('#rptSummary');
+  if(out){
+    if(sum) sum.textContent = '';
+    out.innerHTML = state.reportSource === 'week' ? ncLoadingHtml('인트라넷 주간보고 읽는 중…')
+      : '<div class="rnc-loading">' + ICON.spinner + ' <span class="rnc-progtext">주간보고 기록 읽는 중…</span></div>';
   }
-  await rptMLoadClick();   // 기간이 다르면 그 기간을 새로 열고, 같으면 지금 출처로 다시 모은다
-  if(__rptM && __rptM.src !== state.reportSource){ state.reportSource = __rptM.src; syncReportSourceSeg(); }   // 못 읽어 캘린더로 돌아갔다
+  await rptMLoadClick();   // 기간이 다르면 그 기간을 새로 열고, 같으면 지금 출처로 다시 읽는다
   buildReport();
 }
 // 분기 = 오늘이 속한 3개월(1-3/4-6/7-9/10-12). monthRange를 재사용해 말일 계산을 한 곳에 둔다.
@@ -17492,30 +17356,27 @@ async function copyReport(){
 }
 
 /* ===== 월간 보고 탭(docs/MONTHLY-REPORT-PLAN.md §5, 2026-10-23 결정으로 모으기와 미리 보기만) =====
- *  ★ 기존 보고 함수(collectReportData, reportRowBodyText, reportMarkerSpec, currentReportFormatPref, loadRptSourcePrefs,
- *    parseNetcusWeekly, buildNetcusWeeklyText, monthRange)는 읽기만 한다. 과제(카테고리)별로 자르는 일만 여기서 한다(§8).
+ *  ★ 기존 보고 함수(parseNetcusWeekly, buildNetcusWeeklyText, monthRange)는 읽기만 한다. 과제(카테고리)별로 자르는 일만 여기서 한다(§8).
  *    기존 코드와의 접점은 탭 버튼 하나와 setReportMode 의 분기(rptMOpen) 뿐이다. 나머지는 rptM* 함수와 .rptm- CSS.
- *  ★ 이 탭은 회사 사이트로 아무것도 보내지 않는다. 호스트로 가는 것은 RPTM_HOST_CMDS 뿐이다: 주간보고 읽기, 그림 명령,
+ *  ★ 이 탭은 회사 사이트로 아무것도 보내지 않는다. 호스트로 가는 것은 RPTM_HOST_CMDS 뿐이다: 주간보고 읽기(이 앱 DB 의 reportWeeklyList, 인트라넷 netcusWeeklyRangeRead), 그림 명령,
  *    DOCX 저장, 저장한 폴더 열기(tests/monthly-report.test.mjs 가 정적 검사와 가로채기로 지킨다).
  *  ★ 이 화면은 글을 고치지 않는다(사용자 결정 2026-10-23). 고르는 것(기간, 출처, 작성일, 과제 체크, 기타 넣기 빼기)과
  *    과제 줄의 개발 일정 그림 서랍뿐이다. 문서에 채우는 칸은 수행 실적과 개발 일정 그림이고, 수행 계획 두 칸과 일정 변경이력은 빈칸으로 보낸다.
- *    실적 글 = 같은 기간 기간 취합 복사 글(buildReportText)의 그 과제 블록에서 머리 줄 [과제명] 을 뺀 것(글자 그대로). 저장하지 않고 늘 기록에서 모은다.
+ *    실적 글 = 읽어 둔 주간보고(캘린더 기록은 이 앱 주간보고 DB, 인트라넷 주간은 회사 사이트)를 과제별로 모은 글의 그 과제 블록에서 머리 줄 [과제명] 을 뺀 것(글자 그대로). 저장하지 않는다.
  *  ★ B안 두 칸(2026-10-23 결정, docs/prototypes/monthly-report-layout.html): 왼쪽에서 바꾸면 오른쪽 미리 보기가 바로 바뀐다(rptMPreview).
  *    과제 순서는 내 과제(카테고리) 순서 그대로이고 이 탭에서 바꾸지 않는다.
- *  ★ 기억하는 값이 없다(2026-10-23). 열 때마다 지난달, 캘린더, 기록 있는 과제만 체크, 기타 모두 넣음, 계획 기본값, 작성일 오늘로 연다.
+ *  ★ 기억하는 값이 없다(2026-10-23). 열 때마다 지난달, 캘린더 기록, 기록 있는 과제만 체크, 기타 모두 넣음, 계획 기본값, 작성일 오늘로 연다.
  *    이 탭은 localStorage 를 읽지도 쓰지도 않는다(예전 키 tc_rptMSel:, tc_rptMEtcOff:, tc_rptDraftM:, tc_rptMNcMap: 도 읽지 않는다).
  *    그림만 사람마다 DB 에 있어(scheduleImage*) 다시 열어도 '그림 n' 이 보인다. 글은 모두 esc 나 textContent 로 그린다. */
 const RPTM_IMG_MAX = 5;                     // 과제마다 그림 5장(호스트도 같은 값으로 막는다)
-const RPTM_NC_MAX_DAYS = 400;                // netcus 주간보고 읽기 한도(호스트 NetcusWeeklyRangeRead 와 같다)
-const RPTM_HOST_CMDS = ['netcusWeeklyRangeRead', 'scheduleImageList', 'scheduleImageThumb', 'scheduleImageAdd', 'scheduleImageDelete', 'scheduleImageMove', 'exportMonthlyDocx', 'openFolder'];
-let __rptM = null;          // 지금 고른 것 { from, to, src, fillSrc, pFrom, pTo, date, order, checked, etcOff }. 열 때마다 새로 만든다
+const RPTM_NC_MAX_DAYS = 400;                // netcus 주간보고 읽기 한도(호스트 NetcusWeeklyRangeRead 와 같다. 이 앱 주간보고 기록은 나눠 읽어서 한도가 없다)
+const RPTM_HOST_CMDS = ['netcusWeeklyRangeRead', 'reportWeeklyList', 'scheduleImageList', 'scheduleImageThumb', 'scheduleImageAdd', 'scheduleImageDelete', 'scheduleImageMove', 'exportMonthlyDocx', 'openFolder'];
+let __rptM = null;          // 지금 고른 것 { from, to, src, fillSrc(읽어 둔 출처, 아직 없으면 ''), pFrom, pTo, date, order, checked, etcOff }. 열 때마다 새로 만든다
 let __rptMBound = false;
 let __rptMEtcOpen = false;  // 기타 표 칩을 펼쳤는지(처음은 한 줄 요약)
 let __rptMSaving = false;
 let __rptMReading = false;  // netcus 주간보고 읽는 중
 let __rptMGen = 0;          // 읽기 세대(기간을 바꾸면 늦은 회신을 버린다)
-let __rptMWeek = null;      // { key:'from|to', auto } 마지막으로 읽은 주간보고 과제별 글
-let __rptMCal = null;       // { key:'from|to', auto } 캘린더 과제별 글(읽어 오기, 탭 열기 때 새로 모은다)
 let __rptMHas = new Set();  // 기록이 있는 공식 과제(목록의 '기록 있음')
 let __rptMDir = '';         // 마지막으로 저장한 폴더(호스트가 준 값)
 let __rptMHover = '';       // 마우스가 올라가 있는 과제 줄(그 줄의 Ctrl+V 는 그림 붙여넣기)
@@ -17548,25 +17409,8 @@ function rptMTerm(id){
   return { a, b, known: !!c, text: (a || b) ? (a + ' ~ ' + b) : '' };
 }
 
-// ── 실적 글(기록에서 모은다) ───────────────────────────────────────────────
-//  캘린더 출처: 기간 취합과 같은 저장값(포함 항목, 머리기호, 들여쓰기 = 'weekly' 키)과 같은 함수(reportRowBodyText), 같은 단위(U+00A0).
-//  반환 auto = { proj: Map(공식 과제 id -> 글), etc: [{ key, name, text }](공식 과제가 아닌 카테고리, 내 순서) }.
-function rptMBuildCal(from, to){
-  const texts = new Map();
-  if(_rptMValid(from) && _rptMValid(to) && from <= to){
-    const prefs = normRptSrc(loadRptSourcePrefs()[reportFormatKeyForMode('custom')]);
-    const { rows } = collectReportData(from, to, prefs);
-    const mk = reportMarkerSpec();
-    const fmt = currentReportFormatPref();
-    const indent = Math.max(0, Math.min(6, fmt.indent != null ? fmt.indent : 2));
-    for(const r of rows) texts.set(r.key, reportRowBodyText(r, '\u00a0', mk, indent));
-  }
-  const proj = new Map();
-  for(const c of rptMOfficial()) proj.set(c.id, texts.get(c.id) || '');
-  const etc = state.categories.filter(c => !isOfficialCat(c)).map(c => ({ key: c.id, name: String(c.name || ''), text: texts.get(c.id) || '' }));
-  return { proj, etc };
-}
-//  주간보고 출처: buildNetcusWeeklyText 의 과제 블록(주차별, 평면은 사용자가 고른 weeklyFlat 그대로)에서 머리 줄을 뺀 것.
+// ── 실적 글(읽어 둔 주간보고에서 모은다) ───────────────────────────────────────────
+//  두 출처(이 앱 주간보고 기록, 인트라넷 주간) 공통: parseNetcusWeekly 결과를 buildNetcusWeeklyText 의 과제 블록(주차별, 평면은 사용자가 고른 weeklyFlat 그대로)에서 머리 줄을 뺀 것.
 //  나누기 정책(§14, 사용자 결정 2026-10-23): [과제] 머리는 **내 카테고리에만** 맞춘다. 공식 과제는 카테고리 이름, 통상명칭, 사업명
 //  가운데 하나와 같으면(정규화: NFC, 공백 전부 제거) 그 과제로, 개인 카테고리는 이름이 같으면 기타 표로(기타의 넣기, 빼기 그대로).
 //  나머지는 unid(미식별 항목)다. 미리 보기 아래에 읽기만 하도록 보이고 문서에는 넣지 않는다(옮기기와 기억은 없다).
@@ -17601,32 +17445,22 @@ function rptMNcAliases(){
   }
   return m;
 }
-//  지금 보이는 출처(fillSrc)의 과제별 글. 주간보고는 그 기간을 읽어 둔 것이 있을 때만(없으면 null: 읽어 오기를 눌러야 한다).
-function rptMAuto(S, fresh){
-  const key = S.from + '|' + S.to;
-  if(S.fillSrc === 'week') return (__rptMWeek && __rptMWeek.key === key) ? __rptMWeek.auto : null;
-  if(fresh || !__rptMCal || __rptMCal.key !== key) __rptMCal = { key, auto: rptMBuildCal(S.from, S.to) };
-  return __rptMCal.auto;
+//  읽어 둔 과제별 글(출처 둘이 같은 그릇 netcusWeeklyMerge 를 쓴다). 그 기간, 지금 보이는 출처(fillSrc)로 읽은 것이 있을 때만(없으면 null: 읽어 오기를 눌러야 한다).
+function rptMAuto(S){
+  const c = netcusWeeklyMerge;
+  if(!S || !S.fillSrc || !c || !c.auto || c.key !== ncMergeKey(S.from, S.to, S.fillSrc)) return null;
+  return c.auto;
 }
 function rptMEtcText(S, auto){
   const off = (S && S.etcOff) || new Set();
   return auto.etc.filter(e => !off.has(e.key) && String(e.text).trim()).map(e => e.text).join('\n');
 }
-//  '기록 있음': 실적 기간 실적 글이 있거나, 실적 기간 공수가 있거나, 실적이나 계획 기간에 일정, 할 일 제목이 있는 과제(§5.3-1).
+//  '기록 있음': 읽어 둔 주간보고에 실적 글이 있는 과제(처음 체크 값과 '기록 없음' 표시). 읽기 전에는 비어 있고 표시도 하지 않는다.
+//  달력의 일정, 할 일, 공수를 모으지 않는다(2026-11-03 사용자: 캘린더 기록 = 이 앱 주간보고 DB).
 function rptMHasSet(S){
   const has = new Set();
-  const cal = rptMAuto(Object.assign({}, S, { fillSrc: 'cal' }), false);
-  for(const [k, t] of cal.proj) if(String(t).trim()) has.add(k);
-  if(S.fillSrc === 'week'){ const w = rptMAuto(S, false); if(w) for(const [k, t] of w.proj) if(String(t).trim()) has.add(k); }
-  const all = { event: true, todo: true, desc: false, skipEmpty: false };
-  for(const [f, t] of [[S.from, S.to], [S.pFrom, S.pTo]]){
-    if(!_rptMValid(f) || !_rptMValid(t) || f > t) continue;
-    for(const r of collectReportData(f, t, all).rows) if(r.titles.length && isOfficialCat(catById(r.key))) has.add(r.key);
-  }
-  if(_rptMValid(S.from) && _rptMValid(S.to) && S.from <= S.to){
-    for(const c of rptMOfficial()){ if(has.has(c.id)) continue;
-      for(let d = S.from; d <= S.to; d = addDays(d, 1)){ const v = getTaskHours(d, c.id); if(v != null && v > 0){ has.add(c.id); break; } } }
-  }
+  const w = rptMAuto(S);
+  if(w) for(const [k, t] of w.proj) if(String(t).trim()) has.add(k);
   return has;
 }
 //  과제 목록 = 구독한 공식 과제를 내 과제(카테고리) 순서 그대로(2026-10-23: 이 탭에서 순서를 바꾸지 않는다). 처음 체크는 '기록 있음'.
@@ -17637,9 +17471,8 @@ function rptMSync(S, has){
 //  새 기간. 체크는 그 기간의 '기록 있음'으로 새로 정한다. 기타에서 뺀 것(etcOff)은 이 탭을 연 동안만 이어 받는다.
 function rptMFresh(from, to, src, etcOff){
   const pd = rptMPlanDefault(from, to);
-  const S = { from, to, src: src === 'week' ? 'week' : 'cal', fillSrc: 'cal', pFrom: pd.from, pTo: pd.to,
+  const S = { from, to, src: src === 'week' ? 'week' : 'cal', fillSrc: '', pFrom: pd.from, pTo: pd.to,
     date: todayYmd(), order: [], checked: {}, etcOff: new Set(etcOff instanceof Set ? etcOff : []) };
-  __rptMCal = null;
   __rptMHas = rptMHasSet(S);
   rptMSync(S, __rptMHas);
   return S;
@@ -17647,12 +17480,12 @@ function rptMFresh(from, to, src, etcOff){
 
 // ── 열기와 그리기 ───────────────────────────────────────────────────────────
 //  setReportMode('monthly') 가 부른다. 기억하는 값이 없어(2026-10-23) 열 때마다 처음 값으로 연다:
-//  실적 기간 지난달 1일 ~ 말일, 출처 캘린더, 기록 있는 과제만 체크, 기타 모두 넣음, 계획 기간 기본값, 작성일 오늘.
-//  캘린더 글은 지금 기록으로 모으고, 그림은 사람별 DB 목록을 다시 묻는다.
+//  실적 기간 지난달 1일 ~ 말일, 출처 캘린더 기록(읽어 오기를 눌러야 읽는다), 기록 있는 과제만 체크, 기타 모두 넣음, 계획 기간 기본값, 작성일 오늘.
+//  그림은 사람별 DB 목록을 다시 묻는다.
 function rptMOpen(){
   rptMBind();
   __rptMGen++;
-  __rptMWeek = null; __rptMCal = null; __rptMImgs.clear(); __rptMImgOpen.clear();
+  clearNetcusWeeklyMerge(); __rptMImgs.clear(); __rptMImgOpen.clear();
   __rptMEtcOpen = false; __rptMHover = '';
   const r = monthRange(new Date(), -1);
   __rptM = rptMFresh(r[0], r[1], 'cal');
@@ -17671,11 +17504,11 @@ function rptMRenderSettings(){
   $('#rptmPFrom').value = S.pFrom; $('#rptmPTo').value = S.pTo;
   $('#rptmDate').value = S.date;
   $('#rptmName').textContent = rptMName() || '(로그인 이름 없음)';
-  const wb = $('#rptSrcSeg [data-rsrc="week"]'); if(wb) wb.disabled = __rptMReading;
+  $$('#rptSrcSeg [data-rsrc]').forEach(b => { b.disabled = __rptMReading; });
   const lb = $('#asLoad'); if(lb) lb.disabled = __rptMReading;
   //  안내는 짧게, 필요할 때만(긴 설명은 출처 단추의 풍선 글)
   const h = $('#rptmSrcHint');
-  if(h) h.textContent = S.src !== S.fillSrc ? '읽어 오기를 누르면 이 출처로 바꿉니다.' : '';
+  if(h) h.textContent = (S.fillSrc && S.src !== S.fillSrc) ? '읽어 오기를 누르면 이 출처로 바꿉니다.' : '';
 }
 function rptMSrcMsg(text, kind){
   const m = $('#rptmSrcMsg'); if(!m) return;
@@ -17689,7 +17522,7 @@ function rptMPickRowHtml(id){
   const S = __rptM, on = !!S.checked[id], has = __rptMHas.has(id), nm = rptMCatName(id);
   return `<div class="rptm-it${on ? '' : ' off'}" data-uid="${esc(id)}"><div class="rptm-row">`
     + `<label class="check"><input type="checkbox" data-act="pick"${on ? ' checked' : ''}><span class="nm">${esc(nm)}</span></label>`
-    + (has ? '' : '<span class="rptm-none">기록 없음</span>')
+    + ((has || !rptMAuto(S)) ? '' : '<span class="rptm-none">기록 없음</span>')
     + (HOST ? '<span class="rptm-imgtog" data-imgtog></span>' : '')
     + '</div>'
     + (HOST ? '<div class="rptm-drawer hidden" data-strip></div>' : '')
@@ -17716,15 +17549,15 @@ function rptMRenderEtc(){
   const tg = $('#rptmEtcTog'); if(tg){ tg.textContent = __rptMEtcOpen ? '접기' : '고르기'; tg.setAttribute('aria-expanded', __rptMEtcOpen ? 'true' : 'false'); }
   const sm = $('#rptmEtcSum'); if(sm) sm.textContent = rptMEtcSummary();
 }
-//  미식별 항목(§14). 주간보고 출처일 때만 왼쪽 칸 기타 아래에 그린다. 항목은 머리 이름, 첫 줄, 펼친 글(읽기만)이고 문서에 넣지 않는다.
+//  미식별 항목(§14). 읽어 둔 주간보고의 [과제] 가운데 내 과제와 맞지 않은 것을 왼쪽 칸 기타 아래에 읽기만 하도록 보인다(두 출처 공통). 항목은 머리 이름, 첫 줄, 펼친 글이고 문서에 넣지 않는다.
 //  칸 전체의 펼침은 다시 그려도 사용자가 둔 대로 둔다.
 function rptMRenderUnid(){
   const box = $('#rptmUnid'); if(!box) return;
   const S = __rptM;
   const prev = box.querySelector('details[data-unid]');
   const open = prev ? prev.open : true;
-  if(!S || (S.fillSrc !== 'week' && S.src !== 'week')){ box.innerHTML = ''; return; }
-  const w = S.fillSrc === 'week' ? rptMAuto(S, false) : null;
+  if(!S){ box.innerHTML = ''; return; }
+  const w = rptMAuto(S);
   const items = (w && w.unid) || [];
   const list = !w ? '<span class="git-hint">읽어 오기를 누르면 내 과제와 맞지 않은 항목이 여기에 나옵니다.</span>'
     : !items.length ? '<span class="git-hint">미식별 항목이 없습니다.</span>'
@@ -17870,47 +17703,69 @@ function rptMNcMsg(res){
   const e = (res && typeof res.error === 'string') ? res.error : '';
   return _rptMOwn(M, e) ? M[e] : 'netcus 주간보고를 읽지 못했습니다.';
 }
+//  읽은 결과를 같은 그릇에 둔다(미리 보기, 복사, 월간 보고 문서가 같은 결과를 쓴다). src 가 열쇠에 들어가 두 출처가 섞이지 않는다.
+function rptMStoreRead(src, from, to, parsed, weeksRead){
+  netcusWeeklyMerge = { key: ncMergeKey(from, to, src), parsed, at: ncNow(), src, weeksRead, auto: rptMBuildWeek(parsed) };
+  return netcusWeeklyMerge;
+}
 async function rptMReadNetcus(from, to){
   if(!HOST) return { ok: false, msg: '주간보고 출처는 데스크톱 위젯에서만 읽을 수 있습니다.' };
   if(rptMDays(from, to) > RPTM_NC_MAX_DAYS) return { ok: false, msg: rptMNcMsg({ error: 'range' }) };
   const res = await hostRequest('netcusWeeklyRangeRead', { from, to }, 180000);
   if(!res || res.ok !== true) return { ok: false, msg: rptMNcMsg(res) };
-  const parsed = parseNetcusWeekly(res.weeks || [], state.categories);
-  netcusWeeklyMerge = { key: ncMergeKey(from, to), parsed, at: ncNow() };   // 과제별 글 미리 보기와 복사가 같은 결과를 쓴다
+  const weeks = res.weeks || [];
+  const parsed = parseNetcusWeekly(weeks, state.categories);
+  rptMStoreRead('week', from, to, parsed, weeks.length);
   return { ok: true, parsed };
 }
-//  지금 기간의 글을 지금 출처로 모은다. 주간보고를 못 읽으면 이유를 보이고 출처를 캘린더로 되돌린다(미리 보기는 그대로).
-//  fresh(새 기간)면 체크를 '기록 있음'으로 새로 정한다.
-async function rptMFill(S, fresh){
-  if(S.src === 'week'){
-    const gen = ++__rptMGen;
-    __rptMReading = true; rptMRenderSettings();
-    rptMSrcMsg('netcus 주간보고를 읽는 중입니다. 여러 건을 조회해 시간이 걸립니다.', 'info');
-    let r;
-    try{ r = await rptMReadNetcus(S.from, S.to); }
-    finally{ __rptMReading = false; }
-    if(gen !== __rptMGen || S !== __rptM){ rptMRenderSettings(); return; }   // 그 사이 기간을 바꿨다: 늦은 결과는 버린다
-    if(!r.ok){
-      S.src = 'cal';
-      rptMRenderAll();
-      rptMSrcMsg(r.msg + ' 출처를 캘린더로 되돌렸습니다(미리 보기는 그대로입니다).', 'err');
-      return;
-    }
-    __rptMWeek = { key: S.from + '|' + S.to, auto: rptMBuildWeek(r.parsed) };
-    S.fillSrc = 'week';
-    const nu = __rptMWeek.auto.unid.length;
-    rptMSrcMsg('netcus 주간보고 ' + (r.parsed.weekCount || 0) + '주를 읽어 과제별로 모았습니다.' + (nu ? ' 내 과제와 맞지 않은 ' + nu + '개는 미식별 항목에 두었습니다(문서에 넣지 않음).' : ''), 'ok');
-  } else {
-    S.fillSrc = 'cal';
-    rptMAuto(S, true);
-    rptMSrcMsg('', '');
-  }
-  __rptMHas = rptMHasSet(S);
-  if(fresh) for(const id of S.order) S.checked[id] = __rptMHas.has(id);
-  rptMRenderAll();
-  if(!fresh && S.fillSrc === 'cal') toast('기록을 다시 모았습니다', 'success');
+//  이 앱 주간보고 DB 의 주 한 건 -> parseNetcusWeekly 가 받는 모양. endwork 는 그대로, content 는 과제투입시간 줄(hours 가 있으면 '[이름] : 시간' 줄, 없으면 글 그대로).
+function rptMWeekFromRow(r){
+  const hrs = Array.isArray(r.hours) ? r.hours.filter(h => h && h.hours > 0 && String(h.name || '').trim()) : [];
+  return { endwork: r.endwork, content: hrs.length ? hrs.map(h => '[' + h.name + '] : ' + h.hours).join('\n') : r.content,
+    title: r.subject, period: r.periodStart + ' ~ ' + r.periodEnd, regdate: r.composedAt };
 }
-//  읽어 오기: 다른 기간이면 그 기간을 새로 연다(출처와 기타에서 뺀 것은 이어 받는다), 같은 기간이면 지금 출처로 다시 모은다.
+//  캘린더 기록 출처: 이 앱 주간보고 DB 에서 그 기간과 겹치는 주(periodStart~periodEnd)를 읽어 과제별로 모은다. 회사 사이트로는 요청이 나가지 않는다.
+//  주 고르는 규칙은 인트라넷 주간(호스트 NetcusWeeklyRangeRead)과 같은 겹침이다. 시작 쪽 한 주 더 읽기와 나눠 읽기는 근태 주간 목록과 같은 함수(awRowsFetch)다.
+async function rptMReadApp(from, to){
+  if(!HOST) return { ok: false, msg: '주간보고 기록은 데스크톱 위젯에서만 읽을 수 있습니다.' };
+  const f = await awRowsFetch({ from, to }, null);
+  if(f.err !== undefined){
+    const e = typeof f.err.error === 'string' ? f.err.error : (f.err.error ? pcErrText(f.err.error) : '');
+    return { ok: false, msg: '주간보고 기록을 읽지 못했습니다.' + (e ? ' ' + e : '') };
+  }
+  const rows = f.rows.filter(r => r.periodEnd >= from && r.periodStart <= to).sort((a, b) => a.periodStart < b.periodStart ? -1 : a.periodStart > b.periodStart ? 1 : 0);
+  const parsed = parseNetcusWeekly(rows.map(rptMWeekFromRow), state.categories);
+  rptMStoreRead('cal', from, to, parsed, rows.length);
+  return { ok: true, parsed };
+}
+//  지금 기간의 글을 지금 출처(S.src)로 읽는다. 못 읽으면 이유를 보인다(읽어 둔 글과 출처는 그대로).
+//  fresh(새 기간)이거나 이 기간의 첫 읽기면 체크를 '기록 있음'으로 새로 정한다.
+async function rptMFill(S, fresh){
+  const src = S.src === 'week' ? 'week' : 'cal';
+  const gen = ++__rptMGen;
+  __rptMReading = true; rptMRenderSettings();
+  rptMSrcMsg(src === 'week' ? 'netcus 주간보고를 읽는 중입니다. 여러 건을 조회해 시간이 걸립니다.' : '주간보고 기록을 읽는 중입니다.', 'info');
+  let r;
+  try{ r = src === 'week' ? await rptMReadNetcus(S.from, S.to) : await rptMReadApp(S.from, S.to); }
+  finally{ __rptMReading = false; }
+  if(gen !== __rptMGen || S !== __rptM){ rptMRenderSettings(); return; }   // 그 사이 기간을 바꿨다: 늦은 결과는 버린다
+  if(!r.ok){
+    rptMRenderAll();
+    rptMSrcMsg(r.msg, 'err');   // 읽어 둔 글은 그대로 둔다(문서 미리 보기도 그대로)
+    return;
+  }
+  const first = !S.fillSrc;   // 이 기간의 첫 읽기: 체크를 '기록 있음'으로 정한다. 다시 읽을 때는 사용자가 고른 체크를 그대로 둔다
+  S.fillSrc = src;
+  const nu = netcusWeeklyMerge.auto.unid.length, n = r.parsed.weekCount || 0;
+  const nuMsg = nu ? ' 내 과제와 맞지 않은 ' + nu + '개는 미식별 항목에 두었습니다(문서에 넣지 않음).' : '';
+  if(src === 'week') rptMSrcMsg('netcus 주간보고 ' + n + '주를 읽어 과제별로 모았습니다.' + nuMsg, 'ok');
+  else if(!netcusWeeklyMerge.weeksRead) rptMSrcMsg('이 기간에 이 앱으로 쓴 주간보고가 없습니다.', 'info');
+  else rptMSrcMsg('주간보고 기록 ' + n + '주를 읽어 과제별로 모았습니다.' + nuMsg, 'ok');
+  __rptMHas = rptMHasSet(S);
+  if(fresh || first) for(const id of S.order) S.checked[id] = __rptMHas.has(id);
+  rptMRenderAll();
+}
+//  읽어 오기: 다른 기간이면 그 기간을 새로 연다(출처와 기타에서 뺀 것은 이어 받는다), 같은 기간이면 지금 출처로 다시 읽는다.
 //  고친 글이 없으므로 확인 창을 띄우지 않는다.
 async function rptMLoadClick(){
   const S = __rptM; if(!S || __rptMReading) return;
@@ -17920,7 +17775,7 @@ async function rptMLoadClick(){
   __rptMGen++;
   __rptM = rptMFresh(from, to, S.src, S.etcOff);
   rptMSrcMsg('', ''); rptMRenderAll();
-  if(__rptM.src === 'week') await rptMFill(__rptM, true);   // 캘린더 글로 먼저 그리고, 주간보고를 읽어 오면 바꾼다
+  await rptMFill(__rptM, true);
 }
 //  기타 칩 넣기 빼기: 이 탭을 연 동안만(기억하지 않는다). 요약 줄과 미리 보기를 바로 바꾼다.
 function rptMEtcToggle(key, on){
@@ -17950,7 +17805,7 @@ function rptMLines(text){
 //  exportMonthlyDocx payload(§7.4). 그림 바이트는 없다(호스트가 uid 로 찾아 넣는다).
 //  2026-10-23: 과제명은 공식 이름, 수행 계획 두 칸(prevPlan, nextPlan)과 일정 변경이력(changes)은 늘 빈 배열이다(문서에 빈칸, 변경이력은 빈 줄 하나).
 function rptMPayload(S){
-  const auto = rptMAuto(S, false);
+  const auto = rptMAuto(S);
   return {
     name: rptMName().trim(), reportDate: S.date,
     actual: { from: S.from, to: S.to }, plan: { from: S.pFrom, to: S.pTo },
@@ -17960,7 +17815,7 @@ function rptMPayload(S){
   };
 }
 function rptMCheck(S){
-  if(__rptMReading) return 'netcus 주간보고를 읽는 중입니다. 다 읽은 뒤 저장하세요.';
+  if(__rptMReading) return '주간보고를 읽는 중입니다. 다 읽은 뒤 저장하세요.';
   if(!_rptMValid(S.from) || !_rptMValid(S.to) || S.from > S.to) return '실적 기간을 바르게 고르세요.';
   if(!_rptMValid(S.pFrom) || !_rptMValid(S.pTo) || S.pFrom > S.pTo) return '계획 기간을 바르게 고르세요(시작이 끝보다 늦을 수 없습니다).';
   if(!_rptMValid(S.date)) return '작성일을 고르세요.';
@@ -18275,21 +18130,6 @@ function notifyDataChanged(){
   renderPanel(); renderGrid();
   atSumRefresh();   // 취합 화면이 떠 있을 때만(패널과 취합 교차 반영)
 }
-// 보고서 날짜별 dayNote 라인 인라인 편집 커밋 — (todoId,date)를 .rdn 행에서 해석해 updateTodo({dayNotes:{date:val}})로만 위임.
-// 원본 dayNotes 변경 → notifyDataChanged가 패널·그리드·보고서를 한 번에 교차 반영(단일 소스, 이중 렌더 금지).
-function commitDayNoteEdit(ta){
-  const row = ta.closest('.rdn'); if(!row){ editingDayNoteKey = null; return; }
-  if(ta.dataset.cancel){ editingDayNoteKey = null; buildReport(); return; }   // Esc/취소
-  editingDayNoteKey = null;
-  const id = row.dataset.dnid, date = row.dataset.dndate;
-  const t = (state.todos || []).find(x => x.id === id);
-  const cur = (t && t.dayNotes) ? String(t.dayNotes[date] || '') : '';
-  if(!t || String(ta.value).trim() === cur.trim()){ buildReport(); return; }   // 무변경 → 편집기만 걷어냄(1회 렌더)
-  if(guardEdit()){ buildReport(); return; }
-  updateTodo(id, { dayNotes: { [date]: ta.value } });   // 저장(빈 값이면 normalizeTodoDayNotes가 그 날짜 제거)
-  notifyDataChanged();   // 열린 뷰 일괄 재반영(패널·그리드·보고서)
-}
-
 function dueLabel(due){
   if(!due) return '';
   const today = todayYmd();
@@ -20287,7 +20127,6 @@ function bind(){
   /* 근태 탭 취합(진입: 근태 탭 머리의 [취합]). 글 만들기와 월간 보고 함수는 보고서 창에 있던 그대로다 */
   $('#rptFrom').addEventListener('change', atSumPeriod);
   $('#rptTo').addEventListener('change', atSumPeriod);
-  ['#rptSrcEvent','#rptSrcTodo','#rptWithDesc','#rptSkipEmpty'].forEach(s => { const el = $(s); if(el) el.addEventListener('change', buildReport); });
   $('#btnRptCopy').addEventListener('click', copyReport);
   $('#asLoad').addEventListener('click', atSumLoad);
   $('#asOut').addEventListener('click', ev => { const b = ev.target.closest('[data-aso]'); if(b) atSumOutSet(b.dataset.aso); });
@@ -20321,33 +20160,6 @@ function bind(){
       const b = ev.target.closest('[data-rsrc]'); if(!b || b.disabled) return;
       atSumSource(b.dataset.rsrc);
     }); }
-  // 날짜별 dayNote 라인 편집(✎): 기간 취합만(일간과 주간 카드는 읽기 전용, REPORT-EDIT §5, WEEKLY-EDIT §3.2). 저장은 commitDayNoteEdit→updateTodo 단일 경로.
-  $('#rptOut').addEventListener('click', ev => {
-    const b = ev.target.closest && ev.target.closest('.rdn [data-dnact]'); if(!b) return;
-    if(b.dataset.dnact === 'edit'){
-      const row = b.closest('.rdn');
-      editingDayNoteKey = String(row.dataset.dnid) + '|' + String(row.dataset.dndate);
-      buildReport();
-      const ta = $('#rptOut .rdn-edit'); if(ta){ ta.focus(); const n = ta.value.length; try{ ta.setSelectionRange(n, n); }catch(_){} }
-    }
-    // 'save'/'cancel'은 focusout(commitDayNoteEdit)/mousedown 경로에서 처리 → 이중 커밋 방지
-  });
-  $('#rptOut').addEventListener('mousedown', ev => {   // dayNote 라인 취소 버튼: focusout 전에 취소 의도 심기(저장 아닌 취소로 종결)
-    const c = ev.target.closest && ev.target.closest('.rdn-cancel'); if(!c) return;
-    const row = c.closest('.rdn'); const ta = row && row.querySelector('.rdn-edit');
-    if(ta) ta.dataset.cancel = '1';
-  });
-  $('#rptOut').addEventListener('keydown', ev => {
-    if(ev.isComposing || ev.keyCode === 229) return;   // 한글 IME 조합 중 Enter 무시
-    if(ev.target.classList && ev.target.classList.contains('rdn-edit')){
-      if(ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); ev.target.blur(); }   // Enter=저장, Shift+Enter=줄바꿈
-      else if(ev.key === 'Escape'){ ev.preventDefault(); ev.target.dataset.cancel = '1'; ev.target.blur(); }
-    }
-  });
-  $('#rptOut').addEventListener('focusout', ev => {
-    if(ev.target.classList && ev.target.classList.contains('rdn-edit')) commitDayNoteEdit(ev.target);
-  });
-
   /* 모달 공통: × / 취소 / 배경 클릭 */
   $$('.overlay').forEach(ov => {
     ov.addEventListener('click', ev => {
@@ -22229,19 +22041,18 @@ function awfMatch(it, R){
   if(d){ t.push(d.subj, d.prog, d.plan, d.meet); (d.hrs || []).forEach(h => { if(h && h.name) t.push(h.name); }); }
   return t.some(x => String(x == null ? '' : x).toLowerCase().includes(q));
 }
-async function awListLoad(){
-  const R = awfRange();
-  if(!HOST || PEER || (SUBWIN && !ATTENDWIN) || !awfValid(R)){ awListRender(); return; }
-  const g = ++AWL.gen;
-  AWL.loading = true; awListRender();
-  //  보고 대상 기간이 겹치는 주를 찾으려고 시작 쪽을 한 주 더 읽는다. 호스트 상한을 넘으면 나눠 읽는다. 전체는 기록이 두 번 연달아 비는 곳까지 거슬러 간다.
+//  주간보고 기록 읽기(근태 주간 목록과 취합의 캘린더 기록이 같이 쓴다). R = { from, to }, from 이 빈 문자열이면 처음 기록까지(전체).
+//  보고 대상 기간이 겹치는 주를 찾으려고 시작 쪽을 한 주 더 읽는다. 호스트 상한(ReportDb.ListMaxDays)을 넘으면 AW_CHUNK 일씩 나눠 읽는다.
+//  전체는 기록이 두 번 연달아 비는 곳까지 거슬러 간다. stale 은 '그 사이 다시 읽었다'를 알려 주는 함수(옛 회신을 버린다, 없어도 된다).
+//  반환: { rows, lo }(awRowNorm 을 거친 주) | { err }(호스트 회신 또는 {}) | { stale: true }
+async function awRowsFetch(R, stale){
   const floor = R.from ? addDays(R.from, -7) : '2020-01-01';
   const rows = []; let hi = R.to, lo = hi, empty = 0, err = null;
   for(let n = 0; n < 12; n++){
     const f0 = addDays(hi, -(AW_CHUNK - 1)), from = f0 < floor ? floor : f0;
     let r = null;
     try{ r = await hostRequest('reportWeeklyList', { from, to: hi }); }catch(_){ r = null; }
-    if(g !== AWL.gen) return;   // 그 사이 다시 읽었다. 옛 회신은 버린다
+    if(stale && stale()) return { stale: true };
     if(!r || !r.ok){ err = r || {}; break; }
     const got = (Array.isArray(r.rows) ? r.rows : []).map(awRowNorm).filter(Boolean);
     rows.push(...got); lo = from;
@@ -22250,14 +22061,24 @@ async function awListLoad(){
     if(!R.from && empty >= 2) break;
     hi = addDays(from, -1);
   }
+  return err !== null ? { err } : { rows, lo };
+}
+async function awListLoad(){
+  const R = awfRange();
+  if(!HOST || PEER || (SUBWIN && !ATTENDWIN) || !awfValid(R)){ awListRender(); return; }
+  const g = ++AWL.gen;
+  AWL.loading = true; awListRender();
+  const f = await awRowsFetch(R, () => g !== AWL.gen);
+  if(f.stale) return;
   AWL.loading = false;
-  if(err !== null){
+  if(f.err !== undefined){
+    const err = f.err;
     const e = typeof err.error === 'string' ? err.error : (err.error ? pcErrText(err.error) : '');
     AWL.err = '주간보고 기록을 읽지 못했습니다.' + (e ? ' ' + e : '');
     awListRender(); return;
   }
-  AWL.err = ''; AWL.from = lo; AWL.to = R.to;
-  AWL.rows = rows;
+  AWL.err = ''; AWL.from = f.lo; AWL.to = R.to;
+  AWL.rows = f.rows;
   awListRender();
 }
 //  목록 화면. 머리(종류 단추, 제목, 건수, 작성, 기간과 찾기)는 한 번 만들고 다시 쓰지 않는다(찾기 칸의 입력과 한글 조합을 지키려고). 줄과 쪽만 다시 그린다.

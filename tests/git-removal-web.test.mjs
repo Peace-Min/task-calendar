@@ -269,12 +269,12 @@ if (!JSDOM) {
     } finally { L.close(); }
   });
 
-  test('(R) 화면: 날짜 패널은 탭 없이 일정과 할 일 두 묶음, 과제 창에 저장소 카드가 없고, 취합 화면의 포함 항목에 커밋이 없다(일정, 할 일, 설명, 빈 과제 빼기)', () => {
+  test('(R) 화면: 날짜 패널은 탭 없이 일정과 할 일 두 묶음, 과제 창에 저장소 카드가 없고, 취합 화면에 포함 항목 칸이 없다(커밋 칸도 없다)', () => {
     assert.deepStrictEqual(B.evJSON("[].map.call(document.querySelectorAll('#dpBody > .dp-grp'), function(g){ return g.dataset.grp; })"), ['ev', 'td']);
     assert.strictEqual(B.ev("document.querySelectorAll('#dpTabs, #dayPanel [role=tab]').length"), 0);
     assert.strictEqual(B.ev("!!document.getElementById('gitCard')"), false);
     assert.strictEqual(B.ev("!!document.getElementById('entryModal') || !!document.getElementById('bulkGitModal') || !!document.getElementById('dayGitModal')"), false);
-    assert.deepStrictEqual(B.evJSON("[].map.call(document.querySelectorAll('#atSum .rpt-chips input'), function(i){ return i.id; })"), ['rptSrcEvent', 'rptSrcTodo', 'rptWithDesc', 'rptSkipEmpty']);
+    assert.strictEqual(B.ev("document.querySelectorAll('#atSum .rpt-chips input').length"), 0, '취합 화면에 포함 항목 칸이 있다(2026-11-03 없앴다)');
   });
 
   test('(R) 과제 데이터 내보내기: 호스트로 가는 exportResearch 의 값은 {project, calendarMd, from, to} 넷뿐이다', async () => {

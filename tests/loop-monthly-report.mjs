@@ -12,7 +12,7 @@
  *        고치는 칸 없음(입력은 날짜와 체크뿐), 체크한 과제마다 미리 보기 표(목록 순서)
  *    L1  배치(2026-11-03): 왼쪽 #asLeft, 오른쪽 #asRight 가 둘 다 보이는지, 미리 보기 종이가 칸 폭에 맞게 줄었는지,
  *        과제 줄 라벨에 앱 폼 라벨 여백(위 16px)이 걸리지 않는지, 체크를 끄고 켜면 미리 보기 표가 바로 빠지고 돌아오는지(돌려 놓는다)
- *    M3  다시 읽어 오기(캘린더, 확인 창 없음): 과제별 실적 = 기간 취합 복사 글의 과제 블록(글자 그대로)
+ *    M3  다시 읽어 오기(캘린더 기록 = 이 앱 주간보고 DB, 확인 창 없음): 과제별 실적 = 읽은 주간보고의 과제별 글, 복사 글에 그 블록이 글자 그대로 들어 있음
  *    M4  그림 목록: 과제 줄마다 scheduleImageList 회신(정상이면 목록, 끊겼으면 사본 목록과 안내)과 그림 단추(그림 n 또는 + 그림). 넣기, 지우기는 하지 않는다
  *    M5  저장 payload 모양(rptMPayload): 기간, 과제 uid, 본문 {level, text}, 계획 두 칸과 변경이력은 빈 배열.
  *        실제 저장은 저장 창이 떠서 사람이 한다(아래 안내)
@@ -153,6 +153,10 @@ async function main() {
     const gone = await J(`({ pane: !!document.getElementById('rptMonthlyPane'), grid: !!document.querySelector('.rptm-grid'), sub: !!document.getElementById('rptmSub'), rf: !!document.getElementById('rptmFrom'), rt: !!document.getElementById('rptmTo'), src: !!document.getElementById('rptmSrc'), load: !!document.getElementById('rptmLoad') })`);
     ok('M1 사라진 것이 없다(#rptMonthlyPane, .rptm-grid, #rptmSub, #rptmFrom, #rptmTo, #rptmSrc, #rptmLoad)', Object.values(gone).every((v) => v === false), JSON.stringify(gone));
 
+    //  캘린더 기록은 이 앱 주간보고 DB 를 읽어 온다(2026-11-03). 처음 체크가 읽은 주간보고에서 정해지므로 먼저 한 번 읽는다(회사 사이트 요청 없음, DB 에 쓰지 않음).
+    await cdp.ev(`document.getElementById('asLoad').click(); 1`);
+    await sleep(1500);
+
     head('M2 기간과 과제');
     const st = await J(`({ from: __rptM.from, to: __rptM.to, lm: monthRange(new Date(), -1), plan: [__rptM.pFrom, __rptM.pTo], pd: rptMPlanDefault(__rptM.from, __rptM.to),
       fromTo: [document.getElementById('rptFrom').value, document.getElementById('rptTo').value],
@@ -187,19 +191,18 @@ async function main() {
     if (!live) undecide('L1 체크와 미리 보기', '체크한 과제가 없다');
     else ok('L1 체크를 끄면 미리 보기 표가 바로 빠지고, 켜면 바로 돌아온다', live.off === false && live.on === true, JSON.stringify(live));
 
-    head('M3 다시 읽어 오기(캘린더)');
-    //  출처는 캘린더(#rptSrcSeg data-rsrc="cal")만 쓴다. 인트라넷 주간(week)은 실제로 읽지 않는다.
+    head('M3 다시 읽어 오기(캘린더 기록 = 이 앱 주간보고 DB)');
+    //  출처는 캘린더 기록(#rptSrcSeg data-rsrc="cal")만 쓴다. 이 앱 주간보고 DB 를 읽는다(reportWeeklyList). 인트라넷 주간(week)은 실제로 읽지 않는다(회사 사이트).
     await cdp.ev(`(function(){ const b = document.querySelector('#rptSrcSeg [data-rsrc="cal"]'); if (b) b.click(); return 1; })()`);
     await cdp.ev(`document.getElementById('asLoad').click(); 1`);
-    await sleep(800);
+    await sleep(1500);
     ok('M3 같은 기간 읽어 오기에 확인 창이 뜨지 않는다', !(await cdp.ev(isOpen('#confirmModal'))));
-    const cmp = await J(`(function(){ var a = rptMBuildCal(__rptM.from, __rptM.to), m = rptMAuto(__rptM, false); var bad = []; rptMPicked(__rptM).forEach(function(id){ if ((m.proj.get(id) || '') !== (a.proj.get(id) || '')) bad.push(id); }); return bad; })()`);
-    ok('M3 과제별 실적 = 캘린더 과제별 글', cmp.length === 0, JSON.stringify(cmp));
-    //  기간 취합 복사 글과 글자 그대로(같은 기간으로 탭을 바꿔 보고 돌아온다)
-    const eq = await J(`(function(){ var S = __rptM, m = rptMAuto(S, false); var joined = state.categories.map(function(c){ var t = isOfficialCat(c) ? (m.proj.get(c.id) || '') : (m.etc.find(function(e){ return e.key === c.id; }) || { text: '' }).text; return '[' + c.name + ']' + (t ? '\\n' + t : ''); }).join('\\n\\n') + '\\n';
-      var f0 = $('#rptFrom').value, t0 = $('#rptTo').value; $('#rptFrom').value = S.from; $('#rptTo').value = S.to; var prefs = loadRptSourcePrefs().weekly; buildReport(); var copy = buildReportText(); var skip = !!prefs.skipEmpty; $('#rptFrom').value = f0; $('#rptTo').value = t0; buildReport(); return { same: joined === copy, skip: skip, a: joined.length, b: copy.length }; })()`);
-    if (eq.skip) undecide('M3 기간 취합 글과 글자 비교', '기간 취합에 "내용 없는 항목 제외" 가 켜져 있어 블록 수가 달라 비교하지 않는다');
-    else ok('M3 이어 붙인 실적 글 = 기간 취합 복사 글(글자 그대로)', eq.same, JSON.stringify(eq));
+    const cmp = await J(`(function(){ var c = netcusWeeklyMerge; if (!c || !c.parsed || c.src !== 'cal') return ['읽은 결과 없음']; var a = rptMBuildWeek(c.parsed), m = rptMAuto(__rptM); var bad = []; if (!m) return ['문서 글 없음']; rptMPicked(__rptM).forEach(function(id){ if ((m.proj.get(id) || '') !== (a.proj.get(id) || '')) bad.push(id); }); return bad; })()`);
+    ok('M3 과제별 실적 = 읽은 주간보고의 과제별 글', cmp.length === 0, JSON.stringify(cmp));
+    //  복사 글과 월간 문서가 같은 읽기 한 번의 결과다(과제별 글 쪽 복사 글에 문서의 과제 블록이 그대로 들어 있다)
+    const eq = await J(`(function(){ var S = __rptM, m = rptMAuto(S); if (!m) return { same: false, n: 0 }; var f0 = $('#rptFrom').value, t0 = $('#rptTo').value; $('#rptFrom').value = S.from; $('#rptTo').value = S.to; var copy = buildReportText(); $('#rptFrom').value = f0; $('#rptTo').value = t0;
+      var miss = []; rptMPicked(S).forEach(function(id){ var t = m.proj.get(id) || ''; if (t && copy.indexOf(t) < 0) miss.push(id); }); return { same: miss.length === 0, n: rptMPicked(S).length, miss: miss, len: copy.length }; })()`);
+    ok('M3 문서의 과제 블록이 복사 글에 글자 그대로 들어 있다(같은 읽기 결과)', eq.same, JSON.stringify(eq));
 
     head('M4 그림 목록');
     await cdp.ev(`atSumInit(); atSumOutSet('doc'); 1`);   // 처음 값으로 다시 열면 그림 목록을 다시 묻는다(요청은 DB 그림 목록뿐)
