@@ -269,8 +269,9 @@ if (!JSDOM) {
     } finally { L.close(); }
   });
 
-  test('(R) 화면: 날짜 패널 탭은 일정 상세와 할 일 둘, 과제 창에 저장소 카드가 없고, 취합 화면의 포함 항목에 커밋이 없다(일정, 할 일, 설명, 빈 과제 빼기)', () => {
-    assert.deepStrictEqual(B.evJSON("[].map.call(document.querySelectorAll('#dpTabs .dp-tab'), function(b){ return b.dataset.ptab; })"), ['detail', 'todo']);
+  test('(R) 화면: 날짜 패널은 탭 없이 일정과 할 일 두 묶음, 과제 창에 저장소 카드가 없고, 취합 화면의 포함 항목에 커밋이 없다(일정, 할 일, 설명, 빈 과제 빼기)', () => {
+    assert.deepStrictEqual(B.evJSON("[].map.call(document.querySelectorAll('#dpBody > .dp-grp'), function(g){ return g.dataset.grp; })"), ['ev', 'td']);
+    assert.strictEqual(B.ev("document.querySelectorAll('#dpTabs, #dayPanel [role=tab]').length"), 0);
     assert.strictEqual(B.ev("!!document.getElementById('gitCard')"), false);
     assert.strictEqual(B.ev("!!document.getElementById('entryModal') || !!document.getElementById('bulkGitModal') || !!document.getElementById('dayGitModal')"), false);
     assert.deepStrictEqual(B.evJSON("[].map.call(document.querySelectorAll('#atSum .rpt-chips input'), function(i){ return i.id; })"), ['rptSrcEvent', 'rptSrcTodo', 'rptWithDesc', 'rptSkipEmpty']);

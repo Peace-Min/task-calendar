@@ -7,6 +7,20 @@
 
 ---
 
+## 🆕 2026-11-03 (다음 판, 0.26.0 예정, 번호는 배포 때): 개인 달력 우측 패널 정리와 보기 하나
+
+설계는 [docs/PERSONAL-PANEL.md](docs/PERSONAL-PANEL.md)(시안 `dist/proto/personal-panel.html`, 이슈 #15 1단계). 위키 [개인 달력 패널](docs/wiki/개인-달력-패널.md), [과제 필터와 보기](docs/wiki/과제-필터.md). DB 구조 변경 없음.
+
+- **패널 = 고른 날짜만**: [일정 상세 | 할 일] 탭을 없앴다(`dpTabs`, `setPanelTab`, `noteTab`, `noteCollapsed`, `noteImportantOnly`). 패널은 머리(`#dpHead`: 날짜, 요일, [+ 추가] 하나), 본문(`#dpBody`: 일정 n, 할 일 n 두 묶음을 늘 같은 자리에, 비면 "없음", 끈 종류는 "보기에서 숨김"), 맨 아래 한 줄(`#dpFoot`: 할 일 전체 보기 … 기한 없음 n ›). `renderPanel`, `dayDetailHtml`(본문), `dayHeadHtml`, `dayFootHtml`, `todoRowHtml(t, opts)`(panel, all 두 모양). 할 일은 중요 먼저, 같은 중요도에서 안 끝낸 것 먼저(`todoZoneCmp`), 줄 끝 ★ 와 체크는 예전 행 그대로.
+- **할 일 전체 팝업**(`#todoAllModal`, `openTodoAll`, `todoAllGroups`, `todoAllHtml`, `todoAllClick`): 예전 `renderTodoListTab` 과 `todoBuckets` 의 묶음 계산을 옮겨 ★ 중요, 기한 지남, 이번 주(오늘부터 달력 한 주 토요일까지), 나중, 기한 없음, 완료 묶음으로 바꿨다. 날짜 있는 할 일을 누르면 그 날짜로 이동해 패널에서 강조. 죽은 코드 `renderTodayTab`, `quickAddHtml`, `emptyTodoHtml`, `todoSectionHtml`, `todoBuckets`, `renderTodoListTab`, `setPanelTab` 삭제.
+- **도구줄**: "＋ 새 기록" 단추(`btnNew`)를 없앴다. 추가는 패널 머리의 [+ 추가]와 날짜 두 번 누르기이고 둘 다 `openAddOnDate` 로 가며, 보기가 할 일만이면 할 일 종류로 연다. 만든 기록의 종류가 보기에서 꺼져 있으면 켠다(`viewShowKind`).
+- **보기 하나**: 과제 필터 단추를 "⚲ 보기" 단추 하나로 넓혔다. 팝업 "달력에 보일 것": [처음대로], 기록 종류(일정, 할 일, 둘 다 끌 수 없음), 과제(검색, 전체 선택/해제, 다중 선택 목록은 FILTER-MULTI 그대로), 가는 선 아래 보기 옵션(완료한 할 일 표시, 중요한 할 일만). 상태는 `filterCats`(과제) + `viewKinds` + `viewOpts`. 단추 요약(`viewSummary`: 전체, 할 일만, 일정만, 과제 n, 완료 숨김, 중요만)과 강조. `passFilter`(일정)와 `viewTodoPass`(할 일)가 월간 막대(`pmMonthItems`), 주간 과제별 줄, 패널, 할 일 전체 팝업을 한 판정으로 거른다. 고른 과제 칩과 `fitFilterChips`, `fbFreeWidth` 는 없앴다. 계정별 이 PC 에 기억(`tc_view:<계정>`, `viewPersist`, `viewRestore`). 열람 창은 기억하지 않는다.
+- **달력 칸**: 일정과 할 일이 둘 다 보이면 칸 맨 위 줄에 그날 하루짜리 할 일(3개 이상이면 `할 일 n` 개수 칩, `pmTodoZone`), 점선(`.td-sep`) 아래 일정. 한 종류만이면 나누지 않는다. 여러 날 할 일은 점선 막대로 남는다. 중요한 할 일은 제목 앞 ★(예전 칩과 같다). 주간 과제별 줄은 나누지 않고 보기만 따른다.
+- **칩 누르기**: 할 일 칩은 그 날짜를 고르고 패널에서 그 행을 강조한다(탭 전환 없음, 일정 칩과 같은 동작). 개수 칩은 날짜만 고른다.
+- **열람 프레임**: 같은 함수를 읽기 전용으로 쓴다. [+ 추가]는 그리지 않고, ★ 와 체크는 상태 표시뿐이다.
+- **사용설명서와 도움말**: "＋ 새 기록", "오른쪽 할 일 탭" 문구를 새 동작에 맞게 고쳤다(패치노트의 지난 기록은 그대로).
+- 시험: 새 `tests/personal-panel.test.mjs`(정적, 단위, jsdom, 변이). 바뀐 결정에 맞춰 고친 기존 시험: `filter-multi`(칩 없음, 요약 글자, 팝업 구성, 할 일 판정), `nav-layout-c`, `category-order`, `peer-view-full`(탭 대신 패널 묶음과 맨 아래 줄), `range-chip-click`(탭 전환 대신 강조), `personal-improve`(할 일 줄이 차지하는 차선), `offline-web`, `project-calendar-web`, `git-removal-web`. 실제 위젯 루프 `loop-category-order`, `loop-peer-frame`, `loop-personal-improve`, `loop-range-chip` 은 코드만 고쳤고 `loop-ui-visual` 에 보기 팝업(`viewPop`)과 할 일 전체 팝업(`todoAllModal`) 화면을 넣었다.
+
 ## 🆕 2026-11-03 (다음 판, 번호는 배포 때): 근태 탭 취합(기간 취합과 월간 보고 합치기, 보고서 창 없앰)과 주간보고 목록 찾기
 
 설계는 [docs/ATTEND-SUMMARY.md](docs/ATTEND-SUMMARY.md). DB 구조 변경 없음.

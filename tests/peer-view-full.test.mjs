@@ -150,16 +150,19 @@ function cssRules(src) {
   return out;
 }
 const W = {
-  //  P2 — 「할 일」 탭은 PEER 에서 감추지 않는다. (「커밋 내역」 탭은 2026-10-26 Git 기능과 함께 없앴다.)
+  //  P2: 할 일은 PEER 에서 감추지 않는다. 패널의 할 일 묶음과 맨 아래 '할 일 전체 보기' 줄(docs/PERSONAL-PANEL.md, 예전엔 '할 일' 탭).
+  //  ('커밋 내역' 탭은 2026-10-26 Git 기능과 함께 없앴고, 패널의 탭은 2026-11-03 에 모두 없앴다.)
   tabsNotHidden(src) {
     for (const r of cssRules(src)) {
       if (!/display\s*:\s*none/.test(r.decl)) continue;
       for (const one of r.sel.split(',')) {
-        assert.ok(!/body\[data-peer\][^,]*#dptab-todo\b/.test(one),
-          `PEER 에서 ${one.trim()} 을(를) 감춘다 — 「할 일」 탭은 열람 창에서도 보여야 한다(P2)`);
+        assert.ok(!/body\[data-peer\][^,]*(#dpFoot|\.dp-grp|\.todo-row|#taBody|#todoAllModal)/.test(one),
+          `PEER 에서 ${one.trim()} 을(를) 감춘다. 할 일 묶음과 할 일 전체 보기는 열람 창에서도 보여야 한다(P2)`);
       }
     }
-    assert.ok(src.includes('id="dptab-todo"'), '#dptab-todo 탭 마크업이 없다');
+    assert.ok(src.includes('id="dpFoot"') && !src.includes('id="dptab-todo"') && !src.includes('id="dpTabs"'), '맨 아래 줄이 없거나 지운 탭 마크업이 남았다');
+    assert.ok(/dayGrpHtml\('td', '할 일', tdOn, tds\.length, tdInner\)/.test(extractFunction(src, 'dayDetailHtml')), '패널 본문에 할 일 묶음이 없다');
+    assert.ok(!/PEER/.test(extractFunction(src, 'dayGrpHtml')) && !/PEER/.test(extractFunction(src, 'dayFootHtml')), '할 일 묶음이나 맨 아래 줄이 PEER 에서 갈라진다');
   },
   //  P3 — 편집 수단은 감추고(CSS) 막는다(JS).
   editAffordancesGuarded(src) {
@@ -168,7 +171,7 @@ const W = {
       if (!/display\s*:\s*none\s*!important/.test(r.decl)) continue;
       for (const one of r.sel.split(',')) { const m = /^body\[data-peer\]\s+(\S+)$/.exec(one.trim()); if (m) hidden.add(m[1]); }
     }
-    for (const sel of ['#btnAddHere', '#btnTodoNew', '.todo-del', '.card-actions']) {
+    for (const sel of ['#btnAddHere', '.todo-del', '.card-actions']) {
       assert.ok(hidden.has(sel), `PEER 에서 ${sel} 을(를) 감추지 않는다 — 열람 창에 편집 수단이 보인다(P3)`);
     }
     //  setCommitSubject, setTodoText, setEntryTitle 은 일간 보고서 줄 ✎ 와 함께 없앴다(REPORT-EDIT §5) — 아래에서 '없다'를 본다.
@@ -188,7 +191,8 @@ const W = {
       'deleteEntry 의 PEER 관문이 사라졌다');
     const pro = extractFunction(src, 'peerReadOnly');
     assert.ok(/if\(!PEER\) return false;/.test(pro) && /return true;/.test(pro), 'peerReadOnly 가 PEER 에서만 참이 아니다');
-    //  렌더 — 할 일 행이 편집 버튼을 만들지 않는다.
+    //  렌더: [+ 추가] 를 그리지 않고, 할 일 행이 편집 버튼을 만들지 않는다.
+    assert.ok(/\(PEER \? '' : `<button class="btn primary sm" id="btnAddHere">/.test(extractFunction(src, 'dayHeadHtml')), 'dayHeadHtml 이 PEER 에서 [+ 추가] 를 그린다');
     assert.ok(/const ro = PEER;/.test(extractFunction(src, 'todoRowHtml')), 'todoRowHtml 에 읽기 전용(PEER) 갈래가 없다');
     //  끌기 — 칩은 draggable=false · dragstart 가 끊는다.
     assert.ok(/draggable="\$\{\(PEER\|\|mine\|\|kind==='recur'\)\?'false':'true'\}"/.test(extractFunction(src, 'chipHtml')), '일정 칩이 PEER 에서 끌린다');
@@ -244,7 +248,7 @@ const W = {
       '내 겹이 일정(state.entries)에서만 만들어지지 않는다');
   },
 };
-test('(W) P2: 「할 일」 탭은 PEER 에서 감추지 않는다', () => W.tabsNotHidden(app));
+test('(W) P2: 패널의 할 일 묶음과 할 일 전체 보기는 PEER 에서 감추지 않는다', () => W.tabsNotHidden(app));
 test('(W) P3: 편집 수단은 CSS 로 감추고 변경 함수는 PEER 관문으로 먼저 끊는다(Q6)', () => W.editAffordancesGuarded(app));
 test('(W) P4: 밀도 — 열람 창 전용 키 · 기본 펼침 · 띠의 전환(고정/촘촘히/펼침)', () => W.densitySeparated(app));
 test('(W) P5: 열람 창(따로 뜨는 창)은 창 전체를 쓰고 iframe 이 본문을 채운다', () => W.modalLarge(app));
@@ -252,9 +256,9 @@ test('(W) P1: 그리드 클릭은 PEER 전용 길 없이 공유 처리(누른 �
 test('(W) P6: 내 겹은 일정만 · 상대 할 일은 받은 그대로 넣는다', () => W.overlayEntriesOnly(app));
 
 // ── (M) 웹 정적 변이 ────────────────────────────────────────────────────
-test('변이 W1: PEER 에서 할 일 탭을 다시 감추면 탭 계약이 잡는다', () => {
-  const bad = mutate(app, 'body[data-peer] #btnAddHere,\n', 'body[data-peer] #btnAddHere,\nbody[data-peer] #dptab-todo,\n');
-  assert.throws(() => W.tabsNotHidden(bad), /#dptab-todo/);
+test('변이 W1: PEER 에서 할 일 전체 보기 줄을 다시 감추면 계약이 잡는다', () => {
+  const bad = mutate(app, 'body[data-peer] #btnAddHere,\n', 'body[data-peer] #btnAddHere,\nbody[data-peer] #dpFoot,\n');
+  assert.throws(() => W.tabsNotHidden(bad), /#dpFoot/);
 });
 test('변이 W2: PEER 할 일 체크(toggleTodo)의 관문을 빼면 편집 계약이 잡는다', () => {
   const bad = mutate(app, 'function toggleTodo(id){ if(peerReadOnly()) return; ', 'function toggleTodo(id){ ');
@@ -365,31 +369,32 @@ if (!JSDOM) {
       assert.deepStrictEqual(P.posted, [], '열람 창이 호스트로 무언가 보냈다');
     });
 
-    test('R P2: 「할 일」 탭이 보인다(감추지 않는다) · 「커밋 내역」 탭은 없다', () => {
-      const disp = P.ev('getComputedStyle(document.getElementById("dptab-todo")).display');
-      assert.notStrictEqual(disp, 'none', '#dptab-todo 가 열람 창에서 감춰져 있다');
-      assert.strictEqual(P.ev('!!document.getElementById("dptab-git")'), false, '「커밋 내역」 탭이 되살아났다');
+    test('R P2: 패널의 할 일 묶음과 맨 아래 \'할 일 전체 보기\' 줄이 보인다(감추지 않는다), 탭은 없다', () => {
+      const disp = P.ev('getComputedStyle(document.getElementById("dpFoot")).display');
+      assert.notStrictEqual(disp, 'none', '#dpFoot 이 열람 창에서 감춰져 있다');
+      assert.notStrictEqual(P.ev('getComputedStyle(document.querySelector("#dpBody .dp-grp[data-grp=td]")).display'), 'none', '할 일 묶음이 감춰져 있다');
+      assert.strictEqual(P.ev('!!document.getElementById("dptab-git") || !!document.getElementById("dpTabs")'), false, '지운 탭이 되살아났다');
+      assert.strictEqual(P.ev('!!document.getElementById("btnAddHere")'), false, '열람 창에 [+ 추가] 가 있다');
     });
 
-    test('R P2/Q3: 일정 상세 카드에 시간·장소·메모가 보이고 수정·삭제는 감춰진다', () => {
-      P.ev('setPanelTab("detail");');
+    test('R P2/Q3: 패널 일정 카드에 시간·장소·메모가 보이고 수정·삭제는 감춰진다', () => {
       const t = P.ev('document.getElementById("dpBody").textContent');
       for (const s of ['상대: 설계회의', '3층 소회의실', '안건 정리 메모', '09:00']) assert.ok(t.includes(s), `상세 카드에 '${s}' 가 없다`);
       assert.strictEqual(P.ev('getComputedStyle(document.querySelector("#dpBody .card .card-actions")).display'), 'none',
         '카드의 수정·삭제가 열람 창에 보인다');
     });
 
-    test('R P2/Q2: 「할 일」 탭이 그 사람의 할 일을 내 화면과 같은 규칙(이 날 · 이 날 완료)으로 읽기 전용으로 그린다', () => {
-      //  「이 날 완료」는 기본 접힘(noteCollapsed — 내 화면과 같다). 행까지 보려고 편다(보기 상태일 뿐이다).
-      P.ev('noteCollapsed.delete("done"); setPanelTab("todo");');
+    test('R P2/Q2: 패널의 할 일 묶음이 그 사람의 할 일을 내 화면과 같은 규칙(그날 할 일, 중요 먼저)으로 읽기 전용으로 그린다', () => {
       const body = 'document.getElementById("dpBody")';
       const t = P.ev(body + '.textContent');
-      for (const s of ['상대: 보고서 초안', '초안 비고', '상대: 끝낸 일', '이 날', '이 날 완료']) assert.ok(t.includes(s), `할 일 탭에 '${s}' 가 없다`);
+      for (const s of ['상대: 보고서 초안', '초안 비고', '상대: 끝낸 일']) assert.ok(t.includes(s), `패널 할 일 묶음에 '${s}' 가 없다`);
+      assert.ok(/할 일\s*2/.test(P.ev('document.querySelector("#dpBody .dp-grp[data-grp=td] .dp-grp-h").textContent')), '할 일 묶음 머리가 "할 일 2" 가 아니다');
       assert.strictEqual(P.ev(body + '.querySelectorAll(".todo-row").length'), 2);
       //  편집 수단이 없다 — 체크 버튼·삭제·추가·편집 진입(data-act) 전부.
-      assert.strictEqual(P.ev(body + '.querySelectorAll("[data-act=toggle],[data-act=del],[data-act=star],[data-act=edit]").length'), 0,
+      assert.strictEqual(P.ev('document.querySelector("#dpBody .dp-grp[data-grp=td]").querySelectorAll("[data-act=toggle],[data-act=del],[data-act=star],[data-act=edit]").length'), 0,
         '열람 창 할 일 행에 편집 동작(data-act)이 남아 있다');
-      assert.strictEqual(P.ev(body + '.querySelectorAll("button.todo-check, .todo-del, #btnTodoNew").length'), 0, '체크 버튼·삭제·추가 버튼이 그려졌다');
+      assert.strictEqual(P.ev(body + '.querySelectorAll("button.todo-check, .todo-del").length'), 0, '체크 버튼·삭제 버튼이 그려졌다');
+      assert.strictEqual(P.ev('document.querySelectorAll("#btnAddHere").length'), 0, '[+ 추가] 가 그려졌다');
       //  상태는 보인다 — 완료 표시·중요 별.
       assert.strictEqual(P.ev(body + '.querySelectorAll("span.todo-check").length'), 2, '완료 상태 표시가 없다');
       assert.strictEqual(P.ev(body + '.querySelectorAll(".todo-row.done").length'), 1);
@@ -397,7 +402,6 @@ if (!JSDOM) {
     });
 
     test('R P2: 그리드에 할 일 칩이 그려지고 모든 칩이 draggable=false 다(끌기 없음)', () => {
-      P.ev('setPanelTab("detail");');
       assert.ok(P.ev('document.querySelectorAll("#grid .chip.chip-todo").length') >= 2, '그리드에 할 일 칩이 없다');
       const drag = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#grid .chip"), function(c){return c.getAttribute("draggable");})');
       assert.ok(drag.length > 0 && drag.every((d) => d === 'false'), '끌 수 있는 칩이 있다: ' + JSON.stringify([...new Set(drag)]));
@@ -469,14 +473,12 @@ if (!JSDOM) {
       }
       assert.strictEqual(P.ev('JSON.stringify({t:state.todos, e:state.entries})'), before, '열람 창의 state 가 바뀌었다');
       //  화면 조작으로도 — 할 일 행을 눌러 본다.
-      P.ev('setPanelTab("todo");');
       P.ev('Array.prototype.forEach.call(document.querySelectorAll("#dpBody .todo-row *"), function(el){ el.dispatchEvent(new MouseEvent("click", {bubbles:true})); });');
       await settle();
       assert.strictEqual(rv(P), 0, '열람 창 할 일 행을 눌렀더니 save() 가 돌았다');
       assert.strictEqual(P.ev('JSON.stringify({t:state.todos, e:state.entries})'), before);
       assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .todo-edit").length'), 0, '편집기가 열렸다');
       assert.deepStrictEqual(P.posted, [], '편집 시도 끝에 호스트로 메시지가 나갔다');
-      P.ev('setPanelTab("detail");');
     });
 
     //  ── 통제군 — 같은 스텁에서 내 창은 밀도 기본 고정 · 열람 키를 안 읽는다 · 할 일 체크가 실제로 save 한다 ──
@@ -521,11 +523,11 @@ if (!JSDOM) {
       });
     });
 
-    test('변이 R3: PEER 에서 할 일 탭을 다시 감추면 탭이 실제로 사라진다(실행 계약이 잡는다)', async () => {
-      await withMutated('body[data-peer] #btnAddHere,\n', 'body[data-peer] #btnAddHere,\nbody[data-peer] #dptab-todo,\n', async (m) => {
+    test('변이 R3: PEER 에서 할 일 전체 보기 줄을 다시 감추면 줄이 실제로 사라진다(실행 계약이 잡는다)', async () => {
+      await withMutated('body[data-peer] #btnAddHere,\n', 'body[data-peer] #btnAddHere,\nbody[data-peer] #dpFoot,\n', async (m) => {
         inject(m); await settle();
-        assert.strictEqual(m.ev('getComputedStyle(document.getElementById("dptab-todo")).display'), 'none',
-          '변이했는데도 할 일 탭이 보인다 — jsdom 이 이 규칙을 계산하지 못하면 R P2 는 정적 계약(W1)에만 기댄다');
+        assert.strictEqual(m.ev('getComputedStyle(document.getElementById("dpFoot")).display'), 'none',
+          '변이했는데도 할 일 전체 보기 줄이 보인다. jsdom 이 이 규칙을 계산하지 못하면 R P2 는 정적 계약(W1)에만 기댄다');
       });
     });
 

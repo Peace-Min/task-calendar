@@ -58,7 +58,7 @@ test('정적②: 제목 폭은 재서 정한다(12개월 재기, 캐시 키에 �
 });
 
 test('정적③: 새로 쓴 문구와 주석에 엠 대시, en 대시, 띄어 쓴 가운데 점, 낫표가 없다', () => {
-  const src = [extractFunction(app, 'calTitleLabel'), extractFunction(app, 'fitTitleMinWidth'), extractFunction(app, 'fitFilterChips'), extractFunction(app, 'fbFreeWidth'), extractFunction(app, 'filterPopPlace'), extractFunction(app, 'pcRangeLabel')].join('\n');
+  const src = [extractFunction(app, 'calTitleLabel'), extractFunction(app, 'fitTitleMinWidth'), extractFunction(app, 'renderFilterbar'), extractFunction(app, 'viewSummary'), extractFunction(app, 'filterPopPlace'), extractFunction(app, 'pcRangeLabel')].join('\n');
   assert.ok(!/[—–「」]/.test(src), '금지 기호가 있다');
   assert.ok(!/ · /.test(src), '띄어 쓴 가운데 점이 있다');
 });
@@ -210,7 +210,7 @@ if (!JSDOM) {
     await flow('https://tcapp.local/?peer=1');
   });
 
-  test('런타임③: 과제가 없으면 필터 묶음은 꺼진 단추 하나(과제 없음)이고 날짜 줄 안에 남는다', async () => {
+  test('런타임③: 과제가 없어도 보기 묶음은 단추 하나(⚲ 보기, 기록 종류와 보기 옵션을 쓴다)이고 날짜 줄 안에 남는다', async () => {
     const W = bootWindow('https://tcapp.local/?peer=1');
     try {
       await settle();
@@ -219,7 +219,8 @@ if (!JSDOM) {
       const g = W.doc.getElementById('filterbar');
       assert.strictEqual(g.parentElement.className, 'nav');
       assert.strictEqual(g.querySelectorAll('button').length, 1);
-      assert.ok(g.querySelector('.fb-btn').disabled);
+      assert.ok(!g.querySelector('.fb-btn').disabled, '과제가 없다고 보기 단추를 끄면 기록 종류, 보기 옵션도 못 쓴다');
+      assert.strictEqual(g.querySelector('.fb-btn .pl').textContent, '⚲ 보기');
     } finally { W.close(); }
   });
 

@@ -570,7 +570,7 @@ try {
         peerAttr: w.document.body.dataset.peer||null,
         banner: (w.document.getElementById("peerBanner")||{}).textContent||"",
         grid: w.document.querySelectorAll("#grid .cell").length,
-        chips: w.document.querySelectorAll("#filterbar .fb-btn").length,   // 과제 필터 줄의 과제 버튼(FILTER-MULTI)
+        chips: w.document.querySelectorAll("#filterbar .fb-btn").length,   // 보기 단추(PERSONAL-PANEL, 예전 과제 필터 줄의 과제 버튼)
         //  ★ 로그인 게이트가 덮고 있으면 달력이 보여도 사용자는 로그인 화면만 본다.
         //    그리고 봉인 때문에 그 게이트는 **영영 안 풀린다**(2026-09-03 사용자 지적).
         gate: (()=>{ const g=w.document.getElementById("loginGate");
@@ -645,14 +645,13 @@ try {
         seen.push(el.id || (el.className||"").toString().split(" ")[0] || el.tagName.toLowerCase());
       }
       return JSON.stringify({seen:[...new Set(seen)], w:w.innerWidth});})()`));
-    //  달력 이동 · 연월 · 검색 · 과제 필터칩 · 일자 패널 안의 읽기 컨트롤만 허용한다.
-    //  달력 이동 · 연월 · 검색 · 과제 필터칩 · 일자 패널의 **읽기** 컨트롤만 허용한다.
+    //  달력 이동, 연월, 검색, 보기 단추, 일자 패널의 **읽기** 컨트롤(맨 아래 '할 일 전체 보기' 줄)만 허용한다.
     //  ★ 여기에 무언가를 더할 때는 "그게 읽기인가" 를 먼저 물을 것. 편집이면 CSS 에서 감춰야 한다.
     const ALLOW = new Set(["btnPrev","btnToday","btnNext","btnTitle","jumpMonth","btnCalViewMonth","btnCalViewWeek","btnSearch",
-                           "fbBtn","fb-x","fb-more","dpSheetClose","dptab-detail",
-                           //  ★ 2026-10-01(PEER-VIEW-FULL P2) — 「할 일」 탭을 연다(읽기). 탭 안의 편집 수단은 여전히 감춘다.
-                           //    (「커밋 내역」 탭은 2026-10-26 Git 기능과 함께 없앴다.)
-                           "dptab-todo"]);
+                           "fbBtn","dpSheetClose",
+                           //  ★ 2026-11-03(PERSONAL-PANEL): 패널의 탭은 없어졌다. 할 일은 패널의 묶음으로 보이고, 맨 아래 '할 일 전체 보기' 줄(dpFoot)은 읽기다.
+                           //    [+ 추가](btnAddHere)는 열람 프레임에서 아예 그리지 않는다.
+                           "dpFoot"]);
     const extra = (vis.seen || []).filter((k) => !ALLOW.has(k));
     //  ★ 한계를 적어 둔다: 위젯 창이 화면에 안 그려지면 iframe 뷰포트가 0폭이 되고,
     //    그러면 **좁은 화면용 반응형 규칙**이 켜져 일부 버튼이 저절로 숨는다 — 이 검사가 그만큼 약해진다.

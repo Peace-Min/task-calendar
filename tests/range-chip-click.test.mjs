@@ -54,10 +54,10 @@ const MUT = {
     'const chipDs = cellDs || chip.dataset.occ || selectedDate;',
     'const chipDs = chip.dataset.occ || cellDs || selectedDate;',
     s),
-  //  할 일 칩이 접힌 「이 날」 섹션을 펴지 않는다(B2 — 행이 안 보인다)
-  noOndayOpen: (s) => mutate(
-    "if(td && td.done) noteCollapsed.delete('done'); else noteCollapsed.delete('onday');",
-    "if(td && td.done) noteCollapsed.delete('done');",
+  //  할 일 칩이 패널의 그 행을 강조하지 않는다(B2, 어느 행인지 모른다)
+  noTodoFlash: (s) => mutate(
+    'if(chip.dataset.todo){ flashTodoId = chip.dataset.todo; selectDate(chipDs); return; }',
+    'if(chip.dataset.todo){ selectDate(chipDs); return; }',
     s),
 };
 
@@ -83,10 +83,11 @@ const statics = {
       '선택 날짜의 우선순위가 「누른 칸 → data-occ → 현재 선택」이 아니다(B1·B4): ' + m[1]);
     assert.ok(ic < b.indexOf('chip.dataset.occ'), '누른 칸보다 data-occ 를 먼저 본다(B1)');
     assert.ok(!/selectDate\(\s*chip\.dataset\.occ/.test(b), '칩 클릭이 아직 data-occ(시작일)로 날짜를 고른다(B1)');
-    assert.strictEqual((b.match(/selectDate\(chipDs\)/g) || []).length, 2, '할 일 칩·일정 칩 두 갈래가 모두 chipDs 로 고르지 않는다');
-    //  드러내기(B2)는 그대로
-    assert.ok(/noteTab = 'todo';\s*flashTodoId = chip\.dataset\.todo;/.test(b), '할 일 칩의 드러내기(할 일 탭 + 행 강조)가 사라졌다(B2)');
-    assert.ok(/noteTab = 'detail';\s*flashTargetId = chip\.dataset\.id;/.test(b), '일정 칩의 드러내기(상세 탭 + 카드 강조)가 사라졌다(B2)');
+    assert.strictEqual((b.match(/selectDate\(chipDs\)/g) || []).length, 3, '개수 칩·할 일 칩·일정 칩 세 갈래가 모두 chipDs 로 고르지 않는다');
+    //  드러내기(B2): 탭 전환 없이 그 날짜를 고르면서 패널의 그 행, 카드를 강조한다(docs/PERSONAL-PANEL.md §2.1)
+    assert.ok(/flashTodoId = chip\.dataset\.todo;\s*selectDate\(chipDs\)/.test(b), '할 일 칩의 드러내기(날짜 선택 + 행 강조)가 사라졌다(B2)');
+    assert.ok(/flashTargetId = chip\.dataset\.id;\s*selectDate\(chipDs\)/.test(b), '일정 칩의 드러내기(날짜 선택 + 카드 강조)가 사라졌다(B2)');
+    assert.ok(!/noteTab/.test(b), '칩 클릭이 아직 패널 탭을 전환한다');
   },
   //  끌어 옮기기는 잡은 자리 기준(결정 3): 끌기 시작이 잡은 날(grab)과 data-occ 를 싣고, 놓기는 (놓은 날 - 잡은 날)만큼 옮긴다
   dragUsesOcc(app) {
@@ -96,18 +97,19 @@ const statics = {
     assert.ok(dr.includes('shiftByGrab(e.date, e.endDate, p.grab || p.occ || e.date, target)'), '기간 일정 드롭이 잡은 자리 기준 이동이 아니다(결정 3)');
     assert.ok(dr.includes('const cell = dropCellAt(ev);'), '놓을 칸을 손가락 아래 칸(dropCellAt)으로 찾지 않는다(막대가 칸을 덮는다)');
   },
-  //  패널 의미 — 상세 탭은 그날에 걸친 발생을, 할 일 탭은 그날을 덮는 할 일을 보인다(시작일만 보이지 않는다 · B2 의 전제)
+  //  패널 의미 — 일정 묶음은 그날에 걸친 발생을, 할 일 묶음은 그날을 덮는 할 일을 보인다(시작일만 보이지 않는다, B2 의 전제)
   panelsCoverRange(app) {
     const dd = stripJs(extractFunction(app, 'dayDetailHtml'));
-    assert.ok(/entriesOn\(selectedDate\)/.test(dd), '일정 상세가 entriesOn(selectedDate)(그날에 걸친 발생)를 쓰지 않는다');
-    const tl = stripJs(extractFunction(app, 'renderTodoListTab'));
-    assert.ok(/const covers = t => t\.due && t\.due <= ds && /.test(tl), '할 일 탭의 「이 날」이 기간을 덮는 판정(covers)이 아니다');
+    assert.ok(/entriesOn\(selectedDate\)/.test(dd), '패널 일정 묶음이 entriesOn(selectedDate)(그날에 걸친 발생)를 쓰지 않는다');
+    const tl = stripJs(extractFunction(app, 'dayTodosList'));
+    assert.ok(/todoCoversDate\(t, ds\)/.test(tl), '패널 할 일 묶음이 기간을 덮는 판정(todoCoversDate)을 쓰지 않는다');
+    assert.ok(/t\.due <= date && todoEndDate\(t\) >= date/.test(stripJs(extractFunction(app, 'todoCoversDate'))), 'todoCoversDate 가 시작일부터 종료일까지 덮는 판정이 아니다');
   },
 };
 
 test('정적①: 칩 클릭은 누른 칸의 날짜 → data-occ → 현재 선택 순으로 고르고, 드러내기는 그대로(B1·B2·B4)', () => statics.clickUsesCell(src));
 test('정적②: 끌어 옮기기는 잡은 자리 기준(결정 3), 놓을 칸은 손가락 아래 칸', () => statics.dragUsesOcc(src));
-test('정적③: 상세 탭·할 일 탭은 그날에 걸친 기간 항목을 보인다(B2 의 전제)', () => statics.panelsCoverRange(src));
+test('정적③: 패널의 일정 묶음과 할 일 묶음은 그날에 걸친 기간 항목을 보인다(B2 의 전제)', () => statics.panelsCoverRange(src));
 test('변이①s: data-occ 를 먼저 쓰면 정적① 이 실패한다', () => {
   assert.throws(() => statics.clickUsesCell(MUT.occFirst(src)), /우선순위|먼저 본다/);
 });
@@ -180,11 +182,11 @@ if (!JSDOM) {
       ev: (code) => w.eval(code),
       evJSON: (code) => JSON.parse(w.eval('JSON.stringify(' + code + ')')),
       applyState: (data) => w.eval('__applyState(' + JSON.stringify(JSON.stringify(data)) + ',' + JSON.stringify(META) + ')'),
-      //  보고 있는 달·선택 날짜를 정한다(오늘 날짜에 기대지 않는다). 패널은 상세 탭에서 시작.
-      show: (y, m, sel) => w.eval(`view = {y:${y}, m:${m}}; selectedDate = '${sel}'; focusDs = null; noteTab = 'detail'; renderAll();`),
+      //  보고 있는 달·선택 날짜를 정한다(오늘 날짜에 기대지 않는다).
+      show: (y, m, sel) => w.eval(`view = {y:${y}, m:${m}}; selectedDate = '${sel}'; focusDs = null; renderAll();`),
       view: () => JSON.parse(w.eval('JSON.stringify(view)')),
       sel: () => w.eval('selectedDate'),
-      tab: () => w.eval('noteTab'),
+      tabs: () => doc.querySelectorAll('#dpTabs, #dayPanel [role=tab]').length,   // 패널에 탭은 없다(PERSONAL-PANEL §2.1)
       title: () => doc.getElementById('btnTitle').textContent,
       //  그 날짜를 덮는 막대(내 창, .gridrow 의 .chip-bar). 누를 자리(__at = 그 날짜)를 실어 돌려준다 → press 가 그 칸 가운데를 누른다.
       evChip: (date, id) => barAt(doc, date, `[data-id="${id}"]`),
@@ -240,7 +242,7 @@ if (!JSDOM) {
         assert.strictEqual(W.title(), '2026년 10월', '달 제목이 10월이 아니다');
         assert.strictEqual(W.sel(), '2026-10-01', '선택 날짜가 누른 칸(10/1)이 아니다(B1)');
         assert.deepStrictEqual(W.selCells(), ['2026-10-01'], '그리드의 선택 표시가 누른 칸이 아니다');
-        assert.strictEqual(W.tab(), 'detail', '일정 칩이 「일정 상세」 탭으로 드러내지 않는다(B2)');
+        assert.strictEqual(W.tabs(), 0, '패널에 탭이 있다(탭 전환 없이 드러내야 한다)');
         const card = W.card('e-r');
         assert.ok(card, '10/1 의 일정 상세에 그 기간 일정 카드가 없다(B2)');
         assert.ok(card.classList.contains('flash'), '그 카드가 강조(flash)되지 않았다(B2)');
@@ -284,17 +286,16 @@ if (!JSDOM) {
         press(chip, '10/1 칸의 기간 할 일 막대');
         assert.deepStrictEqual(W.view(), V(2026, 9), '10/1 칸 할 일 막대를 눌렀는데 달이 바뀌었다(B1)');
         assert.strictEqual(W.sel(), '2026-10-01', '할 일 칩: 선택 날짜가 누른 칸(10/1)이 아니다(B1)');
-        assert.strictEqual(W.tab(), 'todo', '할 일 칩이 「할 일」 탭으로 드러내지 않는다(B2)');
+        assert.strictEqual(W.tabs(), 0, '패널에 탭이 있다(탭 전환 없이 드러내야 한다)');
         const row = W.todoRow('t-r');
-        assert.ok(row, '10/1 의 할 일 탭에 그 기간 할 일 행이 없다(B2)');
+        assert.ok(row, '10/1 의 패널 할 일 묶음에 그 기간 할 일 행이 없다(B2)');
         assert.ok(row.classList.contains('flash'), '그 행이 강조(flash)되지 않았다(B2)');
-        //  10/2 칸 · 「이 날」 섹션을 사용자가 접어 둔 상태 — 행이 보여야 한다
-        W.ev("noteTab = 'detail'; noteCollapsed.add('onday'); renderPanel();");
+        //  10/2 칸: 그날에 걸친 같은 할 일 행이 그날 패널에 보이고 강조된다(묶음은 접히지 않는다)
         press(W.todoChip('2026-10-02', 't-r'), '10/2 칸의 기간 할 일 막대');
         assert.strictEqual(W.sel(), '2026-10-02');
         assert.deepStrictEqual(W.view(), V(2026, 9));
-        assert.ok(W.todoRow('t-r'), '「이 날」 섹션이 접혀 있으면 드러낸 할 일 행이 안 보인다(B2)');
-        assert.ok(W.todoRow('t-r').classList.contains('flash'), '접혔던 섹션을 편 뒤 그 행이 강조되지 않았다(B2)');
+        assert.ok(W.todoRow('t-r'), '10/2 패널에 그날에 걸친 할 일 행이 안 보인다(B2)');
+        assert.ok(W.todoRow('t-r').classList.contains('flash'), '10/2 에서 그 행이 강조되지 않았다(B2)');
       });
     },
     //  K5 — 단일일·반복 일정 칩은 그 칸의 날짜(= 그 발생일)를 고른다(지금과 같다)
@@ -330,7 +331,7 @@ if (!JSDOM) {
         press(orphan, '칸 밖 칩');
         assert.strictEqual(W.sel(), '2026-09-29', '칸 밖 칩이 data-occ 로 대체되지 않았다(B4)');
         assert.deepStrictEqual(W.view(), V(2026, 8), '칸 밖 칩의 data-occ 달(9월)로 넘어가지 않았다(B4)');
-        assert.strictEqual(W.tab(), 'detail');
+        assert.strictEqual(W.tabs(), 0);
         assert.ok(W.card('e-r') && W.card('e-r').classList.contains('flash'), '칸 밖 칩: 카드가 강조되지 않았다');
       });
     },
@@ -364,7 +365,7 @@ if (!JSDOM) {
   test('K1: 10월 달력 · 9/29~10/2 기간 일정의 10/1 칸 막대 클릭 → 달 그대로 · 선택 10/1 · 상세 탭에 그 카드 강조', () => checks.k1(src));
   test('K2: 같은 막대의 10/2 칸 클릭 → 선택 10/2 · 달 그대로', () => checks.k2(src));
   test('K3: 9월 달력 · 흐린 10/1 칸의 막대 클릭 → 10월로 넘어가고 선택 10/1(누른 칸 기준)', () => checks.k3(src));
-  test('K4: 기간 할 일 막대 10/1 클릭 → 달 그대로 · 할 일 탭 + 행 강조 · 접힌 「이 날」도 편다', () => checks.k4(src));
+  test('K4: 기간 할 일 막대 10/1 클릭 → 달 그대로, 패널의 그 할 일 행 강조(탭 전환 없음), 10/2 에서도 같은 행', () => checks.k4(src));
   test('K5: 단일일·주간 반복 칩은 누른 칸(= 그 발생일)을 고른다', () => checks.k5(src));
   test('B4: 칸 밖 칩은 data-occ 로 대체한다', () => checks.b4(src));
   test('K6: 끌어 옮기기는 잡은 자리 기준. 10/1 칸에서 잡아 10/3 에 놓으면 9/29~10/2 → 10/1~10/4', () => checks.k6(src));
@@ -375,7 +376,7 @@ if (!JSDOM) {
   test('변이②: data-occ 를 먼저 쓰면 K4(할 일 막대)도 실패한다', async () => {
     await assert.rejects(() => checks.k4(MUT.occFirst(src)), /달이 바뀌었다/);
   });
-  test('변이③: 할 일 칩이 접힌 「이 날」을 펴지 않으면 K4 가 실패한다', async () => {
-    await assert.rejects(() => checks.k4(MUT.noOndayOpen(src)), /접혀 있으면/);
+  test('변이③: 할 일 칩이 패널의 그 행을 강조하지 않으면 K4 가 실패한다', async () => {
+    await assert.rejects(() => checks.k4(MUT.noTodoFlash(src)), /강조\(flash\)되지 않았다/);
   });
 }

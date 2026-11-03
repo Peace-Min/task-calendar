@@ -344,10 +344,11 @@ if (!JSDOM) {
         Object.defineProperty(wk, 'clientHeight', { configurable: true, get: () => 106 });
         W.ev('fitChips()');
         const more = [...wk.querySelectorAll('.more')];
-        assert.deepStrictEqual(more.map((m) => [m.dataset.more, m.firstChild.textContent]), [['2026-10-23', '+3']], '+N 이 다르다');
+        //  이 주에는 할 일(10/21)이 있어 칸 맨 위 줄이 한 줄을 차지한다(PERSONAL-PANEL §2.4). 일정이 쓸 차선이 하나 줄어 +3 이던 칸이 +4 다.
+        assert.deepStrictEqual(more.map((m) => [m.dataset.more, m.firstChild.textContent]), [['2026-10-23', '+4']], '+N 이 다르다');
         assert.strictEqual(more[0].style.gridRow, '4', '+N 이 보이는 마지막 차선 다음 줄에 있지 않다');
-        assert.strictEqual([...wk.querySelectorAll('.chip-bar')].filter((b) => b.style.display === 'none').length, 3, '넘친 기록이 숨지 않았다');
-        assert.strictEqual(more[0].getAttribute('aria-label'), '+3개 더보기');
+        assert.strictEqual([...wk.querySelectorAll('.chip-bar')].filter((b) => b.style.display === 'none').length, 4, '넘친 기록이 숨지 않았다');
+        assert.strictEqual(more[0].getAttribute('aria-label'), '+4개 더보기');
         more[0].dispatchEvent(new W.w.MouseEvent('click', { bubbles: true }));
         assert.strictEqual(W.ev('selectedDate'), '2026-10-23', '+N 을 눌러 그 날짜를 고르지 않았다');
         //  밀도: 촘촘히, 펼침, 고정
@@ -366,15 +367,15 @@ if (!JSDOM) {
         const b = barAt(W, '2026-10-12', '[data-id="e-long"]');
         clickAt(W, b, b.__col);
         assert.strictEqual(W.ev('selectedDate'), '2026-10-12', '막대를 누른 칸(10/12)이 아니라 다른 날을 골랐다: ' + W.ev('selectedDate'));
-        assert.strictEqual(W.ev('noteTab'), 'detail');
+        assert.ok(!W.$('#dpTabs'), '패널에 탭이 있다');   // 탭 전환은 없다(PERSONAL-PANEL §2.1)
         assert.ok(W.$('#dpBody .card.flash[data-id="e-long"]'), '오른쪽 패널에 그 일정 카드가 강조되지 않았다');
         assert.ok(!W.$('.pc-pop, #pcPop'), '목록 창이 열렸다(개인 탭에는 없다)');
         const sel = W.$$('#grid .cell.sel').map((c) => c.dataset.date);
         assert.deepStrictEqual(sel, ['2026-10-12'], '달력 선택 표시가 누른 칸이 아니다');
-        //  할 일 막대 → 할 일 탭
+        //  할 일 막대 → 그 날짜 선택 + 패널의 그 할 일 행 강조(탭 전환 없음)
         const t = barAt(W, '2026-10-16', '[data-todo="t-range"]');
         clickAt(W, t, t.__col);
-        assert.strictEqual(W.ev('selectedDate'), '2026-10-16'); assert.strictEqual(W.ev('noteTab'), 'todo');
+        assert.strictEqual(W.ev('selectedDate'), '2026-10-16'); assert.ok(!W.$('#dpTabs'), '할 일 칩이 탭을 만들었다');
         assert.ok(W.$('#dpBody .todo-row.flash[data-id="t-range"]'), '할 일 행이 강조되지 않았다');
         //  좌표 없는 누르기(키보드 등) → 그 주 조각의 첫 칸(시작일 10/5 의 달로 튀지 않는다)
         b.dispatchEvent(new W.w.MouseEvent('click', { bubbles: true, cancelable: true }));

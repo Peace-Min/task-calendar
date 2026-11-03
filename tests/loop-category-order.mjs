@@ -510,16 +510,16 @@ async function main() {
   }
 
   /* ── C5 필터 막대 · 과제 선택 ── */
-  head('C5 필터 막대 · 빠른 추가 #qaCat = state.categories 순서');
+  head('C5 보기에서 고른 과제, 빠른 추가 #qaCat = state.categories 순서');
   {
     const cs = await cats();
     const ids = cs.map((c) => c.id), pick = cs.filter((c) => c.pick).map((c) => c.id);
-    //  필터 줄의 고른 과제 칩(FILTER-MULTI)은 목록 순서다. 모두 고르면 전체(칩 없음)라 맨 끝 하나를 빼고 고른다.
-    //  줄에 다 안 들어가면 뒤쪽 칩이 +N 으로 접히므로 앞에서부터 같은지 본다
+    //  보기에서 고른 과제(filterSelCats, FILTER-MULTI)는 목록 순서다. 모두 고르면 전체라 맨 끝 하나를 빼고 고른다.
+    //  고른 과제 칩은 2026-11-03 에 없앴다(PERSONAL-PANEL). 새 기록의 기본 과제와 같은 함수로 본다.
     await J("(filterCats = new Set(state.categories.slice(0, -1).map(function(c){ return c.id; })), renderFilterbar(), true)");
-    const chips = await J("[].map.call(document.querySelectorAll('#filterbar [data-cat]'), function(b){ return b.dataset.cat; }).filter(Boolean)");
+    const chips = await J("filterSelCats().map(function(c){ return c.id; })");
     await J("(filterCats = null, renderFilterbar(), true)");
-    ok('C5 필터 줄 칩 순서 = state.categories', chips.length > 0 && same(chips, ids.slice(0, chips.length)), JSON.stringify({ chips, ids }));
+    ok('C5 보기에서 고른 과제 순서 = state.categories', chips.length > 0 && same(chips, ids.slice(0, chips.length)), JSON.stringify({ chips, ids }));
     const DATE = todayIso();
     await cdp.ev(`openQuickAdd(${JSON.stringify(DATE)}); 1`);
     const qOpen = await waitFor(isOpen('#quickAdd'), 3000, 100);

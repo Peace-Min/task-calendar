@@ -92,8 +92,9 @@ const statics = {
       assert.ok(j > i, `${name}: 쓰기 표지(${end})를 찾지 못했다`);
       assert.ok(app.slice(i, j).includes('guardEdit()'), `${name} 에 연결 잠금 관문(guardEdit)이 없다`);
     }
-    assert.ok(app.includes("$('#btnNew').addEventListener('click', () => openQuickAdd(selectedDate));"),
-      '「＋ 새 기록」 이 openQuickAdd(관문 있음)로 가지 않는다');
+    //  ＋ 새 기록 단추는 없앴다(PERSONAL-PANEL §2.2). 추가는 패널의 [＋ 추가]와 날짜 두 번 누르기이고 둘 다 openAddOnDate → openQuickAdd(관문 있음)로 간다.
+    assert.ok(app.includes("function openAddOnDate(date){ openQuickAdd(date, viewKinds.ev ? 'event' : 'todo'); }"), 'openAddOnDate 가 openQuickAdd(관문 있음)로 가지 않는다');
+    assert.ok(app.includes("if(ev.target.closest('#btnAddHere')){ openAddOnDate(selectedDate); return; }") && app.includes('if(cell) openAddOnDate(cell.dataset.date);'), '패널 [＋ 추가]나 날짜 두 번 누르기가 openAddOnDate 로 가지 않는다');
   },
   //  메모리 전용 — 못 보낸 편집을 로컬 저장소에 쌓지 않는다(ADR-18 · 기획 §9).
   memoryOnly(app) {

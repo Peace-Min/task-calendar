@@ -159,7 +159,7 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .brand h1{font-size:var(--fs-title);font-weight:700;line-height:1.15}
 .brand .sub{font-size:var(--fs-micro);color:var(--muted)}
 .nav{display:flex;align-items:center;gap:6px;position:relative}
-header.topbar .nav{flex-wrap:wrap;row-gap:6px}   /* 자리가 모자라면 과제 필터 묶음이 다음 줄로 내려간다(좁은 폭용 배치 따로 없음) */
+header.topbar .nav{flex-wrap:wrap;row-gap:6px}   /* 자리가 모자라면 보기 묶음이 다음 줄로 내려간다(좁은 폭용 배치 따로 없음) */
 #calViewSeg .seg-b{padding:4px 9px}
 .title-btn{
   border:none;background:transparent;font-size:var(--fs-display);font-weight:700;color:var(--text);line-height:1.15;
@@ -213,8 +213,8 @@ header.topbar .nav{flex-wrap:wrap;row-gap:6px}   /* 자리가 모자라면 과�
 .menu button.danger{color:var(--danger-text)}
 .menu hr{border:none;border-top:1px solid var(--line);margin:5px 4px}
 
-/* ---------- 과제 필터 묶음(docs/FILTER-MULTI.md, docs/NAV-LAYOUT-C.md): 날짜 줄의 [월간 | 주간] 바로 오른쪽 ----------
-   과제 단추 + 고른 과제 칩. 단추는 글자에 맞추고 최대 폭에서 말줄임. 칩은 fitFilterChips 가 남는 자리를 재서 +N 으로 접는다.
+/* ---------- 보기 묶음(docs/PERSONAL-PANEL.md, docs/FILTER-MULTI.md, docs/NAV-LAYOUT-C.md): 날짜 줄의 [월간 | 주간] 바로 오른쪽 ----------
+   ⚲ 보기 단추 하나(처음 상태면 요약 "전체", 아니면 강조와 요약). 단추는 글자에 맞추고 최대 폭에서 말줄임. 고른 과제 칩은 없다.
    팝업은 묶음 안에 absolute 로 달린다. 그래서 묶음과 날짜 줄에 overflow 를 걸지 않는다(걸면 팝업이 잘린다). */
 .fb-grp{display:flex;align-items:center;gap:8px;flex:none;min-width:0;position:relative}
 .fb-btn{
@@ -232,23 +232,20 @@ header.topbar .nav{flex-wrap:wrap;row-gap:6px}   /* 자리가 모자라면 과�
 .fb-btn .fb-caret{width:10px;height:10px;flex:none;color:var(--muted)}
 .fb-btn.filtered{border-color:var(--accent);background:var(--accent-soft)}
 .fb-btn.filtered .pv{color:var(--accent-2)}
-.fb-rest{flex:none;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;height:30px}   /* 폭은 fitFilterChips 가 남는 자리로 정한다 */
-.fchip{
-  display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);
-  background:var(--panel);border-radius:999px;padding:4px 11px;font-size:var(--fs-body);color:var(--text);
-  flex:none;max-width:180px;white-space:nowrap;
-}
-.fchip .fc-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}  /* 긴 과제명 말줄임 */
-.fchip .dot,.fb-btn .dot,.fb-opt .dot{width:9px;height:9px;border-radius:50%;flex:none;display:inline-block}
-.fchip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
-.fchip.fb-tok{padding:0 3px 0 10px;height:28px}
-.fb-x{border:0;background:transparent;cursor:pointer;width:22px;height:22px;border-radius:999px;display:inline-grid;place-items:center;color:inherit;flex:none;padding:0}
-.fb-x:hover{background:var(--panel)}
-.fb-x svg{width:9px;height:9px;pointer-events:none}
-.fb-more{flex:none;border:1px solid var(--line-2);background:var(--panel);border-radius:999px;height:28px;padding:0 10px;cursor:pointer;font:inherit;font-size:var(--fs-body);font-variant-numeric:tabular-nums;color:var(--muted)}
-.fb-more:hover{border-color:var(--border-hover);color:var(--text)}
-.fb-btn:focus-visible,.fb-x:focus-visible,.fb-more:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.fb-pop{position:absolute;z-index:70;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);display:flex;flex-direction:column;color:var(--text)}
+.fb-btn .dot,.fb-opt .dot{width:9px;height:9px;border-radius:50%;flex:none;display:inline-block}
+.fb-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.fb-pop{position:absolute;z-index:70;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);display:flex;flex-direction:column;color:var(--text);max-height:calc(100vh - 72px);overflow-y:auto}
+.fb-pop > *{flex:none}
+.fb-pop .vp-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 8px 6px 12px;border-bottom:1px solid var(--line)}
+.fb-pop .vp-head b{font-size:var(--fs-emph)}
+.fb-pop .vp-sec{padding:6px 12px 4px}
+.fb-pop .vp-cats{padding:6px 0 0}
+.fb-pop .vp-cats .vp-h{padding:0 12px}
+.fb-pop .vp-opt{border-top:1px solid var(--line);margin-top:2px;padding-top:8px;padding-bottom:8px}
+.fb-pop .vp-h{font-size:var(--fs-meta);font-weight:600;color:var(--muted);margin:2px 0 3px}
+.fb-pop .vp-ck{display:flex;align-items:center;gap:8px;min-height:28px;cursor:pointer;font-size:var(--fs-body)}
+.fb-pop .vp-ck input{margin:0;width:15px;height:15px;accent-color:var(--accent-fill)}
+.fb-pop .vp-ck:has(input:disabled){color:var(--faint-text);cursor:default}
 .fb-pop .fb-ph{padding:8px 8px 4px}
 .fb-pop .fb-q{width:100%;height:30px;border:1px solid var(--ctl-border);background:var(--panel);color:var(--text);border-radius:var(--r-sm);padding:0 9px;font:inherit;font-size:var(--fs-body)}
 .fb-pop .fb-q:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
@@ -427,6 +424,9 @@ body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 �
 .chip-todo.chip-bar.range{border-style:dashed}   /* 기간 할 일은 막대에서도 점선 띠(결정 4) */
 .chip-todo.chip-bar.cl{border-left-width:0 !important;padding-left:5px}
 .chip-todo.chip-bar.cr{border-right-width:0}
+/* 일정과 할 일이 둘 다 보일 때 칸 맨 위 줄은 할 일. 그 아래 점선(.td-sep), 3개 이상이면 개수 칩(.chip-tdcnt) */
+.grid.bars .td-sep{align-self:end;height:0;margin:0 4px -1px;border-bottom:1px dashed var(--chip-outline);pointer-events:none}
+.chip-todo.chip-bar.chip-tdcnt{justify-self:start;width:auto;max-width:calc(100% - 8px);padding:0 8px;border-radius:999px;background:var(--accent-soft) !important;color:var(--accent-2) !important;border-color:transparent !important;font-size:var(--fs-micro);cursor:pointer}
 .grid.bars .more{position:relative;z-index:1;height:16px;line-height:16px;padding:0 6px;align-self:start;container-type:inline-size}
 @media (max-width:760px){ .chip-span{display:none} }
 @media (max-width:560px){
@@ -442,24 +442,19 @@ body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 �
   width:var(--dpw,340px);flex:none;background:var(--panel);border-left:1px solid var(--line);
   display:flex;flex-direction:column;min-height:0;overflow:hidden;
 }
-/* 우측 패널 기능 탭 (일정 상세 · 할 일) */
+/* 우측 패널(docs/PERSONAL-PANEL.md): 탭은 없다. 머리, 본문, 맨 아래 한 줄 */
 .dp-sheet-handle{display:none}
-.dp-tabbar{display:flex;align-items:flex-end;border-bottom:1px solid var(--line);flex:none;background:var(--panel);container-type:inline-size}   /* 탭만 담는다 — 보고서 액션은 헤더(#btnReportTop)로 단일화(액션이 탭 줄을 뺏어 탭을 덮던 문제) */
-.dp-tabs{display:flex;align-items:flex-end;gap:2px;padding:7px 8px 0;flex:1;min-width:0}
 /* ---------- 탭(뷰 전환) — 앱 전체 단일 어피어런스 ----------
    role=tab(=보여줄 내용을 바꾸는 컨트롤)은 전부 이 밑줄 탭. 저장되는 값을 고르는 건 .seg.
-   대상: 우측 패널(.dp-tab) · 검색(.tab) · 보고 유형(.rpt-presets[role=tablist] .btn). */
-.dp-tab,.tabs .tab,.rpt-presets[role=tablist] .btn{
+   대상: 검색(.tab), 보고 유형(.rpt-presets[role=tablist] .btn). */
+.tabs .tab,.rpt-presets[role=tablist] .btn{
   border:none;background:transparent;padding:8px 10px;border-radius:var(--r-sm) var(--r-sm) 0 0;white-space:nowrap;
   font:inherit;font-size:var(--fs-body);color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;
 }
-.dp-tab:hover,.tabs .tab:hover,.rpt-presets[role=tablist] .btn:hover{background:var(--hover-bg);color:var(--text);border-color:transparent;border-bottom-color:transparent}
-.dp-tab.on,.tabs .tab.on,.rpt-presets[role=tablist] .btn.active{color:var(--accent-2);font-weight:600;border-bottom-color:var(--accent)}
-.dp-tab:focus-visible,.tabs .tab:focus-visible,.rpt-presets[role=tablist] .btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-/* 분할바 최소치(240px)에선 탭(일정 상세·할 일)이 좁아질 수 있다 —
-   좌우 패딩만 줄여 전부 한 줄에 들어오게 한다(라벨 생략·가로 스크롤 없이). */
-@container (max-width:300px){ .dp-tab{padding:8px 7px} }
-.dp-body{flex:1;min-height:0;overflow-y:auto}
+.tabs .tab:hover,.rpt-presets[role=tablist] .btn:hover{background:var(--hover-bg);color:var(--text);border-color:transparent;border-bottom-color:transparent}
+.tabs .tab.on,.rpt-presets[role=tablist] .btn.active{color:var(--accent-2);font-weight:600;border-bottom-color:var(--accent)}
+.tabs .tab:focus-visible,.rpt-presets[role=tablist] .btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.dp-body{flex:1;min-height:0;overflow-y:auto;scrollbar-gutter:stable}
 .dp-pad{padding:var(--sp-3)}
 /* 좌측 캘린더 / 우측 기록 사이 너비 조절 분할바 */
 .splitter{flex:none;width:7px;cursor:col-resize;background:var(--line);position:relative;touch-action:none;transition:background .12s}
@@ -469,16 +464,35 @@ body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 �
 /* 키보드로 잡을 수 있게 됐으니 어디에 포커스가 있는지 보여야 한다(WCAG 2.4.7) */
 .splitter:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;background:var(--accent)}
 .dp-head{
-  display:flex;align-items:flex-start;justify-content:space-between;gap:8px;
-  padding:16px 16px 12px;border-bottom:1px solid var(--line);
-  position:sticky;top:0;background:var(--panel);z-index:5;
+  flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;
+  min-height:54px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);
 }
-.dp-date{font-size:var(--fs-head);font-weight:700}
+.dp-date{font-size:var(--fs-head);font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dp-dow{font-size:var(--fs-body);font-weight:600;color:var(--muted)}
 .dp-dow.sun{color:var(--sun)} .dp-dow.sat{color:var(--sat)}
-.dp-hol{font-size:var(--fs-meta);color:var(--sun);margin-top:2px}
-.dp-count{font-size:var(--fs-meta);color:var(--muted);margin-top:4px}
+.dp-hol{font-size:var(--fs-meta);font-weight:400;color:var(--sun);margin-left:8px}
 .dp-list{padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+/* 일정 n, 할 일 n 두 묶음: 늘 같은 자리. 비면 "없음", 끈 종류는 "보기에서 숨김" */
+.dp-grp + .dp-grp{border-top:1px solid var(--line)}
+.dp-grp-h{margin:0;padding:12px 16px 4px;font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
+.dp-grp-n{display:inline-block;margin-left:2px;padding:0 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent-2);font-size:var(--fs-micro);font-weight:600}
+.dp-grp-none{padding:2px 16px 12px;font-size:var(--fs-meta);color:var(--faint-text)}
+.dp-grp .dp-list{padding:6px 16px 12px}
+.dp-todos{padding:0 16px 8px}
+.dp-todos .todo-row:first-child{border-top:none}
+/* 패널 맨 아래 고정 한 줄: 할 일 전체 보기 … 기한 없음 n › */
+.dp-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:40px;padding:8px 16px;border:0;border-top:1px solid var(--line);background:var(--panel);color:var(--accent-2);font:inherit;font-size:var(--fs-body);text-align:left;cursor:pointer}
+.dp-foot:hover{background:var(--hover-bg)}
+.dp-foot:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.dp-foot-r{color:var(--muted);white-space:nowrap}
+.dp-foot-n{display:inline-block;min-width:1.4em;padding:0 6px;border-radius:999px;background:var(--accent-soft);color:var(--accent-2);font-weight:600;text-align:center}
+/* 할 일 전체 팝업(#todoAllModal) */
+.ta-h{margin:14px 0 2px;font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
+.ta-grp:first-child .ta-h{margin-top:2px}
+.ta-grp .dp-todos{padding:0}
+.ta-grp .todo-row[data-go]:not([data-go=""]){cursor:pointer}
+.ta-grp .todo-row[data-go]:not([data-go=""]):hover{background:var(--hover-bg)}
+.ta-none{padding:30px 0;text-align:center;color:var(--muted)}
 .dp-empty{
   padding:36px 20px;text-align:center;color:var(--muted);font-size:var(--fs-body);line-height:1.8;
 }
@@ -546,7 +560,7 @@ body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 �
 .btn.primary:disabled{background:var(--line-2);border-color:var(--line-2)}
 /* 서버 연결 잠금(docs/OFFLINE-RESILIENCE.md §4) — 만들기 버튼만 흐리게 보인다. disabled 가 아니다:
    누르면 토스트가 이유(「서버에 연결되지 않아…」)를 말해야 하므로 클릭은 그대로 받는다. */
-body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opacity:.5}
+body.db-locked #btnAddHere{opacity:.5}
 .btn.danger-solid{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:600}
 .btn.danger-solid:hover{background:#b93a3f;border-color:#b93a3f}
 @keyframes ovIn{from{opacity:0}to{opacity:1}}
@@ -1543,6 +1557,7 @@ details.vg-more dd{margin:0;color:var(--text)}
 .todo-row.done .todo-text{text-decoration:line-through;color:var(--faint-text)}
 .todo-due{flex:none;font-size:var(--fs-meta);color:var(--muted);font-variant-numeric:tabular-nums}
 .todo-due.od{color:var(--danger-text);font-weight:700}
+.todo-dueline{margin-top:1px;line-height:1.3}
 .todo-dot{flex:none;width:8px;height:8px;border-radius:50%}
 .todo-del{flex:none;border:none;background:none;color:var(--muted);cursor:pointer;font-size:13px;padding:2px 5px;border-radius:var(--r-sm)}
 .todo-del:hover{color:var(--danger);background:var(--danger-soft)}
@@ -1601,7 +1616,7 @@ details.vg-more dd{margin:0;color:var(--text)}
         문의·테마까지 다 노출됐다(사용자 지적).
       · allowlist 는 기본이 '숨김' 이라 **앞으로 생길 UI 도 자동으로 안 보인다.**
         이 방식이라야 "메인이 바뀌어도 열람 화면은 따라오되, 편집 수단은 안 따라온다" 가 성립한다.
-    ★ 보이는 것은 셋뿐이다: 달력 이동(.nav, 과제 필터 묶음 #filterbar 포함) · 검색 · 달력 본체(main).
+    ★ 보이는 것은 셋뿐이다: 달력 이동(.nav, 보기 묶음 #filterbar 포함), 검색, 달력 본체(main).
     ★ 창 가장자리 크기 조절 손잡이(.rsz)도 감춘다. 열람 창의 크기는 바깥 창(Windows 창 테두리)이 정한다(WINDOW-UI §4).  */
 body[data-peer] #hostbar,
 body[data-peer] .rsz,
@@ -1615,13 +1630,11 @@ body[data-peer] .actions > #btnSearch{ display:inline-flex !important }
 /*  일자 패널 — 읽는 것만 남긴다.
     ★ #btnAddHere(＋추가)가 그대로 노출돼 있었다. topbar 만 allowlist 로 덮고 본문은 안 덮은 탓이다
       — 루프 검사(보이는 조작 수단 대조)가 잡아 줬다(2026-09-03).
-    ★ 「할 일」 탭은 **연다**(docs/PEER-VIEW-FULL.md P2, 2026-10-01). 예전엔 감췄다 — 열람 조회가
-      일정만 보내서 그 탭이 늘 비어 "이 사람은 할 일이 없다" 는 거짓말을 했기 때문이다. 이제 호스트가
-      할 일을 함께 보내므로(CalendarDb.LoadPeerScheduleJsonAsync) 그 이유가 사라졌고, 감추면 거꾸로
-      '있는 것을 안 보여 주는' 자리가 된다. 대신 그 탭의 **편집 수단**(＋할 일 추가 · 할 일 삭제)을
-      여기서 감추고, 렌더(todoRowHtml)와 변경 함수(peerReadOnly)에서도 막는다.  */
+    ★ 할 일은 **보인다**(docs/PEER-VIEW-FULL.md P2, 2026-10-01). 예전엔 감췄다. 열람 조회가 일정만 보내서
+      "이 사람은 할 일이 없다" 는 거짓말을 했기 때문이다. 이제 호스트가 할 일을 함께 보내므로(CalendarDb.LoadPeerScheduleJsonAsync)
+      그 이유가 사라졌다. 패널은 탭 없이 일정 n, 할 일 n 두 묶음이고(docs/PERSONAL-PANEL.md), 그 **편집 수단**(＋ 추가, 할 일 삭제)은
+      여기서 감추고, 렌더(dayHeadHtml, todoRowHtml)와 변경 함수(peerReadOnly)에서도 막는다.  */
 body[data-peer] #btnAddHere,
-body[data-peer] #btnTodoNew,
 body[data-peer] .todo-del,
 body[data-peer] .todo-edit,
 /*  ★ 카드의 「수정 · 삭제」. blocklist 를 allowlist 로 뒤집을 때 옛 [data-edit] 규칙과 함께
@@ -2049,7 +2062,7 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
 .qa-edit-title{flex:1;font-size:var(--fs-h2);font-weight:700;color:var(--text)}   /* 빠른등록도 '서피스 제목' — 모달 제목과 같은 tier */
 /* ---------- 세그먼트 컨트롤(.seg) — 앱 전체 '값 선택'의 단일 컴포넌트 ----------
    선택 UI는 딱 두 갈래만 존재한다:
-     · role=tab  = 어떤 내용을 보여줄지 바꾼다(뷰 전환) → 밑줄 탭(.dp-tab/.tab/보고 유형)
+     · role=tab  = 어떤 내용을 보여줄지 바꾼다(뷰 전환) → 밑줄 탭(.tab/보고 유형)
      · .seg      = 저장되는 값을 고른다               → 이 컴포넌트
    활성은 accent 채움이 아니라 '패널색으로 떠오름'. 이유 둘:
      (1) 다크·forest에서 accent 위 흰 글자가 AA 미달이라 채움마다 리맵이 필요했다.
@@ -2132,7 +2145,7 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
   .btn.icon.has-label{padding:8px 10px}
 }
 .mm-fold{display:none}   /* 기본: 헤더에 자리가 있으므로 접기 메뉴는 숨김 */
-/* ≤440px — 액션 줄이 nowrap이라 넘침 처리가 없으면 주요 동작(보고서·＋ 새 기록)이 잘린다.
+/* ≤440px — 액션 줄이 nowrap이라 넘침 처리가 없으면 주요 단추가 잘린다.
    보조 4종(검색·과제 관리·문의·사용자 정보)을 ⋯ 안으로 접어 자리를 만든다(기능 유실 없음, 경로만 한 단계 깊어짐).
    380이 아니라 440인 이유: 보고서가 이 폭에서 헤더에 남아야 하고(탭바 진입점을 없앴다),
    440은 이미 '한 줄 nav + 한 줄 액션' 위젯 레이아웃으로 바뀌는 경계라 분기점이 하나로 준다. */
@@ -2149,7 +2162,7 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
   .mm-fold-pk{display:block}
 }
 .mm-fold-rp{display:none}
-/* ≤320px — 여기서도 아이콘 4개(40px)+＋ 새 기록+간격 8px이 4px 넘친다(측정: 300px에서 280 vs 276).
+/* ≤320px — 여기서도 아이콘 4개(40px)+단추 하나+간격 8px이 4px 넘쳤다(측정: 300px에서 280 vs 276. 옛 새 기록 단추가 있던 때의 실측이고 그 단추는 지금 없다).
    간격 8px는 인접 오탭 방지 규칙이라 줄일 수 없으므로 보고서만 ⋯ 안으로 접는다.
    진입점은 여전히 '한 곳'이고(이 폭에선 메뉴), 도달성은 유지된다. */
 @media (max-width:320px){
@@ -2295,7 +2308,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
    ★ 선택 표시는 **accent 한 가지**다(H3 · 2026-10-02 사용자 지적 — 이전 B안의 회색 채움이 '안 고른 것'과 헷갈렸다):
      고른 묶음/항목 = --accent-soft 채움 + --accent 테두리·막대 + accent 글자 · 안 고른 쪽 = 채움 없음 + 흐린 글자 + 흑백 아이콘.
      **회색 채움을 선택·비선택 상태에 쓰지 않는다**(hover 의 --hover-bg 는 상태가 아니라 손 아래 표시다).
-   ★ 글자는 --accent-2 다(.dp-tab.on 과 같은 규칙) — 포레스트의 --accent(#2e9e6b)는 연한 채움 위 글자로 AA 에 못 미친다.
+   ★ 글자는 --accent-2 다(.tabs .tab.on 과 같은 규칙) — 포레스트의 --accent(#2e9e6b)는 연한 채움 위 글자로 AA 에 못 미친다.
      테두리·막대(비텍스트 3:1)는 --accent 그대로. 다크의 --accent-2 는 밝은 쪽이라 어두운 채움 위에서 오히려 또렷하다.
    ★ 왼쪽 목록 바탕 = 오른쪽 내용과 **같은 --panel**(구분은 선 하나) · 맨 위에 지금 묶음 이름(accent).
    ★ 색은 토큰만(hex 금지) · 색 속성은 **longhand**(background-color)로 쓴다 — jsdom 계산 스타일 시험(R2)이 토큰을 읽을 수 있게.
@@ -2416,7 +2429,7 @@ html[data-adminwin] #adminHub > .ah-modal{ width:100%; height:100%; max-width:no
 html[data-adminwin] #adminHub > .ah-modal > .modal-head > .x{ display:none }
 /* ── 과제 공용 캘린더: 개인 / 과제 탭과 과제 탭 화면(docs/PROJECT-CALENDAR-PLAN.md §6, 시안 docs/prototypes/project-calendar.html 2차) ──
    ★ 과제 탭에서는 개인 화면(필터바, 월 칸, 오른쪽 패널)을 지우지 않고 숨긴다. 개인 미저장 상태, 저장 큐, 장애 띠가 그대로 산다.
-   ★ 상단바에서 과제 탭에 뜻이 없는 단추(검색, 다른 사람 일정, 보고서, 새 기록)와 상단바 달 이동을 숨긴다. 과제 화면이 자기 줄을 가진다.
+   ★ 상단바에서 과제 탭에 뜻이 없는 단추(검색, 다른 사람 일정)와 상단바 달 이동을 숨긴다. 과제 화면이 자기 줄을 가진다.
    ★ 열람 창과 관리 창에는 탭 줄이 없다(pcInit 이 지운다). */
 .pc-tabs{display:flex;align-items:flex-end;gap:2px;padding:4px 12px 0;background:var(--panel);border-bottom:1px solid var(--line);flex:none}
 .pc-tab{border:none;background:transparent;padding:8px 16px;border-radius:var(--r-sm) var(--r-sm) 0 0;white-space:nowrap;font:inherit;font-size:var(--fs-emph);color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -2424,7 +2437,7 @@ html[data-adminwin] #adminHub > .ah-modal > .modal-head > .x{ display:none }
 .pc-tab.on{color:var(--accent-2);font-weight:600;border-bottom-color:var(--accent)}
 .pc-tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 body.pc-on main > .cal,body.pc-on main > .splitter,body.pc-on #dayPanel,body.pc-on #bootSkeleton,
-body.pc-on .topbar .nav,body.pc-on #btnSearch,body.pc-on #btnPeerPick,body.pc-on #btnNew,
+body.pc-on .topbar .nav,body.pc-on #btnSearch,body.pc-on #btnPeerPick,
 body.pc-on .mm-fold-rp,body.pc-on .mm-fold-pk,body.pc-on #btnSearchFold{display:none !important}
 .pc-view{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
 body:not(.pc-on) #pcView{display:none !important}
@@ -2673,7 +2686,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
    ★ 보고 화면(#atEd)은 하나다. 브라우저에서는 근태 탭 안에서 달력과 자리를 바꾸고, 위젯의 근태 창(html[data-attendwin])에서는
      창 전체를 채운다. 색은 모두 토큰이라 다크 테마도 그대로 따른다. */
 body.at-on main > .cal,body.at-on main > .splitter,body.at-on #dayPanel,body.at-on #bootSkeleton,
-body.at-on .topbar .nav,body.at-on #btnSearch,body.at-on #btnPeerPick,body.at-on #btnNew,
+body.at-on .topbar .nav,body.at-on #btnSearch,body.at-on #btnPeerPick,
 body.at-on .mm-fold-rp,body.at-on .mm-fold-pk,body.at-on #btnSearchFold{display:none !important}
 body:not(.at-on) #atView{display:none !important}
 .at-view{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
@@ -3158,15 +3171,12 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
         <button id="btnExportResearch">과제 데이터 내보내기…</button>
         <button id="btnClear" class="danger">전체 데이터 초기화</button>
         <hr>
-        <div class="help-row"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v4"/></svg>날짜 더블클릭: 새 기록</div>
+        <div class="help-row"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v4"/></svg>날짜 더블클릭: 일정, 할 일 추가</div>
         <div class="help-row"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M8 9l-3 3 3 3M16 9l3 3-3 3"/></svg>기록 드래그: 다른 날짜로 이동</div>
         <div class="help-row"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7.5 14h9"/></svg>←/→ 월 이동, Home 오늘, Esc 닫기</div>
         <div class="help-row">데이터는 서버에 자동 저장됩니다</div>
       </div>
     </div>
-<!-- 앱의 1차 목적(일간/주간 보고 작성)의 단일 진입점. 전 폭에서 노출한다 —
-         ≤679px는 라벨만 접고(아이콘+aria-label 유지), 좁은 폭의 자리는 보조 3종을 ⋯로 접어 확보한다. -->
-    <button class="btn primary" id="btnNew">＋ 새 기록</button>
   </div>
 </header>
 
@@ -3204,13 +3214,10 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
        aria-orientation="vertical" aria-label="좌우 패널 너비 조절" aria-valuenow="0" aria-valuemin="240" aria-valuemax="0"></div>
   <aside class="day-panel" id="dayPanel">
     <button class="dp-sheet-handle" id="dpSheetClose" title="닫기" aria-label="패널 닫기"><span class="grab"></span></button>
-    <div class="dp-tabbar">
-      <div class="dp-tabs" id="dpTabs" role="tablist" aria-label="날짜 패널 보기">
-        <button class="dp-tab on" data-ptab="detail" role="tab" id="dptab-detail" aria-controls="dpBody" aria-selected="true" tabindex="0">일정 상세</button>
-        <button class="dp-tab" data-ptab="todo" role="tab" id="dptab-todo" aria-controls="dpBody" aria-selected="false" tabindex="-1">할 일</button>
-      </div>
-    </div>
-    <div class="dp-body" id="dpBody" role="tabpanel" tabindex="0" aria-labelledby="dptab-detail"></div>
+    <!-- 패널 = 고른 날짜만(docs/PERSONAL-PANEL.md). 탭은 없다. 머리(날짜, 요일, [+ 추가]), 본문(일정 n, 할 일 n), 맨 아래 한 줄(할 일 전체 보기)은 renderPanel 이 채운다. -->
+    <div class="dp-head" id="dpHead"></div>
+    <div class="dp-body" id="dpBody" role="region" tabindex="0" aria-label="고른 날짜의 일정과 할 일"></div>
+    <button type="button" class="dp-foot" id="dpFoot" aria-haspopup="dialog"></button>
   </aside>
   <!-- 과제 탭 화면(pcRender 가 채운다). 과제 탭에서는 위의 개인 달력과 패널을 숨기고 이것만 보인다. -->
   <section class="pc-view" id="pcView" role="tabpanel" aria-labelledby="pcTabProject"></section>
@@ -4019,6 +4026,14 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
   </div>
 </div>
 
+<!-- ===== 할 일 전체 팝업(docs/PERSONAL-PANEL.md). 패널 맨 아래 한 줄이 연다. todoAllHtml 이 채운다. ===== -->
+<div class="overlay hidden" id="todoAllModal">
+  <div class="modal">
+    <div class="modal-head"><h2>할 일 전체</h2><button class="x" data-close>×</button></div>
+    <div class="modal-body" id="taBody"></div>
+  </div>
+</div>
+
 <!-- ===== 검색 모달 ===== -->
 <div class="overlay hidden" id="searchModal">
   <div class="modal wide">
@@ -4089,9 +4104,9 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
       <section class="help-sec">
         <h3>빠른 시작</h3>
         <ul>
-          <li><b>＋ 새 기록</b> 또는 달력 날짜 <b>더블클릭</b>으로 일정·할 일 추가</li>
+          <li>오른쪽 패널의 <b>＋ 추가</b> 또는 달력 날짜 <b>더블클릭</b>으로 일정·할 일 추가</li>
           <li>기록을 다른 날짜로 <b>드래그</b>해 이동</li>
-          <li>왼쪽은 달력, 오른쪽 패널은 선택한 날짜의 <b>일정 상세와 할 일</b></li>
+          <li>왼쪽은 달력, 오른쪽 패널은 선택한 날짜의 <b>일정과 할 일</b></li>
         </ul>
       </section>
       <section class="help-sec">
@@ -4126,7 +4141,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
           <li><kbd>←</kbd><kbd>→</kbd> 월 이동</li>
           <li><kbd>Home</kbd> 오늘</li>
           <li><kbd>Esc</kbd> 닫기</li>
-          <li>날짜 <kbd>더블클릭</kbd> 새 기록</li>
+          <li>날짜 <kbd>더블클릭</kbd> 일정, 할 일 추가</li>
         </ul>
       </section>
     </div>
@@ -4467,11 +4482,11 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
       <section class="guide-sec" id="g-start">
         <h3>1. 화면 구성</h3>
         <ul>
-          <li><b>왼쪽 월 달력</b>: 날짜 칸 안에 일정·할 일이 칩으로 표시됩니다. 위쪽 <b>‹ 오늘 ›</b>로 월을 이동합니다.</li>
-          <li><b>오른쪽 패널(탭 2개)</b>: <b>일정 상세</b>(선택한 날의 일정), <b>할 일</b>. 모두 달력에서 고른 날짜를 따릅니다.</li>
-          <li><b>과제 필터 줄</b>(달력 위): <b>전체</b> 또는 특정 과제만 눌러 그 과제 기록만 볼 수 있습니다.</li>
-          <li><b>헤더 버튼</b>: 검색, 내 과제, 문의, 모양, ? 도움말, ⋯ 더보기(<b>설정</b>, 데이터), 보고서, <b>＋ 새 기록</b>.</li>
-          <li><b>보고서</b>는 헤더에 있습니다. 창이 <b>아주 좁을 때</b>만 헤더에서 숨겨지고, <b>⋯ 더보기</b>의 <b>보고서 초안</b>으로 엽니다.</li>
+          <li><b>왼쪽 월 달력</b>: 날짜 칸 안에 일정·할 일이 칩으로 표시됩니다. 일정과 할 일이 둘 다 보이면 칸 맨 위 줄에 그날 할 일(3개 이상이면 개수)이, 점선 아래에 일정이 놓입니다. 위쪽 <b>‹ 오늘 ›</b>로 월을 이동합니다.</li>
+          <li><b>오른쪽 패널</b>: 달력에서 고른 날짜의 <b>일정</b>과 <b>할 일</b>이 늘 같은 자리에 나뉘어 보입니다. 머리의 <b>＋ 추가</b>로 그 날짜에 넣고, 맨 아래 한 줄 <b>할 일 전체 보기</b>로 모든 할 일을 봅니다.</li>
+          <li><b>⚲ 보기</b>(달력 위): 달력에 보일 것을 고릅니다. 기록 종류(일정, 할 일), 과제, 완료한 할 일 표시, 중요한 할 일만. [처음대로]로 되돌리고, 고른 보기는 이 PC에 기억됩니다.</li>
+          <li><b>헤더 버튼</b>: 검색, 내 과제, 문의, 모양, ? 도움말, ⋯ 더보기(<b>설정</b>, 데이터).</li>
+          <li><b>보고</b>는 달력 위 <b>근태</b> 탭에서 합니다. 머리의 <b>일간</b>, <b>주간</b>, <b>취합</b>에서 고릅니다.</li>
           <li><b>⋯ 더보기</b>의 <b>설정</b>에서 <b>월 보기 밀도</b>(고정 / 촘촘히 / 펼침·스크롤)를 고를 수 있습니다. 칸이 넘칠 때 잘리지 않고 펼쳐 보고 싶으면 ‘펼침’을 고릅니다.</li>
         </ul>
       </section>
@@ -4479,7 +4494,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
       <section class="guide-sec" id="g-add">
         <h3>2. 일정 추가</h3>
         <ol>
-          <li><b>＋ 새 기록</b>을 누르거나 달력의 <b>빈 날짜를 더블클릭</b>합니다.</li>
+          <li>오른쪽 패널의 <b>＋ 추가</b>를 누르거나 달력의 <b>빈 날짜를 더블클릭</b>합니다. 보기가 할 일만이면 할 일로 열립니다.</li>
           <li>위쪽 <b>일정 / 할 일</b> 토글에서 <b>일정</b>을 선택합니다.</li>
           <li><b>제목</b>을 적고, <b>시작일과 종료일</b>, <b>과제</b>를 고릅니다. 두 날짜가 같으면 하루 일정, 다르면 여러 날 기간 일정입니다.</li>
           <li>그 아래 <b>종일</b> 또는 <b>시작과 종료 시각</b>(아래 ‘시간 입력’ 참고), <b>미리알림</b>, <b>반복</b>(안 함, 매주, 매월), <b>장소</b>, <b>메모</b>를 정합니다. 모든 칸이 한 화면에 있습니다.</li>
@@ -4511,18 +4526,19 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
       <section class="guide-sec" id="g-edit">
         <h3>5. 편집, 이동, 삭제</h3>
         <ul>
-          <li>달력의 <b>칩을 클릭</b>하면 오른쪽 패널에서 해당 항목이 강조되어 펼쳐집니다(미리보기).</li>
-          <li><b>편집</b>: 일정 상세의 <b>수정</b> 버튼(또는 할 일 텍스트)을 누르면 편집 폼이 열립니다.</li>
+          <li>달력의 <b>칩을 클릭</b>하면 그 날짜가 선택되고 오른쪽 패널에서 해당 항목이 강조됩니다(미리보기).</li>
+          <li><b>편집</b>: 패널 일정 카드의 <b>수정</b> 버튼(또는 할 일 텍스트)을 누르면 편집 폼이 열립니다.</li>
           <li><b>이동</b>: 칩이나 기간 막대를 <b>다른 날짜로 드래그</b>합니다. 기간 막대는 잡은 날을 기준으로 옮겨집니다(10/9 를 잡아 10/11 에 놓으면 이틀 뒤로, 길이는 그대로). 반복 일정은 끌 수 없습니다.</li>
-          <li><b>삭제</b>: 일정 상세의 <b>삭제</b>(또는 편집 폼의 삭제). 삭제 후 <b>실행취소</b> 토스트가 잠시 표시됩니다.</li>
+          <li><b>삭제</b>: 일정 카드의 <b>삭제</b>(또는 할 일 편집 폼의 삭제). 삭제 후 <b>실행취소</b> 토스트가 잠시 표시됩니다.</li>
         </ul>
       </section>
 
       <section class="guide-sec" id="g-todo">
         <h3>6. 할 일</h3>
         <ul>
-          <li>＋ 새 기록에서 <b>할 일</b> 토글을 골라 추가합니다. 기한(날짜)은 선택이며, 비우면 ‘기한 없음’으로 분류됩니다.</li>
-          <li>오른쪽 <b>할 일</b> 탭에서 <b>체크</b>로 완료 처리, <b>★</b>로 중요 표시합니다.</li>
+          <li>오른쪽 패널의 <b>＋ 추가</b>(또는 날짜 더블클릭)에서 입력 창 위의 <b>할 일</b>을 골라 추가합니다. 보기가 할 일만이면 처음부터 할 일로 열립니다. 기한(날짜)은 선택이며, 비우면 ‘기한 없음’으로 분류됩니다.</li>
+          <li>오른쪽 패널의 <b>할 일</b> 묶음에서 <b>체크</b>로 완료 처리, 줄 끝 <b>★</b>로 중요 표시합니다. 중요한 할 일이 먼저 나옵니다.</li>
+          <li>패널 맨 아래 <b>할 일 전체 보기</b>를 누르면 ★ 중요, 기한 지남, 이번 주, 나중, 기한 없음, 완료로 묶어 모든 할 일을 봅니다. 날짜 있는 할 일을 누르면 그 날짜로 이동합니다.</li>
           <li>여러 날에 걸친 <b>기간 할 일</b>도 가능하며, 칩을 드래그하면 기한이 이동합니다.</li>
           <li>지난 기한의 미완료 할 일은 ‘지남’으로 강조됩니다.</li>
         </ul>
@@ -4540,19 +4556,18 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
       <section class="guide-sec" id="g-report">
         <h3>8. 보고서</h3>
         <ol>
-          <li>헤더의 <b>보고서</b>를 엽니다(창이 아주 좁으면 <b>⋯ 더보기</b>의 <b>보고서 초안</b>).</li>
-          <li>기간을 <b>오늘 / 이번 주 / 지난 주 / 이번 달 / 지난 달</b> 또는 날짜 범위로 정합니다.</li>
-          <li><b>포함 항목</b>에서 <b>일정, 할 일</b> 중 넣을 것만 체크합니다(체크한 것만 들어갑니다).</li>
-          <li>과제별로 <b>[제목] : 시간</b> 형태로 자동 정리됩니다. 업무 목록은 <b>- 항목</b>으로 나열됩니다.</li>
-          <li><b>하루</b> 보고서에서는 과제별 시간을 칸에서 직접 수정할 수 있습니다(여러 날은 읽기전용).</li>
-          <li><b>복사</b>로 클립보드에 담아 사내 보고 양식에 붙여넣습니다.</li>
+          <li>달력 위 <b>근태</b> 탭을 엽니다. 머리에서 <b>일간</b>, <b>주간</b>, <b>취합</b>을 고릅니다.</li>
+          <li><b>일간</b>: 과제별 블록에 내용과 시간을 적고 <b>보고</b>로 회사 일간보고에 보냅니다.</li>
+          <li><b>주간</b>: 목록에서 기간과 찾기로 지난 보고를 찾고, <b>작성</b>으로 새 주간보고를 씁니다.</li>
+          <li><b>취합</b>: 기간과 내용 출처(캘린더 기록, 인트라넷 주간)를 고르고 <b>읽어 오기</b>를 누릅니다.</li>
+          <li>오른쪽 위에서 <b>과제별 글</b>은 <b>복사</b>, <b>월간 보고 문서</b>는 <b>DOCX 저장</b>으로 내보냅니다.</li>
         </ol>
       </section>
 
       <section class="guide-sec" id="g-hours">
         <h3>9. 시간(공수) 기록</h3>
         <ul>
-          <li>시간(공수)은 <b>하루 × 과제</b> 단위로 기록합니다. <b>하루 보고서</b>의 과제별 시간 칸에 입력합니다.</li>
+          <li>시간(공수)은 <b>하루 × 과제</b> 단위로 기록합니다. <b>근태 탭 일간</b>의 과제별 시간 칸에 입력합니다.</li>
           <li>입력한 시간은 보고서 기간에 맞춰 과제별로 <b>합산</b>됩니다.</li>
           <li>시간 단위는 ‘시간(h)’이며 0.25(=15분) 단위로 적을 수 있습니다.</li>
         </ul>
@@ -4593,7 +4608,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
           <li><kbd>←</kbd><kbd>→</kbd> 월 이동</li>
           <li><kbd>Home</kbd> 오늘로</li>
           <li><kbd>Esc</kbd> 창 닫기</li>
-          <li>날짜 <kbd>더블클릭</kbd> 새 기록</li>
+          <li>날짜 <kbd>더블클릭</kbd> 일정, 할 일 추가</li>
           <li>달력에서 <kbd>방향키</kbd> 날짜 이동, <kbd>Enter</kbd> 선택</li>
         </ul>
       </section>
@@ -6115,6 +6130,7 @@ window.__applyState = function(json, meta){
     if(PEER) paintPeerLegend();   // 범례 견본 = 그 사람 과제 색(데이터가 들어온 뒤라야 안다)
     filterCats = null;
     __bootMeta = meta || null;            // 스키마 게이트(가져오기·초기화)가 읽는 값 — 배지보다 먼저 세운다
+    viewRestore();                        // 보기(기록 종류, 옵션, 과제)는 계정별로 이 PC 에 기억한 것을 되살린다(__bootMeta 로 계정을 안다). 열람 창은 처음대로
     renderAll();
     pushReminders();
     //  ★ 출처 배지는 **내 창의 것**이다. 열람 창에서는 배너가 이미 "읽기 전용" 이라고 말한다.
@@ -10760,6 +10776,7 @@ function peerTimeOverlaps(list){
 }
 function ovlKey(e){ return (e && e._mine ? 'm:' : 'p:') + (e ? e.id : ''); }
 function passFilter(e){
+  if(!viewKinds.ev) return false;   // 보기에서 일정을 껐다(docs/PERSONAL-PANEL.md §2.3). 내 겹 일정도 같다
   //  ★ C4.1 — 내 일정 겹은 **과제 축을 타지 않는다.** 열람 창 필터바에 있는 칩은 전부 상대 과제고,
   //    내 겹은 과제 구분이 없는 한 겹이다(categoryId=null). 그래서 상대 과제를 켜고 꺼도 내 겹은
   //    그대로 남는다 — 여기서 categoryId 비교를 태우면 상대 과제를 고르는 순간 내 겹이 통째로
@@ -11222,15 +11239,17 @@ const _t = new Date();
 let view = {y:_t.getFullYear(), m:_t.getMonth()};
 let selectedDate = todayYmd();
 let focusDs = null;          // 그리드 키보드 포커스(roving tabindex) 대상 날짜 — 선택과 별개로 이동
-//  과제 필터(docs/FILTER-MULTI.md). 화면 전체에 하나다(달력, 주간 과제별 줄, 상세, 할 일 탭이 같이 따른다).
+//  과제 필터(docs/FILTER-MULTI.md). 화면 전체에 하나다(달력, 주간 과제별 줄, 우측 패널, 할 일 전체 팝업이 같이 따른다).
 //    null = 전체(필터 없음). Set = 고른 과제 id. 빈 Set = 선택 없음(아무 기록도 안 보인다). 저장하지 않는다.
 let filterCats = null;
-let noteTab = 'detail';      // 우측 패널 탭: 'detail'(일정 상세) | 'todo'(할 일)
-let noteCollapsed = new Set(['done','nodate']);  // 접힌 섹션 키(완료·기한없음은 기본 접힘)
+//  보기(docs/PERSONAL-PANEL.md §2.3): 과제(filterCats) 말고 기록 종류와 보기 옵션. 월간 칸, 주간 과제별 줄, 우측 패널, 할 일 전체 팝업이 같이 따른다.
+//    viewKinds = 달력에 보일 기록 종류(둘 다 끌 수는 없다). viewOpts.done = 완료한 할 일 표시, viewOpts.star = 중요한 할 일만.
+//    내 창은 계정별로 이 PC 에 기억한다(viewSave, viewRestore). 열람 창은 기억하지 않는다(열 때마다 처음대로).
+let viewKinds = { ev: true, td: true };
+let viewOpts = { done: true, star: false };
 let editingTodoId = null;    // 인라인 편집 중인 TODO id
 let editingDayNoteKey = null; // 보고서 날짜별 dayNote 줄 편집 키. (일간 보고서 줄편집 키는 줄 ✎ 와 함께 없앴다, REPORT-EDIT §5)
 let panelSheetOpen = false;  // 좁은 폭(<=760)에서 하단 시트 열림 여부
-let noteImportantOnly = false; // 할 일 탭 '★ 중요만' 필터
 let searchMode = 'keyword';
 let pendingImport = null;
 let flashTargetId = null;
@@ -11249,12 +11268,13 @@ function renderWeekdays(){
   if(wm) wm.innerHTML = $('#weekdays').innerHTML;
 }
 
-/* ---------- 과제 필터 묶음(docs/FILTER-MULTI.md, docs/NAV-LAYOUT-C.md) ----------
-   날짜 줄(header.topbar .nav)의 [월간 | 주간] 오른쪽: [과제 버튼(글자에 맞춤)] [고른 과제 칩 … +N]. 버튼을 누르면 버튼 아래에 팝업(검색, 전체 선택/해제, 다중 선택 목록)이 뜬다.
-   ★ 버튼과 칩 자리는 한 번 만들고 내용만 바꾼다. 팝업이 열린 채 과제를 켜고 끄면 renderAll 이 여기를 다시 부르는데,
-     묶음을 통째로 갈아 끼우면 팝업과 포커스가 날아가 깜빡인다. 팝업 목록도 목록 칸(.fb-list)은 그대로 두고 속만 바꾼다. */
+/* ---------- 보기 묶음(docs/PERSONAL-PANEL.md §2.3, docs/FILTER-MULTI.md, docs/NAV-LAYOUT-C.md) ----------
+   날짜 줄(header.topbar .nav)의 [월간 | 주간] 오른쪽에 ⚲ 보기 단추 하나. 누르면 단추 아래에 "달력에 보일 것" 팝업이 뜬다.
+   위에서부터 [처음대로], 기록 종류(일정, 할 일. 둘 다 끌 수는 없다), 과제(검색, 전체 선택/해제, 다중 선택 목록, FILTER-MULTI 그대로),
+   가는 선 아래 보기 옵션(완료한 할 일 표시, 중요한 할 일만). 고른 과제 칩은 없다(단추 요약이 상태를 말한다. 예: 할 일만, 과제 2, 완료 숨김, 중요만).
+   ★ 단추 자리는 한 번 만들고 내용만 바꾼다. 팝업이 열린 채 무언가를 켜고 끄면 renderAll 이 여기를 다시 부르는데,
+     묶음을 통째로 갈아 끼우면 팝업과 포커스가 날아가 깜빡인다. 팝업도 만든 채로 두고 체크 상태와 목록 속만 바꾼다. */
 const FB_CARET = '<svg class="fb-caret" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
-const FB_X = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2 8 8M8 2 2 8" stroke="currentColor" stroke-width="1.6"/></svg>';
 const FB_CHECK = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.8 5.2 4 7.4 8.4 2.8" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>';
 const FB = { pop:null, q:null, lb:null, items:[], act:-1, actId:null };   // 열린 팝업(닫혀 있으면 pop=null)
 
@@ -11271,8 +11291,63 @@ function filterToggleCat(id){
   if(filterCats.has(id)) filterCats.delete(id); else filterCats.add(id);
   filterNormalize();
 }
-//  필터를 바꾼 뒤 다시 그리기(예전 칩 클릭과 같은 길)
-function filterApply(){ renderAll(); }
+//  보기를 바꾼 뒤: 기억하고 다시 그린다(예전 칩 클릭과 같은 길)
+function filterApply(){ viewPersist(); renderAll(); }
+
+/*  보기 상태(과제 filterCats + 기록 종류 viewKinds + 보기 옵션 viewOpts). 화면 전체에 하나다. */
+function viewIsDefault(){ return filterCats === null && viewKinds.ev && viewKinds.td && viewOpts.done && !viewOpts.star; }
+//  단추 요약: 처음 상태면 '전체', 아니면 바뀐 것만(예: 할 일만, 과제 2, 완료 숨김, 중요만)
+function viewSummary(){
+  const p = [];
+  if(filterCats !== null) p.push('과제 ' + filterCats.size);
+  if(!viewKinds.ev) p.push('할 일만'); else if(!viewKinds.td) p.push('일정만');
+  if(viewKinds.td && !viewOpts.done) p.push('완료 숨김');
+  if(viewKinds.td && viewOpts.star) p.push('중요만');
+  return p.length ? p.join(', ') : '전체';
+}
+//  이 할 일을 지금 보기가 보이는가. anyKind = 기록 종류 끔은 따지지 않는다(할 일 전체 팝업, 맨 아래 개수)
+function viewTodoPass(t, anyKind){
+  if(!t) return false;
+  if(!anyKind && !viewKinds.td) return false;
+  if(filterCats !== null && !filterCats.has(t.categoryId)) return false;
+  if(!viewOpts.done && t.done) return false;
+  if(viewOpts.star && t.prio !== 'high') return false;
+  return true;
+}
+//  기록 종류를 켜고 끈다. 둘 다 끌 수는 없다(마지막 하나를 끄려 하면 false)
+function viewSetKind(k, on){
+  if(k !== 'ev' && k !== 'td') return false;
+  const other = k === 'ev' ? 'td' : 'ev';
+  if(!on && !viewKinds[other]) return false;
+  viewKinds[k] = !!on;
+  return true;
+}
+function viewSetOpt(k, on){ if(k === 'done' || k === 'star') viewOpts[k] = !!on; }
+function viewReset(){ filterCats = null; viewKinds = { ev: true, td: true }; viewOpts = { done: true, star: false }; }
+//  기억: 계정별 이 PC(localStorage tc_view:<계정>). 처음 상태면 지운다. 열람 창은 기억하지 않는다.
+function viewStoreKey(){ return 'tc_view:' + rptDraftWho(); }
+function viewPersist(){
+  if(PEER) return;
+  try{
+    if(viewIsDefault()) localStorage.removeItem(viewStoreKey());
+    else localStorage.setItem(viewStoreKey(), JSON.stringify({ v: 1, ev: viewKinds.ev, td: viewKinds.td, done: viewOpts.done, star: viewOpts.star, cats: filterCats === null ? null : [...filterCats] }));
+  }catch(_){}
+}
+//  데이터가 들어온 뒤(부팅, 새로 받기) 한 번: 기억해 둔 보기를 되살린다. 없어진 과제는 뺀다. 선택 없음은 되살리지 않는다(빈 달력으로 시작하지 않게).
+function viewRestore(){
+  viewReset();
+  if(PEER) return;
+  let o = null;
+  try{ o = JSON.parse(localStorage.getItem(viewStoreKey()) || 'null'); }catch(_){ o = null; }
+  if(!o || typeof o !== 'object') return;
+  viewKinds.ev = o.ev !== false; viewKinds.td = o.td !== false;
+  if(!viewKinds.ev && !viewKinds.td) viewKinds.ev = true;
+  viewOpts.done = o.done !== false; viewOpts.star = o.star === true;
+  if(Array.isArray(o.cats)){
+    const have = new Set(state.categories.map(c => c.id)), keep = o.cats.filter(id => have.has(id));
+    if(keep.length){ filterCats = new Set(keep); filterNormalize(); }
+  }
+}
 //  팝업 목록 순서: 기록 많은 순, 같으면 가나다순. 0건은 구분선 뒤 묶음
 function filterCatCounts(){
   const n = new Map();
@@ -11287,100 +11362,54 @@ function filterSorted(){
   zero.sort(byName);
   return { live, zero };
 }
-function filterLabel(){
-  if(filterCats === null) return { html:'<span class="nm">전체</span>', text:'전체', f:false };
-  const sel = filterSelCats();
-  if(!sel.length) return { html:'<span class="nm">선택 없음</span>', text:'선택 없음', f:false, none:true };
-  const c = sel[0], k = sel.length - 1;
-  return { html:`<span class="dot" style="background:${validColor(c.color)}"></span><span class="nm">${esc(c.name)}</span>` + (k ? `<span class="fb-cnt">외 ${k}</span>` : ''),
-           text: c.name + (k ? ` 외 ${k}` : ''), f:true };
-}
 
 function renderFilterbar(){
   const bar = $('#filterbar'); if(!bar) return;
-  if(!state.categories.length){
-    if(FB.pop) filterPopClose(false);
-    bar.removeAttribute('role'); bar.removeAttribute('aria-label');
-    bar.innerHTML = `<button type="button" class="fb-btn" id="fbBtn" disabled aria-label="과제 필터, 과제 없음" title="등록된 수행 과제가 없습니다. [내 과제]에서 추가하세요."><span class="pv none"><span class="nm">과제 없음</span></span>${FB_CARET}</button>`;
-    return;
+  if(!bar.querySelector('.fb-btn')){
+    bar.innerHTML = `<button type="button" class="fb-btn" id="fbBtn" aria-haspopup="dialog" aria-expanded="false"><span class="pl">⚲ 보기</span><span class="pv"></span>${FB_CARET}</button>`;
   }
-  if(!bar.querySelector('.fb-rest')){
-    bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', '과제 필터');
-    bar.innerHTML = `<button type="button" class="fb-btn" id="fbBtn" aria-haspopup="listbox" aria-expanded="false"><span class="pl">과제</span><span class="pv"></span>${FB_CARET}</button><div class="fb-rest"></div>`;
-  }
-  const btn = bar.querySelector('.fb-btn'), lb = filterLabel(), pv = btn.querySelector('.pv');
-  pv.innerHTML = lb.html; pv.classList.toggle('none', !!lb.none);
-  btn.classList.toggle('filtered', lb.f);
-  btn.setAttribute('aria-label', '과제 필터, ' + lb.text);
-  btn.title = '과제 필터: ' + lb.text;
-  fitFilterChips();
-  if(FB.pop) filterFillList(false);
-}
-//  칩이 쓸 수 있는 폭: 날짜 줄에서 과제 버튼 오른쪽부터 오른쪽 단추 묶음(.actions) 앞까지(모두 재서 정한다. 숫자를 박지 않는다).
-//  묶음이 날짜 줄 안에서 다음 줄로 내려갔으면 날짜 줄(.nav)의 오른쪽 끝까지. 재지 못하면(숨어 있거나 레이아웃이 없으면) 0.
-//  칩 자리(.fb-rest)를 감춘 채 부른다: 칩이 줄 폭을 밀지 않은 최소 상태에서 재야 한다.
-function fbFreeWidth(bar, btn){
-  const top = bar.closest('.topbar'); if(!top || !btn || !btn.offsetWidth) return 0;
-  const nav = bar.closest('.nav'), act = top.querySelector('.actions'), seg = document.getElementById('calViewSeg');
-  const b = btn.getBoundingClientRect(), t = top.getBoundingClientRect(), tcs = getComputedStyle(top);
-  const gap = parseFloat(getComputedStyle(bar).columnGap) || 0;
-  const wrapped = !!seg && seg.offsetWidth > 0 && b.top > seg.getBoundingClientRect().top + 4;
-  let limit;
-  if(wrapped && nav) limit = nav.getBoundingClientRect().right;
-  else {
-    const a = act && act.getBoundingClientRect(), sp = top.querySelector(':scope > .spacer');
-    const gaps = (sp && getComputedStyle(sp).display !== 'none') ? 2 : 1, tg = parseFloat(tcs.columnGap) || 0;
-    const sameRow = !!a && a.width > 0 && a.top < b.bottom - 1 && a.left > b.right;
-    limit = sameRow ? a.left - gaps * tg : t.right - (parseFloat(tcs.paddingRight) || 0);
-  }
-  return Math.floor(limit - b.right - gap) - 2;
-}
-//  고른 과제 칩을 깔고, 남는 자리에 다 안 들어가면 뒤에서부터 덜어 +N 으로 접는다. 하나도 못 들어가면 칩 자리를 감춘다(단추 글자가 상태를 말한다).
-//  그리기 전(같은 프레임)에 재므로 깜빡이지 않는다. 같은 칩, 같은 폭이면 DOM 을 건드리지 않는다.
-//  숨어 있으면(과제, 근태 탭) 잴 수 없다. 칩을 모두 깔아 두고, 다시 보일 때 ResizeObserver 가 부른다.
-function fitFilterChips(){
-  const bar = $('#filterbar'), rest = bar && bar.querySelector('.fb-rest'); if(!rest) return;
-  const btn = bar.querySelector('.fb-btn'), sel = filterSelCats();
-  const key = sel.map(c => c.id + '\u0001' + c.name + '\u0001' + c.color).join('\u0002');
-  rest.style.display = 'none';
-  const free = fbFreeWidth(bar, btn), measured = !!(btn && btn.offsetWidth);
-  const sig = key + '|' + (measured ? free : 'x');
-  if(rest.dataset.sig === sig && (rest.firstChild || !sel.length)){ rest.style.display = rest.firstChild ? '' : 'none'; return; }
-  rest.dataset.sig = sig;
-  const hide = () => { rest.innerHTML = ''; rest.style.display = 'none'; rest.style.width = ''; };
-  if(!sel.length) return hide();
-  rest.innerHTML = sel.map(c => `<span class="fchip on fb-tok" data-cat="${esc(c.id)}" title="${esc(c.name)}"><span class="dot" style="background:${validColor(c.color)}"></span><span class="fc-name">${esc(c.name)}</span><button type="button" class="fb-x" data-rm="${esc(c.id)}" aria-label="${esc(c.name)} 빼기" title="빼기">${FB_X}</button></span>`).join('')
-    + '<button type="button" class="fb-more" aria-haspopup="listbox">+0</button>';
-  const more = rest.querySelector('.fb-more');
-  if(!measured){ more.remove(); rest.style.width = ''; rest.style.display = ''; return; }
-  if(free < 40) return hide();
-  rest.style.width = free + 'px'; rest.style.display = '';
-  const right = rest.getBoundingClientRect().right + .5;
-  const over = () => { const l = rest.lastElementChild; return !!l && l.getBoundingClientRect().right > right; };
-  const toks = [...rest.querySelectorAll('.fb-tok')];
-  let k = 0;
-  while(over() && k < toks.length){ toks[toks.length - 1 - k].remove(); k++; more.textContent = '+' + k; }
-  if(k >= toks.length) return hide();
-  if(!k) more.remove();
-  else { more.setAttribute('aria-label', `고른 과제 ${k}개 더, 목록 열기`); more.title = `고른 과제 ${k}개 더`; }
+  const btn = bar.querySelector('.fb-btn'), sum = viewSummary();
+  btn.querySelector('.pv').textContent = sum;
+  btn.classList.toggle('filtered', !viewIsDefault());
+  btn.setAttribute('aria-label', '보기, ' + sum);
+  btn.title = '달력에 보일 것: ' + sum;
+  if(FB.pop){ filterSyncPop(); filterFillList(false); }
 }
 
 /* 팝업 */
 function filterPopOpen(focusTo){
   const bar = $('#filterbar'), btn = bar && bar.querySelector('.fb-btn'); if(!btn) return;
   if(FB.pop) filterPopClose(false);
+  if(panelSheetOpen) closeSheet();   // 좁은 창에서 아래 시트가 열려 있으면 팝업을 가린다. 보기를 고르려는 것이니 시트를 먼저 닫는다
   const pop = document.createElement('div');
   pop.className = 'fb-pop'; pop.id = 'fbPop';
-  pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', '과제 고르기');
-  pop.innerHTML = `<div class="fb-ph"><input class="fb-q" type="text" role="searchbox" autocomplete="off" placeholder="과제 검색" aria-label="과제 검색" aria-controls="fbList"></div>`
+  pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', '달력에 보일 것');
+  pop.innerHTML = `<div class="vp-head"><b>달력에 보일 것</b><button type="button" class="fb-lk" data-act="reset">처음대로</button></div>`
+    + `<div class="vp-sec"><div class="vp-h">기록 종류</div>`
+    + `<label class="vp-ck"><input type="checkbox" data-vk="ev"> 일정</label><label class="vp-ck"><input type="checkbox" data-vk="td"> 할 일</label></div>`
+    + `<div class="vp-sec vp-cats"><div class="vp-h">과제</div>`
+    + `<div class="fb-ph"><input class="fb-q" type="text" role="searchbox" autocomplete="off" placeholder="과제 검색" aria-label="과제 검색" aria-controls="fbList"></div>`
     + `<div class="fb-acts"><button type="button" class="fb-lk" data-act="all">전체 선택</button><button type="button" class="fb-lk" data-act="none">전체 해제</button></div>`
-    + `<div class="fb-opts" role="listbox" tabindex="0" id="fbList" aria-label="과제" aria-multiselectable="true"></div>`;
+    + `<div class="fb-opts" role="listbox" tabindex="0" id="fbList" aria-label="과제" aria-multiselectable="true"></div></div>`
+    + `<div class="vp-sec vp-opt"><div class="vp-h">보기 옵션</div>`
+    + `<label class="vp-ck"><input type="checkbox" data-vo="done"> 완료한 할 일 표시</label><label class="vp-ck"><input type="checkbox" data-vo="star"> 중요한 할 일만</label></div>`;
   bar.appendChild(pop);
   Object.assign(FB, { pop, q: pop.querySelector('.fb-q'), lb: pop.querySelector('.fb-opts'), items: [], act: -1, actId: null });
   btn.setAttribute('aria-expanded', 'true'); btn.setAttribute('aria-controls', 'fbPop');
+  filterSyncPop();
   filterFillList(true);
   filterPopPlace(true);   // 목록을 채운 뒤에 높이를 잰다(내용만큼)
   (focusTo === 'list' ? FB.lb : FB.q).focus({ preventScroll: true });
+}
+//  체크 상태와 꺼짐을 지금 보기에 맞춘다(켜고 끄는 동안 팝업을 다시 만들지 않는다). 기록 종류의 마지막 하나는 끌 수 없고, 보기 옵션은 할 일이 보일 때만 쓴다.
+function filterSyncPop(){
+  const p = FB.pop; if(!p) return;
+  const set = (sel, on, dis) => { const i = p.querySelector(sel); if(i){ i.checked = !!on; i.disabled = !!dis; } };
+  set('[data-vk="ev"]', viewKinds.ev, viewKinds.ev && !viewKinds.td);
+  set('[data-vk="td"]', viewKinds.td, viewKinds.td && !viewKinds.ev);
+  set('[data-vo="done"]', viewOpts.done, !viewKinds.td);
+  set('[data-vo="star"]', viewOpts.star, !viewKinds.td);
+  const r = p.querySelector('[data-act="reset"]'); if(r) r.disabled = viewIsDefault();
 }
 //  자리: 버튼 아래(묶음 기준 absolute). 쓸 수 있는 폭(창 폭)이 480 미만이면 좌우 8px 만 남기고 꽉 찬 시트. 목록 높이는 열 때 한 번 정한다(검색 중 출렁이지 않게)
 function filterPopPlace(sizeList){
@@ -11391,10 +11420,11 @@ function filterPopPlace(sizeList){
   const w = Math.min(narrow ? VW - 16 : 340, VW - 16), x = Math.max(8, Math.min(bt.left, VW - w - 8));
   pop.style.width = w + 'px'; pop.style.left = (x - g.left) + 'px'; pop.style.top = (bt.bottom - g.top + 4) + 'px';
   if(sizeList){
-    const head = pop.querySelector('.fb-ph').offsetHeight + pop.querySelector('.fb-acts').offsetHeight;
-    const avail = window.innerHeight - bt.bottom - head - 24;
+    FB.lb.style.height = '0px';
+    const fixed = pop.offsetHeight;   // 목록을 뺀 나머지(머리, 기록 종류, 검색칸, 보기 옵션)
     FB.lb.style.height = '';
-    const cap = Math.max(120, Math.min(narrow ? 360 : 300, avail));
+    const avail = window.innerHeight - bt.bottom - fixed - 24;
+    const cap = Math.max(96, Math.min(narrow ? 240 : 190, avail));
     FB.lb.style.height = Math.min(FB.lb.scrollHeight, cap) + 'px';   // 내용만큼, 상한까지(과제가 적으면 빈 공간을 남기지 않는다. 연 뒤에는 검색해도 높이를 바꾸지 않는다)
   }
 }
@@ -11424,7 +11454,7 @@ function filterFillList(initial){
   };
   let h = L.map(opt).join('');
   if(Z.length){ if(L.length) h += '<div class="fb-gap" role="presentation"></div>'; h += Z.map(opt).join(''); }
-  if(!L.length && !Z.length) h = '<div class="fb-none">일치하는 과제 없음</div>';
+  if(!L.length && !Z.length) h = `<div class="fb-none">${state.categories.length ? '일치하는 과제 없음' : '과제 없음'}</div>`;
   const st = FB.lb.scrollTop;
   FB.lb.innerHTML = h;
   if(!initial) FB.lb.scrollTop = st;
@@ -11434,8 +11464,8 @@ function filterFillList(initial){
   if(a < 0 && initial) a = FB.items.findIndex(o => o.getAttribute('aria-selected') === 'true');
   if(a < 0 && FB.items.length) a = 0;
   filterSetAct(a, initial);
-  FB.pop.querySelector('[data-act="all"]').disabled = filterCats === null;
-  FB.pop.querySelector('[data-act="none"]').disabled = filterCats !== null && filterCats.size === 0;
+  FB.pop.querySelector('[data-act="all"]').disabled = filterCats === null || !state.categories.length;
+  FB.pop.querySelector('[data-act="none"]').disabled = (filterCats !== null && filterCats.size === 0) || !state.categories.length;
 }
 function filterSetAct(i, scroll){
   FB.act = i;
@@ -11456,7 +11486,8 @@ function bindFilterbar(){
     const t = ev.target;
     if(FB.pop && FB.pop.contains(t)){
       const lk = t.closest('.fb-lk');
-      if(lk){
+      if(lk && !lk.disabled){
+        if(lk.dataset.act === 'reset'){ viewReset(); filterApply(); FB.q.focus({ preventScroll: true }); return; }   // 누른 단추가 꺼지니 포커스는 검색칸으로
         filterCats = lk.dataset.act === 'all' ? null : new Set();
         filterApply(); FB.lb.focus({ preventScroll: true });   // 누른 단추가 꺼질 수 있으니 포커스는 목록으로
         return;
@@ -11466,16 +11497,13 @@ function bindFilterbar(){
       return;
     }
     if(t.closest('.fb-btn')){ if(FB.pop) filterPopClose(true); else filterPopOpen('q'); return; }
-    if(t.closest('.fb-more')){ filterPopOpen('list'); return; }
-    const rm = t.closest('.fb-x[data-rm]');
-    if(rm){
-      const xs = [...bar.querySelectorAll('.fb-x[data-rm]')], i = xs.indexOf(rm);
-      filterDropCat(rm.dataset.rm);   // 마지막 칩을 빼면 필터가 없어진 것이니 전체로
-      if(FB.pop) filterPopClose(false);
-      filterApply();
-      const nx = [...bar.querySelectorAll('.fb-x[data-rm]')];
-      (nx[Math.min(i, nx.length - 1)] || bar.querySelector('.fb-btn')).focus();
-    }
+  });
+  //  기록 종류와 보기 옵션 체크(팝업은 그대로 두고 상태만 바꾼다)
+  bar.addEventListener('change', ev => {
+    const t = ev.target;
+    if(!FB.pop || !FB.pop.contains(t) || !t.dataset) return;
+    if(t.dataset.vk){ viewSetKind(t.dataset.vk, t.checked); filterApply(); }
+    else if(t.dataset.vo){ viewSetOpt(t.dataset.vo, t.checked); filterApply(); }
   });
   bar.addEventListener('mousemove', ev => {
     if(!FB.pop) return; const o = ev.target.closest('.fb-opt'); if(!o) return;
@@ -11494,7 +11522,9 @@ function bindFilterbar(){
     if(FB.pop && FB.pop.contains(t)){
       if(ev.key === 'Escape'){ done(); filterPopClose(true); return; }
       if(ev.key === 'Tab'){
-        const leaving = ev.shiftKey ? t === FB.q : t === FB.lb;
+        //  팝업 안 첫 칸에서 Shift+Tab, 마지막 칸에서 Tab 이면 닫고 버튼으로(안에서는 평소 순서)
+        const fs = [...FB.pop.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex="0"]')], i = fs.indexOf(t);
+        const leaving = i >= 0 && (ev.shiftKey ? i === 0 : i === fs.length - 1);
         if(leaving){ done(); filterPopClose(true); }
         return;
       }
@@ -11517,17 +11547,12 @@ function bindFilterbar(){
       ev.stopPropagation();
       return;
     }
-    //  칩 줄(toolbar) 안 좌우 화살표
-    if(ev.key === 'ArrowRight' || ev.key === 'ArrowLeft'){
-      const items = [...bar.querySelectorAll('.fb-btn, .fb-rest button')], i = items.indexOf(t); if(i < 0) return;
-      done(); items[(i + (ev.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length].focus();
-    }
   });
   //  바깥을 누르거나 포커스가 바깥으로 가면 닫는다(포커스는 옮겨 간 자리에 둔다)
   document.addEventListener('pointerdown', ev => {
     if(!FB.pop) return;
     const t = ev.target, btn = bar.querySelector('.fb-btn');
-    if(FB.pop.contains(t) || (btn && btn.contains(t)) || (t && t.closest && t.closest('.fb-more'))) return;
+    if(FB.pop.contains(t) || (btn && btn.contains(t))) return;
     filterPopClose(false);
   }, true);
   document.addEventListener('focusin', ev => {
@@ -11535,11 +11560,10 @@ function bindFilterbar(){
     if(FB.pop.contains(ev.target) || ev.target === bar.querySelector('.fb-btn')) return;
     filterPopClose(false);
   });
-  //  폭이 바뀌면 칩을 다시 접고 팝업 자리를 다시 잡는다. 숨었던 묶음이 다시 보일 때도(과제 탭에서 돌아올 때) 여기로 온다.
-  //  묶음과 날짜 줄 전체(.topbar)를 본다. 칩 폭을 정하면 묶음 크기가 바뀌어 한 번 더 불리지만, 같은 결과라 거기서 멈춘다.
-  window.addEventListener('resize', () => { fitFilterChips(); filterPopPlace(false); });
+  //  폭이 바뀌면 팝업 자리를 다시 잡는다.
+  window.addEventListener('resize', () => { filterPopPlace(false); });
   if(typeof ResizeObserver === 'function'){
-    const ro = new ResizeObserver(() => { fitFilterChips(); filterPopPlace(false); });
+    const ro = new ResizeObserver(() => { filterPopPlace(false); });
     ro.observe(bar); const tb = bar.closest('.topbar'); if(tb) ro.observe(tb);
   }
 }
@@ -11675,7 +11699,7 @@ function fitTitleMinWidth(el, year){
 function fitCalTitle(){
   const t = $('#btnTitle'); if(!t) return;
   const m = /^(\d{4})/.exec(t.textContent || '');
-  if(fitTitleMinWidth(t, m ? m[1] : null)) fitFilterChips();   // 제목 칸 폭이 바뀌면 칩이 쓸 자리도 바뀐다
+  fitTitleMinWidth(t, m ? m[1] : null);
 }
 //  글꼴이 늦게 바뀌거나(웹폰트) 창 폭 규칙으로 글꼴 크기가 바뀌면 다시 잰다(같은 글꼴이면 캐시라 비용이 없다)
 function fitTitlesAgain(){ fitCalTitle(); const r = document.querySelector('.pc-range'); if(r) fitTitleMinWidth(r, (/^(\d{4})/.exec(r.textContent || '') || [])[1]); }
@@ -11766,7 +11790,7 @@ function renderMonthGrid(g, dens, pick, opts){
   if(opts.todos){
     for(const t of (state.todos || [])){
       if(!t.due) continue;
-      if(filterCats !== null && !filterCats.has(t.categoryId)) continue;
+      if(!viewTodoPass(t)) continue;
       const tEnd = (t.endDate && t.endDate > t.due) ? t.endDate : t.due;
       if(tEnd < startDs || t.due > endDs) continue;
       const a = maxStr(t.due, startDs), b = minStr(tEnd, endDs);
@@ -11949,7 +11973,7 @@ function pmMonthItems(startDs, endDs, pick, opts){
   if(!opts || opts.todos !== false){
     for(const t of (state.todos || [])){
       if(!t.due) continue;
-      if(filterCats !== null && !filterCats.has(t.categoryId)) continue;
+      if(!viewTodoPass(t)) continue;
       const tEnd = (t.endDate && t.endDate > t.due) ? t.endDate : t.due;
       if(tEnd < startDs || t.due > endDs) continue;
       out.push({ todo: t, s: t.due, e: tEnd, key: 't:' + t.id, mine: false });
@@ -11966,6 +11990,11 @@ function barChipHtml(it, pos){
   const aR = it.cr ? `<span class="chip-arrow" aria-hidden="true"${spanTxt ? '' : ' style="margin-left:auto"'}>▸</span>` : '';
   const geo = ` data-c0="${it.c0}" data-c1="${it.c1}" data-lane="${it.lane}" style="${pos}"`;
   const edge = (it.multi ? ' range' : '') + (it.cl ? ' cl' : '') + (it.cr ? ' cr' : '');
+  //  칸 맨 위 줄 할 일 개수 칩(PERSONAL-PANEL §2.4): 그날 할 일이 3개 이상이면 개수 하나로 접는다. 누르면 그 날짜 선택.
+  if(x.todoCount){
+    return `<div class="chip chip-bar chip-todo chip-tdcnt" draggable="false" data-tdcnt="${esc(x.day)}"${geo}
+    aria-label="할 일 ${x.todoCount}개" title="그날 할 일 ${x.todoCount}개"><span class="txt">할 일 ${x.todoCount}</span></div>`;
+  }
   if(x.todo){
     const t = x.todo, c = catById(t.categoryId), col = validColor(c && c.color);
     const star = (t.prio === 'high' && !t.done) ? ICON.starFill : '';
@@ -11993,11 +12022,32 @@ function barChipHtml(it, pos){
     data-id="${esc(e.id)}" data-occ="${esc(e._occStart)}" data-kind="${kind}"${styleGeo}
     title="${mine ? '내 일정, ' : ''}${time ? esc(time) + ' ' : ''}${esc(e.title)}${c ? ', ' + esc(c.name) : ''}${span}${e.recur ? ', ' + esc(recurLabel(e)) : ''}">${inner}</div>`;
 }
+//  칸 맨 위 줄 할 일(docs/PERSONAL-PANEL.md §2.4). 일정과 할 일이 둘 다 보일 때 그날 할 일을 칸 맨 위에 모으고, 점선 아래에 일정을 놓는다.
+//  그날 할 일이 2개까지는 줄마다, 3개 이상이면 '할 일 n' 개수 하나. 중요한 할 일 먼저, 안 끝낸 것 먼저.
+//  하루짜리 할 일(기한만 있는 것)만 모은다. 여러 날 할 일은 여러 날 일정처럼 점선 막대로 남아 점선 아래 일정과 같은 차선을 쓴다.
+//  tds = pmMonthItems 의 하루짜리 할 일 항목, from = 그 주 시작일. 반환: rows = 맨 위 줄 수(0~2), days[칸] = 그날 할 일 수, items = 놓을 항목(lane 0 부터).
+function todoZoneCmp(a, b){ return ((b.prio === 'high') - (a.prio === 'high')) || ((!!a.done) - (!!b.done)) || String(a.createdAt).localeCompare(String(b.createdAt)); }
+function pmTodoZone(tds, from){
+  const days = [0, 1, 2, 3, 4, 5, 6].map(c => addDays(from, c));
+  const per = days.map(ds => (tds || []).filter(x => x.s <= ds && x.e >= ds).map(x => x.todo).sort(todoZoneCmp));
+  const rows = Math.max(0, ...per.map(l => l.length >= 3 ? 1 : l.length));
+  const items = [];
+  per.forEach((l, c) => {
+    if(l.length >= 3) items.push({ x: { todoCount: l.length, day: days[c] }, c0: c, c1: c, lane: 0, cl: false, cr: false, multi: false });
+    else l.forEach((t, k) => items.push({ x: { todo: t, s: days[c], e: days[c], key: 't:' + t.id }, c0: c, c1: c, lane: k, cl: false, cr: false, multi: false }));
+  });
+  return { items, rows, days: per.map(l => l.length) };
+}
 function renderMonthBars(g, dens, pick, opts){
   const o = opts || { todos: true, roving: true, sideOvl: false };
   const G = calMonthGrid(view.y, view.m), startDs = G.from, weeks = G.weeks, endDs = G.to;
   const tY = todayYmd();
-  const all = pmMonthItems(startDs, endDs, pick, o);
+  const all0 = pmMonthItems(startDs, endDs, pick, o);
+  //  일정과 할 일이 둘 다 보이면 하루짜리 할 일은 칸 맨 위 줄로 모은다(§2.4). 한 종류만 보이면 나누지 않고 예전 그대로다.
+  const split = o.todos !== false && viewKinds.ev && viewKinds.td;
+  const dayTodo = x => !!x.todo && x.s === x.e;   // 여러 날 할 일은 막대로 남는다
+  const tdAll = split ? all0.filter(dayTodo) : [];
+  const all = split ? all0.filter(x => !dayTodo(x)) : all0;
   let tabDs = focusDs || selectedDate;   // 키보드 포커스(roving tabindex) 대상 칸, renderMonthGrid 와 같은 규칙
   if(tabDs < startDs || tabDs > endDs) tabDs = (tY >= startDs && tY <= endDs) ? tY : startDs;
   if(o.roving !== false) focusDs = tabDs;
@@ -12017,8 +12067,10 @@ function renderMonthBars(g, dens, pick, opts){
       for(const it of L1.items) it.lane += L0.lanes;
       L = { items: L0.items.concat(L1.items), lanes: L0.lanes + L1.lanes };
     }
+    const Z = tdAll.length ? pmTodoZone(tdAll, from) : { items: [], rows: 0, days: [0, 0, 0, 0, 0, 0, 0] };
+    if(Z.rows){ for(const it of L.items) it.lane += Z.rows; L = { items: Z.items.concat(L.items), lanes: L.lanes + Z.rows }; }
     const cnt = [0, 0, 0, 0, 0, 0, 0], extra = [0, 0, 0, 0, 0, 0, 0];
-    for(const it of L.items) for(let c = it.c0; c <= it.c1; c++){ cnt[c]++; if(it.lane >= RCAP) extra[c]++; }
+    for(const it of L.items) for(let c = it.c0; c <= it.c1; c++){ cnt[c] += it.x.todoCount || 1; if(it.lane >= RCAP) extra[c]++; }
     const nL = Math.min(L.lanes, RCAP);
     html += `<div class="gridrow" role="row" data-from="${from}" data-lanes="${nL}" data-extra="${extra.join(',')}" style="grid-template-rows:${PM_HEAD}px${nL ? ` repeat(${nL}, 19px)` : ''} minmax(0,1fr)">`;
     for(let i = 0; i < 7; i++){
@@ -12033,6 +12085,8 @@ function renderMonthBars(g, dens, pick, opts){
       html += `<div class="${cls}" data-date="${ds}" role="gridcell"${o.roving !== false ? ` tabindex="${ds === tabDs ? 0 : -1}"` : ''} aria-selected="${ds === selectedDate}" aria-label="${esc(aria)}" style="grid-column:${i + 1};grid-row:1 / -1">
       <div class="cell-top"><span class="${numCls}">${d.getDate()}</span>${ovlDot}${hol ? `<span class="hol">${esc(hol)}</span>` : ''}</div></div>`;
     }
+    //  할 일이 있는 칸마다 맨 위 줄 아래에 점선(그 아래부터 일정)
+    if(Z.rows) Z.days.forEach((n, c) => { if(n) html += `<div class="td-sep" aria-hidden="true" style="grid-column:${c + 1};grid-row:${Z.rows + 1}"></div>`; });
     for(const it of L.items) if(it.lane < RCAP) html += barChipHtml(it, `grid-column:${it.c0 + 1} / ${it.c1 + 2};grid-row:${it.lane + 2}`);
     html += '</div>';
   }
@@ -12380,75 +12434,71 @@ function cardHtml(e, overlaps){
   </div>`;
 }
 
-// '일정 상세' 탭 본문 — 선택 날짜의 일정 카드/추가 (문자열 반환)
-function dayDetailHtml(){
-  const d = parseYmd(selectedDate);
-  const dow = d.getDay();
-  const hol = holidayOn(selectedDate);
-  const list = entriesOn(selectedDate);
-  const dowCls = (dow===0||hol) ? 'sun' : (dow===6 ? 'sat' : '');
-  let html = `<div class="dp-head">
-    <div>
-      <div class="dp-date">${d.getMonth()+1}월 ${d.getDate()}일 <span class="dp-dow ${dowCls}">${CAL_DOW[dow]}요일</span></div>
-      ${hol?`<div class="dp-hol">${ICON.flag} ${esc(hol)}</div>`:''}
-      <div class="dp-count">${list.length ? `${list.length}개의 기록${filterCats !== null?' (필터 적용 중)':''}` : '기록 없음'}</div>
-    </div>
-    <div style="display:flex;gap:6px;flex:none">
-      <button class="btn primary sm" id="btnAddHere">${ICON.plus} 추가</button>
-    </div>
-  </div>`;
-  //  O4 — 열람 창 겹이 켜져 있으면 **사람별 두 묶음**(머리말 + 개수). 시간 겹침(O5)은 이 날 목록으로 한 번 계산한다.
-  //  S7 — 나란히 보기의 상세 시트도 같은 두 묶음이다(겹 토글이 꺼져 있어도 — 오른쪽 달력이 곧 내 일정이다).
-  if(peerMineShown() && list.length){
-    const ov = peerTimeOverlaps(list);
-    const card = e => cardHtml(e, ov[ovlKey(e)]);
-    const theirs = list.filter(e => !e._mine), mineL = list.filter(e => e._mine);
-    const sec = (cls, title, items, sw) => `<section class="dp-sec dp-sec-${cls}" aria-label="${esc(title)} ${items.length}건">`
-      + `<h3 class="dp-sec-h">${sw}<span class="dp-sec-t">${esc(title)}</span> <span class="dp-sec-n">(${items.length})</span></h3>`
-      + (items.length ? `<div class="dp-list">${items.map(card).join('')}</div>` : '<div class="dp-sec-empty">이 날짜에는 없습니다</div>')
-      + '</section>';
-    return html
-      + sec('peer', (__peerWho ? __peerWho + ' 님' : '상대') + ' 일정', theirs, `<span class="pl-sw pl-sw-peer" aria-hidden="true">${peerSwatchBars()}</span>`)
-      + sec('mine', '내 일정', mineL, '<span class="pl-sw pl-sw-peer" aria-hidden="true"><b class="m"></b></span>');
-  }
-  html += list.length
-    ? `<div class="dp-list">${list.map(e => cardHtml(e)).join('')}</div>`
-    //  ★ 열람 창에서는 **만드는 법을 알려 주지 않는다.** 거기서는 더블클릭도 ＋ 추가도 막혀 있어
-    //    (openQuickAdd 가 PEER 에서 되돌아간다) 시키는 대로 해 봐야 아무 일도 안 일어난다.
-    //    없는 문을 가리키는 안내는 안내가 아니라 함정이다. 2026-09-03 캡처에서 발견.
-    : PEER
-      ? `<div class="dp-empty">이 날짜에 기록이 없습니다.</div>`
-      : `<div class="dp-empty">이 날짜에 기록이 없습니다.<br>날짜를 <b>더블클릭</b>하거나 위 <b>＋ 추가</b> 버튼으로<br>새 기록을 작성하세요.</div>`;
-  return html;
+/* ---------- 우측 패널 = 고른 날짜만(docs/PERSONAL-PANEL.md §2.1) ----------
+   탭은 없다. 머리(날짜, 요일, [+ 추가] 하나), 본문(일정 n, 할 일 n 두 묶음이 늘 같은 자리. 비면 "없음", 보기에서 끈 종류는 "보기에서 숨김"),
+   맨 아래 고정 한 줄(할 일 전체 보기 … 기한 없음 n ›). 머리와 맨 아래 줄은 본문 밖이라 날짜를 바꿔도 모양이 출렁이지 않는다.
+   열람 창(PEER)도 같은 함수를 쓴다: [+ 추가], ★, 체크 단추는 그리지 않는다(상태 표시만). */
+function dayHeadHtml(){
+  const d = parseYmd(selectedDate), dow = d.getDay(), hol = holidayOn(selectedDate);
+  const dowCls = (dow === 0 || hol) ? 'sun' : (dow === 6 ? 'sat' : '');
+  return `<div class="dp-date">${d.getMonth() + 1}월 ${d.getDate()}일 <span class="dp-dow ${dowCls}">${CAL_DOW[dow]}요일</span>${hol ? `<span class="dp-hol">${esc(hol)}</span>` : ''}</div>`
+    + (PEER ? '' : `<button class="btn primary sm" id="btnAddHere">${ICON.plus} 추가</button>`);
 }
-// 우측 패널 렌더 — 탭바는 보존하고 본문(#dpBody)만 교체
+//  그날 할 일: 그 날을 덮는 것(단일일, 기간 모두), 지금 보기를 따른다. 중요 먼저, 안 끝낸 것 먼저.
+function dayTodosList(ds){
+  return (state.todos || []).filter(t => viewTodoPass(t) && todoCoversDate(t, ds)).sort(todoZoneCmp);
+}
+function dayGrpHtml(key, label, on, n, inner){
+  return `<section class="dp-grp" data-grp="${key}" aria-label="${label}"><h3 class="dp-grp-h">${label}${on ? ` <span class="dp-grp-n">${n}</span>` : ''}</h3>`
+    + (!on ? '<div class="dp-grp-none">보기에서 숨김</div>' : (!n ? '<div class="dp-grp-none">없음</div>' : inner)) + '</section>';
+}
+// 패널 본문(문자열 반환): 선택 날짜의 일정 묶음과 할 일 묶음
+function dayDetailHtml(){
+  const evOn = viewKinds.ev, tdOn = viewKinds.td;
+  const list = evOn ? entriesOn(selectedDate) : [], tds = tdOn ? dayTodosList(selectedDate) : [];
+  let evInner = '';
+  if(evOn && list.length){
+    //  O4: 열람 창 겹이 켜져 있으면 **사람별 두 묶음**(머리말 + 개수). 시간 겹침(O5)은 이 날 목록으로 한 번 계산한다.
+    //  S7: 나란히 보기의 상세 시트도 같은 두 묶음이다(겹 토글이 꺼져 있어도 오른쪽 달력이 곧 내 일정이다).
+    if(peerMineShown()){
+      const ov = peerTimeOverlaps(list);
+      const card = e => cardHtml(e, ov[ovlKey(e)]);
+      const theirs = list.filter(e => !e._mine), mineL = list.filter(e => e._mine);
+      const sec = (cls, title, items, sw) => `<section class="dp-sec dp-sec-${cls}" aria-label="${esc(title)} ${items.length}건">`
+        + `<h3 class="dp-sec-h">${sw}<span class="dp-sec-t">${esc(title)}</span> <span class="dp-sec-n">(${items.length})</span></h3>`
+        + (items.length ? `<div class="dp-list">${items.map(card).join('')}</div>` : '<div class="dp-sec-empty">이 날짜에는 없습니다</div>')
+        + '</section>';
+      evInner = sec('peer', (__peerWho ? __peerWho + ' 님' : '상대') + ' 일정', theirs, `<span class="pl-sw pl-sw-peer" aria-hidden="true">${peerSwatchBars()}</span>`)
+        + sec('mine', '내 일정', mineL, '<span class="pl-sw pl-sw-peer" aria-hidden="true"><b class="m"></b></span>');
+    } else evInner = `<div class="dp-list">${list.map(e => cardHtml(e)).join('')}</div>`;
+  }
+  const tdInner = `<div class="dp-todos">${tds.map(t => todoRowHtml(t, { panel: true })).join('')}</div>`;
+  return dayGrpHtml('ev', '일정', evOn, list.length, evInner) + dayGrpHtml('td', '할 일', tdOn, tds.length, tdInner);
+}
+//  맨 아래 한 줄의 개수: 기한 없는 안 끝낸 할 일(과제, 중요 보기는 따르고 기록 종류 끔은 따지지 않는다). 할 일 전체 팝업의 '기한 없음' 묶음과 같은 수.
+function todoNoDateCount(){ return (state.todos || []).filter(t => !t.done && !t.due && viewTodoPass(t, true)).length; }
+function dayFootHtml(){
+  return `<span class="dp-foot-t">할 일 전체 보기</span><span class="dp-foot-r">기한 없음 <span class="dp-foot-n">${todoNoDateCount()}</span> ›</span>`;
+}
+// 우측 패널 렌더: 머리, 본문, 맨 아래 줄을 갈아 끼운다(탭은 없다)
 function renderPanel(){
-  document.querySelectorAll('#dpTabs .dp-tab').forEach(b => {
-    const on = b.dataset.ptab === noteTab;
-    b.classList.toggle('on', on);
-    b.setAttribute('aria-selected', on ? 'true' : 'false');   // ARIA 탭 계약: 선택 상태·roving tabindex
-    b.tabIndex = on ? 0 : -1;
-  });
   const body = $('#dpBody');
   if(!body) return;
-  body.setAttribute('aria-labelledby', 'dptab-' + noteTab);   // tabpanel ↔ 활성 탭 연결
-
-  if(noteTab === 'detail'){
-    body.innerHTML = dayDetailHtml();
-    if(flashTargetId){
-      const el = $('#dpBody .card.flash');
-      if(el) el.scrollIntoView({block:'nearest'});
-      const fid = flashTargetId; flashTargetId = null;
-      setTimeout(() => { const e2 = $(`#dpBody .card[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
-    }
-  } else {
-    body.innerHTML = `<div class="dp-pad">` + renderTodoListTab() + `</div>`;
-    if(flashTodoId){   // 칩 클릭 reveal — 해당 할 일 행 강조·스크롤(일정 카드 flash 대칭)
-      const el = $('#dpBody .todo-row.flash');
-      if(el) el.scrollIntoView({block:'nearest'});
-      const fid = flashTodoId; flashTodoId = null;
-      setTimeout(() => { const e2 = $(`#dpBody .todo-row[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
-    }
+  const head = $('#dpHead'), foot = $('#dpFoot');
+  if(head) head.innerHTML = dayHeadHtml();
+  body.innerHTML = dayDetailHtml();
+  if(foot) foot.innerHTML = dayFootHtml();
+  if(flashTargetId){   // 일정 칩 클릭 reveal: 그 카드 강조, 스크롤
+    const el = $('#dpBody .card.flash');
+    if(el) el.scrollIntoView({block:'nearest'});
+    const fid = flashTargetId; flashTargetId = null;
+    setTimeout(() => { const e2 = $(`#dpBody .card[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
+  }
+  if(flashTodoId){   // 할 일 칩 클릭 reveal: 그 행 강조, 스크롤(일정 카드 flash 대칭)
+    const el = $('#dpBody .todo-row.flash');
+    if(el) el.scrollIntoView({block:'nearest'});
+    const fid = flashTodoId; flashTodoId = null;
+    setTimeout(() => { const e2 = $(`#dpBody .todo-row[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
   }
 }
 function renderDayPanel(){ renderPanel(); }   // 기존 호출부 호환(renderAll/drop 등)
@@ -12508,7 +12558,7 @@ function selectDate(ds){
     $$('#grid .wr-c[data-date="' + ds + '"], #gridMine .wr-c[data-date="' + ds + '"]').forEach(c => c.classList.add('sel'));
   }
   editingTodoId = null;
-  renderPanel();             // 현재 탭 유지 — 선택 날짜로 내용만 갱신(일정, 할 일 모두 그 날 기준)
+  renderPanel();             // 선택 날짜로 내용만 갱신(일정, 할 일 모두 그 날 기준)
   openSheetIfNarrow();       // 좁은 폭이면 하단 시트가 올라옴
 }
 // 그리드 키보드 내비: 선택은 바꾸지 않고 포커스(roving tabindex)만 이동. 렌더 범위 밖이면 해당 월로 전환.
@@ -12533,7 +12583,8 @@ function goto(ds, entryId){
   closeModal('#searchModal');
   flashTargetId = entryId || null;
   // 검색은 전역(필터 무시)이므로, 필터가 켜져 있으면 해제해야 대상 기록과 강조가 보인다
-  if(filterCats !== null){ filterCats = null; renderFilterbar(); }
+  //  보기에서 일정을 껐어도 같다(대상은 일정이다). 이 열기에서만 켜고 기억은 건드리지 않는다.
+  if(filterCats !== null || !viewKinds.ev){ filterCats = null; viewKinds.ev = true; renderFilterbar(); }
   selectDate(ds);
 }
 
@@ -16182,7 +16233,7 @@ function tablistRoving(listSel, itemSel, activate){
 /* ---------- 검색 ---------- */
 function setSearchMode(mode){
   searchMode = mode;
-  // 뷰 전환 = 탭 계약(선택상태 announce + roving tabindex). dp-tab과 같은 규약을 검색에도 적용.
+  // 뷰 전환 = 탭 계약(선택상태 announce + roving tabindex). 같은 규약을 검색에도 적용(우측 패널의 탭은 2026-11-03 에 없앴다).
   $$('#sTabs .tab').forEach(b => {
     const on = (b.id === 'tabKeyword') === (mode === 'keyword');
     b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
@@ -16378,7 +16429,7 @@ function applyImport(opt){
     reportFont: normalizeReportFont(pendingImport.reportFont),      // 교체 = 가져온 파일이 통째로 원본
   };
   importNormalizeCats(state);
-  filterCats = null;
+  filterCats = null; viewPersist();
   if(!quiet) toast(`데이터를 교체했습니다. 과제 ${state.categories.length}개, 기록 ${state.entries.length}개`);
   pendingImport = null;
   //  ★ 전량 교체로 보낸다. state 가 곧 결과이고, DB 는 그 결과를 그대로 반영하기만 하면 된다.
@@ -16395,7 +16446,7 @@ async function clearAll(){
   const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
   state = {categories:[], entries:[], todos:[], reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportFormatPrefs:{daily:defaultReportFormatPref(), weekly:defaultReportFormatPref()}, reportSource:'cal', taskHours:{}, attendance:{}, reportFont:defaultReportFont()};
   ensureDefaultTasks(state);   // 초기화 뒤에도 기본 과제(휴가, 기타)는 있다(DEFAULT-TASKS §3). 같은 전량 교체 저장에 실린다
-  filterCats = null;
+  filterCats = null; viewPersist();
   //  ★ 초기화도 state 를 통째로 갈아끼운 것이므로 전량 교체다(가져오기와 같은 부류).
   //    실행 취소도 마찬가지 — 되살릴 스냅샷이 곧 결과 state 다.
   saveFull(); renderAll();
@@ -18215,7 +18266,6 @@ function updateTodo(id, f){ if(peerReadOnly()) return; const t = todoById(id); i
 }
 function deleteTodo(id){ if(peerReadOnly()) return; state.todos = (state.todos || []).filter(t => t.id !== id); save(); }
 
-function setPanelTab(tab){ noteTab = tab; editingTodoId = null; renderPanel(); }
 // 좁은 폭(<=760)에서만 하단 시트를 올림(넓은 폭은 우측 패널이 상시 노출이라 무동작)
 //  S5 — 나란히 보기(열람 창)에서는 폭과 무관하게 상세 패널이 접혀 있고, 날짜를 누르면 이 시트로 올라온다(좁은 폭 시트와 같은 길).
 function openSheetIfNarrow(){ if(window.innerWidth <= 760 || peerSide()){ panelSheetOpen = true; document.body.classList.add('sheet-open'); } }
@@ -18241,25 +18291,6 @@ function commitDayNoteEdit(ta){
   notifyDataChanged();   // 열린 뷰 일괄 재반영(패널·그리드·보고서)
 }
 
-// 마감 축 버킷 분류(상단 과제 필터 적용) — 평면 나열 대신 [지남/오늘/예정/기한없음/완료]
-function todoBuckets(){
-  const today = todayYmd();
-  const b = {overdue:[], today:[], upcoming:[], nodate:[], done:[]};
-  for(const t of (state.todos || [])){
-    if(filterCats !== null && !filterCats.has(t.categoryId)) continue;
-    if(t.done){ b.done.push(t); continue; }
-    if(!t.due) b.nodate.push(t);
-    else if(t.due < today) b.overdue.push(t);
-    else if(t.due === today) b.today.push(t);
-    else b.upcoming.push(t);
-  }
-  const s = (x,y) => ((y.prio==='high')-(x.prio==='high'))            // 중요 먼저
-    || (x.due||'9999-99-99').localeCompare(y.due||'9999-99-99')        // 마감 빠른 순
-    || String(x.createdAt).localeCompare(String(y.createdAt));
-  ['overdue','today','upcoming','nodate'].forEach(k => b[k].sort(s));
-  b.done.sort((x,y) => String(y.completedAt||y.updatedAt).localeCompare(String(x.completedAt||x.updatedAt)));
-  return b;
-}
 function dueLabel(due){
   if(!due) return '';
   const today = todayYmd();
@@ -18274,27 +18305,32 @@ function todoPeriodLabel(t){
   const s = dueLabel(t.due);
   return (t.endDate && t.endDate > t.due) ? `${s}~${dueLabel(t.endDate)}` : s;
 }
-function todoRowHtml(t){
+//  opts.panel = 우측 패널의 그날 목록(기한 글자는 기간 할 일에만). opts.all = 할 일 전체 팝업(기한 글자 늘, 고치기와 삭제와 메모 없음, 행을 누르면 그 날짜로: data-go).
+function todoRowHtml(t, opts){
+  opts = opts || {};
   //  ★ P2 — 열람 창(PEER)은 같은 행을 **읽기 전용**으로 그린다: 체크·중요는 상태 표시(span · data-act 없음),
   //    삭제 버튼 없음, 글자를 눌러도 편집기가 안 열린다. 보이는 정보(완료·중요·마감·과제·메모·날짜별 메모)는 같다.
   const ro = PEER;
-  if(editingTodoId === t.id && !ro) return todoEditHtml(t);
+  if(editingTodoId === t.id && !ro && !opts.all) return todoEditHtml(t);
   const cat = catById(t.categoryId);
   const overdue = !t.done && t.due && t.due < todayYmd();
-  const due = t.due ? `<span class="todo-due${overdue?' od':''}">${esc(todoPeriodLabel(t))}</span>` : '';
+  const showDue = opts.all ? true : (opts.panel ? !!(t.due && t.endDate && t.endDate > t.due) : !!t.due);
+  const dueHtml = showDue ? `<span class="todo-due${overdue?' od':''}">${esc(t.due ? todoPeriodLabel(t) : '기한 없음')}</span>` : '';
+  const dueUnder = !!(opts.panel && dueHtml);   // 좁은 패널에서는 기간 글자를 글 아래 줄에 둔다(글자가 한 자씩 꺾이지 않게)
+  const due = dueUnder ? '' : dueHtml;
   const noteDate = todoNoteDate(t);
-  const dayNote = noteDate && t.dayNotes ? String(t.dayNotes[noteDate] || '') : '';
-  const editAttr = ro ? '' : ' data-act="edit" title="클릭하여 수정"';
+  const dayNote = !opts.all && noteDate && t.dayNotes ? String(t.dayNotes[noteDate] || '') : '';
+  const editAttr = (ro || opts.all) ? '' : ' data-act="edit" title="클릭하여 수정"';
   const check = ro
     ? `<span class="todo-check" role="img" aria-label="${t.done ? '완료' : '미완료'}">${t.done ? ICON.boxCheck : ICON.box}</span>`
     : `<button class="todo-check" data-act="toggle" aria-label="${t.done ? '완료 해제' : '완료 표시'}">${t.done ? ICON.boxCheck : ICON.box}</button>`;
   const star = ro
     ? (t.prio === 'high' ? `<span class="todo-star-btn on" role="img" aria-label="중요">${ICON.starFill}</span>` : '')
     : `<button class="todo-star-btn${t.prio==='high'?' on':''}" data-act="star" title="중요 표시" aria-label="중요 토글">${t.prio==='high'?ICON.starFill:ICON.star}</button>`;
-  const del = ro ? '' : `<button class="todo-del" data-act="del" title="삭제" aria-label="삭제">${ICON.xmark}</button>`;
-  return `<div class="todo-row${t.done ? ' done' : ''}${flashTodoId===t.id?' flash':''}" data-id="${esc(t.id)}">
+  const del = (ro || opts.all) ? '' : `<button class="todo-del" data-act="del" title="삭제" aria-label="삭제">${ICON.xmark}</button>`;
+  return `<div class="todo-row${t.done ? ' done' : ''}${flashTodoId===t.id?' flash':''}" data-id="${esc(t.id)}"${opts.all ? ` data-go="${esc(t.due || '')}"` : ''}>
     ${check}
-    <div class="todo-main"><span class="todo-text"${editAttr}>${esc(t.text)}</span>${dayNote ? `<div class="todo-daymemo"${ro ? '' : ' data-act="edit"'} title="${esc(fmtShort(noteDate))} 설명">${esc(dayNote)}</div>` : ''}${t.note ? `<div class="todo-memo"${editAttr}>${linkifyHtml(t.note)}</div>` : ''}</div>
+    <div class="todo-main"><span class="todo-text"${editAttr}>${esc(t.text)}</span>${dueUnder ? `<div class="todo-dueline">${dueHtml}</div>` : ''}${dayNote ? `<div class="todo-daymemo"${ro ? '' : ' data-act="edit"'} title="${esc(fmtShort(noteDate))} 설명">${esc(dayNote)}</div>` : ''}${t.note && !opts.all ? `<div class="todo-memo"${editAttr}>${linkifyHtml(t.note)}</div>` : ''}</div>
     ${due}${cat ? `<span class="todo-dot" style="background:${validColor(cat.color)}" title="${esc(cat.name)}"></span>` : ''}
     ${star}
     ${del}
@@ -18334,60 +18370,53 @@ function todoEditHtml(t){
     </div>
   </div>`;
 }
-function todoSectionHtml(label, key, items, opts){
-  opts = opts || {};
-  if(!items.length) return '';
-  const collapsed = noteCollapsed.has(key);
-  const head = `<div class="nd-sec${opts.danger?' danger':''}" data-sec="${key}" role="button" tabindex="0" aria-expanded="${!collapsed}">
-    <span class="nd-sec-arrow">${collapsed ? '▸' : '▾'}</span><span class="nd-sec-label">${esc(label)}</span><span class="nd-sec-count">${items.length}</span></div>`;
-  return collapsed ? head : head + `<div class="nd-sec-body">${items.map(todoRowHtml).join('')}</div>`;
+/* ---------- 할 일 전체 팝업(docs/PERSONAL-PANEL.md §2.1) ----------
+   패널 맨 아래 한 줄(#dpFoot)이 연다. 공용 모달(openModal) 골격(#todoAllModal)이고, 묶음은 ★ 중요, 기한 지남, 이번 주, 나중, 기한 없음, 완료.
+   예전에 우측 패널 둘째 탭이 하던 일을 옮겼다. 같은 보기(과제, 보기 옵션)를 따른다. 날짜 있는 할 일을 누르면 그 날짜로 가서 패널에서 강조한다.
+   ★ 중요 묶음은 안 끝낸 중요 할 일을 따로 모은 것이라, 그 할 일은 아래의 제 묶음(기한 지남, 이번 주 ...)에도 나온다. */
+function todoAllGroups(){
+  const today = todayYmd(), weekEnd = calRowWeek(today).sat;   // 이번 주 = 오늘부터 그 달력 한 주(일~토)의 끝까지
+  const all = (state.todos || []).filter(t => viewTodoPass(t, true));
+  const open = all.filter(t => !t.done);
+  const sortS = (x, y) => ((y.prio === 'high') - (x.prio === 'high'))            // 중요 먼저
+    || (x.due || '9999-99-99').localeCompare(y.due || '9999-99-99')              // 기한 빠른 순
+    || String(x.createdAt).localeCompare(String(y.createdAt));
+  const g = (key, label, items) => ({ key, label, items: items.slice().sort(sortS) });
+  const done = all.filter(t => t.done).sort((x, y) => String(y.completedAt || y.updatedAt).localeCompare(String(x.completedAt || x.updatedAt)));
+  return [
+    g('star', '★ 중요', open.filter(t => t.prio === 'high')),
+    g('over', '기한 지남', open.filter(t => t.due && t.due < today)),
+    g('week', '이번 주', open.filter(t => t.due && t.due >= today && t.due <= weekEnd)),
+    g('later', '나중', open.filter(t => t.due && t.due > weekEnd)),
+    g('nodate', '기한 없음', open.filter(t => !t.due)),
+    { key: 'done', label: '완료', items: done },
+  ].filter(x => x.items.length);
 }
-function quickAddHtml(defaultDue){
-  return `<div class="nd-add">
-    <div class="nd-add-r1"><input type="text" id="todoInput" maxlength="200" placeholder="할 일을 한 줄로 적고 Enter"><button class="btn primary sm" id="todoAdd">추가</button></div>
-    <div class="nd-add-r2"><label for="todoDue">기한</label><input type="date" id="todoDue" value="${esc(defaultDue||'')}"><span class="nd-add-hint">기한=캘린더 연결, 과제=보고서 연결</span></div>
-  </div>`;
+function todoAllHtml(){
+  const gs = todoAllGroups();
+  if(!gs.length) return '<div class="ta-none">할 일 없음</div>';
+  return gs.map(x => `<section class="ta-grp" data-grp="${x.key}"><h3 class="ta-h">${esc(x.label)} <span class="dp-grp-n">${x.items.length}</span></h3>`
+    + `<div class="dp-todos">${x.items.map(t => todoRowHtml(t, { all: true })).join('')}</div></section>`).join('');
 }
-function emptyTodoHtml(scope){
-  return `<div class="nd-empty">${filterCats !== null ? '고른 과제에 ' : ''}${scope==='today' ? '오늘 처리할 일이' : '할 일이'} 없습니다.
-    <span class="nd-empty-hint">위 칸에 한 줄로 적어보세요. 기한을 넣으면 [오늘/예정] 구획과 캘린더에 자동 정리됩니다.</span></div>`;
-}
-// '오늘' 탭 = 지남 + 오늘 + (오늘 완료) — 지금 집중할 것
-function renderTodayTab(){
-  const b = todoBuckets();
-  const today = todayYmd();
-  const doneToday = b.done.filter(t => String(t.completedAt||'').slice(0,10) === today);
-  let h = quickAddHtml(today);
-  const body = todoSectionHtml('지남', 'overdue', b.overdue, {danger:true})
-             + todoSectionHtml('오늘', 'today', b.today)
-             + todoSectionHtml('오늘 완료', 'done', doneToday);
-  return h + (body || emptyTodoHtml('today'));
-}
-// '할 일' 탭 = 선택한 날짜의 할 일(이 날 + 기한없음 + 이 날 완료) · ★중요만 필터
-// 지남/예정 등 크로스-데이 개요는 캘린더 그리드의 할 일 칩이 담당한다.
-function renderTodoListTab(){
-  const ds = selectedDate;
-  const onlyHigh = arr => noteImportantOnly ? arr.filter(t => t.prio === 'high') : arr;
-  const inCat = t => filterCats === null || filterCats.has(t.categoryId);
-  const covers = t => t.due && t.due <= ds && ((t.endDate && t.endDate > t.due) ? t.endDate : t.due) >= ds;  // 단일일·기간 모두 그 날 포함
-  const sortS = (x,y) => ((y.prio==='high')-(x.prio==='high')) || String(x.createdAt).localeCompare(String(y.createdAt));
-  const onDay  = onlyHigh((state.todos||[]).filter(t => inCat(t) && !t.done && covers(t))).sort(sortS);
-  const noDate = onlyHigh((state.todos||[]).filter(t => inCat(t) && !t.done && !t.due)).sort(sortS);
-  // 그리드는 마감일(due) 기준으로 (취소선) 칩을 보이므로, 완료 섹션도 covers(마감일 포함) 기준으로 맞춤.
-  // (completedAt 기준이면 '다른 날 완료한 그 날 마감 할 일'이 그리드엔 뜨고 패널엔 안 뜨는 불일치가 생김)
-  const doneDay = onlyHigh((state.todos||[]).filter(t => inCat(t) && t.done && covers(t)))
-                  .sort((x,y) => String(y.completedAt||'').localeCompare(String(x.completedAt||'')));
-  //  ★ P2 — 열람 창에는 「＋ 할 일 추가」가 없다(「중요만」은 보기 필터라 남긴다).
-  let h = `<div class="nd-tools">${PEER ? '' : `<button class="btn primary sm" id="btnTodoNew">${ICON.plus} 할 일 추가</button>`}<button class="nd-toggle${noteImportantOnly?' on':''}" data-act="impOnly" title="중요로 표시한 항목만 보기">${ICON.starFill} 중요만</button></div>`;
-  h += `<div class="dp-dayctx">${esc(fmtDateK(ds))} 할 일</div>`;
-  let body = todoSectionHtml('이 날', 'onday', onDay)
-           + todoSectionHtml('기한 없음', 'nodate', noDate)
-           + todoSectionHtml('이 날 완료', 'done', doneDay);
-  if(!body){
-    body = `<div class="nd-empty">${noteImportantOnly ? '★ 중요로 표시한 할 일이 없습니다.' : '이 날 할 일이 없습니다.'}` +
-      `<span class="nd-empty-hint">${PEER ? '기한 없는 할 일은 ‘기한 없음’ 섹션에서 볼 수 있습니다.' : (noteImportantOnly ? '각 항목의 별표 버튼을 눌러 중요로 표시하세요.' : '＋ 할 일 추가로 이 날 할 일을 등록하세요. 기한 없는 할 일은 ‘기한 없음’ 섹션에서 볼 수 있습니다.')}</span></div>`;
+function renderTodoAll(){ const b = $('#taBody'); if(b) b.innerHTML = todoAllHtml(); }
+function openTodoAll(){ renderTodoAll(); openModal('#todoAllModal'); }
+//  팝업 안 조작: 체크, ★ 는 그 자리에서 바꾸고(팝업, 패널, 달력을 함께 다시 그린다), 행의 나머지를 누르면 그 날짜로 간다(기한 없는 할 일은 갈 곳이 없다).
+function todoAllClick(ev){
+  const row = ev.target.closest('.todo-row'); if(!row) return;
+  const act = ev.target.dataset.act, id = row.dataset.id;
+  if(act === 'toggle' || act === 'star'){
+    if(peerReadOnly() || guardEdit()) return;
+    if(act === 'toggle') toggleTodo(id);
+    else { const t = todoById(id); if(t) updateTodo(id, { prio: t.prio === 'high' ? 'normal' : 'high' }); }
+    renderTodoAll(); renderPanel(); renderGrid();
+    return;
   }
-  return h + body;
+  if(act) return;
+  const go = row.dataset.go;
+  if(!go) return;
+  closeModal('#todoAllModal');
+  flashTodoId = id;
+  selectDate(go);
 }
 
 /* ---------- 일정과 할 일 입력: 한 화면 폼(#quickAdd, docs/PERSONAL-IMPROVE-PLAN.md 결정 6~10) ----------
@@ -18631,6 +18660,10 @@ function qaEndChanged(){   // 사용자가 종료를 직접 바꿈 → dirty + �
   qaEndDirty=true; const t=qaTimeEls(); const s=readTimeIn(t.s), en=readTimeIn(t.e);
   if(s && en && en < s){ _qaAutoEndWriting=true; writeTimeIn(t.e, plusOneHM(s)); _qaAutoEndWriting=false; const hint=$('#qaTimeHint'); if(hint) hint.textContent='종료가 시작보다 빨라 1시간 뒤로 맞췄어요'; }
 }
+//  [+ 추가]와 날짜 두 번 누르기의 종류 기본값: 보기가 할 일만이면 할 일, 아니면 일정(종류는 입력 창 위의 [일정 | 할 일] 에서 바꾼다)
+function openAddOnDate(date){ openQuickAdd(date, viewKinds.ev ? 'event' : 'todo'); }
+//  만든 기록의 종류가 보기에서 꺼져 있으면 켠다(기억도 갱신)
+function viewShowKind(k){ if(viewKinds[k]) return; viewKinds[k] = true; viewPersist(); }
 function openQuickAdd(date, type, entryId){
   //  ★ 열람 창에서는 열지 않는다. 빈 칸 **더블클릭**으로 여기 닿는다(grid 의 dblclick 핸들러) —
   //    ＋추가 버튼을 감춰도 그 길은 남아 있었다.
@@ -18780,7 +18813,7 @@ function qaSave(){
     if(data.startTime && data.endTime && data.endTime < data.startTime){ toast('종료 시간이 시작보다 빠릅니다', 'warn'); return; }
     if(qaEditId){ updateEntry(qaEditId, data); }
     else { addEntry(data); }
-    selectedDate = date; noteTab = 'detail';
+    selectedDate = date; viewShowKind('ev');   // 보기에서 일정을 꺼 둔 채 일정을 만들었으면 보이게 켠다(만든 기록이 안 보이는 것을 막는다)
     closeModal('#quickAdd'); renderAll(); toast(qaEditId ? '일정을 수정했습니다' : '일정을 추가했습니다', 'success');
   } else {
     const due = ymdOk(date) ? date : '';
@@ -18790,8 +18823,8 @@ function qaSave(){
     if(endDate && endDate < due){ toast('종료일이 시작일보다 빠릅니다', 'warn'); edEl.focus(); return; }
     const prioEl = $('#qaPrio');
     addTodo(title, {categoryId:cat, due, endDate, prio:(prioEl && prioEl.checked) ? 'high' : 'normal', note:memo});
-    if(due) selectedDate = due; else noteCollapsed.delete('nodate');   // 추가한 할 일이 보이도록(기한 있으면 그 날로, 없으면 기한없음 펼침)
-    noteTab = 'todo';
+    if(due) selectedDate = due;   // 추가한 할 일이 보이도록 기한 있으면 그 날로(기한 없는 할 일은 패널 맨 아래 한 줄의 개수와 할 일 전체에서)
+    viewShowKind('td');
     closeModal('#quickAdd'); renderAll(); toast('할 일을 추가했습니다', 'success');
   }
 }
@@ -18877,7 +18910,6 @@ function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 �
   set('btnTheme', ICON.palette);               // 모양: 전체 테마 선택 + 위젯 투명도(HOST)
   set('btnHelp', ICON.help);                   // 상시 도움말
   set('btnMore', ICON.more);
-  set('btnNew', ICON.plus + ' 새 기록');
   set('btnRptCopy', ICON.copy + ' 복사');   // 취합 화면의 복사
   set('fbWarnIc', ICON.alert);                             // 문의 모달 반출 경고(⚠ 이모지 → 단색 글리프)
   set('btnFbCopyMail', ICON.copy + ' 복사');
@@ -18919,12 +18951,12 @@ function openHelp(){
   const card = (icon, title, desc) => `<div class="help-card"><div class="hc-h">${icon}<b>${title}</b></div><div class="hc-d">${desc}</div></div>`;
   const body = $('#helpModal .help-body');
   if(body) body.innerHTML = `<div class="help-grid">`
-    + card(ICON.plus, '빠른 시작', '＋ 새 기록 또는 날짜 더블클릭으로 추가. 기록을 드래그해 다른 날짜로 이동.')
+    + card(ICON.plus, '빠른 시작', '오른쪽 패널의 ＋ 추가 또는 날짜 더블클릭으로 추가. 기록을 드래그해 다른 날짜로 이동.')
     + card(ICON.calendar, '일정과 할 일', '일정은 시간/종일, 반복, 기간. 할 일은 체크, 중요(★), 기한. 입력 창 한 화면에 모든 칸이 있습니다.')
     + card(ICON.doc, '보고서', '기간을 고르면 과제별 [제목] : 시간으로 자동 정리. 하루 보고서에서 시간 수정, 복사해 붙여넣기.')
     + card(ICON.tag, '내 과제', '헤더의 내 과제 버튼에서 과제를 추가하고 이름, 색상, 메모를 정합니다. 줄의 ⠿ 를 끌거나 ⋯ 메뉴로 순서를 바꾸면 보고서와 필터가 그 순서를 따릅니다.')
     + card(ICON.palette, '테마', '헤더의 모양 버튼에서 라이트, 다크, 포레스트, 세피아, 고대비 등 전체 테마를 고릅니다.')
-    + card(ICON.keyboard, '단축키', '← → 월 이동, Home 오늘, Esc 닫기, 날짜 더블클릭 새 기록.')
+    + card(ICON.keyboard, '단축키', '← → 월 이동, Home 오늘, Esc 닫기, 날짜 더블클릭 추가.')
     + card(ICON.download, '데이터와 사본', '데이터는 서버에 자동 저장됩니다. 내 PC 사본·이전 버전 기록 옮기기는 ⋯ 메뉴의 XML로 내보내기 / XML 가져오기.')
     + card(ICON.bug, '버그와 개선사항', '상단 문의 버튼을 누르면 보낼 곳과 진단 기록(로그) 첨부 방법이 한 창에 나옵니다.')
     + `</div>`;
@@ -18985,31 +19017,31 @@ function guideShot(kind, step){
       const todo = [12,15,27].includes(d) ? `<div class="shot-chip todo"></div>` : '';
       return `<div class="shot-cell${sel}">${d}${chip}${todo}</div>`;
     }).join('') + `</div>`;
-  const panel = `<div class="shot-panel"><h4>7월 15일</h4><div class="shot-line"></div><div class="shot-line mid"></div><div class="shot-line short"></div></div>`;
+  const panel = `<div class="shot-panel"><h4 style="display:flex;align-items:center;justify-content:space-between">7월 15일<span class="shot-btn primary">＋ 추가</span></h4><div class="shot-line"></div><div class="shot-line mid"></div><div class="shot-line short"></div></div>`;
   const base = (title, buttons='', extra='') => `<div class="guide-shot">${top(title, buttons)}<div class="shot-body">${cal}${panel}</div>${extra}</div>`;
   const call = (n, text, pos) => (step === n ? `<span class="shot-call" data-n="${n}" style="${pos}">${text}</span>` : '');
   if(kind === 'overview') return base('수행과제 캘린더',
-    `<span class="shot-btn">검색</span><span class="shot-btn">내 과제</span><span class="shot-btn">문의</span><span class="shot-btn primary">＋ 새 기록</span>`,
-    call(1, '월 달력', 'left:18px;top:48px') + call(2, '날짜 패널', 'right:32px;top:76px') + call(3, '주요 버튼', 'right:16px;top:10px'));
+    `<span class="shot-btn">검색</span><span class="shot-btn">내 과제</span><span class="shot-btn">문의</span>`,
+    call(1, '월 달력', 'left:18px;top:48px') + call(2, '날짜 패널', 'right:32px;top:76px') + call(3, '주요 버튼', 'right:16px;top:10px'));   // 3번 주요 버튼 = 헤더(검색, 내 과제, 문의)
   if(kind === 'category') return base('내 과제',
     `<span class="shot-btn">검색</span><span class="shot-btn primary">내 과제</span><span class="shot-btn">문의</span>`,
     `<div class="shot-modal"><h4>내 과제</h4><div class="shot-field"></div><div class="shot-field"></div><div class="shot-field"></div></div>`
     + call(1, '내 과제', 'right:118px;top:10px') + call(2, '이름·색상', 'left:148px;top:80px') + call(3, '설명', 'left:128px;bottom:42px'));
-  if(kind === 'add') return base('새 기록',
-    `<span class="shot-btn">검색</span><span class="shot-btn">내 과제</span><span class="shot-btn primary">＋ 새 기록</span>`,
+  if(kind === 'add') return base('일정 추가',
+    `<span class="shot-btn">검색</span><span class="shot-btn">내 과제</span>`,
     `<div class="shot-modal"><div class="shot-row"><span class="shot-tab on">일정</span><span class="shot-tab">할 일</span></div><div class="shot-field"></div><div class="shot-row"><div class="shot-field" style="flex:1"></div><div class="shot-field" style="flex:1"></div></div><div class="shot-field"></div><div class="shot-row" style="justify-content:flex-end"><span class="shot-btn">취소</span><span class="shot-btn primary">저장</span></div></div>`
-    + call(1, '새 기록', 'right:12px;top:10px') + call(2, '일정/할 일', 'left:140px;top:64px') + call(3, '저장', 'right:84px;bottom:52px'));
+    + call(1, '＋ 추가', 'right:12px;top:46px') + call(2, '일정/할 일', 'left:140px;top:64px') + call(3, '저장', 'right:84px;bottom:52px'));
   if(kind === 'detail') return base('날짜 상세',
-    `<span class="shot-btn">검색</span><span class="shot-btn">내 과제</span><span class="shot-btn primary">＋ 새 기록</span>`,
+    `<span class="shot-btn">검색</span><span class="shot-btn">내 과제</span>`,
     call(1, '날짜 클릭', 'left:128px;top:122px') + call(2, '상세 확인', 'right:20px;top:70px') + call(3, '수정·삭제', 'right:24px;bottom:58px'));
   if(kind === 'room') return base('장소',
-    `<span class="shot-btn">⋯</span><span class="shot-btn primary">＋ 새 기록</span>`,
+    `<span class="shot-btn">⋯</span>`,
     `<div class="shot-modal"><h4>장소</h4><div class="shot-field"></div><div class="shot-line"></div><div class="shot-line mid"></div><div class="shot-line short"></div></div>`
-    + call(1, '새 기록', 'right:12px;top:10px') + call(2, '장소 칸', 'left:132px;top:82px') + call(3, '고르거나 직접 입력', 'right:54px;bottom:54px'));
-  if(kind === 'report') return base('보고서',
-    `<span class="shot-btn">검색</span><span class="shot-btn primary">보고서</span>`,
-    `<div class="shot-modal"><h4>보고서 초안</h4><div class="shot-row"><span class="shot-tab on">일간</span><span class="shot-tab">주간</span><span class="shot-tab">기간</span></div><div class="shot-field"></div><div class="shot-line"></div><div class="shot-row" style="justify-content:flex-end"><span class="shot-btn">전송</span><span class="shot-btn primary">복사</span></div></div>`
-    + call(1, '보고서', 'right:34px;top:10px') + call(2, '기간 선택', 'left:126px;top:84px') + call(3, '복사/전송', 'right:70px;bottom:46px'));
+    + call(1, '＋ 추가', 'right:12px;top:46px') + call(2, '장소 칸', 'left:132px;top:82px') + call(3, '고르거나 직접 입력', 'right:54px;bottom:54px'));
+  if(kind === 'report') return base('보고',
+    `<span class="shot-btn">검색</span><span class="shot-btn primary">근태</span>`,
+    `<div class="shot-modal"><h4>근태</h4><div class="shot-row"><span class="shot-tab">일간</span><span class="shot-tab">주간</span><span class="shot-tab on">취합</span></div><div class="shot-field"></div><div class="shot-line"></div><div class="shot-row" style="justify-content:flex-end"><span class="shot-btn">전송</span><span class="shot-btn primary">복사</span></div></div>`
+    + call(1, '근태 탭', 'right:34px;top:10px') + call(2, '기간과 출처', 'left:126px;top:84px') + call(3, '복사/DOCX', 'right:70px;bottom:46px'));
   if(kind === 'search') return base('검색',
     `<span class="shot-btn primary">검색</span><span class="shot-btn">내 과제</span>`,
     `<div class="shot-modal"><h4>검색</h4><div class="shot-row"><span class="shot-tab on">키워드 검색</span><span class="shot-tab">과제별 모아보기</span></div><div class="shot-field"></div><div class="shot-line"></div><div class="shot-line mid"></div></div>`
@@ -19038,23 +19070,23 @@ function renderVisualGuide(){
   const sections = [
     ['overview','전체 화면 구조','처음 화면에서 달력, 날짜 패널, 상단 주요 버튼 위치를 확인합니다.',[
       ['overview_1','달력에서 날짜와 등록된 칩을 확인합니다.'],
-      ['overview_1','오른쪽 패널에서 선택한 날짜의 일정 상세와 할 일을 전환합니다.'],
-      ['overview_1','상단의 검색, 내 과제, 문의, 새 기록 버튼으로 주요 기능을 시작합니다.']
-    ],'처음 사용자는 내 과제 -> 새 기록 순서로 시작하면 됩니다.'],
+      ['overview_1','오른쪽 패널에서 선택한 날짜의 일정과 할 일을 한 번에 봅니다.'],
+      ['overview_1','상단의 검색, 내 과제, 문의 버튼과 오른쪽 패널의 추가 버튼으로 주요 기능을 시작합니다.']
+    ],'처음 사용자는 내 과제를 만든 뒤 오른쪽 패널의 추가로 시작하면 됩니다.'],
     ['category','내 과제','실제 내 과제 창에서 과제를 만들고, 색상과 설명을 설정합니다.',[
       ['category_1','상단 내 과제 버튼을 눌러 내 과제 창을 엽니다.'],
       ['category_2','새 과제 이름을 입력하고 구분할 색상을 선택합니다.']
     ],'과제명은 보고서의 묶음 제목으로도 쓰이므로 실제 보고 단위와 맞추는 편이 좋습니다.'],
-    ['event','일정 등록','새 기록 창 한 화면에서 일정 제목, 날짜, 과제, 시각, 반복, 장소, 메모를 입력합니다.',[
-      ['event_1','상단 + 새 기록을 눌러 빠른 등록 창을 엽니다.'],
+    ['event','일정 등록','입력 창 한 화면에서 일정 제목, 날짜, 과제, 시각, 반복, 장소, 메모를 입력합니다.',[
+      ['event_1','오른쪽 패널의 + 추가를 눌러 입력 창을 엽니다.'],
       ['event_2','일정 탭에서 제목, 날짜, 과제를 입력합니다.'],
       ['event_3','같은 화면 아래쪽의 장소, 반복, 메모를 채운 뒤 저장합니다.']
-    ],'달력 날짜를 더블클릭해도 같은 새 기록 창이 열립니다.'],
-    ['todo','할 일 등록','할 일은 새 기록 창에서 유형만 바꿔 같은 흐름으로 등록합니다.',[
-      ['todo_1','새 기록 창에서 할 일 탭을 선택합니다.'],
+    ],'달력 날짜를 더블클릭해도 같은 입력 창이 열립니다.'],
+    ['todo','할 일 등록','할 일은 같은 입력 창에서 종류만 바꿔 같은 흐름으로 등록합니다.',[
+      ['todo_1','입력 창 위의 일정, 할 일 중 할 일을 선택합니다.'],
       ['todo_2','할 일 제목, 기한 날짜, 과제를 입력합니다.'],
-      ['todo_3','오른쪽 할 일 탭에서 체크, 중요 표시, 삭제를 관리합니다.']
-    ],'기한 없는 할 일은 오른쪽 할 일 탭의 기한 없음 섹션에서 확인합니다.'],
+      ['todo_3','오른쪽 패널의 할 일 묶음에서 체크, 중요 표시, 삭제를 관리합니다.']
+    ],'기한 없는 할 일은 패널 맨 아래 할 일 전체 보기에서 확인합니다.'],
     ['report','보고서 작성','근태 탭에서 일간, 주간 보고를 쓰고 기간 글과 월간 보고를 취합합니다.',[
       ['report_1','달력 위의 근태 탭을 엽니다.'],
       ['report_2','머리의 일간, 주간, 취합 중 필요한 화면을 고릅니다.'],
@@ -19362,7 +19394,6 @@ function bind(){
   $('#btnNext').addEventListener('click', () => stepCal(1));
   $('#btnToday').addEventListener('click', goToday);
   { const vs = $('#calViewSeg'); if(vs) vs.addEventListener('click', ev => { const b = ev.target.closest('[data-calview]'); if(b && b.dataset.calview !== calView()) setCalView(b.dataset.calview); }); }
-  $('#btnNew').addEventListener('click', () => openQuickAdd(selectedDate));
   /* 일정과 할 일 입력(한 화면 폼) */
   $('#quickAdd .qa-tg').addEventListener('click', ev => { const b = ev.target.closest('[data-qatype]'); if(!b) return;
     const prev = qaType; qaType = b.dataset.qatype;
@@ -19413,8 +19444,6 @@ function bind(){
   });
   $('#btnSearch').addEventListener('click', openSearch);
 
-  /* 우측 패널 탭 뷰어 (일정 상세 · 할 일 + 보고서) */
-
   $('#btnExpRun').addEventListener('click', runResearchExport);
   // 4대 주요 작업 중 하나가 '다른 모달의 헤더 버튼' 하나에만 걸려 있었다 → ⋯ 데이터 구획에 정식 진입점 추가.
   $('#btnExportResearch').addEventListener('click', () => { closeMore(); openExportModal(); });
@@ -19430,31 +19459,9 @@ function bind(){
     if(!HOST){ toast('폴더 열기는 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
     hpost({ cmd: 'openFolder', path: __expOutPath });
   });
-  $('#dpTabs').addEventListener('click', ev => {
-    const t = ev.target.closest('.dp-tab'); if(t) setPanelTab(t.dataset.ptab);
-  });
-  // ARIA 탭 roving: 탭에 포커스가 있을 때 ←/→/Home/End로 이동+자동 활성화
-  $('#dpTabs').addEventListener('keydown', ev => {
-    const tabs = [...document.querySelectorAll('#dpTabs .dp-tab')];
-    const i = tabs.indexOf(document.activeElement);
-    if(i < 0) return;
-    let j = -1;
-    if(ev.key === 'ArrowRight') j = (i + 1) % tabs.length;
-    else if(ev.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
-    else if(ev.key === 'Home') j = 0;
-    else if(ev.key === 'End') j = tabs.length - 1;
-    else return;
-    ev.preventDefault();
-    setPanelTab(tabs[j].dataset.ptab);
-    const el = $('#dptab-' + tabs[j].dataset.ptab); if(el) el.focus();
-  });
   $('#dpSheetClose').addEventListener('click', closeSheet);        // 좁은 폭 하단 시트 닫기 손잡이
 
   $('#dpBody').addEventListener('click', ev => {
-    // ＋ 할 일 추가 → quick-create(할 일) 일원화
-    if(ev.target.closest('#btnTodoNew')){ openQuickAdd(selectedDate, 'todo'); return; }
-    // ★ 중요만 보기 토글
-    if(ev.target.closest('[data-act="impOnly"]')){ noteImportantOnly = !noteImportantOnly; renderPanel(); return; }
     // TODO 인라인 편집 폼
     const box = ev.target.closest('.todo-edit');
     if(box){
@@ -19474,9 +19481,6 @@ function bind(){
       else if(act === 'del'){ const rm = todoById(id); deleteTodo(id); editingTodoId = null; renderPanel(); renderGrid(); if(rm) toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreTodo(rm); renderPanel(); renderGrid(); }}); }
       return;
     }
-    // 섹션 헤더 접기/펼치기
-    const sec = ev.target.closest('.nd-sec');
-    if(sec){ const k = sec.dataset.sec; noteCollapsed.has(k) ? noteCollapsed.delete(k) : noteCollapsed.add(k); renderPanel(); return; }
     // TODO 행 액션 (일정 상세 카드 액션은 아래 #dayPanel 핸들러가 처리)
     const row = ev.target.closest('.todo-row'); if(!row) return;
     const act = ev.target.dataset.act; if(!act) return;
@@ -19489,13 +19493,6 @@ function bind(){
   });
   $('#dpBody').addEventListener('keydown', ev => {
     if(ev.isComposing || ev.keyCode === 229) return;   // 한글 IME 조합 중 Enter 무시
-    const sec = ev.target.closest && ev.target.closest('.nd-sec');   // 섹션 헤더 키보드 조작(WCAG 2.1.1)
-    if(sec && (ev.key === 'Enter' || ev.key === ' ')){
-      ev.preventDefault();
-      const k = sec.dataset.sec; noteCollapsed.has(k) ? noteCollapsed.delete(k) : noteCollapsed.add(k); renderPanel();
-      const again = document.querySelector('#dpBody .nd-sec[data-sec="' + k + '"]'); if(again) again.focus();   // 재렌더 후 포커스 복귀
-      return;
-    }
     if(ev.target.classList && ev.target.classList.contains('te-text') && ev.key === 'Enter'){
       const box = ev.target.closest('.todo-edit'); const btn = box && box.querySelector('[data-act="save"]'); if(btn) btn.click();
     }
@@ -19657,7 +19654,8 @@ function bind(){
   $('#btnLegacyImport').addEventListener('click', () => legacyPromptImport());   // 이전 버전 기록 — 읽어서 바로 교체(빈 캘린더일 때만)
   $('#btnLegacyNever').addEventListener('click', () => legacyPromptNever());
 
-  bindFilterbar();   // 과제 필터 줄과 팝업(docs/FILTER-MULTI.md)
+  bindFilterbar();   // 보기 단추와 팝업(docs/PERSONAL-PANEL.md, docs/FILTER-MULTI.md)
+  { const ta = $('#taBody'); if(ta) ta.addEventListener('click', todoAllClick); }   // 할 일 전체 팝업
 
   /* 그리드: 선택 / 칩 수정 / 더블클릭 새 기록 / 드래그 이동 */
   const grid = $('#grid');
@@ -19667,26 +19665,17 @@ function bind(){
       // 통일 규칙: 칩 클릭 = 드러내기(reveal). 편집은 드러난 항목에서 한 번 더(일정=카드 [수정] / 할 일=행 텍스트).
       //  ★ 선택 날짜 = **누른 칸의 날짜**(docs/BUG-RANGE-CHIP-CLICK.md B1). data-occ 는 그 발생의 **시작일**이라,
       //    9/29~10/2 막대를 10월 달력의 10/1 칸에서 누르면 9/29 가 골라져 9월로 넘어갔다(달이 번갈아 바뀌는 버그).
-      //    상세 탭(entriesOn)·할 일 탭(covers)은 그날에 걸친 기간 항목을 모두 보이므로 누른 날짜에서도 카드·행이 보인다(B2).
+      //    패널(entriesOn, dayTodosList)은 그날에 걸친 기간 항목을 모두 보이므로 누른 날짜에서도 카드·행이 보인다(B2).
       //    칸 밖에 그려진 칩만 data-occ 로 대체(B4).
       //  ★ 내 창의 막대(.chip-bar)는 칸 밖(주 줄)에 놓이므로 누른 자리의 칸을 가로 위치로 찾는다(chipCellDate, 결정 2).
       //    열람 창의 칸 안 칩은 예전처럼 chip.closest('.cell') 이다(같은 함수, 갈래 없음).
       const cellDs = chipCellDate(chip, ev);
       const chipDs = cellDs || chip.dataset.occ || selectedDate;
-      if(chip.dataset.todo){            // 할 일 칩 → 그 날짜 + 할 일 탭 + 행 강조(접힌 섹션 자동 펼침)
-        selectDate(chipDs);
-        noteTab = 'todo';
-        flashTodoId = chip.dataset.todo;
-        noteCollapsed.delete('nodate');
-        //  미완료 할 일은 「이 날」 섹션에 있다 — 사용자가 접어 두었으면 행이 안 보이므로 함께 편다(B2).
-        const td = todoById(chip.dataset.todo); if(td && td.done) noteCollapsed.delete('done'); else noteCollapsed.delete('onday');
-        renderPanel(); openSheetIfNarrow();
-        return;
-      }
-      selectDate(chipDs);   // 일정 칩 → 그 날짜 + 일정 상세 탭 + 카드 강조
-      noteTab = 'detail';
-      flashTargetId = chip.dataset.id;
-      renderPanel(); openSheetIfNarrow();
+      //  칸 맨 위 줄의 '할 일 n' 개수 칩: 그 날짜만 고른다(할 일이 하나가 아니라 강조할 행이 없다)
+      if(chip.dataset.tdcnt){ selectDate(chipDs); return; }
+      //  할 일 칩 → 그 날짜가 선택되고 패널의 그 할 일 행이 강조된다(탭 전환 없음, 일정 칩과 같은 동작). 패널은 그날 할 일을 늘 보이므로 펴 줄 것이 없다.
+      if(chip.dataset.todo){ flashTodoId = chip.dataset.todo; selectDate(chipDs); return; }
+      flashTargetId = chip.dataset.id; selectDate(chipDs);   // 일정 칩 → 그 날짜 + 그 카드 강조
       return;
     }
     const more = ev.target.closest('.more[data-more]');   // 막대 달력의 +N(칸 밖): 그 날짜를 고른다(칸 안 +N 은 아래 칸 클릭이 맡는다)
@@ -19697,7 +19686,7 @@ function bind(){
   grid.addEventListener('dblclick', ev => {
     if(ev.target.closest('.chip')) return;
     const cell = ev.target.closest('.cell');
-    if(cell) openQuickAdd(cell.dataset.date);
+    if(cell) openAddOnDate(cell.dataset.date);
   });
   // 키보드 내비(ARIA grid): 셀 자체에 포커스가 있을 때만 — 방향키(일/주)·PgUp/Dn(월)·Home(오늘)·Enter/Space(선택)
   grid.addEventListener('keydown', ev => {
@@ -19791,8 +19780,8 @@ function bind(){
       const chip = ev.target.closest('.chip');
       if(chip){
         const chipDs = chipCellDate(chip, ev) || chip.dataset.occ || selectedDate;
+        if(chip.dataset.id) flashTargetId = chip.dataset.id;
         selectDate(chipDs);
-        if(chip.dataset.id){ noteTab = 'detail'; flashTargetId = chip.dataset.id; renderPanel(); openSheetIfNarrow(); }
         return;
       }
       const more = ev.target.closest('.more[data-more]');
@@ -19818,7 +19807,8 @@ function bind(){
 
   /* 날짜 패널 */
   $('#dayPanel').addEventListener('click', async ev => {
-    if(ev.target.id === 'btnAddHere'){ openQuickAdd(selectedDate); return; }
+    if(ev.target.closest('#btnAddHere')){ openAddOnDate(selectedDate); return; }
+    if(ev.target.closest('#dpFoot')){ openTodoAll(); return; }
     const act = ev.target.dataset.act;
     if(!act) return;
     const card = ev.target.closest('.card');

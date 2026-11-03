@@ -1,16 +1,19 @@
-// 과제 필터 다중 선택과 팝업형 필터 줄(docs/FILTER-MULTI.md, 시안 docs/prototypes/filterbar-proto-v3.html 의 V2).
+// 과제 필터 다중 선택(docs/FILTER-MULTI.md)과 그것을 품은 보기 하나(docs/PERSONAL-PANEL.md §2.3, 2026-11-03).
+//
+// 2026-11-03: 필터 줄이 ⚲ 보기 단추 하나로 넓어졌다. 고른 과제 칩, +N 은 없고(단추 요약 "과제 n"), 팝업 안 과제 목록(검색, 전체 선택/해제, 다중 선택, 키보드)은 그대로다.
+// 할 일 탭은 없어졌으니 "할 일도 같은 필터" 는 패널과 할 일 전체 팝업이 본다. 기록 종류와 보기 옵션은 tests/personal-panel.test.mjs.
 //
 // 이 파일이 지키는 것:
 //   (S) 정적: 옛 단일 필터(filterCatId), 할 일 탭 전용 필터(noteFilterCat, noteFilterBarHtml, .nd-filter-rs, tc_filterMax),
-//       넘침 페이드(syncOverflowFade, .ovf-fade)가 남지 않았다. 필터 줄은 42px 한 줄이고 줄바꿈, 스크롤이 없다.
-//       과제 버튼은 aria-haspopup="listbox". 통과 판정은 filterCats === null || filterCats.has(...).
+//       넘침 페이드(syncOverflowFade, .ovf-fade)가 남지 않았다. 필터 줄은 한 줄 고정이고 줄바꿈, 스크롤이 없다.
+//       보기 단추는 aria-haspopup="dialog", 과제 목록은 다중 선택 listbox. 통과 판정은 filterCats === null || filterCats.has(...).
 //   (R) 런타임(jsdom):
-//       내 창: 버튼 글자(전체, 선택 없음, 이름, 이름 외 N), 팝업(검색칸 포커스, 기록 많은 순, 0건 뒤 구분선),
-//       전체 해제와 두 과제 켜기 뒤 월간 막대와 주간 과제별 줄이 고른 과제만, 할 일 탭도 같은 필터,
-//       켜고 끄는 동안 팝업이 열린 채 목록에 포커스, 칩 x 로 하나 빼기, 전체 선택으로 null, Esc 로 닫고 버튼으로.
+//       내 창: 단추 요약(전체, 과제 0, 과제 n), 팝업(검색칸 포커스, 기록 많은 순, 0건 뒤 구분선),
+//       전체 해제와 두 과제 켜기 뒤 월간 막대와 주간 과제별 줄이 고른 과제만, 할 일 전체 팝업도 같은 필터,
+//       켜고 끄는 동안 팝업이 열린 채 목록에 포커스, 목록에서 하나 빼기, 전체 선택으로 null, Esc 로 닫고 버튼으로.
 //       과제 삭제 정리(묶음에서 빼고, 비면 전체로), 새 기록 기본 과제.
-//       열람 창: 같은 줄이 그 사람 과제로 그려지고, 필터를 바꿔도 내 일정 겹은 그대로.
-//   (M) 변이: passFilter 가 필터를 무시, 할 일 탭이 필터를 무시, 과제 삭제가 빈 묶음을 남김 → 위 런타임 시험이 실패한다.
+//       열람 창: 같은 단추가 그 사람의 과제로 그려지고, 필터를 바꿔도 내 일정 겹은 그대로.
+//   (M) 변이: passFilter 가 필터를 무시, 할 일 거르기가 과제를 무시, 과제 삭제가 빈 묶음을 남김 → 위 런타임 시험이 실패한다.
 import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 
 const app = loadAppSource();
@@ -43,42 +46,44 @@ test('정적②: 필터 묶음은 날짜 줄 안(월간 주간 단추 바로 뒤
   assert.ok(app.includes('</div>\n    <div class="fb-grp" id="filterbar"></div>\n  </div>'), '#filterbar 가 날짜 줄(.nav) 끝, 월간 주간 단추 뒤에 있지 않다');
 });
 
-test('정적③: 과제 버튼은 aria-haspopup="listbox", 목록은 aria-multiselectable, 한글 조합 중 키는 건너뛴다', () => {
+test('정적③: 보기 단추는 aria-haspopup="dialog", 과제 목록은 aria-multiselectable, 한글 조합 중 키는 건너뛴다', () => {
   const rf = extractFunction(app, 'renderFilterbar');
-  assert.ok(/class="fb-btn"[^`]*aria-haspopup="listbox"/.test(rf), '과제 버튼에 aria-haspopup="listbox" 가 없다');
+  assert.ok(/class="fb-btn"[^`]*aria-haspopup="dialog"/.test(rf), '보기 단추에 aria-haspopup="dialog" 가 없다');
   const op = extractFunction(app, 'filterPopOpen');
-  assert.ok(/role="listbox"[^`]*aria-multiselectable="true"/.test(op), '팝업 목록이 다중 선택 listbox 가 아니다');
+  assert.ok(/role="listbox"[^`]*aria-multiselectable="true"/.test(op), '팝업 과제 목록이 다중 선택 listbox 가 아니다');
   const bf = extractFunction(app, 'bindFilterbar');
   assert.ok(bf.includes('ev.isComposing || ev.keyCode === 229'), '한글 조합 중 키 건너뛰기가 없다');
 });
 
-test('정적④: 통과 판정과 할 일 거르기가 filterCats 하나를 본다', () => {
+test('정적④: 통과 판정과 할 일 거르기가 filterCats 하나를 본다(월간 막대와 주간 줄, 패널, 할 일 전체 팝업이 모두 그 판정을 부른다)', () => {
   assert.ok(extractFunction(app, 'passFilter').includes('return filterCats === null || filterCats.has(e.categoryId);'), 'passFilter 가 filterCats 를 보지 않는다');
-  assert.ok(extractFunction(app, 'todoBuckets').includes('filterCats !== null && !filterCats.has(t.categoryId)'), '할 일 묶음이 상단 필터를 따르지 않는다');
-  assert.ok(extractFunction(app, 'renderTodoListTab').includes('filterCats === null || filterCats.has(t.categoryId)'), '할 일 탭이 상단 필터를 따르지 않는다');
-  assert.ok(app.includes("${filterCats !== null ? '고른 과제에 ' : ''}"), '할 일 빈 안내가 "고른 과제에" 가 아니다');
+  assert.ok(extractFunction(app, 'viewTodoPass').includes('filterCats !== null && !filterCats.has(t.categoryId)'), '할 일 판정이 상단 필터를 따르지 않는다');
+  for (const [fn, call] of [['pmMonthItems', 'viewTodoPass(t)'], ['dayTodosList', 'viewTodoPass(t)'], ['todoAllGroups', 'viewTodoPass(t, true)'], ['todoNoDateCount', 'viewTodoPass(t, true)']]) {
+    assert.ok(extractFunction(app, fn).includes(call), `${fn} 가 같은 할 일 판정(${call})을 쓰지 않는다`);
+  }
 });
 
-test('단위①: 버튼 글자와 과제 토글(모두 고르면 전체로), 삭제 정리', () => {
-  const code = ['filterSelCats', 'filterDropCat', 'filterNormalize', 'filterToggleCat', 'filterLabel', 'filterFirstCat'].map((f) => extractFunction(app, f)).join('\n');
-  const mk = new Function('state', 'esc', 'validColor', `let filterCats = null;
+test('단위①: 단추 요약과 과제 토글(모두 고르면 전체로), 삭제 정리', () => {
+  const code = ['filterSelCats', 'filterDropCat', 'filterNormalize', 'filterToggleCat', 'filterFirstCat', 'viewIsDefault', 'viewSummary'].map((f) => extractFunction(app, f)).join('\n');
+  const mk = new Function('state', `let filterCats = null, viewKinds = { ev: true, td: true }, viewOpts = { done: true, star: false };
     ${code}
-    return { set(v){ filterCats = v; }, get(){ return filterCats; }, filterLabel, filterToggleCat, filterDropCat, filterFirstCat };`);
-  const S = mk({ categories: [{ id: 'a', name: '알파' }, { id: 'b', name: '베타' }, { id: 'c', name: '감마' }] }, (s) => String(s), (c) => c || '#000');
-  assert.strictEqual(S.filterLabel().text, '전체');
+    return { set(v){ filterCats = v; }, get(){ return filterCats; }, summary: viewSummary, filterToggleCat, filterDropCat, filterFirstCat };`);
+  const S = mk({ categories: [{ id: 'a', name: '알파' }, { id: 'b', name: '베타' }, { id: 'c', name: '감마' }] });
+  assert.strictEqual(S.summary(), '전체');
   S.filterToggleCat('b');
   assert.deepStrictEqual([...S.get()].sort(), ['a', 'c'], '전체에서 하나를 끄면 나머지가 남아야 한다');
-  assert.strictEqual(S.filterLabel().text, '알파 외 1');
+  assert.strictEqual(S.summary(), '과제 2');
   S.filterToggleCat('b');
   assert.strictEqual(S.get(), null, '모두 고르면 전체(null)여야 한다');
+  assert.strictEqual(S.summary(), '전체');
   S.set(new Set());
-  assert.strictEqual(S.filterLabel().text, '선택 없음');
+  assert.strictEqual(S.summary(), '과제 0');
   assert.strictEqual(S.filterFirstCat(), null);
   S.set(new Set(['c', 'b']));
-  assert.strictEqual(S.filterLabel().text, '베타 외 1', '버튼 글자의 첫 과제는 목록 순서여야 한다');
+  assert.strictEqual(S.summary(), '과제 2');
   assert.strictEqual(S.filterFirstCat(), 'b', '새 기록 기본 과제는 고른 과제 중 목록 순서로 첫째');
   S.filterDropCat('c');
-  assert.strictEqual(S.filterLabel().text, '베타');
+  assert.strictEqual(S.summary(), '과제 1');
   S.filterDropCat('b');
   assert.strictEqual(S.get(), null, '지운 과제 하나만 골라 두었으면 전체로 돌아가야 한다');
   S.set(new Set());
@@ -123,12 +128,12 @@ if (!JSDOM) {
   const settle = () => new Promise((r) => setTimeout(r, 40));
   const CAT = (id, name, color) => ({ id, name, color: color || '#3e5be0', desc: '', createdAt: '2026-09-01T00:00:00Z' });
   const ENT = (id, date, categoryId) => ({ id, date, title: '일정 ' + id, categoryId, allDay: true, startTime: '', endTime: '', endDate: '', memo: '', location: '', recur: null, recurExcept: [] });
-  const TODO = (id, categoryId) => ({ id, text: '할 일 ' + id, done: false, categoryId, due: '2026-10-14', endDate: '', prio: 'normal', completedAt: '', note: '', dayNotes: {} });
-  //  알파 2건, 베타 1건, 감마 1건, 델타 0건. 할 일은 과제마다 하나(10/14)
+  const TODO = (id, categoryId, due) => ({ id, text: '할 일 ' + id, done: false, categoryId, due, endDate: '', prio: 'normal', completedAt: '', note: '', dayNotes: {} });
+  //  알파 2건, 베타 1건, 감마 1건, 델타 0건. 할 일은 과제마다 하나(10/14, 10/15, 10/16 로 나눠 칸 맨 위 줄에서 개수 칩으로 접히지 않게)
   const MINE_DATA = {
     categories: [CAT('c-a', '알파'), CAT('c-b', '베타'), CAT('c-c', '감마'), CAT('c-d', '델타')],
     entries: [ENT('a1', '2026-10-13', 'c-a'), ENT('a2', '2026-10-14', 'c-a'), ENT('b1', '2026-10-14', 'c-b'), ENT('g1', '2026-10-15', 'c-c')],
-    todos: [TODO('ta', 'c-a'), TODO('tb', 'c-b'), TODO('tc', 'c-c')],
+    todos: [TODO('ta', 'c-a', '2026-10-14'), TODO('tb', 'c-b', '2026-10-15'), TODO('tc', 'c-c', '2026-10-16')],
     taskHours: {}, attendance: {},
   };
   async function bootMine(src) {
@@ -139,12 +144,12 @@ if (!JSDOM) {
     await settle();
     return W;
   }
-  const label = (W) => W.doc.querySelector('#filterbar .fb-btn').getAttribute('aria-label').replace(/^과제 필터, /, '');
+  const label = (W) => W.doc.querySelector('#filterbar .fb-btn .pv').textContent;
   const gridIds = (W) => [...new Set(W.$$('#grid .chip[data-id], #grid .chip[data-todo]').map((c) => c.dataset.id || c.dataset.todo))].sort();   // 일정(data-id)과 할 일(data-todo)
-  const chipCats = (W) => W.$$('#filterbar .fb-rest .fb-tok').map((c) => c.dataset.cat);
   const optOf = (W, name) => W.$$('#fbPop .fb-opt').find((o) => o.querySelector('.nm').textContent === name);
   const click = (el) => { assert.ok(el, '누를 요소가 없다'); el.click(); };
-  const todoIds = (W) => { W.ev('setPanelTab("todo")'); const r = W.$$('#dpBody .todo-row[data-id]').map((x) => x.dataset.id).sort(); W.ev('setPanelTab("detail")'); return r; };
+  //  할 일 전체 팝업의 행(기록 종류를 끄지 않은 보기에서 과제 필터를 따른다)
+  const todoIds = (W) => [...new Set([...W.ev('todoAllHtml()').matchAll(/data-id="([^"]+)"/g)].map((m) => m[1]))].sort();
 
   //  내 창 흐름: 런타임과 변이 시험이 같이 쓴다
   const checks = {
@@ -153,10 +158,11 @@ if (!JSDOM) {
       try {
         assert.strictEqual(label(W), '전체');
         assert.strictEqual(W.ev('filterCats'), null);
-        assert.deepStrictEqual(chipCats(W), [], '전체일 때는 칩이 없어야 한다');
+        assert.strictEqual(W.$$('#filterbar .fb-btn').length, 1, '보기 단추가 하나가 아니다');
+        assert.ok(!W.doc.querySelector('#filterbar .fb-rest'), '고른 과제 칩 자리가 남았다');
         assert.deepStrictEqual(gridIds(W), ['a1', 'a2', 'b1', 'g1', 'ta', 'tb', 'tc']);
         const btn = W.doc.querySelector('#filterbar .fb-btn');
-        assert.strictEqual(btn.getAttribute('aria-haspopup'), 'listbox');
+        assert.strictEqual(btn.getAttribute('aria-haspopup'), 'dialog');
         click(btn);
         const pop = W.doc.getElementById('fbPop');
         assert.ok(pop, '팝업이 열리지 않았다');
@@ -171,7 +177,7 @@ if (!JSDOM) {
         assert.strictEqual(pop.querySelector('[data-act="all"]').disabled, true, '전체일 때 전체 선택이 꺼져 있어야 한다');
         //  전체 해제 → 선택 없음, 아무것도 안 보인다
         click(pop.querySelector('[data-act="none"]'));
-        assert.strictEqual(label(W), '선택 없음');
+        assert.strictEqual(label(W), '과제 0');
         assert.ok(W.ev('filterCats instanceof Set && filterCats.size === 0'));
         assert.deepStrictEqual(gridIds(W), [], '선택 없음인데 달력에 기록이 보인다');
         assert.ok(W.doc.getElementById('fbPop'), '전체 해제 뒤 팝업이 닫혔다');
@@ -184,35 +190,32 @@ if (!JSDOM) {
         assert.strictEqual(W.doc.getElementById(lb.getAttribute('aria-activedescendant')).querySelector('.nm').textContent, '감마', '활성 항목이 방금 켠 과제가 아니다');
         assert.strictEqual(optOf(W, '알파').getAttribute('aria-selected'), 'true');
         assert.strictEqual(optOf(W, '베타').getAttribute('aria-selected'), 'false');
-        assert.strictEqual(label(W), '알파 외 1');
-        assert.deepStrictEqual(chipCats(W), ['c-a', 'c-c'], '고른 과제 칩이 목록 순서로 둘이어야 한다');
+        assert.strictEqual(label(W), '과제 2');
         assert.deepStrictEqual(gridIds(W), ['a1', 'a2', 'g1', 'ta', 'tc'], '월간 달력이 고른 과제만 보이지 않는다');
-        assert.ok(W.doc.querySelector('#dpBody .dp-count').textContent.includes('(필터 적용 중)'), '상세 패널에 필터 표시가 없다');
+        assert.ok(W.doc.querySelector('#filterbar .fb-btn').classList.contains('filtered'), '고른 과제가 있는데 보기 단추가 강조되지 않았다');
         //  Esc 로 닫고 버튼으로
         lb.dispatchEvent(new W.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         assert.ok(!W.doc.getElementById('fbPop'), 'Esc 로 닫히지 않았다');
         assert.strictEqual(W.doc.activeElement, btn, '닫은 뒤 포커스가 버튼으로 돌아오지 않았다');
         assert.strictEqual(btn.getAttribute('aria-expanded'), 'false');
-        //  할 일 탭도 같은 필터
-        assert.deepStrictEqual(todoIds(W), ['ta', 'tc'], '할 일 탭이 상단 필터를 따르지 않는다');
+        //  할 일 전체 팝업도 같은 필터
+        assert.deepStrictEqual(todoIds(W), ['ta', 'tc'], '할 일 전체 팝업이 상단 필터를 따르지 않는다');
         //  주간 과제별 줄: 고른 과제 줄만, 분류 없음 줄 없음
         W.ev('setCalView("week")');
         assert.deepStrictEqual(W.$$('#grid .wr-name').map((n) => n.textContent.trim()), ['알파', '감마'], '주간 과제별 줄이 고른 과제만이 아니다');
         assert.deepStrictEqual(gridIds(W), ['a1', 'a2', 'g1', 'ta', 'tc']);
         W.ev('setCalView("month")');
-        //  칩 x 로 알파 빼기 → 감마 하나, 포커스는 남은 x
-        click(W.doc.querySelector('#filterbar .fb-x[data-rm="c-a"]'));
-        assert.strictEqual(label(W), '감마');
-        assert.deepStrictEqual(chipCats(W), ['c-c']);
-        assert.strictEqual(W.doc.activeElement, W.doc.querySelector('#filterbar .fb-x[data-rm="c-c"]'), '뺀 뒤 포커스가 다음 x 로 가지 않았다');
-        assert.strictEqual(W.doc.querySelector('#filterbar .fb-x[data-rm="c-c"]').getAttribute('aria-label'), '감마 빼기');
+        //  목록에서 알파 빼기 → 감마 하나
+        click(W.doc.querySelector('#filterbar .fb-btn'));
+        click(optOf(W, '알파'));
+        assert.strictEqual(label(W), '과제 1');
         assert.deepStrictEqual(gridIds(W), ['g1', 'tc']);
+        W.doc.getElementById('fbPop').querySelector('.fb-opts').dispatchEvent(new W.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         //  전체 선택 → null
         click(W.doc.querySelector('#filterbar .fb-btn'));
         click(W.doc.querySelector('#fbPop [data-act="all"]'));
         assert.strictEqual(W.ev('filterCats'), null, '전체 선택 뒤 filterCats 가 null 이 아니다');
         assert.strictEqual(label(W), '전체');
-        assert.deepStrictEqual(chipCats(W), []);
         assert.deepStrictEqual(gridIds(W), ['a1', 'a2', 'b1', 'g1', 'ta', 'tb', 'tc']);
         //  바깥을 누르면 닫힌다
         W.doc.getElementById('grid').dispatchEvent(new W.w.Event('pointerdown', { bubbles: true }));
@@ -233,7 +236,7 @@ if (!JSDOM) {
     },
   };
 
-  test('런타임①: 팝업에서 전체 해제, 두 과제 켜기, 칩 x, 전체 선택이 달력(월간, 주간 줄), 할 일 탭, 버튼 글자를 함께 바꾼다', () => checks.popupFlow());
+  test('런타임①: 팝업에서 전체 해제, 두 과제 켜기, 하나 빼기, 전체 선택이 달력(월간, 주간 줄), 할 일 전체 팝업, 단추 요약을 함께 바꾼다', () => checks.popupFlow());
   test('런타임②: 과제를 지우면 묶음에서 빠지고, 비면 전체로 돌아간다', () => checks.deleteCleanup());
 
   test('런타임③: 키보드: 버튼 ↓ 로 열기, 검색칸 ↓ 로 목록, Space 로 켜고 끄기, 검색은 목록만 거른다(달력은 그대로)', async () => {
@@ -264,8 +267,10 @@ if (!JSDOM) {
       lb.dispatchEvent(new W.w.KeyboardEvent('keydown', { key: ' ', bubbles: true }));
       assert.ok(W.ev('filterCats instanceof Set') && !W.ev(`filterCats.has(${JSON.stringify(last.dataset.id)})`), 'Space 로 끄지 못했다');
       assert.strictEqual(W.doc.querySelector('#fbPop .fb-opts').getAttribute('aria-activedescendant'), W.$$('#fbPop .fb-opt').pop().id, '켜고 끈 뒤 활성 항목이 바뀌었다');
-      //  Tab 으로 나가면 닫고 버튼으로
+      //  팝업의 마지막 칸(보기 옵션의 중요한 할 일만)에서 Tab 으로 나가면 닫고 버튼으로. 안에서 도는 Tab 은 닫지 않는다.
       lb.dispatchEvent(new W.w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      assert.ok(W.doc.getElementById('fbPop'), '목록에서 다음 칸으로 가는 Tab 이 팝업을 닫았다');
+      W.doc.querySelector('#fbPop [data-vo="star"]').dispatchEvent(new W.w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
       assert.ok(!W.doc.getElementById('fbPop'), 'Tab 으로 닫히지 않았다');
       assert.strictEqual(W.doc.activeElement, btn);
     } finally { W.close(); }
@@ -281,17 +286,20 @@ if (!JSDOM) {
     } finally { W.close(); }
   });
 
-  test('런타임⑤: 과제가 없으면 꺼진 버튼(과제 없음)과 안내 문구 툴팁', async () => {
+  test('런타임⑤: 과제가 없어도 보기 단추는 켜져 있고(기록 종류, 보기 옵션), 팝업 과제 목록은 "과제 없음"이며 전체 선택, 해제는 꺼져 있다', async () => {
     const W = bootWindow('https://tcapp.local/?peer=1');
     try {
       await settle();
       W.w.__applyState(JSON.stringify({ categories: [], entries: [], todos: [] }), { peerName: '홍길동', canWrite: false });
       await settle();
       const btn = W.doc.querySelector('#filterbar .fb-btn');
-      assert.ok(btn && btn.disabled, '과제가 없으면 꺼진 단추여야 한다');
-      assert.strictEqual(btn.textContent.trim(), '과제 없음');
-      assert.strictEqual(btn.title, '등록된 수행 과제가 없습니다. [내 과제]에서 추가하세요.');
+      assert.ok(btn && !btn.disabled, '과제가 없다고 보기 단추가 꺼졌다');
+      assert.strictEqual(btn.querySelector('.pl').textContent, '⚲ 보기');
       assert.ok(!W.doc.querySelector('#filterbar .fb-rest'), '칩 자리가 없어야 한다');
+      click(btn);
+      assert.strictEqual(W.doc.querySelector('#fbPop .fb-none').textContent, '과제 없음');
+      assert.ok(W.doc.querySelector('#fbPop [data-act="all"]').disabled && W.doc.querySelector('#fbPop [data-act="none"]').disabled);
+      assert.ok(!W.doc.querySelector('#fbPop [data-vk="ev"]').disabled, '기록 종류를 못 쓴다');
     } finally { W.close(); }
   });
 
@@ -331,9 +339,9 @@ if (!JSDOM) {
     const bad = mutate(app, '  return filterCats === null || filterCats.has(e.categoryId);\n}', '  return true;\n}');
     await assert.rejects(() => checks.popupFlow(bad), /선택 없음인데 달력에 기록이 보인다/);
   });
-  test('변이M②: 할 일 탭이 상단 필터를 무시하면 런타임① 이 실패한다', async () => {
-    const bad = mutate(app, '  const inCat = t => filterCats === null || filterCats.has(t.categoryId);', '  const inCat = t => true;');
-    await assert.rejects(() => checks.popupFlow(bad), /할 일 탭이 상단 필터를 따르지 않는다/);
+  test('변이M②: 할 일 판정이 상단 필터를 무시하면 런타임① 이 실패한다', async () => {
+    const bad = mutate(app, '  if(filterCats !== null && !filterCats.has(t.categoryId)) return false;\n  if(!viewOpts.done', '  if(!viewOpts.done');
+    await assert.rejects(() => checks.popupFlow(bad), /선택 없음인데 달력에 기록이 보인다/);   // 달력의 할 일 칩도 같은 판정(viewTodoPass)이라 달력 검사에서 먼저 잡힌다
   });
   test('변이M③: 과제 삭제가 빈 묶음을 전체로 돌리지 않으면 런타임② 가 실패한다', async () => {
     const bad = mutate(app, 'if(filterCats !== null && filterCats.delete(id) && !filterCats.size) filterCats = null;', 'if(filterCats !== null) filterCats.delete(id);');
