@@ -1580,6 +1580,8 @@ details.vg-more dd{margin:0;color:var(--text)}
 .nd-toggle.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
 .todo-star-btn{flex:none;border:none;background:none;cursor:pointer;font-size:14px;color:var(--muted);padding:0 3px;line-height:1}
 .todo-star-btn.on,.todo-star-btn:hover{color:var(--star)}
+/* 좁은 폭(터치)에서 줄 끝 ★ 와 × 가 17px 높이라 누르기 어렵다(2026-11-03 화면 점검 V7). 앱의 440px 터치 하한 규칙에 맞춘다 */
+@media (max-width:440px){ .todo-row .todo-star-btn,.todo-row .todo-del{min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center} }
 
 /* ---------- 설정: 저장 모델 구분 ----------
    한 모달에 저장 방식이 셋(즉시 저장 / 자격증명 명시 저장 / 업데이트 URL 명시 저장) 섞여 있어,
@@ -11397,6 +11399,7 @@ function filterPopOpen(focusTo){
   Object.assign(FB, { pop, q: pop.querySelector('.fb-q'), lb: pop.querySelector('.fb-opts'), items: [], act: -1, actId: null });
   btn.setAttribute('aria-expanded', 'true'); btn.setAttribute('aria-controls', 'fbPop');
   filterSyncPop();
+  filterPopPlace(false);   // 채우기 전에 먼저 자리를 잡는다. 자리 없는 팝업이 화면 밖으로 삐져 있는 동안 목록 채우기가 창을 가로로 밀어 320px 에서 44px 가로 스크롤이 남았다(2026-11-03 화면 점검 V1)
   filterFillList(true);
   filterPopPlace(true);   // 목록을 채운 뒤에 높이를 잰다(내용만큼)
   (focusTo === 'list' ? FB.lb : FB.q).focus({ preventScroll: true });
