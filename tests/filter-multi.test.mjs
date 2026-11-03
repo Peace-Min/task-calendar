@@ -1,7 +1,7 @@
 // 과제 필터 다중 선택(docs/FILTER-MULTI.md)과 그것을 품은 보기 하나(docs/PERSONAL-PANEL.md §2.3, 2026-11-03).
 //
 // 2026-11-03: 필터 줄이 ⚲ 보기 단추 하나로 넓어졌다. 고른 과제 칩, +N 은 없고(단추 요약 "과제 n"), 팝업 안 과제 목록(검색, 전체 선택/해제, 다중 선택, 키보드)은 그대로다.
-// 할 일 탭은 없어졌으니 "할 일도 같은 필터" 는 패널과 할 일 전체 팝업이 본다. 기록 종류와 보기 옵션은 tests/personal-panel.test.mjs.
+// 할 일 탭은 없어졌으니 "할 일도 같은 필터" 는 패널과 밀린 할 일 팝업이 본다. 기록 종류(한 줄 고르기)는 tests/personal-panel.test.mjs. 보기 옵션은 없다.
 //
 // 이 파일이 지키는 것:
 //   (S) 정적: 옛 단일 필터(filterCatId), 할 일 탭 전용 필터(noteFilterCat, noteFilterBarHtml, .nd-filter-rs, tc_filterMax),
@@ -9,7 +9,7 @@
 //       보기 단추는 aria-haspopup="dialog", 과제 목록은 다중 선택 listbox. 통과 판정은 filterCats === null || filterCats.has(...).
 //   (R) 런타임(jsdom):
 //       내 창: 단추 요약(전체, 과제 0, 과제 n), 팝업(검색칸 포커스, 기록 많은 순, 0건 뒤 구분선),
-//       전체 해제와 두 과제 켜기 뒤 월간 막대와 주간 과제별 줄이 고른 과제만, 할 일 전체 팝업도 같은 필터,
+//       전체 해제와 두 과제 켜기 뒤 월간 막대와 주간 과제별 줄이 고른 과제만, 밀린 할 일 팝업도 같은 필터,
 //       켜고 끄는 동안 팝업이 열린 채 목록에 포커스, 목록에서 하나 빼기, 전체 선택으로 null, Esc 로 닫고 버튼으로.
 //       과제 삭제 정리(묶음에서 빼고, 비면 전체로), 새 기록 기본 과제.
 //       열람 창: 같은 단추가 그 사람의 과제로 그려지고, 필터를 바꿔도 내 일정 겹은 그대로.
@@ -55,7 +55,7 @@ test('정적③: 보기 단추는 aria-haspopup="dialog", 과제 목록은 aria-
   assert.ok(bf.includes('ev.isComposing || ev.keyCode === 229'), '한글 조합 중 키 건너뛰기가 없다');
 });
 
-test('정적④: 통과 판정과 할 일 거르기가 filterCats 하나를 본다(월간 막대와 주간 줄, 패널, 할 일 전체 팝업이 모두 그 판정을 부른다)', () => {
+test('정적④: 통과 판정과 할 일 거르기가 filterCats 하나를 본다(월간 막대와 주간 줄, 패널, 밀린 할 일 팝업이 모두 그 판정을 부른다)', () => {
   assert.ok(extractFunction(app, 'passFilter').includes('return filterCats === null || filterCats.has(e.categoryId);'), 'passFilter 가 filterCats 를 보지 않는다');
   assert.ok(extractFunction(app, 'viewTodoPass').includes('filterCats !== null && !filterCats.has(t.categoryId)'), '할 일 판정이 상단 필터를 따르지 않는다');
   for (const [fn, call] of [['pmMonthItems', 'viewTodoPass(t)'], ['dayTodosList', 'viewTodoPass(t)'], ['todoAllGroups', 'viewTodoPass(t, true)'], ['todoNoDateCount', 'viewTodoPass(t, true)']]) {
@@ -65,7 +65,7 @@ test('정적④: 통과 판정과 할 일 거르기가 filterCats 하나를 본�
 
 test('단위①: 단추 요약과 과제 토글(모두 고르면 전체로), 삭제 정리', () => {
   const code = ['filterSelCats', 'filterDropCat', 'filterNormalize', 'filterToggleCat', 'filterFirstCat', 'viewIsDefault', 'viewSummary'].map((f) => extractFunction(app, f)).join('\n');
-  const mk = new Function('state', `let filterCats = null, viewKinds = { ev: true, td: true }, viewOpts = { done: true, star: false };
+  const mk = new Function('state', `let filterCats = null, viewKinds = { ev: true, td: true };
     ${code}
     return { set(v){ filterCats = v; }, get(){ return filterCats; }, summary: viewSummary, filterToggleCat, filterDropCat, filterFirstCat };`);
   const S = mk({ categories: [{ id: 'a', name: '알파' }, { id: 'b', name: '베타' }, { id: 'c', name: '감마' }] });
@@ -148,7 +148,7 @@ if (!JSDOM) {
   const gridIds = (W) => [...new Set(W.$$('#grid .chip[data-id], #grid .chip[data-todo]').map((c) => c.dataset.id || c.dataset.todo))].sort();   // 일정(data-id)과 할 일(data-todo)
   const optOf = (W, name) => W.$$('#fbPop .fb-opt').find((o) => o.querySelector('.nm').textContent === name);
   const click = (el) => { assert.ok(el, '누를 요소가 없다'); el.click(); };
-  //  할 일 전체 팝업의 행(기록 종류를 끄지 않은 보기에서 과제 필터를 따른다)
+  //  밀린 할 일 팝업의 행(기록 종류를 끄지 않은 보기에서 과제 필터를 따른다)
   const todoIds = (W) => [...new Set([...W.ev('todoAllHtml()').matchAll(/data-id="([^"]+)"/g)].map((m) => m[1]))].sort();
 
   //  내 창 흐름: 런타임과 변이 시험이 같이 쓴다
@@ -198,8 +198,8 @@ if (!JSDOM) {
         assert.ok(!W.doc.getElementById('fbPop'), 'Esc 로 닫히지 않았다');
         assert.strictEqual(W.doc.activeElement, btn, '닫은 뒤 포커스가 버튼으로 돌아오지 않았다');
         assert.strictEqual(btn.getAttribute('aria-expanded'), 'false');
-        //  할 일 전체 팝업도 같은 필터
-        assert.deepStrictEqual(todoIds(W), ['ta', 'tc'], '할 일 전체 팝업이 상단 필터를 따르지 않는다');
+        //  밀린 할 일 팝업도 같은 필터(시험 자료의 날짜는 모두 지난 기한이라 기한 지남 묶음이다)
+        assert.deepStrictEqual(todoIds(W), ['ta', 'tc'], '밀린 할 일 팝업이 상단 필터를 따르지 않는다');
         //  주간 과제별 줄: 고른 과제 줄만, 분류 없음 줄 없음
         W.ev('setCalView("week")');
         assert.deepStrictEqual(W.$$('#grid .wr-name').map((n) => n.textContent.trim()), ['알파', '감마'], '주간 과제별 줄이 고른 과제만이 아니다');
@@ -267,10 +267,10 @@ if (!JSDOM) {
       lb.dispatchEvent(new W.w.KeyboardEvent('keydown', { key: ' ', bubbles: true }));
       assert.ok(W.ev('filterCats instanceof Set') && !W.ev(`filterCats.has(${JSON.stringify(last.dataset.id)})`), 'Space 로 끄지 못했다');
       assert.strictEqual(W.doc.querySelector('#fbPop .fb-opts').getAttribute('aria-activedescendant'), W.$$('#fbPop .fb-opt').pop().id, '켜고 끈 뒤 활성 항목이 바뀌었다');
-      //  팝업의 마지막 칸(보기 옵션의 중요한 할 일만)에서 Tab 으로 나가면 닫고 버튼으로. 안에서 도는 Tab 은 닫지 않는다.
+      //  팝업의 마지막 칸(과제 목록)에서 Tab 으로 나가면 닫고 버튼으로. 안에서 도는 Tab(기록 종류 단추)은 닫지 않는다.
+      W.doc.querySelector('#fbPop [data-vk="td"]').dispatchEvent(new W.w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      assert.ok(W.doc.getElementById('fbPop'), '기록 종류 단추에서 다음 칸으로 가는 Tab 이 팝업을 닫았다');
       lb.dispatchEvent(new W.w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-      assert.ok(W.doc.getElementById('fbPop'), '목록에서 다음 칸으로 가는 Tab 이 팝업을 닫았다');
-      W.doc.querySelector('#fbPop [data-vo="star"]').dispatchEvent(new W.w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
       assert.ok(!W.doc.getElementById('fbPop'), 'Tab 으로 닫히지 않았다');
       assert.strictEqual(W.doc.activeElement, btn);
     } finally { W.close(); }
@@ -286,7 +286,7 @@ if (!JSDOM) {
     } finally { W.close(); }
   });
 
-  test('런타임⑤: 과제가 없어도 보기 단추는 켜져 있고(기록 종류, 보기 옵션), 팝업 과제 목록은 "과제 없음"이며 전체 선택, 해제는 꺼져 있다', async () => {
+  test('런타임⑤: 과제가 없어도 보기 단추는 켜져 있고(기록 종류 고르기), 팝업 과제 목록은 "과제 없음"이며 전체 선택, 해제는 꺼져 있다', async () => {
     const W = bootWindow('https://tcapp.local/?peer=1');
     try {
       await settle();
@@ -299,7 +299,7 @@ if (!JSDOM) {
       click(btn);
       assert.strictEqual(W.doc.querySelector('#fbPop .fb-none').textContent, '과제 없음');
       assert.ok(W.doc.querySelector('#fbPop [data-act="all"]').disabled && W.doc.querySelector('#fbPop [data-act="none"]').disabled);
-      assert.ok(!W.doc.querySelector('#fbPop [data-vk="ev"]').disabled, '기록 종류를 못 쓴다');
+      assert.ok([...W.doc.querySelectorAll('#fbPop [data-vk]')].length === 3 && [...W.doc.querySelectorAll('#fbPop [data-vk]')].every((b) => !b.disabled), '기록 종류를 못 쓴다');
     } finally { W.close(); }
   });
 
@@ -340,7 +340,7 @@ if (!JSDOM) {
     await assert.rejects(() => checks.popupFlow(bad), /선택 없음인데 달력에 기록이 보인다/);
   });
   test('변이M②: 할 일 판정이 상단 필터를 무시하면 런타임① 이 실패한다', async () => {
-    const bad = mutate(app, '  if(filterCats !== null && !filterCats.has(t.categoryId)) return false;\n  if(!viewOpts.done', '  if(!viewOpts.done');
+    const bad = mutate(app, '  if(filterCats !== null && !filterCats.has(t.categoryId)) return false;\n  return true;', '  return true;');
     await assert.rejects(() => checks.popupFlow(bad), /선택 없음인데 달력에 기록이 보인다/);   // 달력의 할 일 칩도 같은 판정(viewTodoPass)이라 달력 검사에서 먼저 잡힌다
   });
   test('변이M③: 과제 삭제가 빈 묶음을 전체로 돌리지 않으면 런타임② 가 실패한다', async () => {

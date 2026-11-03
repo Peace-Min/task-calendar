@@ -57,7 +57,7 @@ const ALL_THEMES = ['light', 'dark', 'forest', 'sepia', 'contrast'];
 /** 화면 단위 — id, 여는 코드(페이지 JS), 목록 로딩 대기 여부, 데이터 의존성 */
 const SCREENS = [
   { id: 'base',                    enter: '__vt.closeAll()' },
-  //  2026-11-03(PERSONAL-PANEL): 개인 달력 우측 패널은 탭 없이 일정 n, 할 일 n 두 묶음과 맨 아래 한 줄이고, 보기 단추의 팝업(달력에 보일 것)과 할 일 전체 팝업이 새로 생겼다.
+  //  2026-11-03(PERSONAL-PANEL): 개인 달력 우측 패널은 탭 없이 일정 n, 할 일 n 두 묶음과 맨 아래 한 줄이고, 보기 단추의 팝업(달력에 보일 것)과 밀린 할 일 팝업이 새로 생겼다.
   //  보기 팝업은 폭이 480 미만이면 줄 아래 꽉 찬 시트로 뜬다(320, 400 폭에서 잘리거나 넘치지 않아야 한다).
   { id: 'viewPop',                 enter: '__vt.closeAll(); filterPopOpen("q")' },
   { id: 'todoAllModal',            enter: '__vt.closeAll(); openTodoAll()' },

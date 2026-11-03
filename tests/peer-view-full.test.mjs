@@ -150,14 +150,14 @@ function cssRules(src) {
   return out;
 }
 const W = {
-  //  P2: 할 일은 PEER 에서 감추지 않는다. 패널의 할 일 묶음과 맨 아래 '할 일 전체 보기' 줄(docs/PERSONAL-PANEL.md, 예전엔 '할 일' 탭).
+  //  P2: 할 일은 PEER 에서 감추지 않는다. 패널의 할 일 묶음과 맨 아래 '밀린 할 일' 줄(docs/PERSONAL-PANEL.md, 예전엔 '할 일' 탭).
   //  ('커밋 내역' 탭은 2026-10-26 Git 기능과 함께 없앴고, 패널의 탭은 2026-11-03 에 모두 없앴다.)
   tabsNotHidden(src) {
     for (const r of cssRules(src)) {
       if (!/display\s*:\s*none/.test(r.decl)) continue;
       for (const one of r.sel.split(',')) {
         assert.ok(!/body\[data-peer\][^,]*(#dpFoot|\.dp-grp|\.todo-row|#taBody|#todoAllModal)/.test(one),
-          `PEER 에서 ${one.trim()} 을(를) 감춘다. 할 일 묶음과 할 일 전체 보기는 열람 창에서도 보여야 한다(P2)`);
+          `PEER 에서 ${one.trim()} 을(를) 감춘다. 할 일 묶음과 밀린 할 일 줄은 열람 창에서도 보여야 한다(P2)`);
       }
     }
     assert.ok(src.includes('id="dpFoot"') && !src.includes('id="dptab-todo"') && !src.includes('id="dpTabs"'), '맨 아래 줄이 없거나 지운 탭 마크업이 남았다');
@@ -248,7 +248,7 @@ const W = {
       '내 겹이 일정(state.entries)에서만 만들어지지 않는다');
   },
 };
-test('(W) P2: 패널의 할 일 묶음과 할 일 전체 보기는 PEER 에서 감추지 않는다', () => W.tabsNotHidden(app));
+test('(W) P2: 패널의 할 일 묶음과 밀린 할 일 줄은 PEER 에서 감추지 않는다', () => W.tabsNotHidden(app));
 test('(W) P3: 편집 수단은 CSS 로 감추고 변경 함수는 PEER 관문으로 먼저 끊는다(Q6)', () => W.editAffordancesGuarded(app));
 test('(W) P4: 밀도 — 열람 창 전용 키 · 기본 펼침 · 띠의 전환(고정/촘촘히/펼침)', () => W.densitySeparated(app));
 test('(W) P5: 열람 창(따로 뜨는 창)은 창 전체를 쓰고 iframe 이 본문을 채운다', () => W.modalLarge(app));
@@ -256,7 +256,7 @@ test('(W) P1: 그리드 클릭은 PEER 전용 길 없이 공유 처리(누른 �
 test('(W) P6: 내 겹은 일정만 · 상대 할 일은 받은 그대로 넣는다', () => W.overlayEntriesOnly(app));
 
 // ── (M) 웹 정적 변이 ────────────────────────────────────────────────────
-test('변이 W1: PEER 에서 할 일 전체 보기 줄을 다시 감추면 계약이 잡는다', () => {
+test('변이 W1: PEER 에서 밀린 할 일 줄을 다시 감추면 계약이 잡는다', () => {
   const bad = mutate(app, 'body[data-peer] #btnAddHere,\n', 'body[data-peer] #btnAddHere,\nbody[data-peer] #dpFoot,\n');
   assert.throws(() => W.tabsNotHidden(bad), /#dpFoot/);
 });
@@ -369,7 +369,7 @@ if (!JSDOM) {
       assert.deepStrictEqual(P.posted, [], '열람 창이 호스트로 무언가 보냈다');
     });
 
-    test('R P2: 패널의 할 일 묶음과 맨 아래 \'할 일 전체 보기\' 줄이 보인다(감추지 않는다), 탭은 없다', () => {
+    test('R P2: 패널의 할 일 묶음과 맨 아래 \'밀린 할 일\' 줄이 보인다(감추지 않는다), 탭은 없다', () => {
       const disp = P.ev('getComputedStyle(document.getElementById("dpFoot")).display');
       assert.notStrictEqual(disp, 'none', '#dpFoot 이 열람 창에서 감춰져 있다');
       assert.notStrictEqual(P.ev('getComputedStyle(document.querySelector("#dpBody .dp-grp[data-grp=td]")).display'), 'none', '할 일 묶음이 감춰져 있다');
@@ -523,11 +523,11 @@ if (!JSDOM) {
       });
     });
 
-    test('변이 R3: PEER 에서 할 일 전체 보기 줄을 다시 감추면 줄이 실제로 사라진다(실행 계약이 잡는다)', async () => {
+    test('변이 R3: PEER 에서 밀린 할 일 줄을 다시 감추면 줄이 실제로 사라진다(실행 계약이 잡는다)', async () => {
       await withMutated('body[data-peer] #btnAddHere,\n', 'body[data-peer] #btnAddHere,\nbody[data-peer] #dpFoot,\n', async (m) => {
         inject(m); await settle();
         assert.strictEqual(m.ev('getComputedStyle(document.getElementById("dpFoot")).display'), 'none',
-          '변이했는데도 할 일 전체 보기 줄이 보인다. jsdom 이 이 규칙을 계산하지 못하면 R P2 는 정적 계약(W1)에만 기댄다');
+          '변이했는데도 밀린 할 일 줄이 보인다. jsdom 이 이 규칙을 계산하지 못하면 R P2 는 정적 계약(W1)에만 기댄다');
       });
     });
 

@@ -645,11 +645,11 @@ try {
         seen.push(el.id || (el.className||"").toString().split(" ")[0] || el.tagName.toLowerCase());
       }
       return JSON.stringify({seen:[...new Set(seen)], w:w.innerWidth});})()`));
-    //  달력 이동, 연월, 검색, 보기 단추, 일자 패널의 **읽기** 컨트롤(맨 아래 '할 일 전체 보기' 줄)만 허용한다.
+    //  달력 이동, 연월, 검색, 보기 단추, 일자 패널의 **읽기** 컨트롤(맨 아래 '밀린 할 일' 줄)만 허용한다.
     //  ★ 여기에 무언가를 더할 때는 "그게 읽기인가" 를 먼저 물을 것. 편집이면 CSS 에서 감춰야 한다.
     const ALLOW = new Set(["btnPrev","btnToday","btnNext","btnTitle","jumpMonth","btnCalViewMonth","btnCalViewWeek","btnSearch",
                            "fbBtn","dpSheetClose",
-                           //  ★ 2026-11-03(PERSONAL-PANEL): 패널의 탭은 없어졌다. 할 일은 패널의 묶음으로 보이고, 맨 아래 '할 일 전체 보기' 줄(dpFoot)은 읽기다.
+                           //  ★ 2026-11-03(PERSONAL-PANEL): 패널의 탭은 없어졌다. 할 일은 패널의 묶음으로 보이고, 맨 아래 '밀린 할 일' 줄(dpFoot)은 읽기다.
                            //    [+ 추가](btnAddHere)는 열람 프레임에서 아예 그리지 않는다.
                            "dpFoot"]);
     const extra = (vis.seen || []).filter((k) => !ALLOW.has(k));
