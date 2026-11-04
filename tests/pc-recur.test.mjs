@@ -106,7 +106,9 @@ const statics = {
     const web = /const PCAL_CMDS = Object\.freeze\(\[([\s\S]*?)\]\);/.exec(app);
     const hc = /internal static readonly string\[\] Commands =\s*\{([\s\S]*?)\};/.exec(cs);
     const names = (s) => [...s.matchAll(/['"](\w+)['"]/g)].map((m) => m[1]);
-    assert.strictEqual(names(web[1]).length, 7, '웹 명령이 일곱이 아니다(반복은 새 명령 없이 저장, 삭제, 복사의 값으로 간다)');
+    //  반복은 새 명령 없이 저장, 삭제, 복사의 값으로 간다. 일곱 명령에 구조 21 의 보기만 목록 넷(pcWatch*, docs/PC-WATCH.md)이 더해져 열하나다.
+    assert.strictEqual(names(web[1]).filter((n) => !/^pcWatch/.test(n)).length, 7, '웹 명령에서 보기만 목록 넷을 뺀 것이 일곱이 아니다(반복은 새 명령 없이 저장, 삭제, 복사의 값으로 간다)');
+    assert.strictEqual(names(web[1]).length, 11, '웹 명령이 열하나(일곱과 보기만 목록 넷)가 아니다');
     assert.deepStrictEqual(names(web[1]), names(hc[1]), '웹과 호스트 명령 목록이 다르다');
   },
 };
@@ -213,11 +215,12 @@ if (!JSDOM) {
       async click(sel) { const e = typeof sel === 'string' ? doc.querySelector(sel) : sel; assert.ok(e, `누를 것(${sel})이 없다`); e.click(); await settle(); clock.advance(150); await settle(); },
       async load(events) {
         const p = W.last('projectCalendarLoad');
-        await W.reply('projectCalendarLoad', { ok: true, data: { projects: (p.projectUids || []).map((u) => ({ projectUid: u, writable: true })), events, excluded: [], from: p.from, to: p.to } });
+        await W.reply('projectCalendarLoad', { ok: true, data: { projects: (p.projectUids || []).map((u) => ({ projectUid: u, writable: true, mine: true })), events, excluded: [], from: p.from, to: p.to } });
       },
       async enter(events) {
         await W.click('#pcTabProject');
         await W.reply('projectCalendarBootstrap', { ok: true, data: { projects: PROJECTS, limits: { title: 200, location: 200, memo: 8000 } } });
+        await W.reply('pcWatchList', { ok: true, data: { projects: [], max: 50 } });   // 부트스트랩 다음에 보기만 목록을 읽는다(구조 21)
         await W.load(events);
       },
       close: () => { try { w.close(); } catch (_) {} },

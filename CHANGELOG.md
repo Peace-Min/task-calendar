@@ -7,6 +7,18 @@
 
 ---
 
+## 🆕 2026-11-04 (다음 판, 번호는 배포 때): 과제 탭 "다른 과제 보기"(보기만 과제, DB 구조 21)
+
+사용자 결정(2026-11-04)과 DB 전문가 검토 반영. 기획과 구현 기록은 [docs/PC-WATCH.md](docs/PC-WATCH.md). 시안 `dist/proto/pc-watch-v3.html`, `pc-watch-v8.html`(최종). 원칙은 **이미 있는 화면을 모드로 재사용**한다는 것이다.
+
+- **DB(구조 20 → 21)**: 표 `cal_project_watch`(PK `(user_id, project_id)` 숫자 복합 키, 과제 FK CASCADE, 사람 FK RESTRICT, `added_at`). 이관 조각 `db/deploy/migrations/v21-project-watch.sql`(CREATE TABLE IF NOT EXISTS 하나, information_schema 검증, 구조 번호는 `WHERE k = 'db_structure_version' AND v = '20'`, GRANT, DELETE 없음). 정본 `schema-calendar.sql`(정의, 머리말 목록, DROP 목록), 권한 `grants-calendar.sql` 과 `server-app-account.sql`(SELECT, INSERT, DELETE), `create-app-user.sql` 머리말, `init-calendar.ps1` 명부(19 → 20), `setup-taskcalendar.ps1` 표 수 28, `db/demo/build-demo-sql.mjs`(구조 21, 지우기 목록), `DbGate.AppStructureVersion` 21.
+- **호스트**: **읽기 판정**(`ReadableProjectsAsync`: 숨기지 않은 모든 공식 과제 또는 숨겨졌어도 내 과제)을 새로 두고 `projectCalendarLoad`, `projectCalendarChanges`, `projectCalendarMembers` 만 쓴다. **쓰기 판정(`EligibleProjectsAsync`, `EligibleSql`)은 그대로**라 저장, 삭제, 개인 일정 등록은 참여자만이다. 읽기 회신의 과제마다 `writable`, `mine`. 새 명령 `pcWatchList`, `pcWatchAdd`(평범한 INSERT SELECT, 0행 거부, 1062 멱등, 50개 상한), `pcWatchRemove`, `pcWatchCatalog`(다른 과제 보기 창용: 과제별 `lastActivity`, 참여자 `login_id` 목록). 휴지통은 퇴사자 영구 삭제에서 `cal_project_watch` 를 `app_user` 보다 먼저 지우고(부속 3표) 과제 영구 삭제 로그에 보기만 줄 수를 남긴다.
+- **웹(모드 재사용)**: 다른 과제 보기 창 = 과제 추가 창(`#catAddModal`)의 보기 모드(`openCatAdd('watch')`, `CAW`). 참여자 명단 = `#pcMembersModal`(창 위에 창). [참여자] 고르기 = 사람 고르기 팝오버(`#peerPicker`)의 여러 명 모드(`pkOpen('multi', ...)`). 과제 탭은 내 과제와 보기만 두 묶음, 묶음 체크, ×, 숨겨진 과제 흐리게, 점선 일정, 상세 단추를 writable(수정, 삭제)과 mine(개인 일정에 등록) 두 값으로 정한다. 보기만 과제는 `state.categories`, 근태, 취합, 필터에 들어가지 않는다.
+- **시험**: `tests/pc-watch.test.mjs` 신설(호스트, 배포, 웹 정적, jsdom, 변이). 고친 기존 시험: `release-sql`(+ 흉내 실행기: v21 조각, 검증 멈춤, 변이), `project-calendar-host`(명령 열하나, 트랜잭션 넷, `c.source='db'` 7곳, 권한 넷, 읽기 판정), `project-calendar-web`(부트스트랩 뒤 보기만 목록 읽기, 줄 그리기 함수 이름, 범위 읽기 회신의 `mine`), `trash-host`(부속 3표), `peer-picker`(변이 앵커), 구조 번호 20 → 21(`demo-db`, `code-ids-db`, `version-gate-host`, `migrate-code-ids-cmd`, `schema-guards`). 화면 점검 루프에 `catAddModal.watch`, `catAddModal.watchWho`, `pcWatchSide` 등록.
+- **배포 시 할 일**: 구조 21 이관은 release SQL 이 한다. 표마다 권한을 주는 환경은 `grants-calendar.sql` 의 `cal_project_watch` 줄을 root 로 따로 준다.
+
+---
+
 ## 🆕 2026-11-03 (다음 판, 번호는 배포 때): 취합의 월간 보고 문서 설정을 오른쪽 "문서 설정" 띠로
 
 사용자 결정(2026-11-03, 확정 시안 `dist/proto/monthly-settings-v2.html` 애프터). 화면만 바뀌고 DB 구조와 호스트(C#) 변경은 없다. 설계는 [docs/ATTEND-SUMMARY.md](docs/ATTEND-SUMMARY.md) 2.

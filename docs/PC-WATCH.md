@@ -1,6 +1,6 @@
 # 과제 탭 "다른 과제 보기" (보기만 과제, 구조 21)
 
-상태: 기획 확정(2026-11-04 사용자), DB 전문가 검토 반영. 시안: 목록과 상세 dist/proto/pc-watch-v3.html, 고르는 창 dist/proto/pc-watch-v8.html(최종).
+상태: **구현 완료**(2026-11-04, 개발 브랜치 feat/pc-watch, 구조 21 이관과 실제 위젯 확인은 배포 전). 기획 확정(2026-11-04 사용자), DB 전문가 검토 반영. 시안: 목록과 상세 dist/proto/pc-watch-v3.html, 고르는 창 dist/proto/pc-watch-v8.html(최종).
 
 원칙(2026-11-04 사용자): **이미 있는 화면을 모드로 재사용한다.** 같은 기능이 화면마다 다르게 생기면 쓰는 사람이 피곤하다. 고르는 창 = 과제 추가 창(#catAddModal), 참여자 명단 = 과제 탭 참여자 창(#pcMembersModal), 참여자 고르기 = 사람 고르기 팝오버(#peerPicker).
 
@@ -105,6 +105,18 @@ CREATE TABLE cal_project_watch (
 - 실제 위젯: 두 계정(참여자 아닌 계정으로 보기, 쓰기 막힘), 다른 PC 흉내(같은 계정 다시 로그인 후 보기 목록 유지), 화면 점검 루프(새 화면: 보기 모드 창, 참여자 고르기 여러 명 모드).
 - 위키: 과제 캘린더 쪽(다른 과제 보기), DB 문서(CALENDAR-TABLE-DESIGN 에 표 추가), DB-RELEASE-OPS 사슬.
 
-## 6. 검토 기록
+## 6. 구현 기록(2026-11-04)
+
+- **재사용한 것과 더한 모드**
+  - 다른 과제 보기 창 = `#catAddModal` 의 보기 모드. `openCatAdd('watch')`(기존 인자 `'off'`, `'own'` 옆에 `'watch'`)가 같은 창을 열고, `CAW.on` 이 꺼져 있으면 `renderCaList` 는 지금 그대로다(시험으로 지킨다). 제목 `#caHead`, 보기 전용 칸(`.ca-wo`: [참여자], 일정 있는 과제만, 정렬)은 과제 추가 모드에서 CSS 로 숨는다.
+  - 참여자 명단 = `#pcMembersModal`. `pcOpenMembers(uid, opt)` 가 과제 탭 목록에 없는 과제(이름, 인원)도 열고, 사람으로 걸렸으면 그 사람 줄을 강조(`.pcm-row.hit`)한다. 창 위에 창.
+  - 참여자 고르기 = `#peerPicker`. `pkOpen('multi', 단추, { host, picked, onChange, hint })`. 더한 것은 줄마다 체크(`pkMultiOpenEl`), 조직도 목록 머리 "이 조직 전원"(`pkAllEl`, 하위 조직 포함, 일부면 반쯤), 위쪽 칩과 [모두 해제], 아래 [완료](`pkMultiSync`), 트리 노드의 점. 한 명 모드(top, modal)는 `__pk.multi` 가 null 이라 같은 코드를 지나지 않는다. 열람 창을 여는 `pkPick` 은 그대로다.
+  - 과제 탭: `pcSideHtml` 이 두 묶음, `pcRowHtml`(내 과제와 보기만 줄이 한 함수), `pcRenderDetail` 은 단추를 writable 과 mine 두 값으로 정한다.
+- **새로 만든 UI 와 까닭**: 새 창은 없다. 새 마크업은 보기 전용 칸 셋, 팝오버 칩 줄과 [완료] 줄(한 명 모드에서는 숨김), 왼쪽 목록의 묶음 머리와 점선 단추뿐이다. 이유는 모두 기존 컴포넌트에 해당 자리가 없었기 때문이다(일정 개수 필터, 정렬, 여러 명 고르기 결과를 보이는 칸).
+- **계약과 다르게 된 것**: (1) `c.source='db'` 가 `ProjectCalendarDb.cs` 에 3곳에서 7곳이 됐다(읽기 판정, 보기만 목록 둘, 목록용 읽기). 기획의 "3 → 4" 는 읽기 판정 하나만 센 값이었다. 시험(`project-calendar-host` ⑥)을 7로 고치고 그 자리를 적었다. (2) 보기 모드의 상태 체크는 이 창 안에서만 센다(처음엔 종료만 끔). 관리 화면, 재연결과 함께 쓰는 기억(`tc_projStatusOff`)을 건드리지 않기 위해서다. (3) 보기만 목록 읽기에 실패해도 내 과제 화면은 열고 "보기만 목록을 읽지 못했습니다" 한 줄만 보인다. (4) 보기만 넣기와 빼기도 커밋은 관문 재확인(`CommitWithGateAsync`)으로 끝낸다(구조 갱신 중 쓰기가 닫힌다).
+- **시험**: `tests/pc-watch.test.mjs`(호스트 정적, 배포 정적, 웹 정적, jsdom, 변이), `release-sql`(v21 조각, 검증 멈춤, 변이), `project-calendar-host`, `project-calendar-web`, `trash-host`(부속 3표) 갱신. 화면 점검 루프(`tests/loop-ui-visual.mjs`)에 `catAddModal.watch`, `catAddModal.watchWho`, `pcWatchSide` 를 더했다.
+- **아직 못 본 것**: 구조 21 이관 전이라 실제 위젯(두 계정, 다른 PC 흉내, 숨겨진 과제, 화면 점검 루프)과 실제 MySQL 에서의 읽기 판정, 넣기, 빼기, 50개 상한은 확인하지 않았다.
+
+## 7. 검토 기록
 
 - 2026-11-04 DB 전문가 검토: 표 설계(복합 숫자 PK, 형과 부호, FK 방향, 색인)는 그대로. 꼭 고칠 것 넷(쓰기 판정이 같이 열림, 복사 실패, 휴지통 시험과 권한 파일 누락, INSERT IGNORE)을 3, 2, 4절에 반영. 복사 실패는 그 뒤 사용자 결정(보기만 과제는 개인 일정 등록 없음)으로 CopyAsync 를 고치지 않는 것으로 정리.

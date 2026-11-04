@@ -17,7 +17,8 @@ namespace TaskCalendarWidget
     //  정본 db/deploy/schema-calendar.sql 14~15)이고, 그 표의 SQL 규칙은 이 파일에만 있다. 과제별 감시점 표는 없다.
     //  개인 일정에 등록(복사)은 그 순간의 사본을 개인 일정 한 건으로 만들 뿐 대응표가 없다. 원본과 사본은 어느 쪽으로도 이어지지 않는다.
     //
-    //  【명령 일곱】 MainWindow 의 메인 창에서만 온다(관리 창, 열람 창 허용 목록 밖). 회신은
+    //  【명령 열하나】 일곱(projectCalendar*)에 보기만 목록 넷(pcWatchList, pcWatchAdd, pcWatchRemove, pcWatchCatalog, 구조 21, docs/PC-WATCH.md)을 더했다.
+    //    MainWindow 의 메인 창에서만 온다(관리 창, 열람 창 허용 목록 밖). 회신은
     //    { ok, data?, error?: { kind, message } }. kind 는 forbidden, conflict, invalid 와 연결 분류(DbErrorKind).
     //
     //  【신원과 판정】
@@ -28,6 +29,9 @@ namespace TaskCalendarWidget
     //      이 함수만 고친다(§3.4).
     //    - 쓰기(저장, 삭제)는 그 위에 과제 is_active = 1. 숨긴 과제는 읽기 전용이고 개인 복사는 된다.
     //    - 보안 경계가 아니라 난간이다(공유 앱 계정이 DB 에 직접 붙는 지금 구조와 같은 수준, DB-RELEASE-OPS §0).
+    //    - ★ 판정은 둘이다(구조 21, 다른 과제 보기). **쓰기 판정**은 위 EligibleProjectsAsync 하나뿐이고 손대지 않는다(저장, 삭제, 개인 일정 등록이
+    //      쓴다). **읽기 판정**은 ReadableProjectsAsync 가 따로 맡는다(LoadAsync, ChangesAsync, MembersAsync 만): 숨기지 않은 모든 공식 과제,
+    //      또는 숨겨졌어도 내 과제. 읽기 회신의 과제마다 writable(내 과제이고 숨기지 않음)과 mine(내 과제)을 싣는다.
     //
     //  【트랜잭션 규칙】
     //    - 연결은 모두 DbGate.OpenAsync. 읽기는 REPEATABLE-READ 한 스냅샷, 쓰기는 READ-COMMITTED.
@@ -70,12 +74,14 @@ namespace TaskCalendarWidget
             public const string Invalid = "invalid";
         }
 
-        //  명령 일곱. MainWindow 의 스위치와 시험이 이 이름을 쓴다. 참여자 명단(projectCalendarMembers)은 2026-10-23 에 더했다(기획 §6.9).
+        //  명령 열하나(일곱 + 보기만 목록 넷). MainWindow 의 스위치와 시험이 이 이름을 쓴다. 참여자 명단(projectCalendarMembers)은 2026-10-23 에 더했다(기획 §6.9).
         internal static readonly string[] Commands =
         {
             "projectCalendarBootstrap", "projectCalendarLoad", "projectCalendarSave",
             "projectCalendarDelete", "projectCalendarChanges", "projectCalendarCopy",
             "projectCalendarMembers",
+            //  보기만 목록(구조 21, docs/PC-WATCH.md)
+            "pcWatchList", "pcWatchAdd", "pcWatchRemove", "pcWatchCatalog",
         };
 
         private readonly string _dataDir;
@@ -138,6 +144,7 @@ namespace TaskCalendarWidget
         {
             public uint Id; public string Uid = ""; public string ProjectName = ""; public string CommonName = "";
             public bool Active; public int SectionId; public string Customer = ""; public string CatUid = ""; public string Color = "";
+            public bool Mine;   // 읽기 판정(ReadableProjectsAsync)이 채운다: 내 과제(cal_category, source='db')인가. 쓰기 판정 경로는 쓰지 않는다
             public string Display => CommonName.Length > 0 ? CommonName : ProjectName;
         }
 
@@ -171,6 +178,9 @@ namespace TaskCalendarWidget
         internal const string MsgInactiveUser = "비활성 처리된 계정입니다.";
         internal const string MsgNotMine = "내 과제에 없는 과제입니다. 내 과제에 공식 과제를 넣으면 과제 캘린더를 쓸 수 있습니다.";
         internal const string MsgReadOnly = "숨긴 과제라 읽기 전용입니다.";
+        //  보기만 목록(구조 21)
+        internal const string MsgWatchGone = "과제가 없거나 숨겨졌습니다.";
+        internal const string MsgWatchFull = "보기만 과제는 50개까지 넣을 수 있습니다. 쓰지 않는 과제를 목록에서 빼세요.";
         internal const string MsgConflict = "다른 사람이 먼저 고쳤습니다. 최신 내용을 확인한 뒤 다시 저장하세요.";
         internal const string MsgGone = "이미 지워졌거나 없는 일정입니다.";
         internal const string MsgOtherProject = "다른 과제의 일정입니다.";
@@ -214,6 +224,11 @@ namespace TaskCalendarWidget
                         return r;
                     }
                     case "projectCalendarMembers":   return ProjectCalendarReply.Success(await MembersAsync(q, ct));
+                    //  보기만 목록 넷(구조 21). 웹과 호스트 사이는 uid, DB 는 project.id.
+                    case "pcWatchList":              return ProjectCalendarReply.Success(await WatchListAsync(ct));
+                    case "pcWatchAdd":               return ProjectCalendarReply.Success(await WatchAddAsync(q, ct));
+                    case "pcWatchRemove":            return ProjectCalendarReply.Success(await WatchRemoveAsync(q, ct));
+                    case "pcWatchCatalog":           return ProjectCalendarReply.Success(await WatchCatalogAsync(ct));
                     default: throw new PcFail(Kind.Invalid, "알 수 없는 요청입니다.");
                 }
             }
@@ -283,6 +298,55 @@ namespace TaskCalendarWidget
                 if (seen.Add(p.Uid)) list.Add(p);
             }
             return list;
+        }
+
+        // ================================================================================
+        //  읽기 판정(구조 21, docs/PC-WATCH.md §3): 숨기지 않은 모든 공식 과제, 또는 숨겨졌어도 내 과제
+        // ================================================================================
+        //  ★ 쓰기 판정(EligibleSql, EligibleProjectsAsync)은 그대로다. 이 함수는 LoadAsync, ChangesAsync, MembersAsync 만 부른다.
+        //    저장, 삭제, 개인 일정 등록(CopyAsync)은 이 함수를 부르지 않는다(참여자가 아닌 사람이 쓰지 못하게).
+        //  웹이 보낸 uid 만 해석한다(UidList 상한 200, project 표 전체를 읽지 않는다). 읽을 수 없는 uid 는 목록에 없다(호출부가 excluded 로 알린다).
+        //  숨겨졌어도 내 과제면 읽는다: 관리자가 숨겨도 참여자의 과제 탭 일정이 사라지지 않는다(지금 동작 유지). writable = mine AND is_active.
+        private static async Task<List<Proj>> ReadableProjectsAsync(MySqlConnection conn, MySqlTransaction? tx, int userId,
+            List<string> uids, CancellationToken ct)
+        {
+            var list = new List<Proj>();
+            if (uids.Count == 0) return list;
+            var (inSql, inPs) = InList("@u", uids.ConvertAll(u => (object)u));
+            string sql =
+                "SELECT p.id, p.uid, p.project_name, p.common_name, p.is_active, p.section_id, IFNULL(cu.name, '') AS customer_name, " +
+                "EXISTS(SELECT 1 FROM cal_category c WHERE c.user_id=@me AND c.source='db' AND c.project_uid = p.uid) AS mine " +
+                "FROM project p LEFT JOIN customer cu ON cu.customer_id = p.customer_id " +
+                "WHERE p.uid IN (" + inSql + ") HAVING p.is_active = 1 OR mine = 1";
+            await using var cmd = new MySqlCommand(sql, conn, tx);
+            cmd.Parameters.AddWithValue("@me", userId);
+            foreach (var (k, v) in inPs) cmd.Parameters.AddWithValue(k, v);
+            await using var rd = await cmd.ExecuteReaderAsync(ct);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            while (await rd.ReadAsync(ct))
+            {
+                var p = new Proj
+                {
+                    Id = Convert.ToUInt32(rd["id"], CultureInfo.InvariantCulture),
+                    Uid = Str(rd, "uid"),
+                    ProjectName = Str(rd, "project_name"),
+                    CommonName = Str(rd, "common_name"),
+                    Active = Convert.ToInt32(rd["is_active"], CultureInfo.InvariantCulture) == 1,
+                    SectionId = Convert.ToInt32(rd["section_id"], CultureInfo.InvariantCulture),
+                    Customer = Str(rd, "customer_name"),
+                    Mine = Convert.ToInt32(rd["mine"], CultureInfo.InvariantCulture) == 1,
+                };
+                if (seen.Add(p.Uid)) list.Add(p);
+            }
+            return list;
+        }
+
+        //  한 과제를 읽을 수 있는지(없으면 forbidden). 참여자 명단이 쓴다.
+        private static async Task<Proj> RequireReadableAsync(MySqlConnection conn, MySqlTransaction? tx, Me me, string projectUid, CancellationToken ct)
+        {
+            var ps = await ReadableProjectsAsync(conn, tx, me.UserId, new List<string> { projectUid }, ct);
+            if (ps.Count == 0) throw new PcFail(Kind.Forbidden, MsgWatchGone);
+            return ps[0];
         }
 
         //  한 과제를 쓸 수 있는지(없으면 forbidden). write 면 숨긴 과제도 거부한다. lockProject 는 위 함수 주석.
@@ -408,6 +472,7 @@ namespace TaskCalendarWidget
                     ["color"] = p.Color,
                     ["active"] = p.Active,
                     ["writable"] = p.Active,
+                    ["mine"] = true,   // 이 목록은 내 과제만이다(쓰기 판정). 보기만 과제는 pcWatchList 가 따로 준다
                     ["members"] = members.TryGetValue(p.Uid, out var mc) ? mc : 0L,
                 });
             return new Dictionary<string, object?>
@@ -431,9 +496,9 @@ namespace TaskCalendarWidget
             string login = SessionLoginId();
             await using var conn = await OpenReadSnapshotAsync(ct);
             var me = await IdentityAsync(conn, null, login, ct);
-            var mine = await EligibleProjectsAsync(conn, null, me.UserId, null, ct);
+            var readable = await ReadableProjectsAsync(conn, null, me.UserId, uids, ct);   // 읽기 판정(구조 21)
             var byUid = new Dictionary<string, Proj>(StringComparer.Ordinal);
-            foreach (var p in mine) byUid[p.Uid] = p;
+            foreach (var p in readable) byUid[p.Uid] = p;
             var take = new List<Proj>();
             var excluded = new List<string>();
             foreach (var u in uids) { if (byUid.TryGetValue(u, out var p)) take.Add(p); else excluded.Add(u); }
@@ -460,7 +525,7 @@ namespace TaskCalendarWidget
             }
             var projects = new List<object>();
             foreach (var p in take)
-                projects.Add(new Dictionary<string, object?> { ["projectUid"] = p.Uid, ["writable"] = p.Active });
+                projects.Add(new Dictionary<string, object?> { ["projectUid"] = p.Uid, ["writable"] = p.Mine && p.Active, ["mine"] = p.Mine });
             return new Dictionary<string, object?> { ["projects"] = projects, ["events"] = events, ["excluded"] = excluded, ["from"] = from, ["to"] = to };
         }
 
@@ -657,9 +722,9 @@ namespace TaskCalendarWidget
             string login = SessionLoginId();
             await using var conn = await OpenReadSnapshotAsync(ct);
             var me = await IdentityAsync(conn, null, login, ct);
-            var mine = await EligibleProjectsAsync(conn, null, me.UserId, null, ct);
+            var readable = await ReadableProjectsAsync(conn, null, me.UserId, uids, ct);   // 읽기 판정(구조 21)
             var byUid = new Dictionary<string, Proj>(StringComparer.Ordinal);
-            foreach (var p in mine) byUid[p.Uid] = p;
+            foreach (var p in readable) byUid[p.Uid] = p;
             var take = new List<Proj>();
             var excluded = new List<string>();
             foreach (var u in uids) { if (byUid.TryGetValue(u, out var p)) take.Add(p); else excluded.Add(u); }
@@ -802,7 +867,7 @@ namespace TaskCalendarWidget
         // ================================================================================
         //  7. projectCalendarMembers: { projectUid } → 그 과제의 참여자 명단(기획 §6.9, 2026-10-23)
         // ================================================================================
-        //  읽기 전용 한 스냅샷. 내 과제에 있는 과제만(판정 함수 하나, 숨긴 과제도 읽기는 된다). 아니면 forbidden.
+        //  읽기 전용 한 스냅샷. 읽기 판정(구조 21)을 통과한 과제만: 숨기지 않은 모든 공식 과제, 또는 숨겨졌어도 내 과제. 아니면 forbidden.
         //  ★ 사람의 집합은 부트스트랩의 참여자 수와 같은 규칙이다: 그 과제를 cal_category(source='db')로 가진 활성 사용자.
         //    그래서 목록의 n명과 명단의 total 이 늘 같다.
         //  ★ 보내는 것은 이름, 소속 이름, 직급 이름, 나인지뿐이다. 번호, login_id, 이메일은 고르지도 않는다.
@@ -819,7 +884,7 @@ namespace TaskCalendarWidget
             string login = SessionLoginId();
             await using var conn = await OpenReadSnapshotAsync(ct);
             var me = await IdentityAsync(conn, null, login, ct);
-            await RequireProjectAsync(conn, null, me, projectUid, write: false, ct);
+            await RequireReadableAsync(conn, null, me, projectUid, ct);   // 읽기 판정(구조 21): 숨기지 않은 모든 공식 과제 또는 내 과제
 
             //  ① 조직 트리(명부 ②와 같은 WHERE 와 ORDER BY)
             var unitOrder = new List<int>();
@@ -907,6 +972,187 @@ namespace TaskCalendarWidget
             "LEFT JOIN title_code t ON t.title_id = u.title_id " +
             "WHERE u.is_active = 1 AND EXISTS (SELECT 1 FROM cal_category c WHERE c.user_id = u.user_id AND c.source='db' AND c.project_uid = @pu) " +
             "ORDER BY u.sort_order IS NULL, u.sort_order, u.name";
+
+        // ================================================================================
+        //  8~11. 보기만 목록(구조 21, docs/PC-WATCH.md §2~3): pcWatchList, pcWatchAdd, pcWatchRemove, pcWatchCatalog
+        // ================================================================================
+        //  표는 cal_project_watch 하나(보는 사람, 보는 공식 과제, 넣은 시각). 보기만 과제는 내 과제(cal_category)가 아니다.
+        //  ★ 이 네 명령은 쓰기 판정(EligibleSql)을 쓰지 않고 바꾸지도 않는다. 일정 쓰기 길은 그대로 참여자만 연다.
+        //  ★ 넣기는 평범한 INSERT ... SELECT 다(INSERT IGNORE, ON DUPLICATE KEY UPDATE 금지: FK 위반 1452 까지 경고로 삼켜 넣었다고 거짓 회신한다).
+        //    0행 = 과제가 없거나 숨겨짐(MsgWatchGone), 1062 = 이미 보는 중(멱등 성공), 1452 = 과제가 그사이 사라짐(MsgProjectGone).
+        //  ★ 상한 50개는 넣을 때만 센다(두 PC 동시 넣기로 51개가 되는 경합은 받아들인다. 읽을 때 자르지 않는다).
+        internal const int WatchMax = 50;
+
+        //  이 사람의 보기만 목록. 이미 내 과제가 된 과제는 거른다. 숨겨진 과제는 줄을 지우지 않고 hidden 으로 알린다.
+        private async Task<object> WatchListAsync(CancellationToken ct)
+        {
+            string login = SessionLoginId();
+            await using var conn = await OpenReadSnapshotAsync(ct);
+            var me = await IdentityAsync(conn, null, login, ct);
+            var rows = new List<Dictionary<string, object?>>();
+            await using (var cmd = new MySqlCommand(
+                "SELECT p.uid, p.project_name, p.common_name, p.is_active, p.section_id, IFNULL(cu.name, '') AS customer_name, " +
+                "IFNULL(st.name, '') AS status_name, p.status_id " +
+                "FROM cal_project_watch w JOIN project p ON p.id = w.project_id " +
+                "LEFT JOIN customer cu ON cu.customer_id = p.customer_id " +
+                "LEFT JOIN status_code st ON st.status_id = p.status_id " +
+                "WHERE w.user_id=@me AND NOT EXISTS (SELECT 1 FROM cal_category c WHERE c.user_id=@me AND c.source='db' AND c.project_uid = p.uid) " +
+                "ORDER BY w.added_at, p.id", conn))
+            {
+                cmd.Parameters.AddWithValue("@me", me.UserId);
+                await using var rd = await cmd.ExecuteReaderAsync(ct);
+                while (await rd.ReadAsync(ct))
+                {
+                    string common = Str(rd, "common_name"), name = Str(rd, "project_name");
+                    int sti = rd.GetOrdinal("status_id");
+                    rows.Add(new Dictionary<string, object?>
+                    {
+                        ["projectUid"] = Str(rd, "uid"),
+                        ["name"] = common.Length > 0 ? common : name,
+                        ["projectName"] = name,
+                        ["commonName"] = common,
+                        ["customer"] = Str(rd, "customer_name"),
+                        ["status"] = Str(rd, "status_name"),
+                        ["statusId"] = rd.IsDBNull(sti) ? (object?)null : Convert.ToInt32(rd.GetValue(sti), CultureInfo.InvariantCulture),
+                        ["sectionId"] = Convert.ToInt32(rd["section_id"], CultureInfo.InvariantCulture),
+                        ["hidden"] = Convert.ToInt32(rd["is_active"], CultureInfo.InvariantCulture) != 1,
+                        ["members"] = 0L,
+                    });
+                }
+            }
+            if (rows.Count > 0)
+            {
+                //  참여자 수 = 그 과제를 내 과제에 넣은 활성 사용자 수(부트스트랩과 같은 규칙)
+                var counts = new Dictionary<string, long>(StringComparer.Ordinal);
+                var (inSql, inPs) = InList("@u", rows.ConvertAll(r => (object)(string)r["projectUid"]!));
+                await using var cmd = new MySqlCommand(
+                    "SELECT c.project_uid, COUNT(DISTINCT c.user_id) AS n FROM cal_category c " +
+                    "JOIN app_user u ON u.user_id = c.user_id AND u.is_active = 1 " +
+                    "WHERE c.source='db' AND c.project_uid IN (" + inSql + ") GROUP BY c.project_uid", conn);
+                foreach (var (k, v) in inPs) cmd.Parameters.AddWithValue(k, v);
+                await using var rd = await cmd.ExecuteReaderAsync(ct);
+                while (await rd.ReadAsync(ct)) counts[Str(rd, "project_uid")] = Convert.ToInt64(rd["n"], CultureInfo.InvariantCulture);
+                foreach (var r in rows) if (counts.TryGetValue((string)r["projectUid"]!, out var n)) r["members"] = n;
+            }
+            return new Dictionary<string, object?> { ["projects"] = rows, ["max"] = WatchMax };
+        }
+
+        //  { projectUid } → 보기만 목록에 넣는다. 이미 보는 중이면 멱등 성공(added=false).
+        private async Task<object> WatchAddAsync(JsonElement q, CancellationToken ct)
+        {
+            string pu = ReqUid(q, "projectUid", "과제");
+            string login = SessionLoginId();
+            string now = NowDb();
+            await using var conn = await OpenAsync(WritePreambleSql, ct);
+            await using var tx = await conn.BeginTransactionAsync(ct);
+            try
+            {
+                var me = await IdentityAsync(conn, tx, login, ct);
+                //  이미 보는 중이면 상한과 상관없이 성공(멱등).
+                long had;
+                await using (var cmd = new MySqlCommand(
+                    "SELECT COUNT(*) FROM cal_project_watch w JOIN project p ON p.id = w.project_id WHERE w.user_id=@me AND p.uid=@pu", conn, tx))
+                {
+                    cmd.Parameters.AddWithValue("@me", me.UserId);
+                    cmd.Parameters.AddWithValue("@pu", pu);
+                    had = Convert.ToInt64((await cmd.ExecuteScalarAsync(ct)) ?? 0L, CultureInfo.InvariantCulture);
+                }
+                long total;
+                await using (var cmd = new MySqlCommand("SELECT COUNT(*) FROM cal_project_watch WHERE user_id=@me", conn, tx))
+                {
+                    cmd.Parameters.AddWithValue("@me", me.UserId);
+                    total = Convert.ToInt64((await cmd.ExecuteScalarAsync(ct)) ?? 0L, CultureInfo.InvariantCulture);
+                }
+                if (had > 0) { await CommitWithGateAsync(conn, tx, ct); return new Dictionary<string, object?> { ["projectUid"] = pu, ["added"] = false, ["count"] = total }; }
+                if (total >= WatchMax) throw new PcFail(Kind.Forbidden, MsgWatchFull);
+                int n;
+                try
+                {
+                    n = await Exec(conn, tx,
+                        "INSERT INTO cal_project_watch (user_id, project_id, added_at) " +
+                        "SELECT @me, p.id, @now FROM project p WHERE p.uid = @pu AND p.is_active = 1", ct,
+                        P("@me", me.UserId), P("@now", now), P("@pu", pu));
+                }
+                catch (MySqlException mex) when (mex.Number == 1062)
+                {
+                    //  두 PC 가 동시에 넣었다. 이미 보는 중이니 성공이다.
+                    await CommitWithGateAsync(conn, tx, ct);
+                    return new Dictionary<string, object?> { ["projectUid"] = pu, ["added"] = false, ["count"] = total };
+                }
+                if (n == 0) throw new PcFail(Kind.Forbidden, MsgWatchGone);
+                await CommitWithGateAsync(conn, tx, ct);
+                return new Dictionary<string, object?> { ["projectUid"] = pu, ["added"] = true, ["count"] = total + 1 };
+            }
+            catch { await SafeRollbackAsync(tx); throw; }   // 1452 는 HandleAsync 가 MsgProjectGone 으로 바꾼다
+        }
+
+        //  { projectUid } → 보기만 목록에서 뺀다. 없어도 성공(removed=0).
+        private async Task<object> WatchRemoveAsync(JsonElement q, CancellationToken ct)
+        {
+            string pu = ReqUid(q, "projectUid", "과제");
+            string login = SessionLoginId();
+            await using var conn = await OpenAsync(WritePreambleSql, ct);
+            await using var tx = await conn.BeginTransactionAsync(ct);
+            try
+            {
+                var me = await IdentityAsync(conn, tx, login, ct);
+                long pid = 0;
+                await using (var cmd = new MySqlCommand("SELECT id FROM project WHERE uid=@pu", conn, tx))
+                {
+                    cmd.Parameters.AddWithValue("@pu", pu);
+                    var o = await cmd.ExecuteScalarAsync(ct);
+                    if (o != null && o != DBNull.Value) pid = Convert.ToInt64(o, CultureInfo.InvariantCulture);
+                }
+                int removed = 0;
+                if (pid > 0)
+                    removed = await Exec(conn, tx, "DELETE FROM cal_project_watch WHERE user_id = @me AND project_id = @pid", ct, P("@me", me.UserId), P("@pid", pid));
+                await CommitWithGateAsync(conn, tx, ct);
+                return new Dictionary<string, object?> { ["projectUid"] = pu, ["removed"] = removed };
+            }
+            catch { await SafeRollbackAsync(tx); throw; }
+        }
+
+        //  다른 과제 보기 창의 목록용 읽기 하나. 숨기지 않은 공식 과제마다 { projectUid, lastActivity, memberIds }.
+        //  lastActivity = 그 과제 일정(지우지 않은 것)의 MAX(updated_at), 일정이 없으면 null(ix_cal_project_event_updated).
+        //  memberIds = 참여자 login_id(MembersAsync, 부트스트랩과 같은 참여 규칙: cal_category source='db' 와 활성 app_user).
+        //  이름, 조직, 직급은 화면이 사람 고르기와 같은 명부(membersGet)로 붙인다. 이 회신은 이름을 싣지 않는다.
+        private async Task<object> WatchCatalogAsync(CancellationToken ct)
+        {
+            string login = SessionLoginId();
+            await using var conn = await OpenReadSnapshotAsync(ct);
+            await IdentityAsync(conn, null, login, ct);
+            var byUid = new Dictionary<string, Dictionary<string, object?>>(StringComparer.Ordinal);
+            var order = new List<string>();
+            await using (var cmd = new MySqlCommand(
+                "SELECT p.uid, (SELECT MAX(e.updated_at) FROM cal_project_event e WHERE e.project_id = p.id AND e.is_deleted = 0) AS last_at " +
+                "FROM project p WHERE p.is_active = 1", conn))
+            {
+                await using var rd = await cmd.ExecuteReaderAsync(ct);
+                while (await rd.ReadAsync(ct))
+                {
+                    string uid = Str(rd, "uid");
+                    int li = rd.GetOrdinal("last_at");
+                    byUid[uid] = new Dictionary<string, object?>
+                    {
+                        ["projectUid"] = uid,
+                        ["lastActivity"] = rd.IsDBNull(li) ? null : Iso((DateTime)rd.GetValue(li)),
+                        ["memberIds"] = new List<string>(),
+                    };
+                    order.Add(uid);
+                }
+            }
+            await using (var cmd = new MySqlCommand(
+                "SELECT DISTINCT c.project_uid, u.login_id AS member_login FROM cal_category c " +
+                "JOIN project p ON p.uid = c.project_uid AND p.is_active = 1 " +
+                "JOIN app_user u ON u.user_id = c.user_id AND u.is_active = 1 " +
+                "WHERE c.source='db' ORDER BY c.project_uid, member_login", conn))
+            {
+                await using var rd = await cmd.ExecuteReaderAsync(ct);
+                while (await rd.ReadAsync(ct))
+                    if (byUid.TryGetValue(Str(rd, "project_uid"), out var row)) ((List<string>)row["memberIds"]!).Add(Str(rd, "member_login"));
+            }
+            return new Dictionary<string, object?> { ["projects"] = order.ConvertAll(u => (object)byUid[u]) };
+        }
 
         // ── 일정 읽기 ──────────────────────────────────────────────────────────
         private static async Task<Ev?> EventByUidForUpdateAsync(MySqlConnection conn, MySqlTransaction tx, string uid, CancellationToken ct) =>

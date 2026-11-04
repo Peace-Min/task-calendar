@@ -174,7 +174,7 @@ test('(순수) K3·K4·K7: pkModel — 즐겨찾기 > 최근 > 결과 한 줄씩
 });
 
 test('(변이) K7: 최근에서 즐겨찾기를 빼는 줄을 지우면 (순수) pkModel 판정이 잡는다', () => {
-  const bad = mutate(app, 'if(x.loginId === me || favIds.has(x.loginId)) continue;', 'if(x.loginId === me) continue;');
+  const bad = mutate(app, 'if((!multi && x.loginId === me) || favIds.has(x.loginId)) continue;', 'if(!multi && x.loginId === me) continue;');
   const pkModel = modelFn(bad);
   const md = pkModel({ favs: [{ loginId: 'wblee', name: '이웅빈' }], recents: [{ loginId: 'wblee', name: '이웅빈' }], members: ROSTER, q: '', me: 'phmin', viewing: '' });
   assert.deepStrictEqual(md.recent.map((r) => r.loginId), ['wblee'], '전제: 변이가 두 줄을 만든다');

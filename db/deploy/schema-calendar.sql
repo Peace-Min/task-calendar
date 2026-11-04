@@ -826,7 +826,7 @@ SET @g := IF(@g_type_ok = 1 AND @g_pk_ok = 1, 'DO 0',
 PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 
 -- 가드 4) project.id 가 과제 캘린더 표(14~15)의 FK 를 받을 수 있는가(2026-10-22, 구조 번호 16)
---   cal_project_event, cal_project_change 가 project(id) 를 가리킨다. project 는 schema-structure.sql 이
+--   cal_project_event, cal_project_change, cal_project_watch 가 project(id) 를 가리킨다. project 는 schema-structure.sql 이
 --   먼저 만든다(setup-taskcalendar.ps1 순서). 없거나 모양이 다르면 아래 DROP 이 지나간 뒤 CREATE 가 죽으므로 여기서 먼저 멈춘다.
 SET @g_proj_type := (SELECT COUNT(*) FROM information_schema.COLUMNS
                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project'
@@ -861,6 +861,7 @@ PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 --   **앞**에 있어야 한다. 아래는 이미 그 순서다(cal_task_hours 가 위쪽). 순서를 정리한답시고
 --   알파벳순으로 바꾸면 재적용이 ERROR 3730 으로 죽는다.
 DROP TABLE IF EXISTS cal_audit_trash;   -- 폐지(§7.5). 옛 배포분 정리용. 재생성하지 않는다
+DROP TABLE IF EXISTS cal_project_watch;    -- 과제 탭 보기만 목록(구조 21). app_user, project 를 참조(둘 다 이 파일이 지우지 않는다)
 DROP TABLE IF EXISTS project_schedule_image; -- 월간보고 개발 일정 그림(구조 17). project, app_user 를 참조(둘 다 이 파일이 지우지 않는다)
 DROP TABLE IF EXISTS cal_project_change;    -- 과제 캘린더(구조 16). cal_project_event 를 참조, 자식 먼저
 DROP TABLE IF EXISTS cal_project_event_except; -- 과제 반복 일정의 예외일(구조 20). cal_project_event 를 참조, 자식 먼저
@@ -1810,9 +1811,11 @@ CREATE TABLE cal_schema_meta (
 --       2026-11-02(docs/PC-RECUR.md)로 같은 판에 과제 일정 반복 칸 cal_project_event.recur_freq 와 예외일 표
 --       cal_project_event_except(아래 14-2)를 더했다(같은 조각, 번호 그대로). 표 수가 하나 더 는다.
 --       앱 상수는 DbGate.AppStructureVersion(20).
+--   - 21 (2026-11-04): 과제 탭 다른 과제 보기(이관 조각 db/deploy/migrations/v21-project-watch.sql, docs/PC-WATCH.md).
+--       보기만 과제 목록 표 cal_project_watch(아래 15-2)를 더한다. 표 수가 하나 는다. 앱 상수는 DbGate.AppStructureVersion(21).
 --   ★ app_ 세 키는 빈 값으로 시딩한다(새 버전 없음). 배포 때 release-v<버전>.sql 이 채운다(DB-RELEASE-OPS §4).
 --   ★ 첫 줄(db_structure_version)의 모양을 바꾸지 말 것. setup-taskcalendar.ps1 과 시험이 이 줄에서 기대값을 읽는다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '20', UTC_TIMESTAMP(3)),
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '21', UTC_TIMESTAMP(3)),
   ('db_updating', '0', UTC_TIMESTAMP(3)),
   ('app_latest_version', '', UTC_TIMESTAMP(3)),
   ('app_installer_file', '', UTC_TIMESTAMP(3)),
@@ -1965,6 +1968,32 @@ CREATE TABLE cal_project_change (
   CONSTRAINT chk_cal_project_change_action   CHECK (action IN ('create','update','delete'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='과제 일정 변경 이력(지우지 않는 기록). 한 저장의 바뀐 필드만 한 행. 바뀐 것이 없으면 행이 없다.';
+
+-- ---------------------------------------------------------------------
+--  15-2. cal_project_watch: 과제 탭 보기만 목록(구조 21, 2026-11-04, docs/PC-WATCH.md)
+-- ---------------------------------------------------------------------
+-- 활성 사용자 누구나 모든 공식 과제의 과제 캘린더를 읽기 전용으로 본다. 어떤 과제를 보는지는 계정에 저장한다(다른 PC 에서도 이어진다).
+-- ★ 보기만 과제는 내 과제(cal_category)가 아니다. 근태, 보고, 취합, 개인 달력 필터, 일정 입력 창의 과제 목록에 들어가지 않는다.
+--   쓰기 판정(ProjectCalendarDb.EligibleSql)은 이 표를 보지 않는다. 이 표는 읽기 목록 하나만 만든다.
+-- ★ PK 는 숫자 둘(user_id, project_id). 이 표를 가리키는 표가 없어 자기 번호를 두지 않는다(cal_project_event_except, cal_user_pref 와 같은 결).
+-- ★ 넣기는 평범한 INSERT ... SELECT 다(IGNORE 와 ON DUPLICATE KEY UPDATE 금지: 위 323행 규칙). 1062 는 이미 보는 중(멱등 성공),
+--   1452 와 0행은 과제가 사라지거나 숨겨짐. 빼기는 DELETE 한 줄이고 고칠 칸이 없어 UPDATE 권한이 필요 없다.
+-- ★ 과제 FK 는 CASCADE(휴지통의 공식 과제 영구 삭제를 보는 줄이 막지 않는다). 사람 FK 는 RESTRICT(기존 통일 규칙)라
+--   퇴사자 영구 삭제 때 휴지통이 이 사람의 보는 줄을 먼저 지운다(ProjectDb 의 부속 표. 기록이 아니라 화면 설정이라 UserRecordTables 에는 없다).
+-- ★ 상한 50개는 넣을 때만 앱이 센다(두 PC 동시 넣기의 경합은 받아들인다).
+-- ★ 이 정의는 이관 조각 db/deploy/migrations/v21-project-watch.sql 의 CREATE TABLE IF NOT EXISTS 와 **글자까지 같다**
+--   (작은따옴표만 두 겹). 그래서 정의 안에 -- 주석을 두지 않고 설명은 COMMENT 로 적는다.
+-- ★ 앱 계정 권한(grants-calendar.sql): SELECT, INSERT, DELETE.
+CREATE TABLE cal_project_watch (
+  user_id     SMALLINT UNSIGNED NOT NULL COMMENT '보는 사람(app_user.user_id)',
+  project_id  INT UNSIGNED      NOT NULL COMMENT '보는 공식 과제(project.id)',
+  added_at    DATETIME(3)       NOT NULL COMMENT '넣은 시각(UTC)',
+  PRIMARY KEY (user_id, project_id),
+  KEY ix_cal_project_watch_project (project_id),
+  CONSTRAINT fk_cal_project_watch_user    FOREIGN KEY (user_id)    REFERENCES app_user (user_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_cal_project_watch_project FOREIGN KEY (project_id) REFERENCES project (id)       ON DELETE CASCADE  ON UPDATE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT='과제 탭 보기만 목록. 내 과제(cal_category)가 아니다. 근태, 보고, 필터 과제 목록에 들어가지 않는다';
 
 -- =====================================================================
 --  16. project_schedule_image: 과제별 개발 일정 그림(구조 번호 17, 2026-10-22, docs/MONTHLY-REPORT-PLAN.md §6)

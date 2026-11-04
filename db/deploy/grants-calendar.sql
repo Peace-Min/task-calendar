@@ -223,6 +223,10 @@ GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';
 --   "이 날짜만 삭제" 가 넣고, 반복 종류를 바꾸거나 끈 저장이 그 일정의 날짜를 지운다(날짜가 뜻을 잃는다). 일정 행 자체는 여전히 지우지 않는다.
 -- ★ 배포 SQL 은 GRANT 를 하지 않는다. 표마다 권한을 주는 환경은 이 줄을 root 로 따로 돌린다(개발 PC 는 dist/rehearsal/apply-v20c-dev.sql).
 GRANT SELECT, INSERT, DELETE ON taskmgr.cal_project_event_except TO 'taskmgr_app'@'%';
+-- ★ cal_project_watch(과제 탭 보기만 목록, 구조 21, 2026-11-04 docs/PC-WATCH.md)는 SELECT, INSERT, DELETE. 고칠 칸이 없어 UPDATE 는 없다.
+--   [보기]가 넣고 [빼기]와 퇴사자 영구 삭제(휴지통)가 지운다. 이 줄이 없으면 표마다 권한을 주는 환경에서 모든 사람의 영구 삭제가 1142 로 실패한다.
+-- ★ 배포 SQL 은 GRANT 를 하지 않는다. 표마다 권한을 주는 환경은 이 줄을 root 로 따로 돌린다.
+GRANT SELECT, INSERT, DELETE ON taskmgr.cal_project_watch TO 'taskmgr_app'@'%';
 
 -- ---------- 월간보고 개발 일정 그림(구조 번호 17, docs/MONTHLY-REPORT-PLAN.md §6.4) ----------
 -- project_schedule_image 는 이름이 cal_ 로 시작하지 않지만 schema-calendar.sql 이 만드는 표라 권한도 이 파일이 정본이다.

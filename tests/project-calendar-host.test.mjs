@@ -43,8 +43,10 @@ const src = {
 };
 
 const TABLES = ['cal_project_event', 'cal_project_change'];
+//  명령 열하나: 일곱(projectCalendar*)과 보기만 목록 넷(pcWatch*, 구조 21, docs/PC-WATCH.md). 이 순서가 MainWindow 의 case 순서다.
 const COMMANDS = ['projectCalendarBootstrap', 'projectCalendarLoad', 'projectCalendarSave',
-  'projectCalendarDelete', 'projectCalendarChanges', 'projectCalendarCopy', 'projectCalendarMembers'];
+  'projectCalendarDelete', 'projectCalendarChanges', 'projectCalendarCopy', 'projectCalendarMembers',
+  'pcWatchList', 'pcWatchAdd', 'pcWatchRemove', 'pcWatchCatalog'];
 
 // 정본의 CREATE TABLE 한 개(머리부터 COMMENT='...' 까지, 끝 ; 제외)
 function canonDef(canon, t) {
@@ -124,8 +126,8 @@ const checks = {
     const code = stripCsComments(pcdb);
     //  과제별 감시점 표(cal_project_rev)는 없다(2026-10-22 저녁 결정). 공용 쓰기는 판정으로 시작한다.
     assert.ok(!/cal_project_rev|ProjectRev/.test(code), 'ProjectCalendarDb 에 과제별 감시점(cal_project_rev)이 남아 있다');
-    //  트랜잭션을 여는 곳은 둘뿐: 공용 쓰기(BeginSharedWriteAsync)와 개인 복사(CopyAsync)
-    assert.strictEqual((code.match(/BeginTransactionAsync\(/g) || []).length, 2, '트랜잭션을 여는 자리가 둘(공용 쓰기, 개인 복사)이 아니다');
+    //  트랜잭션을 여는 곳은 넷뿐: 공용 쓰기(BeginSharedWriteAsync), 개인 복사(CopyAsync), 보기만 넣기와 빼기(WatchAddAsync, WatchRemoveAsync, 구조 21)
+    assert.strictEqual((code.match(/BeginTransactionAsync\(/g) || []).length, 4, '트랜잭션을 여는 자리가 넷(공용 쓰기, 개인 복사, 보기만 넣기, 보기만 빼기)이 아니다');
     const begin = stripCsComments(extractCsMember(pcdb, 'BeginSharedWriteAsync(\n            MySqlConnection conn'));
     const afterBegin = begin.slice(begin.indexOf('BeginTransactionAsync(') + 'BeginTransactionAsync('.length);
     const iId = afterBegin.indexOf('await IdentityAsync(conn, tx, login, ct)'), iReq = afterBegin.indexOf('await RequireProjectAsync(conn, tx, me, projectUid, write: true, ct, lockProject: true)');
@@ -162,7 +164,8 @@ const checks = {
     const iRead = c.indexOf('DbGate.ReadMetaAsync(conn, tx, ct)'), iObs = c.indexOf('DbGate.Observe(gateMeta) != GateVerdict.Ok'), iCommit = c.indexOf('tx.CommitAsync(');
     assert.ok(iRead > 0 && iObs > iRead && iCommit > iObs, '커밋 바로 앞에 관문 재확인(ReadMetaAsync, Observe)이 없다');
     assert.ok(/SafeRollbackAsync\(tx\)[\s\S]*throw new DbGateException/.test(c.slice(iObs, iCommit)), '관문이 막으면 롤백하고 멈추지 않는다');
-    for (const fn of ['private async Task<object> SaveAsync(', 'private async Task<object> DeleteAsync(', 'private async Task<object> CopyAsync(']) {
+    for (const fn of ['private async Task<object> SaveAsync(', 'private async Task<object> DeleteAsync(', 'private async Task<object> CopyAsync(',
+      'private async Task<object> WatchAddAsync(', 'private async Task<object> WatchRemoveAsync(']) {
       const b = extractCsMember(pcdb, fn);
       assert.ok(/await CommitWithGateAsync\(conn, tx, ct\);/.test(b), `${fn} 가 CommitWithGateAsync 로 커밋하지 않는다`);
     }
@@ -223,8 +226,9 @@ const checks = {
     assert.ok(/SELECT user_id, name, is_active FROM app_user WHERE login_id=@id/.test(idf) && /is_active"\], CultureInfo\.InvariantCulture\) != 1\) throw new PcFail\(Kind\.Forbidden/.test(idf), '신원 확인이 활성 사용자(app_user)만 통과시키지 않는다');
     assert.ok(!/edit_role/.test(code), 'ProjectCalendarDb 가 edit_role 을 본다(공용 쓰기는 역할과 무관, §5.2)');
     //  판정 SQL(cal_category, source='db')은 한 함수에만, 모든 명령이 그 함수를 거친다
-    //  c.source='db' 는 판정(EligibleSql), 참여자 수(부트스트랩), 참여자 명단(MembersSql) 세 곳이다. 뒤의 둘은 같은 사람 집합이다(⑬).
-    assert.strictEqual((code.match(/c\.source='db'/g) || []).length, 3, "c.source='db' 가 EligibleSql, 참여자 수, 참여자 명단 세 곳이 아니다");
+    //  c.source='db' 는 쓰기 판정(EligibleSql), 참여자 수(부트스트랩), 참여자 명단(MembersSql) 세 곳에 구조 21 의 넷이 더해진다: 읽기 판정(ReadableProjectsAsync 의 mine),
+    //  보기만 목록의 "이미 내 과제는 거른다"(WatchListAsync), 그 목록의 참여자 수, 다른 과제 보기 창의 참여자 목록(WatchCatalogAsync). 참여자 집합은 모두 같은 규칙이다(⑬).
+    assert.strictEqual((code.match(/c\.source='db'/g) || []).length, 7, "c.source='db' 가 쓰기 판정, 참여자 수, 참여자 명단, 읽기 판정, 보기만 목록 둘, 목록 읽기 일곱 곳이 아니다");
     assert.strictEqual((code.match(/\bEligibleSql\b/g) || []).length, 2, 'EligibleSql 을 EligibleProjectsAsync 밖에서도 쓴다');
     assert.ok(extractCsMember(pcdb, 'private static async Task<List<Proj>> EligibleProjectsAsync(').includes('EligibleSql'), '판정 함수가 EligibleSql 을 쓰지 않는다');
     //  공용 쓰기(저장, 삭제)는 BeginSharedWriteAsync 가 신원과 쓰기 판정을 한다
@@ -235,7 +239,7 @@ const checks = {
       'private async Task<object> MembersAsync(']) {
       const b = extractCsMember(pcdb, fn);
       const viaBegin = /BeginSharedWriteAsync\(conn, login, projectUid, ct\)/.test(b);
-      assert.ok(viaBegin || /EligibleProjectsAsync\(|RequireProjectAsync\(/.test(b), `${fn} 가 판정 함수를 거치지 않는다`);
+      assert.ok(viaBegin || /EligibleProjectsAsync\(|RequireProjectAsync\(|ReadableProjectsAsync\(|RequireReadableAsync\(/.test(b), `${fn} 가 판정 함수를 거치지 않는다`);
       assert.ok(/SessionLoginId\(\)/.test(b) && (viaBegin || /IdentityAsync\(/.test(b)), `${fn} 가 세션 신원을 확인하지 않는다`);
     }
     assert.ok(/RequireProjectAsync\(conn, tx, me, projectUid, write: false, ct, lockProject: true\)/.test(extractCsMember(pcdb, 'private async Task<object> CopyAsync(')), '개인 복사가 읽기 판정(숨긴 과제도 허용)을 쓰지 않는다');
@@ -282,10 +286,11 @@ const checks = {
   grants(grants, server, pcdb) {
     const g = noLineComments(grants), s = noLineComments(server);
     //  2026-11-02 과제 일정 반복(구조 20, docs/PC-RECUR.md): 예외일 표는 개인 cal_entry_except 와 같은 SELECT, INSERT, DELETE.
-    const want = { cal_project_event: 'SELECT, INSERT, UPDATE', cal_project_change: 'SELECT, INSERT', cal_project_event_except: 'SELECT, INSERT, DELETE' };
-    //  과제 캘린더 권한 줄은 정확히 이 셋이다(대응표 cal_project_copy 와 감시점 cal_project_rev 는 2026-10-22 저녁에 뺐다)
-    assert.strictEqual((g.match(/^GRANT [^;]*cal_project_/gm) || []).length, 3, 'grants-calendar.sql 의 과제 캘린더 권한 줄이 셋이 아니다');
-    assert.strictEqual((s.match(/^GRANT [^;]*cal_project_/gm) || []).length, 3, 'server-app-account.sql 의 과제 캘린더 권한 줄이 셋이 아니다');
+    //  2026-11-04 보기만 목록(구조 21, docs/PC-WATCH.md): cal_project_watch 는 SELECT, INSERT, DELETE(고칠 칸이 없어 UPDATE 없음).
+    const want = { cal_project_event: 'SELECT, INSERT, UPDATE', cal_project_change: 'SELECT, INSERT', cal_project_event_except: 'SELECT, INSERT, DELETE', cal_project_watch: 'SELECT, INSERT, DELETE' };
+    //  과제 캘린더 권한 줄은 정확히 이 넷이다(대응표 cal_project_copy 와 감시점 cal_project_rev 는 2026-10-22 저녁에 뺐다)
+    assert.strictEqual((g.match(/^GRANT [^;]*cal_project_/gm) || []).length, 4, 'grants-calendar.sql 의 과제 캘린더 권한 줄이 넷이 아니다');
+    assert.strictEqual((s.match(/^GRANT [^;]*cal_project_/gm) || []).length, 4, 'server-app-account.sql 의 과제 캘린더 권한 줄이 넷이 아니다');
     for (const [t, verbs] of Object.entries(want)) {
       assert.ok(new RegExp(`^GRANT ${verbs} ON taskmgr\\.${t}\\s+TO 'taskmgr_app'@'%';`, 'm').test(g), `grants-calendar.sql 의 ${t} 권한이 ${verbs} 가 아니다`);
       assert.ok(new RegExp(`^GRANT ${verbs} ON \`taskcalendar\`\\.\`${t}\` TO 'taskmgr_app'@'%';`, 'm').test(s), `server-app-account.sql 의 ${t} 권한이 ${verbs} 가 아니다`);
@@ -293,7 +298,8 @@ const checks = {
     assert.ok(!/DELETE[^;]*cal_project_(event|change)\b/i.test(g) && !/DELETE[^;]*cal_project_(event|change)\b/i.test(s), '권한 파일이 과제 일정이나 이력 표에 DELETE 를 준다');
     //  호스트의 DELETE 문은 예외일 표 하나뿐이다(반복 종류를 바꾸거나 끈 저장이 그 일정의 예외일을 지운다). 일정과 이력 행은 지우지 않는다.
     const dels = [...stripCsComments(pcdb).matchAll(/\bDELETE\s+FROM\s+(\w+)/gi)].map((m) => m[1]);
-    assert.ok(dels.every((t) => t === 'cal_project_event_except'), `ProjectCalendarDb 가 예외일 표 말고 다른 표를 지운다(소프트 삭제, 지우지 않는 기록): ${dels}`);
+    //  보기만 목록(cal_project_watch, 구조 21)의 빼기도 DELETE 다(고칠 칸이 없는 화면 설정이라 행을 지운다). 일정과 이력 행은 지우지 않는다.
+    assert.ok(dels.every((t) => t === 'cal_project_event_except' || t === 'cal_project_watch'), `ProjectCalendarDb 가 예외일 표와 보기만 목록 말고 다른 표를 지운다(소프트 삭제, 지우지 않는 기록): ${dels}`);
   },
 
   // ══ ⑩ 개인 복사의 행 투영 ══════════════════════════════════════════
@@ -356,8 +362,8 @@ const checks = {
     assert.ok(!/BeginTransactionAsync|OpenAsync\(WritePreambleSql|Exec\(|CommitWithGateAsync|ExecuteNonQueryAsync/.test(body), '참여자 명단이 쓰기 경로(트랜잭션, Exec, 커밋)를 쓴다');
     //  신원(세션) 다음 판정 함수(내 과제, 읽기). 판정 앞에 다른 조회가 없다
     const iSess = body.indexOf('SessionLoginId()'), iId = body.indexOf('await IdentityAsync(conn, null, login, ct)'),
-      iReq = body.indexOf('await RequireProjectAsync(conn, null, me, projectUid, write: false, ct)'), iCmd = body.indexOf('new MySqlCommand(');
-    assert.ok(iSess > 0 && iId > iSess && iReq > iId && iCmd > iReq, '참여자 명단이 세션 신원, 판정(RequireProjectAsync, 내 과제) 다음에 읽지 않는다');
+      iReq = body.indexOf('await RequireReadableAsync(conn, null, me, projectUid, ct)'), iCmd = body.indexOf('new MySqlCommand(');
+    assert.ok(iSess > 0 && iId > iSess && iReq > iId && iCmd > iReq, '참여자 명단이 세션 신원, 읽기 판정(RequireReadableAsync, 숨기지 않은 공식 과제 또는 내 과제) 다음에 읽지 않는다');
     //  요청에서 읽는 키는 projectUid 하나
     const keys = new Set([...body.matchAll(/\(q, "(\w+)"/g)].map((m) => m[1]).concat([...body.matchAll(/q\.TryGetProperty\("(\w+)"/g)].map((m) => m[1])));
     assert.deepStrictEqual([...keys], ['projectUid'], '참여자 명단이 요청에서 projectUid 말고 다른 값을 읽는다: ' + [...keys].join(', '));
@@ -473,7 +479,7 @@ test('변이PC17: 개인 복사의 미리알림을 0(알림 없음)으로 되돌
 test('변이PC12: 대응표 권한 줄을 되살리면 ⑨ 와 ⑪ 이 실패한다', () => {
   const bad = mutate(src.grants, "GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';",
     "GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';\nGRANT SELECT, INSERT ON taskmgr.cal_project_copy TO 'taskmgr_app'@'%';");
-  assert.throws(() => checks.grants(bad, src.server, src.pcdb), /권한 줄이 셋이 아니다/);
+  assert.throws(() => checks.grants(bad, src.server, src.pcdb), /권한 줄이 넷이 아니다/);
   assert.throws(() => checks.copySnapshot(src.pcdb, src.host, src.canon, src.frag, bad, src.server), /cal_project_copy/);
 });
 test('변이PC13: FK 1452/1451 을 고정 문구로 바꾸는 catch 를 빼면 ⑫ 가 실패한다', () => {
@@ -483,7 +489,7 @@ test('변이PC13: FK 1452/1451 을 고정 문구로 바꾸는 catch 를 빼면 �
 test('변이PC14: 감시점 권한 줄을 되살리면 ⑨ 와 ⑫ 가 실패한다', () => {
   const bad = mutate(src.grants, "GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';",
     "GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';\nGRANT SELECT, INSERT, UPDATE ON taskmgr.cal_project_rev TO 'taskmgr_app'@'%';");
-  assert.throws(() => checks.grants(bad, src.server, src.pcdb), /권한 줄이 셋이 아니다/);
+  assert.throws(() => checks.grants(bad, src.server, src.pcdb), /권한 줄이 넷이 아니다/);
   assert.throws(() => checks.noProjectRev(src.pcdb, src.canon, src.frag, bad, src.server), /cal_project_rev/);
 });
 test('변이PC15: 판정 SQL 의 과제 행 공유 잠금(FOR SHARE OF p)을 빼면 ③ 이 실패한다', () => {
@@ -508,11 +514,11 @@ test('변이PC18: 참여자 명단의 소속 안 순서를 이름순으로 바�
   assert.throws(() => checks.members(bad2, src.pdb), /조직 순서가 명부/);
 });
 test('변이PC19: 참여자 명단이 판정을 건너뛰거나 login_id 를 고르거나 요청에서 다른 값을 읽으면 ⑬ 이 실패한다', () => {
-  const bad = mutate(src.pcdb, '            await RequireProjectAsync(conn, null, me, projectUid, write: false, ct);\n', '');
-  assert.throws(() => checks.members(bad, src.pdb), /판정\(RequireProjectAsync/);
+  const bad = mutate(src.pcdb, '            await RequireReadableAsync(conn, null, me, projectUid, ct);   // 읽기 판정(구조 21): 숨기지 않은 모든 공식 과제 또는 내 과제\n', '');
+  assert.throws(() => checks.members(bad, src.pdb), /읽기 판정\(RequireReadableAsync/);
   const bad2 = mutate(src.pcdb, '"SELECT u.name, u.org_id, o.name AS org_name,', '"SELECT u.name, u.login_id, u.org_id, o.name AS org_name,');
   assert.throws(() => checks.members(bad2, src.pdb), /login_id/);
-  const at = '            string projectUid = ReqUid(q, "projectUid", "과제");\n\n            string login = SessionLoginId();\n            await using var conn = await OpenReadSnapshotAsync(ct);\n            var me = await IdentityAsync(conn, null, login, ct);\n            await RequireProjectAsync(';
+  const at = '            string projectUid = ReqUid(q, "projectUid", "과제");\n\n            string login = SessionLoginId();\n            await using var conn = await OpenReadSnapshotAsync(ct);\n            var me = await IdentityAsync(conn, null, login, ct);\n            await RequireReadableAsync(';
   const bad3 = mutate(src.pcdb, at, at.replace('"과제");\n', '"과제");\n            string who = Str(q, "loginId");\n'));
   assert.throws(() => checks.members(bad3, src.pdb), /projectUid 말고/);
 });

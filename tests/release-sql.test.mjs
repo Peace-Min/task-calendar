@@ -5,7 +5,9 @@
 //      빈틈과 겹침, 끝 = 앱 구조 번호. 어기면 정해진 종료코드로 실패한다(빌드 전에 publish-update.ps1 이 부른다).
 //   ② 만들어진 SQL 의 모양: 잠금 대기 상한, 확인이 닫기보다 먼저, 닫기가 첫 조각보다 먼저, 조각은 구조 번호 순서,
 //      끝 확인 뒤 마지막 한 트랜잭션에 네 키(app_ 셋과 db_updating 0), 그 뒤 결과 표. 멈춤은 모두 '없는 표 SELECT'.
-//   ③ 상태 전이(흉내 실행기 tests/release-sql-sim.mjs): 실제 사슬(13 에서 14, 14 에서 15, 15 에서 16, 16 에서 17, 17 에서 18, 18 에서 19, 19 에서 20) 그대로.
+//   ③ 상태 전이(흉내 실행기 tests/release-sql-sim.mjs): 실제 사슬(13 에서 14, 14 에서 15, 15 에서 16, 16 에서 17, 17 에서 18, 18 에서 19, 19 에서 20, 20 에서 21) 그대로.
+//      v21 과제 탭 다른 과제 보기(보기만 목록 표 cal_project_watch, 2026-11-04 docs/PC-WATCH.md): 20 에서 올리면 정본 모양의 빈 표가 생기고 다시 돌려도 그대로(③q),
+//      같은 이름의 다른 모양 표는 검증에서 닫힌 채 멈춤(③q2), 정의가 정본과 글자까지 같고 GRANT, DELETE 가 없으며 구조 번호는 키 칸 WHERE(③q3), 변이 R34, R35.
 //      13 에서 처음(일곱 조각을 몰아서), 14 에서 여섯 칸, 16 에서 네 칸, 17 에서 세 칸, 18 에서 두 칸, 19 에서 한 칸, 앱만 바뀐 배포(닫지 않는다), 성공 뒤 재실행(바뀌는 것 없음),
 //      마지막 조각 뒤에 멈춘 DB 마무리, 새 DB, 낮은 DB, 이상한 값, v15 회의실 검증 멈춤, v16 과제 캘린더 표 모양 검증 멈춤,
 //      v17 월간보고(칸, CHECK, 그림 표) 검증 멈춤, v18 Git, SVN 삭제(커밋 기록, 커밋 목록 표, 칸과 CHECK) 결과와 검증 멈춤,
@@ -189,6 +191,14 @@ const WH_DEFS = (() => {
   assert.ok(i >= 0, `정본에 ${WH_TABLE} 가 없다`);
   return { [WH_TABLE]: defShape(CANON_CAL.slice(i, CANON_CAL.indexOf(';', CANON_CAL.indexOf(') ENGINE=', i)))) };
 })();
+//  21 부터는 과제 탭 보기만 목록 표(cal_project_watch)도 있다(v21 조각, 2026-11-04 docs/PC-WATCH.md). 빈 표로 생긴다(옮길 데이터 없음).
+//  모양(열 수, FK 수, 기본 키 열 수, FK 대상과 규칙)은 정본 schema-calendar.sql 의 정의에서 같은 함수 defShape 로 센다.
+const WT_TABLE = 'cal_project_watch';
+const WT_DEFS = (() => {
+  const i = CANON_CAL.indexOf(`CREATE TABLE ${WT_TABLE} (`);
+  assert.ok(i >= 0, `정본에 ${WT_TABLE} 가 없다`);
+  return { [WT_TABLE]: defShape(CANON_CAL.slice(i, CANON_CAL.indexOf(';', CANON_CAL.indexOf(') ENGINE=', i)))) };
+})();
 const T = {
   old: () => ({ cal_room: CAL_ROOMS, ...VCS_ROWS17() }),
   shared: () => ({ room_code: ROOM_CODES.map(([name, sort_order]) => ({ name, sort_order })) }),
@@ -208,8 +218,9 @@ const S = {
       project: Number(n) >= 19 ? PROJ_ROWS19() : PROJ_ROWS18(),
       cal_report_weekly: Number(n) >= 20 ? [] : WEEKLY_ROWS19(),
       ...(Number(n) >= 20 ? { [WH_TABLE]: [], [PX_TABLE]: [] } : {}),
+      ...(Number(n) >= 21 ? { [WT_TABLE]: [] } : {}),
     },
-    defs: Number(n) >= 20 ? { ...PC_DEFS, ...PX_DEFS, ...SI_DEFS, ...WH_DEFS } : Number(n) >= 17 ? { ...PC_DEFS16, ...SI_DEFS } : Number(n) >= 16 ? PC_DEFS16 : {},
+    defs: Number(n) >= 20 ? { ...PC_DEFS, ...PX_DEFS, ...SI_DEFS, ...WH_DEFS, ...(Number(n) >= 21 ? WT_DEFS : {}) } : Number(n) >= 17 ? { ...PC_DEFS16, ...SI_DEFS } : Number(n) >= 16 ? PC_DEFS16 : {},
     project: Number(n) >= 19 ? PROJECT_V19() : Number(n) >= 17 ? PROJECT_V17() : PROJECT_V16(),
     vcs: Number(n) >= 18 ? VCS_V18() : VCS_V17(),
     codes: Number(n) >= 19 ? CODES_V19() : CODES_V18(),
@@ -222,7 +233,7 @@ const finalMeta = (n) => ({ db_structure_version: String(n), db_updating: '0', a
 //  끝 상태(meta 와 표): 공용 회의실 목록 하나, cal_room 없음, 과제 캘린더 표 둘과 그림 표(정본과 같은 모양), project 에 개발 시작일 칸과 CHECK,
 //  일반 일정과 예외일만(커밋 기록, cal_entry_commit, 지울 칸과 CHECK 없음, cal_user_pref 표 설명은 18),
 //  과제에 순서 칸과 처음 순서(보이는 과제만), 코드표 표 설명은 19, 주간보고에 회의내용 칸(있던 행은 NULL), 주간 과제투입시간 표(빈 표, 정본 모양)
-const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si(), ...VCS_ROWS18(), project: PROJ_ROWS19(), cal_report_weekly: [], [WH_TABLE]: [], [PX_TABLE]: [] }, defs: { ...PC_DEFS, ...PX_DEFS, ...SI_DEFS, ...WH_DEFS }, project: PROJECT_V19(), vcs: VCS_V18(), codes: CODES_V19(), weekly: WEEKLY_V20() }).state();
+const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si(), ...VCS_ROWS18(), project: PROJ_ROWS19(), cal_report_weekly: [], [WH_TABLE]: [], [PX_TABLE]: [], [WT_TABLE]: [] }, defs: { ...PC_DEFS, ...PX_DEFS, ...SI_DEFS, ...WH_DEFS, ...WT_DEFS }, project: PROJECT_V19(), vcs: VCS_V18(), codes: CODES_V19(), weekly: WEEKLY_V20() }).state();
 const FINAL_TABLES = FINAL_DB['#tables'];
 const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES, '#project': FINAL_DB['#project'], '#vcs': FINAL_DB['#vcs'], '#codes': FINAL_DB['#codes'], '#weekly': FINAL_DB['#weekly'] });
 const sortObj = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
@@ -590,8 +601,8 @@ const checks = {
     assert.ok(r.ok, `19 에서 20 으로 올리는 배포가 끝나지 않는다: ${JSON.stringify(r)}`);
     assert.deepStrictEqual(db.weekly, WEEKLY_V20(), `cal_report_weekly 모양이 정본(v20, plan 뒤 meeting)과 다르다: ${JSON.stringify(db.weekly)}`);
     assert.deepStrictEqual(db.tables.cal_report_weekly, [], `옛 주간보고 행이 지워지지 않았다: ${JSON.stringify(db.tables.cal_report_weekly)}`);
-    assert.deepStrictEqual(db.writes.filter((w) => w.k.startsWith('col:') || w.k.startsWith('table:')).map((w) => w.k), ['col:cal_report_weekly.meeting', `table:${WH_TABLE}`, 'table:cal_report_weekly', 'col:cal_project_event.recur_freq', `table:${PX_TABLE}`],
-      '19 에서 올리는데 회의내용 칸, 주간 시간 표, 옛 주간 기록 지우기, 반복 칸, 예외일 표 말고 다른 표나 칸을 바꿨다(앞 조각이 건너뛰지 않았다)');
+    assert.deepStrictEqual(db.writes.filter((w) => w.k.startsWith('col:') || w.k.startsWith('table:')).map((w) => w.k), ['col:cal_report_weekly.meeting', `table:${WH_TABLE}`, 'table:cal_report_weekly', 'col:cal_project_event.recur_freq', `table:${PX_TABLE}`, `table:${WT_TABLE}`],
+      '19 에서 올리는데 회의내용 칸, 주간 시간 표, 옛 주간 기록 지우기, 반복 칸, 예외일 표, 보기만 목록 표(v21) 말고 다른 표나 칸을 바꿨다(앞 조각이 건너뛰지 않았다)');
     assert.ok(!/DELETE FROM cal_report_(daily|hours)\b/.test(sql), '배포 SQL 이 일간 기록을 지운다');
     //  다시 돌려도 바뀌는 것이 없다(조각은 건너뛰고 열기는 같은 값이라 0행)
     const n = db.writes.length, shape = db.state();
@@ -638,7 +649,34 @@ const checks = {
     assert.ok(!db.hasTable(WH_TABLE), '이미 20 인 DB 에서 v20 이 건너뛰지 않고 주간 시간 표를 만들었다');
     assert.ok(!db.hasTable(PX_TABLE), '이미 20 인 DB 에서 v20 이 건너뛰지 않고 예외일 표를 만들었다');
     assert.strictEqual(db.defs.cal_project_event.cols, PC_DEFS16.cal_project_event.cols, '이미 20 인 DB 에서 v20 이 건너뛰지 않고 반복 칸을 더했다');
-    assert.ok(!db.writes.some((w) => w.k === 'db_updating' || w.k.startsWith('table:') || w.k.startsWith('col:')), '이미 20 인 DB 에서 닫거나 표, 칸을 바꿨다');
+    //  이 DB 는 21 로는 올라간다(v21 조각이 돈다). 그래서 닫고 보기만 목록 표(v21)를 만들지만, 그 밖의 표나 칸은 바꾸지 않는다.
+    assert.deepStrictEqual(db.writes.filter((w) => w.k.startsWith('table:') || w.k.startsWith('col:')).map((w) => w.k), [`table:${WT_TABLE}`], '이미 20 인 DB 에서 v21 의 보기만 목록 표 말고 다른 표, 칸을 바꿨다(v20 이 건너뛰지 않았다)');
+  },
+  // v21 결과(과제 탭 다른 과제 보기, docs/PC-WATCH.md): 보기만 목록 표가 정본 모양(열 3, 기본 키 2, FK 둘: app_user RESTRICT, project CASCADE)의 빈 표로 생기고,
+  //   구조 번호가 21 이 되며, 다시 돌려도 그대로다. 20 에서 출발한다.
+  watchAdded(sql) {
+    const db = open(S.at(20));
+    assert.ok(!db.hasTable(WT_TABLE), '출발 상태(20)에 보기만 목록 표가 이미 있다(판정 불가)');
+    const r = db.run(sql);
+    assert.ok(r.ok, `20 에서 21 로 올리는 배포가 끝나지 않는다: ${JSON.stringify(r)}`);
+    assert.ok(db.hasTable(WT_TABLE), '20 에서 21 로 올렸는데 보기만 목록 표가 없다');
+    assert.deepStrictEqual(db.defs[WT_TABLE], WT_DEFS[WT_TABLE], `보기만 목록 표 모양이 정본과 다르다: ${JSON.stringify(db.defs[WT_TABLE])}`);
+    assert.deepStrictEqual(db.tables[WT_TABLE], [], '새 보기만 목록 표에 행이 있다(옮길 데이터가 없어야 한다)');
+    assert.deepStrictEqual(db.writes.filter((w) => w.k.startsWith('table:') || w.k.startsWith('col:')).map((w) => w.k), [`table:${WT_TABLE}`], '20 에서 올리는데 보기만 목록 표 말고 다른 표나 칸을 바꿨다');
+    assert.strictEqual(db.meta().db_structure_version, '21', '20 에서 올렸는데 구조 번호가 21 이 아니다');
+    const n = db.writes.length, shape = db.state();
+    assert.ok(db.run(sql).ok, '20 에서 올린 뒤 다시 돌리면 끝나야 한다');
+    assert.strictEqual(db.writes.length, n, `다시 돌렸는데 ${db.writes.length - n}행을 바꿨다`);
+    assert.ok(same(db.state(), shape), '다시 돌렸는데 표나 칸이 바뀌었다');
+  },
+  // v21 검증: 같은 이름의 다른 모양 표가 이미 있으면 닫힌 채 멈추고 구조 번호를 올리지 않는다
+  watchVerify(sql, label, mk) {
+    const db = open(mk());
+    const r = db.run(sql);
+    assert.ok(!r.ok && /v21 조각 검증 실패/.test(r.stop || ''), `${label}: v21 검증에서 멈추지 않았다: ${JSON.stringify(r)}`);
+    assert.strictEqual(db.meta().db_updating, '1', `${label}: v21 검증에서 멈췄는데 닫힌 상태(db_updating 1)가 아니다`);
+    assert.strictEqual(db.meta().db_structure_version, '20', `${label}: v21 검증에서 멈췄는데 구조 번호가 올라갔다`);
+    assertNoHalfOpen(db, stateOf(mk()), null, `v21 검증 멈춤(${label})`);
   },
   // v20 결과(과제 일정 반복): cal_project_event 에 반복 칸이 memo 뒤에 생겨 정본 모양과 같고, 예외일 표가 정본 모양의 빈 표로 생긴다.
   //   다시 돌려도 그대로다.
@@ -679,6 +717,20 @@ const V20_PC_BAD_SHAPES = [
   pxBad('예외일 표 기본 키가 event_id 뿐', { pk: 1 }),
   pxBad('예외일 표 FK 가 없음', { fks: 0, refs: [] }),
   pxBad('예외일 표 FK 가 RESTRICT', { refs: ['cal_project_event:RESTRICT:RESTRICT'] }),
+];
+//  v21 검증이 잡아야 하는 보기만 목록 표 모양(같은 이름의 다른 표가 이미 있음). 20 에서 출발한다.
+const wtBad = (label, patch) => [label, () => {
+  const x = S.at(20);
+  x.tables[WT_TABLE] = [];
+  x.defs = { ...x.defs, [WT_TABLE]: { ...WT_DEFS[WT_TABLE], ...patch } };
+  return x;
+}];
+const V21_WT_BAD_SHAPES = [
+  wtBad('보기만 목록 표 열 수가 다름', { cols: 4 }),
+  wtBad('보기만 목록 표 기본 키가 user_id 뿐', { pk: 1 }),
+  wtBad('보기만 목록 표 FK 가 없음', { fks: 0, refs: [] }),
+  wtBad('보기만 목록 표 과제 FK 가 RESTRICT', { refs: ['app_user:RESTRICT:RESTRICT', 'project:RESTRICT:RESTRICT'] }),
+  wtBad('보기만 목록 표 사람 FK 가 CASCADE', { refs: ['app_user:CASCADE:RESTRICT', 'project:CASCADE:RESTRICT'] }),
 ];
 //  v20 검증이 잡아야 하는 주간 시간 표 모양(같은 이름의 다른 표가 이미 있음). 19 에서 출발한다.
 const whBad = (label, patch) => [label, () => {
@@ -869,6 +921,29 @@ test('배포SQL③n4: 주간 과제투입시간 표의 정의가 정본 schema-c
   const code = frag.split('\n').filter((l) => !/^\s*--/.test(l)).join('\n');
   assert.ok(!/\bGRANT\b/i.test(code), 'v20 조각이 GRANT 를 한다(배포 SQL 은 권한을 줄 수 없다)');
 });
+test('배포SQL③q: 20 에서 21 로 올리면 보기만 목록 표(cal_project_watch)가 정본 모양의 빈 표로 생기고 구조 번호가 21 이 되며 다시 돌려도 그대로다', () => checks.watchAdded(realSql()));
+test('배포SQL③q2: v21 검증이 맞지 않으면(같은 이름의 다른 모양 표) 닫힌 채 멈추고 구조 번호를 올리지 않는다', () => {
+  for (const [label, mk] of V21_WT_BAD_SHAPES) checks.watchVerify(realSql(), label, mk);
+});
+test('배포SQL③q3: 보기만 목록 표의 정의가 정본 schema-calendar.sql 과 v21 조각에서 글자까지 같고, 조각은 @go 일 때만 IF NOT EXISTS 로 만들며 GRANT 가 없고 구조 번호는 키 칸 WHERE 로만 올린다', () => {
+  const canon = /CREATE TABLE cal_project_watch \(([\s\S]*?\) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci\s+COMMENT='[^']*')/.exec(CANON_CAL);
+  assert.ok(canon, '정본에서 cal_project_watch 정의를 찾지 못했다(판정 불가)');
+  assert.ok(!/--/.test(canon[1]), '정본 정의 안에 -- 주석이 있다(조각 문자열과 글자로 맞출 수 없다)');
+  const frag = readText(join(FRAG_DIR, 'v21-project-watch.sql'));
+  const f = /SET @s := IF\(@go,\n  'CREATE TABLE IF NOT EXISTS cal_project_watch \(([\s\S]*?\) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci\s+COMMENT=''(?:[^']|'')*'')',\n  'DO 0'\);\nPREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;/.exec(frag);
+  assert.ok(f, 'v21 조각에 보기만 목록 표를 @go 일 때만 IF NOT EXISTS 로 만드는 PREPARE 가 없다');
+  assert.strictEqual(f[1].replace(/''/g, "'"), canon[1], 'v21 조각의 보기만 목록 표 정의가 정본과 글자까지 같지 않다');
+  const d = WT_DEFS[WT_TABLE];
+  assert.ok(frag.includes(`@m_wc = ${d.cols} AND @m_wp = ${d.pk} AND @m_wf = ${d.fks} AND @m_wu = 1 AND @m_wj = 1`), `v21 검증의 기대값이 정본 정의(열 ${d.cols}, 기본 키 ${d.pk}, FK ${d.fks})와 다르다`);
+  assert.deepStrictEqual([...d.refs].sort(), ['app_user:RESTRICT:RESTRICT', 'project:CASCADE:RESTRICT'], `정본 보기만 목록 표의 FK 가 app_user RESTRICT 와 project CASCADE 둘이 아니다: ${d.refs}`);
+  assert.ok(frag.includes("REFERENCED_TABLE_NAME = 'app_user' AND DELETE_RULE = 'RESTRICT' AND UPDATE_RULE = 'RESTRICT'") && frag.includes("REFERENCED_TABLE_NAME = 'project' AND DELETE_RULE = 'CASCADE' AND UPDATE_RULE = 'RESTRICT'"), 'v21 검증이 두 FK 의 대상과 규칙을 보지 않는다');
+  const code = frag.split('\n').filter((l) => !/^\s*--/.test(l)).join('\n');
+  assert.ok(!/\bGRANT\b/i.test(code), 'v21 조각이 GRANT 를 한다(배포 SQL 은 권한을 줄 수 없다)');
+  assert.ok(!/\bDELETE\s+FROM\b/i.test(code), 'v21 조각에 DELETE 가 있다(구조 번호 갱신 하나만 쓴다)');
+  assert.ok(!/INSERT\s+IGNORE|ON DUPLICATE KEY UPDATE/i.test(code), 'v21 조각이 INSERT IGNORE 나 ON DUPLICATE KEY UPDATE 를 쓴다');
+  assert.ok(code.includes("WHERE k = 'db_structure_version' AND v = '20'"), 'v21 의 구조 번호 갱신이 키 칸 WHERE(k = ... AND v = 20)가 아니다');
+  assert.strictEqual([...code.matchAll(/\bUPDATE\s+cal_schema_meta\b/gi)].length, 1, 'v21 조각의 UPDATE 가 구조 번호 갱신 하나가 아니다');
+});
 test(`배포SQL③i: 건너뛴 배포(13, 14, ${APP} 에서 ${NEXT})는 조각을 차례로 돌리고, 어디서 실패해도 다시 돌리면 끝난다`, () => {
   checks.extended(extSql());
   checks.faults(extSql(), S.legacy13, NEXT, `13 에서 ${NEXT}`);
@@ -1056,6 +1131,14 @@ test('변이R31: v20 의 반복 검증을 끄면(같은 이름의 다른 모양 
 test('변이R32: v20 이 반복 칸을 있는지 보지 않고 더하면 중간 실패 뒤 재실행이 멈춘다(③g 실패)', () => {
   const bad = mutate(realSql(), 'SET @s := IF(@go AND @m_rcol = 0,', 'SET @s := IF(@go,');
   assert.throws(() => checks.faults(bad, () => S.at(19), APP, '19 에서'), /다시 돌려도 끝나지 않는다|1060/);
+});
+test('변이R34: v21 의 모양 검증을 끄면(같은 이름의 다른 모양 표) ③q2 가 실패한다', () => {
+  const bad = mutate(realSql(), 'SET @g := IF(NOT @go OR (@m_wc = 3', 'SET @g := IF(1 OR (@m_wc = 3');
+  for (const [, mk] of V21_WT_BAD_SHAPES) assert.throws(() => checks.watchVerify(bad, '검증 끔', mk), /멈추지 않았다/);
+});
+test('변이R35: v21 이 보기만 목록 표를 만들지 않으면 ③q 가 실패한다(검증에서 멈춘다)', () => {
+  const bad = mutate(realSql(), "SET @s := IF(@go,\n  'CREATE TABLE IF NOT EXISTS cal_project_watch (", "SET @s := IF(0,\n  'CREATE TABLE IF NOT EXISTS cal_project_watch (");
+  assert.throws(() => checks.watchAdded(bad), /끝나지 않는다/);
 });
 test('변이R33: v20 이 예외일 표를 만들지 않으면 ③p 가 실패한다(검증에서 멈춘다)', () => {
   const bad = mutate(realSql(), "SET @s := IF(@go,\n  'CREATE TABLE IF NOT EXISTS cal_project_event_except (", "SET @s := IF(0,\n  'CREATE TABLE IF NOT EXISTS cal_project_event_except (");

@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import * as D from './demo-data.mjs';
 
-export const SCHEMA_VERSION = '20';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
+export const SCHEMA_VERSION = '21';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
 export const LOGIN_RE = /^[A-Za-z0-9._@-]{1,50}$/;
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -33,8 +33,9 @@ export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // 주간 과제투입시간(cal_report_weekly_hours, 구조 20)은 cal_report_weekly 의 자식이라 그 앞에서 지운다(CASCADE 로도 지워지지만
 //   표를 이름으로 적어 두어야 시험이 정본의 cal_* 명부와 대조할 수 있다). 데모는 주간보고를 채우지 않는다.
 // 과제 반복 일정의 예외일(cal_project_event_except, 구조 20)은 cal_project_event 의 자식이라 그 앞에서 지운다(같은 까닭으로 이름을 적는다).
+// 과제 탭 보기만 목록(cal_project_watch, 구조 21)은 app_user 와 project 의 자식이라 맨 앞에서 지운다. 데모는 채우지 않는다.
 export const WIPE_TABLES = [
-  'project_schedule_image',
+  'project_schedule_image', 'cal_project_watch',
   'cal_project_change', 'cal_project_event_except', 'cal_project_event',
   'cal_report_hours', 'cal_report_daily', 'cal_report_weekly_hours', 'cal_report_weekly',
   'cal_task_hours', 'cal_todo_day_note', 'cal_todo',

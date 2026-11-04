@@ -87,9 +87,10 @@ const checks = {
     assert.ok(/\bDELETE\b/.test(um[1]),
       '05-grants.sql 이 app_user 에 DELETE 를 주지 않는다 — 기록 0건 계정 삭제가 ERROR 1142 로 죽는다(§3.3)');
     // grants-calendar.sql 은 app_user 의 GRANT 를 늘리지 않는다(그 도메인은 05-grants.sql). 대신 **서술이 사실이어야** 한다.
-    // ★ 그러나 부속 2표(cal_user_pref·cal_user_rev)는 이 파일이 정본이고, 계정 영구 삭제가 app_user 보다 먼저 지운다 —
+    // ★ 그러나 부속 3표(cal_user_pref·cal_user_rev·cal_project_watch)는 이 파일이 정본이고, 계정 영구 삭제가 app_user 보다 먼저 지운다 —
     //   DELETE 가 없으면 트랜잭션 첫 문장에서 1142 로 죽는다(2026-09-10 개발 DB 실측: loop-trash C02/C08 이 잡았다).
-    for (const t of ['cal_user_pref', 'cal_user_rev']) {
+    //   cal_project_watch(구조 21, 과제 탭 보기만 목록)는 표마다 권한을 주는 환경에서 이 줄이 없으면 모든 사람의 영구 삭제가 1142 로 실패한다.
+    for (const t of ['cal_user_pref', 'cal_user_rev', 'cal_project_watch']) {
       const re = new RegExp('GRANT ([A-Z, ]+) ON taskmgr\\.' + t + '\\b');
       const m = re.exec(calSql);
       assert.ok(m, `grants-calendar.sql 에 ${t} GRANT 가 없다`);
@@ -152,12 +153,13 @@ const checks = {
   // ③ '기록 0건'의 기준 표 = 정본의 REFERENCES app_user 에서 부속 2표를 뺀 것(§3.2).
   //    ★ 시험에도 코드에도 목록을 박제하지 않는다 — 정본이 움직이면 둘 다 따라 움직여야 한다.
   userRecordTablesMatchCanon(cs, canonText) {
-    const ATTACHED = ['cal_user_pref', 'cal_user_rev'];
+    //  부속 3표(구조 21): 로그인 한 번이면 생기는 cal_user_pref, cal_user_rev 와 그 사람의 화면 설정인 cal_project_watch(보기만 목록)
+    const ATTACHED = ['cal_user_pref', 'cal_user_rev', 'cal_project_watch'];
     //  주석에는 옛 상태 서술이 일부러 남아 있다 — 지우고 본다(canon-schema 와 같은 규칙).
     const expect = canonUserRefTables(stripSqlComments(canonText)).filter((t) => !ATTACHED.includes(t)).sort();
     const actual = [...hostUserRecordTables(cs)].sort();
     assert.deepStrictEqual(actual, expect,
-      `호스트의 기준 표 목록이 정본과 다르다.\n  정본(부속 2표 제외): ${expect.join(', ')}\n  호스트: ${actual.join(', ')}\n` +
+      `호스트의 기준 표 목록이 정본과 다르다.\n  정본(부속 3표 제외): ${expect.join(', ')}\n  호스트: ${actual.join(', ')}\n` +
       '  빠진 표가 있으면 그 표에 기록이 남은 계정을 "기록 0건"으로 오판해 지우려 든다(DB 가 1451 로 막지만, ' +
       '화면은 지울 수 있다고 거짓말한 뒤다).');
     for (const t of ATTACHED) {
@@ -221,22 +223,26 @@ const checks = {
       '이름 대조가 첫 DELETE 보다 뒤에 있다 — 확인 없이 지워진다');
   },
 
-  // ⑥ 다섯 표의 DELETE 는 한 함수 안에만. 인력은 부속 2표를 **먼저** 지운다(§3.1).
+  // ⑥ 다섯 표의 DELETE 는 한 함수 안에만. 인력은 부속 3표(구조 21: 보기만 목록 포함)를 **먼저** 지운다(§3.1).
   deleteSqlLivesInOneFunction(cs) {
     const code = stripCs(cs);
     const del = csMember(cs, 'DeleteTrashAsync(');
     const outside = code.replace(del, '');
-    for (const t of ['project', 'app_user', 'customer', 'section_code', 'status_code', 'cal_user_pref', 'cal_user_rev']) {
+    for (const t of ['project', 'app_user', 'customer', 'section_code', 'status_code', 'cal_user_pref', 'cal_user_rev', 'cal_project_watch']) {
       assert.ok(new RegExp('DELETE\\s+FROM\\s+' + t + '\\b').test(del),
-        `영구 삭제에 ${t} 의 DELETE 문이 없다 — 다섯 표 + 부속 2표가 이 함수 하나에 모여 있어야 한다`);
+        `영구 삭제에 ${t} 의 DELETE 문이 없다 — 다섯 표 + 부속 3표가 이 함수 하나에 모여 있어야 한다`);
       assert.ok(!new RegExp('DELETE\\s+FROM\\s+' + t + '\\b').test(outside),
         `DeleteTrashAsync 밖에서 ${t} 를 DELETE 한다 — 지우는 자리는 관문을 지난 한 곳뿐이다(§3.3)`);
     }
     const pref = del.search(/DELETE\s+FROM\s+cal_user_pref\b/);
     const rev  = del.search(/DELETE\s+FROM\s+cal_user_rev\b/);
+    const watch = del.search(/DELETE\s+FROM\s+cal_project_watch\b/);
     const user = del.search(/DELETE\s+FROM\s+app_user\b/);
-    assert.ok(pref < user && rev < user,
-      '부속 2표(cal_user_pref·cal_user_rev)를 app_user 보다 뒤에 지운다 — FK RESTRICT 가 1451 로 거부해 아무도 못 지운다(§3.1)');
+    assert.ok(pref < user && rev < user && watch < user,
+      '부속 3표(cal_user_pref·cal_user_rev·cal_project_watch)를 app_user 보다 뒤에 지운다 — FK RESTRICT 가 1451 로 거부해 아무도 못 지운다(§3.1)');
+    //  과제 영구 삭제의 로그에는 그 과제를 보기만으로 보던 줄 수도 남는다(구조 21). 막지는 않는다(과제 FK 가 CASCADE).
+    assert.ok(/SELECT COUNT\(\*\) FROM cal_project_watch w JOIN project p ON p\.id = w\.project_id WHERE p\.uid=@k/.test(del) && /보기만 "/.test(del),
+      '과제 영구 삭제 로그에 보기만 줄 수(cal_project_watch)가 없다(PC-WATCH §3)');
     // 1451 은 '힌트가 틀렸을 때의 최후 방어'다 — 사용자 문장은 고정, FK 이름은 로그에만.
     assert.ok(/catch \(MySqlException mex\) when \(mex\.Number == 1451\)/.test(del),
       'FK 1451 을 따로 잡지 않는다 — "지우지 못했습니다: …" 같은 원문이 사용자에게 샌다(§4.3)');
@@ -499,6 +505,23 @@ test('변이⑥: 휴지통 밖에 하드삭제 경로가 생기면 계약⑥ 이
     ': "DELETE FROM project WHERE uid=@uid", conn);');
   assert.throws(() => checks.deleteSqlLivesInOneFunction(bad), /DeleteTrashAsync 밖에서 project 를 DELETE 한다/);
   assert.doesNotThrow(() => checks.deleteSqlLivesInOneFunction(pdb));   // 통제군
+});
+
+test('변이①-d: grants-calendar.sql 에서 cal_project_watch 의 DELETE 를 빼면 계약① 이 실패한다(부속 3표도 정본)', () => {
+  const bad = mutate(calGrants,
+    'GRANT SELECT, INSERT, DELETE ON taskmgr.cal_project_watch',
+    'GRANT SELECT, INSERT ON taskmgr.cal_project_watch');
+  assert.throws(() => checks.grantsThreeFiles(createUser, userGrants, bad), /cal_project_watch 에 DELETE 를 주지 않는다/);
+});
+
+test('변이⑥-c: 보기만 목록 삭제를 빼거나 app_user 뒤로 옮기면 계약⑥ 이 실패한다(FK 1451 로 아무도 못 지운다)', () => {
+  const WATCH = '                        await using (var cmd = new MySqlCommand("DELETE FROM cal_project_watch WHERE user_id=@u", conn, tx))\n' +
+                '                        { cmd.Parameters.AddWithValue("@u", targetUserId); await cmd.ExecuteNonQueryAsync(cts.Token); }\n';
+  const none = mutate(pdb, WATCH, '');
+  assert.throws(() => checks.deleteSqlLivesInOneFunction(none), /cal_project_watch 의 DELETE 문이 없다/);
+  const late = mutate(none, '                    if (n == 0) { await tx.RollbackAsync(cts.Token); return (false, TrashGoneMsg); }',
+    WATCH + '                    if (n == 0) { await tx.RollbackAsync(cts.Token); return (false, TrashGoneMsg); }');
+  assert.throws(() => checks.deleteSqlLivesInOneFunction(late), /app_user 보다 뒤에 지운다/);
 });
 
 test('변이⑥-b: 부속 2표를 app_user 뒤로 옮기면 계약⑥ 이 실패한다(FK 1451 로 아무도 못 지운다)', () => {

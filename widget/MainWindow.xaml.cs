@@ -1072,6 +1072,10 @@ namespace TaskCalendarWidget
                     case "projectCalendarChanges":
                     case "projectCalendarCopy":
                     case "projectCalendarMembers":
+                    case "pcWatchList":
+                    case "pcWatchAdd":
+                    case "pcWatchRemove":
+                    case "pcWatchCatalog":
                         _ = RunProjectCalendarAsync(cmd, GetStr(doc, "reqId"), raw);   // 원문을 넘긴다(doc 은 이 처리 뒤에 닫힌다)
                         break;
 

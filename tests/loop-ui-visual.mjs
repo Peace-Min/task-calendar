@@ -67,6 +67,12 @@ const SCREENS = [
   { id: 'catEditModal.db',         enter: '__vt.closeAll(); __vt.ensureSub(0); openCatModal(); __vt.catEdit("db")', needsCatalog: true },
   { id: 'catAddModal.official',    enter: '__vt.closeAll(); openCatModal(); openCatAdd("off")' },
   { id: 'catAddModal.own',         enter: '__vt.closeAll(); openCatModal(); openCatAdd("own")' },
+  //  2026-11-04(PC-WATCH): 같은 창의 보기 모드 "다른 과제 보기"(열: 통상명칭, 발주처, 상태, 참여자, 최근 활동, 동작)와 그 위에 뜨는 [참여자] 여러 명 고르기(사람 고르기 팝오버).
+  //  가짜 일정 활동과 참여자는 화면에만 둔다(__vt.caWatchDemo: 진행 중인 실제 회신은 버린다). 구조 21 이관 전에도 모양을 볼 수 있다.
+  { id: 'catAddModal.watch',       enter: '__vt.closeAll(); openCatAdd("watch"); __vt.caWatchDemo()', needsCatalog: true },
+  { id: 'catAddModal.watchWho',    enter: '__vt.closeAll(); openCatAdd("watch"); __vt.caWatchDemo(); caWhoOpen(document.getElementById("caWho"))', needsCatalog: true },
+  //  과제 탭 왼쪽 목록의 두 묶음(내 과제, 보기만)과 보기만 일정의 점선 모양. 가짜 목록은 화면에만 둔다(__vt.pcWatchDemo).
+  { id: 'pcWatchSide',             enter: '__vt.closeAll(); pcSetTab("project"); __vt.pcWatchDemo()' },
   { id: 'officialModal',           enter: '__vt.closeAll(); openOfficialModal()' },
   { id: 'officialModal.unsubbed',  enter: '__vt.closeAll(); __vt.ensureUnsub(0); openOfficialModal(); __vt.offSelect(0)', needsCatalog: true },
   { id: 'officialModal.subbed',    enter: '__vt.closeAll(); __vt.ensureSub(0); openOfficialModal(); __vt.offSelect(0)', needsCatalog: true },
@@ -136,7 +142,10 @@ const EXEMPT = {
     '.wr-table > .gridrow',
   ],
   // V7 터치 타깃 — 인라인 텍스트 링크는 '버튼'이 아니라 문장 안 링크라 높이 규범이 다르다.
-  smallTargetWarnOnly: ['a', '.lnk', '.link', '.off-subtick'],
+  //  '.pc-ev'(과제 탭 달력 일정 칩): 개인 달력 칩(.chip.chip-bar 19px, div 라 V7 이 보지 않을 뿐 같은 크기로 눌린다)과 같은 근거다.
+  //  칩 높이는 칸 안 차선(lane) 배치가 정한다(월간 .pc-ev 20px). 32px 로 키우면 320px 높이 칸에서 한 줄도 못 담는다. 주간 칩은 38px 로 이미 충분하다.
+  //  눌러야 할 바탕은 칸(.pc-day 전체)이라 칩을 못 맞춰도 같은 날을 열 수 있다.
+  smallTargetWarnOnly: ['a', '.lnk', '.link', '.off-subtick', '.pc-ev'],
   // V8 대비 — 없음(대비는 예외 대신 '판정 불가'로 뺀다)
 };
 
@@ -296,6 +305,7 @@ V._realTheme = prev ? prev._realTheme : (function(){ try{ return localStorage.ge
 
 V.restore = function(){
   try{ V.closeAll(); }catch(_){}
+  try{ PCAL.watch = []; caModeSet(false); }catch(_){}   // 다른 과제 보기 시연이 남긴 화면 상태(PC-WATCH)
   try{ state.categories = JSON.parse(JSON.stringify(V._snapCats)); }catch(_){}
   try{ if(V._realOnline) window.__applyProjects(JSON.stringify(V._realRows)); else window.__applyProjects(''); }catch(_){}
   try{ state.categories = JSON.parse(JSON.stringify(V._snapCats)); }catch(_){}   // 주입 부작용(자동 편입) 재복원
@@ -333,6 +343,32 @@ V.catEdit = function(kind){
   if(!row) return false;
   row.click();
   return true;
+};
+
+/* ── 1-2) 다른 과제 보기(PC-WATCH) 시연: 가짜 값은 화면에만 둔다. 호스트로 아무것도 쓰지 않는다 ── */
+V.caWatchDemo = function(){
+  CAW.gen++;   /* 진행 중인 실제 pcWatchCatalog 회신은 버린다 */
+  var names = ['김하늘','박서준','이도윤','최유나','정민수'], days = [0, 2, 9, 40, 70, 200];
+  CAW.roster = new Map(names.map(function(n, i){ return ['demo' + i, { name:n, title:'책임', org:'개발1팀' }]; }));
+  var m = new Map();
+  dbCatalog.slice(0, 16).forEach(function(c, i){
+    m.set(offUidOf(c.id), { last:new Date(Date.now() - days[i % days.length] * 86400000).toISOString(), memberIds:names.map(function(_, k){ return 'demo' + k; }).slice(0, (i % 5) + 1) });
+  });
+  CAW.cat = m; CAW.status = 'ok'; CAW.err = '';
+  renderCaList(true);
+  return m.size;
+};
+V.pcWatchDemo = function(){
+  PCAL.bootGen++; PCAL.gen++;   /* 탭 진입이 보낸 실제 읽기 회신은 버린다 */
+  PCAL.loaded = true; PCAL.booting = false; PCAL.bootErr = '';
+  if(!PCAL.projects.length) PCAL.projects = [{ projectUid:'00000000-0000-4000-8000-0000000000a1', name:'내 과제 표본', customer:'', color:'#3e5be0', active:true, writable:true, mine:true, members:3 }];
+  PCAL.watch = [
+    pcWatchFromDto({ projectUid:'00000000-0000-4000-8000-0000000000b1', name:'보기만 과제 표본, 이름이 아주 길어서 두 줄로 접히는 경우를 보는 과제', customer:'D사', status:'진행중', sectionId:1, members:4, hidden:false }),
+    pcWatchFromDto({ projectUid:'00000000-0000-4000-8000-0000000000b2', name:'숨겨진 과제 표본', customer:'E사', status:'종료', sectionId:2, members:0, hidden:true })
+  ];
+  PCAL.sel = pcAll().map(function(p){ return p.projectUid; });
+  pcRender();
+  return PCAL.watch.length;
 };
 
 /* ── 2) 데이터 상태 주입(화면에만 — DB는 건드리지 않는다) ── */
@@ -492,6 +528,16 @@ function resolveBg(e, styles){
       var rb = n.getBoundingClientRect(), under = null, stack = document.elementsFromPoint(rb.left + rb.width / 2, rb.top + rb.height / 2);
       for (var k = 0; k < stack.length; k++){ if (stack[k].classList && stack[k].classList.contains('cell') && stack[k].parentElement === n.parentElement){ under = stack[k]; break; } }
       if (under){ n = under; continue; }
+    }
+    //  과제 탭 달력 칩(.pc-ev)도 같은 짜임이다: 주 줄(.pc-week, 배경 = 칸 사이 선 색)의 자식이지만 그려지는 곳은 칸(.pc-day, 주간은 .pc-wday) 위다.
+    //  고대비 테마는 선 색(--line #444)이 어두워, 부모로 올라가면 글자가 어두운 바탕 위에 있는 것으로 잘못 읽는다(2026-11-04).
+    if (n.classList && n.classList.contains('pc-ev') && n.parentElement){
+      var rp = n.getBoundingClientRect(), underP = null, stackP = document.elementsFromPoint(rp.left + rp.width / 2, rp.top + rp.height / 2);
+      for (var kp = 0; kp < stackP.length; kp++){
+        var sp = stackP[kp];
+        if (sp !== n && sp.classList && (sp.classList.contains('pc-day') || sp.classList.contains('pc-wday')) && sp.parentElement === n.parentElement){ underP = sp; break; }
+      }
+      if (underP){ n = underP; continue; }
     }
     n = n.parentElement;
   }

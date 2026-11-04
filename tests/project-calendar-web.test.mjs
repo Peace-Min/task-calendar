@@ -108,7 +108,7 @@ const statics = {
     //  ① 단독 보기: 상태, 이름 단추, 머리의 단독 전환, 안내 글, 색칠 규칙이 없다. 과제 이름은 단추가 아닌 글자다.
     for (const [re, what] of [[/PCAL\.solo|\bsolo:/, 'PCAL.solo 상태'], [/data-act="(?:un)?solo"|case 'solo'|case 'unsolo'/, '단독 보기 동작'],
       [/pc-solo-note|\.pc-row\.solo/, '단독 보기 표시'], [/이름을 누르면/, '이름 누름 안내']]) assert.ok(!re.test(app), `${what}이 남아 있다`);
-    const side = extractFunction(m, 'pcSideHtml');
+    const side = extractFunction(m, 'pcRowHtml');   // 한 줄의 그리기는 구조 21 부터 pcRowHtml 이다(내 과제와 보기만 줄이 같은 함수)
     //  2026-11-02: 긴 이름 두 줄 + 끝 8자 말줄임(catFitName)에 쓰는 data-full, title 이 붙었다. 여전히 글자(span)다
     assert.ok(/<span class="pc-name" data-full="' \+ esc\(p\.name\) \+ '" title="' \+ esc\(p\.name\) \+ '">' \+ esc\(p\.name\) \+ '<\/span>'/.test(side) && !/<button[^']*pc-name/.test(side), '과제 이름이 누를 수 있는 단추다(보이기는 체크만 정한다)');
     assert.ok(!/cursor:pointer/.test(/\n\.pc-name\{[^}]*\}/.exec(app)?.[0] || 'cursor:pointer'), '.pc-name 이 누를 수 있는 모양(cursor:pointer)이다');
@@ -390,10 +390,14 @@ if (!JSDOM) {
         for (const p of posts.filter((x) => x.cmd === 'saveState' && x.reqId && !x.__done)) { p.__done = true; w.eval('__hostReply(' + JSON.stringify(p.reqId) + ',{"ok":true})'); }
         await settle();
       },
-      async bootstrap(projects = PROJECTS) { await W.reply('projectCalendarBootstrap', { ok: true, data: { projects, limits: { title: 200, location: 200, memo: 8000 } } }); },
+      //  부트스트랩은 보기만 목록(pcWatchList, 구조 21)을 이어 읽는다. 둘 다 답해야 범위 읽기로 넘어간다. watch = 보기만 과제(기본 없음).
+      async bootstrap(projects = PROJECTS, watch = []) {
+        await W.reply('projectCalendarBootstrap', { ok: true, data: { projects, limits: { title: 200, location: 200, memo: 8000 } } });
+        await W.reply('pcWatchList', { ok: true, data: { projects: watch, max: 50 } });
+      },
       async load(events, extra = {}) {
         const p = W.last('projectCalendarLoad');
-        await W.reply('projectCalendarLoad', { ok: true, data: Object.assign({ projects: (p.projectUids || []).map((u) => ({ projectUid: u, writable: u !== P3 })), events, excluded: [], from: p.from, to: p.to }, extra) });
+        await W.reply('projectCalendarLoad', { ok: true, data: Object.assign({ projects: (p.projectUids || []).map((u) => ({ projectUid: u, writable: u !== P3, mine: true })), events, excluded: [], from: p.from, to: p.to }, extra) });
       },
       async click(sel) { const e = typeof sel === 'string' ? doc.querySelector(sel) : sel; assert.ok(e, `누를 것(${sel})이 없다`); e.click(); await settle(); clock.advance(150); await settle(); },
       async tab(t) { await W.click(t === 'project' ? '#pcTabProject' : '#pcTabPersonal'); },

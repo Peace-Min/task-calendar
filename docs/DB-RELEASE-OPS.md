@@ -134,7 +134,7 @@
 
 ## 5. 이관 조각 작성 규칙 (개발자)
 
-구조 변경은 **이관 조각**으로 낸다. 조각은 `db/deploy/migrations/v<도착 번호>-<이름>.sql`(예: `v14-version-gate.sql`) 한 파일에 구조 번호 한 칸이다. 지금 사슬은 13 에서 20 이다(v14 버전 관문, v15 공용 회의실, v16 과제 캘린더, v17 월간 보고의 개발 시작일과 개발 일정 그림, v18 Git, SVN 삭제, v19 과제 순서 `project.sort_no`, v20 주간보고 회의내용 `cal_report_weekly.meeting`). 0.24.0 은 18 과 19 를 함께 싣는다. 운영자에게 조각을 따로 주지 않는다. `installer/publish-update.ps1` 이 `installer/release-sql.ps1` 로 조각을 구조 번호 순서로 이어 붙여 `release-v<버전>.sql` 하나를 만든다(4절). 확인, 닫기, 끝 확인, 열기는 그 감싸개가 하고, 조각은 바꾸기만 한다.
+구조 변경은 **이관 조각**으로 낸다. 조각은 `db/deploy/migrations/v<도착 번호>-<이름>.sql`(예: `v14-version-gate.sql`) 한 파일에 구조 번호 한 칸이다. 지금 사슬은 13 에서 21 이다(v14 버전 관문, v15 공용 회의실, v16 과제 캘린더, v17 월간 보고의 개발 시작일과 개발 일정 그림, v18 Git, SVN 삭제, v19 과제 순서 `project.sort_no`, v20 주간보고 회의내용 `cal_report_weekly.meeting`, v21 과제 탭 다른 과제 보기 `cal_project_watch`). v21 은 표 하나를 만들 뿐 지우는 것이 없고(DELETE 없음, UPDATE 는 구조 번호 한 줄), 앱 계정이 표마다 권한을 받는 환경은 `grants-calendar.sql` 의 `cal_project_watch` 줄(SELECT, INSERT, DELETE)을 root 로 따로 준다(안 주면 모든 사람의 퇴사자 영구 삭제가 1142 로 실패한다). 0.24.0 은 18 과 19 를 함께 싣는다. 운영자에게 조각을 따로 주지 않는다. `installer/publish-update.ps1` 이 `installer/release-sql.ps1` 로 조각을 구조 번호 순서로 이어 붙여 `release-v<버전>.sql` 하나를 만든다(4절). 확인, 닫기, 끝 확인, 열기는 그 감싸개가 하고, 조각은 바꾸기만 한다.
 
 ### 5.1 형식
 

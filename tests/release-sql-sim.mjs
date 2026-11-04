@@ -48,6 +48,8 @@
 //   cal_project_event 의 반복 칸은 defs 의 열 목록(list: 이름, 형, NULL 허용)으로 흉내 낸다.
 //   ALTER TABLE cal_project_event ADD COLUMN recur_freq ENUM(...) NULL DEFAULT NULL COMMENT '...' AFTER memo, ALGORITHM=INSTANT 가
 //   목록에 칸을 끼우고 열 수를 하나 올린다. information_schema.COLUMNS 의 이름, 형과 NULL 허용과 기본값 NULL, 바로 앞 칸 자리를 그 목록으로 답한다.
+//   과제 탭 보기만 목록(v21 조각 migrations/v21-project-watch.sql, 2026-11-04 docs/PC-WATCH.md): cal_project_watch 도 위와 같은 표 모양(defs)이다.
+//   기본 키 열 수와 FK 둘(app_user 를 RESTRICT 로, project 를 CASCADE 로)의 대상과 규칙을 표 모양에서 읽어 답한다.
 //
 // ★ *.test.mjs 가 아니다(러너가 수집하지 않는다. ps-guard-lib.mjs 머리말과 같은 이유).
 
@@ -213,7 +215,7 @@ const ROOM_COUNTS = {
 //  CREATE TABLE 문 하나에서 괄호 안의 열 정의 줄(이름 + 형)과 FOREIGN KEY 를 센다. 정본과 조각의 정의를 같은 함수로 센다.
 const COL_LINE = /^\s*[a-z_][a-z0-9_]*\s+(TINYINT|SMALLINT|INT|BIGINT|VARCHAR|CHAR|DATE|DATETIME|TIME|TEXT|MEDIUMTEXT|MEDIUMBLOB|JSON|DECIMAL|ENUM)\b/i;
 //  표 모양을 세는(defs) 새 표: 과제 캘린더(v16), 월간보고 그림 표(v17), 주간 과제투입시간 표(v20)
-const SHAPED = (n) => n.startsWith('cal_project_') || n === 'project_schedule_image' || n === 'cal_report_weekly_hours';
+const SHAPED = (n) => n.startsWith('cal_project_') || n === 'project_schedule_image' || n === 'cal_report_weekly_hours';   // cal_project_watch(v21)도 cal_project_ 로 시작한다
 
 // ── project 표의 모양(v17): 열 순서, 형, NULL 허용과 CHECK 이름 ──────────────────
 //  정본 schema-structure.sql 의 v16 까지 모양. dev_start_date 는 v17 이 end_date 뒤에 넣는다.
@@ -404,11 +406,11 @@ export class FakeDb {
       return m[1].toUpperCase() === 'COLUMNS' ? d.cols : d.fks;
     }
     //  v20: 주간 과제투입시간 표의 기본 키 열 수, CHECK 이름, 대상과 규칙을 붙인 FK 수(모양은 defs. 모르면 판정 불가로 실패)
-    m = /^SELECT COUNT\(\*\) FROM information_schema\.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours|cal_project_event_except)' AND CONSTRAINT_NAME = 'PRIMARY'$/.exec(s);
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours|cal_project_event_except|cal_project_watch)' AND CONSTRAINT_NAME = 'PRIMARY'$/.exec(s);
     if (m) return this.shapeOf(m[1], 'pk', (d) => d.pk);
     m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours)' AND CONSTRAINT_NAME = '(\w+)' AND CONSTRAINT_TYPE = 'CHECK'$/.exec(s);
     if (m) { const c = m[2]; return this.shapeOf(m[1], 'checks', (d) => d.checks.filter((x) => x === c).length); }
-    m = /^SELECT COUNT\(\*\) FROM information_schema\.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours|cal_project_event_except)' AND REFERENCED_TABLE_NAME = '(\w+)' AND DELETE_RULE = '([A-Z ]+)' AND UPDATE_RULE = '([A-Z ]+)'$/.exec(s);
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_report_weekly_hours|cal_project_event_except|cal_project_watch)' AND REFERENCED_TABLE_NAME = '(\w+)' AND DELETE_RULE = '([A-Z ]+)' AND UPDATE_RULE = '([A-Z ]+)'$/.exec(s);
     if (m) { const want = `${m[2]}:${m[3]}:${m[4]}`; return this.shapeOf(m[1], 'refs', (d) => d.refs.filter((x) => x === want).length); }
     //  v20(과제 일정 반복): cal_project_event 의 칸(이름만, 또는 형과 NULL 허용과 기본값 NULL)과 바로 앞 칸 자리. 열 목록은 defs.list.
     m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = '(cal_project_event)' AND COLUMN_NAME = '(\w+)'(?: AND COLUMN_TYPE = '((?:[^']|'')+)' AND IS_NULLABLE = '(YES|NO)' AND COLUMN_DEFAULT IS NULL)?$/.exec(s);

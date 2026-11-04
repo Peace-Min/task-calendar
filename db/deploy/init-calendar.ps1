@@ -186,12 +186,13 @@ if($Port -lt 1 -or $Port -gt 65535){ Die "-Port 범위가 아닙니다: $Port" }
 #    옛 DB 의 실물은 schema-calendar.sql 의 DROP 목록이 지운다(재생성하지 않는다).
 #  ※ 2026-10-30 주간 과제투입시간(구조 번호 20, 결정 14)으로 cal_report_weekly_hours 가 늘어 17 → 18 이 됐다(docs/ATTENDANCE-PLAN.md §14.4).
 #  ※ 2026-11-02 과제 일정 반복(구조 번호 20 그대로)으로 cal_project_event_except 가 늘어 18 → 19 가 됐다(docs/PC-RECUR.md).
+#  ※ 2026-11-04 과제 탭 다른 과제 보기(구조 번호 21)로 cal_project_watch 가 늘어 19 → 20 이 됐다(docs/PC-WATCH.md).
 $DESIGN_TABLES = @(
   'cal_category','cal_entry','cal_entry_except',
   'cal_todo','cal_todo_day_note','cal_task_hours',
   'cal_attendance','cal_report_daily','cal_report_hours','cal_report_weekly','cal_report_weekly_hours',
   'cal_user_pref','cal_user_rev','cal_migration_log','cal_schema_meta',
-  'cal_project_event','cal_project_event_except','cal_project_change',
+  'cal_project_event','cal_project_event_except','cal_project_change','cal_project_watch',
   'project_schedule_image'
 )
 # schema-calendar.sql 이 만들고 지우는(그래서 grants-calendar.sql 이 권한을 주는) 표 가운데 이름이 cal_ 로 시작하지 않는 것.

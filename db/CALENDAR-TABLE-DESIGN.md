@@ -2552,10 +2552,18 @@ GRANT SELECT, INSERT, UPDATE         ON taskmgr.cal_report_weekly TO 'taskmgr_ap
 | `cal_project_event` | PK `event_id`, UNIQUE `uid`(웹이 만든 안정 id) | 과제 일정. 소프트 삭제(`is_deleted`), 낙관적 잠금 `row_version`. `project_id` FK **RESTRICT** |
 | `cal_project_change` | PK `change_no`, UNIQUE `(project_id, mutation_uid)` | 지우지 않는 변경 이력. 한 저장의 **바뀐 필드만** `before_json`/`after_json` 에. 바뀐 것이 없으면 행이 없다 |
 | `cal_project_event_except` | PK `(event_id, except_date)` | 반복 일정의 "이 날짜만 삭제" 날짜(구조 20). `event_id` FK **CASCADE**. 개인 `cal_entry_except` 와 같은 결 |
+| `cal_project_watch` | PK `(user_id, project_id)` | 과제 탭 "다른 과제 보기"의 **보기만 목록**(구조 21). 내 과제(`cal_category`)가 아니다. `project_id` FK **CASCADE**, `user_id` FK **RESTRICT** |
 
 > **2026-11-02, 과제 일정 반복(구조 20 에 합침,** [`../docs/PC-RECUR.md`](../docs/PC-RECUR.md)**).** `cal_project_event.recur_freq` ENUM('weekly','monthly') NULL(memo 뒤)과 예외일 표 `cal_project_event_except` 를 더했다.
 > 끝 날짜, 횟수, 간격은 두지 않는다(개인 폼과 같아 폼이 쓰지 않는다). 수정은 반복 전체에 걸리고, 이 날짜만 삭제는 예외일을 더하며, 반복 종류를 바꾸거나 끄면 그 일정의 예외일을 지운다(앱 계정 SELECT, INSERT, DELETE).
 > 예외일은 실제 회차 날짜만 들어간다(호스트가 반복 규칙으로 거른다). 반복 일정의 범위 조회는 끝이 없어 `start_date <= @to` 만 본다. 이관은 `db/deploy/migrations/v20-weekly-meeting.sql` 이 칸과 표가 없을 때만 만든다.
+
+> **2026-11-04, 다른 과제 보기(구조 21,** [`../docs/PC-WATCH.md`](../docs/PC-WATCH.md)**).** 활성 사용자 누구나 모든 공식 과제의 과제 캘린더를 **읽기 전용**으로 본다. 어떤 과제를 보는지를 계정에 저장하는 표가 `cal_project_watch`(`user_id` SMALLINT UNSIGNED, `project_id` INT UNSIGNED, `added_at` DATETIME(3) UTC)다.
+> - **PK 는 숫자 둘의 복합 키**다. 이 표를 가리키는 표가 없어 자기 번호(watch_no)를 두지 않는다(두면 MAX()+1 발번 잠금과 UNIQUE 가 더 필요하고 얻는 것이 없다. 선례 `cal_project_event_except`, `cal_user_pref`). 색인은 `ix_cal_project_watch_project(project_id)` 하나(과제 FK 받침).
+> - **FK**: 과제는 CASCADE(휴지통의 공식 과제 영구 삭제를 보는 줄이 막지 않는다), 사람은 RESTRICT(기존 통일 규칙). 퇴사자 영구 삭제 때 휴지통이 이 사람의 보는 줄을 먼저 지운다. 기록이 아니라 화면 설정이라 `UserRecordTables`(기록 수 세기)에는 넣지 않고 `cal_user_pref`, `cal_user_rev` 와 같은 **부속 표**로 둔다(부속 2표가 3표).
+> - **쓰기**: 넣기는 평범한 `INSERT ... SELECT`(IGNORE, ON DUPLICATE KEY UPDATE 금지: FK 위반 1452 까지 경고로 삼킨다). 영향 0행은 과제가 없거나 숨겨짐, 1062 는 이미 보는 중(멱등 성공), 1452 는 과제가 사라짐. 빼기는 `DELETE ... WHERE user_id = @me AND project_id = @pid`. 고칠 칸이 없어 앱 계정 권한은 SELECT, INSERT, DELETE(`grants-calendar.sql`, `server-app-account.sql`). 한 사람 50개 상한은 넣을 때만 센다(두 PC 동시 넣기로 51개가 되는 경합은 받아들인다).
+> - **판정은 둘이다**: 쓰기 판정(`EligibleProjectsAsync`, 내 과제만)은 손대지 않았고, 읽기 판정(`ReadableProjectsAsync`)이 숨기지 않은 모든 공식 과제 또는 숨겨졌어도 내 과제를 읽게 한다. 이 표는 읽기 목록만 만들고 쓰기 길에 영향이 없다.
+> - 이관은 `db/deploy/migrations/v21-project-watch.sql`(CREATE TABLE IF NOT EXISTS 하나, information_schema 검증, 구조 번호 20 → 21 한 줄). GRANT, DELETE 없음.
 
 **개인 트랙과 다른 점(일부러 다르다)**
 - **외래키가 가리키는 기본키는 번호**다(`project.id`, `event_id`, CODE-TABLE-IDS). 웹과 호스트 사이는 `projectUid`, `eventUid` 로 주고받고 호스트가 번호로 바꾼다. 개인 `cal_category` 는 `project_uid` 글자로 과제를 가리키지만(FK 아님) 공용 표는 진짜 FK 다.
@@ -3357,6 +3365,9 @@ binlog 는 **변경 이력**이다. *"어느 상태에서 출발해 이 변경�
 ---
 
 ## 정정 이력
+
+- **2026-11-04, 다른 과제 보기**([`../docs/PC-WATCH.md`](../docs/PC-WATCH.md), 구조 번호 21).
+  - §5.10 의 표 목록에 `cal_project_watch` 를, 아래 인용문에 키, FK, 쓰기 규칙, 두 판정을 적었다.
 
 - **2026-11-02, 과제 일정 반복**([`../docs/PC-RECUR.md`](../docs/PC-RECUR.md), 구조 번호 20 그대로).
   - §5.10 의 표 목록과 XML 대응 표에 `cal_project_event_except` 를, 주에 `cal_project_event.recur_freq` 와 예외일 규칙을 적었다.

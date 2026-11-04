@@ -74,7 +74,8 @@ namespace TaskCalendarWidget
         //  ★ 2026-10-26: 17 → 18(이관 조각 migrations/v18-remove-git.sql, Git, SVN 삭제: 커밋 기록, cal_entry_commit, 출처와 저장소, 작성자 칸).
         //  ★ 2026-10-26: 18 → 19(이관 조각 migrations/v19-project-order.sql, 과제 순서: project.sort_no 와 코드표 표 설명).
         //  ★ 2026-10-29: 19 → 20(이관 조각 migrations/v20-weekly-meeting.sql, 주간보고 회의내용: cal_report_weekly.meeting).
-        public const int AppStructureVersion = 20;
+        //  ★ 2026-11-04: 20 → 21(이관 조각 migrations/v21-project-watch.sql, 과제 탭 다른 과제 보기: cal_project_watch 표 하나).
+        public const int AppStructureVersion = 21;
 
         //  키 다섯 개를 한 번에 읽는다. 연결을 열 때마다 도는 유일한 추가 쿼리다(DB-RELEASE-OPS §3.1 의 비용).
         internal const string MetaSql =

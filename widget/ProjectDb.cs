@@ -2252,9 +2252,10 @@ namespace TaskCalendarWidget
         //   ★ 원소는 '표' 또는 '표.열'이다. 열을 적지 않으면 user_id 다. 그림 표는 2026-10-23 사람별 그림으로 열 이름이 user_id 가
         //     되었지만, 다른 열로 바뀌어도 눈에 띄게 '표.열' 로 적어 둔다.
         //     그 표도 app_user 를 RESTRICT 로 붙들므로, 빠지면 그림이 있는 계정을 '기록 0건'으로 오판해 지우려 들다가 1451 로 막힌다.
-        //   ★ 정본(db/deploy/schema-calendar.sql)의 `REFERENCES app_user` 집합에서 cal_user_pref·cal_user_rev 를
+        //   ★ 정본(db/deploy/schema-calendar.sql)의 `REFERENCES app_user` 집합에서 cal_user_pref·cal_user_rev·cal_project_watch 를
         //     뺀 것과 **글자까지 같아야 한다** — 시험 계약 ③ 이 정본을 파싱해 이 배열과 대조한다(표 이름 박제 금지).
-        //   ★ 뺀 둘은 로그인 한 번이면 생기는 부속 행이라 '기록'이 아니다. 삭제 트랜잭션이 그 둘을 먼저 지운다.
+        //   ★ 뺀 셋은 '기록'이 아니다. 앞의 둘은 로그인 한 번이면 생기는 부속 행이고, cal_project_watch(구조 21, 과제 탭 보기만 목록)는
+        //     그 사람의 화면 설정이다. 삭제 트랜잭션이 그 셋을 먼저 지운다(부속 3표).
         //   ★ cal_migration_log 는 뺄 수 없다 — XML 이관을 한 번이라도 한 계정은 일정이 있었던 계정이다(감사 흔적).
         private static readonly string[] UserRecordTables =
         {
@@ -2635,7 +2636,7 @@ namespace TaskCalendarWidget
         }
 
         // 영구 삭제 — 되돌릴 수 없다. 다섯 표의 뼈대가 같다(§3.4):
-        //   행 잠금 → 숨김인가 → 참조 수 **재계산** → 이름 대조 → (인력) 부속 2표 → DELETE → 로그 한 줄.
+        //   행 잠금 → 숨김인가 → 참조 수 **재계산** → 이름 대조 → (인력) 부속 3표 → DELETE → 로그 한 줄.
         //   ★ 화면이 같은 판정을 힌트로 먼저 보여 주지만 그건 조회 시점 값이다. 판정은 여기, 트랜잭션 안이다.
         //   ★ 다섯 표의 DELETE 문은 이 함수 안에만 있다 — 시험 계약 ①·⑥ 이 그 사실을 잠근다.
         //   ★ 자기 계정 금지는 퇴사 규칙(§4.4-1)과 **한 벌**이다. 기록 0 이면 로그인한 적도 없어 실제로는
@@ -2692,6 +2693,7 @@ namespace TaskCalendarWidget
 
                     // ③ 참조 수 재계산 — 힌트가 낡았을 수 있다(두 관리자가 동시에 만지면).
                     long refs = 0L;
+                    long watchRefs = 0L;   // 과제 영구 삭제 로그용: 이 과제를 보기만으로 보던 줄 수(cal_project_watch, 과제 FK CASCADE 로 함께 사라진다)
                     if (kd == "user")
                     {
                         await using (var cmd = new MySqlCommand(UserRefCountSql(), conn, tx))
@@ -2727,6 +2729,12 @@ namespace TaskCalendarWidget
                             cmd.Parameters.AddWithValue("@k", k);
                             refs = Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
                         }
+                        //  보기만 줄도 센다(과제 탭 다른 과제 보기, 구조 21). 막지 않는다: 과제 FK 가 CASCADE 라 DELETE 와 함께 사라진다.
+                        await using (var cmd = new MySqlCommand("SELECT COUNT(*) FROM cal_project_watch w JOIN project p ON p.id = w.project_id WHERE p.uid=@k", conn, tx))
+                        {
+                            cmd.Parameters.AddWithValue("@k", k);
+                            watchRefs = Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
+                        }
                     }
                     else
                     {
@@ -2747,13 +2755,16 @@ namespace TaskCalendarWidget
                     if (!string.Equals(confirm ?? "", storedName, StringComparison.Ordinal))
                     { await tx.RollbackAsync(cts.Token); return (false, TrashNameMsg); }
 
-                    // ⑤ (인력) 부속 2표를 같은 트랜잭션에서 먼저 지운다 — 로그인 한 번이면 생기는 행이라
+                    // ⑤ (인력) 부속 3표를 같은 트랜잭션에서 먼저 지운다 — 앞 둘은 로그인 한 번이면 생기는 행이라
                     //    '기록 0' 계정에도 남아 있고, 남으면 FK RESTRICT 가 1451 로 거부한다(§3.1).
                     if (kd == "user")
                     {
                         await using (var cmd = new MySqlCommand("DELETE FROM cal_user_pref WHERE user_id=@u", conn, tx))
                         { cmd.Parameters.AddWithValue("@u", targetUserId); await cmd.ExecuteNonQueryAsync(cts.Token); }
                         await using (var cmd = new MySqlCommand("DELETE FROM cal_user_rev WHERE user_id=@u", conn, tx))
+                        { cmd.Parameters.AddWithValue("@u", targetUserId); await cmd.ExecuteNonQueryAsync(cts.Token); }
+                        //  과제 탭 보기만 목록(구조 21): 기록이 아니라 화면 설정이다. 사람 FK 가 RESTRICT 라 먼저 지운다(PC-WATCH §2).
+                        await using (var cmd = new MySqlCommand("DELETE FROM cal_project_watch WHERE user_id=@u", conn, tx))
                         { cmd.Parameters.AddWithValue("@u", targetUserId); await cmd.ExecuteNonQueryAsync(cts.Token); }
                     }
 
@@ -2781,7 +2792,7 @@ namespace TaskCalendarWidget
                     }
                     if (n == 0) { await tx.RollbackAsync(cts.Token); return (false, TrashGoneMsg); }
                     await tx.CommitAsync(cts.Token);
-                    _log("영구 삭제 " + kd + " " + k + " by " + me + " " + RowJson(row) + " 참조 " + refs + "건");
+                    _log("영구 삭제 " + kd + " " + k + " by " + me + " " + RowJson(row) + " 참조 " + refs + "건" + (kd == "project" ? ", 보기만 " + watchRefs + "건" : ""));
                     return (true, TrashDoneMsg);
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)

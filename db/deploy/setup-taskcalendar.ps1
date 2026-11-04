@@ -142,8 +142,9 @@ $NULL_TO_EMPTY = [ordered]@{ project = @('contract_name','common_name') }
 #  2026-10-22 월간보고(구조 17): schema-calendar.sql 의 project_schedule_image +1 로 26.
 #  2026-10-26 Git, SVN 삭제(구조 18): schema-calendar.sql 의 cal_entry_commit -1 로 25.
 #  2026-10-30 주간 과제투입시간(구조 20, 결정 14): schema-calendar.sql 의 cal_report_weekly_hours +1 로 26.
-#  2026-11-02 과제 일정 반복(구조 20 그대로, docs/PC-RECUR.md): schema-calendar.sql 의 cal_project_event_except +1 로 27.)
-$EXPECTED_TABLE_COUNT = 27
+#  2026-11-02 과제 일정 반복(구조 20 그대로, docs/PC-RECUR.md): schema-calendar.sql 의 cal_project_event_except +1 로 27.
+#  2026-11-04 과제 탭 다른 과제 보기(구조 21, docs/PC-WATCH.md): schema-calendar.sql 의 cal_project_watch +1 로 28.)
+$EXPECTED_TABLE_COUNT = 28
 
 # 정체성 컬럼. 원본에 이 컬럼이 없으면 교집합 복사가 조용히 새 번호를 매긴다 — 그러면 cal_* 가
 # 가리킬 과제의 번호가 옛 DB 와 달라진다. 그래서 사전 점검에서 원본에 있는지부터 본다.

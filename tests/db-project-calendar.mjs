@@ -294,7 +294,10 @@ async function main() {
     ok('부트스트랩: 참여자 수는 내 과제에 넣은 활성 사용자 수(p1 = 2)', r.ok && r.data.projects.find((p) => p.projectUid === D.p1.uid).members === 2);
     ok('부트스트랩: 글자 상한을 함께 준다(200, 200, 8000)', r.ok && r.data.limits.title === 200 && r.data.limits.location === 200 && r.data.limits.memo === 8000);
     r = cmd('u1', 'projectCalendarLoad', { projectUids: [D.p1.uid, D.p2.uid], from: '2026-11-01', to: '2026-11-30' });
-    ok('내 과제에 없는 과제 읽기: 제외하고 알린다(excluded)', r.ok && r.data.excluded.includes(D.p2.uid) && r.data.projects.length === 1);
+    //  구조 21(다른 과제 보기): 범위 읽기는 읽기 판정이라 내 과제가 아니어도 숨기지 않은 공식 과제는 읽고, writable 은 false, mine 은 false 다.
+    ok('내 과제에 없는 공식 과제 읽기: 읽는다(읽기 판정), writable 과 mine 은 false', r.ok && !r.data.excluded.includes(D.p2.uid) && r.data.projects.length === 2 &&
+      r.data.projects.find((p) => p.projectUid === D.p2.uid).writable === false && r.data.projects.find((p) => p.projectUid === D.p2.uid).mine === false &&
+      r.data.projects.find((p) => p.projectUid === D.p1.uid).mine === true, JSON.stringify(r.data && r.data.projects));
     const evX = randomUUID();
     r = cmd('u1', 'projectCalendarSave', { projectUid: D.p2.uid, eventUid: evX, mutationUid: randomUUID(), event: ev('zz 남의 과제') });
     ok('내 과제에 없는 과제 쓰기: forbidden, 아무것도 쓰지 않음', !r.ok && r.error.kind === 'forbidden' && num(`SELECT COUNT(*) FROM cal_project_event WHERE uid='${evX}'`) === 0 && nChanges(`project_id=${D.p2.id}`) === 0, JSON.stringify(r));
@@ -372,7 +375,7 @@ async function main() {
       all.data.rows.length + next.data.rows.length === total &&
       !next.data.rows.some((x) => all.data.rows.some((y) => y.changeNo === x.changeNo)), `total=${total}`);
     r = cmd('u1', 'projectCalendarChanges', { projectUids: [D.p2.uid] });
-    ok('내 과제에 없는 과제의 이력: 제외(excluded)', r.ok && r.data.rows.length === 0 && r.data.excluded.includes(D.p2.uid));
+    ok('내 과제에 없는 공식 과제의 이력: 읽는다(읽기 판정, 구조 21)', r.ok && !r.data.excluded.includes(D.p2.uid));
 
     console.log('\n[글자 상한]');
     const big = randomUUID();
@@ -432,10 +435,11 @@ async function main() {
         !JSON.stringify(r.data).includes('zz_pc_m'), JSON.stringify(gs[0] || {}).slice(0, 200));
       const bs = cmd('u1', 'projectCalendarBootstrap', {});
       ok('명단: total 이 부트스트랩의 참여자 수와 같다', bs.ok && r.ok && bs.data.projects.find((p) => p.projectUid === p4uid).members === r.data.total);
+      //  구조 21(다른 과제 보기): 명단은 읽기 판정이라 숨기지 않은 모든 공식 과제를 읽는다(내 과제가 아니어도). 숨겨졌고 내 과제도 아니면 forbidden.
       r = cmd('u1', 'projectCalendarMembers', { projectUid: D.p2.uid });
-      ok('명단: 내 과제에 없는 과제는 forbidden', !r.ok && r.error.kind === 'forbidden', JSON.stringify(r));
+      ok('명단: 내 과제에 없어도 숨기지 않은 공식 과제는 읽는다(읽기 판정, 구조 21)', r.ok && Array.isArray(r.data.groups), JSON.stringify(r));
       r = cmd('u2', 'projectCalendarMembers', { projectUid: p4uid });
-      ok('명단: 그 과제를 넣지 않은 다른 사람(u2)도 forbidden', !r.ok && r.error.kind === 'forbidden', JSON.stringify(r));
+      ok('명단: 그 과제를 넣지 않은 다른 사람(u2)도 숨기지 않은 과제면 읽는다(읽기 판정, 구조 21)', r.ok && r.data.total >= 1, JSON.stringify(r));
       r = cmd('u1', 'projectCalendarMembers', { projectUid: 'nope' });
       ok('명단: 과제 id 형식이 틀리면 invalid', !r.ok && r.error.kind === 'invalid');
       sql(`UPDATE app_user SET org_id=NULL, sort_order=NULL, title_id=NULL WHERE user_id=${D.u1.id}`, 'u1 소속과 직급 되돌리기');
