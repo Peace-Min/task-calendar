@@ -16,7 +16,7 @@
  *      끝 항목은 disabled 다(메뉴 안에서 화살표가 건너뛴다).
  *    C7        옮긴 뒤 포커스 = 옮겨진 행의 ⋯ · 목록을 다시 만들지 않는다 · 모달 스크롤 자리 유지 · 반짝임 없음
  *    C3        reloadState → 다시 읽힌 state.categories 순서 = 옮긴 직후 순서(서버 저장)
- *    C4        collectReportData(이번 달, rptSources()) 행 = 목록 순서 그대로 + 보고서 미리보기 카드 순서
+ *    C4        collectReportData(이번 달, 근태 일간 가져오기와 같은 출처) 행 = 목록 순서 그대로
  *              ★ 2026-10-07 기본 과제(docs/DEFAULT-TASKS.md §4.3) — 「기타」 맨 뒤 규칙과 미분류 합성 행(__uncat__)을 지웠다.
  *                기타도 목록의 한 과제라 제 자리에 선다. 이 루프는 그 둘이 되살아나면 실패한다.
  *    C5        필터 막대 칩 · 빠른 추가 #qaCat 옵션 순서 = state.categories (예전 기록 창 #fCat 은 2026-10-26 Git 기능과 함께 없앴다)
@@ -455,7 +455,8 @@ async function main() {
   await closeAll();
   {
     let [from, to] = monthRange();
-    const rowsOf = (f, t) => J(`collectReportData(${JSON.stringify(f)}, ${JSON.stringify(t)}, rptSources()).rows.map(function(r){ return { key: r.key, name: r.name, n: r.titles.length }; })`);
+    //  2026-11-04: 취합 출처를 앱 주간보고 DB 로 바꾸며 rptSources(포함 항목)를 지웠다. 일정과 할 일로 행을 만드는 곳은 근태 일간 가져오기(atBuildSource)뿐이고 이 출처를 쓴다.
+    const rowsOf = (f, t) => J(`collectReportData(${JSON.stringify(f)}, ${JSON.stringify(t)}, { event: true, todo: true, desc: true }).rows.map(function(r){ return { key: r.key, name: r.name, n: r.titles.length }; })`);
     let rows = await rowsOf(from, to);
     //  이번 달에 내용이 없으면 기록이 있는 기간(가장 이른 ~ 가장 늦은 기록 날짜)으로 넓힌다 — 내용 있는 행이 실제로 줄을 서게.
     if (!rows.some((r) => r.n > 0)) {
@@ -463,7 +464,7 @@ async function main() {
         return ds.length ? [ds[0], ds[ds.length - 1]] : null; })()`);
       if (span) { note(`이번 달(${from}~${to})에 보고 내용이 없다 — 기록이 있는 기간 ${span[0]}~${span[1]} 로 본다`); [from, to] = span; rows = await rowsOf(from, to); }
     }
-    const src = await J('rptSources()');
+    const src = { skipEmpty: false };
     const cs = await cats();
     const keys = rows.map((r) => r.key);
     const exp = expectedReportKeys(cs);
@@ -481,31 +482,8 @@ async function main() {
     //  같은 순서가 **옮긴 순서**에서 나온다(옮긴 행이 보고서에서도 맨 앞)
     if (cs[0]) ok('C4 맨 위로 옮긴 과제가 보고서 첫 행이다', keys[0] === cs[0].id || (src.skipEmpty && !keys.includes(cs[0].id)), JSON.stringify(keys.slice(0, 3)));
 
-    //  근태 탭 [취합]을 사람이 여는 문(머리 단추)으로 연다 — 기간 취합 미리보기 카드 순서.
-    await cdp.ev(`(function(){ pcSetTab('attend'); atKindSet('sum'); return 1; })()`);
-    const opened = await waitFor("!document.getElementById('atSum').classList.contains('hidden')", 3000, 100);
-    ok('C4 근태 [취합] 이 열린다', opened);
-    //  미리보기 카드(.rcard .rcard-nm) 순서 = 같은 기간·같은 포함 항목의 collectReportData 행 순서 = state.categories 순서.
-    const checkPreview = async (label) => {
-      await waitFor("document.querySelectorAll('#rptOut .rcard').length > 0", 5000, 150);
-      const pv = await J(`(function(){ const f = document.getElementById('rptFrom').value, t = document.getElementById('rptTo').value;
-        const rows = collectReportData(f, t, rptSources()).rows;
-        return { from: f, to: t, mode: reportMode, src: state.reportSource,
-          dom: [].map.call(document.querySelectorAll('#rptOut .rcard .rcard-nm'), function(x){ return x.textContent; }),
-          data: rows.map(function(r){ return r.name; }), keys: rows.map(function(r){ return r.key; }), n: rows.filter(function(r){ return r.titles.length > 0; }).length }; })()`);
-      vlog('미리보기:', JSON.stringify(pv));
-      if (!pv.dom.length) { undecide(`C4 미리보기 카드(${label})`, `미리보기에 카드가 없다(${pv.mode} · 출처 ${pv.src})`); return; }
-      ok(`C4 ${label} 미리보기 카드 순서 = 보고서 행 순서(${pv.from}~${pv.to} · ${pv.dom.length}장 · 내용 있는 행 ${pv.n})`, same(pv.dom, pv.data), JSON.stringify({ dom: pv.dom, data: pv.data }));
-      const expK = expectedReportKeys(cs).filter((k) => pv.keys.includes(k));
-      ok(`C4 ${label} 미리보기의 행 = state.categories 순서 그대로`, same(pv.keys, expK), JSON.stringify({ keys: pv.keys, exp: expK }));
-      ok(`C4 ${label} 미리보기에 미분류 합성 카드(__uncat__)가 없다`, !pv.keys.includes('__uncat__'), JSON.stringify(pv.keys));
-    };
-    //  기록이 있는 기간으로 그린다 — 내용 있는 카드까지 줄을 선다.
-    await cdp.ev(`(function(){ state.reportSource = 'cal'; syncReportSourceSeg();
-      const f = document.getElementById('rptFrom'), t = document.getElementById('rptTo');
-      f.value = ${JSON.stringify(from)}; t.value = ${JSON.stringify(to)}; t.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
-    await sleep(300);
-    await checkPreview('기간 취합');
+    //  취합 미리보기 카드 순서 검사는 2026-11-04 에 걷었다. 취합 글은 이 앱 주간보고 DB(또는 인트라넷 주간)의 과제 머리 순서라
+    //  내 과제 목록 순서 계약의 대상이 아니다(docs/ATTEND-SUMMARY.md 7절).
     await closeAll();
   }
 
