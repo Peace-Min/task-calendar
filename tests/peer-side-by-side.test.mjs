@@ -305,7 +305,7 @@ if (!JSDOM) {
       assert.strictEqual(q(P, '#dpBody .dp-sec'), 2, '겹을 꺼 두었어도 나란히 보기의 상세는 두 묶음이다(S7)');
       assert.strictEqual(display(P, '#dpBody .dp-er-mine'), 'block', '「끈 상태」 CSS 가 시트의 내 일정 줄을 감춘다');
       P.ev('document.querySelector("#dpBody .dp-er-mine .dp-er-b").click();');
-      assert.strictEqual(display(P, '#dpBody .card.card-mine'), 'block', '「끈 상태」 CSS 가 시트의 내 카드를 감춘다');
+      assert.strictEqual(display(P, '#dpBody .dp-er-mine .dp-edet'), 'flex', '「끈 상태」 CSS 가 시트의 내 일정 상세를 감춘다');
       P.ev('DP.open = ""; renderPanel();');
       assert.deepStrictEqual(P.evJSON('Array.prototype.map.call(document.querySelectorAll("#gridMine .ovl-dot"), function(d){ return getComputedStyle(d).display === "none"; })'), [false],
         '「끈 상태」 CSS 가 오른쪽 겹침 점을 감춘다');

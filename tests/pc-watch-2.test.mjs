@@ -46,7 +46,7 @@ test('모양①: 관심 과제는 구분 색(sectionColor)을 쓰지 않고 회�
   //  관심 과제 일정은 옅은 배경(--cb)을 만들지 않는다(바탕은 CSS 의 흰 바탕)
   assert.ok(extractFunction(src, 'pcEvHtml').includes("(p.mine === false ? '' : '--cb:' + tint(p.color, .2) + ';')"), '관심 과제 일정이 색 배경을 만든다');
 });
-test('공용①: 개인 보기 팝업과 [참여자]가 같은 고르기 목록 함수(fbListMarkup, fbFill, fbListKey, fbListClick)를 쓴다', () => {
+test('공용①: 개인 보기 팝업은 공용 고르기 목록 함수(fbListMarkup, fbFill, fbListKey, fbListClick), [참여자]는 그 겉(fbHeadMarkup, fbPopEdgeKey)과 사람 고르기 조직도(§7.3)', () => {
   assert.ok(extractFunction(src, 'filterPopOpen').includes("fbListMarkup('fbList', '과제 검색', '과제')"), '개인 보기 팝업이 공용 목록 마크업을 쓰지 않는다');
   assert.ok(/FB\.src = FB_SRC;/.test(src) && /idp: 'fbo-'/.test(src), '개인 보기 팝업의 출처(FB_SRC, 항목 id fbo-)가 아니다');
   for (const [fn, inner] of [['filterFillList', 'fbFill(FB, initial)'], ['filterSetAct', 'fbSetAct(FB, i, scroll)'], ['filterPickOpt', 'fbPick(FB, o)']]) {
@@ -54,9 +54,12 @@ test('공용①: 개인 보기 팝업과 [참여자]가 같은 고르기 목록 
   }
   const bf = extractFunction(src, 'bindFilterbar');
   assert.ok(bf.includes('fbListClick(FB, t)') && bf.includes('fbPopKey(FB, ev, filterPopClose)') && bf.includes('fbListInput(FB)'), '개인 보기 팝업의 누름, 키, 찾기가 공용 함수가 아니다');
+  //  2차(§7.3): [참여자] 겉은 개인 보기 팝업의 찾기 칸과 전체 선택/해제(fbHeadMarkup), Esc 와 Tab(fbPopEdgeKey). 속은 다른 사람 일정 보기 조직도
   const who = extractFunction(src, 'caWhoOpen');
-  assert.ok(who.includes("fbListMarkup('caWhoList'") && who.includes('fbListClick(CAWP, ev.target)') && who.includes('fbPopKey(CAWP, ev, caWhoClose)') && who.includes('fbListInput(CAWP)'), '[참여자]가 같은 함수를 쓰지 않는다');
-  assert.ok(/idp: 'cwo-'/.test(src) && /pkOrgIndex\(r\.data\.units, CAW\.members, pkMe\(\)\)/.test(extractFunction(src, 'caRosterLoad')), '[참여자] 출처가 사람 고르기와 같은 명부와 조직 색인(pkOrgIndex)이 아니다');
+  assert.ok(who.includes("fbHeadMarkup('caWhoBody', '이름 찾기')") && extractFunction(src, 'caWhoKey').includes('fbPopEdgeKey(CAWP, ev, caWhoClose)'), '[참여자]가 개인 보기 팝업의 겉을 쓰지 않는다');
+  assert.ok(extractFunction(src, 'fbListMarkup').includes('fbHeadMarkup(id, ph)') && extractFunction(src, 'fbPopKey').includes('fbPopEdgeKey(S, ev, close)'), '개인 보기 팝업과 [참여자]가 같은 겉 함수를 쓰지 않는다');
+  assert.ok(/pkRenderOrg\(body, P\.wide, P,/.test(extractFunction(src, 'caWhoRender')) && /pkOrgIndex\(r\.data\.units, CAW\.members, pkMe\(\)\)/.test(extractFunction(src, 'caRosterLoad')), '[참여자] 속이 사람 고르기와 같은 명부, 조직 색인(pkOrgIndex), 조직도(pkRenderOrg)가 아니다');
+  assert.ok(!/idp: 'cwo-'|CAW_WHO_SRC/.test(src), '1차의 평평한 팀 목록(CAW_WHO_SRC)이 남았다');
 });
 test('탭①: 고른 탭은 과제 탭 설정(pcPrefsSave)에 같이 기억하고 옛 저장값은 내 과제', () => {
   assert.ok(extractFunction(src, 'pcPrefsSave').includes('side: PCAL.side'), '탭을 과제 탭 설정에 기억하지 않는다');

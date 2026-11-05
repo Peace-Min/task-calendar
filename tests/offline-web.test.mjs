@@ -31,7 +31,7 @@ function mutate(from, to, base) {
 
 //  함수 단위 관문 — 본문에 guardEdit() 이 있고, 그것이 첫 쓰기보다 **앞**이다.
 const GATED_FUNCTIONS = [
-  'openQuickAdd', 'qaSave', 'saveCatEdit',   // 과제 수정 창 저장(TASK-ADD-UX D4, 옛 saveCatFromForm)
+  'openQuickAdd', 'qaSave', 'qaDeleteTodo', 'saveCatEdit',   // 과제 수정 창 저장(TASK-ADD-UX D4, 옛 saveCatFromForm)
   'startImport', 'showImportPreview', 'applyImport', 'clearAll',
   'offSubscribeFromCatalog', 'offUnsubscribeFromCatalog',
   //  (commitDayNoteEdit 는 2026-11-03 취합 미리 보기의 날짜별 설명 고치기와 함께 없앴다. 할 일의 날짜별 설명은 할 일 편집 폼이 고친다.)
@@ -53,7 +53,8 @@ const WRITE_TOKENS = ['save()', 'saveFull()', 'dbSave(', 'addEntry(', 'updateEnt
 const GATED_HANDLERS = [
   ['끌어 옮기기(drop)', "grid.addEventListener('drop', ev => {", 'save();'],
   ['날짜 패널 카드 삭제', "if(act === 'edit') editEntry(card.dataset.id);", 'deleteEntry(e.id)'],
-  ['할 일 인라인 편집 저장·삭제', 'const id = box.dataset.id, act = ev.target.dataset.act;', 'updateTodo(id,'],
+  //  할 일 패널 안 수정 폼은 2026-11-05 없앴다(PC-WATCH-2 §7.1). 고치기는 [+ 추가] 창의 할 일 수정(qaSave, openQuickAdd 관문), 지우기는 상세 [삭제]와 창의 [삭제](qaDeleteTodo)
+  ['할 일 상세 [삭제]', "const det = ev.target.closest('.dp-tdet');", 'deleteTodo(id)'],
   ['할 일 행 완료·삭제·중요', "const row = ev.target.closest('.todo-row'); if(!row) return;", 'toggleTodo(row.dataset.id)'],
   //  (과제 목록 #catList 위임의 unsub, del, movedata 는 2026-10-30 ⋯ 메뉴로 옮겼다. 관문은 함수(catUnsub, catDelete, openCatMoveModal)가 진다 → GATED_FUNCTIONS)
   //  (보고서 창의 근태 셀렉트(svGuarded)와 과제별 시간 입력은 보고서 창과 함께 없앴다. 근태 화면의 저장은 attendance-web 시험이 본다.)
@@ -124,7 +125,7 @@ test('정적④: 브라우저(!HOST)·열람 창(PEER)에서는 잠금이 늘 fa
   }
 });
 test('변이①s: openQuickAdd 의 관문을 지우면 정적① 이 실패한다', () => {
-  const bad = mutate('  if(!entryId && guardEdit()) return;', '', src);
+  const bad = mutate('  if(!entryId && !todoId && guardEdit()) return;', '', src);
   assert.throws(() => statics.functionsGated(bad), /openQuickAdd\(\) 에 연결 잠금 관문/);
 });
 
@@ -696,7 +697,7 @@ if (!JSDOM) {
   // ── 변이 시험 — 위 검사가 정말 잡는지 ──
   const rejects = async (p, why) => { await assert.rejects(p, (e) => e instanceof assert.AssertionError, why); };
   test('변이①: 새 기록 진입점(openQuickAdd)에서 관문을 지우면 잠금② 가 실패한다', () =>
-    rejects(checks.newEntryBlocked(mutate('  if(!entryId && guardEdit()) return;', '', src)), '변이를 잡지 못했다'));
+    rejects(checks.newEntryBlocked(mutate('  if(!entryId && !todoId && guardEdit()) return;', '', src)), '변이를 잡지 못했다'));
   test('변이②: save() 가 잠긴 채 보내게 하면 잠금④ 가 실패한다', () =>
     rejects(checks.saveRefusedWhileLocked(mutate('  if(editLocked()){ lockedSaveRefused(); return; }   // editLocked 는', '  if(false){ lockedSaveRefused(); return; }   // editLocked 는', src)), '변이를 잡지 못했다'));
   test('변이③: 권한 거부도 재시도하게 하면 상자② 가 실패한다', () =>

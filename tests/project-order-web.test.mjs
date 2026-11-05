@@ -283,15 +283,15 @@ if (!JSDOM) {
         assert.ok(!$(B, '#officialModal').classList.contains('hidden') && B.ev("isOverlayOpen(document.getElementById('adminHub'))"), 'Esc 가 메뉴가 아니라 창을 닫았다');
       });
     },
-    //  R8 상태 체크박스: 상태표에서 만들고(상태 없음은 그런 과제가 있을 때만), 이 PC 에 기억, 재연결 고르기와 한 벌, Excel 부제와 행
+    //  R8 상태 체크박스: 상태표에서 만들고(상태 미지정은 그런 과제가 있을 때만. 2026-11-05 "상태 없음"에서 바꿈, PC-WATCH-2 §7.3), 이 PC 에 기억, 재연결 고르기와 한 벌, Excel 부제와 행
     async statusChecks(src) {
       await withB(src, ADMIN_URL, async (B) => {
         B.w.localStorage.removeItem('tc_projStatusOff');
         B.ev('offStOff = null; 1');
         await openHub(B);
         const boxes = () => $$(B, '#offStChecks [data-offst]').map((i) => [i.dataset.offst, i.closest('label').textContent.trim(), i.checked]);
-        assert.deepStrictEqual(boxes(), [['1', '진행중', true], ['2', '종료', true], ['3', '1차 납품완료', true], ['__none__', '상태 없음', true]],
-          '상태 체크박스가 상태표 순서 + 상태 없음(그런 과제가 있음)으로, 모두 켠 채 서지 않았다');
+        assert.deepStrictEqual(boxes(), [['1', '진행중', true], ['2', '종료', true], ['3', '1차 납품완료', true], ['__none__', '상태 미지정', true]],
+          '상태 체크박스가 상태표 순서 + 상태 미지정(그런 과제가 있음)으로, 모두 켠 채 서지 않았다');
         //  상태를 더하면 체크박스가 따라온다(켜진 채)
         B.w.__applyCodes(JSON.stringify(SECTIONS), JSON.stringify(STATUSES.concat([{ id: 9, name: '보류' }]))); await settle(10);
         assert.deepStrictEqual(boxes().map((x) => x[0]), ['1', '2', '3', '9', '__none__'], '상태를 더했는데 체크박스가 따라오지 않는다');

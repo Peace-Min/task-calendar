@@ -45,10 +45,11 @@ test('(M) linkifyHtml 변이: 끝 문장부호를 안 빼거나 이스케이프�
 });
 
 // ══ (S) 적용 자리와 클릭 ══════════════════════════════════════════════
+//  2026-11-05(docs/PC-WATCH-2.md §7.1): 개인 상세와 할 일 메모는 날짜 패널의 들여쓴 상세(dpEvDetHtml, dpTdDetHtml)로 옮겼다
 test('(S) 세 메모 자리가 linkifyHtml 을 쓴다(개인 상세, 과제 일정 상세, 할 일 메모)', () => {
-  assert.ok(app.includes('<div class="card-memo">${linkifyHtml(e.memo)}</div>'), '개인 상세 메모');
+  assert.ok(extractFunction(app, 'dpEvDetHtml').includes('<div class="dp-det-memo">${linkifyHtml(e.memo)}</div>'), '개인 상세 메모');
   assert.ok(app.includes("'<div class=\"pcd-memo\" tabindex=\"0\">' + linkifyHtml(e.memo) + '</div>'"), '과제 일정 상세 메모');
-  assert.ok(app.includes('<div class="todo-memo"${editAttr}>${linkifyHtml(t.note)}</div>'), '할 일 메모');
+  assert.ok(extractFunction(app, 'dpTdDetHtml').includes('>${linkifyHtml(memo)}</div>'), '할 일 메모');
 });
 test('(S) 클릭: 잡기 단계에서 막고(고치기로 번지지 않게) openMemoLink 하나로 연다. 창마다 길이 다르다', () => {
   assert.ok(/document\.addEventListener\('click', ev => \{\n  const a = ev\.target && ev\.target\.closest && ev\.target\.closest\('a\.memo-link'\);\n  if\(!a\) return;\n  ev\.preventDefault\(\); ev\.stopPropagation\(\);\n  openMemoLink\(a\.dataset\.url\);\n\}, true\);/.test(app), '잡기 단계 클릭 처리가 없다');

@@ -92,7 +92,7 @@ const statics = {
     assert.ok(!/\bgitaCat\b/.test(code), 'gitaCat(미분류를 기타 과제로 병합)이 남아 있다');
     assert.ok(!app.includes('rcard-hnote'), '미분류 기타 행 전용 안내(.rcard-hnote)가 남아 있다');
     assert.ok(!/'미분류'/.test(fnBody(app, 'fillCatSelect')), "과제 선택 상자의 기본 빈 선택지 '미분류' 가 남아 있다");
-    assert.ok(!/과제 없음/.test(fnBody(app, 'todoEditHtml')), "할 일 편집의 '과제 없음' 선택지가 남아 있다");
+    assert.ok(!app.includes('function todoEditHtml('), '패널 안 할 일 수정 폼(todoEditHtml)이 남아 있다(2026-11-05 [+ 추가] 창의 할 일 수정으로 옮김)');
     assert.ok(!/과제 없음/.test(fnBody(app, 'openQuickAdd')), "빠른 추가의 '과제 없음' 선택지가 남아 있다");
     assert.ok(!/'미분류'/.test(fnBody(app, 'sRowHtml')), "검색 결과가 과제 없는 기록을 '미분류' 라고 부른다");
     assert.ok(!/categoryId = null/.test(fnBody(app, 'deleteCategory')), "deleteCategory 가 아직 참조를 null('미분류')로 푼다");
@@ -376,10 +376,12 @@ if (!JSDOM) {
         W.ev("openQuickAdd('2026-10-05');");
         assert.ok(!optVals('#qaCat').includes(''), '#qaCat 에 빈 선택지(과제 없음)가 있다');
         assert.strictEqual(W.ev("$('#qaCat').value"), 'c-e', '빠른 추가의 기본 과제가 기타가 아니다');
-        //  할 일 인라인 편집 — 빈 선택지 없음, 과제가 빈 할 일은 기타가 선택된다
-        const te = W.ev("todoEditHtml(todoById('t-n'))");
-        assert.ok(!/<option value="">/.test(te), '할 일 편집에 빈 선택지(과제 없음)가 있다');
-        assert.ok(/<option value="c-e" selected>/.test(te), '과제가 빈 할 일 편집에서 기타가 선택되지 않는다');
+        //  할 일 수정([+ 추가] 창, PC-WATCH-2 §7.1) — 빈 선택지 없음, 과제가 빈 할 일은 기타가 선택된다
+        W.ev("closeModal('#quickAdd'); openTodoEdit('t-n');");
+        assert.strictEqual(W.ev("$('#qaEditTitle').textContent"), '할 일 수정');
+        assert.ok(!optVals('#qaCat').includes(''), '할 일 수정에 빈 선택지(과제 없음)가 있다');
+        assert.strictEqual(W.ev("$('#qaCat').value"), 'c-e', '과제가 빈 할 일 수정에서 기타가 선택되지 않는다');
+        W.ev("closeModal('#quickAdd');");
         //  데이터 함수 — 마지막 방어선
         assert.strictEqual(W.ev("addEntry({ date:'2026-10-06', title:'빈 과제', categoryId:'' }).categoryId"), 'c-e', 'addEntry 가 빈 과제를 기타로 채우지 않는다');
         assert.strictEqual(W.ev("addEntry({ date:'2026-10-06', title:'없음', categoryId:null }).categoryId"), 'c-e');

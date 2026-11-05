@@ -264,14 +264,12 @@ header.topbar .nav{flex-wrap:wrap;row-gap:6px}   /* 자리가 모자라면 보�
 .fb-opts:focus .fb-opt.act{box-shadow:inset 0 0 0 2px var(--accent)}
 .fb-pop mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px}
 .fb-none{padding:10px 8px;color:var(--muted)}
-/* 공용 고르기 목록의 묶음(관심 과제 추가 창 [참여자], docs/PC-WATCH-2.md §4): 묶음 머리(펼치기, 묶음 전체 체크, 일부면 반쯤), 들여 쓴 사람 줄. 팝업은 창 안에 고정 자리 */
-.fb-pop.fb-pop-who{position:fixed}
-.fb-opt.fb-gh{font-weight:600}
-.fb-opt.fb-gh .n{font-weight:400}
-.fb-car{width:12px;flex:none;text-align:center;color:var(--muted);font-size:var(--fs-micro)}
-.fb-opt.fb-sub{padding-left:28px}
-.fb-opt.fb-gh.mixed .fb-ind{border-color:var(--accent-fill);background:var(--accent-fill)}
-.fb-opt.fb-gh.mixed .fb-ind::after{content:'';width:8px;height:2px;border-radius:1px;background:var(--on-accent)}
+/* 관심 과제 추가 창 [참여자] 팝업(docs/PC-WATCH-2.md §7.3): 겉은 개인 보기 팝업(찾기 칸, 전체 선택/해제), 속은 다른 사람 일정 보기 조직도(.pk-org2, .pk-tree, .pk-olist)를
+   체크 모드로(줄 체크 .pk-mpick, 전원 .pk-all, 고른 사람이 있는 노드 점 .pk-dotsel). 창 안에 고정 자리, 본문 높이는 열 때 한 번 정한다 */
+.fb-pop.fb-pop-who{position:fixed;overflow:hidden}
+.fb-pop-who .pk-body{flex:none;display:flex;flex-direction:column;overflow:hidden;margin:0;padding:6px 8px 8px}
+.fb-pop-who .pk-org2{height:auto;flex:1 1 auto}
+.fb-pop-who .pk-body > .pk-olist{flex:1 1 auto;border:1px solid var(--line);border-radius:var(--r-sm)}
 .fb-ind{width:15px;height:15px;flex:none;border:1.5px solid var(--ctl-border);border-radius:3px;display:inline-grid;place-items:center;background:var(--panel)}
 .fb-ind svg{width:10px;height:10px;display:none;color:var(--on-accent)}
 .fb-opt[aria-selected="true"] .fb-ind{border-color:var(--accent-fill);background:var(--accent-fill)}
@@ -503,8 +501,20 @@ body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 �
 .dp-er-ovl{flex:none;display:inline-flex;color:var(--ovl-ink)}
 .dp-er-ovl .ic{width:12px;height:12px}
 .dp-er.open .dp-er-t{white-space:normal;overflow-wrap:anywhere;font-weight:600}
-.dp-er.open > .card{margin:2px 0 6px}
-.dp-er.open > .card .card-title{display:none}
+.dp-er.open .dp-er-b,.dp-todos .todo-row.open{background:var(--accent-soft)}   /* 펼친 줄만 옅은 강조 바탕(§7.1). 상세까지 칠하면 다시 상자처럼 보인다(2026-11-05 실제 위젯 점검) */
+.dp-er.flash{animation:flashAnim 1.2s ease-out 2}
+.dp-todos .todo-text[data-dp]{cursor:pointer}
+.dp-todos .todo-text[data-dp]:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-radius:2px}
+/* 펼친 줄 아래 들여쓴 상세(상자 없음, docs/PC-WATCH-2.md §7.1): 일정(.dp-edet)과 할 일(.dp-tdet)이 같은 모양. 있는 줄만 나온다 */
+.dp-det{display:flex;flex-direction:column;gap:2px;margin:2px 0 6px 15px;padding:2px 6px 2px 8px;border-left:1px solid var(--line);font-size:var(--fs-meta);color:var(--muted);line-height:1.5}
+.dp-todos .dp-det{margin-left:24px}
+.dp-det-ln{display:flex;align-items:flex-start;gap:6px;min-width:0;overflow-wrap:anywhere}
+.dp-det-ln .ic{width:12px;height:12px;flex:none;margin-top:3px}
+.dp-det-ovl{color:var(--ovl-ink)}
+.dp-det-dot{flex:none;width:8px;height:8px;border-radius:50%;margin:5px 2px 0}
+.dp-det-memo{color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
+.dp-det-ac{display:flex;gap:12px;margin-top:2px}
+.dp-det-ac .link{font-size:var(--fs-meta)}
 .dp-more{display:block;width:calc(100% - 32px);margin:0 16px 12px;padding:4px;border:1px dashed var(--line-2);border-radius:var(--r-sm);background:none;font:inherit;font-size:var(--fs-meta);color:var(--accent-2);cursor:pointer}
 .dp-more:hover{border-color:var(--accent);background:var(--accent-soft)}
 .dp-more:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
@@ -529,6 +539,17 @@ body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 �
 .ta-grp .todo-row[data-go]:not([data-go=""]){cursor:pointer}
 .ta-grp .todo-row[data-go]:not([data-go=""]):hover{background:var(--hover-bg)}
 .ta-none{padding:6px 0;color:var(--muted);font-size:var(--fs-meta)}
+/* 과제별 소제목(§7.2): 누르면 그 과제만 접힘. 색점은 소제목에만(줄에는 없다) */
+.ta-pj{display:flex;align-items:center;gap:6px;width:100%;margin:6px 0 0;padding:4px 2px;border:0;border-bottom:1px solid var(--line);background:none;font:inherit;font-size:var(--fs-meta);font-weight:600;color:var(--text);text-align:left;cursor:pointer;border-radius:var(--r-sm) var(--r-sm) 0 0}
+.ta-pj:hover{background:var(--hover-bg)}
+.ta-pj:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.ta-pj-tw{flex:none;width:12px;font-size:var(--fs-micro);color:var(--faint-text)}
+.ta-pj-dot{flex:none;width:8px;height:8px;border-radius:50%}
+.ta-pj-dot.ta-pj-none{background:none;border:1.5px solid var(--faint);box-sizing:border-box}
+.ta-pj-nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ta-pj-n{flex:none;font-weight:400;color:var(--muted)}
+.ta-pj-old{flex:none;margin-left:auto;font-weight:400;color:var(--danger-text)}
+.ta-pj + .dp-todos .todo-row:first-child{border-top:none}
 .dp-empty{
   padding:36px 20px;text-align:center;color:var(--muted);font-size:var(--fs-body);line-height:1.8;
 }
@@ -827,8 +848,16 @@ body.cat-dragging,body.cat-dragging *{cursor:grabbing!important;user-select:none
 .ca-who .k{color:var(--muted)}
 .ca-who.act{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-2)}
 .ca-who.act .k{color:var(--accent-2)}
-.off-filters .seg.ca-wo{flex:0 0 auto;margin-left:auto}
-.ca-grid.ca-w{grid-template-columns:minmax(0,1.8fr) minmax(0,1fr) 64px minmax(0,1.2fr) 84px 96px}
+.ca-stsep{width:1px;height:16px;background:var(--line-2);flex:none}   /* 상태 체크 줄 끝, 일정 없는 과제 숨김 앞 세로 구분선(§7.3) */
+#catAddModal .ca-strow .check{margin:0}
+.ca-grid.ca-w{grid-template-columns:28px minmax(0,1.8fr) minmax(0,1fr) 64px minmax(0,1.2fr) 84px 96px}
+.ca-c-no{text-align:right;color:var(--faint-text);font-variant-numeric:tabular-nums}
+/* 정렬 머리(앱 공용 sortHeadHtml): 글자 단추 + ▼ ▲ */
+.sort-h{display:inline-flex;align-items:center;gap:3px;border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;border-radius:var(--r-sm)}
+.sort-h:hover{color:var(--text)}
+.sort-h.on{color:var(--accent-2)}
+.sort-h:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sort-ar{font-size:var(--fs-micro);min-width:.8em}
 .ca-w .ca-c-mem{display:flex;align-items:baseline;gap:0;white-space:nowrap}
 .ca-mbc{flex:none;border:0;background:none;padding:0;color:var(--accent-2);font:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .ca-mbc:hover,.ca-mbc:focus-visible{text-decoration:none}
@@ -841,13 +870,13 @@ body.cat-dragging,body.cat-dragging *{cursor:grabbing!important;user-select:none
 .ca-watching{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-2);min-width:74px}
 .ca-who:focus-visible,.ca-mbc:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @container (max-width:679px){
-  .ca-grid.ca-w{grid-template-columns:minmax(0,1.5fr) 30px minmax(0,1.2fr) 70px 84px}
+  .ca-grid.ca-w{grid-template-columns:24px minmax(0,1.5fr) 30px minmax(0,1.2fr) 70px 84px}
   .ca-w .ca-c-cust{display:none}
   .ca-w .ca-hitn{display:none}
   .ca-x .x-cust{display:block}
 }
 @container (max-width:359px){
-  .ca-grid.ca-w{grid-template-columns:minmax(0,1fr) 84px}
+  .ca-grid.ca-w{grid-template-columns:22px minmax(0,1fr) 84px}
   .ca-w .ca-c-st,.ca-w .ca-c-mem,.ca-w .ca-c-rec{display:none}
 }
 /* 장소 칸(일정 입력 창 #fLoc, 빠른 추가 #qaLoc): 직접 입력 + 공용 회의실 추천 펼침 목록(콤보박스, docs/SHARED-ROOMS.md A안).
@@ -1611,10 +1640,6 @@ details.vg-more dd{margin:0;color:var(--text)}
 .todo-check{flex:none;border:none;background:none;cursor:pointer;font-size:16px;line-height:1;color:var(--accent);padding:0}
 .todo-main{flex:1;min-width:0}
 .todo-text{font-size:var(--fs-body);word-break:keep-all;overflow-wrap:anywhere;cursor:text}
-.todo-memo{font-size:var(--fs-meta);color:var(--muted);line-height:1.5;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text}
-.todo-daymemo{font-size:var(--fs-meta);color:var(--accent-2);line-height:1.5;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text}
-.todo-row.done .todo-memo{color:var(--faint-text)}
-.todo-row.done .todo-daymemo{color:var(--faint-text)}
 .todo-star{color:var(--star);margin-right:2px}
 .todo-row.done .todo-text{text-decoration:line-through;color:var(--faint-text)}
 .todo-due{flex:none;font-size:var(--fs-meta);color:var(--muted);font-variant-numeric:tabular-nums}
@@ -1623,17 +1648,6 @@ details.vg-more dd{margin:0;color:var(--text)}
 .todo-dot{flex:none;width:8px;height:8px;border-radius:50%}
 .todo-del{flex:none;border:none;background:none;color:var(--muted);cursor:pointer;font-size:13px;padding:2px 5px;border-radius:var(--r-sm)}
 .todo-del:hover{color:var(--danger);background:var(--danger-soft)}
-/* 인라인 편집 */
-.todo-edit{border-top:1px solid var(--line);padding:9px 0;display:flex;flex-direction:column;gap:7px}
-.todo-edit .te-text{border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-emph);font-family:inherit;background:var(--panel);color:var(--text)}
-.todo-edit .te-note{width:100%;box-sizing:border-box;margin-top:6px;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;line-height:1.55;background:var(--panel);color:var(--text);resize:vertical}
-.todo-edit .te-daynote{width:100%;box-sizing:border-box;border:1px solid var(--accent-2);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;line-height:1.55;background:#f3fbf7;color:var(--text);resize:vertical}
-.te-daynote-lb{font-size:var(--fs-micro);color:var(--accent-2);font-weight:700;margin-top:2px}
-.te-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.te-row input[type=date],.te-row select{border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 7px;font-size:var(--fs-meta);font-family:inherit;background:var(--panel);color:var(--text)}
-.te-star{font-size:var(--fs-meta);color:var(--muted);display:inline-flex;align-items:center;gap:3px}
-.te-actions{display:flex;align-items:center;gap:6px}
-.te-spacer{flex:1}
 .nd-empty-hint{display:block;margin-top:10px;font-size:var(--fs-meta);color:var(--muted);line-height:1.7}
 .nd-tools{display:flex;gap:6px;margin:8px 0 2px;align-items:center}
 .dp-dayctx{font-size:var(--fs-meta);font-weight:700;color:var(--muted);padding:8px 0 5px;border-bottom:1px solid var(--line);margin-bottom:5px}
@@ -1700,7 +1714,6 @@ body[data-peer] .actions > #btnSearch{ display:inline-flex !important }
       여기서 감추고, 렌더(dayHeadHtml, todoRowHtml)와 변경 함수(peerReadOnly)에서도 막는다.  */
 body[data-peer] #btnAddHere,
 body[data-peer] .todo-del,
-body[data-peer] .todo-edit,
 /*  ★ 카드의 「수정 · 삭제」. blocklist 를 allowlist 로 뒤집을 때 옛 [data-edit] 규칙과 함께
     이 자리가 빠져 그대로 노출됐다(2026-09-03 캡처에서 발견). 남의 일정 카드에 삭제 버튼이
     붙어 있는 것은 그 자체로 잘못된 약속이다 — 눌러도 DB 는 안 바뀌지만(hpost 봉인),
@@ -1713,9 +1726,7 @@ body[data-peer] .cell:hover{ background:inherit }
 /*  할 일 행도 읽기 전용으로 보인다 — 체크·별은 상태 표시일 뿐 누르는 것이 아니다(todoRowHtml 이 span 으로 그린다).  */
 body[data-peer] .todo-check,
 body[data-peer] .todo-star-btn,
-body[data-peer] .todo-text,
-body[data-peer] .todo-memo,
-body[data-peer] .todo-daymemo{ cursor:default }
+body[data-peer] .todo-text{ cursor:default }
 /*  ── 열람 창(WINDOW-UI §4) — 호스트의 독립 창(PeerWindow)이 이 파일을 ?peerwin=1 로 띄운다 ──────────
     ★ 그 창에서는 메인 화면을 통째로 감추고 #peerWin(머리줄 + 열람 프레임)만 창 전체에 편다(html[data-peerwin]).
       보이는 것은 #peerWin, 그 안으로 옮겨 가는 사람 고르기(#peerPicker), 토스트뿐이다(allowlist · 새 UI 가 생겨도 안 보인다).
@@ -1806,6 +1817,15 @@ body.vg-on #peerWin{ filter:saturate(.6) blur(1.5px) }
 .pk-sub:hover{ background:var(--hover-bg) }
 .pk-sub .pk-gt{ flex:none; margin-left:8px; color:var(--muted) }
 .pk-subsep{ border-top:1px solid var(--line); margin:6px 0 }
+/* 체크 모드(관심 과제 추가 창 [참여자], docs/PC-WATCH-2.md §7.3). 한 명 고르기(다른 사람 일정 보기)의 모양은 그대로, 여기서 더하는 것만 */
+.pk-mpick{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0;padding:5px 6px;cursor:pointer;border-radius:var(--r-sm)}
+.pk-mpick input,.pk-all input{width:15px;height:15px;flex:none;margin:0;accent-color:var(--accent)}
+.pk-mtxt{flex:1;min-width:0}
+.pk-pn{flex:none;min-width:18px;text-align:right;font-size:var(--fs-meta);color:var(--muted)}
+.pk-mpick.zero .pk-mtxt,.pk-mpick.zero .pk-pn,.pk-mpick.zero .git-opt{color:var(--faint-text)}
+.pk-all{display:flex;align-items:center;gap:8px;padding:6px 6px 8px;border-bottom:1px solid var(--line);font-size:var(--fs-body);cursor:pointer}
+.pk-all .pk-cnt{color:var(--faint-text);font-weight:400}
+.pk-dotsel{flex:none;width:6px;height:6px;border-radius:50%;background:var(--accent)}
 /* 좁은 폭 — 팝오버가 화면 폭을 넘지 않게(좌우 8px). 자리는 JS 가 잰다. */
 @media (max-width:440px){ .pk-pop{ width:calc(100vw - 16px) } }
 /* 좁은 폭 터치 하한: 팝오버의 작은 글자 단추(전체 지우기, 조직도로, 이동 경로)도 .ta-tog 처럼 32px 로 */
@@ -2337,7 +2357,6 @@ html.dark{
   --wknd-sun-bg:#2f2838; --wknd-sat-bg:#252c41;   /* = --sun/--sat 9% + --panel(#1a2031) — .num.sun 5.74:1 · .num.sat 5.72:1 */
 }
 /* 남은 건 라이트 전용 '틴트' surface 둘뿐 — 나머지는 베이스가 var(--panel)이라 리맵만으로 따라온다(열거 목록 삭제) */
-html.dark .todo-edit .te-daynote{ background:var(--panel) }
 html.dark .btn:hover,html.dark .menu button:hover,html.dark .cell:hover,html.dark .x:hover,html.dark .s-row:hover,html.dark .imp-box{ background:var(--fill) }
 html.dark .sk-line,html.dark .sk-cell{ background:var(--border-hover) }
 html.dark .btn:hover,html.dark .nd-toggle:hover{ border-color:var(--border-hover) }
@@ -3668,6 +3687,8 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
       <div class="pcf-err" id="qaErr" role="alert"></div>
     </div>
     <div class="qa-foot">
+      <button type="button" class="btn danger hidden" id="qaDel">삭제</button>
+      <span class="spacer hidden" id="qaDelSp"></span>
       <button type="button" class="btn" data-close>취소</button>
       <button type="button" class="btn primary" id="qaSave">저장</button>
     </div>
@@ -3883,12 +3904,10 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
         <div class="off-filters">
           <select id="caCustomer" aria-label="발주처 필터"></select>
           <select id="caSection" aria-label="구분 필터"></select>
-          <!-- 보기 모드(다른 과제 보기)에서만 보이는 셋: [참여자] 여러 명 고르기, 일정 있는 과제만, 정렬. 과제 추가 모드에서는 숨는다(CSS .ca-wo) -->
+          <!-- 관심 과제 추가(보기 모드)에서만 보이는 것: [참여자] 여러 명 고르기, 상태 줄 끝의 일정 없는 과제 숨김. 과제 추가 모드에서는 숨는다(CSS .ca-wo) -->
           <span class="ca-wo"><button type="button" class="btn ca-who" id="caWho" aria-haspopup="dialog" aria-expanded="false"><span class="k">참여자</span> <b id="caWhoT">전체</b> ⌄</button></span>
-          <label class="check ca-wo"><input type="checkbox" id="caOnlyAct" checked> 일정 있는 과제만</label>
-          <div class="seg seg-auto ca-wo" id="caSort" role="group" aria-label="정렬"><button type="button" class="seg-b active" data-casort="act" aria-pressed="true">최근 활동순</button><button type="button" class="seg-b" data-casort="name" aria-pressed="false">이름순</button></div>
         </div>
-        <div class="ca-strow"><div class="off-stchk" id="caStChecks" role="group" aria-label="상태 거르기"></div><span class="ca-count" id="caCount" role="status" aria-live="polite" aria-atomic="true"></span></div>
+        <div class="ca-strow"><div class="off-stchk" id="caStChecks" role="group" aria-label="상태 거르기"></div><span class="ca-stsep ca-wo" aria-hidden="true"></span><label class="check ca-wo"><input type="checkbox" id="caOnlyAct" checked> 일정 없는 과제 숨김</label><span class="ca-count" id="caCount" role="status" aria-live="polite" aria-atomic="true"></span></div>
         <div class="ca-res" id="caList" role="table" aria-label="공식 과제 목록"></div>
       </div>
       <div class="ca-pane ca-own" id="caPaneOwn" role="tabpanel" aria-labelledby="caTabOwn" hidden>
@@ -8452,15 +8471,18 @@ function pkMineSection(body, md, unit){
     body.appendChild(pkNote('내 부서에 다른 사람이 없습니다'));
   }
 }
-//  G4 — 왼쪽 트리. 펼친 조직(__pk.open)의 하위만 그린다 · 고른 조직 = aria-selected · 로빙 tabindex(고른 조직 하나만 0).
+//  G4 — 왼쪽 트리. 펼친 조직(P.open)의 하위만 그린다 · 고른 조직 = aria-selected · 로빙 tabindex(고른 조직 하나만 0).
 //  ★ 트리 노드는 <button role="treeitem"> 이다(평평한 목록 + aria-level). ▸/▾ 는 그 안의 표시(data-act="twist" — 누르면 펼침만 바꾼다).
-function pkTreeEl(ix){
+//  ★ P = 조직도 상태 { org, unit, open, myUnit, mode, check, render }. 생략하면 사람 고르기(__pk). 관심 과제 추가 창의 [참여자](CAWP)가
+//    같은 트리와 목록을 체크 모드(P.check = { on(id), count(id), units: 고른 사람이 있는 조직 }로 쓴다(docs/PC-WATCH-2.md §7.3).
+function pkTreeEl(ix, P){
+  P = P || __pk;
   const nav = document.createElement('div');
   nav.className = 'pk-tree'; nav.setAttribute('role', 'tree'); nav.setAttribute('aria-label', '조직도');
-  const sel = __pk.unit, mine = __pk.myUnit;
+  const sel = P.unit, mine = P.myUnit;
   const walk = (names, depth) => {
     for(const n of names){
-      const ks = ix.kids.get(n) || [], open = __pk.open.has(n);
+      const ks = ix.kids.get(n) || [], open = P.open.has(n);
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'pk-node'; b.setAttribute('role', 'treeitem');
       b.dataset.act = 'unit'; b.dataset.unit = n; b.dataset.where = 'tree';
@@ -8473,6 +8495,7 @@ function pkTreeEl(ix){
       if(ks.length){ tw.dataset.act = 'twist'; tw.dataset.unit = n; tw.textContent = open ? '▾' : '▸'; }
       b.appendChild(tw);
       const nm = document.createElement('span'); nm.className = 'pk-nm'; nm.textContent = n; b.appendChild(nm);
+      if(P.check && P.check.units.has(n)){ const d = document.createElement('i'); d.className = 'pk-dotsel'; d.title = '고른 사람 있음'; b.appendChild(d); }   // 체크 모드: 고른 사람이 있는 조직
       if(mine && n === mine){ const s = document.createElement('span'); s.className = 'pk-mine'; s.textContent = '내 소속'; b.appendChild(s); }
       const nc = document.createElement('span'); nc.className = 'pk-nc'; nc.textContent = String(ix.count.get(n) || 0);
       const sr = document.createElement('span'); sr.className = 'sr-only'; sr.textContent = '명'; nc.appendChild(sr);
@@ -8488,7 +8511,8 @@ function pkTreeEl(ix){
   return nav;
 }
 //  G5·G6 — 오른쪽(좁으면 유일한) 목록: 경로(조상은 눌러서 이동) · 하위 조직 줄(이름 · N명 · ›) · 구분선 · 직속 사람 행(K4 와 같은 행).
-function pkUnitListEl(ix, unit){
+function pkUnitListEl(ix, unit, P){
+  P = P || __pk;
   const box = document.createElement('div'); box.className = 'pk-olist';
   const path = pkOrgPath(ix, unit);
   const cr = document.createElement('nav'); cr.className = 'pk-crumb'; cr.setAttribute('aria-label', '조직 경로');
@@ -8502,6 +8526,7 @@ function pkUnitListEl(ix, unit){
     }
   });
   box.appendChild(cr);
+  if(P.check){ const all = pkUnitMembers(ix, unit); if(all.length) box.appendChild(pkAllEl(unit, all, P)); }   // 체크 모드: 이 조직 전원(하위 조직 포함)
   const ks = ix.kids.get(unit) || [];
   for(const k of ks){
     const b = document.createElement('button');
@@ -8514,12 +8539,15 @@ function pkUnitListEl(ix, unit){
   const ms = ix.direct.get(unit) || [];
   if(ks.length && ms.length){ const sep = document.createElement('div'); sep.className = 'pk-subsep'; sep.setAttribute('role', 'separator'); box.appendChild(sep); }
   if(ms.length){
-    const favIds = new Set(pkList('Fav').map(x => x.loginId));
-    const viewing = (__pk.mode === 'modal' && __pv) ? String(__pv.loginId) : '';   // K9 — 조직도 목록에서도 「보는 중」 회색(G7)
-    const me = pkMe();
     const g = document.createElement('div'); g.setAttribute('role', 'group'); g.setAttribute('aria-label', unit + ' 사람');
     g.dataset.sec = 'Unit';
-    for(const m of ms) g.appendChild(pkRowEl(pkDirRow(m, favIds, viewing, me), null));
+    if(P.check) for(const m of ms) g.appendChild(pkCheckRowEl(m, P, false));   // 체크 모드: 줄마다 체크와 참여 과제 수
+    else {
+      const favIds = new Set(pkList('Fav').map(x => x.loginId));
+      const viewing = (P.mode === 'modal' && __pv) ? String(__pv.loginId) : '';   // K9 — 조직도 목록에서도 「보는 중」 회색(G7)
+      const me = pkMe();
+      for(const m of ms) g.appendChild(pkRowEl(pkDirRow(m, favIds, viewing, me), null));
+    }
     box.appendChild(g);
   }else if(!ks.length){
     box.appendChild(pkNote('이 조직에는 사람이 없습니다'));
@@ -8527,16 +8555,65 @@ function pkUnitListEl(ix, unit){
   return box;
 }
 //  G4–G6·G9 — 「조직도」 탭 본문. 넓으면 트리 | 목록 두 칸, 좁으면 목록 한 칸(경로를 따라 한 단계씩).
-function pkRenderOrg(body, wide){
-  if(__pk.status === 'loading'){ body.appendChild(pkNote('불러오는 중…', true)); return; }
-  if(__pk.status === 'fail' || !__pk.org){ body.appendChild(pkFailNote()); return; }   // G9 — K3 와 같은 문구·버튼
-  const ix = __pk.org;
-  if(!ix.roots.length || !ix.has(__pk.unit)){ body.appendChild(pkNote('조직 정보가 없습니다')); return; }
-  const list = pkUnitListEl(ix, __pk.unit);
+//  P(생략하면 __pk)와 list(오른쪽 칸을 바꿔 끼울 때, 체크 모드의 이름 찾기 결과)는 [참여자] 팝업이 쓴다.
+function pkRenderOrg(body, wide, P, list){
+  P = P || __pk;
+  if(P.status === 'loading'){ body.appendChild(pkNote('불러오는 중…', true)); return; }
+  if(P.status === 'fail' || !P.org){ body.appendChild(P === __pk ? pkFailNote() : pkNote(P.msg || '명부를 불러오지 못했습니다', true)); return; }   // G9 — K3 와 같은 문구·버튼
+  const ix = P.org;
+  if(!ix.roots.length || !ix.has(P.unit)){ body.appendChild(pkNote('조직 정보가 없습니다')); return; }
+  list = list || pkUnitListEl(ix, P.unit, P);
   if(!wide){ body.appendChild(list); return; }
   const g = document.createElement('div'); g.className = 'pk-org2';
-  g.appendChild(pkTreeEl(ix)); g.appendChild(list);
+  g.appendChild(pkTreeEl(ix, P)); g.appendChild(list);
   body.appendChild(g);
+}
+//  그 조직과 모든 하위 조직의 사람(명부 순서, 트리 순서). 체크 모드의 "전원"이 쓴다. 순환은 방문 집합이 멈춘다.
+function pkUnitMembers(ix, unit){
+  const out = [], seen = new Set();
+  const walk = (n) => {
+    if(seen.has(n)) return; seen.add(n);
+    for(const m of (ix.direct.get(n) || [])) out.push(m);
+    for(const k of (ix.kids.get(n) || [])) walk(k);
+  };
+  walk(String(unit));
+  return out;
+}
+//  체크 모드 한 줄: [체크] 이름 직급 (조직) ··· 참여 과제 수(0이면 흐리게). 줄 전체가 체크의 이름표라 어디를 눌러도 체크가 바뀐다.
+//  ★ DB 문자열(이름, 직급, 조직)은 textContent 로만 넣는다(pkRowEl 과 같은 규칙).
+function pkCheckRowEl(m, P, withOrg){
+  const id = String(m.loginId), c = P.check.count(id);
+  const row = document.createElement('div'); row.className = 'pk-row';
+  const lab = document.createElement('label'); lab.className = 'pk-mpick' + (c ? '' : ' zero');
+  lab.title = '참여 과제 ' + c + '개';
+  const cb = document.createElement('input'); cb.type = 'checkbox';
+  cb.dataset.act = 'pick'; cb.dataset.login = id; cb.checked = P.check.on(id);
+  lab.appendChild(cb);
+  const t = document.createElement('span'); t.className = 'pk-mtxt';
+  const line = document.createElement('span'); line.className = 'pk-line';
+  const nm = document.createElement('b'); nm.textContent = String(m.name || id); line.appendChild(nm);
+  if(m.title){ const x = document.createElement('span'); x.className = 'git-opt'; x.textContent = ' ' + m.title; line.appendChild(x); }
+  if(id === pkMe()){ const x = document.createElement('span'); x.className = 'pk-tag'; x.textContent = ' (나)'; line.appendChild(x); }
+  t.appendChild(line);
+  if(withOrg && m.orgUnit){ const o = document.createElement('span'); o.className = 'pk-org'; o.textContent = String(m.orgUnit); t.appendChild(o); }
+  lab.appendChild(t);
+  const n = document.createElement('span'); n.className = 'pk-pn'; n.textContent = String(c); lab.appendChild(n);
+  row.appendChild(lab);
+  return row;
+}
+//  체크 모드 목록 머리 "○○ 전원 n명"(그 조직과 하위 조직 전체). 일부만 골랐으면 반쯤(indeterminate).
+function pkAllEl(unit, members, P){
+  const k = members.filter(x => P.check.on(String(x.loginId))).length;
+  const lab = document.createElement('label'); lab.className = 'pk-all';
+  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.act = 'pickall'; cb.dataset.unit = unit;
+  cb.checked = k > 0 && k === members.length; cb.indeterminate = k > 0 && k < members.length;
+  lab.appendChild(cb);
+  const t = document.createElement('span');
+  const b = document.createElement('b'); b.textContent = unit; t.appendChild(b);
+  t.appendChild(document.createTextNode(' 전원 '));
+  const c = document.createElement('span'); c.className = 'pk-cnt'; c.textContent = members.length + '명'; t.appendChild(c);
+  lab.appendChild(t);
+  return lab;
 }
 //  다시 그린 뒤 포커스를 둘 곳(힌트). kind: 'tree'(그 조직 노드 · 없으면 목록) · 'list'(목록 첫 줄) · 'org'(넓으면 트리의 고른 조직, 좁으면 목록) · 'tab'.
 function pkFocusTarget(pop, hint){
@@ -8624,20 +8701,22 @@ function pkSetTab(tab){
   pkRender();
 }
 //  G4·G5 — 조직 고르기(트리 · 경로 · 하위 조직 줄 · 「조직도에서 다른 부서 ›」). 고른 조직까지(자신 포함) 펼친다.
-function pkSelectUnit(name, focusKind){
-  if(!__pk || !__pk.org || !__pk.org.has(name)) return;
-  __pk.unit = String(name);
-  for(const a of pkOrgPath(__pk.org, __pk.unit)) __pk.open.add(a);
-  __pk.focus = (focusKind === 'tree') ? { kind:'tree', unit:__pk.unit } : { kind:focusKind || 'list' };
-  pkRender();
+function pkSelectUnit(name, focusKind, P){
+  P = P || __pk;
+  if(!P || !P.org || !P.org.has(name)) return;
+  P.unit = String(name);
+  for(const a of pkOrgPath(P.org, P.unit)) P.open.add(a);
+  P.focus = (focusKind === 'tree') ? { kind:'tree', unit:P.unit } : { kind:focusKind || 'list' };
+  (P.render || pkRender)();
 }
 //  G4 — ▸/▾ 펼침만 바꾼다(고른 조직은 그대로). 포커스는 그 노드에 남는다.
-function pkToggleOpen(name){
-  if(!__pk || !__pk.org || !__pk.org.has(name)) return;
+function pkToggleOpen(name, P){
+  P = P || __pk;
+  if(!P || !P.org || !P.org.has(name)) return;
   const n = String(name);
-  if(__pk.open.has(n)) __pk.open.delete(n); else __pk.open.add(n);
-  __pk.focus = { kind:'tree', unit:n };
-  pkRender();
+  if(P.open.has(n)) P.open.delete(n); else P.open.add(n);
+  P.focus = { kind:'tree', unit:n };
+  (P.render || pkRender)();
 }
 //  G4·G9 — 명부를 새로 읽은 뒤 조직도의 처음 자리: 고른 조직이 아직 있으면 그대로(다시 시도), 없으면 내 부서(모르면 첫 루트) ·
 //    펼침 = 루트 전부 + 그 조직까지의 경로.
@@ -8838,24 +8917,25 @@ function pkOnClick(ev){
 //  G8 — 트리 키보드(WAI-ARIA tree 관례): ↓/↑ 이동 · → 펼치기(펼쳐져 있으면 첫 하위로) · ← 접기(접혀 있으면 부모로) ·
 //    Home/End · Enter/Space 고르기. 이동만 할 때는 다시 그리지 않고 로빙 tabindex 만 옮긴다. 맨 위에서 ↑ 는 검색 칸으로(K11 과 같은 출구).
 //    반환 true = 처리했다.
-function pkTreeKey(ev, node, inp){
+function pkTreeKey(ev, node, inp, P){
+  P = P || __pk;
   const k = ev.key;
   if(!['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End', 'Enter', ' '].includes(k)) return false;
   ev.preventDefault(); ev.stopPropagation();
-  const ix = __pk.org; if(!ix) return true;
+  const ix = P.org; if(!ix) return true;
   const nodes = [...node.parentElement.querySelectorAll('.pk-node')], i = nodes.indexOf(node);
-  const n = node.dataset.unit, ks = ix.kids.get(n) || [], open = __pk.open.has(n);
+  const n = node.dataset.unit, ks = ix.kids.get(n) || [], open = P.open.has(n);
   const move = (el) => { if(!el) return; for(const b of nodes) b.tabIndex = (b === el) ? 0 : -1; try{ el.focus(); }catch(_){} };
   if(k === 'ArrowDown') move(nodes[i + 1]);
   else if(k === 'ArrowUp'){ if(i > 0) move(nodes[i - 1]); else try{ inp.focus(); }catch(_){} }
   else if(k === 'Home') move(nodes[0]);
   else if(k === 'End') move(nodes[nodes.length - 1]);
-  else if(k === 'ArrowRight'){ if(ks.length && !open) pkToggleOpen(n); else if(ks.length) move(nodes[i + 1]); }
+  else if(k === 'ArrowRight'){ if(ks.length && !open) pkToggleOpen(n, P); else if(ks.length) move(nodes[i + 1]); }
   else if(k === 'ArrowLeft'){
-    if(ks.length && open) pkToggleOpen(n);
+    if(ks.length && open) pkToggleOpen(n, P);
     else { const p = ix.parent.get(n); if(p) move(nodes.find(b => b.dataset.unit === p)); }
   }
-  else pkSelectUnit(n, 'tree');                               // Enter / Space
+  else pkSelectUnit(n, 'tree', P);                            // Enter / Space
   return true;
 }
 //  K11 — 검색 칸에서 ↓/↑ 로 행(여는 버튼)을 오가고 끝에서는 검색 칸으로 돌아온다 · 검색 칸 Enter = 첫 「열 수 있는」 행.
@@ -11357,7 +11437,6 @@ let filterCats = null;
 //    viewKinds = 달력에 보일 기록 종류. 한 줄 고르기 [전체 | 일정 | 할 일] 이라 둘 다 꺼진 상태는 만들 수 없다. 보기 옵션(완료 표시, 중요만)은 없다(끝낸 할 일은 늘 보인다).
 //    내 창은 계정별로 이 PC 에 기억한다(viewSave, viewRestore). 열람 창은 기억하지 않는다(열 때마다 처음대로).
 let viewKinds = { ev: true, td: true };
-let editingTodoId = null;    // 인라인 편집 중인 TODO id
 let panelSheetOpen = false;  // 좁은 폭(<=760)에서 하단 시트 열림 여부
 let searchMode = 'keyword';
 let pendingImport = null;
@@ -11538,34 +11617,31 @@ function filterMarkQ(s, q){
   const i = s.toLowerCase().indexOf(q);
   return i < 0 ? esc(s) : esc(s.slice(0, i)) + '<mark>' + esc(s.slice(i, i + q.length)) + '</mark>' + esc(s.slice(i + q.length));
 }
-/* ── 공용 고르기 목록(docs/FILTER-MULTI.md, docs/PC-WATCH-2.md §4) ──────────────────────────────
+/* ── 공용 고르기 목록(docs/FILTER-MULTI.md, docs/PC-WATCH-2.md §4, §7.3) ──────────────────────────────
    보기 팝업의 과제 목록 부분(찾기 칸, [전체 선택] [전체 해제], .fb-opts 다중 선택 목록, 키보드와 aria)을 "목록 출처"(src)를 받는 함수로 뺐다.
-   S = 열린 팝업 상태 { pop, q, lb, items, act, actId, src }. 개인 보기 팝업은 FB(출처 FB_SRC), 관심 과제 추가 창의 [참여자]는 CAWP(출처 CAW_WHO_SRC).
-   src = { idp: 항목 id 머리, rows(q): 그릴 줄, none(): 빈 목록 글, canAll(), canNone(), toggle(id), setAll(on), apply(),
-           묶음이 있으면 toggleGroup(key), expand(key, open) }.
-   줄 = { kind:'opt', id, name, n, dot(색, 없으면 점 없음), tip, on, sub } | { kind:'gap' } | { kind:'grp', key, name, n, on(true, false, 'mixed'), open, tip }.
+   S = 열린 팝업 상태 { pop, q, lb, items, act, actId, src }. 지금은 개인 보기 팝업(FB, 출처 FB_SRC)이 쓴다.
+   관심 과제 추가 창의 [참여자]는 겉(fbHeadMarkup 의 찾기 칸과 [전체 선택] [전체 해제], fbPopEdgeKey 의 Esc 와 Tab)만 같이 쓰고
+   속은 다른 사람 일정 보기의 조직도(pkTreeEl, pkUnitListEl)를 체크 모드로 쓴다(caWhoOpen).
+   src = { idp: 항목 id 머리, rows(q): 그릴 줄, none(): 빈 목록 글, canAll(), canNone(), toggle(id), setAll(on), apply() }.
+   줄 = { kind:'opt', id, name, n, dot(색, 없으면 점 없음), tip, on } | { kind:'gap' }.
    ★ 개인 보기 팝업의 마크업, 클래스, id, aria, 키보드는 이 함수로 옮기기 전과 같다(시험 filter-multi, personal-panel). */
-function fbListMarkup(id, ph, label){
+//  겉: 찾기 칸과 [전체 선택] [전체 해제]. id = 찾기 칸이 가리키는 목록(aria-controls)
+function fbHeadMarkup(id, ph){
   return `<div class="fb-ph"><input class="fb-q" type="text" role="searchbox" autocomplete="off" placeholder="${ph}" aria-label="${ph}" aria-controls="${id}"></div>`
-    + `<div class="fb-acts"><button type="button" class="fb-lk" data-act="all">전체 선택</button><button type="button" class="fb-lk" data-act="none">전체 해제</button></div>`
+    + `<div class="fb-acts"><button type="button" class="fb-lk" data-act="all">전체 선택</button><button type="button" class="fb-lk" data-act="none">전체 해제</button></div>`;
+}
+function fbListMarkup(id, ph, label){
+  return fbHeadMarkup(id, ph)
     + `<div class="fb-opts" role="listbox" tabindex="0" id="${id}" aria-label="${label}" aria-multiselectable="true"></div>`;
 }
-//  항목의 열쇠: 사람이나 과제는 data-id, 묶음 머리는 g:묶음(같은 이름의 사람과 묶음이 겹치지 않게)
-function fbKey(o){ return o.dataset.id != null ? o.dataset.id : 'g:' + o.dataset.grp; }
-//  목록 다시 채우기. initial 이 아니면 스크롤과 활성 항목(열쇠로)을 그대로 둔다(켜고 끌 때 흔들리지 않게)
+//  목록 다시 채우기. initial 이 아니면 스크롤과 활성 항목(id 로)을 그대로 둔다(켜고 끌 때 흔들리지 않게)
 function fbFill(S, initial){
   if(!S.pop) return;
   const src = S.src, q = S.q.value.trim().toLowerCase(), rows = src.rows(q);
   let i = 0;
   const h = rows.map(r => {
     if(r.kind === 'gap') return '<div class="fb-gap" role="presentation"></div>';
-    if(r.kind === 'grp'){
-      //  묶음 머리: 펼치기(▸ ▾), 묶음 전체 체크(일부면 반쯤), 이름, 사람 수. 체크 칸을 누르면 묶음 전체, 나머지를 누르면 펼치기
-      return `<div class="fb-opt fb-gh${r.on === 'mixed' ? ' mixed' : ''}" role="option" id="${src.idp}${i++}" data-grp="${esc(r.key)}" aria-selected="${r.on === true}" aria-expanded="${!!r.open}" title="${esc(r.tip)}">`
-        + `<span class="fb-car" aria-hidden="true">${r.open ? '▾' : '▸'}</span><span class="fb-ind" aria-hidden="true">${FB_CHECK}</span>`
-        + `<span class="nm">${esc(r.name)}</span><span class="n">${r.n}</span></div>`;
-    }
-    return `<div class="fb-opt${r.n ? '' : ' zero'}${r.sub ? ' fb-sub' : ''}" role="option" id="${src.idp}${i++}" data-id="${esc(r.id)}" aria-selected="${r.on}" title="${esc(r.tip)}">`
+    return `<div class="fb-opt${r.n ? '' : ' zero'}" role="option" id="${src.idp}${i++}" data-id="${esc(r.id)}" aria-selected="${r.on}" title="${esc(r.tip)}">`
       + `<span class="fb-ind" aria-hidden="true">${FB_CHECK}</span>` + (r.dot != null ? `<span class="dot" style="background:${validColor(r.dot)}"></span>` : '')
       + `<span class="nm">${filterMarkQ(r.name, q)}</span><span class="n">${r.n}</span></div>`;
   }).join('');
@@ -11574,7 +11650,7 @@ function fbFill(S, initial){
   if(!initial) S.lb.scrollTop = st;
   S.items = [...S.lb.querySelectorAll('.fb-opt')];
   let a = -1;
-  if(!initial && S.actId) a = S.items.findIndex(o => fbKey(o) === S.actId);
+  if(!initial && S.actId) a = S.items.findIndex(o => o.dataset.id === S.actId);
   if(a < 0 && initial) a = S.items.findIndex(o => o.getAttribute('aria-selected') === 'true');
   if(a < 0 && S.items.length) a = 0;
   fbSetAct(S, a, initial);
@@ -11585,24 +11661,14 @@ function fbSetAct(S, i, scroll){
   S.act = i;
   S.items.forEach((o, j) => o.classList.toggle('act', j === i));
   const o = S.items[i];
-  if(o){ S.actId = fbKey(o); S.lb.setAttribute('aria-activedescendant', o.id); if(scroll !== false) o.scrollIntoView({ block: 'nearest' }); }
+  if(o){ S.actId = o.dataset.id; S.lb.setAttribute('aria-activedescendant', o.id); if(scroll !== false) o.scrollIntoView({ block: 'nearest' }); }
   else { S.actId = null; S.lb.removeAttribute('aria-activedescendant'); }
 }
-//  켜고 끄기: 항목 하나, 또는 묶음 머리면 그 묶음 전체
 function fbPick(S, o){
-  if(!o) return;
-  if(o.dataset.grp != null && S.src.toggleGroup){ S.actId = fbKey(o); S.src.toggleGroup(o.dataset.grp); S.src.apply(); return; }
-  if(!o.dataset.id) return;
+  if(!o || !o.dataset.id) return;
   S.actId = o.dataset.id;
   S.src.toggle(o.dataset.id);
   S.src.apply();
-}
-//  묶음 펼치기와 접기(open 이 없으면 뒤집기). 목록만 다시 채운다
-function fbExpand(S, o, open){
-  if(!o || o.dataset.grp == null || !S.src.expand) return;
-  S.actId = fbKey(o);
-  S.src.expand(o.dataset.grp, open == null ? o.getAttribute('aria-expanded') !== 'true' : !!open);
-  fbFill(S, false);
 }
 //  팝업 안 누름(목록 부분): [전체 선택] [전체 해제], 항목. 처리했으면 true
 function fbListClick(S, t){
@@ -11615,7 +11681,7 @@ function fbListClick(S, t){
   const o = t.closest('.fb-opt');
   if(o){
     fbSetAct(S, S.items.indexOf(o), false);
-    if(o.dataset.grp != null && !t.closest('.fb-ind')) fbExpand(S, o); else fbPick(S, o);
+    fbPick(S, o);
     if(S.lb) S.lb.focus({ preventScroll: true });
     return true;
   }
@@ -11628,20 +11694,26 @@ function fbListHover(S, ev){
 function fbListInput(S){
   S.actId = null; fbFill(S, false); S.lb.scrollTop = 0; fbSetAct(S, S.items.length ? 0 : -1, false);
 }
-//  팝업 안의 키: Esc 닫기, 첫 칸 Shift+Tab 이나 마지막 칸 Tab 이면 닫고 단추로(안에서는 평소 순서), 찾기 칸과 목록. 처리한 키는 전역 단축키(Esc 로 창 닫기, Home/End 오늘로, 화살표 이동)로 번지지 않게 막는다
-function fbPopKey(S, ev, close){
+//  팝업 가장자리 키: Esc 닫기, 첫 칸 Shift+Tab 이나 마지막 칸 Tab 이면 닫고 단추로(안에서는 평소 순서). 처리했으면(Tab 은 늘) true
+function fbPopEdgeKey(S, ev, close){
   const t = ev.target, done = () => { ev.preventDefault(); ev.stopPropagation(); };
-  if(ev.key === 'Escape'){ done(); close(true); return; }
+  if(ev.key === 'Escape'){ done(); close(true); return true; }
   if(ev.key === 'Tab'){
     const fs = [...S.pop.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex="0"]')], i = fs.indexOf(t);
     const leaving = i >= 0 && (ev.shiftKey ? i === 0 : i === fs.length - 1);
     if(leaving){ done(); close(true); }
-    return;
+    return true;
   }
+  return false;
+}
+//  팝업 안의 키: 가장자리(Esc, Tab), 찾기 칸과 목록. 처리한 키는 전역 단축키(Esc 로 창 닫기, Home/End 오늘로, 화살표 이동)로 번지지 않게 막는다
+function fbPopKey(S, ev, close){
+  const done = () => { ev.preventDefault(); ev.stopPropagation(); };
+  if(fbPopEdgeKey(S, ev, close)) return;
   if(fbListKey(S, ev, done)) return;
   ev.stopPropagation();
 }
-//  찾기 칸과 목록의 키(done = 막고 멈추기). 처리했으면 true. 묶음 머리에서 → 펼치기, ← 접기, Space 묶음 전체, Enter 펼치기와 접기. 사람 줄에서 ← 는 묶음 머리로
+//  찾기 칸과 목록의 키(done = 막고 멈추기). 처리했으면 true
 function fbListKey(S, ev, done){
   const t = ev.target;
   if(t === S.q){
@@ -11651,19 +11723,12 @@ function fbListKey(S, ev, done){
     return true;
   }
   if(t === S.lb){
-    const n = S.items.length, cur = S.items[S.act], grp = !!(cur && cur.dataset.grp != null);
+    const n = S.items.length;
     if(ev.key === 'ArrowDown'){ done(); fbSetAct(S, Math.min(n - 1, S.act + 1)); return true; }
     if(ev.key === 'ArrowUp'){ done(); if(S.act <= 0) S.q.focus(); else fbSetAct(S, S.act - 1); return true; }
     if(ev.key === 'Home'){ done(); fbSetAct(S, n ? 0 : -1); return true; }
     if(ev.key === 'End'){ done(); fbSetAct(S, n - 1); return true; }
     if(ev.key === 'PageDown' || ev.key === 'PageUp'){ done(); if(n) fbSetAct(S, Math.max(0, Math.min(n - 1, S.act + (ev.key === 'PageDown' ? 8 : -8)))); return true; }
-    if(grp && (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft')){ done(); fbExpand(S, cur, ev.key === 'ArrowRight'); return true; }
-    if(grp && ev.key === 'Enter'){ done(); fbExpand(S, cur); return true; }
-    if(cur && cur.classList.contains('fb-sub') && ev.key === 'ArrowLeft'){
-      done();
-      for(let j = S.act - 1; j >= 0; j--) if(S.items[j].dataset.grp != null){ fbSetAct(S, j); break; }
-      return true;
-    }
     if(ev.key === 'Enter' || ev.key === ' '){ done(); fbPick(S, S.items[S.act]); return true; }
     if(ev.key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey){ ev.stopPropagation(); S.q.focus(); return true; }   // 글자를 치면 검색칸으로
   }
@@ -12565,45 +12630,6 @@ function peerScrollLink(from, to){
   requestAnimationFrame(() => { __peerScrollLock = false; });
 }
 
-//  overlaps — O5 「시간 겹침」(peerTimeOverlaps 의 한 항목: 겹친 상대편 목록). 열람 창 겹에서만 들어온다.
-function cardHtml(e, overlaps){
-  const c = catById(e.categoryId);
-  const col = validColor(c && c.color);
-  const time = timeLabel(e);
-  const occS = e._occStart || e.date, occE = e._occEnd || (e.endDate && e.endDate>e.date ? e.endDate : e.date);
-  const isRange = occE > occS;
-  const dayOfN = (isRange && selectedDate>=occS && selectedDate<=occE)
-    ? ` (${diffDays(occS,selectedDate)+1}일째 / ${diffDays(occS,occE)+1}일)` : '';
-  const rangeLine = isRange ? `<div class="card-span">${ICON.calendar} ${fmtShort(occS)} ~ ${fmtShort(occE)}${dayOfN}</div>` : '';
-  const recurLine = e.recur ? `<div class="card-recur">${ICON.repeat} ${esc(recurLabel(e))}</div>` : '';
-  const loc = (e.location || '').trim();
-  // 시간·장소 강조행 — 회의 등 '몇 시·어디'가 핵심인 일정을 일정 상세에서 눈에 띄게
-  const whenRow = (time || loc) ? `<div class="card-when">${time?`<span class="cw-time">${ICON.clock} ${esc(time)}</span>`:''}${loc?`<span class="cw-loc">${ICON.pin} ${esc(loc)}</span>`:''}</div>` : '';
-  //  ★ C4.1 — 내 겹 카드. 편집 어포던스는 body[data-peer] .card-actions allowlist 가 이미 감추지만,
-  //    거기 기대는 것만으로는 "이 카드가 내 것이라서 못 고친다"가 안 보인다 — CSS 에서 한 번 더 준다.
-  //  ★ O5 — 겹친 상대의 시간을 배지에 함께 적는다(여럿이면 첫 건 + 「외 N」, 전부는 툴팁).
-  const ovl = (Array.isArray(overlaps) && overlaps.length) ? overlaps : null;
-  const ovRange = o => o.startTime + (o.endTime ? '~' + o.endTime : '');
-  const ovWho = o => o.mine ? '내 일정' : ((__peerWho ? __peerWho + ' 님' : '상대') + ' 일정');
-  const ovlBadge = ovl
-    ? `<span class="badge ovl-badge" title="${esc(ovWho(ovl[0]) + '과 시간이 겹칩니다: ' + ovl.map(o => ovRange(o) + ' ' + o.title).join(', '))}">${ICON.clock} 시간 겹침 ${esc(ovRange(ovl[0]))}${ovl.length > 1 ? ` 외 ${ovl.length - 1}` : ''}</span>`
-    : '';
-  return `<div class="card${flashTargetId===e.id?' flash':''}${e._mine?' card-mine':''}${ovl?' card-ovl':''}" data-id="${esc(e.id)}" data-occ="${esc(occS)}" style="--c:${col}">
-    <div class="card-top">
-      ${c?`<span class="badge" style="background:${tint(col)};color:${col}">${esc(c.name)}</span>`:''}
-      ${ovlBadge}
-    </div>
-    <div class="card-title">${esc(e.title)}</div>
-    ${whenRow}
-    ${rangeLine}${recurLine}
-    ${e.memo?`<div class="card-memo">${linkifyHtml(e.memo)}</div>`:''}
-    <div class="card-actions">
-      <button class="link" data-act="edit">수정</button>
-      <button class="link danger" data-act="del">삭제</button>
-    </div>
-  </div>`;
-}
-
 /* ---------- 우측 패널 = 고른 날짜만(docs/PERSONAL-PANEL.md §2.1) ----------
    탭은 없다. 머리(날짜, 요일, [+ 추가] 하나), 본문(일정 n, 할 일 n 두 묶음이 늘 같은 자리. 비면 "없음", 보기에서 끈 종류는 "보기에서 숨김"),
    맨 아래 고정 한 줄(밀린 할 일 … 기한 없음 n, 지남 n ›). 머리와 맨 아래 줄은 본문 밖이라 날짜를 바꿔도 모양이 출렁이지 않는다.
@@ -12620,7 +12646,9 @@ function dayTodosList(ds){
 }
 /* ---------- 묶음 접기(docs/PC-WATCH-2.md §5, PERSONAL-PANEL 2.1 의 연장) ----------
    묶음 머리를 누르면 접힌다(▾ ▸, 계정별 이 PC 에 기억. 열람 창은 기억하지 않는다). 묶음마다 5개까지, 넘으면 "n개 더 보기", 펼친 뒤 "줄이기".
-   일정은 한 줄 줄(색 띠, 시간 또는 종일, 제목 말줄임), 누르면 그 자리에서 지금 카드(cardHtml)로 펼친다(한 번에 하나).
+   일정은 한 줄 줄(색 띠, 시간 또는 종일, 제목 말줄임). 누르면 줄 아래에 상자 없이 들여쓴 상세(dpEvDetHtml: 시각 범위, 장소, 기간, 반복, 겹침, 메모 중 있는 것과
+   [수정] [삭제])를 펼친다. 할 일도 제목을 누르면 같은 들여쓴 상세(dpTdDetHtml: 기한, 과제, 설명과 [수정] [삭제])다(§7.1).
+   일정과 할 일 펼침은 합쳐서 한 번에 하나(DP.open 열쇠 하나: 일정 'id|날짜', 할 일 't:id'). 열람 창(PEER)은 상세만 보이고 [수정] [삭제]가 없다.
    날짜를 바꾸면 더 보기와 펼친 줄은 처음으로. 달력 칩에서 온 강조(flash)는 그 줄을 펼치고 5개 밖이면 더 보기를 연다. */
 const DP_LIMIT = 5;
 const DP = { date: '', more: new Set(), open: '', fold: null, foldWho: null };
@@ -12641,21 +12669,58 @@ function dpFoldSave(){
 }
 function dpSync(){ if(DP.date !== selectedDate){ DP.date = selectedDate; DP.more.clear(); DP.open = ''; } }
 function dpEvKey(e){ return e.id + '|' + (e._occStart || e.date); }
+function dpTdKey(t){ return 't:' + t.id; }
 function dpLimit(k, items){ return DP.more.has(k) ? items : items.slice(0, DP_LIMIT); }
 function dpMoreHtml(k, total){
   if(total <= DP_LIMIT) return '';
   return DP.more.has(k) ? `<button type="button" class="dp-more" data-dp="less" data-k="${k}">줄이기</button>`
     : `<button type="button" class="dp-more" data-dp="more" data-k="${k}">${total - DP_LIMIT}개 더 보기</button>`;
 }
-//  일정 한 줄. 펼치면 줄 아래에 지금 카드(수정, 삭제는 카드의 data-act 그대로). 시간 겹침(O5)은 줄 끝 작은 시계
+//  상세 한 줄(아이콘 + 글). 들여쓴 상세(일정, 할 일)가 같이 쓴다
+function dpDetLn(ic, html, cls, tip){ return `<div class="dp-det-ln${cls ? ' ' + cls : ''}"${tip ? ` title="${esc(tip)}"` : ''}>${ic}<span>${html}</span></div>`; }
+//  [수정] [삭제] 글자 단추. 열람 창(PEER)은 없다(읽기 전용)
+function dpDetAcHtml(){ return PEER ? '' : '<div class="dp-det-ac"><button type="button" class="link" data-act="edit">수정</button><button type="button" class="link danger" data-act="del">삭제</button></div>'; }
+//  일정 줄 아래 들여쓴 상세(§7.1): 시각 범위, 장소, 기간(n일째 / n일), 반복, 시간 겹침(열람 창, 한 줄), 메모 중 있는 것만.
+//  분류 꼬리표와 줄에 이미 있는 시각(시작 시각, 종일)은 다시 쓰지 않는다. [수정] [삭제]는 data-act 로 날짜 패널 처리(.dp-edet)가 받는다.
+function dpEvDetHtml(e, ov){
+  const occS = e._occStart || e.date, occE = e._occEnd || (e.endDate && e.endDate > e.date ? e.endDate : e.date);
+  let h = '';
+  if(e.startTime && e.endTime) h += dpDetLn(ICON.clock, esc(e.startTime + ' ~ ' + e.endTime));
+  const loc = String(e.location || '').trim();
+  if(loc) h += dpDetLn(ICON.pin, esc(loc));
+  if(occE > occS){
+    const nth = (selectedDate >= occS && selectedDate <= occE) ? ` (${diffDays(occS, selectedDate) + 1}일째 / ${diffDays(occS, occE) + 1}일)` : '';
+    h += dpDetLn(ICON.calendar, esc(fmtShort(occS) + ' ~ ' + fmtShort(occE) + nth));
+  }
+  if(e.recur) h += dpDetLn(ICON.repeat, esc(recurLabel(e)));
+  if(Array.isArray(ov) && ov.length){
+    const rng = o => o.startTime + (o.endTime ? '~' + o.endTime : '');
+    const who = o => o.mine ? '내 일정' : ((__peerWho ? __peerWho + ' 님' : '상대') + ' 일정');
+    h += dpDetLn(ICON.clock, esc('시간 겹침 ' + rng(ov[0]) + ' ' + ov[0].title + (ov.length > 1 ? ' 외 ' + (ov.length - 1) : '')), 'dp-det-ovl',
+      who(ov[0]) + '과 시간이 겹칩니다: ' + ov.map(o => rng(o) + ' ' + o.title).join(', '));
+  }
+  if(e.memo) h += `<div class="dp-det-memo">${linkifyHtml(e.memo)}</div>`;
+  return `<div class="dp-det dp-edet" data-id="${esc(e.id)}" data-occ="${esc(occS)}">${h}${dpDetAcHtml()}</div>`;
+}
+//  할 일 줄 아래 들여쓴 상세(§7.1): 기한(줄에 기간 글자가 없을 때), 과제, 설명(여러 날 할 일은 그날 설명) 중 있는 것과 [수정] [삭제]
+function dpTdDetHtml(t){
+  const cat = catById(t.categoryId), period = !!(t.due && t.endDate && t.endDate > t.due);
+  let h = '';
+  if(t.due && !period) h += dpDetLn(ICON.calendar, esc('기한 ' + todoPeriodLabel(t)));
+  if(cat) h += dpDetLn(`<i class="dp-det-dot" style="background:${validColor(cat.color)}" aria-hidden="true"></i>`, esc(cat.name));
+  const nd = todoNoteDate(t), memo = period ? String((t.dayNotes || {})[nd] || '') : String(t.note || '');
+  if(memo.trim()) h += `<div class="dp-det-memo"${period ? ` title="${esc(fmtShort(nd))} 설명"` : ''}>${linkifyHtml(memo)}</div>`;
+  return `<div class="dp-det dp-tdet" data-tid="${esc(t.id)}">${h}${dpDetAcHtml()}</div>`;
+}
+//  일정 한 줄. 펼치면 줄 아래에 들여쓴 상세(상자 없음). 시간 겹침(O5)은 줄 끝 작은 시계
 function dpEvRowHtml(e, ov){
   const c = catById(e.categoryId), col = validColor(c && c.color), k = dpEvKey(e), open = DP.open === k;
   const ovl = Array.isArray(ov) && ov.length > 0;
-  return `<div class="dp-er${open ? ' open' : ''}${e._mine ? ' dp-er-mine' : ''}" data-key="${esc(k)}" data-id="${esc(e.id)}" style="--c:${col}">`
+  return `<div class="dp-er${open ? ' open' : ''}${e._mine ? ' dp-er-mine' : ''}${flashTargetId === e.id ? ' flash' : ''}" data-key="${esc(k)}" data-id="${esc(e.id)}" style="--c:${col}">`
     + `<button type="button" class="dp-er-b" data-dp="ev" aria-expanded="${open}" title="${esc((c ? c.name + ': ' : '') + e.title)}">`
     + `<i class="dp-er-bar" aria-hidden="true"></i><span class="dp-er-tm">${esc(e.startTime || '종일')}</span><span class="dp-er-t">${esc(e.title)}</span>`
     + (ovl ? `<span class="dp-er-ovl" role="img" aria-label="시간 겹침">${ICON.clock}</span>` : '') + '</button>'
-    + (open ? cardHtml(e, ov) : '') + '</div>';
+    + (open ? dpEvDetHtml(e, ov) : '') + '</div>';
 }
 //  달력 칩에서 온 강조: 그 일정 줄을 펼치고(5개 밖이면 더 보기), 할 일은 5개 밖이면 더 보기. 접힌 묶음은 편다
 function dpReveal(list, tds){
@@ -12674,18 +12739,21 @@ function dpReveal(list, tds){
     if(i >= 0){ if(i >= DP_LIMIT) DP.more.add('td'); if(dpFoldSet().delete('td')) dpFoldSave(); }
   }
 }
-//  묶음 머리 접기, 더 보기, 줄이기, 일정 줄 펼치기. 다시 그린 뒤 포커스는 누른 자리로
+//  묶음 머리 접기, 더 보기, 줄이기, 일정 줄과 할 일 제목 펼치기(합쳐서 하나만). 다시 그린 뒤 포커스는 누른 자리로
 function dpOnClick(b){
   const a = b.dataset.dp, k = b.dataset.k || '';
   let sel = '';
   if(a === 'fold'){ const f = dpFoldSet(); if(f.has(k)) f.delete(k); else f.add(k); dpFoldSave(); sel = '[data-dp="fold"][data-k="' + k + '"]'; }
   else if(a === 'more' || a === 'less'){ if(a === 'more') DP.more.add(k); else DP.more.delete(k); sel = '.dp-more[data-k="' + k + '"]'; }
   else if(a === 'ev'){ const r = b.closest('.dp-er'), key = r ? r.dataset.key : ''; DP.open = DP.open === key ? '' : key; sel = key; }
+  else if(a === 'td'){ const r = b.closest('.todo-row'), key = r ? 't:' + r.dataset.id : ''; if(!key) return; DP.open = DP.open === key ? '' : key; sel = key; }
   else return;
   renderPanel();
-  //  일정 줄은 열쇠(id|날짜)로 찾는다(id 에 따옴표가 있어도 되게 선택자에 넣지 않는다)
-  const f = a === 'ev' ? (([...document.querySelectorAll('#dpBody .dp-er')].find(r => r.dataset.key === sel) || {}).firstElementChild || null)
-    : (sel && document.querySelector('#dpBody ' + sel));
+  //  일정 줄은 열쇠(id|날짜), 할 일은 id 로 찾는다(id 에 따옴표가 있어도 되게 선택자에 넣지 않는다)
+  let f = null;
+  if(a === 'ev') f = ([...document.querySelectorAll('#dpBody .dp-er')].find(r => r.dataset.key === sel) || {}).firstElementChild || null;
+  else if(a === 'td'){ const r = [...document.querySelectorAll('#dpBody .todo-row')].find(x => 't:' + x.dataset.id === sel); f = r ? r.querySelector('.todo-text') : null; }
+  else f = sel && document.querySelector('#dpBody ' + sel);
   if(f) try{ f.focus({ preventScroll: true }); }catch(_){}
 }
 function dayGrpHtml(key, label, on, n, inner){
@@ -12740,11 +12808,11 @@ function renderPanel(){
   if(head) head.innerHTML = dayHeadHtml();
   body.innerHTML = dayDetailHtml();
   if(foot) foot.innerHTML = dayFootHtml();
-  if(flashTargetId){   // 일정 칩 클릭 reveal: 그 카드 강조, 스크롤
-    const el = $('#dpBody .card.flash');
+  if(flashTargetId){   // 일정 칩 클릭 reveal: 그 줄(펼친 상세) 강조, 스크롤
+    const el = $('#dpBody .dp-er.flash');
     if(el) el.scrollIntoView({block:'nearest'});
     const fid = flashTargetId; flashTargetId = null;
-    setTimeout(() => { const e2 = $(`#dpBody .card[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
+    setTimeout(() => { const e2 = $(`#dpBody .dp-er[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
   }
   if(flashTodoId){   // 할 일 칩 클릭 reveal: 그 행 강조, 스크롤(일정 카드 flash 대칭)
     const el = $('#dpBody .todo-row.flash');
@@ -12809,7 +12877,6 @@ function selectDate(ds){
     if(cm){ cm.classList.add('sel'); cm.setAttribute('aria-selected','true'); }
     $$('#grid .wr-c[data-date="' + ds + '"], #gridMine .wr-c[data-date="' + ds + '"]').forEach(c => c.classList.add('sel'));
   }
-  editingTodoId = null;
   renderPanel();             // 선택 날짜로 내용만 갱신(일정, 할 일 모두 그 날 기준)
   openSheetIfNarrow();       // 좁은 폭이면 하단 시트가 올라옴
 }
@@ -14243,8 +14310,8 @@ function offFilterPick(id){
   return { v:String(e.value), t:o ? offTrim(o.textContent) : '' };
 }
 /* ---------- 상태 체크박스(PROJECT-ADMIN-UX §1.2, 2026-10-26) ----------
-   상태표의 상태마다 체크박스가 하나씩 선다(데이터에만 남은 상태, 상태 없는 과제가 있으면 '상태 없음'도). 기본은 모두 켬.
-   ★ 기억하는 것은 '끈 상태'의 열쇠(번호 문자열, 상태 없음은 OFF_NO_STATUS)다. 그래서 새로 더한 상태는 켜진 채 나온다.
+   상태표의 상태마다 체크박스가 하나씩 선다(데이터에만 남은 상태, 상태 없는 과제가 있으면 '상태 미지정'도). 기본은 모두 켬.
+   ★ 기억하는 것은 '끈 상태'의 열쇠(번호 문자열, 상태 미지정은 OFF_NO_STATUS)다. 그래서 새로 더한 상태는 켜진 채 나온다.
    ★ 이 PC 에 한 벌이다: 관리 목록, Excel 추출, 재연결 고르기가 같은 값을 쓴다(한쪽에서 끄면 다른 쪽도 꺼져 있다).
    ★ 옛 '진행중만'(상태 종료 하나만 빼던 특별 규칙)은 없앴다. 어느 상태도 이름이나 번호로 따로 다루지 않는다. */
 const OFF_ST_KEY = 'tc_projStatusOff';
@@ -14258,7 +14325,7 @@ function offStOffSet(){
 }
 function offStSave(){ try{ localStorage.setItem(OFF_ST_KEY, JSON.stringify([...offStOffSet()])); }catch(_){} }
 const offStKeyOf = c => { const id = codeIdOf(c && c.statusId); return id == null ? OFF_NO_STATUS : String(id); };
-// 체크박스로 세울 상태 [{k, t}]: 코드 순서, 그다음 데이터에만 있는 상태(가나다), 맨 끝에 상태 없음(그런 과제가 있을 때만)
+// 체크박스로 세울 상태 [{k, t}]: 코드 순서, 그다음 데이터에만 있는 상태(가나다), 맨 끝에 상태 미지정(그런 과제가 있을 때만. 2026-11-05 "상태 없음"에서 바꿈, PC-WATCH-2 §7.3)
 function offStOptions(){
   const out = (offStatuses || []).map(o => ({ k:String(o.id), t:String(o.name) }));
   const seen = new Set(out.map(o => o.k)), extra = new Map();
@@ -14270,7 +14337,7 @@ function offStOptions(){
     if(!seen.has(k) && nm && !extra.has(k)) extra.set(k, nm);
   }
   out.push(...[...extra.entries()].map(([k, t]) => ({ k, t })).sort((a, b) => a.t.localeCompare(b.t, 'ko')));
-  if(none) out.push({ k:OFF_NO_STATUS, t:'상태 없음' });
+  if(none) out.push({ k:OFF_NO_STATUS, t:'상태 미지정' });
   return out;
 }
 // 체크박스 묶음 그리기(카탈로그 #offStChecks, 재연결 고르기 #rlpStChecks). 바꾸면 offStToggle 이 받는다.
@@ -18447,24 +18514,24 @@ function todoPeriodLabel(t){
   const s = dueLabel(t.due);
   return (t.endDate && t.endDate > t.due) ? `${s}~${dueLabel(t.endDate)}` : s;
 }
-//  opts.panel = 우측 패널의 그날 목록(기한 글자는 기간 할 일에만). opts.all = 밀린 할 일 팝업(기한 글자 늘, 고치기와 삭제와 메모 없음, 행을 누르면 그 날짜로: data-go).
+//  opts.panel = 우측 패널의 그날 목록(기한 글자는 기간 할 일에만). opts.all = 밀린 할 일 팝업(기한 글자 늘, 삭제 없음, 행을 누르면 그 날짜로: data-go).
+//  opts.noDot = 줄 끝 과제 색점을 빼기(밀린 할 일 팝업은 과제별 소제목에 색점이 있다, §7.2).
+//  ★ 날짜 패널의 제목은 일정 줄처럼 누르면 아래에 들여쓴 상세(dpTdDetHtml)를 펼친다(docs/PC-WATCH-2.md §7.1). 패널 안 수정 폼은 없다.
+//    설명(메모)은 줄이 아니라 그 상세에 나온다. 고치기는 상세의 [수정] = [+ 추가] 창의 할 일 수정(openTodoEdit).
 function todoRowHtml(t, opts){
   opts = opts || {};
-  //  ★ P2 — 열람 창(PEER)은 같은 행을 **읽기 전용**으로 그린다: 체크·중요는 상태 표시(span · data-act 없음),
-  //    삭제 버튼 없음, 글자를 눌러도 편집기가 안 열린다. 보이는 정보(완료·중요·마감·과제·메모·날짜별 메모)는 같다.
+  //  ★ P2: 열람 창(PEER)은 같은 행을 **읽기 전용**으로 그린다. 체크와 중요는 상태 표시(span, data-act 없음),
+  //    삭제 버튼 없음. 상세는 펼쳐 볼 수 있지만 [수정] [삭제]가 없다. 보이는 정보(완료, 중요, 마감, 과제)는 같다.
   const ro = PEER;
-  if(editingTodoId === t.id && !ro && !opts.all) return todoEditHtml(t);
   const cat = catById(t.categoryId);
   const overdue = todoIsOverdue(t);
   const showDue = opts.all ? true : (opts.panel ? !!(t.due && t.endDate && t.endDate > t.due) : !!t.due);
   const dueHtml = showDue ? `<span class="todo-due${overdue?' od':''}">${esc(t.due ? todoPeriodLabel(t) : '기한 없음')}</span>` : '';
   const dueUnder = !!(opts.panel && dueHtml);   // 좁은 패널에서는 기간 글자를 글 아래 줄에 둔다(글자가 한 자씩 꺾이지 않게)
   const due = dueUnder ? '' : dueHtml;
-  const noteDate = todoNoteDate(t);
-  const dayNote = !opts.all && noteDate && t.dayNotes ? String(t.dayNotes[noteDate] || '') : '';
-  const editAttr = (ro || opts.all) ? '' : ' data-act="edit" title="클릭하여 수정"';
-  //  날짜 패널: 제목은 한 줄 말줄임, 전체는 title(PC-WATCH-2 §5). 메모 칸의 편집 꼬리표는 그대로
-  const textAttr = opts.panel ? (ro ? '' : ' data-act="edit"') + ` title="${esc(t.text)}"` : editAttr;
+  const open = !!opts.panel && DP.open === dpTdKey(t);
+  //  날짜 패널: 제목은 두 줄까지, 전체는 title. 누르면 상세를 펼치고 접는다(키보드는 Enter, Space)
+  const textAttr = opts.panel ? ` data-dp="td" role="button" tabindex="0" aria-expanded="${open}" title="${esc(t.text)}"` : '';
   const check = ro
     ? `<span class="todo-check" role="img" aria-label="${t.done ? '완료' : '미완료'}">${t.done ? ICON.boxCheck : ICON.box}</span>`
     : `<button class="todo-check" data-act="toggle" aria-label="${t.done ? '완료 해제' : '완료 표시'}">${t.done ? ICON.boxCheck : ICON.box}</button>`;
@@ -18472,53 +18539,24 @@ function todoRowHtml(t, opts){
     ? (t.prio === 'high' ? `<span class="todo-star-btn on" role="img" aria-label="중요">${ICON.starFill}</span>` : '')
     : `<button class="todo-star-btn${t.prio==='high'?' on':''}" data-act="star" title="중요 표시" aria-label="중요 토글">${t.prio==='high'?ICON.starFill:ICON.star}</button>`;
   const del = (ro || opts.all) ? '' : `<button class="todo-del" data-act="del" title="삭제" aria-label="삭제">${ICON.xmark}</button>`;
-  return `<div class="todo-row${t.done ? ' done' : ''}${flashTodoId===t.id?' flash':''}" data-id="${esc(t.id)}"${opts.all ? ` data-go="${esc(t.due || '')}"` : ''}>
+  const dot = (cat && !opts.noDot) ? `<span class="todo-dot" style="background:${validColor(cat.color)}" title="${esc(cat.name)}"></span>` : '';
+  return `<div class="todo-row${t.done ? ' done' : ''}${open ? ' open' : ''}${flashTodoId===t.id?' flash':''}" data-id="${esc(t.id)}"${opts.all ? ` data-go="${esc(t.due || '')}"` : ''}>
     ${check}
-    <div class="todo-main"><span class="todo-text"${textAttr}>${esc(t.text)}</span>${dueUnder ? `<div class="todo-dueline">${dueHtml}</div>` : ''}${dayNote ? `<div class="todo-daymemo"${ro ? '' : ' data-act="edit"'} title="${esc(fmtShort(noteDate))} 설명">${esc(dayNote)}</div>` : ''}${t.note && !opts.all ? `<div class="todo-memo"${editAttr}>${linkifyHtml(t.note)}</div>` : ''}</div>
-    ${due}${cat ? `<span class="todo-dot" style="background:${validColor(cat.color)}" title="${esc(cat.name)}"></span>` : ''}
+    <div class="todo-main"><span class="todo-text"${textAttr}>${esc(t.text)}</span>${dueUnder ? `<div class="todo-dueline">${dueHtml}</div>` : ''}</div>
+    ${due}${dot}
     ${star}
     ${del}
-  </div>`;
-}
-function todoEditHtml(t){
-  //  빈 선택지("과제 없음")는 없다(DEFAULT-TASKS §4.2). 고를 수 있는 과제(isPickableCat)만 내되, 이 할 일의 지금 과제가
-  //  목록에 없으면(삭제된 DB 과제 등) 보존 옵션으로 넣어 조용히 바뀌지 않게 한다. 과제가 빈 옛 할 일은 기타가 선택된다.
-  const curCat = t.categoryId || gitaTaskId() || '';
-  const pick = state.categories.filter(isPickableCat);
-  let opts = pick.map(c => `<option value="${esc(c.id)}"${curCat===c.id?' selected':''}>${esc(c.name)}</option>`).join('');
-  if(curCat && !pick.some(c => c.id === curCat)){ const cc = catById(curCat); opts += `<option value="${esc(curCat)}" selected>${esc(cc ? cc.name : '(알 수 없는 과제)')}</option>`; }
-  // 이중 설명 모델: 기간 할일=선택 날짜 dayNote 1칸만(전역 설명 숨김) / 단일 할일=전역 설명만(입력방식 B — 전체 날짜 나열 금지).
-  const isPeriod = !!(t.endDate && t.endDate > t.due);
-  const noteDate = todoNoteDate(t);
-  const dayNote = noteDate && t.dayNotes ? String(t.dayNotes[noteDate] || '') : '';
-  const dayNoteEditor = (isPeriod && noteDate) ? `<label class="te-daynote-lb">${esc(fmtShort(noteDate))} 설명</label><textarea class="te-daynote" rows="3" data-date="${esc(noteDate)}" placeholder="이 날짜에만 보이는 설명 (선택)">${esc(dayNote)}</textarea>` : '';
-  const noteEditor = isPeriod ? '' : `<textarea class="te-note" rows="3" placeholder="설명 (여러 줄, 선택)">${esc(t.note||'')}</textarea>`;
-  return `<div class="todo-edit" data-id="${esc(t.id)}">
-    <input type="text" class="te-text" maxlength="200" value="${esc(t.text)}">
-    ${noteEditor}
-    ${dayNoteEditor}
-    <div class="te-row">
-      <input type="date" class="te-due" value="${esc(t.due||'')}" title="기한/시작">
-      <span class="te-tilde">~</span>
-      <input type="date" class="te-end" value="${esc(t.endDate||'')}" title="종료일(여러 날, 선택)">
-    </div>
-    <div class="te-row">
-      <select class="te-cat">${opts}</select>
-      <label class="te-star"><input type="checkbox" class="te-prio"${t.prio==='high'?' checked':''}> 중요</label>
-    </div>
-    <div class="te-actions">
-      <button class="btn primary sm" data-act="save">저장</button>
-      <button class="btn sm" data-act="canceledit">취소</button>
-      <span class="te-spacer"></span>
-      <button class="btn sm danger" data-act="del">삭제</button>
-    </div>
-  </div>`;
+  </div>` + (open ? dpTdDetHtml(t) : '');
 }
 /* ---------- 밀린 할 일 팝업(docs/PERSONAL-PANEL.md §2.1) ----------
    패널 맨 아래 한 줄(#dpFoot)이 연다. 공용 모달(openModal) 골격(#todoAllModal)이고, 묶음은 기한 지남, 기한 없음, 완료 셋이다.
    날짜가 있고 아직 안 지난 할 일은 달력과 패널에서 보니 여기에 넣지 않는다. 완료는 처음엔 접혀 있다(taDoneOpen).
-   각 묶음 안은 ★ 중요 먼저, 그다음 날짜순(완료는 최근에 끝낸 순). 같은 보기의 과제를 따른다. 날짜 있는 할 일을 누르면 그 날짜로 가서 패널에서 강조한다. */
+   각 묶음 안은 과제별 소제목(과제 색점, 이름, 개수. 기한 지남은 끝에 그 과제의 가장 오래된 기한)으로 나눈다(docs/PC-WATCH-2.md §7.2).
+   소제목 순서는 과제 목록 순서, 과제 없는 할 일은 끝. 소제목을 누르면 그 과제만 접힌다(taPjFold, 팝업을 다시 열면 다 펼침, 기억하지 않음).
+   과제 안은 ★ 중요 먼저, 그다음 날짜순(완료는 최근에 끝낸 순). 소제목에 색점이 있으니 줄의 과제 색점은 뺀다.
+   같은 보기의 과제를 따른다. 날짜 있는 할 일을 누르면 그 날짜로 가서 패널에서 강조한다. */
 let taDoneOpen = false;
+const taPjFold = new Set();   // 접은 과제 소제목 열쇠('묶음|과제 id', 과제 없음은 빈 id)
 //  기한 지남: 안 끝낸 할 일, 기한(여러 날이면 끝 날짜)이 오늘보다 앞
 function todoIsOverdue(t, today){ return !!(t && !t.done && t.due && todoEndDate(t) < (today || todayYmd())); }
 function todoAllGroups(){
@@ -18535,18 +18573,41 @@ function todoAllGroups(){
     { key: 'done', label: '완료', items: done },
   ];
 }
+//  묶음 하나를 과제별로 나눈다: [{ cid, cat, items }]. 순서는 과제 목록(state.categories) 순서, 과제 없는(또는 없어진 과제의) 할 일은 끝. 과제 안 순서는 들어온 그대로
+function todoAllByProject(items){
+  const by = new Map();
+  for(const t of items){ const c = catById(t.categoryId), k = c ? c.id : ''; if(!by.has(k)) by.set(k, []); by.get(k).push(t); }
+  const out = [];
+  for(const c of (state.categories || [])) if(by.has(c.id)){ out.push({ cid: c.id, cat: c, items: by.get(c.id) }); by.delete(c.id); }
+  if(by.has('')) out.push({ cid: '', cat: null, items: by.get('') });
+  return out;
+}
+//  과제 소제목 하나(누르면 그 과제만 접힘). 기한 지남은 끝에 가장 오래된 기한(끝 날짜 기준, 기한 지남의 판정과 같다)
+function todoAllPjHtml(gk, p){
+  const k = gk + '|' + p.cid, folded = taPjFold.has(k);
+  const oldest = gk === 'over' ? p.items.map(todoEndDate).filter(Boolean).sort()[0] : '';
+  const dot = p.cat ? `<i class="ta-pj-dot" style="background:${validColor(p.cat.color)}" aria-hidden="true"></i>` : '<i class="ta-pj-dot ta-pj-none" aria-hidden="true"></i>';
+  return `<button type="button" class="ta-pj" data-ta="pj" data-k="${esc(k)}" aria-expanded="${!folded}"><span class="ta-pj-tw" aria-hidden="true">${folded ? '▸' : '▾'}</span>${dot}`
+    + `<span class="ta-pj-nm">${esc(p.cat ? p.cat.name : '과제 없음')}</span><span class="ta-pj-n">${p.items.length}</span>`
+    + (oldest ? `<span class="ta-pj-old">가장 오래됨 ${esc(fmtShort(oldest))}</span>` : '') + '</button>'
+    + (folded ? '' : `<div class="dp-todos">${p.items.map(t => todoRowHtml(t, { all: true, noDot: true })).join('')}</div>`);
+}
 function todoAllHtml(){
   return todoAllGroups().map(x => {
     const tog = x.key === 'done' ? `<button type="button" class="ta-tog" data-ta="tog" aria-expanded="${taDoneOpen}">${taDoneOpen ? '접기' : '펼치기'}</button>` : '';
-    const body = (x.key === 'done' && !taDoneOpen) ? '' : (x.items.length ? `<div class="dp-todos">${x.items.map(t => todoRowHtml(t, { all: true })).join('')}</div>` : '<div class="ta-none">없음</div>');
+    const body = (x.key === 'done' && !taDoneOpen) ? '' : (x.items.length ? todoAllByProject(x.items).map(p => todoAllPjHtml(x.key, p)).join('') : '<div class="ta-none">없음</div>');
     return `<section class="ta-grp" data-grp="${x.key}"><h3 class="ta-h${x.key === 'over' ? ' od' : ''}">${esc(x.label)} <span class="dp-grp-n">${x.items.length}</span>${tog}</h3>${body}</section>`;
   }).join('');
 }
 function renderTodoAll(){ const b = $('#taBody'); if(b) b.innerHTML = todoAllHtml(); }
-function openTodoAll(){ taDoneOpen = false; renderTodoAll(); openModal('#todoAllModal'); }
+function openTodoAll(){ taDoneOpen = false; taPjFold.clear(); renderTodoAll(); openModal('#todoAllModal'); }
 //  팝업 안 조작: 완료 묶음 펼치기와 접기, 체크, ★ 는 그 자리에서 바꾸고(팝업, 패널, 달력을 함께 다시 그린다), 행의 나머지를 누르면 그 날짜로 간다(기한 없는 할 일은 갈 곳이 없다).
 function todoAllClick(ev){
   if(ev.target.closest('[data-ta="tog"]')){ taDoneOpen = !taDoneOpen; renderTodoAll(); return; }
+  { const pj = ev.target.closest('[data-ta="pj"]');   // 과제 소제목: 그 과제만 접고 편다. 포커스는 같은 소제목에
+    if(pj){ const k = pj.dataset.k; if(taPjFold.has(k)) taPjFold.delete(k); else taPjFold.add(k); renderTodoAll();
+      const b = [...document.querySelectorAll('#taBody [data-ta="pj"]')].find(x => x.dataset.k === k); if(b) try{ b.focus({ preventScroll: true }); }catch(_){}
+      return; } }
   const row = ev.target.closest('.todo-row'); if(!row) return;
   const act = ev.target.dataset.act, id = row.dataset.id;
   if(act === 'toggle' || act === 'star'){
@@ -18569,6 +18630,9 @@ function todoAllClick(ev){
    할 일: 제목, 기한과 종료일(선택), 과제, 중요, 설명. 저장 경로와 저장 형식은 예전 빠른 등록과 같다(addEntry, updateEntry, addTodo). */
 let qaType = 'event';   // 'event' | 'todo'
 let qaEditId = null;    // 편집 중인 일정 id(생성=null). 생성과 수정이 같은 폼
+//  편집 중인 할 일 id(docs/PC-WATCH-2.md §7.1). 날짜 패널의 할 일 [수정]이 같은 창을 할 일 수정으로 연다(패널 안 수정 폼은 없앴다).
+//  qaTodoNoteDate = 여러 날 할 일의 설명이 붙는 날짜(고른 날짜가 기간 안이면 그날, 아니면 시작일. 예전 패널 수정 폼과 같은 규칙)
+let qaTodoId = null, qaTodoNoteDate = '';
 //  수정하는 일정의 원래 반복(결정 8). 폼은 반복 종류(안 함, 매주, 매월)만 고르고, 간격과 끝(날짜, 횟수)은 여기 보존했다가
 //  같은 종류로 저장하면 그대로 되돌려 넣는다. 건너뛴 날짜(recurExcept)는 종류와 간격이 같을 때만 보존한다(기록 창과 같은 규칙).
 let qaRecurOrig = null, qaRecurExcept = [];
@@ -18809,20 +18873,24 @@ function qaEndChanged(){   // 사용자가 종료를 직접 바꿈 → dirty + �
 function openAddOnDate(date){ openQuickAdd(date, viewKinds.ev ? 'event' : 'todo'); }
 //  만든 기록의 종류가 보기에서 꺼져 있으면 켠다(기억도 갱신)
 function viewShowKind(k){ if(viewKinds[k]) return; viewKinds[k] = true; viewPersist(); }
-function openQuickAdd(date, type, entryId){
+function openQuickAdd(date, type, entryId, todoId){
   //  ★ 열람 창에서는 열지 않는다. 빈 칸 **더블클릭**으로 여기 닿는다(grid 의 dblclick 핸들러) —
   //    ＋추가 버튼을 감춰도 그 길은 남아 있었다.
   if(PEER){ try{ toast('읽기 전용 보기라 여기서는 기록을 만들 수 없습니다', 'info'); }catch(_){} return; }
-  if(!entryId && guardEdit()) return;   // 연결 잠금(§4). 편집 열기(entryId)는 읽기라 그대로
+  if(!entryId && !todoId && guardEdit()) return;   // 연결 잠금(§4). 편집 열기(entryId, todoId)는 읽기라 그대로
   qaEditId = entryId || null;
   const e = qaEditId ? entryById(qaEditId) : null;
-  qaType = e ? 'event' : ((type === 'todo') ? 'todo' : 'event');   // 편집은 일정만(할 일은 패널 인라인 편집)
+  const td = (!e && todoId) ? todoById(todoId) : null;
+  qaTodoId = td ? td.id : null; qaTodoNoteDate = '';
+  qaType = e ? 'event' : td ? 'todo' : ((type === 'todo') ? 'todo' : 'event');   // 수정은 일정(entryId)과 할 일(todoId) 둘 다
   fillCatSelect($('#qaCat'));   // 빈 선택지 없음(DEFAULT-TASKS §4.2)
   locBind('qa');                // 장소 칸(직접 입력 + 공용 회의실 추천). 칸이 고정이라 한 번만 걸린다
   const _qaHint = $('#qaTimeHint'); if(_qaHint) _qaHint.textContent = '';
-  // 편집 모드: 일정/할일 토글 숨기고 '일정 수정' 타이틀
-  $('#quickAdd .qa-tg').classList.toggle('hidden', !!e);
-  $('#qaEditTitle').classList.toggle('hidden', !e);
+  // 편집 모드: 일정/할일 토글 숨기고 '일정 수정' 또는 '할 일 수정' 타이틀. [삭제]는 할 일 수정에만(일정 삭제는 반복 확인이 있는 날짜 패널에서)
+  $('#quickAdd .qa-tg').classList.toggle('hidden', !!(e || td));
+  $('#qaEditTitle').classList.toggle('hidden', !(e || td));
+  $('#qaEditTitle').textContent = td ? '할 일 수정' : '일정 수정';
+  $('#qaDel').classList.toggle('hidden', !td); $('#qaDelSp').classList.toggle('hidden', !td);
   qaRecurOrig = (e && e.recur && e.recur.freq) ? normRecur(e.recur) : null;
   qaRecurExcept = (e && Array.isArray(e.recurExcept)) ? e.recurExcept.slice() : [];
   const t = qaTimeEls();
@@ -18838,6 +18906,21 @@ function openQuickAdd(date, type, entryId){
     $('#qaRecur').value = qaRecurOrig ? qaRecurOrig.freq : '';
     locSet('qa', e.location || '');
     $('#qaMemo').value = e.memo || '';
+  } else if(td){
+    //  할 일 수정: 제목, 기한과 종료일, 과제(목록에 없으면 보존 옵션, 빈 과제는 기타), 중요, 설명(여러 날 할 일은 그날 설명, 아니면 설명)
+    const period = !!(td.due && td.endDate && td.endDate > td.due);
+    $('#qaTitle').value = td.text;
+    $('#qaDate').value = td.due || '';
+    $('#qaEndDate').value = period ? td.endDate : '';
+    setCatSelectValue($('#qaCat'), td.categoryId || gitaTaskId() || '');
+    $('#qaAllDay').checked = false;
+    writeTimeIn(t.s, ''); writeTimeIn(t.e, '');
+    qaEndDirty = false;
+    $('#qaRecur').value = '';
+    locSet('qa', '');
+    qaTodoNoteDate = period ? todoNoteDate(td) : '';
+    $('#qaMemo').value = period ? String((td.dayNotes || {})[qaTodoNoteDate] || '') : String(td.note || '');
+    $('#qaPrio').checked = td.prio === 'high';
   } else {
     setCatSelectValue($('#qaCat'), filterFirstCat() || '');   // 필터로 고른 과제 중 목록 순서로 첫째, 없으면 기타
     const d0 = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : selectedDate;
@@ -18966,13 +19049,37 @@ function qaSave(){
     if(endDate && !due){ toast('기간 종료일을 쓰려면 시작 기한을 먼저 선택하세요', 'warn'); $('#qaDate').focus(); return; }
     if(endDate && !ymdOk(endDate)){ toast('종료일을 확인하세요', 'warn'); edEl.focus(); return; }
     if(endDate && endDate < due){ toast('종료일이 시작일보다 빠릅니다', 'warn'); edEl.focus(); return; }
-    const prioEl = $('#qaPrio');
-    addTodo(title, {categoryId:cat, due, endDate, prio:(prioEl && prioEl.checked) ? 'high' : 'normal', note:memo});
+    const prioEl = $('#qaPrio'), prio = (prioEl && prioEl.checked) ? 'high' : 'normal';
+    if(qaTodoId){
+      //  할 일 수정(§7.1). 설명은 예전 패널 수정 폼과 같은 이중 모델: 여러 날 할 일은 그날 설명(dayNotes), 아니면 설명(note).
+      //  비운 설명이 다른 저장소에서 되살아나지 않게 반대쪽을 함께 비운다.
+      if(!todoById(qaTodoId)){ qaTodoId = null; closeModal('#quickAdd'); renderAll(); toast('할 일을 찾을 수 없습니다', 'warn'); return; }
+      const f = { text:title, due, endDate, categoryId:cat, prio };
+      if(due && endDate && endDate > due){ const nd = (qaTodoNoteDate && qaTodoNoteDate >= due && qaTodoNoteDate <= endDate) ? qaTodoNoteDate : due; f.note = ''; f.dayNotes = { [nd]: memo }; }
+      else { f.note = memo; if(due) f.dayNotes = { [due]: '' }; }
+      updateTodo(qaTodoId, f);
+      viewShowKind('td');
+      closeModal('#quickAdd'); renderAll(); toast('할 일을 수정했습니다', 'success');
+      return;
+    }
+    addTodo(title, {categoryId:cat, due, endDate, prio, note:memo});
     if(due) selectedDate = due;   // 추가한 할 일이 보이도록 기한 있으면 그 날로(기한 없는 할 일은 패널 맨 아래 한 줄의 개수와 밀린 할 일 팝업에서)
     viewShowKind('td');
     closeModal('#quickAdd'); renderAll(); toast('할 일을 추가했습니다', 'success');
   }
 }
+
+//  할 일 수정 창의 [삭제]: 날짜 패널 줄 끝 ✕ 와 같이 바로 지우고 실행 취소를 준다
+function qaDeleteTodo(){
+  if(!qaTodoId || guardEdit()) return;
+  const rm = todoById(qaTodoId);
+  qaTodoId = null;
+  if(rm) deleteTodo(rm.id);
+  closeModal('#quickAdd'); renderAll();
+  if(rm) toast('할 일을 삭제했습니다', 'success', { label:'실행 취소', fn:() => { restoreTodo(rm); renderAll(); } });
+}
+//  날짜 패널(일정과 같은 들여쓴 상세)의 할 일 [수정]: [+ 추가] 창을 할 일 수정으로 연다
+function openTodoEdit(id){ if(todoById(id)) openQuickAdd(null, 'todo', null, id); }
 
 /* ---------- 단색 인라인 아이콘(currentColor) — 멀티컬러 이모지 대체, 단일 소스 ---------- */
 function svgIc(inner, w){ return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w||1.9}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`; }
@@ -19561,6 +19668,7 @@ function bind(){
   $('#qaRemNum').addEventListener('input', qaRemResync);
   //  예전 '자세히 편집'(#qaAdvanced, 빠른 편집 → 기록 창)은 없앴다. 한 화면 폼이 모든 칸을 가진다(결정 10). 기록 창은 Git 기능과 함께 없앴다.
   $('#qaSave').addEventListener('click', qaSave);
+  $('#qaDel').addEventListener('click', qaDeleteTodo);   // 할 일 수정에만 보인다(§7.1)
   $('#qaTitle').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter') qaSave(); });
   $('#btnCatsTop').addEventListener('click', openCatModal);   // 헤더 직접 노출(⋯ 메뉴에서 제거됨)
   $('#btnFeedback').addEventListener('click', openFeedback);   // 토스트 한 줄 → 모달(로그 첨부 안내를 담을 자리)
@@ -19607,40 +19715,29 @@ function bind(){
   $('#dpSheetClose').addEventListener('click', closeSheet);        // 좁은 폭 하단 시트 닫기 손잡이
 
   $('#dpBody').addEventListener('click', ev => {
-    // TODO 인라인 편집 폼
-    const box = ev.target.closest('.todo-edit');
-    if(box){
-      if(peerReadOnly()){ editingTodoId = null; renderPanel(); return; }   // P2 — 열람 창에는 편집기가 없다
-      const id = box.dataset.id, act = ev.target.dataset.act;
-      if((act === 'save' || act === 'del') && guardEdit()) return;
-      if(act === 'save'){
-        const dn = box.querySelector('.te-daynote');
-        const dayNotes = {};
-        if(dn && dn.dataset.date) dayNotes[dn.dataset.date] = dn.value;
-        updateTodo(id, {text:box.querySelector('.te-text').value, due:box.querySelector('.te-due').value,
-          endDate:box.querySelector('.te-end') ? box.querySelector('.te-end').value : '',
-          categoryId:box.querySelector('.te-cat').value || null, prio:box.querySelector('.te-prio').checked ? 'high' : 'normal',
-          note:box.querySelector('.te-note') ? box.querySelector('.te-note').value : '', dayNotes});
-        editingTodoId = null; renderPanel(); renderGrid();
-      } else if(act === 'canceledit'){ editingTodoId = null; renderPanel(); }
-      else if(act === 'del'){ const rm = todoById(id); deleteTodo(id); editingTodoId = null; renderPanel(); renderGrid(); if(rm) toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreTodo(rm); renderPanel(); renderGrid(); }}); }
+    //  할 일 상세(들여쓴 상세, §7.1)의 [수정] = [+ 추가] 창의 할 일 수정, [삭제] = 줄 끝 ✕ 와 같다(실행 취소 있음)
+    const det = ev.target.closest('.dp-tdet');
+    if(det){
+      const act = ev.target.dataset.act, id = det.dataset.tid; if(!act || !id) return;
+      if(peerReadOnly()){ renderPanel(); return; }   // P2 — 열람 창에는 [수정] [삭제]를 그리지 않는다
+      if(act === 'edit'){ openTodoEdit(id); return; }
+      if(act === 'del'){ if(guardEdit()) return; const rm = todoById(id); deleteTodo(id); renderPanel(); renderGrid(); if(rm) toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreTodo(rm); renderPanel(); renderGrid(); }}); }
       return;
     }
-    // TODO 행 액션 (일정 상세 카드 액션은 아래 #dayPanel 핸들러가 처리)
+    // TODO 행 액션 (제목 누름은 data-dp 라 #dayPanel 핸들러가 펼친다. 일정 상세의 [수정] [삭제]도 아래 #dayPanel 핸들러가 처리)
     const row = ev.target.closest('.todo-row'); if(!row) return;
     const act = ev.target.dataset.act; if(!act) return;
-    if(peerReadOnly()){ renderPanel(); return; }   // P2 — 열람 창: 체크·중요·삭제·수정 없음(행에 data-act 도 안 그린다)
+    if(peerReadOnly()){ renderPanel(); return; }   // P2 — 열람 창: 체크·중요·삭제 없음(행에 data-act 도 안 그린다)
     if((act === 'toggle' || act === 'del' || act === 'star') && guardEdit()){ renderPanel(); return; }   // 체크 표시도 되돌린다
     if(act === 'toggle'){ toggleTodo(row.dataset.id); renderPanel(); renderGrid(); }
     else if(act === 'del'){ const rm = todoById(row.dataset.id); deleteTodo(row.dataset.id); renderPanel(); renderGrid(); if(rm) toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreTodo(rm); renderPanel(); renderGrid(); }}); }
     else if(act === 'star'){ const t = todoById(row.dataset.id); if(t){ updateTodo(row.dataset.id, {prio: t.prio==='high'?'normal':'high'}); renderPanel(); renderGrid(); } }
-    else if(act === 'edit'){ editingTodoId = row.dataset.id; renderPanel(); const te = $('#dpBody .te-text'); if(te){ te.focus(); te.select(); } }
   });
+  //  할 일 제목(role=button, data-dp="td")은 Enter, Space 로도 펼친다
   $('#dpBody').addEventListener('keydown', ev => {
     if(ev.isComposing || ev.keyCode === 229) return;   // 한글 IME 조합 중 Enter 무시
-    if(ev.target.classList && ev.target.classList.contains('te-text') && ev.key === 'Enter'){
-      const box = ev.target.closest('.todo-edit'); const btn = box && box.querySelector('[data-act="save"]'); if(btn) btn.click();
-    }
+    const t = ev.target;
+    if(t && t.dataset && t.dataset.dp === 'td' && (ev.key === 'Enter' || ev.key === ' ')){ ev.preventDefault(); ev.stopPropagation(); t.click(); }
   });
 
   /* 연·월 점프 */
@@ -19957,7 +20054,7 @@ function bind(){
     { const dx = ev.target.closest('[data-dp]'); if(dx){ dpOnClick(dx); return; } }   // 묶음 접기, 더 보기, 줄이기, 일정 줄 펼치기
     const act = ev.target.dataset.act;
     if(!act) return;
-    const card = ev.target.closest('.card');
+    const card = ev.target.closest('.card, .dp-edet');   // 일정 줄 아래 들여쓴 상세(§7.1)도 카드와 같은 data-id, data-occ
     if(!card) return;
     if(PEER && (act === 'edit' || act === 'del')){ peerReadOnly(); return; }   // 카드 버튼은 CSS 로도 감춘다(.card-actions)
     if(act === 'edit') editEntry(card.dataset.id);
@@ -20135,16 +20232,14 @@ function bind(){
     if(CAW.on){ const off = caStOffSet(); if(i.checked) off.delete(i.dataset.offst); else off.add(i.dataset.offst); renderCaList(); return; }   // 보기 모드: 이 창 안에서만 센다
     offStToggle(i.dataset.offst, i.checked); renderCaList();
   });
-  //  보기 모드의 셋(참여자 고르기, 일정 있는 과제만, 정렬). 과제 추가 모드에서는 보이지 않아 눌릴 일이 없다.
+  //  보기 모드의 것(참여자 고르기, 일정 없는 과제 숨김). 과제 추가 모드에서는 보이지 않아 눌릴 일이 없다. 열 머리 정렬은 아래 표 누름에서
   $('#caWho').addEventListener('click', ev => { ev.preventDefault(); caWhoOpen($('#caWho')); });
   $('#caOnlyAct').addEventListener('change', ev => { CAW.onlyAct = !!ev.target.checked; renderCaList(); });
-  $('#caSort').addEventListener('click', ev => {
-    const b = ev.target.closest && ev.target.closest('[data-casort]'); if(!b) return;
-    CAW.sort = b.dataset.casort === 'name' ? 'name' : 'act'; caWatchSyncChrome(); renderCaList();
-  });
   { const box = $('#caList');
     box.addEventListener('click', ev => {
       const ab = ev.target.closest('[data-caadd]'); if(ab){ catAddOfficial(ab.dataset.caadd); return; }
+      //  보기 모드 "최근 활동" 열 머리: 누를 때마다 최근 순 → 오래된 순 → 기본 순서. 다시 그린 뒤 포커스는 같은 머리에
+      if(ev.target.closest('[data-casort]')){ CAW.sort = sortNext(CAW.sort); renderCaList(); const h = box.querySelector('[data-casort]'); if(h) try{ h.focus({ preventScroll: true }); }catch(_){} return; }
       //  보기 모드의 단추들: 참여자 명단 창, [보기]와 "✓ 보는 중", 다시 시도(과제 추가 모드의 줄에는 이 속성이 없다)
       const wm = ev.target.closest('[data-cawm]'); if(wm){ caWatchMembers(wm.dataset.cawm); return; }
       const wa = ev.target.closest('[data-cawatch]'); if(wa){ caWatchToggle(wa.dataset.cawatch, true); return; }
@@ -24321,16 +24416,27 @@ async function pcWatchRemove(uid){
   toast("'" + p.name + "'을(를) 관심 과제에서 뺐습니다", 'info');
 }
 
+/* ── 정렬 머리(앱 공용, docs/PC-WATCH-2.md §7.3) ───────────────────────────────────────────────
+ *  표의 열 머리 하나를 누를 때마다 내림(▼) → 오름(▲) → 기본 순서. 상태는 부른 쪽이 갖는다(null | 'desc' | 'asc').
+ *  머리는 <button>(키보드 Enter, Space), 그 열 머리 칸(role=columnheader)에 aria-sort 를 단다. 처음 쓰는 곳: 관심 과제 추가 창의 "최근 활동". */
+function sortNext(cur){ return cur === 'desc' ? 'asc' : cur === 'asc' ? null : 'desc'; }
+function sortAria(cur){ return cur === 'desc' ? 'descending' : cur === 'asc' ? 'ascending' : 'none'; }
+function sortHeadHtml(label, cur, attrs){
+  return `<button type="button" class="sort-h${cur ? ' on' : ''}"${attrs || ''}>${esc(label)}<span class="sort-ar" aria-hidden="true">${cur === 'desc' ? '▼' : cur === 'asc' ? '▲' : ''}</span></button>`;
+}
+
 /* ── 다른 과제 보기 창 = 과제 추가 창(#catAddModal)의 보기 모드(docs/PC-WATCH.md §5.2) ──────────────────
- *  새 창이 아니다. openCatAdd('watch') 가 같은 창을 보기 모드로 연다: 제목 "다른 과제 보기", 위 탭 숨김, 같은 검색 칸, 발주처, 구분,
- *  상태 체크, 줄 펼침, 긴 이름 줄임, 폭에 따른 열 줄이기. 보기 모드에서 다른 것: "일정 있는 과제만"(처음 켬), 정렬(최근 활동순, 이름순),
- *  열(참여자 수, 최근 활동, 보기 단추), [참여자] 여러 명 고르기(사람 고르기 팝오버의 여러 명 모드), 찾기 칸이 참여자 이름도 찾는다.
+ *  새 창이 아니다. openCatAdd('watch') 가 같은 창을 보기 모드로 연다: 제목 "관심 과제 추가", 위 탭 숨김, 같은 검색 칸, 발주처, 구분,
+ *  상태 체크, 줄 펼침, 긴 이름 줄임, 폭에 따른 열 줄이기. 보기 모드에서 다른 것: 상태 줄 끝 "일정 없는 과제 숨김"(처음 켬), 순서(과제 추가 창과 같은
+ *  DB 순서, 구분 묶음, No 열), "최근 활동" 열 머리 정렬(최근 순, 오래된 순, 기본 순서), 열(참여자 수, 최근 활동, 추가 단추),
+ *  [참여자] 여러 명 고르기(다른 사람 일정 보기 조직도의 체크 모드, docs/PC-WATCH-2.md §7.3), 찾기 칸이 참여자 이름도 찾는다.
  *  ★ 과제 추가 모드의 동작은 하나도 바뀌지 않는다: CAW.on 이 꺼져 있으면 renderCaList 는 지금 그대로다.
  *  ★ [보기]는 내 과제에 넣지 않는다(state.categories 와 cal_category 를 건드리지 않는다). 과제 탭의 "보기만" 목록(cal_project_watch)에만 들어간다.
  *  ★ 상태 체크는 이 창 안에서만 따로 센다(처음엔 종료만 끔). 관리 화면, 재연결과 함께 쓰는 기억(tc_projStatusOff)을 바꾸지 않는다.
  *  ★ 사람 이름, 직급은 사람 고르기와 같은 명부(membersGet)로 붙인다. 호스트의 목록 회신(pcWatchCatalog)은 login_id 만 싣는다.
  *  ★ DB 문자열(과제 이름, 발주처, 사람 이름)은 esc() 나 textContent 로만 그린다. */
-const CAW = { on: false, gen: 0, status: 'idle', err: '', cat: new Map(), roster: new Map(), rStatus: 'idle', org: null, myUnit: '', members: [], who: null, onlyAct: true, sort: 'act', stOff: null, added: 0, busy: new Set() };
+//  sort = "최근 활동" 열 머리 정렬: null 기본 순서(DB 순서, 구분 묶음) | 'desc' 최근 순 | 'asc' 오래된 순. 기억하지 않는다(창 열 때마다 기본)
+const CAW = { on: false, gen: 0, status: 'idle', err: '', cat: new Map(), roster: new Map(), rStatus: 'idle', org: null, myUnit: '', members: [], who: null, onlyAct: true, sort: null, stOff: null, added: 0, busy: new Set() };
 //  처음 끈 상태: 종료만. 사용자가 고르면 그 집합을 이 창이 열려 있는 동안만 쓴다.
 function caStOffSet(){ if(!CAW.stOff) CAW.stOff = new Set([String(CODE_ID.STATUS_ENDED)]); return CAW.stOff; }
 function caFillStatus(){ fillStatusChecks('caStChecks', CAW.on ? caStOffSet() : null); }
@@ -24350,7 +24456,7 @@ function caAgoText(d){
   if(d < 365) return Math.floor(d / 30) + '달 전';
   return '1년 넘음';
 }
-//  [참여자] 단추 글자(FILTER-MULTI 규칙): 전체 / 이름 / 이름 외 N / 선택 없음. 첫 사람은 고르기 목록의 순서(내 부서 먼저, 조직 순서)
+//  [참여자] 단추 글자(FILTER-MULTI 규칙): 전체 / 이름 / 이름 외 N / 선택 없음. 첫 사람은 조직도 순서(트리 순서, 조직 안은 명부 순서)
 function caWhoText(){
   if(CAW.who === null) return '전체';
   if(!CAW.who.size) return '선택 없음';
@@ -24362,7 +24468,6 @@ function caWatchSyncChrome(){
   const t = document.getElementById('caWhoT'); if(t) t.textContent = caWhoText();
   const b = document.getElementById('caWho'); if(b) b.classList.toggle('act', CAW.who !== null);
   const c = document.getElementById('caOnlyAct'); if(c) c.checked = CAW.onlyAct;
-  document.querySelectorAll('#caSort [data-casort]').forEach(x => { const on = x.dataset.casort === CAW.sort; x.classList.toggle('active', on); x.setAttribute('aria-pressed', String(on)); });
   const a = document.getElementById('caAdded'); if(a && CAW.on) a.textContent = CAW.added ? '이번에 ' + CAW.added + '개를 관심 과제로 넣었습니다' : '';
 }
 //  창을 열 때(또는 과제 추가 모드로 돌아갈 때) 모드를 맞춘다.
@@ -24378,7 +24483,7 @@ function caModeSet(on){
   }
   caWhoClose(false);
   if(!CAW.on) return;
-  Object.assign(CAW, { who: null, onlyAct: true, sort: 'act', stOff: null, added: 0, status: 'loading', err: '', cat: new Map(), busy: new Set() });
+  Object.assign(CAW, { who: null, onlyAct: true, sort: null, stOff: null, added: 0, status: 'loading', err: '', cat: new Map(), busy: new Set() });
   caWatchSyncChrome();
 }
 //  목록용 읽기(pcWatchCatalog)와 명부를 읽는다. 명부는 기다리지 않는다(이름은 늦게 붙어도 된다).
@@ -24400,7 +24505,7 @@ async function caWatchLoad(){
   CAW.cat = m; CAW.status = 'ok'; CAW.err = '';
   renderCaList(true);
 }
-//  명부(사람 고르기와 같은 membersGet 회신): 이름표(roster), [참여자] 고르기 목록의 조직(pkOrgIndex 와 내 부서 myUnit). 사람 고르기의 G9 와 같은 규칙
+//  명부(사람 고르기와 같은 membersGet 회신): 이름표(roster), [참여자] 조직도의 색인(pkOrgIndex 와 내 소속 myUnit). 사람 고르기의 G9 와 같은 규칙
 async function caRosterLoad(){
   CAW.rStatus = 'loading';
   let r = null; try{ r = await caRosterFetch(); }catch(_){ r = null; }
@@ -24412,7 +24517,7 @@ async function caRosterLoad(){
     CAW.myUnit = (mu && CAW.org.has(mu)) ? mu : '';
     CAW.rStatus = 'ok';
   } else CAW.rStatus = 'fail';
-  if(CAWP.pop){ if(CAW.myUnit && !CAWP.touched) CAWP.open = new Set([CAW.myUnit]); fbFill(CAWP, true); }
+  if(CAWP.pop) caWhoRender();
 }
 //  보이는 줄(거르고 정렬한 결과). 찾기 칸은 과제 이름, 발주처에 더해 참여자 이름도 찾는다. 고른 사람 중 한 명이라도 참여한 과제가 남는다.
 function caWatchRows(){
@@ -24437,9 +24542,13 @@ function caWatchRows(){
     else if(q) hits = names.filter(n => offNorm(n).includes(q));
     out.push({ c, uid, info, ids, hits, days: info && info.last ? caActDays(info.last) : null, t: info && info.last ? Date.parse(info.last) : 0 });
   }
-  const ko = (a, b) => String(a.c.name).localeCompare(String(b.c.name), 'ko');
-  if(CAW.sort === 'act') out.sort((a, b) => ((a.t === 0) - (b.t === 0)) || (b.t - a.t) || ko(a, b));
-  else out.sort(ko);
+  //  기본 순서 = 과제 추가 창과 같은 DB 순서(구분 순서, 구분 안 No). 정렬 중에도 같은 시각이면 이 순서. 일정 없는 과제는 어느 방향이든 맨 끝
+  const db = new Map(); offGroups(out.map(r => r.c)).forEach(([, cs]) => cs.forEach(c => db.set(c, db.size)));
+  out.sort((a, b) => db.get(a.c) - db.get(b.c));
+  if(CAW.sort === 'desc' || CAW.sort === 'asc'){
+    const dir = CAW.sort === 'desc' ? -1 : 1;
+    out.sort((a, b) => ((a.t === 0) - (b.t === 0)) || (a.t === b.t ? 0 : (a.t < b.t ? -dir : dir)) || (db.get(a.c) - db.get(b.c)));
+  }
   return out;
 }
 function caWatchActHtml(uid, id){
@@ -24448,7 +24557,8 @@ function caWatchActHtml(uid, id){
     ? '<button type="button" class="btn sm ca-watching" data-cawatchoff="' + esc(uid) + '" title="누르면 관심 과제에서 뺍니다">✓ 관심 과제</button>'
     : '<button type="button" class="btn sm" data-cawatch="' + esc(uid) + '">추가</button>';
 }
-//  표 한 줄 + 아래 펼침. 열: 통상명칭, 발주처, 상태, 참여자, 최근 활동, 동작. 계약명, 계약기간, 사업명, 개발 기간은 펼침으로.
+//  표 한 줄 + 아래 펼침. 열: No(구분 안 번호, 과제 추가 창의 순서와 같은 값. 정렬해도 그대로), 통상명칭, 발주처, 상태, 참여자, 최근 활동, 동작.
+//  계약명, 계약기간, 사업명, 개발 기간은 펼침으로.
 function caWatchRowHtml(r){
   const c = r.c, uid = r.uid, id = esc(c.id), nm = esc(c.name), open = caOpen.has(c.id);
   const mine = catIsSubscribed(c.id) || PCAL.projects.some(p => p.projectUid === uid);
@@ -24460,6 +24570,7 @@ function caWatchRowHtml(r){
   const rec = r.days == null ? '<span class="ca-na">일정 없음</span>' : '<span class="' + (r.days <= 2 ? 'ca-hot' : '') + '">' + esc(caAgoText(r.days)) + '</span>';
   const quiet = r.days == null || r.days > 60;
   return '<div class="ca-grid ca-w ca-r' + (mine ? ' have' : '') + (quiet ? ' ca-quiet' : '') + '" role="row" tabindex="0" data-caid="' + id + '" aria-expanded="' + (open ? 'true' : 'false') + '">'
+    + '<span class="ca-c ca-c-no" role="cell">' + (c.sortNo == null ? '' : esc(String(c.sortNo))) + '</span>'
     + '<span class="ca-nmcell" role="cell"><span class="cat-nm" data-full="' + nm + '" title="' + nm + '">' + nm + '</span><span class="ca-sub-cust">' + esc(cust || '-') + '</span></span>'
     + '<span class="ca-c ca-c-cust" role="cell" title="' + esc(cust) + '">' + esc(cust || '-') + '</span>'
     + '<span class="ca-c ca-c-st" role="cell" title="' + esc(st || '미정') + '"><span class="off-st ' + k + '"><i class="off-dot ' + k + '" aria-hidden="true"></i><span class="ca-stx">' + esc(st || '-') + '</span></span></span>'
@@ -24485,10 +24596,11 @@ function renderCaWatchList(box, keep){
   if(CAW.status !== 'ok' && CAW.status !== 'idle'){ note('일정 정보를 읽는 중입니다.'); return; }
   if(!rows.length){ note(!dbCatalog.length ? '등록된 공식 과제가 없습니다.' : CAW.onlyAct ? '조건에 맞고 일정이 있는 과제가 없습니다.' : '조건에 맞는 공식 과제가 없습니다.'); return; }
   box.setAttribute('role', 'table');
-  let html = '<div class="ca-grid ca-w ca-h" role="row"><span role="columnheader">통상명칭<span class="ca-h-narrow"> / 발주처</span></span>'
+  let html = '<div class="ca-grid ca-w ca-h" role="row"><span class="ca-c-no" role="columnheader">No</span><span role="columnheader">통상명칭<span class="ca-h-narrow"> / 발주처</span></span>'
     + '<span class="ca-c-cust" role="columnheader">발주처</span><span class="ca-c-st" role="columnheader">상태</span>'
-    + '<span class="ca-c-mem" role="columnheader">참여자</span><span class="ca-c-rec" role="columnheader">최근 활동</span><span role="columnheader"></span></div>';
-  if(CAW.sort === 'act') html += rows.map(caWatchRowHtml).join('');   // 최근 활동순: 구분 묶음을 풀고 한 줄 목록
+    + '<span class="ca-c-mem" role="columnheader">참여자</span>'
+    + '<span class="ca-c-rec" role="columnheader" aria-sort="' + sortAria(CAW.sort) + '">' + sortHeadHtml('최근 활동', CAW.sort, ' data-casort="rec"') + '</span><span role="columnheader"></span></div>';
+  if(CAW.sort) html += rows.map(caWatchRowHtml).join('');   // 최근 활동 정렬 중: 구분 묶음을 풀고 한 줄 목록
   else {
     const byC = new Map(rows.map(r => [r.c, r]));
     for(const [sec, cs] of offGroups(rows.map(r => r.c))){
@@ -24538,28 +24650,22 @@ async function caWatchToggle(uid, on){
     try{ row.focus({ preventScroll: true }); }catch(_){}
   }
 }
-/* ── [참여자] 필터 = 개인 보기 팝업의 과제 목록 부분을 같은 함수로(docs/PC-WATCH-2.md §4) ──────────────────
- *  찾기 칸, [전체 선택] [전체 해제], .fb-opts 체크 목록, 키보드와 aria 는 공용 고르기 목록(fbFill, fbListKey 등)이다. 다른 점은 목록 출처 하나:
- *  조직(팀)별 묶음. 묶음 머리에 펼치기와 묶음 전체 체크(일부면 반쯤), 내 부서 묶음이 맨 위에 펼쳐져 있고 나머지는 접힘, 찾으면 맞는 묶음이 다 펼쳐진다.
- *  오른쪽 수 = 참여 과제 수(0이면 흐리게 .zero). 사람과 조직은 사람 고르기와 같은 명부(membersGet)와 조직 색인(pkOrgIndex)이다.
- *  상태는 FILTER-MULTI 그대로: CAW.who = null 전체, 빈 묶음 선택 없음, 다 켜면 전체로, 선택 없음은 [전체 해제]로만, 칩 없음, 기억하지 않음(창 열 때마다 전체). */
-const CAWP = { pop: null, q: null, lb: null, items: [], act: -1, actId: null, src: null, btn: null, open: new Set(), touched: false };
-//  묶음(조직 트리 순서, 직속 사람이 있는 조직만). 내 부서가 맨 위. 트리 밖 사람은 끝의 "소속 없음" 한 묶음
-function caWhoGroups(){
-  const ix = CAW.org; if(!ix) return [];
-  const out = [], seen = new Set();
-  const walk = n => { if(seen.has(n)) return; seen.add(n); const ms = ix.direct.get(n) || []; if(ms.length) out.push({ key: n, name: n, members: ms }); (ix.kids.get(n) || []).forEach(walk); };
-  ix.roots.forEach(walk);
-  const mi = out.findIndex(g => g.key === CAW.myUnit);
-  if(mi > 0) out.unshift(out.splice(mi, 1)[0]);
-  const inTree = new Set(); out.forEach(g => g.members.forEach(m => inTree.add(String(m.loginId))));
-  const rest = [], rs = new Set();
-  for(const m of CAW.members){ const id = String(m.loginId); if(!inTree.has(id) && !rs.has(id)){ rs.add(id); rest.push(m); } }
-  if(rest.length) out.push({ key: '', name: '소속 없음', members: rest });
-  return out;
+/* ── [참여자] 필터(docs/PC-WATCH-2.md §7.3) ──────────────────────────────────────────────────────
+ *  겉은 개인 보기 팝업 규칙: 위 찾기 칸(이름만 찾기), [전체 선택] [전체 해제](fbHeadMarkup), 칩 없음, Esc 와 바깥 클릭과 Tab 으로 닫힘(fbPopEdgeKey).
+ *  속은 다른 사람 일정 보기의 조직도 그대로(pkRenderOrg, pkTreeEl, pkUnitListEl): 왼쪽 트리(DB 순서와 계층, 펼치기, 사람 수, 내 소속),
+ *  오른쪽 경로, 하위 조직 줄, 사람 목록. 좁으면 한 칸. 더하는 것은 체크 모드(P.check): 사람 줄 체크와 참여 과제 수(0이면 흐리게),
+ *  "○○ 전원" 체크(일부면 반쯤), 고른 사람이 있는 트리 노드의 점. 사람 탭(즐겨찾기, 최근)과 ☆ 는 없다. 내 소속을 끌어올리지 않는다(처음 고른 조직만 내 소속).
+ *  상태는 FILTER-MULTI 그대로: CAW.who = null 전체, 빈 묶음 선택 없음, 다 켜면 전체로, 선택 없음은 [전체 해제]로만, 기억하지 않음(창 열 때마다 전체).
+ *  ★ 한 명 고르기(#peerPicker, __pk)는 이 구역을 지나지 않는다. 조직도 함수는 P 를 생략하면 지금처럼 __pk 를 본다. */
+const CAWP = { pop: null, q: null, btn: null, status: 'loading', msg: '', org: null, myUnit: '', unit: '', open: new Set(), focus: null, mode: 'who', check: null, wide: false, bodyH: 0, render: () => caWhoRender() };
+//  고를 수 있는 사람 전체(id → 이름). 순서 = 조직도 순서(트리 순서, 조직 안은 명부 순서), 트리 밖 사람은 끝(명부 순서)
+function caWhoAll(){
+  const m = new Map(), add = x => { const id = String(x.loginId); if(!m.has(id)) m.set(id, String(x.name || id)); };
+  const ix = CAW.org;
+  if(ix){ const seen = new Set(); const walk = n => { if(seen.has(n)) return; seen.add(n); (ix.direct.get(n) || []).forEach(add); (ix.kids.get(n) || []).forEach(walk); }; ix.roots.forEach(walk); }
+  CAW.members.forEach(add);
+  return m;
 }
-//  고를 수 있는 사람 전체(목록 순서) id → 이름
-function caWhoAll(){ const m = new Map(); caWhoGroups().forEach(g => g.members.forEach(x => { const id = String(x.loginId); if(!m.has(id)) m.set(id, String(x.name || id)); })); return m; }
 function caWhoOn(id){ return CAW.who === null || CAW.who.has(id); }
 //  다 켜면 전체(null)로
 function caWhoNormalize(){ const all = caWhoAll(); if(CAW.who !== null && all.size && [...all.keys()].every(id => CAW.who.has(id))) CAW.who = null; }
@@ -24571,80 +24677,145 @@ function caWhoSet(ids, on){
 }
 //  참여 과제 수(목록용 읽기의 참여자 명단으로 센다)
 function caWhoCounts(){ const n = new Map(); CAW.cat.forEach(info => info.memberIds.forEach(id => n.set(id, (n.get(id) || 0) + 1))); return n; }
-const CAW_WHO_SRC = {
-  idp: 'cwo-',
-  rows(q){
-    if(CAW.rStatus !== 'ok') return [];
-    const nq = pkNorm(q), cnt = caWhoCounts(), out = [];
-    for(const g of caWhoGroups()){
-      const ms = nq ? g.members.filter(m => pkMatch({ name: m.name, title: m.title, org: m.orgUnit, loginId: m.loginId }, nq)) : g.members;
-      if(nq && !ms.length) continue;
-      const ids = g.members.map(m => String(m.loginId)), k = ids.filter(caWhoOn).length;
-      const open = nq ? true : CAWP.open.has(g.key);
-      out.push({ kind: 'grp', key: g.key, name: g.name, n: ids.length + '명', on: k === ids.length ? true : k ? 'mixed' : false, open, tip: g.name + ', ' + ids.length + '명' });
-      if(open) for(const m of ms){
-        const id = String(m.loginId), c = cnt.get(id) || 0, nm = String(m.name || id) + (m.title ? ' ' + m.title : '');
-        out.push({ kind: 'opt', sub: true, id, name: nm, n: c, tip: nm + ', 참여 과제 ' + c + '개', on: caWhoOn(id) });
-      }
-    }
-    return out;
-  },
-  none(q){ return CAW.rStatus === 'fail' ? '명부를 불러오지 못했습니다' : CAW.rStatus !== 'ok' ? '명부를 읽는 중입니다' : q ? '일치하는 사람 없음' : '사람 없음'; },
-  canAll(){ return CAW.rStatus === 'ok' && CAW.who !== null; },
-  canNone(){ return CAW.rStatus === 'ok' && !(CAW.who !== null && CAW.who.size === 0); },
-  toggle(id){ caWhoSet([id], !caWhoOn(id)); },
-  toggleGroup(key){ const g = caWhoGroups().find(x => x.key === key); if(!g) return; const ids = g.members.map(m => String(m.loginId)); caWhoSet(ids, !ids.every(caWhoOn)); },
-  setAll(on){ CAW.who = on ? null : new Map(); },
-  apply(){ caWatchSyncChrome(); renderCaList(true); fbFill(CAWP, false); },
-  expand(key, open){ CAWP.touched = true; if(open) CAWP.open.add(key); else CAWP.open.delete(key); },
-};
-//  자리: 단추 아래, 왼쪽 맞춤. 경계는 화면이 아니라 과제 추가 창(.modal)의 안쪽(창 밖으로 삐져나가지 않게). 목록 높이는 열 때 한 번(내용만큼, 상한까지)
-function caWhoPlace(sizeList){
+//  고른 사람이 있는 조직(그 사람의 조직과 모든 윗 조직). 전체(null)면 없다(점은 일부만 골랐을 때의 길잡이다)
+function caWhoUnits(){
+  const out = new Set(), ix = CAW.org;
+  if(CAW.who === null || !ix) return out;
+  const byId = new Map(CAW.members.map(x => [String(x.loginId), x]));
+  for(const id of CAW.who.keys()){ const x = byId.get(id); if(x) pkOrgPath(ix, String(x.orgUnit || '')).forEach(a => out.add(a)); }
+  return out;
+}
+//  이름 찾기 결과 칸(오른쪽 칸 자리, 좁으면 한 칸). 조직은 트리로 고르니 찾기는 이름만
+function caWhoFoundEl(q){
+  const box = document.createElement('div'); box.className = 'pk-olist';
+  const hit = CAW.members.filter((m, i, a) => pkNorm(m.name).includes(q) && a.findIndex(x => String(x.loginId) === String(m.loginId)) === i);
+  const h = document.createElement('div'); h.className = 'pk-sec-h'; h.textContent = '찾은 사람 ' + hit.length + '명'; box.appendChild(h);
+  if(!hit.length){ box.appendChild(pkNote('일치하는 사람 없음')); return box; }
+  const g = document.createElement('div'); g.setAttribute('role', 'group'); g.setAttribute('aria-label', '찾은 사람');
+  hit.forEach(m => g.appendChild(pkCheckRowEl(m, CAWP, true)));
+  box.appendChild(g);
+  return box;
+}
+//  본문 다시 그리기. 포커스는 같은 자리(같은 사람의 체크, 같은 조직 노드), 트리와 목록 스크롤도 그대로
+function caWhoRender(){
+  const P = CAWP, pop = P.pop; if(!pop) return;
+  const body = pop.querySelector('.pk-body');
+  const ae = document.activeElement;
+  const keep = (ae && body.contains(ae) && ae.dataset) ? { act: ae.dataset.act || '', id: ae.dataset.login || ae.dataset.unit || '', where: ae.dataset.where || '' } : null;
+  const ot = body.querySelector('.pk-tree'), ol = body.querySelector('.pk-olist');
+  const sc = { tree: ot ? ot.scrollTop : null, list: ol ? ol.scrollTop : null, key: P.unit + '|' + P.q.value };
+  P.status = CAW.rStatus === 'ok' ? 'ok' : CAW.rStatus === 'fail' ? 'fail' : 'loading';
+  P.org = CAW.org; P.myUnit = CAW.myUnit;
+  if(P.status === 'ok' && P.org && !(P.unit && P.org.has(P.unit))){   // 처음 자리: 내 소속(모르면 첫 루트), 펼침 = 루트 전부 + 그 경로(pkOrgInit 과 같은 규칙)
+    P.unit = P.myUnit || P.org.roots[0] || '';
+    P.org.roots.forEach(r => P.open.add(r)); pkOrgPath(P.org, P.unit).forEach(a => P.open.add(a));
+  }
+  const cnt = caWhoCounts();
+  P.check = { on: caWhoOn, count: id => cnt.get(id) || 0, units: caWhoUnits() };
+  while(body.firstChild) body.removeChild(body.firstChild);
+  const q = pkNorm(P.q.value);
+  pkRenderOrg(body, P.wide, P, (q && P.status === 'ok' && P.org) ? caWhoFoundEl(q) : null);
+  const t = body.querySelector('.pk-tree'), l = body.querySelector('.pk-olist');
+  if(t && sc.tree != null) t.scrollTop = sc.tree;
+  if(l && sc.list != null && sc.key === P.unit + '|' + P.q.value) l.scrollTop = sc.list;
+  const ok = P.status === 'ok';
+  pop.querySelector('[data-act="all"]').disabled = !(ok && CAW.who !== null);
+  pop.querySelector('[data-act="none"]').disabled = !(ok && !(CAW.who !== null && CAW.who.size === 0));
+  //  포커스: 조직을 고른 힌트(트리 노드 또는 목록 첫 줄), 아니면 같은 자리
+  const hint = P.focus; P.focus = null;
+  let f = null;
+  const node = u => [...body.querySelectorAll('.pk-node')].find(b => b.dataset.unit === u) || null;
+  const first = () => body.querySelector('.pk-olist .pk-all input, .pk-olist .pk-sub, .pk-olist .pk-mpick input') || P.q;
+  if(hint) f = hint.kind === 'tree' ? (node(hint.unit) || first()) : first();
+  else if(keep) f = [...body.querySelectorAll('[data-act]')].find(el => el.dataset.act === keep.act && (el.dataset.login || el.dataset.unit || '') === keep.id && (el.dataset.where || '') === keep.where) || null;
+  if(f){
+    if(f.classList && f.classList.contains('pk-node')) for(const b of f.parentElement.querySelectorAll('.pk-node')) b.tabIndex = (b === f) ? 0 : -1;
+    try{ f.focus({ preventScroll: true }); }catch(_){}
+  }
+}
+//  고른 사람이 바뀌면 단추 글자, 표, 팝업을 함께
+function caWhoApply(){ caWatchSyncChrome(); renderCaList(true); caWhoRender(); }
+//  자리: 단추 아래, 왼쪽 맞춤. 경계는 화면이 아니라 과제 추가 창(.modal)의 안쪽. 두 칸(트리 | 목록)이 들어가면 넓게(사람 고르기와 같은 PK_ORG_MIN_W, PK_ORG_W).
+//  본문 높이는 열 때(그리고 창 크기가 바뀔 때) 한 번 정한다(찾거나 고를 때 출렁이지 않게)
+function caWhoPlace(){
   const pop = CAWP.pop, btn = CAWP.btn; if(!pop || !btn) return;
   const vw = window.innerWidth || document.documentElement.clientWidth || 0, vh = window.innerHeight || 0;
   const mEl = document.querySelector('#catAddModal .modal');
   const m = mEl ? mEl.getBoundingClientRect() : { left: 0, top: 0, right: vw, bottom: vh };
-  const bl = Math.max(0, m.left) + 8, br = Math.min(vw, m.right) - 8, bb = Math.min(vh, m.bottom) - 8;
-  const r = btn.getBoundingClientRect(), w = Math.min(320, Math.max(200, br - bl));
+  const bl = Math.max(0, m.left) + 8, br = Math.min(vw, m.right) - 8, bt = Math.max(0, m.top) + 8, bb = Math.min(vh, m.bottom) - 8;
+  const avail = Math.max(200, br - bl), r = btn.getBoundingClientRect();
+  const wide = avail >= PK_ORG_MIN_W;
+  if(wide !== CAWP.wide){ CAWP.wide = wide; caWhoRender(); }
+  const w = wide ? Math.min(PK_ORG_W, avail) : Math.min(360, avail);
   pop.style.width = w + 'px';
   pop.style.left = Math.round(Math.max(bl, Math.min(r.left, br - w))) + 'px';
-  pop.style.top = Math.round(r.bottom + 4) + 'px';
-  if(sizeList){
-    CAWP.lb.style.height = '0px';
-    const fixed = pop.offsetHeight;
-    CAWP.lb.style.height = '';
-    const cap = Math.max(96, Math.min(300, bb - r.bottom - 4 - fixed));
-    CAWP.lb.style.height = Math.min(CAWP.lb.scrollHeight, cap) + 'px';
-  }
+  const body = pop.querySelector('.pk-body'), headH = [...pop.children].filter(c => c !== body).reduce((a, c) => a + c.offsetHeight, 0) + 2;   // 찾기 칸, 전체 선택/해제 줄, 테두리
+  const h = Math.max(160, Math.min(420, bb - bt - headH));
+  if(body) body.style.height = h + 'px';
+  pop.style.top = Math.round(Math.max(bt, Math.min(r.bottom + 4, bb - headH - h))) + 'px';
 }
 function caWhoClose(ret){
   if(!CAWP.pop) return;
   const btn = CAWP.btn;
   CAWP.pop.remove();
-  Object.assign(CAWP, { pop: null, q: null, lb: null, items: [], act: -1, actId: null, btn: null });
+  Object.assign(CAWP, { pop: null, q: null, btn: null, focus: null, check: null });
   if(btn){ btn.setAttribute('aria-expanded', 'false'); btn.removeAttribute('aria-controls'); if(ret) try{ btn.focus(); }catch(_){} }
 }
-//  [참여자]: 누르면 열고 다시 누르면 닫는다. 고를 때마다 목록이 바로 걸러진다.
+//  [참여자]: 누르면 열고 다시 누르면 닫는다. 고를 때마다 목록이 바로 걸러진다. 조직도 자리(고른 조직, 펼침)는 열 때마다 처음(내 소속)
 function caWhoOpen(btn){
   if(CAWP.pop){ caWhoClose(true); return; }
   const host = document.getElementById('catAddModal'); if(!host || !btn) return;
   const pop = document.createElement('div');
   pop.className = 'fb-pop fb-pop-who'; pop.id = 'caWhoPop';
   pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', '참여자 고르기');
-  pop.innerHTML = fbListMarkup('caWhoList', '이름, 직급, 조직으로 찾기', '참여자');
+  pop.innerHTML = fbHeadMarkup('caWhoBody', '이름 찾기') + '<div class="pk-body" id="caWhoBody"></div>';
   host.appendChild(pop);
-  Object.assign(CAWP, { pop, q: pop.querySelector('.fb-q'), lb: pop.querySelector('.fb-opts'), items: [], act: -1, actId: null, src: CAW_WHO_SRC, btn,
-    open: new Set(CAW.myUnit ? [CAW.myUnit] : []), touched: false });
+  Object.assign(CAWP, { pop, q: pop.querySelector('.fb-q'), btn, unit: '', open: new Set(), focus: null, wide: false });
   btn.setAttribute('aria-expanded', 'true'); btn.setAttribute('aria-controls', 'caWhoPop');
-  pop.addEventListener('click', ev => { fbListClick(CAWP, ev.target); });
-  pop.addEventListener('mousemove', ev => fbListHover(CAWP, ev));
-  pop.addEventListener('input', ev => { if(ev.target === CAWP.q) fbListInput(CAWP); });
-  pop.addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; fbPopKey(CAWP, ev, caWhoClose); });
-  caWhoPlace(false);
-  fbFill(CAWP, true);
-  caWhoPlace(true);
+  pop.addEventListener('click', caWhoClick);
+  pop.addEventListener('change', caWhoChange);
+  pop.addEventListener('input', ev => { if(ev.target === CAWP.q) caWhoRender(); });
+  pop.addEventListener('keydown', caWhoKey);
+  caWhoRender();
+  caWhoPlace();
   CAWP.q.focus({ preventScroll: true });
   if(CAW.rStatus !== 'ok' && CAW.rStatus !== 'loading') caRosterLoad();
+}
+//  누름: [전체 선택] [전체 해제], 조직 고르기(트리, 경로, 하위 조직 줄), 펼치기(▸ ▾). 체크는 change 로 받는다(줄 전체가 이름표)
+function caWhoClick(ev){
+  const t = ev.target;
+  const lk = t.closest('.fb-lk');
+  if(lk){ if(lk.disabled) return; CAW.who = lk.dataset.act === 'all' ? null : new Map(); caWhoApply(); try{ CAWP.q.focus({ preventScroll: true }); }catch(_){} return; }
+  const b = t.closest('[data-act]'); if(!b) return;
+  if(b.dataset.act === 'unit') pkSelectUnit(b.dataset.unit, b.dataset.where === 'tree' ? 'tree' : 'list', CAWP);
+  else if(b.dataset.act === 'twist') pkToggleOpen(b.dataset.unit, CAWP);
+}
+//  체크: 사람 하나, 또는 "전원"(그 조직과 하위 조직. 다 켜져 있으면 끄고, 아니면 다 켠다)
+function caWhoChange(ev){
+  const t = ev.target; if(!t || t.type !== 'checkbox') return;
+  if(t.dataset.act === 'pick'){ const id = t.dataset.login || ''; if(id) caWhoSet([id], !caWhoOn(id)); }
+  else if(t.dataset.act === 'pickall'){
+    if(!CAW.org) return;
+    const ids = pkUnitMembers(CAW.org, t.dataset.unit || '').map(x => String(x.loginId));
+    caWhoSet(ids, !ids.every(caWhoOn));
+  } else return;
+  caWhoApply();
+}
+//  키: Esc, Tab(가장자리면 닫기)은 개인 보기 팝업과 같은 함수. 트리는 사람 고르기와 같은 키(pkTreeKey). 찾기 칸 ↓ 는 트리의 고른 조직(넓을 때) 또는 목록 첫 줄.
+//  그 밖의 키는 전역 단축키(화살표 이동, Home/End)로 번지지 않게 막는다(체크의 Space 는 기본 동작 그대로)
+function caWhoKey(ev){
+  if(ev.isComposing || ev.keyCode === 229) return;
+  if(fbPopEdgeKey(CAWP, ev, caWhoClose)) return;
+  const t = ev.target;
+  if(t && t.classList && t.classList.contains('pk-node') && pkTreeKey(ev, t, CAWP.q, CAWP)) return;
+  if(t === CAWP.q && ev.key === 'ArrowDown'){
+    ev.preventDefault(); ev.stopPropagation();
+    const body = CAWP.pop.querySelector('.pk-body');
+    const f = (pkNorm(CAWP.q.value) ? null : body.querySelector('.pk-tree .pk-node[aria-selected="true"]')) || body.querySelector('.pk-olist .pk-all input, .pk-olist .pk-sub, .pk-olist .pk-mpick input');
+    if(f){ if(f.classList.contains('pk-node')) for(const b of f.parentElement.querySelectorAll('.pk-node')) b.tabIndex = (b === f) ? 0 : -1; try{ f.focus(); }catch(_){} }
+    return;
+  }
+  ev.stopPropagation();
 }
 //  바깥을 누르거나 포커스가 바깥(단추 말고)으로 가면 닫는다. 창 크기가 바뀌면 자리만 다시 잡는다
 document.addEventListener('pointerdown', ev => {
@@ -24658,7 +24829,7 @@ document.addEventListener('focusin', ev => {
   if(CAWP.pop.contains(ev.target) || ev.target === CAWP.btn) return;
   caWhoClose(false);
 });
-window.addEventListener('resize', () => { caWhoPlace(false); });
+window.addEventListener('resize', () => { caWhoPlace(); });
 
 /* ── 최근 변경 ───────────────────────────────────────────────── */
 function pcOpenChanges(){

@@ -16,6 +16,12 @@
 - **과제 탭 왼쪽 목록**: [내 과제 a/b | 관심 과제 c/d] 탭(목록만 바꾸고 달력은 두 탭 체크의 합), 전체 선택/해제는 지금 탭만, 묶음 머리 체크 걷음, 탭은 `pcPrefs.side` 에 기억.
 - **참여자 필터**: 개인 보기 팝업의 과제 목록 부분을 출처를 받는 공용 함수(`fbFill`, `fbPick`, `fbListKey`, `fbPopKey` 등, 출처 `FB_SRC`)로 뺐고 관심 과제 추가 창 [참여자]가 같은 함수로 조직별 묶음 출처(`CAW_WHO_SRC`)를 연다. FILTER-MULTI 규칙 그대로(칩 없음). `#peerPicker` 여러 명 모드 코드는 걷음(한 명 고르기 불변).
 - **날짜 패널**: 묶음 접기(`tc_dpfold:<계정>`), 묶음마다 5개와 더 보기/줄이기, 일정은 한 줄 줄이고 누르면 그 자리에서 `cardHtml` 카드로 펼침(하나만), flash 는 그 줄을 펼치고 더 보기와 묶음을 엶, 할 일 제목은 두 줄까지. 열람 창과 나란히 보기도 같은 규칙.
+- **2차 수정(같은 날, 사용자 피드백, 기획 §7, 시안 `dist/proto/day-panel-v3.html`, `pc-watch-v12.html`)**:
+  - 날짜 패널 펼침: 카드 상자 대신 들여쓴 상세(`dpEvDetHtml`, `dpTdDetHtml`, 왼쪽 가는 선, 있는 것만, 펼친 줄만 옅은 바탕). 할 일 제목도 같은 상세로 펼치고 일정과 합쳐 하나만. 할 일 [수정]은 [+ 추가] 창(`openQuickAdd(date, type, entryId, todoId)`, "할 일 수정", 삭제와 실행 취소). 패널 안 수정 폼(`todoEditHtml`, `editingTodoId`)과 `cardHtml` 걷음.
+  - 밀린 할 일 팝업: 묶음 안을 과제별 소제목(`.ta-pj`, 색점, 이름, 개수, 기한 지남은 가장 오래됨)으로, 소제목 접기(기억 안 함).
+  - 참여자 팝업: peerPicker 조직도 함수(`pkRenderOrg`, `pkTreeEl`, `pkUnitListEl`, `pkSelectUnit`, `pkTreeKey`)에 상태 인자 P 를 받게 해 체크 모드로 재사용(전원 체크 `pkAllEl`, 사람 체크 `pkCheckRowEl`, 고른 사람 점). 겉은 `fbHeadMarkup`, `fbPopEdgeKey` 공용, 찾기는 이름만. 1차 `CAW_WHO_SRC` 평평한 묶음 걷음. 한 명 고르기 불변.
+  - 관심 과제 추가 창: "일정 없는 과제 숨김"(상태 줄 끝), "상태 미지정"(`offStOptions`, 과제 추가와 관리 창 공통), 정렬 전환 걷고 DB 순서 기본, "최근 활동" 머리 세 상태 정렬(공용 `sortNext`, `sortAria`, `sortHeadHtml`, aria-sort), No 열.
+  - 새 시험 `tests/pc-watch-7.test.mjs`, 계약 바뀐 시험 17개 맞춤, 루프 셋 선택자 맞춤.
 - **시험**: 새 `tests/pc-watch-2.test.mjs`, `tests/day-panel-fold.test.mjs`. 고친 시험: pc-watch, filter-multi, personal-panel, peer-picker, peer-overlay, peer-overlay-redesign, peer-side-by-side, peer-view-full, project-calendar-web. 루프 loop-ui-visual, loop-peer-frame 맞춤.
 
 ---

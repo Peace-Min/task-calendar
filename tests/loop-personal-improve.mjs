@@ -102,7 +102,7 @@ const D = { evS: '2026-12-07', evE: '2026-12-15', tdS: '2026-12-16', tdE: '2026-
     // L2 누르기: 12/9 칸 가운데
     const l2 = await J(`(() => { const h = ${BAR}('2026-12-09', '[data-id="${evId}"]'); if(!h) return { found:false };
       h.bar.dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true, detail:1, clientX:h.x, clientY:h.y }));
-      return { found:true, sel:selectedDate, view, tabs: document.querySelectorAll('#dpTabs, #dayPanel [role=tab]').length, flash: !!document.querySelector('.card.flash[data-id="${evId}"]'), pop: !!document.querySelector('.pc-pop') }; })()`);
+      return { found:true, sel:selectedDate, view, tabs: document.querySelectorAll('#dpTabs, #dayPanel [role=tab]').length, flash: !!document.querySelector('.dp-er.flash[data-id="${evId}"] .dp-edet'), pop: !!document.querySelector('.pc-pop') }; })()`);
     if (!l2.found) undecide('L2 누르기', '12/9 칸 위 막대를 찾지 못했다(숨었거나 없다)'); else {
       ok('L2 막대의 12/9 위를 누르면 12/9 가 골라진다(시작일 12/7 이 아니다)', l2.sel === '2026-12-09' && l2.view.m === 11, JSON.stringify({ sel: l2.sel, view: l2.view }));
       ok('L2 오른쪽 패널에 그 카드 강조(탭 전환 없음), 목록 창 없음', l2.tabs === 0 && l2.flash && !l2.pop, JSON.stringify(l2));

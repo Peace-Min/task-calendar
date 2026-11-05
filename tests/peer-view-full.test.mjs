@@ -377,18 +377,20 @@ if (!JSDOM) {
       assert.strictEqual(P.ev('!!document.getElementById("btnAddHere")'), false, '열람 창에 [+ 추가] 가 있다');
     });
 
-    //  2026-11-05(docs/PC-WATCH-2.md §5): 일정은 한 줄 줄이고 누르면 그 자리에서 지금 카드로 펼친다(열람 창도 같다)
-    test('R P2/Q3: 패널 일정 줄을 펼치면 카드에 시간·장소·메모가 보이고 수정·삭제는 감춰진다', () => {
+    //  2026-11-05(docs/PC-WATCH-2.md §5, §7.1): 일정은 한 줄 줄이고 누르면 그 자리에서 들여쓴 상세로 펼친다(열람 창도 같다, [수정] [삭제]는 그리지 않는다)
+    test('R P2/Q3: 패널 일정 줄을 펼치면 상세에 시간·장소·메모가 보이고 수정·삭제는 없다', () => {
       P.ev('Array.prototype.find.call(document.querySelectorAll("#dpBody .dp-er"), function(r){ return r.dataset.id === "e-t1"; }).querySelector(".dp-er-b").click();');
       const t = P.ev('document.getElementById("dpBody").textContent');
       for (const s of ['상대: 설계회의', '3층 소회의실', '안건 정리 메모', '09:00']) assert.ok(t.includes(s), `상세 카드에 '${s}' 가 없다`);
-      assert.strictEqual(P.ev('getComputedStyle(document.querySelector("#dpBody .card .card-actions")).display'), 'none',
-        '카드의 수정·삭제가 열람 창에 보인다');
+      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .dp-edet").length === 1 && document.querySelectorAll("#dpBody .dp-edet [data-act], #dpBody .card").length === 0'), true,
+        '상세의 수정·삭제가 열람 창에 그려졌거나 카드 상자가 붙었다');
       P.ev('DP.open = ""; renderPanel();');
     });
 
     test('R P2/Q2: 패널의 할 일 묶음이 그 사람의 할 일을 내 화면과 같은 규칙(그날 할 일, 중요 먼저)으로 읽기 전용으로 그린다', () => {
       const body = 'document.getElementById("dpBody")';
+      //  설명(초안 비고)은 줄이 아니라 제목을 눌러 펼친 상세에 나온다(§7.1). 열람 창도 펼쳐 읽을 수 있다
+      P.ev('Array.prototype.forEach.call(document.querySelectorAll("#dpBody .todo-text"), function(x){ if(/보고서 초안/.test(x.textContent)) x.click(); });');
       const t = P.ev(body + '.textContent');
       for (const s of ['상대: 보고서 초안', '초안 비고', '상대: 끝낸 일']) assert.ok(t.includes(s), `패널 할 일 묶음에 '${s}' 가 없다`);
       assert.ok(/할 일\s*2/.test(P.ev('document.querySelector("#dpBody .dp-grp[data-grp=td] .dp-grp-h").textContent')), '할 일 묶음 머리가 "할 일 2" 가 아니다');
@@ -402,6 +404,7 @@ if (!JSDOM) {
       assert.strictEqual(P.ev(body + '.querySelectorAll("span.todo-check").length'), 2, '완료 상태 표시가 없다');
       assert.strictEqual(P.ev(body + '.querySelectorAll(".todo-row.done").length'), 1);
       assert.strictEqual(P.ev(body + '.querySelectorAll("span.todo-star-btn.on").length'), 1, '중요 표시(별)가 안 보인다');
+      P.ev('DP.open = ""; renderPanel();');
     });
 
     test('R P2: 그리드에 할 일 칩이 그려지고 모든 칩이 draggable=false 다(끌기 없음)', () => {

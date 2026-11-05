@@ -180,8 +180,9 @@ const statics = {
     assert.ok(/state\.categories\.filter\(isPickableCat\)\.map\(/.test(fs), '과제 선택 상자가 state.categories 순서로 한 줄이 아니다(R4)');
     assert.ok(!/optgroup|\.sort\(|\.concat\(/.test(fs), '과제 선택 상자가 공식/개인으로 묶거나 정렬한다 — 순서가 갈린다(R4)');
     //  (할 일 탭의 과제 필터 noteFilterBarHtml 은 2026-10-30 상단 필터 하나로 합치며 없앴다, FILTER-MULTI)
-    const te = fnBody(app, 'todoEditHtml');
-    assert.ok(/state\.categories\.filter\(isPickableCat\)/.test(te) && !/categories[^;]*\.sort\(/.test(te), '할 일 편집의 과제 선택이 state.categories 순서가 아니다');
+    //  할 일 고치기는 2026-11-05 패널 안 폼(todoEditHtml)에서 [+ 추가] 창의 할 일 수정으로 옮겼다(PC-WATCH-2 §7.1). 같은 #qaCat(fillCatSelect)이다
+    const te = fnBody(app, 'openQuickAdd');
+    assert.ok(/fillCatSelect\(\$\('#qaCat'\)\)/.test(te) && /setCatSelectValue\(\$\('#qaCat'\), td\.categoryId/.test(te) && !/categories[^;]*\.sort\(/.test(te), '할 일 수정의 과제 선택이 state.categories 순서(fillCatSelect)가 아니다');
     const ex = fnBody(app, 'openExportModal');
     assert.ok(/for\(const c of state\.categories\)/.test(ex) && !/\.sort\(/.test(ex), '내보내기 과제 선택이 state.categories 순서가 아니다');
     //  새 기록·빠른 추가·검색은 모두 fillCatSelect 를 쓴다(따로 만들면 그쪽이 낡는다)

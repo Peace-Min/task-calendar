@@ -394,11 +394,12 @@ if (!JSDOM) {
       P.ev('selectedDate = "2026-09-08"; renderAll();');
     });
 
-    test('(jsdom) R5: 「시간 겹침」 배지는 겹친 두 카드에만 — 상대 시간이 함께 · 종일/다른 시간은 없음(줄에는 작은 시계, 펼친 카드에 배지)', () => {
+    //  2026-11-05(docs/PC-WATCH-2.md §7.1): 펼침은 카드 상자가 아니라 들여쓴 상세다. 겹침 배지는 상세의 한 줄(.dp-det-ovl, 상대 시간과 제목, 전부는 title)
+    test('(jsdom) R5: 「시간 겹침」 줄은 겹친 두 일정에만 — 상대 시간이 함께 · 종일/다른 시간은 없음(줄에는 작은 시계, 펼친 상세에 겹침 한 줄)', () => {
       const marks = P.evJSON('Array.prototype.filter.call(document.querySelectorAll("#dpBody .dp-er"), function(r){ return !!r.querySelector(".dp-er-ovl"); }).map(function(r){ return r.dataset.id; }).sort()');
       assert.deepStrictEqual(marks, ['m-1030', 'p-10'], '겹친 두 줄에만 시계 표시가 있어야 한다');
       //  줄을 하나씩 펼쳐(한 번에 하나) 카드의 배지를 읽는다
-      const b = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#dpBody .dp-er"), function(r){ return r.dataset.key; }).map(function(k){ DP.open = k; renderPanel(); var c = document.querySelector("#dpBody .dp-er.open .card"); var x = c.querySelector(".ovl-badge"); return [c.dataset.id, x ? x.textContent.trim() : null, x ? x.getAttribute("title") : null]; })');
+      const b = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#dpBody .dp-er"), function(r){ return r.dataset.key; }).map(function(k){ DP.open = k; renderPanel(); var c = document.querySelector("#dpBody .dp-er.open .dp-edet"); var x = c.querySelector(".dp-det-ovl"); return [c.dataset.id, x ? x.textContent.trim() : null, x ? x.getAttribute("title") : null]; })');
       P.ev('DP.open = ""; renderPanel();');
       const by = Object.fromEntries(b.map(([id, t, ti]) => [id, { t, ti }]));
       assert.ok(by['p-10'].t && by['p-10'].t.includes('시간 겹침') && by['p-10'].t.includes('10:30~11:30'),

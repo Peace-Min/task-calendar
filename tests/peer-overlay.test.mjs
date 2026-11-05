@@ -358,13 +358,13 @@ if (!JSDOM) {
         new Array(MINE_CHIPS).fill('false'));
     });
 
-    //  2026-11-05(docs/PC-WATCH-2.md §5): 패널 일정은 한 줄 줄(.dp-er)이고 누르면 그 자리에서 카드로 펼친다. 내 일정 줄은 .dp-er-mine, 펼친 카드는 .card-mine
-    test('P 렌더: 일자 패널(9/8)에 상대 일정 2 + 내 일정 1(.dp-er-mine) 줄이 함께 서고, 내 줄을 펼치면 .card-mine 카드다', () => {
+    //  2026-11-05(docs/PC-WATCH-2.md §5, §7.1): 패널 일정은 한 줄 줄(.dp-er)이고 누르면 그 자리에서 들여쓴 상세로 펼친다. 내 일정 줄은 .dp-er-mine(색 띠와 글자가 내 것 색)
+    test('P 렌더: 일자 패널(9/8)에 상대 일정 2 + 내 일정 1(.dp-er-mine) 줄이 함께 서고, 내 줄을 펼치면 읽기 전용 상세다', () => {
       assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .dp-er").length'), 3);
       assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .dp-er.dp-er-mine").length'), 1);
       assert.strictEqual(P.ev('document.querySelector("#dpBody .dp-er-mine .dp-er-t").textContent'), '나: 회의 준비');
       P.ev('document.querySelector("#dpBody .dp-er-mine .dp-er-b").click();');
-      assert.strictEqual(P.ev('document.querySelector("#dpBody .dp-er-mine .card.card-mine .card-title").textContent'), '나: 회의 준비');
+      assert.strictEqual(P.ev('!!document.querySelector("#dpBody .dp-er-mine.open .dp-edet") && !document.querySelector("#dpBody .dp-er-mine .card") && !document.querySelector("#dpBody .dp-edet [data-act]")'), true, '내 줄을 펼친 상세가 없거나 카드 상자이거나 [수정] [삭제]가 있다');
       P.ev('DP.open = ""; renderPanel();');
     });
 

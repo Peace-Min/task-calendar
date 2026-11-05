@@ -362,15 +362,16 @@ async function mineChipProbe(cdp) {
              +"; renderAll(); if(typeof renderPanel==='function') renderPanel();");
       const chip=w.document.querySelector('#grid .chip[data-id="'+e.id+'"]');
       if(!chip) continue;
-      //  2026-11-05(PC-WATCH-2 §5): 패널 일정은 한 줄 줄이다. 강조(flash)처럼 그 줄을 펼쳐(5개 밖이면 더 보기) 카드를 본다
+      //  2026-11-05(PC-WATCH-2 §5, §7.1): 패널 일정은 한 줄 줄이다. 강조(flash)처럼 그 줄을 펼쳐(5개 밖이면 더 보기) 들여쓴 상세를 본다. 내 줄은 .dp-er-mine
       w.eval("flashTargetId="+JSON.stringify(e.id)+"; renderPanel();");
-      const card=w.document.querySelector('#dpBody .card[data-id="'+e.id+'"]');
+      const row=w.document.querySelector('#dpBody .dp-er[data-id="'+e.id+'"]');
+      const card=row && row.querySelector('.dp-edet');
       return JSON.stringify({
         id:e.id, date:d,
         chipMine: chip.classList.contains("chip-mine"),
         draggable: chip.getAttribute("draggable"),
         card: !!card,
-        cardMine: !!(card && card.classList.contains("card-mine"))});
+        cardMine: !!(card && row.classList.contains("dp-er-mine"))});
     }
     return JSON.stringify({err:"내 겹 중 격자에 칩이 그려진 것을 찾지 못했다(후보 "+cand.length+"건)"});})()`));
 }
@@ -756,7 +757,7 @@ try {
     if (!mc.err) {
       ok(`R${r} 내 겹 칩이 chip-mine 이다(내 색 — 연한 채움 + 왼쪽 막대)`, mc.chipMine === true, `class 에 chip-mine 없음`);
       ok(`R${r} 내 겹 칩은 draggable="false" 다`, mc.draggable === 'false', `draggable=${mc.draggable}`);
-      ok(`R${r} 일자 패널의 내 겹 카드가 card-mine 이다`, mc.card === true && mc.cardMine === true,
+      ok(`R${r} 일자 패널의 내 겹 줄이 dp-er-mine 이고 펼친 상세가 있다`, mc.card === true && mc.cardMine === true,
          `card=${mc.card} card-mine=${mc.cardMine}`);
     }
 

@@ -173,7 +173,7 @@ test('변이S: type=time 부활, 앱 시각 칸 표시 빠짐, bind 배선 빠�
   assert.throws(() => statics.timeStep(mutate('\n  timeFieldAll();   //', '\n  //')), /timeFieldAll/);
   assert.throws(() => statics.timeStep(mutate('\nconst TF_STEP = 5;', '\nconst TF_STEP = 1;')), /5분 단위/);
   assert.throws(() => statics.timeStep(mutate('function qaSave(){\n  if(guardEdit()) return;', 'function qaSave(){\n  if(guardEdit()) return; if(!document.getElementById(\'quickAdd\').querySelector(\'form\') || true){ const f = document.createElement(\'form\'); f.checkValidity(); }')), /폼 검증/);
-  assert.throws(() => statics.oneScreenForm(mutate('    <div class="qa-foot">\n      <button type="button" class="btn" data-close>취소</button>', '    <div class="qa-foot">\n      <button type="button" class="qa-more" id="qaMore">옵션 더보기 ▾</button>\n      <button type="button" class="btn" data-close>취소</button>')), /qaMore|옵션 더보기/);
+  assert.throws(() => statics.oneScreenForm(mutate('    <div class="qa-foot">\n      <button type="button" class="btn danger hidden" id="qaDel">삭제</button>', '    <div class="qa-foot">\n      <button type="button" class="qa-more" id="qaMore">옵션 더보기 ▾</button>\n      <button type="button" class="btn danger hidden" id="qaDel">삭제</button>')), /qaMore|옵션 더보기/);
   assert.throws(() => statics.oneScreenForm(mutate('<span class="qa-hint hidden" id="qaRecurHint" aria-live="polite"></span>', '<input type="number" id="qaRecurInterval"><span class="qa-hint hidden" id="qaRecurHint" aria-live="polite"></span>')), /세부 칸/);
   assert.throws(() => statics.narrowSheet(mutate('  .modal,.modal.wide,.qa-modal{width:100%;max-width:100%;max-height:88vh;border-radius:14px 14px 0 0}', '  .modal,.modal.wide{width:100%;max-width:100%;max-height:88vh;border-radius:14px 14px 0 0}')), /아래 시트/);
   assert.throws(() => statics.editRouting(mutate("  if(e) openQuickAdd(null, 'event', id);", "  if(e && !(e.recur && e.recur.freq)) openQuickAdd(null, 'event', id);")), /한 화면 폼|기록 창/);
@@ -368,7 +368,7 @@ if (!JSDOM) {
         clickAt(W, b, b.__col);
         assert.strictEqual(W.ev('selectedDate'), '2026-10-12', '막대를 누른 칸(10/12)이 아니라 다른 날을 골랐다: ' + W.ev('selectedDate'));
         assert.ok(!W.$('#dpTabs'), '패널에 탭이 있다');   // 탭 전환은 없다(PERSONAL-PANEL §2.1)
-        assert.ok(W.$('#dpBody .card.flash[data-id="e-long"]'), '오른쪽 패널에 그 일정 카드가 강조되지 않았다');
+        assert.ok(W.$('#dpBody .dp-er.flash[data-id="e-long"] .dp-edet'), '오른쪽 패널에 그 일정 줄이 펼쳐져 강조되지 않았다');
         assert.ok(!W.$('.pc-pop, #pcPop'), '목록 창이 열렸다(개인 탭에는 없다)');
         const sel = W.$$('#grid .cell.sel').map((c) => c.dataset.date);
         assert.deepStrictEqual(sel, ['2026-10-12'], '달력 선택 표시가 누른 칸이 아니다');

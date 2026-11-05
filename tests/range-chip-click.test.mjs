@@ -191,7 +191,8 @@ if (!JSDOM) {
       //  그 날짜를 덮는 막대(내 창, .gridrow 의 .chip-bar). 누를 자리(__at = 그 날짜)를 실어 돌려준다 → press 가 그 칸 가운데를 누른다.
       evChip: (date, id) => barAt(doc, date, `[data-id="${id}"]`),
       todoChip: (date, id) => barAt(doc, date, `[data-todo="${id}"]`),
-      card: (id) => doc.querySelector(`#dpBody .card[data-id="${id}"]`),
+      //  2026-11-05(PC-WATCH-2 §7.1): 패널 일정은 한 줄 줄이고 강조하면 그 줄(.dp-er.flash)이 들여쓴 상세(.dp-edet)로 펼쳐진다
+      card: (id) => { const r = doc.querySelector(`#dpBody .dp-er[data-id="${id}"]`); return r && r.querySelector('.dp-edet') ? r : null; },
       todoRow: (id) => doc.querySelector(`#dpBody .todo-row[data-id="${id}"]`),
       selCells: () => [...doc.querySelectorAll('#grid .cell.sel')].map((c) => c.dataset.date),
       close: () => { try { w.close(); } catch (_) {} },

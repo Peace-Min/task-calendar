@@ -1,14 +1,15 @@
 // 날짜 패널 묶음 접기(docs/PC-WATCH-2.md §5, docs/PERSONAL-PANEL.md 2.1 의 연장). 시안 dist/proto/day-panel-v1.html(B안).
+// 펼침은 2차(§7.1, 시안 dist/proto/day-panel-v3.html)에서 카드 상자 대신 들여쓴 상세로 바뀌었다. 자세한 계약은 tests/pc-watch-7.test.mjs.
 //
 // 이 파일이 지키는 것:
-//   (S) 정적: 일정 줄과 카드(cardHtml 재사용), 5개 제한, 더 보기 열쇠(ev, td, 열람 창 두 묶음 peer, mine), 접기 기억 키(계정별, 열람 창은 기억 안 함),
+//   (S) 정적: 일정 줄과 들여쓴 상세(dpEvDetHtml, 카드 상자 없음), 5개 제한, 더 보기 열쇠(ev, td, 열람 창 두 묶음 peer, mine), 접기 기억 키(계정별, 열람 창은 기억 안 함),
 //       새 CSS 는 토큰만(hex 없음), 금지 기호 없음.
 //   (R) 런타임(jsdom):
 //       두 묶음 고정은 그대로, 머리를 누르면 접히고(▾ ▸, aria-expanded) 계정별로 기억, 다시 열어도 접힌 채.
 //       묶음마다 5개까지, "n개 더 보기"와 "줄이기", 날짜를 바꾸면 다시 5개. 보통 날(5개 이하)은 더 보기가 없다.
-//       일정은 한 줄 줄(시간 또는 종일, 제목), 누르면 그 자리에서 카드로(한 번에 하나), 펼친 카드의 수정 단추(data-act)가 그대로 돈다.
+//       일정은 한 줄 줄(시간 또는 종일, 제목), 누르면 그 자리에서 들여쓴 상세로(한 번에 하나), 상세의 수정 단추(data-act)가 그대로 돈다.
 //       달력 칩에서 온 강조(flash): 5개 밖의 일정이면 더 보기를 열고 그 줄을 펼친다, 접힌 묶음은 편다. 할 일도 5개 밖이면 더 보기.
-//       할 일 줄은 제목 두 줄까지(전체는 title), 체크와 ★ 그대로.
+//       할 일 줄은 제목 두 줄까지(전체는 title), 체크와 ★ 그대로, 제목을 누르면 같은 들여쓴 상세(인라인 수정 폼 없음).
 //   (M) 변이: 5개 제한을 빼거나, 날짜를 바꿔도 더 보기가 남거나, 접기를 기억하지 않으면 위 시험이 잡는다.
 import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 
@@ -25,10 +26,10 @@ function mutate(text, find, repl) {
 // ══════════════════════════════════════════════════════════════════════
 // (S) 정적
 // ══════════════════════════════════════════════════════════════════════
-test('(S) 일정은 한 줄 줄이고 펼치면 지금 카드(cardHtml), 묶음마다 5개 제한, 열람 창 두 묶음도 같은 줄과 제한', () => {
+test('(S) 일정은 한 줄 줄이고 펼치면 들여쓴 상세(dpEvDetHtml, 카드 상자 없음), 묶음마다 5개 제한, 열람 창 두 묶음도 같은 줄과 제한', () => {
   assert.ok(/const DP_LIMIT = 5;/.test(app), '5개 제한 값이 없다');
   const row = extractFunction(app, 'dpEvRowHtml');
-  assert.ok(row.includes('cardHtml(e, ov)') && row.includes('data-dp="ev"') && row.includes('aria-expanded'), '일정 줄이 펼치면 지금 카드(cardHtml)가 아니다');
+  assert.ok(row.includes('dpEvDetHtml(e, ov)') && !row.includes('cardHtml(') && row.includes('data-dp="ev"') && row.includes('aria-expanded'), '일정 줄이 펼치면 들여쓴 상세(dpEvDetHtml)가 아니다(§7.1, 카드 상자 없음)');
   const dd = extractFunction(app, 'dayDetailHtml');
   assert.ok(dd.includes("dpLimit('ev', list)") && dd.includes("dpMoreHtml('ev', list.length)"), '일정 묶음에 5개 제한이 없다');
   assert.ok(dd.includes("dpLimit('td', tds)") && dd.includes("dpMoreHtml('td', tds.length)"), '할 일 묶음에 5개 제한이 없다');
@@ -42,9 +43,9 @@ test('(S) 접기 기억: 계정별 이 PC(tc_dpfold:<계정>, 보기 설정 tc_v
   assert.ok(/if\(PEER\) return DP\.fold;/.test(extractFunction(app, 'dpFoldSet')), '열람 창이 저장된 접기를 읽는다');
 });
 test('(S) 새 함수와 CSS: 금지 기호 없음, hex 색 없음(토큰만)', () => {
-  const fns = ['dpFoldSet', 'dpFoldSave', 'dpSync', 'dpLimit', 'dpMoreHtml', 'dpEvRowHtml', 'dpReveal', 'dpOnClick', 'dayGrpHtml', 'dayDetailHtml'].map((n) => extractFunction(app, n)).join('\n');
+  const fns = ['dpFoldSet', 'dpFoldSave', 'dpSync', 'dpLimit', 'dpMoreHtml', 'dpEvRowHtml', 'dpEvDetHtml', 'dpTdDetHtml', 'dpDetLn', 'dpReveal', 'dpOnClick', 'dayGrpHtml', 'dayDetailHtml'].map((n) => extractFunction(app, n)).join('\n');
   assert.ok(!/[—–「」]/.test(fns) && !/(^|\s)·(\s|$)/m.test(fns), '새 함수에 엠 대시, 낫표, 띄어 쓴 가운데 점이 있다');
-  const mine = css.split('\n').filter((l) => /\.dp-(fold|tw|er|more)|\.dp-grp\.folded|\.dp-rows|\.dp-todos \.todo-text/.test(l));
+  const mine = css.split('\n').filter((l) => /\.dp-(fold|tw|er|more|det)|\.dp-grp\.folded|\.dp-rows|\.dp-todos \.todo-text/.test(l));
   assert.ok(mine.length >= 12, '새 CSS 규칙을 찾지 못했다: ' + mine.length);
   assert.ok(mine.every((l) => !/#[0-9a-fA-F]{3,8}\b/.test(l)), '새 CSS 에 hex 색이 있다: ' + mine.find((l) => /#[0-9a-fA-F]{3,8}\b/.test(l)));
   assert.ok(/\.dp-todos \.todo-text\{[^}]*-webkit-line-clamp:2[^}]*overflow:hidden/.test(css), '할 일 제목이 두 줄 자르기가 아니다(한 줄 말줄임은 좁은 패널에서 앞머리만 남는다)');
@@ -140,7 +141,7 @@ if (!JSDOM) {
         assert.strictEqual(tdRows(W).length, 5);
       } finally { await end(W); }
     },
-    //  일정 한 줄 줄과 펼치기(하나만), 펼친 카드의 수정 단추
+    //  일정 한 줄 줄과 펼치기(하나만), 펼친 상세의 수정 단추
     async rows(src) {
       const W = await boot(src);
       try {
@@ -153,8 +154,9 @@ if (!JSDOM) {
         r1.querySelector('.dp-er-b').click();
         const open = () => W.$$('#dpBody .dp-er.open').map((r) => r.dataset.id);
         assert.deepStrictEqual(open(), ['e1']);
-        const card = W.$('#dpBody .dp-er[data-id="e1"] .card');
-        assert.ok(card && card.dataset.id === 'e1' && /회의실 1/.test(card.textContent) && card.querySelector('[data-act="edit"]') && card.querySelector('[data-act="del"]'), '펼친 줄이 지금 카드(장소, 수정, 삭제)가 아니다');
+        const card = W.$('#dpBody .dp-er[data-id="e1"] .dp-edet');
+        assert.ok(card && card.dataset.id === 'e1' && /회의실 1/.test(card.textContent) && card.querySelector('[data-act="edit"]') && card.querySelector('[data-act="del"]'), '펼친 줄이 들여쓴 상세(장소, 수정, 삭제)가 아니다');
+        assert.ok(!W.$('#dpBody .card'), '펼친 줄에 카드 상자가 붙었다(§7.1)');
         assert.strictEqual(W.$('#dpBody .dp-er[data-id="e1"] .dp-er-b').getAttribute('aria-expanded'), 'true');
         assert.strictEqual(W.doc.activeElement, W.$('#dpBody .dp-er[data-id="e1"] .dp-er-b'), '펼친 뒤 포커스가 그 줄이 아니다');
         //  하나만: 다른 줄을 누르면 앞의 줄은 접힌다. 같은 줄을 다시 누르면 접힌다
@@ -162,11 +164,11 @@ if (!JSDOM) {
         assert.deepStrictEqual(open(), ['e2'], '한 번에 하나만 펼쳐져야 한다');
         W.$('#dpBody .dp-er[data-id="e2"] .dp-er-b').click();
         assert.deepStrictEqual(open(), []);
-        //  펼친 카드의 수정(data-act 클릭 위임 그대로): 입력 창이 그 일정으로 열린다
+        //  펼친 상세의 수정(data-act 클릭 위임 그대로): 입력 창이 그 일정으로 열린다
         W.$('#dpBody .dp-er[data-id="e3"] .dp-er-b').click();
-        W.$('#dpBody .dp-er[data-id="e3"] .card [data-act="edit"]').click();
+        W.$('#dpBody .dp-er[data-id="e3"] .dp-edet [data-act="edit"]').click();
         await settle();
-        assert.ok(!W.$('#quickAdd').classList.contains('hidden'), '펼친 카드의 [수정]이 입력 창을 열지 않았다');
+        assert.ok(!W.$('#quickAdd').classList.contains('hidden'), '펼친 상세의 [수정]이 입력 창을 열지 않았다');
       } finally { await end(W); }
     },
     //  접기와 기억
@@ -206,13 +208,13 @@ if (!JSDOM) {
         assert.strictEqual(W.$('#dpBody [data-dp="fold"][data-k="ev"]').getAttribute('aria-expanded'), 'true', '강조한 일정의 묶음이 접힌 채다');
         assert.strictEqual(evRows(W).length, 8, '5개 밖의 일정을 강조했는데 더 보기가 열리지 않았다');
         assert.deepStrictEqual(W.$$('#dpBody .dp-er.open').map((r) => r.dataset.id), ['e7'], '강조한 일정 줄이 펼쳐지지 않았다');
-        assert.ok(W.$('#dpBody .dp-er[data-id="e7"] .card.flash'), '펼친 카드가 강조되지 않았다');
+        assert.ok(W.$('#dpBody .dp-er.flash[data-id="e7"] .dp-edet'), '펼친 줄이 강조되지 않았다');
         W.ev('flashTodoId = "t7"; renderPanel();');
         assert.strictEqual(tdRows(W).length, 7, '5개 밖의 할 일을 강조했는데 더 보기가 열리지 않았다');
         assert.ok(W.$('#dpBody .todo-row.flash[data-id="t7"]'));
       } finally { await end(W); }
     },
-    //  할 일 줄: 지금 줄(체크, ★, ✕) 그대로, 제목 두 줄까지와 전체는 title
+    //  할 일 줄: 지금 줄(체크, ★, ✕) 그대로, 제목 두 줄까지와 전체는 title, 제목을 누르면 들여쓴 상세(§7.1, 인라인 수정 폼 없음)
     async todos(src) {
       const W = await boot(src);
       try {
@@ -221,18 +223,21 @@ if (!JSDOM) {
         const t = r.querySelector('.todo-text');
         assert.strictEqual(t.getAttribute('title'), t.textContent, '할 일 제목 전체가 title 에 없다');
         assert.ok(r.querySelector('[data-act="toggle"]') && r.querySelector('[data-act="star"]') && r.querySelector('[data-act="del"]'), '할 일 줄의 체크, ★, ✕ 가 없다');
-        assert.strictEqual(t.dataset.act, 'edit', '할 일 제목을 눌러 고치기가 없어졌다');
-        r.querySelector('[data-act="toggle"]').click();
+        assert.strictEqual(t.dataset.dp, 'td', '할 일 제목을 눌러 상세를 펼치지 않는다');
+        assert.strictEqual(t.dataset.act, undefined, '할 일 제목이 아직 인라인 수정을 연다');
+        t.click();
+        assert.ok(W.$('#dpBody .todo-row.open[data-id="t7"] + .dp-tdet') && !W.$('#dpBody .todo-edit'), '제목을 누르면 들여쓴 상세가 펼쳐져야 한다(인라인 수정 폼 없음)');
+        W.$('#dpBody .todo-row[data-id="t7"] [data-act="toggle"]').click();
         assert.ok(W.$('#dpBody .todo-row[data-id="t7"]').classList.contains('done'), '체크가 돌지 않는다');
       } finally { await end(W); }
     },
   };
 
   test('(R) 묶음마다 5개 제한, n개 더 보기와 줄이기, 날짜를 바꾸면 다시 5개, 보통 날은 더 보기 없음', () => checks.limit());
-  test('(R) 일정은 한 줄 줄(색 띠, 시간 또는 종일, 제목), 누르면 그 자리에서 지금 카드로(하나만), 펼친 카드의 수정이 그대로 돈다', () => checks.rows());
+  test('(R) 일정은 한 줄 줄(색 띠, 시간 또는 종일, 제목), 누르면 그 자리에서 들여쓴 상세로(하나만), 상세의 수정이 그대로 돈다', () => checks.rows());
   test('(R) 묶음 머리를 누르면 접히고(▾ ▸) 계정별로 기억한다, 다시 띄워도 접힌 채', () => checks.fold());
   test('(R) 달력 칩 강조: 5개 밖이면 더 보기를 열고 그 줄을 펼친다, 접힌 묶음은 편다, 할 일도 같다', () => checks.flash());
-  test('(R) 할 일 줄은 체크, ★, ✕ 그대로이고 제목 전체는 title', () => checks.todos());
+  test('(R) 할 일 줄은 체크, ★, ✕ 그대로이고 제목 전체는 title, 제목을 누르면 들여쓴 상세', () => checks.todos());
 
   // ══════════════════════════════════════════════════════════════════════
   // (M) 변이

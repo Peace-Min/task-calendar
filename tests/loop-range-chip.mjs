@@ -60,7 +60,7 @@ const countMine = () => ev(`state.entries.filter(e => String(e.title||'').starts
 
     // K1 — 10월 달력, 10/1 칸 막대
     await ev(`(() => { view = {y:2026, m:9}; renderGrid(); return 1; })()`);
-    const k1 = await J(`(() => { const cell = document.querySelector('#grid .cell[data-date="2026-10-01"]'); if (!(${HIT}(cell, ${JSON.stringify(made)}))) return { found:false }; return { found:true, view, sel:selectedDate, tabs: document.querySelectorAll('#dpTabs, #dayPanel [role=tab]').length, flash: !!document.querySelector('.card.flash[data-id="${made}"]'), card: !!document.querySelector('.card[data-id="${made}"]'), title: (document.getElementById('btnTitle')||{}).textContent || '' }; })()`);
+    const k1 = await J(`(() => { const cell = document.querySelector('#grid .cell[data-date="2026-10-01"]'); if (!(${HIT}(cell, ${JSON.stringify(made)}))) return { found:false }; return { found:true, view, sel:selectedDate, tabs: document.querySelectorAll('#dpTabs, #dayPanel [role=tab]').length, flash: !!document.querySelector('.dp-er.flash[data-id="${made}"]'), card: !!document.querySelector('.dp-edet[data-id="${made}"]'), title: (document.getElementById('btnTitle')||{}).textContent || '' }; })()`);
     if (!k1.found) undecide('K1 10월 10/1 칸 막대', '칩을 찾지 못했다'); else {
       ok('K1 10월 달력에서 10/1 막대 클릭 → 달 그대로(10월)', k1.view.y === 2026 && k1.view.m === 9, JSON.stringify(k1.view) + ' · ' + k1.title.trim());
       ok('K1 선택 날짜 = 10/1', k1.sel === '2026-10-01', k1.sel);

@@ -521,7 +521,11 @@ if (!JSDOM) {
         for (const id of ['tA', 'tB', 'tC', 'tH', 'tSpan']) assert.ok(!all.includes(id), `안 지난 할 일 ${id} 이 팝업에 있다`);
         assert.ok(ids('over').includes('tG') && ids('over').includes('tPast') && !ids('over').includes('tSpan'), '기한 지남 기준이 끝 날짜가 아니다');
         //  각 묶음 안: 중요 먼저, 그다음 날짜순(기한 지난 중요한 할 일은 기한 지남에 남는다)
-        assert.deepStrictEqual(ids('nodate'), ['tJ', 'tI'], '기한 없음 묶음이 중요 먼저가 아니다');
+        //  2차(docs/PC-WATCH-2.md §7.2): 묶음 안은 과제별 소제목(과제 목록 순서), 과제 안이 중요 먼저
+        assert.deepStrictEqual(ids('nodate'), ['tI', 'tJ'], '기한 없음 묶음이 과제 목록 순서의 과제별이 아니다');
+        W.ev('todoById("tI").categoryId = "c-b"; renderTodoAll();');
+        assert.deepStrictEqual(ids('nodate'), ['tJ', 'tI'], '기한 없음 묶음의 과제 안이 중요 먼저가 아니다');
+        W.ev('todoById("tI").categoryId = "c-a"; renderTodoAll();');
         const ov = ids('over'), hi = ov.filter((id) => W.ev(`todoById("${id}").prio`) === 'high');
         assert.deepStrictEqual(ov.slice(0, hi.length), hi, '기한 지남 묶음이 중요 먼저가 아니다');
         const lo = ov.slice(hi.length).map((id) => W.ev(`(function(t){ return t.endDate && t.endDate > t.due ? t.endDate : t.due; })(todoById("${id}"))`));
@@ -544,7 +548,7 @@ if (!JSDOM) {
         assert.deepStrictEqual(ids('done'), [], '다시 열었는데 완료가 펴져 있다');
         //  팝업 안 체크와 ★ (패널, 달력, 맨 아래 줄과 함께 바뀐다)
         click(W.$('#taBody .todo-row[data-id="tI"] .todo-star-btn'));
-        assert.strictEqual(W.ev('todoById("tI").prio'), 'high'); assert.deepStrictEqual(ids('nodate'), ['tI', 'tJ'].sort((a, b) => W.ev(`todoById("${a}").createdAt`) < W.ev(`todoById("${b}").createdAt`) ? -1 : 1), '★ 를 켠 뒤 팝업이 다시 그려지지 않았다');
+        assert.strictEqual(W.ev('todoById("tI").prio'), 'high'); assert.ok(W.$('#taBody .todo-row[data-id="tI"] .todo-star-btn.on') && W.$$('#taBody .ta-grp[data-grp="nodate"] .todo-row').map((r) => r.dataset.id).join() === 'tI,tJ', '★ 를 켠 뒤 팝업이 다시 그려지지 않았다');
         click(W.$('#taBody .todo-row[data-id="tI"] .todo-star-btn'));
         click(W.$('#taBody .todo-row[data-id="tJ"] .todo-check'));
         assert.strictEqual(W.ev('todoById("tJ").done'), true);
@@ -618,7 +622,7 @@ if (!JSDOM) {
         const ev = chipsOf(W, D2).find((c) => c.dataset.id === 'eC');
         click(ev);
         assert.strictEqual(W.ev('selectedDate'), D2);
-        assert.ok(W.$('#dpBody .card.flash') && W.$('#dpBody .card.flash').dataset.id === 'eC', '일정 칩이 그 카드를 강조하지 않았다');
+        assert.ok(W.$('#dpBody .dp-er.flash') && W.$('#dpBody .dp-er.flash').dataset.id === 'eC' && W.$('#dpBody .dp-er.flash .dp-edet'), '일정 칩이 그 줄을 펼쳐 강조하지 않았다');
         //  개수 칩: 그 날짜만 고른다(강조할 행이 없다)
         W.ev(`selectDate("${D2}")`);
         click(chipsOf(W, T).find((c) => c.dataset.tdcnt));
@@ -659,7 +663,7 @@ if (!JSDOM) {
       assert.strictEqual(P.$$('#dpHead button').length, 0, '열람 프레임 머리에 단추가 있다');
       assert.deepStrictEqual(P.$$('#dpBody > .dp-grp').map((g) => g.dataset.grp), ['ev', 'td']);
       assert.strictEqual(P.$$('#dpBody .todo-row').length, 2);
-      assert.strictEqual(P.$$('#dpBody button.todo-check, #dpBody button.todo-star-btn, #dpBody .todo-del, #dpBody [data-act]').filter((e) => !e.closest('.card')).length, 0, '열람 프레임 할 일 행에 조작 단추가 있다');
+      assert.strictEqual(P.$$('#dpBody button.todo-check, #dpBody button.todo-star-btn, #dpBody .todo-del, #dpBody [data-act]').length, 0, '열람 프레임 할 일 행에 조작 단추가 있다');
       assert.strictEqual(P.$$('#dpBody span.todo-check').length, 2, '체크 상태 표시가 없다');
       assert.strictEqual(P.$$('#dpBody .todo-star-btn.on').length, 1, '중요 표시는 상태로 보여야 한다'); assert.strictEqual(P.$$('#dpBody .todo-star-btn:not(.on)').length, 0, '끈 ★ 단추가 보인다');
       //  눌러도 아무 일 없다
@@ -667,7 +671,7 @@ if (!JSDOM) {
       click(P.$('#dpBody span.todo-check')); click(P.$('#dpBody .todo-star-btn')); click(P.$('#dpBody .todo-text'));
       P.ev('toggleTodo("pt1"); updateTodo("pt1", {prio:"normal"})');
       assert.strictEqual(P.ev('JSON.stringify(state.todos)'), before, '열람 프레임에서 할 일이 바뀌었다');
-      assert.strictEqual(P.ev('editingTodoId'), null);
+      assert.ok(P.$('#dpBody .dp-tdet') && !P.$('#dpBody .dp-tdet [data-act]') && !P.$('#dpBody .todo-edit'), '열람 프레임에서 할 일 제목은 읽기 전용 상세만 펼쳐야 한다([수정] [삭제]와 수정 폼 없음)');
       P.$(`#grid .cell[data-date="${day}"]`).dispatchEvent(new P.w.MouseEvent('dblclick', { bubbles: true }));
       assert.ok(P.$('#quickAdd').classList.contains('hidden'), '열람 프레임에서 날짜 두 번 누르기가 입력 창을 열었다');
       //  맨 아래 줄과 밀린 할 일 팝업은 읽기 전용으로 열린다
@@ -675,7 +679,7 @@ if (!JSDOM) {
       assert.ok(!P.$('#todoAllModal').classList.contains('hidden'));
       assert.strictEqual(P.$('#dpFoot').textContent.replace(/\s+/g, ' ').trim(), '밀린 할 일 기한 없음 1 지남 1 ›', '열람 프레임 맨 아래 줄이 같은 규칙이 아니다');
       click(P.$('#taBody .ta-tog'));   // 완료 묶음 펼치기는 읽기 전용에서도 된다
-      assert.ok(P.$$('#taBody .todo-row').length === 3 && P.$$('#taBody button:not(.ta-tog)').length === 0, '밀린 할 일 팝업에 조작 단추가 있다');
+      assert.ok(P.$$('#taBody .todo-row').length === 3 && P.$$('#taBody button:not(.ta-tog):not(.ta-pj)').length === 0, '밀린 할 일 팝업에 조작 단추가 있다(완료 펼치기와 과제 소제목 접기만 된다)');
       click(P.$('#taBody span.todo-check')); click(P.$('#taBody .todo-star-btn')); assert.strictEqual(P.ev('JSON.stringify(state.todos)'), before, '밀린 할 일 팝업에서 할 일이 바뀌었다');
       //  보기는 바꿀 수 있지만 기억하지 않는다
       P.ev('viewSetKind("td"); filterApply();');

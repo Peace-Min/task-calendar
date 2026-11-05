@@ -35,7 +35,7 @@ test('디자인 토큰: 참조된 --fs-/--sp-/--r-/--lh- 스케일 토큰은 전
 // 그래서 '토큰 정의처(:root / :root[data-theme] / html.dark) 밖의 hex 색 선언 수'에 상한을 건다.
 // 상한 = 현재 값 → 새 하드코딩은 즉시 실패, 정리하면 상한을 내려 되돌아오지 못하게 못박는 일방향 래칫.
 // (html.dark .foo{} 같은 '테마 스코프 개별 오버라이드'는 정의처가 아니라 사용처이므로 셈에 포함한다.)
-const HEX_DECL_CEILING = 27;   // 30→27: 과제 필터 줄 개편(FILTER-MULTI)으로 .ovf-fade 마스크(#000 둘)와 .fchip:hover(#bcc4d6)가 빠졌다(2026-10-30) · 45→30: Git, SVN 기능 삭제로 .git-card, .git-badge, .commit-* 등 하드코딩 색이 함께 사라졌다(2026-10-26) · 49→45: .s-date 바탕(#f5f7fd)→--dim-bg · mark(#ffe27a)→--mark-bg/--mark-ink 토큰 + html.dark mark 재정의 삭제(2026-09-23 §3.4-A) · 56→51: .git-badge.off / .cell.dim .num 하드코딩(+다크 개별 오버라이드 2종)을 토큰으로 대체 · 51→50: .btn.danger 테두리(#efc7c9)를 --danger-line 토큰으로(2026-09-10 — 다크에서 형광 분홍선이던 자리) · 50→49: .swatch.on 의 흰 인셋 링(#fff)을 var(--panel) 로(2026-09-18 — 다크·contrast 에서 흰 테가 떠 보였다)
+const HEX_DECL_CEILING = 26;   // 30→27: 과제 필터 줄 개편(FILTER-MULTI)으로 .ovf-fade 마스크(#000 둘)와 .fchip:hover(#bcc4d6)가 빠졌다(2026-10-30) · 45→30: Git, SVN 기능 삭제로 .git-card, .git-badge, .commit-* 등 하드코딩 색이 함께 사라졌다(2026-10-26) · 49→45: .s-date 바탕(#f5f7fd)→--dim-bg · mark(#ffe27a)→--mark-bg/--mark-ink 토큰 + html.dark mark 재정의 삭제(2026-09-23 §3.4-A) · 56→51: .git-badge.off / .cell.dim .num 하드코딩(+다크 개별 오버라이드 2종)을 토큰으로 대체 · 51→50: .btn.danger 테두리(#efc7c9)를 --danger-line 토큰으로(2026-09-10 — 다크에서 형광 분홍선이던 자리) · 50→49: .swatch.on 의 흰 인셋 링(#fff)을 var(--panel) 로(2026-09-18 — 다크·contrast 에서 흰 테가 떠 보였다)   // 2026-11-05 26: 패널 할 일 수정 폼(.te-daynote 배경)을 걷음(PC-WATCH-2 §7.1)
 test(`디자인 토큰: 토큰 블록 밖 hex 색 선언은 ${HEX_DECL_CEILING}개 이하여야 한다(래칫 — 늘리지 말고 줄일 것)`, () => {
   const src = loadAppSource();
   const s = src.indexOf('<style>'), e = src.indexOf('</style>', s);
@@ -387,29 +387,27 @@ if (!JSDOM) {
       assert.deepStrictEqual(t.dayNotes, {}, '단일 할일은 dayNotes 미보유');
     });
 
-    test('todo UI: 기간 할 일은 선택 날짜별 설명을 목록과 편집 폼에 표시', () => {
+    //  2026-11-05(docs/PC-WATCH-2.md §7.1): 패널 안 수정 폼(todoEditHtml)을 걷었다. 설명은 줄이 아니라 펼친 상세(dpTdDetHtml)에, 고치기는 [+ 추가] 창의 할 일 수정에
+    test('todo UI: 기간 할 일은 선택 날짜별 설명을 패널 상세와 수정 창([+ 추가] 창의 할 일 수정)에 표시', () => {
       seed(roundtripState);
-      ev("selectedDate='2026-07-10'; editingTodoId=null;");
-      let html = ev("todoRowHtml(todoById('t-2'))");
-      assert.ok(/todo-daymemo/.test(html), '날짜별 설명 행 표시');
+      ev("selectedDate='2026-07-10';");
+      const html = ev("dpTdDetHtml(todoById('t-2'))");
+      assert.ok(/dp-det-memo/.test(html), '날짜별 설명 줄 표시');
       assert.ok(/중간 점검 메모/.test(html), '선택 날짜 설명 표시');
-      ev("editingTodoId='t-2';");
-      html = ev("todoRowHtml(todoById('t-2'))");
-      assert.ok(/class=\"te-daynote\"/.test(html), '선택 날짜 설명 편집기 표시');
-      assert.ok(/data-date=\"2026-07-10\"/.test(html), '선택 날짜로 저장 앵커');
-      assert.ok(/중간 점검 메모/.test(html), '기존 날짜별 설명 프리필');
+      ev("openTodoEdit('t-2');");
+      assert.strictEqual(ev("document.querySelector('#qaEditTitle').textContent"), '할 일 수정');
+      assert.strictEqual(ev("qaTodoNoteDate"), '2026-07-10', '선택 날짜로 저장 앵커');
+      assert.strictEqual(ev("document.querySelector('#qaMemo').value"), '중간 점검 메모', '기존 날짜별 설명 프리필');
+      ev("closeModal('#quickAdd');");
     });
 
-    test('todo UI: 기간 할 일 날짜별 설명 저장/비우기는 실제 편집 폼 클릭으로 반영', () => {
+    test('todo UI: 기간 할 일 날짜별 설명 저장/비우기는 실제 수정 창 클릭으로 반영', () => {
       seed(roundtripState);
-      ev("selectedDate='2026-07-10'; document.querySelector('#dpBody').innerHTML=todoEditHtml(todoById('t-2'));");
-      ev("document.querySelector('.todo-edit .te-daynote').value='클릭 저장 메모'; document.querySelector('.todo-edit [data-act=\"save\"]').click();");
+      ev("selectedDate='2026-07-10'; openTodoEdit('t-2'); document.querySelector('#qaMemo').value='클릭 저장 메모'; document.querySelector('#qaSave').click();");
       let t = evJSON("todoById('t-2')");
       assert.strictEqual(t.dayNotes['2026-07-10'], '클릭 저장 메모');
-      assert.strictEqual(ev("editingTodoId"), null);
 
-      ev("selectedDate='2026-07-10'; document.querySelector('#dpBody').innerHTML=todoEditHtml(todoById('t-2'));");
-      ev("document.querySelector('.todo-edit .te-daynote').value=''; document.querySelector('.todo-edit [data-act=\"save\"]').click();");
+      ev("selectedDate='2026-07-10'; openTodoEdit('t-2'); document.querySelector('#qaMemo').value=''; document.querySelector('#qaSave').click();");
       t = evJSON("todoById('t-2')");
       assert.ok(!Object.prototype.hasOwnProperty.call(t.dayNotes || {}, '2026-07-10'), '빈 날짜별 설명은 저장하지 않고 제거');
     });
