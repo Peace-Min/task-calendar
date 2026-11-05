@@ -238,6 +238,12 @@ header.topbar .nav{flex-wrap:wrap;row-gap:6px}   /* 자리가 모자라면 보�
 .fb-pop > *{flex:none}
 .fb-pop .vp-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 8px 6px 12px;border-bottom:1px solid var(--line)}
 .fb-pop .vp-head b{font-size:var(--fs-emph)}
+/* 팝업 머리줄(docs/MONTH-TODO-POPUP-CLOSE.md §2): 개인 보기 팝업 .vp-head 와 같은 모양(왼쪽 제목, 오른쪽 동작과 닫기 ×). × 는 모달 × (.x) 그대로 */
+.pop-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 8px 6px 12px;border-bottom:1px solid var(--line);flex:none}
+.pop-head > b{font-size:var(--fs-emph);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pop-head-r{display:flex;align-items:center;gap:4px;margin-left:auto;flex:none}
+.pk-pop > .pop-head,.aw-wcal > .pop-head{margin:-8px -8px 8px}
+.pc-side-h .pop-x{margin-left:auto;align-self:center}
 .fb-pop .vp-sec{padding:6px 12px 4px}
 .fb-pop .vp-cats{padding:6px 0 0}
 .fb-pop .vp-cats .vp-h{padding:0 12px}
@@ -428,9 +434,6 @@ body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 �
 .chip-todo.chip-bar.range{border-style:dashed}   /* 기간 할 일은 막대에서도 점선 띠(결정 4) */
 .chip-todo.chip-bar.cl{border-left-width:0 !important;padding-left:5px}
 .chip-todo.chip-bar.cr{border-right-width:0}
-/* 일정과 할 일이 둘 다 보일 때 칸 맨 위 줄은 할 일. 그 아래 점선(.td-sep), 3개 이상이면 개수 칩(.chip-tdcnt) */
-.grid.bars .td-sep{align-self:end;height:0;margin:0 4px -1px;border-bottom:1px dashed var(--chip-outline);pointer-events:none}
-.chip-todo.chip-bar.chip-tdcnt{justify-self:start;width:auto;max-width:calc(100% - 8px);padding:0 8px;border-radius:999px;background:var(--accent-soft) !important;color:var(--accent-2) !important;border-color:transparent !important;font-size:var(--fs-micro);cursor:pointer}
 .grid.bars .more{position:relative;z-index:1;height:16px;line-height:16px;padding:0 6px;align-self:start;container-type:inline-size}
 @media (max-width:760px){ .chip-span{display:none} }
 @media (max-width:560px){
@@ -4612,7 +4615,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
       <section class="guide-sec" id="g-start">
         <h3>1. 화면 구성</h3>
         <ul>
-          <li><b>왼쪽 월 달력</b>: 날짜 칸 안에 일정·할 일이 칩으로 표시됩니다. 일정과 할 일이 둘 다 보이면 칸 맨 위 줄에 그날 할 일(3개 이상이면 개수)이, 점선 아래에 일정이 놓입니다. 위쪽 <b>‹ 오늘 ›</b>로 월을 이동합니다.</li>
+          <li><b>왼쪽 월 달력</b>: 날짜 칸 안에 일정·할 일이 칩으로 표시됩니다. 칸 안은 여러 날 막대, 그날 일정, 그날 할 일 순서이고 넘치면 <b>+n개 더보기</b>입니다. 위쪽 <b>‹ 오늘 ›</b>로 월을 이동합니다.</li>
           <li><b>오른쪽 패널</b>: 달력에서 고른 날짜의 <b>일정</b>과 <b>할 일</b>이 늘 같은 자리에 나뉘어 보입니다. 머리의 <b>＋ 추가</b>로 그 날짜에 넣고, 맨 아래 한 줄 <b>밀린 할 일</b>로 기한이 지난 할 일과 기한 없는 할 일을 봅니다.</li>
           <li><b>⚲ 보기</b>(달력 위): 달력에 보일 것을 고릅니다. 기록 종류(전체, 일정, 할 일 중 하나), 과제. 끝낸 할 일은 늘 줄을 그어 보입니다. [처음대로]로 되돌리고, 고른 보기는 이 PC에 기억됩니다.</li>
           <li><b>헤더 버튼</b>: 검색, 내 과제, 문의, 모양, ? 도움말, ⋯ 더보기(<b>설정</b>, 데이터).</li>
@@ -8772,7 +8775,8 @@ function pkEnsure(){
   }
   const body = document.createElement('div'); body.id = 'pkBody'; body.className = 'pk-body';
   body.setAttribute('role', 'tabpanel'); body.setAttribute('aria-labelledby', 'pkTabPeople');
-  pop.appendChild(inp); pop.appendChild(tabs); pop.appendChild(body);
+  //  머리줄과 닫기 ×(MONTH-TODO-POPUP-CLOSE §2)
+  pop.appendChild(popHeadEl('사람 고르기')); pop.appendChild(inp); pop.appendChild(tabs); pop.appendChild(body);
   inp.addEventListener('input', pkRender);
   pop.addEventListener('click', pkOnClick);
   pop.addEventListener('keydown', pkOnKey);
@@ -8885,6 +8889,7 @@ function pkPick(id, name){
   openPeerSchedule(id, name);
 }
 function pkOnClick(ev){
+  if(__pk && ev.target && ev.target.closest && ev.target.closest('[data-popx]')){ pkClose(true); return; }
   const b = (ev.target && ev.target.closest) ? ev.target.closest('[data-act]') : null;
   if(!b || !__pk) return;
   const act = b.dataset.act, id = b.dataset.login || '', nm = b.dataset.name || '';
@@ -11567,7 +11572,7 @@ function filterPopOpen(focusTo){
   const pop = document.createElement('div');
   pop.className = 'fb-pop'; pop.id = 'fbPop';
   pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', '달력에 보일 것');
-  pop.innerHTML = `<div class="vp-head"><b>달력에 보일 것</b><button type="button" class="fb-lk" data-act="reset">처음대로</button></div>`
+  pop.innerHTML = popHeadHtml('달력에 보일 것', '<button type="button" class="fb-lk" data-act="reset">처음대로</button>', 'vp-head')
     + `<div class="vp-sec"><div class="vp-h">기록 종류</div>`
     + `<div class="seg vp-seg" role="group" aria-label="기록 종류"><button type="button" class="seg-b" data-vk="all">전체</button><button type="button" class="seg-b" data-vk="ev">일정</button><button type="button" class="seg-b" data-vk="td">할 일</button></div></div>`
     + `<div class="vp-sec vp-cats"><div class="vp-h">과제</div>`
@@ -11626,6 +11631,22 @@ function filterMarkQ(s, q){
    줄 = { kind:'opt', id, name, n, dot(색, 없으면 점 없음), tip, on } | { kind:'gap' }.
    ★ 개인 보기 팝업의 마크업, 클래스, id, aria, 키보드는 이 함수로 옮기기 전과 같다(시험 filter-multi, personal-panel). */
 //  겉: 찾기 칸과 [전체 선택] [전체 해제]. id = 찾기 칸이 가리키는 목록(aria-controls)
+//  팝업 머리줄과 닫기 ×(docs/MONTH-TODO-POPUP-CLOSE.md §2). 왼쪽 제목, 오른쪽 동작(right, 마크업)과 ×. cls = 더할 클래스(개인 보기 팝업은 vp-head).
+//  × 는 data-popx 로 각 팝업의 닫기 함수가 받는다. 고른 상태 그대로 닫기만 하고 포커스는 연 단추로 돌아간다.
+function popXHtml(){ return '<button type="button" class="x pop-x" data-popx aria-label="닫기" title="닫기">×</button>'; }
+function popHeadHtml(title, right, cls){
+  return `<div class="pop-head${cls ? ' ' + cls : ''}"><b>${esc(title)}</b><span class="pop-head-r">${right || ''}${popXHtml()}</span></div>`;
+}
+//  같은 머리줄을 DOM 으로(HTML 주입 없이 만드는 팝업용, 사람 고르기)
+function popHeadEl(title){
+  const h = document.createElement('div'); h.className = 'pop-head';
+  const b = document.createElement('b'); b.textContent = title;
+  const r = document.createElement('span'); r.className = 'pop-head-r';
+  const x = document.createElement('button'); x.type = 'button'; x.className = 'x pop-x'; x.dataset.popx = '';
+  x.setAttribute('aria-label', '닫기'); x.title = '닫기'; x.textContent = '×';
+  r.appendChild(x); h.appendChild(b); h.appendChild(r);
+  return h;
+}
 function fbHeadMarkup(id, ph){
   return `<div class="fb-ph"><input class="fb-q" type="text" role="searchbox" autocomplete="off" placeholder="${ph}" aria-label="${ph}" aria-controls="${id}"></div>`
     + `<div class="fb-acts"><button type="button" class="fb-lk" data-act="all">전체 선택</button><button type="button" class="fb-lk" data-act="none">전체 해제</button></div>`;
@@ -11761,6 +11782,7 @@ function bindFilterbar(){
   bar.addEventListener('click', ev => {
     const t = ev.target;
     if(FB.pop && FB.pop.contains(t)){
+      if(t.closest('[data-popx]')){ filterPopClose(true); return; }
       const kb = t.closest('[data-vk]');
       if(kb){ viewSetKind(kb.dataset.vk); filterApply(); kb.focus({ preventScroll: true }); return; }   // 기록 종류 단추: 팝업은 그대로 두고 상태만 바꾼다
       const lk = t.closest('.fb-lk');
@@ -12225,11 +12247,6 @@ function barChipHtml(it, pos){
   const aR = it.cr ? `<span class="chip-arrow" aria-hidden="true"${spanTxt ? '' : ' style="margin-left:auto"'}>▸</span>` : '';
   const geo = ` data-c0="${it.c0}" data-c1="${it.c1}" data-lane="${it.lane}" style="${pos}"`;
   const edge = (it.multi ? ' range' : '') + (it.cl ? ' cl' : '') + (it.cr ? ' cr' : '');
-  //  칸 맨 위 줄 할 일 개수 칩(PERSONAL-PANEL §2.4): 그날 할 일이 3개 이상이면 개수 하나로 접는다. 누르면 그 날짜 선택.
-  if(x.todoCount){
-    return `<div class="chip chip-bar chip-todo chip-tdcnt" draggable="false" data-tdcnt="${esc(x.day)}"${geo}
-    aria-label="할 일 ${x.todoCount}개" title="그날 할 일 ${x.todoCount}개"><span class="txt">할 일 ${x.todoCount}</span></div>`;
-  }
   if(x.todo){
     const t = x.todo, c = catById(t.categoryId), col = validColor(c && c.color);
     const star = (t.prio === 'high' && !t.done) ? ICON.starFill : '';
@@ -12257,37 +12274,26 @@ function barChipHtml(it, pos){
     data-id="${esc(e.id)}" data-occ="${esc(e._occStart)}" data-kind="${kind}"${styleGeo}
     title="${mine ? '내 일정, ' : ''}${time ? esc(time) + ' ' : ''}${esc(e.title)}${c ? ', ' + esc(c.name) : ''}${span}${e.recur ? ', ' + esc(recurLabel(e)) : ''}">${inner}</div>`;
 }
-//  칸 맨 위 줄 할 일(docs/PERSONAL-PANEL.md §2.4). 일정과 할 일이 둘 다 보일 때 그날 할 일을 칸 맨 위에 모으고, 점선 아래에 일정을 놓는다.
-//  그날 할 일이 2개까지는 줄마다, 3개 이상이면 '할 일 n' 개수 하나. 중요한 할 일 먼저, 안 끝낸 것 먼저.
-//  하루짜리 할 일(기한만 있는 것)만 모은다. 여러 날 할 일은 여러 날 일정처럼 점선 막대로 남아 점선 아래 일정과 같은 차선을 쓴다.
-//  tds = pmMonthItems 의 하루짜리 할 일 항목, from = 그 주 시작일. 반환: rows = 맨 위 줄 수(0~2), days[칸] = 그날 할 일 수, items = 놓을 항목(lane 0 부터).
+//  하루짜리 할 일 순서: 중요한 할 일 먼저, 안 끝낸 것 먼저(달력 칸과 오른쪽 패널이 같다).
 function todoZoneCmp(a, b){ return ((b.prio === 'high') - (a.prio === 'high')) || ((!!a.done) - (!!b.done)) || String(a.createdAt).localeCompare(String(b.createdAt)); }
-function pmTodoZone(tds, from){
-  const days = [0, 1, 2, 3, 4, 5, 6].map(c => addDays(from, c));
-  const per = days.map(ds => (tds || []).filter(x => x.s <= ds && x.e >= ds).map(x => x.todo).sort(todoZoneCmp));
-  const rows = Math.max(0, ...per.map(l => l.length >= 3 ? 1 : l.length));
-  const items = [];
-  per.forEach((l, c) => {
-    if(l.length >= 3) items.push({ x: { todoCount: l.length, day: days[c] }, c0: c, c1: c, lane: 0, cl: false, cr: false, multi: false });
-    else l.forEach((t, k) => items.push({ x: { todo: t, s: days[c], e: days[c], key: 't:' + t.id }, c0: c, c1: c, lane: k, cl: false, cr: false, multi: false }));
-  });
-  return { items, rows, days: per.map(l => l.length) };
+//  일정과 할 일이 둘 다 보일 때 칸 안 하루짜리 순서(docs/PERSONAL-PANEL.md §2.4): 일정(시간순) 다음 할 일(todoZoneCmp).
+//  여러 날 막대(일정과 여러 날 할 일)는 pmLayoutWeek 가 먼저 놓는다. 넘치면 일정과 할 일을 합쳐 +n개 더보기 하나(fitBars).
+function pmCellCmp(a, b){
+  if(!!a.todo !== !!b.todo) return a.todo ? 1 : -1;
+  return a.todo ? todoZoneCmp(a.todo, b.todo) : entrySort(a.occ, b.occ);
 }
 function renderMonthBars(g, dens, pick, opts){
   const o = opts || { todos: true, roving: true, sideOvl: false };
   const G = calMonthGrid(view.y, view.m), startDs = G.from, weeks = G.weeks, endDs = G.to;
   const tY = todayYmd();
-  const all0 = pmMonthItems(startDs, endDs, pick, o);
-  //  일정과 할 일이 둘 다 보이면 하루짜리 할 일은 칸 맨 위 줄로 모은다(§2.4). 한 종류만 보이면 나누지 않고 예전 그대로다.
-  const split = o.todos !== false && viewKinds.ev && viewKinds.td;
-  const dayTodo = x => !!x.todo && x.s === x.e;   // 여러 날 할 일은 막대로 남는다
-  const tdAll = split ? all0.filter(dayTodo) : [];
-  const all = split ? all0.filter(x => !dayTodo(x)) : all0;
+  const all = pmMonthItems(startDs, endDs, pick, o);
   let tabDs = focusDs || selectedDate;   // 키보드 포커스(roving tabindex) 대상 칸, renderMonthGrid 와 같은 규칙
   if(tabDs < startDs || tabDs > endDs) tabDs = (tY >= startDs && tY <= endDs) ? tY : startDs;
   if(o.roving !== false) focusDs = tabDs;
   const RCAP = dens === 'expand' ? 60 : 12;   // 그리는 차선 한도(성능). 넘는 기록은 그 칸의 +N 에 든다
-  const cmp = (a, b) => entrySort(a.occ || a.todo, b.occ || b.todo);
+  //  일정과 할 일을 한 줄 채우기 하나로 놓는다(§2.4, 할 일 구역 없음). 둘 다 보이면 하루짜리는 일정 다음 할 일, 한 종류만이면 예전 순서 그대로
+  const both = o.todos !== false && viewKinds.ev && viewKinds.td;
+  const cmp = both ? pmCellCmp : (a, b) => entrySort(a.occ || a.todo, b.occ || b.todo);
   const ovlDays = (o.sideOvl || (PEER && __peerOverlay)) ? peerOverlapDays(startDs, endDs) : null;
   const mineItems = all.filter(x => x.mine);
   let html = '';
@@ -12302,10 +12308,8 @@ function renderMonthBars(g, dens, pick, opts){
       for(const it of L1.items) it.lane += L0.lanes;
       L = { items: L0.items.concat(L1.items), lanes: L0.lanes + L1.lanes };
     }
-    const Z = tdAll.length ? pmTodoZone(tdAll, from) : { items: [], rows: 0, days: [0, 0, 0, 0, 0, 0, 0] };
-    if(Z.rows){ for(const it of L.items) it.lane += Z.rows; L = { items: Z.items.concat(L.items), lanes: L.lanes + Z.rows }; }
     const cnt = [0, 0, 0, 0, 0, 0, 0], extra = [0, 0, 0, 0, 0, 0, 0];
-    for(const it of L.items) for(let c = it.c0; c <= it.c1; c++){ cnt[c] += it.x.todoCount || 1; if(it.lane >= RCAP) extra[c]++; }
+    for(const it of L.items) for(let c = it.c0; c <= it.c1; c++){ cnt[c]++; if(it.lane >= RCAP) extra[c]++; }
     const nL = Math.min(L.lanes, RCAP);
     html += `<div class="gridrow" role="row" data-from="${from}" data-lanes="${nL}" data-extra="${extra.join(',')}" style="grid-template-rows:${PM_HEAD}px${nL ? ` repeat(${nL}, 19px)` : ''} minmax(0,1fr)">`;
     for(let i = 0; i < 7; i++){
@@ -12320,8 +12324,6 @@ function renderMonthBars(g, dens, pick, opts){
       html += `<div class="${cls}" data-date="${ds}" role="gridcell"${o.roving !== false ? ` tabindex="${ds === tabDs ? 0 : -1}"` : ''} aria-selected="${ds === selectedDate}" aria-label="${esc(aria)}" style="grid-column:${i + 1};grid-row:1 / -1">
       <div class="cell-top"><span class="${numCls}">${d.getDate()}</span>${ovlDot}${hol ? `<span class="hol">${esc(hol)}</span>` : ''}</div></div>`;
     }
-    //  할 일이 있는 칸마다 맨 위 줄 아래에 점선(그 아래부터 일정)
-    if(Z.rows) Z.days.forEach((n, c) => { if(n) html += `<div class="td-sep" aria-hidden="true" style="grid-column:${c + 1};grid-row:${Z.rows + 1}"></div>`; });
     for(const it of L.items) if(it.lane < RCAP) html += barChipHtml(it, `grid-column:${it.c0 + 1} / ${it.c1 + 2};grid-row:${it.lane + 2}`);
     html += '</div>';
   }
@@ -19913,8 +19915,6 @@ function bind(){
       //    열람 창의 칸 안 칩은 예전처럼 chip.closest('.cell') 이다(같은 함수, 갈래 없음).
       const cellDs = chipCellDate(chip, ev);
       const chipDs = cellDs || chip.dataset.occ || selectedDate;
-      //  칸 맨 위 줄의 '할 일 n' 개수 칩: 그 날짜만 고른다(할 일이 하나가 아니라 강조할 행이 없다)
-      if(chip.dataset.tdcnt){ selectDate(chipDs); return; }
       //  할 일 칩 → 그 날짜가 선택되고 패널의 그 할 일 행이 강조된다(탭 전환 없음, 일정 칩과 같은 동작). 패널은 그날 할 일을 늘 보이므로 펴 줄 것이 없다.
       if(chip.dataset.todo){ flashTodoId = chip.dataset.todo; selectDate(chipDs); return; }
       flashTargetId = chip.dataset.id; selectDate(chipDs);   // 일정 칩 → 그 날짜 + 그 카드 강조
@@ -22823,7 +22823,7 @@ function awCalRender(){
     rows += any ? '<tr class="aw-cw' + (per.mon === AWE.mon ? ' sel' : '') + '" data-awpick="' + per.mon + '" data-awttl="' + esc(ttl) + '" tabindex="0" aria-label="' + esc(ttl) + ', ' + awPeriodLabel(per.mon) + '">' + lab + tds + '</tr>'
       : '<tr>' + lab + tds + '</tr>';
   }
-  box.innerHTML = '<div class="aw-cmh"><button type="button" class="btn icon sm" data-awcm="-1" aria-label="이전 달" title="이전 달">‹</button><b>' + y + '년 ' + (m + 1) + '월</b>'
+  box.innerHTML = popHeadHtml('주 고르기', '') + '<div class="aw-cmh"><button type="button" class="btn icon sm" data-awcm="-1" aria-label="이전 달" title="이전 달">‹</button><b>' + y + '년 ' + (m + 1) + '월</b>'
     + '<button type="button" class="btn icon sm" data-awcm="1" aria-label="다음 달" title="다음 달">›</button></div>'
     + '<table class="cal-pk"><thead><tr><th></th>' + CAL_DOW.map((w, i) => '<th class="' + (i === 0 ? 'sun' : i === 6 ? 'sat' : '') + '">' + w + '</th>').join('') + '</tr></thead><tbody>'
     + rows + '</tbody></table>';
@@ -23171,6 +23171,7 @@ function awInit(){
       if(c('#awAddAll')){ awAddAll(true); return; }
       if(c('#awAddNone')){ awAddAll(false); return; }
       if(c('#awAddDone')){ awAddOpen(''); const a = document.querySelector('#awEd [data-awadd="hours"]'); if(a) try{ a.focus({ preventScroll: true }); }catch(_){} return; }
+      if(c('#awWCal [data-popx]')){ awCalToggle(false); const w = $('#awWeekBtn'); if(w) try{ w.focus(); }catch(_){} return; }   // 닫기 ×
       if((b = c('[data-awcm]'))){ awCalMove(Number(b.dataset.awcm)); return; }
       if((b = c('tr[data-awpick]'))){ if(!c('td.off')) awCalPick(b.dataset.awpick, b.dataset.awttl); return; }
       if((b = c('[data-awtab]')) && !b.disabled){ awPTabSet(b.dataset.awtab, true); return; }
@@ -23723,7 +23724,7 @@ function pcSideHtml(inDrawer){
   };
   const add = '<button type="button" class="pc-addw" data-act="watchAdd" data-fk="watchAdd" title="내 과제가 아닌 과제의 일정을 읽기만 합니다">＋ 관심 과제 추가</button>';
   return '<' + tag + ' class="pc-side' + (inDrawer ? ' in-drawer' : '') + '" aria-label="과제 목록">'
-    + '<div class="pc-side-h"><b>과제</b><span class="pc-count">달력에 ' + n + '개</span></div>'
+    + '<div class="pc-side-h"><b>과제</b><span class="pc-count">달력에 ' + n + '개</span>' + (inDrawer ? popXHtml() : '') + '</div>'
     + '<div class="tabs pc-stabs" role="tablist" aria-label="과제 목록 종류">' + tabBtn('mine', '내 과제', PCAL.projects) + tabBtn('watch', '관심 과제', PCAL.watch) + '</div>'
     + '<div class="pc-side-btns"><button type="button" class="btn sm" data-act="selAll" data-fk="selAll"' + (on === read ? ' disabled' : '') + '>전체 선택</button>'
     + '<button type="button" class="btn sm" data-act="selNone" data-fk="selNone"' + (on === 0 ? ' disabled' : '') + '>전체 해제</button></div>'
@@ -23961,7 +23962,7 @@ function pcOpenDayList(ds, anchor, opt){
   }).join('');
   const html = '<div class="pc-pop-top"><span class="pc-pop-title">' + pcMdHtml(ds) + '</span>'
     + (pcCanNewVisible() ? '<button type="button" class="btn sm pc-w" data-act="newOn" data-date="' + ds + '"'
-      + (o.projectUid ? ' data-proj="' + esc(o.projectUid) + '"' : '') + '>등록</button>' : '') + '</div>'
+      + (o.projectUid ? ' data-proj="' + esc(o.projectUid) + '"' : '') + '>등록</button>' : '') + popXHtml() + '</div>'
     + (groups ? '<div class="pc-dl">' + groups + '</div>' : '');
   const pop = pcShowPop(html, pcMd(ds) + ' 일정 목록', anchor, null);
   if(!pop) return;
@@ -24768,7 +24769,7 @@ function caWhoOpen(btn){
   const pop = document.createElement('div');
   pop.className = 'fb-pop fb-pop-who'; pop.id = 'caWhoPop';
   pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', '참여자 고르기');
-  pop.innerHTML = fbHeadMarkup('caWhoBody', '이름 찾기') + '<div class="pk-body" id="caWhoBody"></div>';
+  pop.innerHTML = popHeadHtml('참여자', '', 'vp-head') + fbHeadMarkup('caWhoBody', '이름 찾기') + '<div class="pk-body" id="caWhoBody"></div>';
   host.appendChild(pop);
   Object.assign(CAWP, { pop, q: pop.querySelector('.fb-q'), btn, unit: '', open: new Set(), focus: null, wide: false });
   btn.setAttribute('aria-expanded', 'true'); btn.setAttribute('aria-controls', 'caWhoPop');
@@ -24784,6 +24785,7 @@ function caWhoOpen(btn){
 //  누름: [전체 선택] [전체 해제], 조직 고르기(트리, 경로, 하위 조직 줄), 펼치기(▸ ▾). 체크는 change 로 받는다(줄 전체가 이름표)
 function caWhoClick(ev){
   const t = ev.target;
+  if(t.closest('[data-popx]')){ caWhoClose(true); return; }
   const lk = t.closest('.fb-lk');
   if(lk){ if(lk.disabled) return; CAW.who = lk.dataset.act === 'all' ? null : new Map(); caWhoApply(); try{ CAWP.q.focus({ preventScroll: true }); }catch(_){} return; }
   const b = t.closest('[data-act]'); if(!b) return;
@@ -24955,6 +24957,7 @@ function pcOnViewClick(ev){
   const t = ev.target;
   if(PCAL.pop && PCAL.pop.el.contains(t)){ pcOnPopClick(ev); return; }
   if(PCAL.drawer && !t.closest('#pcDrawer') && !t.closest('#pcScope')){ PCAL.drawer = false; pcRender(); return; }
+  if(PCAL.drawer && t.closest('#pcDrawer [data-popx]')){ PCAL.drawer = false; pcRender(); const b = document.getElementById('pcScope'); if(b) try{ b.focus(); }catch(_){} return; }   // 닫기 ×
   //  달력에서 무엇을 누르든 그 날짜의 일정 목록. 막대와 시간 일정은 누른 칸의 날짜(여러 날 막대도 시작일로 튀지 않는다)이고 그 줄을 따로 강조하지 않는다(2026-10-23).
   //  주간의 과제 행에서 열면 그 과제를 등록 폼에 미리 고를 힌트로만 넘긴다(목록 내용은 같다).
   const row = t.closest('.pc-wcells[data-proj]'), rowProj = row ? row.dataset.proj : '';
@@ -24980,7 +24983,7 @@ function pcOnViewClick(ev){
     case 'selAll': pcSideSelect(true); pcPrefsSave(); pcRender(); pcLoad(); break;    // 지금 탭의 과제만(PC-WATCH-2 §3)
     case 'selNone': pcSideSelect(false); pcPrefsSave(); pcRender(); pcLoad(); break;
     case 'sideTab': pcSideTabSet(a.dataset.v); break;
-    case 'drawer': PCAL.drawer = !PCAL.drawer; pcRender(); if(PCAL.drawer){ const f = document.querySelector('#pcDrawer input, #pcDrawer button'); if(f) try{ f.focus(); }catch(_){} } break;
+    case 'drawer': PCAL.drawer = !PCAL.drawer; pcRender(); if(PCAL.drawer){ const f = document.querySelector('#pcDrawer input, #pcDrawer button:not([data-popx])'); if(f) try{ f.focus(); }catch(_){} } break;
     case 'prev': pcMove(-1); break;
     case 'next': pcMove(1); break;
     case 'today': pcToday(); break;
@@ -24994,6 +24997,7 @@ function pcOnViewClick(ev){
   }
 }
 function pcOnPopClick(ev){
+  if(ev.target.closest('[data-popx]')){ pcClosePop(false); return; }   // 닫기 ×: 연 칸으로 포커스
   const a = ev.target.closest('[data-act]'); if(!a) return;
   switch(a.dataset.act){
     case 'dlOpen': pcOpenDetail(a.dataset.ev, a.dataset.occ || ''); break;   // 줄 전체가 상세 창(수정, 개인 일정에 등록, 삭제는 상세에서)

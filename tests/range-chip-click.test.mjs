@@ -83,7 +83,8 @@ const statics = {
       '선택 날짜의 우선순위가 「누른 칸 → data-occ → 현재 선택」이 아니다(B1·B4): ' + m[1]);
     assert.ok(ic < b.indexOf('chip.dataset.occ'), '누른 칸보다 data-occ 를 먼저 본다(B1)');
     assert.ok(!/selectDate\(\s*chip\.dataset\.occ/.test(b), '칩 클릭이 아직 data-occ(시작일)로 날짜를 고른다(B1)');
-    assert.strictEqual((b.match(/selectDate\(chipDs\)/g) || []).length, 3, '개수 칩·할 일 칩·일정 칩 세 갈래가 모두 chipDs 로 고르지 않는다');
+    //  2026-11-05: 칸 맨 위 "할 일 n" 개수 칩을 걷어 할 일 칩과 일정 칩 두 갈래다(docs/MONTH-TODO-POPUP-CLOSE.md §1)
+    assert.strictEqual((b.match(/selectDate\(chipDs\)/g) || []).length, 2, '할 일 칩과 일정 칩 두 갈래가 모두 chipDs 로 고르지 않는다');
     //  드러내기(B2): 탭 전환 없이 그 날짜를 고르면서 패널의 그 행, 카드를 강조한다(docs/PERSONAL-PANEL.md §2.1)
     assert.ok(/flashTodoId = chip\.dataset\.todo;\s*selectDate\(chipDs\)/.test(b), '할 일 칩의 드러내기(날짜 선택 + 행 강조)가 사라졌다(B2)');
     assert.ok(/flashTargetId = chip\.dataset\.id;\s*selectDate\(chipDs\)/.test(b), '일정 칩의 드러내기(날짜 선택 + 카드 강조)가 사라졌다(B2)');

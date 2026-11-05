@@ -344,11 +344,11 @@ if (!JSDOM) {
         Object.defineProperty(wk, 'clientHeight', { configurable: true, get: () => 106 });
         W.ev('fitChips()');
         const more = [...wk.querySelectorAll('.more')];
-        //  이 주에는 할 일(10/21)이 있어 칸 맨 위 줄이 한 줄을 차지한다(PERSONAL-PANEL §2.4). 일정이 쓸 차선이 하나 줄어 +3 이던 칸이 +4 다.
-        assert.deepStrictEqual(more.map((m) => [m.dataset.more, m.firstChild.textContent]), [['2026-10-23', '+4']], '+N 이 다르다');
+        //  2026-11-05(MONTH-TODO-POPUP-CLOSE §1): 칸 맨 위 할 일 구역을 걷어 일정과 할 일이 한 줄 채우기 하나다. 할 일(10/21)은 자기 칸만 써서 이 칸은 다시 +3.
+        assert.deepStrictEqual(more.map((m) => [m.dataset.more, m.firstChild.textContent]), [['2026-10-23', '+3']], '+N 이 다르다');
         assert.strictEqual(more[0].style.gridRow, '4', '+N 이 보이는 마지막 차선 다음 줄에 있지 않다');
-        assert.strictEqual([...wk.querySelectorAll('.chip-bar')].filter((b) => b.style.display === 'none').length, 4, '넘친 기록이 숨지 않았다');
-        assert.strictEqual(more[0].getAttribute('aria-label'), '+4개 더보기');
+        assert.strictEqual([...wk.querySelectorAll('.chip-bar')].filter((b) => b.style.display === 'none').length, 3, '넘친 기록이 숨지 않았다');
+        assert.strictEqual(more[0].getAttribute('aria-label'), '+3개 더보기');
         more[0].dispatchEvent(new W.w.MouseEvent('click', { bubbles: true }));
         assert.strictEqual(W.ev('selectedDate'), '2026-10-23', '+N 을 눌러 그 날짜를 고르지 않았다');
         //  밀도: 촘촘히, 펼침, 고정

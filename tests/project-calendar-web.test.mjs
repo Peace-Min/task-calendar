@@ -710,7 +710,9 @@ if (!JSDOM) {
     const open = async (ds) => { W.ev(`pcOpenDayList(${JSON.stringify(ds)}, document.querySelector('#pcView .pc-day'))`); await settle(); return W.el('pcPop'); };
     const empty = await open(d(40));
     assert.ok(empty && !empty.querySelector('.pc-dl, .pc-dl-g, .pc-dl-row'), '빈 날에 목록 칸이 있다');
-    assert.strictEqual(empty.textContent, W.ev(`pcMd(${JSON.stringify(d(40))})`) + '등록', '빈 날이 머리와 등록만이 아니다(안내 문구 없음)');
+    //  2026-11-05(MONTH-TODO-POPUP-CLOSE §2): 머리 오른쪽 끝에 닫기 × 가 붙었다. 그 밖에는 머리와 등록만
+    assert.ok(empty.querySelector('.pc-pop-top > [data-popx]'), '머리에 닫기 × 가 없다');
+    assert.strictEqual(empty.textContent, W.ev(`pcMd(${JSON.stringify(d(40))})`) + '등록×', '빈 날이 머리와 등록, × 만이 아니다(안내 문구 없음)');
     const one = await open(d(3));
     assert.deepStrictEqual([...one.querySelectorAll('.pc-dl-gh .pc-dl-nm')].map((x) => x.textContent), ['<b>장비</b> 개발'], '한 과제뿐인 날에 묶음 머리가 하나가 아니다');
     assert.deepStrictEqual([...one.querySelectorAll('.pc-dl-row')].map((r) => r.dataset.ev), [U(44)]);

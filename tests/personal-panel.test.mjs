@@ -3,11 +3,11 @@
 //   (S) 정적: 패널 탭과 "＋ 새 기록" 단추가 없고, 패널은 머리, 본문, 맨 아래 줄 셋이다. 보기 팝업은 머리, 기록 종류(seg 한 줄 고르기), 과제 순서이고
 //       보기 옵션과 고른 과제 칩이 없다(2026-11-03 사용자 확정). 새로 쓴 글에 금지 기호가 없고 새 hex 색이 없다.
 //   (U) 단위: 요약 글자(전체, 일정만, 할 일만, 과제 n, 쉼표로 이어 붙임), 기록 종류 한 줄 고르기(둘 다 꺼진 상태 없음), 옛 저장값 무시,
-//       칸 맨 위 줄(할 일 2개까지 줄마다, 3개 이상 개수, ★ 먼저).
+//       칸 안 하루짜리 순서(일정 다음 할 일, 할 일은 ★ 먼저. 2026-11-05 할 일 구역과 개수 칩을 걷음, docs/MONTH-TODO-POPUP-CLOSE.md §1).
 //   (R) 런타임(jsdom): 탭 없음, 일정 n과 할 일 n 두 묶음 고정(없음, 보기에서 숨김), [+ 추가] 하나와 종류 기본값, 보기 팝업 구성과 동작(seg 셋, disabled 없음),
-//       월간 칸 할 일 줄과 개수, ★ 정렬, 밀린 할 일 팝업(묶음 셋, 이번 주와 나중 없음, ★ 묶음 없음, 완료 접힘, 이동과 강조), 맨 아래 줄 글자와 0 일 때,
+//       월간 칸 한 줄 채우기(일정 다음 할 일, 할 일 구역과 점선과 개수 칩 없음), ★ 정렬, 밀린 할 일 팝업(묶음 셋, 이번 주와 나중 없음, ★ 묶음 없음, 완료 접힘, 이동과 강조), 맨 아래 줄 글자와 0 일 때,
 //       칩 누르면 날짜 선택과 강조(탭 전환 없음), 주간 줄, 기억(옛 done, star 값은 무시), 좁은 창 시트 안 [+ 추가], 열람 프레임 읽기 전용.
-//   (M) 변이: 일정 끔 무시, 기한 지남 기준(끝 날짜), 완료 접힘, 기록 종류 고르기, 개수 기준, ★ 정렬, 종류 기본값, 열람 프레임 [+ 추가], 기억을 되돌리면 위 시험이 실패한다.
+//   (M) 변이: 일정 끔 무시, 기한 지남 기준(끝 날짜), 완료 접힘, 기록 종류 고르기, 칸 안 순서, ★ 정렬, 종류 기본값, 열람 프레임 [+ 추가], 기억을 되돌리면 위 시험이 실패한다.
 // ★ 회사 사이트에는 아무것도 보내지 않는다(호스트 postMessage 는 버린다).
 import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 
@@ -87,10 +87,10 @@ function checkStatic(src) {
   assert.ok(/function viewPersist\(\)\{[\s\S]*localStorage\.setItem\(viewStoreKey\(\)/.test(live) && extractFunction(live, 'filterApply').includes('viewPersist()'), '보기를 기억하지 않는다');
   assert.ok(extractFunction(live, 'viewStoreKey').includes("'tc_view:' + rptDraftWho()"), '기억 키가 계정별이 아니다');
   //  새로 쓴 글(함수 본문)에 금지 기호가 없다
-  const fns = ['viewSummary', 'viewSetKind', 'filterPopOpen', 'filterSyncPop', 'dayHeadHtml', 'dayDetailHtml', 'dayGrpHtml', 'dayFootHtml', 'todoAllHtml', 'todoAllGroups', 'todoIsOverdue', 'pmTodoZone', 'renderFilterbar'].map((n) => extractFunction(live, n)).join('\n');
+  const fns = ['viewSummary', 'viewSetKind', 'filterPopOpen', 'filterSyncPop', 'dayHeadHtml', 'dayDetailHtml', 'dayGrpHtml', 'dayFootHtml', 'todoAllHtml', 'todoAllGroups', 'todoIsOverdue', 'pmCellCmp', 'renderFilterbar'].map((n) => extractFunction(live, n)).join('\n');
   assert.ok(!/[—–「」]/.test(fns) && !/(^|\s)·(\s|$)/m.test(fns), '새 함수에 엠 대시, 낫표, 띄어 쓴 가운데 점이 있다');
   //  새 CSS 에 hex 색이 없다
-  const mine = css.split('\n').filter((l) => /\.(dp-grp|dp-foot|dp-todos|ta-|td-sep|chip-tdcnt)|\.fb-pop[ ,.{>]|\.fb-pop \.vp-/.test(l));
+  const mine = css.split('\n').filter((l) => /\.(dp-grp|dp-foot|dp-todos|ta-)|\.fb-pop[ ,.{>]|\.fb-pop \.vp-/.test(l));
   assert.ok(mine.length >= 12, '새 CSS 규칙을 찾지 못했다');
   assert.ok(mine.every((l) => !/#[0-9a-fA-F]{3,8}\b/.test(l)), '새 CSS 에 hex 색이 있다: ' + mine.find((l) => /#[0-9a-fA-F]{3,8}\b/.test(l)));
 }
@@ -150,28 +150,16 @@ test('(U) 저장값에 예전 done, star 가 있어도 읽지 않는다(종류�
   assert.ok(V.kinds().ev || V.kinds().td, '둘 다 꺼진 저장값을 그대로 되살렸다');
   unitStore.v = null;
 });
-test('(U) 칸 맨 위 줄: 그날 하루짜리 할 일 2개까지는 줄마다, 3개 이상은 개수 하나, 중요와 안 끝낸 것이 먼저', () => {
-  const code = ['todoZoneCmp', 'pmTodoZone'].map((f) => extractFunction(app, f)).join('\n');
-  const Z = new Function('addDays', code + '\nreturn pmTodoZone;')((ds, n) => ymdAdd(ds, n));
-  const from = '2026-10-11';   // 일요일
-  const T = (id, o) => Object.assign({ id, text: id, prio: 'normal', done: false, createdAt: '2026-09-0' + id.length }, o);
-  const it = (t, s2) => ({ todo: t, s: s2, e: s2 });   // pmMonthItems 의 항목 모양
-  const tds = [
-    it(T('n1'), '2026-10-12'),                                                       // 월: 1개
-    it(T('n2'), '2026-10-13'), it(T('h2', { prio: 'high' }), '2026-10-13'),            // 화: 2개(중요 먼저)
-    it(T('a3'), '2026-10-14'), it(T('b3'), '2026-10-14'), it(T('c3'), '2026-10-14'),   // 수: 3개 → 개수
-    it(T('d4', { done: true }), '2026-10-15'), it(T('u4'), '2026-10-15'),             // 목: 끝낸 것은 뒤
-  ];
-  const r = Z(tds, from);
-  assert.deepStrictEqual(r.days, [0, 1, 2, 3, 2, 0, 0]);
-  assert.strictEqual(r.rows, 2, '맨 위 줄 수는 칸 중 가장 많은 쪽(2개까지)이다');
-  const at = (c) => r.items.filter((i) => i.c0 === c).sort((a, b) => a.lane - b.lane);
-  assert.deepStrictEqual(at(2).map((i) => i.x.todo.id), ['h2', 'n2'], '중요한 할 일이 먼저가 아니다');
-  const cnt = at(3); assert.strictEqual(cnt.length, 1, '3개 이상인데 개수 하나로 접히지 않았다'); assert.strictEqual(cnt[0].x.todoCount, 3); assert.strictEqual(cnt[0].lane, 0);
-  assert.deepStrictEqual(at(4).map((i) => i.x.todo.id), ['u4', 'd4'], '안 끝낸 할 일이 먼저가 아니다');
-  assert.strictEqual(Z([], from).rows, 0);
-  assert.strictEqual(Z([it(T('only'), '2026-10-12'), it(T('o2'), '2026-10-12')], from).rows, 2);
-  assert.strictEqual(Z([it(T('x'), '2026-10-12'), it(T('y'), '2026-10-12'), it(T('z'), '2026-10-12')], from).rows, 1, '개수 칩만 있는 주는 한 줄이다');
+test('(U) 칸 안 하루짜리 순서(pmCellCmp): 일정이 먼저(시간순), 그다음 할 일(중요 먼저, 안 끝낸 것 먼저)', () => {
+  const code = ['entrySort', 'todoZoneCmp', 'pmCellCmp'].map((f) => extractFunction(app, f)).join('\n');
+  const C = new Function(code + '\nreturn pmCellCmp;')();
+  const E = (id, o) => ({ occ: Object.assign({ id, allDay: false, startTime: '', createdAt: '2026-09-01' }, o) });
+  const T = (id, o) => ({ todo: Object.assign({ id, prio: 'normal', done: false, createdAt: '2026-09-0' + id.length }, o) });
+  const list = [T('n1'), T('d22', { done: true, prio: 'high' }), E('e9', { startTime: '09:00' }), T('h333', { prio: 'high' }), E('a', { allDay: true }), E('e8', { startTime: '08:00' })];
+  const ids = list.slice().sort(C).map((x) => (x.occ || x.todo).id);
+  assert.deepStrictEqual(ids, ['a', 'e8', 'e9', 'h333', 'd22', 'n1'], '칸 안 순서가 일정(시간순) 다음 할 일(중요, 안 끝낸 것 먼저)이 아니다: ' + ids.join(','));
+  assert.ok(!/pmTodoZone|todoCount|tdcnt/.test(app), '할 일 구역(pmTodoZone)이나 개수 칩 코드가 남아 있다');
+  assert.ok(!/\.td-sep|\.chip-tdcnt/.test(app), '할 일 구역 점선이나 개수 칩 CSS 가 남아 있다');
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -361,7 +349,7 @@ if (!JSDOM) {
         //  처음대로
         click(pop.querySelector('[data-act="reset"]'));
         assert.strictEqual(btn.querySelector('.pv').textContent, '전체'); assert.ok(!btn.classList.contains('filtered'));
-        assert.ok(calIds().includes('eA') && chipsOf(W, T).some((c) => c.dataset.tdcnt), '처음대로인데 달력이 처음 모양이 아니다');
+        assert.ok(calIds().includes('eA') && chipsOf(W, T).some((c) => c.dataset.todo), '처음대로인데 달력이 처음 모양이 아니다');
         //  과제 2: 요약과 모든 자리(달력, 패널, 밀린 할 일 팝업)가 같은 보기
         const nm = (o) => o.querySelector('.nm').textContent;
         const opt = (name) => W.$$('#fbPop .fb-opt').find((o) => nm(o) === name);
@@ -416,42 +404,30 @@ if (!JSDOM) {
         assert.strictEqual(W.w.localStorage.getItem(key), null, '처음대로인데 기억이 남았다');
       } finally { await end(W); }
     },
-    //  칸 맨 위 줄: 할 일 2개까지는 줄마다, 3개 이상은 개수, 점선 아래 일정
+    //  칸 안 한 줄 채우기(docs/MONTH-TODO-POPUP-CLOSE.md §1): 할 일 구역, 점선, 개수 칩 없음. 하루짜리는 일정(시간순) 다음 할 일(중요, 안 끝낸 것 먼저)
     async cellLane(src) {
       const W = await bootMine(src);
       try {
         const { T, D2 } = W.M;
-        const t = chipsOf(W, T), cnt = t.filter((c) => c.dataset.tdcnt);
-        assert.strictEqual(cnt.length, 1, '3개 이상인 날에 개수 칩이 하나가 아니다'); assert.strictEqual(cnt[0].textContent.trim(), '할 일 4', '개수 글자가 "할 일 n" 이 아니다');
-        assert.strictEqual(t.filter((c) => c.dataset.todo).length, 0, '개수로 접은 날에 할 일 칩이 따로 보인다');
-        const evT = t.filter((c) => c.dataset.id);
-        assert.strictEqual(evT.length, 2); assert.ok(evT.every((c) => lane(c) > lane(cnt[0])), '일정이 할 일 줄 아래가 아니다');
-        //  2개 이하인 날: 할 일 칩이 줄마다(중요 먼저), 일정은 그 아래
-        const d = chipsOf(W, D2), dt = d.filter((c) => c.dataset.todo), de = d.filter((c) => c.dataset.id);
-        assert.deepStrictEqual(dt.sort((a, b) => lane(a) - lane(b)).map((c) => c.dataset.todo), ['tF', 'tE'], '2개 이하인 날 할 일 칩이 중요 먼저가 아니다');
-        assert.ok(de.length === 1 && lane(de[0]) >= dt.length, '일정이 할 일 줄 아래가 아니다');
-        assert.ok(W.$$('#grid .td-sep').length >= 2, '할 일 줄 아래 점선이 없다');
-        const sepRow = (ds) => { const col = [...W.$(`#grid .cell[data-date="${ds}"]`).closest('.gridrow').querySelectorAll('.cell')].indexOf(W.$(`#grid .cell[data-date="${ds}"]`)); return W.$(`#grid .cell[data-date="${ds}"]`).closest('.gridrow').querySelector(`.td-sep[style*="grid-column:${col + 1};"]`); };
-        assert.ok(sepRow(T) && sepRow(D2), '할 일이 있는 칸에 점선이 없다');
+        const byLane = (l) => l.slice().sort((a, b) => lane(a) - lane(b)).map((c) => c.dataset.todo || c.dataset.id);
+        assert.strictEqual(W.$$('#grid .td-sep, #grid [data-tdcnt], #grid .chip-tdcnt').length, 0, '할 일 구역 점선이나 개수 칩이 있다');
+        //  오늘: 일정 둘 다음 할 일 넷(중요 먼저, 같은 중요도에서 안 끝낸 것 먼저. 끝낸 할 일도 칸에 보인다)
+        assert.deepStrictEqual(byLane(chipsOf(W, T)), ['eA', 'eB', 'tC', 'tD', 'tA', 'tB'], '칸 안 순서가 일정 다음 할 일이 아니다');
+        //  D2: 일정 하나 다음 할 일 둘(중요 먼저). 오늘 칸에 할 일이 많아도 D2 는 자기 칸만 쓴다(0차선부터)
+        const d = chipsOf(W, D2);
+        assert.deepStrictEqual(byLane(d), ['eC', 'tF', 'tE'], '2개인 날 순서가 일정 다음 할 일(중요 먼저)이 아니다');
+        assert.strictEqual(Math.min(...d.map(lane)), 0, '옆 칸의 할 일 때문에 이 칸이 아래로 밀렸다');
         //  중요한 할 일은 제목 앞 ★
+        const dt = d.filter((c) => c.dataset.todo);
         const star = dt.find((c) => c.dataset.todo === 'tF'), plain = dt.find((c) => c.dataset.todo === 'tE');
         assert.ok(star.querySelector('.txt svg') && !plain.querySelector('.txt svg'), '중요한 할 일만 제목 앞에 ★ 가 있어야 한다');
-        //  한 종류만 보이면 나누지 않는다: 할 일만(점선, 개수 칩 없음, 칩이 하나씩), 일정만(할 일 없음)
+        //  한 종류만 보이면 그 종류만(할 일만은 할 일이 하나씩, 일정만은 할 일 없음)
         setView(W, 'viewSetKind("td")');
-        assert.strictEqual(W.$$('#grid .td-sep').length, 0, '할 일만인데 점선이 있다'); assert.strictEqual(W.$$('#grid [data-tdcnt]').length, 0, '할 일만인데 개수 칩이 있다');
-        assert.ok(chipsOf(W, T).filter((c) => c.dataset.todo).length === 4, '할 일만인데 할 일이 하나씩 보이지 않는다');
+        assert.ok(chipsOf(W, T).filter((c) => c.dataset.todo).length === 4 && !chipsOf(W, T).some((c) => c.dataset.id), '할 일만인데 할 일이 하나씩 보이지 않는다');
         setView(W, 'viewReset(); viewSetKind("ev")');
-        assert.strictEqual(W.$$('#grid .td-sep').length, 0, '일정만인데 점선이 있다'); assert.strictEqual(W.$$('#grid [data-todo], #grid [data-tdcnt]').length, 0, '일정만인데 할 일이 보인다');
+        assert.strictEqual(W.$$('#grid [data-todo]').length, 0, '일정만인데 할 일이 보인다');
         assert.ok(W.$$('#grid .chip[data-id]').length >= 3);
-        //  끝낸 할 일도 칸 개수에 든다(오늘 칸 4개: 안 끝낸 3개와 끝낸 1개)
         setView(W, 'viewReset()');
-        const c4 = chipsOf(W, T).find((c) => c.dataset.tdcnt);
-        assert.ok(c4, '끝낸 할 일을 합쳐 4개인데 개수 칩이 아니다');
-        assert.strictEqual(c4.textContent.trim(), '할 일 4', '끝낸 할 일이 칸 개수에 들지 않는다');
-        //  정확히 3개인 날도 개수 하나로 접힌다(개수 기준 3)
-        W.ev(`state.todos.push(${JSON.stringify(TODO('tE3', 'c-a', D2))}); renderGrid();`);
-        const c3 = chipsOf(W, D2).find((c) => c.dataset.tdcnt);
-        assert.ok(c3 && c3.textContent.trim() === '할 일 3', '3개인 날이 개수 칩 하나로 접히지 않았다(개수 기준 3)');
         //  여러 날 할 일은 맨 위 줄로 모이지 않고 점선 막대로 남는다
         const first = [...Array(27).keys()].map((i) => W.M.T.slice(0, 8) + String(i + 1).padStart(2, '0')).find((d) => ![T, D2].some((x) => Math.abs((Date.parse(x) - Date.parse(d)) / 86400000) <= 2));
         W.ev(`state.todos.push(${JSON.stringify(TODO('tRange', 'c-a', first, { endDate: ymdAdd(first, 1), text: '여러 날 할 일' }))}); viewReset(); renderGrid();`);
@@ -623,10 +599,6 @@ if (!JSDOM) {
         click(ev);
         assert.strictEqual(W.ev('selectedDate'), D2);
         assert.ok(W.$('#dpBody .dp-er.flash') && W.$('#dpBody .dp-er.flash').dataset.id === 'eC' && W.$('#dpBody .dp-er.flash .dp-edet'), '일정 칩이 그 줄을 펼쳐 강조하지 않았다');
-        //  개수 칩: 그 날짜만 고른다(강조할 행이 없다)
-        W.ev(`selectDate("${D2}")`);
-        click(chipsOf(W, T).find((c) => c.dataset.tdcnt));
-        assert.strictEqual(W.ev('selectedDate'), T); assert.strictEqual(W.$$('#dpBody .todo-row.flash').length, 0);
         //  좁은 창에서도 시트가 뜬다
         Object.defineProperty(W.w, 'innerWidth', { value: 500, configurable: true });
         W.ev('closeSheet()');
@@ -640,11 +612,11 @@ if (!JSDOM) {
   test('(R) [+ 추가]와 날짜 두 번 누르기의 종류 기본값, 도구줄에 새 기록 단추 없음, 좁은 창 시트 안 추가', () => checks.addKinds());
   test('(R) 보기 팝업: 구성(머리, 기록 종류 seg 셋, 과제), 막는 칸과 보기 옵션 없음, 요약 글자, 단추 강조, 달력과 패널과 밀린 할 일 팝업이 같은 보기, 처음대로', () => checks.viewPop());
   test('(R) 고른 보기는 계정별로 이 PC 에 기억되고, 다시 켜면 되살아나고, 처음대로는 기억을 지운다', () => checks.remember());
-  test('(R) 달력 칸: 일정과 할 일이 둘 다 보이면 맨 위 줄에 할 일(3개 이상은 개수), 점선 아래 일정, 한 종류만이면 나누지 않음, 주간 줄도 같은 보기', () => checks.cellLane());
+  test('(R) 달력 칸: 한 줄 채우기(일정 다음 할 일, 할 일 구역과 개수 칩 없음, 옆 칸에 영향 없음), 한 종류만이면 그 종류만, 주간 줄도 같은 보기', () => checks.cellLane());
   test('(R) 패널 할 일: 중요(★) 먼저, 안 끝낸 것 먼저, 줄 끝 ★ 로 켜고 끄고, 체크로 완료', () => checks.starSort());
   test('(R) 밀린 할 일 팝업: 묶음 셋(기한 지남, 기한 없음, 완료), 이번 주와 나중과 ★ 묶음 없음, 완료 접힘, 팝업 안 조작, 누르면 그 날짜로 이동하고 강조', () => checks.todoAll());
   test('(R) 맨 아래 줄: 밀린 할 일, 기한 없음 n, 지남 n, 둘 다 0 이면 흐린 글자, 자리와 모양 고정, 과제 보기를 따른다', () => checks.footLine());
-  test('(R) 달력 칩을 누르면 그 날짜가 선택되고 패널에서 강조된다(탭 전환 없음, 일정 칩과 같은 동작, 개수 칩은 날짜만)', () => checks.chipClick());
+  test('(R) 달력 칩을 누르면 그 날짜가 선택되고 패널에서 강조된다(탭 전환 없음, 일정 칩과 같은 동작)', () => checks.chipClick());
 
   //  열람 프레임: 같은 함수를 쓰되 읽기 전용(추가, ★, 체크 단추가 없고 눌러도 아무 일 없다)
   async function peerFlow(src) {
@@ -713,9 +685,9 @@ if (!JSDOM) {
     const bad = mutate(app, "    + (od ? `<span class=\"dp-foot-g\">지남 <span class=\"dp-foot-n od\">${od}</span></span> ` : '')\n", "\n");
     await assert.rejects(() => checks.footLine(bad), /지남/);
   });
-  test('변이M③: 개수 기준을 3에서 4로 바꾸면 칸 시험이 실패한다', async () => {
-    const bad = mutate(app, "  const rows = Math.max(0, ...per.map(l => l.length >= 3 ? 1 : l.length));\n  const items = [];\n  per.forEach((l, c) => {\n    if(l.length >= 3)", "  const rows = Math.max(0, ...per.map(l => l.length >= 4 ? 1 : l.length));\n  const items = [];\n  per.forEach((l, c) => {\n    if(l.length >= 4)");
-    await assert.rejects(() => checks.cellLane(bad), /개수 칩이 하나가 아니다|개수/);
+  test('변이M③: 칸 안에서 할 일을 일정보다 먼저 놓으면 칸 시험이 실패한다', async () => {
+    const bad = mutate(app, "if(!!a.todo !== !!b.todo) return a.todo ? 1 : -1;", "if(!!a.todo !== !!b.todo) return a.todo ? -1 : 1;");
+    await assert.rejects(() => checks.cellLane(bad), /일정 다음 할 일/);
   });
   test('변이M④: 할 일 정렬에서 중요 먼저를 빼면 별 시험이 실패한다', async () => {
     const bad = mutate(app, "function todoZoneCmp(a, b){ return ((b.prio === 'high') - (a.prio === 'high')) || ", 'function todoZoneCmp(a, b){ return ');

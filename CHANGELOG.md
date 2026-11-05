@@ -7,6 +7,16 @@
 
 ---
 
+## 🆕 2026-11-05 (다음 판, 번호는 배포 때): 달력 칸 일정과 할 일 합쳐 채우기, 팝업 닫기 ×
+
+기획 [docs/MONTH-TODO-POPUP-CLOSE.md](docs/MONTH-TODO-POPUP-CLOSE.md). DB 구조 그대로.
+
+- **달력 칸(§1)**: 칸 맨 위 할 일 구역(`pmTodoZone`, `renderMonthBars` 의 split), 점선 `.td-sep`, "할 일 n" 개수 칩(`.chip-tdcnt`, `data-tdcnt`)과 그 누름 처리를 걷음. 한 줄 채우기 하나로 여러 날 막대 다음 하루짜리 일정(시간순), 하루짜리 할 일(`todoZoneCmp`, 중요 먼저, 안 끝낸 것 먼저). 순서는 `pmCellCmp`, 일정과 할 일이 둘 다 보일 때만 쓰고 한 종류만이면 예전 순서. 넘치면 일정과 할 일을 합친 "+n개 더보기"(`fitBars` 그대로). docs/PERSONAL-PANEL.md §2.4 갱신.
+- **팝업 닫기 ×(§2)**: 공용 `popXHtml`, `popHeadHtml`, `popHeadEl`(HTML 주입 없는 판, 사람 고르기용)과 `.pop-head` CSS(개인 보기 팝업 `.vp-head` 와 같은 모양, × 는 모달 `.x`). 붙인 곳: `#fbPop`(처음대로 옆), `#caWhoPop`(제목 "참여자"), `#peerPicker`(제목 "사람 고르기"), `#awWCal`(제목 "주 고르기"), `#pcPop`(날짜 머리 등록 옆), `#pcDrawer`(머리 "과제" 줄). 각자 기존 닫기 함수를 부르고 포커스는 연 단추로. `#atAddMenu`, `#awAddMenu` 는 [닫기]가 있어 그대로.
+- **시험**: 새 `tests/month-todo-close.test.mjs`. 고친 시험 personal-panel(옛 개수 칩 계약을 새 칸 순서로), project-calendar-web(빈 날 머리 글자에 ×).
+
+---
+
 ## 🆕 2026-11-05 (다음 판, 번호는 배포 때): 관심 과제(보기만 과제 2차)와 날짜 패널 묶음 접기
 
 스트레스 시험(공식 과제 43개, 관심 50개, 일정 400건, 개인 일정 300건과 할 일 250건) 뒤 사용자 결정. 기획과 기록은 [docs/PC-WATCH-2.md](docs/PC-WATCH-2.md). DB 구조는 그대로 21.
