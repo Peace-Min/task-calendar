@@ -6,7 +6,7 @@
 //       (보고서 창의 옛 요청은 그대로). 미리보기 색은 :root 의 --nf-* 토큰이다. 주간 화면 문구에 금지 기호가 없다.
 //   (U) 순수: 진행사항, 차주계획 조립(빈 내용은 `-`, 블록 사이 빈 줄, 과제 미정은 빼기), 과제투입시간(진행사항을 따라감, `-----`, `합계 : n`),
 //       제목 규칙 둘(달력에서 고른 달의 몇째 줄, 월요일이 든 달), 주 고르기 달력의 줄, 되살리기(`[과제명]` 머리, 캘린더에 없는 이름은 미정, `-` 는 빈 내용),
-//       일간 모으기(같은 줄은 한 번, 시간 합계, 시간만 있는 과제, 과제 미정은 넣지 않음), 막는 규칙.
+//       일간 모으기(날마다 그대로 이어 붙임, 시간 합계, 시간만 있는 과제, 과제 미정은 넣지 않음), 막는 규칙.
 //   (B) jsdom 브라우저: [일간][주간] 전환과 기억, 목록(작성 중, 최근이 위, 번호), [작성]은 이번 주이고 화면 전환, 편집 네 칸,
 //       과제투입시간이 진행사항을 따라감과 합계, 시간 칸 범위, 주 고르기 달력과 제목, 미리보기가 인트라넷 폼 모양이고 보낼 글과 같음,
 //       막는 규칙(진행사항 없음, 과제 미정), 임시 저장(안내 없이 되살리기)과 [전체 초기화], [‹ 목록]과 묻기, 브라우저 보내기는 잠그지 않는다.
@@ -177,7 +177,7 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(U) 일간 모으기: 과제마다 내용 줄을 날짜 순으로(같은 줄은 한 번), 시간 합계, 시간만 있는 과제도 블록, 과제 미정과 자유 메모는 넣지 않는다', () => {
+  test('(U) 일간 모으기: 과제마다 그날 글을 날짜 순으로 그대로 이어 붙인다(같은 줄도 지우지 않음, 날 사이 빈 줄), 시간 합계, 시간만 있는 과제도 블록, 과제 미정과 자유 메모는 넣지 않는다', () => {
     const X = bootBrowser();
     try {
       const rows = [
@@ -188,13 +188,28 @@ if (!JSDOM) {
       ];
       const c = X.evJSON(`awDailyCollect(${JSON.stringify(rows)}, ${JSON.stringify(NAMES)})`);
       assert.deepStrictEqual(c.prog, [
-        { name: '알파', text: '- 연동 환경 구축 중\n- 요구사항 구현', raw: '' },
+        { name: '알파', text: '- 연동 환경 구축 중\n\n- 연동 환경 구축 중\n- 요구사항 구현', raw: '' },
         { name: '베타', text: '- 회신', raw: '' },
         { name: '휴가', text: '', raw: '' },
-      ], '진행사항 블록이 다르다(날짜 순, 같은 줄 한 번, 시간만 있는 과제, 빈 0시간 과제 제외)');
+      ], '진행사항 블록이 다르다(날짜 순, 같은 줄도 그대로, 날 사이 빈 줄, 시간만 있는 과제, 빈 0시간 과제 제외)');
       assert.deepStrictEqual(c.hours, { '알파': 10, '베타': 4, '휴가': 8 });
       assert.strictEqual(c.skipped, 2, '자유 메모와 과제 미정 글을 세지 않았다');
       assert.strictEqual(c.days, 4);
+    } finally { X.close(); }
+  });
+
+  test('(U) 일간 모으기: 날마다 같은 머리 줄(1. 설계)이 있어도 하위 항목이 그날 머리 밑에 그대로 남는다(2026-11-05 결함)', () => {
+    const X = bootBrowser();
+    try {
+      const rows = [
+        { date: '2026-11-02', content: '[알파] : 8\n1. 설계\n    가. 시나리오 검토\n\n2. 구현\n    나. 암호 기능 구현' },
+        { date: '2026-11-04', content: '[알파] : 7.5\n1. 설계\n    가. 내부 회의\n2. 구현\n    가. 암호 기능 구현' },
+      ];
+      const c = X.evJSON(`awDailyCollect(${JSON.stringify(rows)}, ${JSON.stringify(NAMES)})`);
+      assert.strictEqual(c.prog[0].text,
+        '1. 설계\n    가. 시나리오 검토\n\n2. 구현\n    나. 암호 기능 구현\n\n1. 설계\n    가. 내부 회의\n2. 구현\n    가. 암호 기능 구현',
+        '하위 항목이 다른 머리 밑으로 옮겨졌거나 줄이 지워졌다');
+      assert.strictEqual(c.hours['알파'], 15.5);
     } finally { X.close(); }
   });
 
@@ -567,7 +582,7 @@ if (!JSDOM) {
       assert.deepStrictEqual(calls.map((c) => c[0]), ['reportDailyList', 'reportWeeklyList'], '두 가져오기를 하지 않았다');
       assert.deepStrictEqual(calls[0][1], { from: MON, to: SAT });
       assert.deepStrictEqual(calls[1][1], { from: '2026-10-19', to: '2026-10-19' });
-      assert.strictEqual(A.ev('AWE.prog'), '[알파]\n  - 연동 환경 구축 중\n- 요구사항 구현\n\n[베타]\n- 회신\n\n[휴가]\n-', '진행사항 초안이 [과제명] 머리 글이 아니다');
+      assert.strictEqual(A.ev('AWE.prog'), '[알파]\n  - 연동 환경 구축 중\n\n  - 연동 환경 구축 중\n- 요구사항 구현\n\n[베타]\n- 회신\n\n[휴가]\n-', '진행사항 초안이 [과제명] 머리 글이 아니다');
       assert.strictEqual(A.$('#awProg').value, A.ev('AWE.prog'));
       assert.deepStrictEqual(hrs(A), ['알파', '베타', '휴가']);
       assert.deepStrictEqual(A.evJSON('awHoursFor(AWE.hrs, AWE.hours)'), { '알파': 10, '베타': 4, '휴가': 2 });
@@ -634,7 +649,7 @@ if (!JSDOM) {
       assert.deepStrictEqual(Object.keys(s).sort(), ['cmd', 'content', 'edate', 'endwork', 'hours', 'planwork', 'resultwork', 'sdate', 'subject']);
       assert.deepStrictEqual(s.hours, [{ name: '알파', projectUid: '', hours: 10 }, { name: '베타', projectUid: '', hours: 4 }, { name: '휴가', projectUid: '', hours: 2 }], '과제투입시간 구조(hours)가 다르다');
       assert.deepStrictEqual([s.sdate, s.edate, s.subject], [MON, SAT, '10월 다섯째주']);
-      assert.strictEqual(s.endwork, '[알파]\n' + NB.repeat(2) + '- 연동 환경 구축 중\n- 요구사항 구현\n\n[베타]\n- 회신\n\n[휴가]\n-\n' + NB.repeat(4) + '- 연차');
+      assert.strictEqual(s.endwork, '[알파]\n' + NB.repeat(2) + '- 연동 환경 구축 중\n\n' + NB.repeat(2) + '- 연동 환경 구축 중\n- 요구사항 구현\n\n[베타]\n- 회신\n\n[휴가]\n-\n' + NB.repeat(4) + '- 연차');
       assert.strictEqual(s.content, '[알파] : 10\n[베타] : 4\n[휴가] : 2\n-----\n합계 : 16');
       assert.strictEqual(s.planwork, '[베타]\n' + NB.repeat(2) + '- 다음 일');
       assert.strictEqual(s.resultwork, NB.repeat(2) + '- 주간회의');

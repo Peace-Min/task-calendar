@@ -22194,7 +22194,9 @@ function awHoursPayload(hrs, hours, projects){
   });
 }
 //  이번 주 일간 보고(이 앱으로 보낸 것)를 모은다(§14.2). rows = [{date, content}], names = 캘린더 과제명(순서).
-//    일간 글은 블록 규칙(atParseReport)으로 읽는다. 과제마다 내용 줄을 날짜 순서로 모으고 같은 줄은 한 번만, 시간은 과제별 합계.
+//    일간 글은 블록 규칙(atParseReport)으로 읽는다. 과제마다 그날 글을 날짜 순서로 그대로 이어 붙인다(날 사이 빈 줄 하나), 시간은 과제별 합계.
+//    같은 줄 지우기는 하지 않는다(2026-11-05): 줄만 보고 지우면 머리 줄(1. 설계)이 빠져 다음 날 하위 항목이 엉뚱한 항목 밑으로 갔다.
+//    사람마다 일간 쓰는 모양이 달라 항목별 합치기도 하지 않는다. 반복되는 머리 줄은 주간 편집 칸에서 사람이 정리한다.
 //    prog = 진행사항 초안을 만들 과제별 블록(시간만 있는 과제도 들어간다), hours = 과제별 합계. 과제 미정으로 읽힌 글과 자유 메모는 넣지 않고 수만 센다.
 function awDailyCollect(rows, names){
   const lines = new Map(), sum = {};
@@ -22207,11 +22209,12 @@ function awDailyCollect(rows, names){
       if(!b.name){ skipped++; continue; }
       if(atHoursOk(b.hours) && b.hours > 0) sum[b.name] = (sum[b.name] || 0) + b.hours;
       if(!lines.has(b.name)) lines.set(b.name, []);
-      const L = lines.get(b.name);
-      for(const ln of String(b.text).split('\n')){ const t = ln.replace(/\s+$/, ''); if(t.trim() && !L.includes(t)) L.push(t); }
+      //  그날 이 과제 글(줄 끝 공백만 걷고, 앞뒤 빈 줄만 뺀다. 안쪽 빈 줄과 들여쓰기는 그대로).
+      const day = String(b.text).split('\n').map(ln => ln.replace(/\s+$/, '')).join('\n').replace(/^\n+|\n+$/g, '');
+      if(day) lines.get(b.name).push(day);
     }
   }
-  const prog = (names || []).filter(n => (lines.get(n) || []).length || sum[n] > 0).map(n => ({ name: n, text: (lines.get(n) || []).join('\n'), raw: '' }));
+  const prog = (names || []).filter(n => (lines.get(n) || []).length || sum[n] > 0).map(n => ({ name: n, text: (lines.get(n) || []).join('\n\n'), raw: '' }));
   const hours = {};
   for(const n of Object.keys(sum)) hours[n] = Math.round(sum[n] * 100) / 100;
   return { prog, hours, skipped, days };
