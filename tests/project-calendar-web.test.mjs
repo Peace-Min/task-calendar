@@ -249,13 +249,16 @@ test('순수③: 월간 보이는 차선 수는 높이만 본다(메모 첫 줄�
   assert.strictEqual(P.pcWeekRange('2026-10-19').from, '2026-10-19');
 });
 test('순수④: 설정 고치기(설정 없음 null 과 빈 선택 [] 구분), 선택 맞추기(새 과제 켬, 빠진 과제 정리)', () => {
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(P.pcPrefsNorm(null))), { tab: 'personal', view: 'month', sel: null, known: [], memo: false });
+  //  side = 과제 탭 왼쪽 목록의 탭(docs/PC-WATCH-2.md §3). 옛 저장값에 없거나 모르는 값이면 내 과제
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(P.pcPrefsNorm(null))), { tab: 'personal', view: 'month', sel: null, known: [], memo: false, side: 'mine' });
+  assert.strictEqual(P.pcPrefsNorm('{"side":"watch"}').side, 'watch', '관심 과제 탭을 기억하지 못한다');
+  assert.strictEqual(P.pcPrefsNorm('{"side":"x"}').side, 'mine');
   assert.deepStrictEqual(J(P.pcPrefsNorm('{"sel":[]}').sel), [], '빈 선택이 설정 없음으로 바뀌었다');
   assert.strictEqual(P.pcPrefsNorm('{"sel":"x"}').sel, null);
   assert.strictEqual(P.pcPrefsNorm('{깨진').tab, 'personal');
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(P.pcPrefsNorm('{"tab":"project","view":"week","sel":["a","a",3,""],"memo":true}'))), { tab: 'project', view: 'week', sel: ['a'], known: [], memo: true });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(P.pcPrefsNorm('{"tab":"project","view":"week","sel":["a","a",3,""],"memo":true}'))), { tab: 'project', view: 'week', sel: ['a'], known: [], memo: true, side: 'mine' });
   //  옛 판이 남겼을 수 있는 단독 보기 값(solo)은 버린다(2026-10-22 저녁 단독 보기 제거). 나머지 설정은 그대로 산다.
-  assert.deepStrictEqual(J(P.pcPrefsNorm('{"tab":"project","sel":["a"],"solo":"a","known":["a","b"]}')), { tab: 'project', view: 'month', sel: ['a'], known: ['a', 'b'], memo: false }, '옛 solo 값이 설정에 남았다');
+  assert.deepStrictEqual(J(P.pcPrefsNorm('{"tab":"project","sel":["a"],"solo":"a","known":["a","b"]}')), { tab: 'project', view: 'month', sel: ['a'], known: ['a', 'b'], memo: false, side: 'mine' }, '옛 solo 값이 설정에 남았다');
   assert.deepStrictEqual(J(P.pcSelReconcile(null, [], ['a', 'b'])), ['a', 'b'], '설정 없음이면 전체 선택');
   assert.deepStrictEqual(J(P.pcSelReconcile([], ['a', 'b'], ['a', 'b'])), [], '빈 선택이 전체로 되살아났다');
   assert.deepStrictEqual(J(P.pcSelReconcile(['a'], ['a', 'b'], ['a', 'b', 'c'])), ['a', 'c'], '새로 내 과제에 넣은 과제를 켜지 않았다');
@@ -534,7 +537,9 @@ if (!JSDOM) {
 
   test('화면④: 왼쪽 목록(전체 선택, 전체 해제, 체크, 숨긴 과제 읽기 전용), 이름을 눌러도 아무 일 없음, 계정별 설정에 빈 선택이 남는다', () => withBoot({}, async (W) => {
     await W.enter([]);
-    assert.ok(/3 \/ 3/.test(W.q('#pcView .pc-side-h').textContent));
+    //  머리는 "달력에 n개", 탭은 [내 과제 a/b | 관심 과제 c/d](docs/PC-WATCH-2.md §3)
+    assert.ok(/달력에 3개/.test(W.q('#pcView .pc-side-h').textContent));
+    assert.ok(/내 과제\s*3\/3/.test(W.q('#pcView #pcStab-mine').textContent), '내 과제 탭 수가 3/3 이 아니다');
     //  읽기 전용 = 숨긴 과제(is_active = 0)다. 상태 '종료'와 헷갈리지 않게 '숨긴 과제'라 적는다(PROJECT-ADMIN-UX §1.4).
     const roRow = W.q(`#pcView .pc-row input[data-uid="${P3}"]`).closest('.pc-row').textContent;
     assert.ok(/숨긴 과제, 읽기 전용/.test(roRow) && !/종료/.test(roRow), '숨긴 과제에 "숨긴 과제, 읽기 전용" 표시가 없거나 아직 "종료"라 적는다: ' + roRow);
@@ -1088,9 +1093,13 @@ if (!JSDOM) {
     await W.applyState([ent('e-copy-1'), ent('e-copy-2')]);
     await W.tab('personal');
     W.ev(`selectedDate = ${JSON.stringify(today())}; renderAll();`);
+    //  패널 일정은 한 줄 줄(docs/PC-WATCH-2.md §5). 줄을 펼친 카드에도 배지가 없다
+    const rows = W.qa('#dpBody .dp-er[data-id^="e-copy-"]');
+    assert.strictEqual(rows.length, 2, '개인 탭에 두 사본이 보이지 않는다');
+    rows[0].querySelector('.dp-er-b').click();
     const cards = W.qa('#dpBody .card[data-id^="e-copy-"]');
-    assert.strictEqual(cards.length, 2, '개인 탭에 두 사본이 보이지 않는다');
-    assert.ok(cards.every((cd) => !/과제 캘린더에서 복사/.test(cd.textContent) && !cd.querySelector('.pc-copy-badge')), '개인 탭 카드에 복사 배지가 있다');
+    assert.strictEqual(cards.length, 1, '줄을 눌렀는데 카드로 펼쳐지지 않았다');
+    assert.ok(W.qa('#dpBody .dp-er[data-id^="e-copy-"]').every((cd) => !/과제 캘린더에서 복사/.test(cd.textContent) && !cd.querySelector('.pc-copy-badge')), '개인 탭 카드에 복사 배지가 있다');
     assert.strictEqual(W.cmds('projectCalendarBootstrap').length, 1, '개인 탭으로 돌아오며 배지 때문에 과제 목록을 다시 읽었다');
   }));
 

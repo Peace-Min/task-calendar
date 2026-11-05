@@ -178,9 +178,9 @@ namespace TaskCalendarWidget
         internal const string MsgInactiveUser = "비활성 처리된 계정입니다.";
         internal const string MsgNotMine = "내 과제에 없는 과제입니다. 내 과제에 공식 과제를 넣으면 과제 캘린더를 쓸 수 있습니다.";
         internal const string MsgReadOnly = "숨긴 과제라 읽기 전용입니다.";
-        //  보기만 목록(구조 21)
+        //  관심 과제 목록(구조 21, 화면 이름은 docs/PC-WATCH-2.md §1)
         internal const string MsgWatchGone = "과제가 없거나 숨겨졌습니다.";
-        internal const string MsgWatchFull = "보기만 과제는 50개까지 넣을 수 있습니다. 쓰지 않는 과제를 목록에서 빼세요.";
+        internal const string MsgWatchFull = "관심 과제는 50개까지 넣을 수 있습니다. 쓰지 않는 과제를 목록에서 빼세요.";
         internal const string MsgConflict = "다른 사람이 먼저 고쳤습니다. 최신 내용을 확인한 뒤 다시 저장하세요.";
         internal const string MsgGone = "이미 지워졌거나 없는 일정입니다.";
         internal const string MsgOtherProject = "다른 과제의 일정입니다.";

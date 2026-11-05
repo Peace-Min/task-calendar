@@ -58,7 +58,9 @@ function checkStatic(src) {
   assert.ok(/openAddOnDate\(date\)\{ openQuickAdd\(date, viewKinds\.ev \? 'event' : 'todo'\); \}/.test(live), '[+ 추가]의 종류 기본값(할 일만이면 할 일)이 없다');
   //  보기 팝업: 머리(처음대로), 기록 종류(seg 전체, 일정, 할 일), 과제 순서. 보기 옵션과 체크박스, 막는 칸(disabled)은 없다
   const pop = extractFunction(live, 'filterPopOpen');
-  const at = ['달력에 보일 것', 'data-act="reset">처음대로', '기록 종류', 'class="seg vp-seg"', 'data-vk="all">전체', 'data-vk="ev">일정', 'data-vk="td">할 일', '>과제<', 'role="listbox"'].map((s) => pop.indexOf(s));
+  //  과제 목록 부분은 공용 고르기 목록(fbListMarkup, docs/PC-WATCH-2.md §4)이다
+  const at = ['달력에 보일 것', 'data-act="reset">처음대로', '기록 종류', 'class="seg vp-seg"', 'data-vk="all">전체', 'data-vk="ev">일정', 'data-vk="td">할 일', '>과제<', "fbListMarkup('fbList'"].map((s) => pop.indexOf(s));
+  assert.ok(extractFunction(live, 'fbListMarkup').includes('role="listbox"'), '공용 고르기 목록이 listbox 가 아니다');
   assert.ok(at.every((i) => i >= 0), '보기 팝업에 빠진 구성이 있다: ' + at.join());
   assert.ok(at.every((v, i) => i === 0 || v > at[i - 1]), '보기 팝업의 순서가 처음대로, 기록 종류, 과제가 아니다: ' + at.join());
   assert.ok(pop.includes('class="seg-b"') && !pop.includes('type="checkbox" data-v'), '기록 종류가 앱의 seg 단추가 아니다');
@@ -228,7 +230,8 @@ if (!JSDOM) {
     return W;
   }
   const click = (el) => { assert.ok(el, '누를 요소가 없다'); el.click(); };
-  const grpText = (W, key) => [...W.$(`#dpBody .dp-grp[data-grp="${key}"]`).children].map((c) => c.textContent.replace(/\s+/g, ' ').trim()).join(' ');
+  //  묶음 머리의 접기 표시(▾ ▸, docs/PC-WATCH-2.md §5)는 글자 비교에서 뺀다
+  const grpText = (W, key) => [...W.$(`#dpBody .dp-grp[data-grp="${key}"]`).children].map((c) => c.textContent.replace(/[▾▸]/g, '').replace(/\s+/g, ' ').trim()).join(' ');
   const later = () => new Promise((r) => setTimeout(r, 180));   // 닫는 움직임(120ms)이 끝나길 기다린다
   const end = async (W) => { try { W.ev("closeModal('#quickAdd'); closeModal('#todoAllModal')"); } catch (_) {} await later(); W.close(); };
   const rowIds = (W) => W.$$('#dpBody .todo-row').map((r) => r.dataset.id);

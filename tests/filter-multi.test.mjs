@@ -49,8 +49,10 @@ test('정적②: 필터 묶음은 날짜 줄 안(월간 주간 단추 바로 뒤
 test('정적③: 보기 단추는 aria-haspopup="dialog", 과제 목록은 aria-multiselectable, 한글 조합 중 키는 건너뛴다', () => {
   const rf = extractFunction(app, 'renderFilterbar');
   assert.ok(/class="fb-btn"[^`]*aria-haspopup="dialog"/.test(rf), '보기 단추에 aria-haspopup="dialog" 가 없다');
+  //  2026-11-05(docs/PC-WATCH-2.md §4): 목록 부분은 공용 고르기 목록(fbListMarkup)이다. 보기 팝업은 그 함수로 과제 목록을 그린다(관심 과제 [참여자]와 같은 함수)
   const op = extractFunction(app, 'filterPopOpen');
-  assert.ok(/role="listbox"[^`]*aria-multiselectable="true"/.test(op), '팝업 과제 목록이 다중 선택 listbox 가 아니다');
+  assert.ok(op.includes("fbListMarkup('fbList', '과제 검색', '과제')"), '보기 팝업이 공용 고르기 목록(fbListMarkup)으로 과제 목록을 그리지 않는다');
+  assert.ok(/role="listbox"[^`]*aria-multiselectable="true"/.test(extractFunction(app, 'fbListMarkup')), '팝업 과제 목록이 다중 선택 listbox 가 아니다');
   const bf = extractFunction(app, 'bindFilterbar');
   assert.ok(bf.includes('ev.isComposing || ev.keyCode === 229'), '한글 조합 중 키 건너뛰기가 없다');
 });

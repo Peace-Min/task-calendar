@@ -377,11 +377,14 @@ if (!JSDOM) {
       assert.strictEqual(P.ev('!!document.getElementById("btnAddHere")'), false, '열람 창에 [+ 추가] 가 있다');
     });
 
-    test('R P2/Q3: 패널 일정 카드에 시간·장소·메모가 보이고 수정·삭제는 감춰진다', () => {
+    //  2026-11-05(docs/PC-WATCH-2.md §5): 일정은 한 줄 줄이고 누르면 그 자리에서 지금 카드로 펼친다(열람 창도 같다)
+    test('R P2/Q3: 패널 일정 줄을 펼치면 카드에 시간·장소·메모가 보이고 수정·삭제는 감춰진다', () => {
+      P.ev('Array.prototype.find.call(document.querySelectorAll("#dpBody .dp-er"), function(r){ return r.dataset.id === "e-t1"; }).querySelector(".dp-er-b").click();');
       const t = P.ev('document.getElementById("dpBody").textContent');
       for (const s of ['상대: 설계회의', '3층 소회의실', '안건 정리 메모', '09:00']) assert.ok(t.includes(s), `상세 카드에 '${s}' 가 없다`);
       assert.strictEqual(P.ev('getComputedStyle(document.querySelector("#dpBody .card .card-actions")).display'), 'none',
         '카드의 수정·삭제가 열람 창에 보인다');
+      P.ev('DP.open = ""; renderPanel();');
     });
 
     test('R P2/Q2: 패널의 할 일 묶음이 그 사람의 할 일을 내 화면과 같은 규칙(그날 할 일, 중요 먼저)으로 읽기 전용으로 그린다', () => {

@@ -1,4 +1,6 @@
 // 과제 탭 "다른 과제 보기"(보기만 과제, 구조 21) 계약: docs/PC-WATCH.md §2~5.
+// 2026-11-05 2차(docs/PC-WATCH-2.md): 화면 이름은 "관심 과제", 왼쪽 목록은 [내 과제 | 관심 과제] 두 탭, [참여자]는 개인 보기 팝업과 같은 공용 고르기 목록.
+//   그 새 계약(이름, 회색, 탭, 공용 팝업, 날짜 패널)은 tests/pc-watch-2.test.mjs, tests/day-panel-fold.test.mjs 가 더 본다.
 // 시안: dist/proto/pc-watch-v3.html(과제 탭 목록과 상세), dist/proto/pc-watch-v8.html(다른 과제 보기 창, 애프터).
 //
 // 이 파일이 지키는 것:
@@ -184,7 +186,8 @@ test('보기만D③: 정본 정의(복합 숫자 PK, 과제 FK CASCADE, 사람 F
 const PUNCT = [[/—/, '엠 대시'], [/–/, 'en 대시'], [/「|」/, '낫표'], [/(^|\s)·|·(\s|$)/, '띄어 쓴 가운데 점']];
 test('보기만W①: 새로 쓴 함수와 문구에 엠 대시, en 대시, 낫표, 띄어 쓴 가운데 점이 없다', () => {
   const fns = ['pcWatchFromDto', 'pcRowHtml', 'pcSideHtml', 'pcWatchAdd', 'pcWatchRemove', 'pcWatchDrop', 'caModeSet', 'caWatchSyncChrome', 'caWatchLoad', 'caWatchRows',
-    'caWatchActHtml', 'caWatchRowHtml', 'renderCaWatchList', 'caWatchMembers', 'caWatchToggle', 'caWhoOpen', 'caAgoText', 'pkMultiOpenEl', 'pkAllEl', 'pkMultiSync'];
+    'caWatchActHtml', 'caWatchRowHtml', 'renderCaWatchList', 'caWatchMembers', 'caWatchToggle', 'caWhoOpen', 'caAgoText',
+    'pcDotCls', 'pcSideTabSet', 'pcSideSelect', 'caWhoText', 'caWhoGroups', 'caWhoPlace', 'caWhoClose', 'fbListMarkup', 'fbFill', 'fbListKey', 'fbListClick', 'fbPopKey'];
   for (const fn of fns) {
     const text = extractFunction(src, fn).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
     for (const [re, name] of PUNCT) assert.ok(!re.test(text), `${fn} 에 ${name}가 있다`);
@@ -194,11 +197,11 @@ test('보기만W①: 새로 쓴 함수와 문구에 엠 대시, en 대시, 낫�
   const vis = src.slice(a, b).replace(/<!--[\s\S]*?-->/g, '');
   for (const [re, name] of PUNCT) assert.ok(!re.test(vis), `다른 과제 보기 창 마크업에 ${name}가 있다`);
 });
-test('보기만W①-2: 보기만 과제를 숨긴 과제로 적지 않는다(주간 줄 이름표와 고치기 막힘 안내는 mine 으로 가른다, 2026-11-05 스트레스 시험)', () => {
-  assert.ok(/p\.writable \? '' : '<span class="pc-state">' \+ \(p\.mine === false \? '보기만' : '숨긴 과제, 읽기 전용'\)/.test(src), '주간 보기 과제 줄이 보기만 과제에 "숨긴 과제, 읽기 전용"을 붙인다');
-  assert.ok(!/toast\('숨긴 과제라 읽기 전용입니다\.'/.test(src), '고치기 막힘 안내가 보기만 과제에도 "숨긴 과제라"고 한다');
+test('보기만W①-2: 관심 과제를 숨긴 과제로 적지 않는다(주간 줄 이름표와 고치기 막힘 안내는 mine 으로 가른다, 2026-11-05 스트레스 시험)', () => {
+  assert.ok(/p\.writable \? '' : '<span class="pc-state">' \+ \(p\.mine === false \? '관심 과제' : '숨긴 과제, 읽기 전용'\)/.test(src), '주간 보기 과제 줄이 관심 과제에 "숨긴 과제, 읽기 전용"을 붙인다');
+  assert.ok(!/toast\('숨긴 과제라 읽기 전용입니다\.'/.test(src), '고치기 막힘 안내가 관심 과제에도 "숨긴 과제라"고 한다');
   const f = extractFunction(src, 'pcRoMsg');
-  assert.ok(/p\.mine === false/.test(f) && /보기만 과제라/.test(f), 'pcRoMsg 가 보기만 과제를 가르지 않는다');
+  assert.ok(/p\.mine === false/.test(f) && /관심 과제라 고칠 수 없습니다\. 참여자만 고칩니다\./.test(f), 'pcRoMsg 가 관심 과제를 가르지 않는다');
 });
 test('보기만W②: 보기 모드의 상태 체크는 이 창 안에서만 센다(공용 기억 tc_projStatusOff 를 쓰지 않는다)', () => {
   const m = src.slice(src.indexOf('const CAW = '), src.indexOf('function caWhoOpen('));
@@ -206,12 +209,15 @@ test('보기만W②: 보기 모드의 상태 체크는 이 창 안에서만 센�
   assert.ok(/function caFillStatus\(\)\{ fillStatusChecks\('caStChecks', CAW\.on \? caStOffSet\(\) : null\); \}/.test(src), '보기 모드가 자기 끈 집합을 상태 체크에 넘기지 않는다');
   assert.ok(/if\(CAW\.on\)\{ const off = caStOffSet\(\);/.test(src), '상태 체크 바뀜이 보기 모드에서 이 창의 집합을 바꾸지 않는다');
 });
-test('보기만W③: 보기 모드는 새 창이 아니다(과제 추가 창 #catAddModal 하나, openCatAdd 의 인자), 참여자 명단은 #pcMembersModal 하나, 고르기는 #peerPicker 하나', () => {
+test('보기만W③: 보기 모드는 새 창이 아니다(과제 추가 창 #catAddModal 하나, openCatAdd 의 인자), 참여자 명단은 #pcMembersModal 하나, [참여자]는 개인 보기 팝업의 공용 고르기 목록', () => {
   assert.strictEqual((src.match(/id="catAddModal"/g) || []).length, 1, '과제 추가 창이 둘 이상이다');
   assert.strictEqual((src.match(/id="pcMembersModal"/g) || []).length, 1, '참여자 명단 창이 둘 이상이다');
   assert.ok(/openCatAdd\('watch'\)/.test(extractFunction(src, 'pcOnViewClick')), '과제 탭의 [다른 과제 보기]가 과제 추가 창을 보기 모드로 열지 않는다');
   assert.ok(/pcOpenMembers\(uid, \{ name: c\.name/.test(extractFunction(src, 'caWatchMembers')), '참여자 수 단추가 과제 탭의 참여자 명단 창(pcOpenMembers)을 열지 않는다');
-  assert.ok(/pkOpen\('multi', btn/.test(extractFunction(src, 'caWhoOpen')), '[참여자]가 사람 고르기 팝오버(pkOpen)의 여러 명 모드가 아니다');
+  //  2026-11-05(PC-WATCH-2 §4): [참여자]는 #peerPicker 여러 명 모드를 쓰지 않고 개인 보기 팝업의 목록 함수(fbListMarkup, fbFill)를 쓴다. 여러 명 모드 코드는 걷었다
+  const who = extractFunction(src, 'caWhoOpen');
+  assert.ok(/fbListMarkup\('caWhoList'/.test(who) && /fbFill\(CAWP, true\)/.test(who) && !/pkOpen/.test(who), '[참여자]가 공용 고르기 목록을 쓰지 않는다');
+  for (const gone of ["pkOpen('multi'", 'pkMultiOpenEl', 'pkAllEl', 'pkMultiSync', 'pkMultiSet', 'pkPickedUnits', 'pkUnitMembers', 'pk-chips', 'pk-mpick', '__pk.multi']) assert.ok(!src.includes(gone), `걷어야 할 여러 명 모드 흔적 ${gone} 이 남았다`);
   assert.strictEqual((src.match(/id = 'peerPicker'|id="peerPicker"/g) || []).length, 1, '사람 고르기 팝오버가 둘 이상 만들어진다');
 });
 
@@ -364,7 +370,7 @@ if (!JSDOM) {
   test('보기만R①: 다른 과제 보기 창은 과제 추가 창의 보기 모드다: 제목, 위 탭 숨김, [추가] 없음, 열, 목록용 읽기 하나', () => withBoot({}, async (W) => {
     await enter(W);
     W.ev('openCatAdd("watch")'); await settle();
-    assert.strictEqual(W.el('caHead').textContent, '다른 과제 보기', '제목이 "다른 과제 보기"가 아니다');
+    assert.strictEqual(W.el('caHead').textContent, '관심 과제 추가', '제목이 "관심 과제 추가"가 아니다');
     assert.ok(W.el('catAddModal').classList.contains('ca-watch'), '창에 보기 모드 표시(ca-watch)가 없다');
     assert.strictEqual(W.w.getComputedStyle(W.el('caTabs')).display, 'none', '보기 모드에서 위 탭(공식, 일반)이 보인다');
     assert.strictEqual(W.cmds('pcWatchCatalog').length, 1, '목록용 읽기(pcWatchCatalog)를 하나 보내지 않았다');
@@ -394,11 +400,12 @@ if (!JSDOM) {
     assert.ok(!by('표적기').querySelector('.ca-hot') && by('표적기').classList.contains('ca-quiet'), '두 달 넘은 줄이 흐려지지 않았다');
     assert.ok(!by('함대공 훈련장비').classList.contains('ca-quiet'));
     assert.strictEqual(by('함대공 훈련장비').querySelector('.ca-mbc').textContent, '2명');
-    assert.strictEqual(by('장비 개발').querySelector('.ca-act').textContent.trim(), '✓ 내 과제', '내 과제 줄의 동작이 "✓ 내 과제"가 아니다');
+    assert.strictEqual(by('장비 개발').querySelector('.ca-act').textContent.trim(), '내 과제', '내 과제 줄의 동작이 "내 과제"(흐림)가 아니다');
     assert.ok(!by('장비 개발').querySelector('.ca-act button'), '내 과제 줄에 누르는 단추가 있다');
     assert.ok(by('장비 개발').classList.contains('have'), '내 과제 줄이 흐려지지 않는다');
-    assert.strictEqual(by('함대공 훈련장비').querySelector('.ca-act button').textContent, '✓ 보는 중', '이미 보기만 목록에 있는 과제가 "✓ 보는 중"이 아니다');
-    assert.strictEqual(by('표적기').querySelector('.ca-act button').textContent, '보기');
+    assert.strictEqual(by('함대공 훈련장비').querySelector('.ca-act button').textContent, '✓ 관심 과제', '이미 관심 과제인 과제가 "✓ 관심 과제"가 아니다');
+    assert.strictEqual(by('함대공 훈련장비').querySelector('.ca-act button').title, '누르면 관심 과제에서 뺍니다');
+    assert.strictEqual(by('표적기').querySelector('.ca-act button').textContent, '추가');
     //  순수 계산
     const P = (c) => W.ev(c);
     assert.deepStrictEqual([0, 1, 6, 7, 29, 30, 364, 365].map((d) => P(`caAgoText(${d})`)), ['오늘', '1일 전', '6일 전', '1주 전', '4주 전', '1달 전', '12달 전', '1년 넘음']);
@@ -434,7 +441,7 @@ if (!JSDOM) {
     const row = rowsOf(W).find((r) => r.querySelector('.cat-nm').dataset.full === '함대공 훈련장비');
     await W.click(row.querySelector('.ca-mbc'));
     assert.ok(!W.el('pcMembersModal').classList.contains('hidden'), '명단 창이 열리지 않았다');
-    assert.ok(!W.el('catAddModal').classList.contains('hidden'), '명단을 열었더니 다른 과제 보기 창이 닫혔다(창 위에 창이어야 한다)');
+    assert.ok(!W.el('catAddModal').classList.contains('hidden'), '명단을 열었더니 관심 과제 추가 창이 닫혔다(창 위에 창이어야 한다)');
     assert.strictEqual(W.cmds('projectCalendarMembers').at(-1).projectUid, B1);
     assert.strictEqual(W.el('pcmHead').textContent, '함대공 훈련장비 참여자 2명');
     await W.reply('projectCalendarMembers', { ok: true, data: { projectUid: B1, total: 2, groups: [{ org: '개발1팀', users: [{ name: '김하늘', org: '개발1팀', title: '책임', me: false }, { name: '박서준', org: '개발1팀', title: '선임', me: false }] }] } });
@@ -462,53 +469,68 @@ if (!JSDOM) {
     assert.ok(!hit('장비 개발'), '이름으로 찾았는데 사람 포함 글자가 붙었다');
   }));
 
-  test('보기만R⑥: [참여자]는 사람 고르기 팝오버의 여러 명 모드: 줄마다 체크, 칩과 [모두 해제], [완료], 조직 전원, 고른 사람 중 한 명이라도 참여한 과제만', () => withBoot({}, async (W) => {
+  //  2026-11-05(docs/PC-WATCH-2.md §4): [참여자]는 #peerPicker 여러 명 모드가 아니라 개인 보기 팝업의 공용 고르기 목록이다(조직별 묶음 출처)
+  test('보기만R⑥: [참여자]는 공용 고르기 목록(찾기, 전체 선택/해제, .fb-opts): 조직별 묶음, 상태 넷(전체, 이름, 이름 외 N, 선택 없음), 고른 사람 중 한 명이라도 참여한 과제만', () => withBoot({}, async (W) => {
     await enter(W);
     await openWatchWin(W);
     assert.strictEqual(W.el('caWhoT').textContent, '전체');
     await W.click('#caWho');
-    await W.reply('membersGet', { ok: true, data: { members: MEMBERS, units: UNITS, myUnit: '개발1팀' } });
-    const pop = W.el('peerPicker');
-    assert.ok(pop && !pop.classList.contains('hidden'), '사람 고르기 팝오버가 열리지 않았다');
-    assert.ok(W.el('catAddModal').contains(pop), '팝오버가 과제 추가 창 안에 붙지 않았다(창이 모달이면 바깥은 눌리지 않는다)');
-    assert.ok(!pop.hasAttribute('inert'), '팝오버가 inert 다');
-    assert.ok(pop.classList.contains('pk-multi') && !pop.querySelector('.pk-chips').hidden && !pop.querySelector('.pk-foot').hidden, '여러 명 모드의 칩 줄과 [완료] 줄이 보이지 않는다');
-    assert.strictEqual(pop.querySelector('.pk-chips .none').textContent, '없음(전체)');
+    const pop = W.el('caWhoPop');
+    assert.ok(pop && W.el('catAddModal').contains(pop), '참여자 팝업이 과제 추가 창 안에 열리지 않았다');
+    assert.ok(pop.classList.contains('fb-pop') && pop.querySelector('.fb-q') && pop.querySelector('.fb-opts[role="listbox"][aria-multiselectable="true"]')
+      && pop.querySelector('.fb-lk[data-act="all"]') && pop.querySelector('.fb-lk[data-act="none"]'), '개인 보기 팝업과 같은 목록 부분(찾기, 전체 선택/해제, .fb-opts)이 아니다');
     assert.strictEqual(pop.getAttribute('aria-label'), '참여자 고르기');
-    //  사람 탭: 내 부서(나 포함) 줄마다 체크 칸이고 한 명을 여는 단추(.pk-open)는 없다
-    assert.ok(pop.querySelectorAll('.pk-body .pk-mpick input[type="checkbox"]').length >= 3, '줄마다 체크 칸이 없다');
-    assert.strictEqual(pop.querySelectorAll('.pk-body .pk-open').length, 0, '여러 명 모드에 한 명을 여는 단추가 있다');
-    assert.ok([...pop.querySelectorAll('.pk-body .pk-mpick')].some((l) => /\(나\)/.test(l.textContent)), '내 줄(나)을 고를 수 없다');
-    //  한 명 체크: 목록이 걸러지고 단추 글자와 칩이 바뀐다
-    const kim = [...pop.querySelectorAll('.pk-mpick input')].find((i) => i.dataset.login === 'u1');
-    await W.change(kim, true);
+    assert.ok(!W.el('peerPicker') || W.el('peerPicker').classList.contains('hidden'), '사람 고르기 팝오버가 열렸다');
+    assert.strictEqual(W.el('caWho').getAttribute('aria-expanded'), 'true');
+    assert.strictEqual(W.ev('document.activeElement === CAWP.q'), true, '열면 찾기 칸에 포커스가 가야 한다');
+    const heads = () => W.qa('#caWhoPop .fb-gh').map((h) => [h.querySelector('.nm').textContent, h.getAttribute('aria-expanded')]);
+    assert.deepStrictEqual(heads(), [['개발1팀', 'true'], ['개발2팀', 'false'], ['사업기획팀', 'false']], '내 부서가 맨 위에 펼쳐져 있고 나머지는 접혀 있어야 한다');
+    const opt = (id) => W.q(`#caWhoPop .fb-opt[data-id="${id}"]`);
+    assert.deepStrictEqual(W.qa('#caWhoPop .fb-opt[data-id]').map((o) => o.dataset.id), ['u1', 'u2', 'hjlee'], '펼친 내 부서의 사람(나 포함)이 아니다');
+    assert.strictEqual(opt('u1').querySelector('.n').textContent, '2', '오른쪽 수가 참여 과제 수가 아니다');
+    assert.ok(opt('hjlee').classList.contains('zero') && !opt('u1').classList.contains('zero'), '참여 과제 0 인 사람이 흐리지 않다');
+    //  [전체 해제] = 선택 없음(아무 과제도 안 남는다)
+    await W.click('#caWhoPop .fb-lk[data-act="none"]');
+    assert.strictEqual(W.el('caWhoT').textContent, '선택 없음');
+    assert.deepStrictEqual(rowNames(W), [], '선택 없음인데 과제가 남았다');
+    //  한 사람: 이름
+    await W.click(opt('u1'));
     assert.strictEqual(W.el('caWhoT').textContent, '김하늘');
     assert.ok(W.el('caWho').classList.contains('act'));
     assert.deepStrictEqual(rowNames(W), ['장비 개발', '함대공 훈련장비'], '고른 사람이 참여한 과제만 남아야 한다');
-    assert.strictEqual(pop.querySelector('.pk-chip').firstChild.textContent, '김하늘');
-    await W.type(W.el('pkSearch'), '이도윤');   // 다른 조직의 사람은 검색으로 고른다(검색 결과도 체크 줄이다)
-    const park = [...W.el('peerPicker').querySelectorAll('.pk-mpick input')].find((i) => i.dataset.login === 'u3');
-    assert.ok(park, '검색 결과에 체크 줄이 없다');
-    await W.change(park, true);
-    await W.type(W.el('pkSearch'), '');
+    assert.ok(W.qa('#caList .ca-hitn').every((x) => /김하늘/.test(x.textContent)), '참여자 칸에 고른 사람 포함 글자가 없다');
+    //  찾으면 맞는 묶음이 다 펼쳐진다(다른 조직 사람도 찾아 고른다)
+    await W.type(W.ev('CAWP.q'), '이도윤');
+    assert.deepStrictEqual(heads(), [['개발2팀', 'true']], '찾기 결과의 묶음이 펼쳐지지 않았다');
+    await W.click(opt('u3'));
     assert.strictEqual(W.el('caWhoT').textContent, '김하늘 외 1');
     assert.deepStrictEqual(rowNames(W), ['장비 개발', '함대공 훈련장비', '표적기'], '한 명이라도 참여한 과제가 남아야 한다(합집합)');
-    //  조직도 탭: "이 조직 전원"
-    await W.click('#pkTabOrg');
-    const all = W.q('#peerPicker .pk-all input[data-act="pickall"]');
-    assert.ok(all, '조직도 목록 머리에 "이 조직 전원" 체크가 없다');
-    assert.ok(/전원/.test(all.closest('label').textContent));
-    await W.change(all, true);
-    assert.ok(W.qa('#peerPicker .pk-chip').length >= 3, '조직 전원을 체크했는데 칩이 늘지 않았다');
-    await W.change(W.q('#peerPicker .pk-all input[data-act="pickall"]'), false);
-    //  [모두 해제]
-    await W.click('#peerPicker .pk-chips [data-act="clear"]');
-    assert.strictEqual(W.el('caWhoT').textContent, '전체', '[모두 해제] 뒤에 전체로 돌아오지 않는다');
-    assert.strictEqual(rowNames(W).length, 3, '해제 뒤 목록이 처음으로 돌아오지 않는다');
-    //  [완료]는 닫고 단추로 돌아온다
-    await W.click('#peerPicker [data-act="done"]');
-    assert.ok(W.el('peerPicker').classList.contains('hidden'), '[완료]가 팝오버를 닫지 않는다');
+    await W.type(W.ev('CAWP.q'), '');
+    //  묶음 머리: 체크 칸은 묶음 전체, 나머지는 펼치기. 일부면 반쯤
+    const head = (n) => W.qa('#caWhoPop .fb-gh').find((h) => h.querySelector('.nm').textContent === n);
+    assert.ok(head('개발1팀').classList.contains('mixed') && head('개발2팀').getAttribute('aria-selected') === 'true', '묶음 체크 상태(일부면 반쯤, 다 켜면 켬)가 틀렸다');
+    await W.click(head('사업기획팀').querySelector('.fb-ind'));
+    assert.strictEqual(W.el('caWhoT').textContent, '김하늘 외 2', '묶음 체크가 그 묶음 사람을 켜지 않았다');
+    assert.strictEqual(head('사업기획팀').getAttribute('aria-expanded'), 'false', '체크 칸을 눌렀는데 펼쳐졌다');
+    await W.click(head('사업기획팀').querySelector('.nm'));
+    assert.strictEqual(head('사업기획팀').getAttribute('aria-expanded'), 'true', '묶음 머리를 눌러도 펼쳐지지 않는다');
+    assert.ok(opt('u4'), '펼친 묶음에 사람이 없다');
+    //  다 켜면 전체(null)로
+    await W.click(head('개발1팀').querySelector('.fb-ind'));
+    assert.strictEqual(W.el('caWhoT').textContent, '전체', '모두 켰는데 전체로 돌아가지 않았다');
+    assert.strictEqual(W.ev('CAW.who'), null);
+    assert.ok(W.q('#caWhoPop .fb-lk[data-act="all"]').disabled, '전체일 때 [전체 선택]이 켜져 있다');
+    //  Esc 로 닫고 단추로, 기억하지 않는다(다시 열면 전체)
+    W.ev('CAWP.lb.focus()');
+    W.ev('CAWP.lb.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))'); await settle();
+    assert.ok(!W.el('caWhoPop'), 'Esc 로 닫히지 않았다');
+    assert.ok(!W.el('catAddModal').classList.contains('hidden'), 'Esc 가 과제 추가 창까지 닫았다');
+    assert.strictEqual(W.ev('document.activeElement && document.activeElement.id'), 'caWho');
     assert.strictEqual(W.el('caWho').getAttribute('aria-expanded'), 'false');
+    W.ev('CAW.who = new Map(); caWatchSyncChrome();');
+    W.ev('closeModal("#catAddModal")'); await settle(); W.clock.advance(400); await settle();
+    await openWatchWin(W);
+    assert.strictEqual(W.el('caWhoT').textContent, '전체', '창을 다시 열었는데 참여자 거르기가 남았다');
   }));
 
   test('보기만R⑦: [보기]는 호스트에 넣고 "✓ 보는 중"이 되며 아래에 개수를 보인다, 다시 누르면 빼고, 내 과제로는 넣지 않는다', () => withBoot({}, async (W) => {
@@ -520,9 +542,9 @@ if (!JSDOM) {
     const req = W.last('pcWatchAdd');
     assert.ok(req && req.projectUid === E1, '[보기]가 pcWatchAdd(projectUid)를 보내지 않았다');
     await W.reply('pcWatchAdd', { ok: true, data: { projectUid: E1, added: true, count: 2 } });
-    assert.strictEqual(row().querySelector('.ca-act').textContent.trim(), '✓ 보는 중');
-    assert.ok(!row().classList.contains('have'), '보는 중인 줄이 내 과제처럼 흐려졌다');
-    assert.strictEqual(W.el('caAdded').textContent, '이번에 1개를 보기로 넣었습니다');
+    assert.strictEqual(row().querySelector('.ca-act').textContent.trim(), '✓ 관심 과제');
+    assert.ok(!row().classList.contains('have'), '관심 과제 줄이 내 과제처럼 흐려졌다');
+    assert.strictEqual(W.el('caAdded').textContent, '이번에 1개를 관심 과제로 넣었습니다');
     assert.ok(!W.el('catAddModal').classList.contains('hidden'), '[보기]를 눌렀더니 창이 닫혔다');
     assert.ok(W.ev('PCAL.watch.some(p => p.projectUid === "' + E1 + '")'), '과제 탭의 보기만 목록에 들어가지 않았다');
     assert.strictEqual(W.ev('state.categories.length'), nCats, '[보기]가 내 과제(state.categories)를 늘렸다');
@@ -531,13 +553,13 @@ if (!JSDOM) {
     await W.click(row().querySelector('[data-cawatchoff]'));
     assert.strictEqual(W.last('pcWatchRemove').projectUid, E1);
     await W.reply('pcWatchRemove', { ok: true, data: { projectUid: E1, removed: 1 } });
-    assert.strictEqual(row().querySelector('.ca-act button').textContent, '보기');
+    assert.strictEqual(row().querySelector('.ca-act button').textContent, '추가');
     assert.strictEqual(W.el('caAdded').textContent, '');
     assert.ok(!W.ev('PCAL.watch.some(p => p.projectUid === "' + E1 + '")'), '빼기가 과제 탭 목록에서 지우지 않았다');
     //  실패는 알린다
     await W.click(row().querySelector('[data-cawatch]'));
     await W.reply('pcWatchAdd', { ok: false, error: { kind: 'forbidden', message: '과제가 없거나 숨겨졌습니다.' } });
-    assert.strictEqual(row().querySelector('.ca-act button').textContent, '보기', '실패했는데 보는 중으로 바뀌었다');
+    assert.strictEqual(row().querySelector('.ca-act button').textContent, '추가', '실패했는데 관심 과제로 바뀌었다');
     assert.ok(W.toasts().some((t) => /과제가 없거나 숨겨졌습니다/.test(t)), '실패 문구가 알림으로 나오지 않았다');
   }));
 
@@ -561,33 +583,38 @@ if (!JSDOM) {
     assert.strictEqual(W.w.localStorage.getItem('tc_projStatusOff'), '["2"]', '과제 추가 모드의 상태 체크가 공용 기억에 쓰지 않는다');
   }));
 
-  test('보기만R⑨: 과제 탭 왼쪽 목록은 내 과제와 보기만 두 묶음, 보기만 줄은 이름 아래 작은 줄과 ×, 숨겨진 과제는 흐리게, 묶음 체크로 한 번에 끄고 켠다', () => withBoot({}, async (W) => {
+  //  2026-11-05(docs/PC-WATCH-2.md §3): 왼쪽 목록은 [내 과제 a/b | 관심 과제 c/d] 두 탭. 탭은 목록만 바꾸고 달력은 두 탭 체크의 합. 묶음 머리 체크는 걷었다
+  test('보기만R⑨: 과제 탭 왼쪽 목록은 [내 과제 | 관심 과제] 두 탭, 관심 과제 줄은 이름 아래 작은 줄과 ×, 숨겨진 과제는 흐리게, [전체 선택] [전체 해제]는 지금 탭만', () => withBoot({}, async (W) => {
     await enter(W, { events: [EV(1, P1), EV(2, B1)] });
-    const groups = W.qa('#pcView .pc-grp').map((g) => g.textContent.replace(/\s+/g, ''));
-    assert.deepStrictEqual(groups, ['내과제2', '보기만2'], '두 묶음(내 과제, 보기만)이 아니다');
-    assert.strictEqual(W.qa('#pcView .pc-list')[0].querySelectorAll('.pc-row').length, 2);
+    assert.ok(!W.q('#pcView .pc-grp, #pcView [data-act="watchAll"]'), '걷은 묶음 머리(체크)가 남았다');
+    const tabs = () => W.qa('#pcView .pc-stabs [role="tab"]').map((t) => [t.textContent.replace(/\s+/g, ''), t.getAttribute('aria-selected')]);
+    assert.deepStrictEqual(tabs(), [['내과제2/2', 'true'], ['관심과제1/2', 'false']], '탭이 [내 과제 a/b | 관심 과제 c/d] 가 아니다(처음은 내 과제)');
+    assert.ok(/달력에 3개/.test(W.q('#pcView .pc-side-h').textContent), '머리가 "달력에 n개" 가 아니다');
+    assert.strictEqual(W.qa('#pcView .pc-list .pc-row').length, 2, '내 과제 탭에 내 과제 둘이 아니다');
+    assert.ok(!W.q('#pcView .pc-list-w') && !W.q('#pcView .pc-addw'), '내 과제 탭에 관심 과제 줄이나 추가 단추가 있다');
+    //  관심 과제 탭
+    await W.click('#pcView #pcStab-watch');
+    assert.deepStrictEqual(tabs().map((t) => t[1]), ['false', 'true']);
     const wrows = W.qa('#pcView .pc-list-w .pc-row');
     assert.strictEqual(wrows.length, 2);
-    assert.strictEqual(wrows[0].querySelector('.pc-sub').textContent, 'D사, 진행중', '보기만 줄의 작은 줄(발주처, 상태)이 없다');
-    assert.ok(wrows[0].querySelector('.pc-wx'), '보기만 줄에 × 가 없다');
-    assert.ok(!W.q('#pcView .pc-list:not(.pc-list-w) .pc-wx'), '내 과제 줄에 × 가 있다');
+    assert.strictEqual(wrows[0].querySelector('.pc-sub').textContent, 'D사, 진행중', '관심 과제 줄의 작은 줄(발주처, 상태)이 없다');
+    assert.ok(wrows[0].querySelector('.pc-wx'), '관심 과제 줄에 × 가 없다');
     assert.ok(wrows[1].classList.contains('pc-hid') && wrows[1].querySelector('.pc-sub').textContent === '숨겨진 과제' && wrows[1].querySelector('input').disabled, '숨겨진 과제가 흐리게, 체크 불가로 보이지 않는다');
     assert.ok(!wrows[1].querySelector('.pc-mbc'), '숨겨진 과제에 참여자 단추가 있다(읽을 수 없다)');
-    assert.ok(W.q('#pcView .pc-addw') && /다른 과제 보기/.test(W.q('#pcView .pc-addw').textContent), '맨 아래 [＋ 다른 과제 보기]가 없다');
-    assert.strictEqual(W.qa('#pcView .pc-side .pc-row input:checked').length, 3, '숨기지 않은 과제 셋(내 과제 둘, 보기만 하나)이 처음부터 켜져 있어야 한다');
-    //  읽기 요청에는 숨겨진 보기만 과제가 없다
-    assert.ok(!W.cmds('projectCalendarLoad').at(-1).projectUids.includes(B2), '숨겨진 보기만 과제를 범위 읽기에 넣었다(읽기 판정이 거절해 제외 목록을 되풀이한다)');
+    assert.ok(W.q('#pcView .pc-addw') && /＋ 관심 과제 추가/.test(W.q('#pcView .pc-addw').textContent), '목록 끝 [＋ 관심 과제 추가]가 없다');
+    //  읽기 요청에는 숨겨진 관심 과제가 없다
+    assert.ok(!W.cmds('projectCalendarLoad').at(-1).projectUids.includes(B2), '숨겨진 관심 과제를 범위 읽기에 넣었다(읽기 판정이 거절해 제외 목록을 되풀이한다)');
     assert.ok(W.cmds('projectCalendarLoad').at(-1).projectUids.includes(B1));
-    //  묶음 체크: 끄면 보기만만 꺼지고 일정이 사라진다
-    const head = () => W.q('#pcView [data-act="watchAll"]');
-    assert.strictEqual(head().checked, true);
-    await W.change(head(), false);
-    assert.strictEqual(W.qa('#pcView .pc-list-w .pc-row input:checked').length, 0);
-    assert.strictEqual(W.qa('#pcView .pc-list:not(.pc-list-w) .pc-row input:checked').length, 2, '묶음 체크가 내 과제까지 껐다');
-    assert.strictEqual(head().checked, false, '보기만이 모두 꺼졌는데 묶음 체크가 켜져 있다');
-    await W.change(head(), true);
-    assert.strictEqual(W.qa('#pcView .pc-list-w .pc-row input:checked').length, 1, '묶음 체크를 켰는데 읽을 수 있는 보기만 과제가 켜지지 않았다(숨겨진 과제는 그대로)');
-    assert.strictEqual(head().checked, true);
+    //  [전체 해제]는 지금 탭만: 관심 과제만 꺼지고 달력에 내 과제만 남는다
+    await W.click('#pcView [data-act="selNone"]');
+    const ld = W.cmds('projectCalendarLoad').at(-1).projectUids;
+    assert.ok(ld.includes(P1) && !ld.includes(B1), '전체 해제 뒤 달력 읽기가 내 과제만이 아니다: ' + JSON.stringify(ld));
+    assert.ok(!W.ev('PCAL.sel').includes(B1) && W.ev('PCAL.sel').includes(P1), '관심 과제 탭의 전체 해제가 관심 과제만 끄지 않았다');
+    assert.deepStrictEqual(tabs(), [['내과제2/2', 'false'], ['관심과제0/2', 'true']]);
+    await W.click('#pcView [data-act="selAll"]');
+    assert.ok(W.ev('PCAL.sel').includes(B1) && !W.ev('PCAL.sel').includes(B2), '전체 선택이 읽을 수 있는 관심 과제를 켜지 않았다(숨겨진 과제는 그대로)');
+    //  탭은 과제 탭 설정에 기억한다
+    assert.strictEqual(JSON.parse(W.w.localStorage.getItem('tc_pcal:hjlee')).side, 'watch', '고른 탭을 기억하지 않는다');
   }));
 
   test('보기만R⑩: 보기만 일정은 점선 모양이고 내 과제 일정은 그대로, × 는 확인 없이 뺀다, [＋ 다른 과제 보기]는 보기 모드 창을 연다', () => withBoot({}, async (W) => {
@@ -598,6 +625,7 @@ if (!JSDOM) {
     assert.ok(ev(U(2)) && ev(U(2)).classList.contains('pc-watchev'), '보기만 일정에 점선 모양(pc-watchev)이 없다');
     assert.ok(ev(U(1)) && !ev(U(1)).classList.contains('pc-watchev'), '내 과제 일정이 점선이다');
     //  ×
+    await W.click('#pcView #pcStab-watch');   // × 와 점선 단추는 관심 과제 탭에 있다(PC-WATCH-2 §3)
     await W.click(W.q('#pcView .pc-list-w .pc-row .pc-wx'));
     assert.strictEqual(W.last('pcWatchRemove').projectUid, B1);
     assert.ok(!W.q('.overlay:not(.hidden) #cfOk'), '× 가 확인 창을 띄운다');
@@ -606,7 +634,7 @@ if (!JSDOM) {
     assert.ok(!ev(U(2)), '× 뒤에 그 과제 일정이 달력에 남아 있다');
     //  묶음이 하나뿐인 줄은 숨겨진 과제만 남음. 점선 단추는 보기 모드 창을 연다
     await W.click(W.q('#pcView .pc-addw'));
-    assert.strictEqual(W.el('caHead').textContent, '다른 과제 보기', '[＋ 다른 과제 보기]가 보기 모드 창을 열지 않았다');
+    assert.strictEqual(W.el('caHead').textContent, '관심 과제 추가', '[＋ 관심 과제 추가]가 보기 모드 창을 열지 않았다');
     assert.ok(!W.el('catAddModal').classList.contains('hidden'));
   }));
 
@@ -615,7 +643,8 @@ if (!JSDOM) {
     const btns = () => W.qa('#pcDetailFoot button').map((b) => b.dataset.act || (b.hasAttribute('data-close') ? 'close' : ''));
     W.ev(`pcOpenDetail("${U(2)}")`); await settle();
     assert.deepStrictEqual(btns(), ['close'], '보기만 과제의 상세에 [닫기] 말고 단추가 있다');
-    assert.strictEqual(W.q('#pcDetailBody .pc-ro').textContent, '보기만');
+    assert.strictEqual(W.q('#pcDetailBody .pc-ro').textContent, '관심 과제');
+    assert.ok(W.q('#pcDetailBody .pcd-proj .pc-dot.pc-ring'), '관심 과제 상세 머리의 색점 자리가 빈 동그라미가 아니다');
     W.ev('closeModal("#pcDetailModal")'); await settle(); W.clock.advance(400); await settle();
     W.ev(`pcOpenDetail("${U(1)}")`); await settle();
     assert.deepStrictEqual(btns(), ['delete', 'copy', 'edit'], '내 과제(쓰기 가능)의 상세 단추가 삭제, 개인 일정에 등록, 수정이 아니다');
@@ -661,7 +690,7 @@ if (!JSDOM) {
     await W.reply('membersGet', { ok: true, data: { members: MEMBERS, units: UNITS, myUnit: '개발1팀' } });
     const pop = W.el('peerPicker');
     assert.ok(pop && !pop.classList.contains('hidden'));
-    assert.ok(!pop.classList.contains('pk-multi') && pop.querySelector('.pk-chips').hidden && pop.querySelector('.pk-foot').hidden, '한 명 모드에 칩 줄이나 [완료] 줄이 보인다');
+    assert.ok(!pop.classList.contains('pk-multi') && !pop.querySelector('.pk-chips, .pk-foot, input[type="checkbox"]'), '한 명 모드에 칩 줄, [완료] 줄, 체크 칸이 있다(여러 명 모드는 걷었다)');
     assert.strictEqual(pop.querySelectorAll('.pk-mpick').length, 0, '한 명 모드에 체크 줄이 있다');
     assert.strictEqual(pop.getAttribute('aria-label'), '다른 사람 일정: 사람 고르기');
     const open = [...pop.querySelectorAll('.pk-body .pk-open')].find((b) => b.dataset.login === 'u1');
@@ -676,9 +705,9 @@ if (!JSDOM) {
     await W.click('#pcTabProject');
     await W.reply('projectCalendarBootstrap', { ok: true, data: { projects: MINE, limits: { title: 200, location: 200, memo: 8000 } } });
     await W.reply('pcWatchList', { ok: false, error: { kind: 'network', message: '' } });
-    assert.ok(W.q('#pcView .pc-side'), '보기만 목록을 못 읽었다고 과제 화면이 열리지 않는다');
+    assert.ok(W.q('#pcView .pc-side'), '관심 과제 목록을 못 읽었다고 과제 화면이 열리지 않는다');
     assert.strictEqual(W.qa('#pcView .pc-list:not(.pc-list-w) .pc-row').length, 2);
-    assert.ok(/보기만 목록을 읽지 못했습니다/.test(W.q('#pcView .pc-side').textContent), '읽지 못했다는 말이 없다');
+    assert.ok(/관심 과제 목록을 읽지 못했습니다/.test(W.q('#pcView .pc-side').textContent), '읽지 못했다는 말이 없다');
     await openWatchWin(W, { cat: [] });
     W.ev('CAW.status = "error"; CAW.err = "서버 응답이 늦습니다."; renderCaList(true)'); await settle();
     assert.ok(W.q('#caList [data-caretry]') && /일정 정보를 읽지 못했습니다/.test(W.q('#caList').textContent), '목록용 읽기 실패에 다시 시도가 없다');
@@ -716,7 +745,7 @@ if (!JSDOM) {
     assert.throws(() => hostChecks.listAndCatalog(bad3), /숨겨진 과제를 SQL 로 거른다/);
   });
   test('변이보기만④: 보기 모드에서 과제 추가 모드의 [추가] 단추를 내면 화면① 이 잡는다', async () => {
-    const bad = mutate(`'<button type="button" class="btn sm" data-cawatch="' + esc(uid) + '">보기</button>'`, `'<button type="button" class="btn sm primary" data-caadd="' + esc(uid) + '">추가</button>'`, src);
+    const bad = mutate(`'<button type="button" class="btn sm" data-cawatch="' + esc(uid) + '">추가</button>'`, `'<button type="button" class="btn sm primary" data-caadd="' + esc(uid) + '">추가</button>'`, src);
     const W = await boot({ source: bad });
     try {
       await enter(W);
@@ -746,14 +775,16 @@ if (!JSDOM) {
       assert.ok(W.ev('state.categories.some(c => c.id === "db-' + E1 + '")'), '변이가 내 과제에 섞지 못했다(시험이 잡을 차이가 없다)');
     } finally { W.close(); }
   });
-  test('변이보기만⑦: 사람 고르기 한 명 모드가 여러 명 모드로 바뀌면(multi 가 늘 켜짐) 화면⑭ 이 잡는다', async () => {
-    const bad = mutate("multi: mode === 'multi' ? {", "multi: true ? {", src);
+  //  2026-11-05: 여러 명 모드를 걷었으니 한 명 모드의 지킬 것은 "행을 누르면 열람 창"이다
+  test('변이보기만⑦: 사람 고르기 한 명 모드에서 행이 열람 창을 열지 않으면(pkPick 빠짐) 화면⑭ 가 잡는다', async () => {
+    const bad = mutate('    pkPick(id, nm);', '    void 0;', src);
     const W = await boot({ source: bad });
     try {
       await W.click('#btnPeerPick');
       await W.reply('membersGet', { ok: true, data: { members: MEMBERS, units: UNITS, myUnit: '개발1팀' } });
-      assert.ok(W.q('#peerPicker .pk-mpick'), '변이가 한 명 모드를 체크 모드로 바꾸지 못했다(시험이 잡을 차이가 없다)');
-      assert.ok(!W.q('#peerPicker .pk-body .pk-open'));
+      const open = [...W.qa('#peerPicker .pk-body .pk-open')].find((b) => b.dataset.login === 'u1');
+      await W.click(open);
+      assert.ok(!W.cmds('peerOpen').length, '변이가 열람 창 열기를 막지 못했다(시험이 잡을 차이가 없다)');
     } finally { W.close(); }
   });
   test('변이보기만⑧: 숨겨진 보기만 과제를 읽기 요청에 넣으면 화면⑨ 이 잡는다, 참여자 이름 찾기를 빼면 화면⑤ 가 잡는다, 일정 있는 과제만을 무시하면 화면① 이 잡는다', async () => {

@@ -7,6 +7,19 @@
 
 ---
 
+## 🆕 2026-11-05 (다음 판, 번호는 배포 때): 관심 과제(보기만 과제 2차)와 날짜 패널 묶음 접기
+
+스트레스 시험(공식 과제 43개, 관심 50개, 일정 400건, 개인 일정 300건과 할 일 250건) 뒤 사용자 결정. 기획과 기록은 [docs/PC-WATCH-2.md](docs/PC-WATCH-2.md). DB 구조는 그대로 21.
+
+- **이름**: 화면의 "보기만 과제", "다른 과제 보기"를 "관심 과제", "관심 과제 추가"로. 줄 단추 [추가] / "✓ 관심 과제", 고치기 막힘 `pcRoMsg`, 호스트 `MsgWatchFull` 문구. 코드 이름(watch, `cal_project_watch`)은 그대로.
+- **모양**: 관심 과제는 과제 색 없음. `sectionColor` 를 걷고 회색 토큰 하나(`PC_WATCH_C = var(--faint)`)로 점선 일정과 띠, 색점 자리는 빈 동그라미(`.pc-ring`, `pcDotCls`).
+- **과제 탭 왼쪽 목록**: [내 과제 a/b | 관심 과제 c/d] 탭(목록만 바꾸고 달력은 두 탭 체크의 합), 전체 선택/해제는 지금 탭만, 묶음 머리 체크 걷음, 탭은 `pcPrefs.side` 에 기억.
+- **참여자 필터**: 개인 보기 팝업의 과제 목록 부분을 출처를 받는 공용 함수(`fbFill`, `fbPick`, `fbListKey`, `fbPopKey` 등, 출처 `FB_SRC`)로 뺐고 관심 과제 추가 창 [참여자]가 같은 함수로 조직별 묶음 출처(`CAW_WHO_SRC`)를 연다. FILTER-MULTI 규칙 그대로(칩 없음). `#peerPicker` 여러 명 모드 코드는 걷음(한 명 고르기 불변).
+- **날짜 패널**: 묶음 접기(`tc_dpfold:<계정>`), 묶음마다 5개와 더 보기/줄이기, 일정은 한 줄 줄이고 누르면 그 자리에서 `cardHtml` 카드로 펼침(하나만), flash 는 그 줄을 펼치고 더 보기와 묶음을 엶, 할 일 제목은 두 줄까지. 열람 창과 나란히 보기도 같은 규칙.
+- **시험**: 새 `tests/pc-watch-2.test.mjs`, `tests/day-panel-fold.test.mjs`. 고친 시험: pc-watch, filter-multi, personal-panel, peer-picker, peer-overlay, peer-overlay-redesign, peer-side-by-side, peer-view-full, project-calendar-web. 루프 loop-ui-visual, loop-peer-frame 맞춤.
+
+---
+
 ## 🆕 2026-11-04 (다음 판, 번호는 배포 때): 과제 탭 "다른 과제 보기"(보기만 과제, DB 구조 21)
 
 사용자 결정(2026-11-04)과 DB 전문가 검토 반영. 기획과 구현 기록은 [docs/PC-WATCH.md](docs/PC-WATCH.md). 시안 `dist/proto/pc-watch-v3.html`, `pc-watch-v8.html`(최종). 원칙은 **이미 있는 화면을 모드로 재사용**한다는 것이다.

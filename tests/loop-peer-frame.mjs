@@ -362,6 +362,8 @@ async function mineChipProbe(cdp) {
              +"; renderAll(); if(typeof renderPanel==='function') renderPanel();");
       const chip=w.document.querySelector('#grid .chip[data-id="'+e.id+'"]');
       if(!chip) continue;
+      //  2026-11-05(PC-WATCH-2 §5): 패널 일정은 한 줄 줄이다. 강조(flash)처럼 그 줄을 펼쳐(5개 밖이면 더 보기) 카드를 본다
+      w.eval("flashTargetId="+JSON.stringify(e.id)+"; renderPanel();");
       const card=w.document.querySelector('#dpBody .card[data-id="'+e.id+'"]');
       return JSON.stringify({
         id:e.id, date:d,

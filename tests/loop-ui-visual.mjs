@@ -67,11 +67,12 @@ const SCREENS = [
   { id: 'catEditModal.db',         enter: '__vt.closeAll(); __vt.ensureSub(0); openCatModal(); __vt.catEdit("db")', needsCatalog: true },
   { id: 'catAddModal.official',    enter: '__vt.closeAll(); openCatModal(); openCatAdd("off")' },
   { id: 'catAddModal.own',         enter: '__vt.closeAll(); openCatModal(); openCatAdd("own")' },
-  //  2026-11-04(PC-WATCH): 같은 창의 보기 모드 "다른 과제 보기"(열: 통상명칭, 발주처, 상태, 참여자, 최근 활동, 동작)와 그 위에 뜨는 [참여자] 여러 명 고르기(사람 고르기 팝오버).
+  //  2026-11-04(PC-WATCH): 같은 창의 보기 모드 "관심 과제 추가"(열: 통상명칭, 발주처, 상태, 참여자, 최근 활동, 동작)와 그 위에 뜨는 [참여자] 필터.
+  //  2026-11-05(PC-WATCH-2 §4): [참여자]는 사람 고르기 여러 명 모드가 아니라 개인 보기 팝업과 같은 고르기 목록(조직별 묶음)이다.
   //  가짜 일정 활동과 참여자는 화면에만 둔다(__vt.caWatchDemo: 진행 중인 실제 회신은 버린다). 구조 21 이관 전에도 모양을 볼 수 있다.
   { id: 'catAddModal.watch',       enter: '__vt.closeAll(); openCatAdd("watch"); __vt.caWatchDemo()', needsCatalog: true },
   { id: 'catAddModal.watchWho',    enter: '__vt.closeAll(); openCatAdd("watch"); __vt.caWatchDemo(); caWhoOpen(document.getElementById("caWho"))', needsCatalog: true },
-  //  과제 탭 왼쪽 목록의 두 묶음(내 과제, 보기만)과 보기만 일정의 점선 모양. 가짜 목록은 화면에만 둔다(__vt.pcWatchDemo).
+  //  과제 탭 왼쪽 목록의 [내 과제 | 관심 과제] 두 탭(관심 과제 탭을 연 모양)과 관심 과제 일정의 회색 점선. 가짜 목록은 화면에만 둔다(__vt.pcWatchDemo).
   { id: 'pcWatchSide',             enter: '__vt.closeAll(); pcSetTab("project"); __vt.pcWatchDemo()' },
   { id: 'officialModal',           enter: '__vt.closeAll(); openOfficialModal()' },
   { id: 'officialModal.unsubbed',  enter: '__vt.closeAll(); __vt.ensureUnsub(0); openOfficialModal(); __vt.offSelect(0)', needsCatalog: true },
@@ -305,7 +306,7 @@ V._realTheme = prev ? prev._realTheme : (function(){ try{ return localStorage.ge
 
 V.restore = function(){
   try{ V.closeAll(); }catch(_){}
-  try{ PCAL.watch = []; caModeSet(false); }catch(_){}   // 다른 과제 보기 시연이 남긴 화면 상태(PC-WATCH)
+  try{ PCAL.watch = []; PCAL.side = 'mine'; caModeSet(false); }catch(_){}   // 관심 과제 시연이 남긴 화면 상태(PC-WATCH, PC-WATCH-2)
   try{ state.categories = JSON.parse(JSON.stringify(V._snapCats)); }catch(_){}
   try{ if(V._realOnline) window.__applyProjects(JSON.stringify(V._realRows)); else window.__applyProjects(''); }catch(_){}
   try{ state.categories = JSON.parse(JSON.stringify(V._snapCats)); }catch(_){}   // 주입 부작용(자동 편입) 재복원
@@ -320,6 +321,7 @@ V.closeAll = function(){
   var ovs = document.querySelectorAll('.overlay');
   for (var i=0;i<ovs.length;i++){ ovs[i].classList.remove('closing'); ovs[i].classList.add('hidden'); }
   try{ if(FB.pop) filterPopClose(false); }catch(_){}   // 보기 팝업(overlay 가 아니다)
+  try{ caWhoClose(false); }catch(_){}                  // 관심 과제 추가 창의 [참여자] 팝업
   try{ if(PCAL.tab !== 'personal') pcSetTab('personal'); }catch(_){}   // 근태 탭 화면(취합)에서 돌아온다
   return true;
 };
@@ -350,6 +352,10 @@ V.caWatchDemo = function(){
   CAW.gen++;   /* 진행 중인 실제 pcWatchCatalog 회신은 버린다 */
   var names = ['김하늘','박서준','이도윤','최유나','정민수'], days = [0, 2, 9, 40, 70, 200];
   CAW.roster = new Map(names.map(function(n, i){ return ['demo' + i, { name:n, title:'책임', org:'개발1팀' }]; }));
+  /* [참여자] 필터의 조직별 묶음(pkOrgIndex 와 같은 색인, 화면에만) */
+  CAW.members = names.map(function(n, i){ return { loginId:'demo' + i, name:n, title:'책임', orgUnit:(i < 3 ? '개발1팀' : '사업기획팀') }; });
+  CAW.org = pkOrgIndex([{ name:'개발1팀', parent:null, sortOrder:1 }, { name:'사업기획팀', parent:null, sortOrder:2 }], CAW.members, '');
+  CAW.myUnit = '개발1팀'; CAW.rStatus = 'ok';
   var m = new Map();
   dbCatalog.slice(0, 16).forEach(function(c, i){
     m.set(offUidOf(c.id), { last:new Date(Date.now() - days[i % days.length] * 86400000).toISOString(), memberIds:names.map(function(_, k){ return 'demo' + k; }).slice(0, (i % 5) + 1) });
@@ -363,10 +369,11 @@ V.pcWatchDemo = function(){
   PCAL.loaded = true; PCAL.booting = false; PCAL.bootErr = '';
   if(!PCAL.projects.length) PCAL.projects = [{ projectUid:'00000000-0000-4000-8000-0000000000a1', name:'내 과제 표본', customer:'', color:'#3e5be0', active:true, writable:true, mine:true, members:3 }];
   PCAL.watch = [
-    pcWatchFromDto({ projectUid:'00000000-0000-4000-8000-0000000000b1', name:'보기만 과제 표본, 이름이 아주 길어서 두 줄로 접히는 경우를 보는 과제', customer:'D사', status:'진행중', sectionId:1, members:4, hidden:false }),
+    pcWatchFromDto({ projectUid:'00000000-0000-4000-8000-0000000000b1', name:'관심 과제 표본, 이름이 아주 길어서 두 줄로 접히는 경우를 보는 과제', customer:'D사', status:'진행중', sectionId:1, members:4, hidden:false }),
     pcWatchFromDto({ projectUid:'00000000-0000-4000-8000-0000000000b2', name:'숨겨진 과제 표본', customer:'E사', status:'종료', sectionId:2, members:0, hidden:true })
   ];
   PCAL.sel = pcAll().map(function(p){ return p.projectUid; });
+  PCAL.side = 'watch';
   pcRender();
   return PCAL.watch.length;
 };
