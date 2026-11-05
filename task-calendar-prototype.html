@@ -23358,6 +23358,8 @@ function pcOn(){ return PCAL.tab === 'project'; }
 //  내 과제(PCAL.projects) 뒤에 보기만 과제(PCAL.watch)를 이은 목록. 일정 등록 창의 과제 고르기, 일정 쓰기 판단은 이 목록이 아니라 PCAL.projects 만 본다.
 function pcAll(){ return PCAL.projects.concat(PCAL.watch); }
 function pcProj(uid){ return PCAL.projects.find(p => p.projectUid === uid) || PCAL.watch.find(p => p.projectUid === uid) || null; }
+//  고칠 수 없는 과제의 안내. 보기만 과제(내 과제가 아님)와 숨긴 내 과제는 둘 다 writable=false 라 mine 으로 가른다.
+function pcRoMsg(p){ return (p && p.mine === false) ? '보기만 과제라 고칠 수 없습니다. 참여자만 고칩니다.' : '숨긴 과제라 읽기 전용입니다.'; }
 function pcEv(uid){ return PCAL.events.find(e => e.eventUid === uid) || null; }
 function pcOrder(){ const o = {}; pcAll().forEach((p, i) => { o[p.projectUid] = i; }); return o; }
 //  달력에 보이는 과제 = 왼쪽 목록에서 체크한 과제(목록 순서). 이름 누름 같은 다른 길은 없다(2026-10-22 저녁 단독 보기 제거).
@@ -23712,7 +23714,7 @@ function pcRenderWeek(body){
   for(const p of ps){
     const L = pcLayoutWeek(pcOccurrences(PCAL.events.filter(e => !e.deleted && e.projectUid === p.projectUid), R.from, R.to), R.from, order);
     h += '<div class="pc-wname" style="--c:' + p.color + '"><span class="pc-wpn">' + esc(p.name) + '</span><span class="pc-wmeta">' + p.members + '명, 이번 주 ' + L.items.length + '건</span>'
-      + (p.writable ? '' : '<span class="pc-state">숨긴 과제, 읽기 전용</span>') + '</div>';
+      + (p.writable ? '' : '<span class="pc-state">' + (p.mine === false ? '보기만' : '숨긴 과제, 읽기 전용') + '</span>') + '</div>';   // 보기만 과제도 writable=false 다(숨긴 과제와 구분)
     h += '<div class="pc-wcells" data-from="' + R.from + '" data-proj="' + esc(p.projectUid) + '" style="grid-template-rows:4px' + (L.lanes ? ' repeat(' + L.lanes + ', auto)' : '') + ' minmax(20px,1fr)">';
     days.forEach((ds, i) => {
       h += '<div class="' + calCellCls(ds, 'pc-wday', { sel: PCAL.anchor }) + '" data-date="' + ds + '" style="grid-column:' + (i + 1) + ';grid-row:1 / -1" aria-hidden="true"></div>';
@@ -23911,7 +23913,7 @@ function pcOpenForm(opt){
   pcClosePop(true);
   const e = o.uid ? pcEv(o.uid) : null;
   if(o.uid && !e) return;
-  if(e){ const p = pcProj(e.projectUid); if(!p || !p.writable){ toast('숨긴 과제라 읽기 전용입니다.', 'warn'); return; } }
+  if(e){ const p = pcProj(e.projectUid); if(!p || !p.writable){ toast(pcRoMsg(p), 'warn'); return; } }
   else if(!pcCanNew()){ toast('일정을 등록할 수 있는 과제가 없습니다. 종료된 과제는 읽기 전용입니다.', 'warn'); return; }
   if(guardEdit()) return;
   const F = PCAL.form = { mode: e ? 'edit' : 'new', uid: e ? e.eventUid : pcUuid(), projectUid: e ? e.projectUid : '',
@@ -24112,7 +24114,7 @@ function pcConflictKeep(){
 async function pcDelete(uid){
   const e = pcEv(uid); if(!e) return;
   const p = pcProj(e.projectUid);
-  if(!p || !p.writable){ toast('숨긴 과제라 읽기 전용입니다.', 'warn'); return; }
+  if(!p || !p.writable){ toast(pcRoMsg(p), 'warn'); return; }
   if(guardEdit()) return;
   let occDate = '';
   if(e.recurFreq){

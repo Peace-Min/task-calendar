@@ -194,6 +194,12 @@ test('보기만W①: 새로 쓴 함수와 문구에 엠 대시, en 대시, 낫�
   const vis = src.slice(a, b).replace(/<!--[\s\S]*?-->/g, '');
   for (const [re, name] of PUNCT) assert.ok(!re.test(vis), `다른 과제 보기 창 마크업에 ${name}가 있다`);
 });
+test('보기만W①-2: 보기만 과제를 숨긴 과제로 적지 않는다(주간 줄 이름표와 고치기 막힘 안내는 mine 으로 가른다, 2026-11-05 스트레스 시험)', () => {
+  assert.ok(/p\.writable \? '' : '<span class="pc-state">' \+ \(p\.mine === false \? '보기만' : '숨긴 과제, 읽기 전용'\)/.test(src), '주간 보기 과제 줄이 보기만 과제에 "숨긴 과제, 읽기 전용"을 붙인다');
+  assert.ok(!/toast\('숨긴 과제라 읽기 전용입니다\.'/.test(src), '고치기 막힘 안내가 보기만 과제에도 "숨긴 과제라"고 한다');
+  const f = extractFunction(src, 'pcRoMsg');
+  assert.ok(/p\.mine === false/.test(f) && /보기만 과제라/.test(f), 'pcRoMsg 가 보기만 과제를 가르지 않는다');
+});
 test('보기만W②: 보기 모드의 상태 체크는 이 창 안에서만 센다(공용 기억 tc_projStatusOff 를 쓰지 않는다)', () => {
   const m = src.slice(src.indexOf('const CAW = '), src.indexOf('function caWhoOpen('));
   assert.ok(!/offStToggle|offStSave|offStReset|localStorage|OFF_ST_KEY/.test(m), '다른 과제 보기 창이 공용 상태 기억을 바꾼다');
