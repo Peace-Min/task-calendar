@@ -51,7 +51,7 @@ test('(S) §2: 비모달 팝업(role=dialog, aria-modal 없음)은 정해진 것
   assert.ok(extractFunction(app, 'pkEnsure').includes("popHeadEl('사람 고르기')"), '사람 고르기 팝업에 머리줄이 없다');
   assert.ok(extractFunction(app, 'awCalRender').includes("popHeadHtml('주 고르기', '')"), '주 고르기 달력에 머리줄이 없다');
   assert.ok(extractFunction(app, 'pcOpenDayList').includes('popXHtml()'), '과제 탭 날짜 팝업 머리에 × 가 없다');
-  assert.ok(extractFunction(app, 'pcSideHtml').includes("(inDrawer ? popXHtml() : '')"), '과제 목록 서랍 머리에 × 가 없다');
+  assert.ok(extractFunction(app, 'pcSideInner').includes("(inDrawer ? popXHtml() : '')"), '과제 목록 서랍 머리에 × 가 없다');   // 병합 뒤 안쪽 함수(SCROLL-STABILITY)
 });
 test('(S) §2: × 는 모달 × 와 같은 .x, aria-label 과 title 이 "닫기"(문자열과 DOM 두 함수가 같다), 새 글에 금지 기호 없음, 새 CSS 는 토큰만', () => {
   assert.strictEqual(extractFunction(app, 'popXHtml'), `function popXHtml(){ return '<button type="button" class="x pop-x" data-popx aria-label="닫기" title="닫기">×</button>'; }`);

@@ -13879,8 +13879,7 @@ function ceGrow(){
     t.value = v.replace(/\r\n/g, ' ').replace(/[\r\n]/g, ' ');
     try{ t.setSelectionRange(p, p); }catch(_){}
   }
-  t.style.height = 'auto';
-  if(t.scrollHeight) t.style.height = (t.scrollHeight + 2) + 'px';   // +2 = 위아래 테두리(border-box)
+  taGrow(t, 2);   // +2 = 위아래 테두리(border-box)
   const cnt = document.getElementById('ceCount'); if(cnt) cnt.textContent = t.value.length + ' / 60자';
 }
 function openCatEdit(id){
@@ -14013,7 +14012,7 @@ function locBind(pfx){
   __loc[pfx] = { open: false, typed: false, act: -1, mute: false };
   const wrap = inp.closest('.loc-combo'), pop = document.getElementById(pfx + 'LocPop');
   inp.addEventListener('mousedown', () => { const c = __loc[pfx]; if(c && !c.open) setTimeout(() => locOpen(pfx, false), 0); });
-  inp.addEventListener('focus', () => { const c = __loc[pfx]; if(c && !c.open && !c.mute) locOpen(pfx, false); });
+  inp.addEventListener('focus', () => { if(imeFlushing()) return; const c = __loc[pfx]; if(c && !c.open && !c.mute) locOpen(pfx, false); });
   inp.addEventListener('input', () => { locSyncClear(pfx); locOpen(pfx, true); });
   inp.addEventListener('keydown', ev => {
     if(ev.isComposing || ev.keyCode === 229) return;   // 한글 조합 중에는 조합이 먼저다
@@ -14032,7 +14031,7 @@ function locBind(pfx){
       if(c.open){ ev.preventDefault(); ev.stopPropagation(); locClose(pfx); }   // 목록만 닫는다(창은 그대로)
     } else if(ev.key === 'Tab'){ locClose(pfx); }
   });
-  inp.addEventListener('blur', () => setTimeout(() => { if(!wrap || !wrap.contains(document.activeElement)) locClose(pfx); }, 120));
+  inp.addEventListener('blur', () => { if(imeFlushing()) return; setTimeout(() => { if(!wrap || !wrap.contains(document.activeElement)) locClose(pfx); }, 120); });
   if(pop){
     pop.addEventListener('mousedown', ev => ev.preventDefault());   // 고르는 동안 칸의 포커스를 잃지 않게
     pop.addEventListener('click', ev => { const o = ev.target.closest('.loc-opt'); if(o) locPick(pfx, Number(o.dataset.i)); });
@@ -15403,18 +15402,23 @@ function openCustomerModal(){
   const inp = document.getElementById('custNewName'); if(inp) inp.value = '';
   custMsgSet('');
   openModal('#customerModal');
-  reloadCustomerList();
+  reloadCustomerList({ fresh: true });
   //  ★ 「⚙ 관리」에 도킹돼 열렸으면 포커스를 옮기지 않는다(H12) — 왼쪽 목록에서 ↑/↓ 로 고르던 손을 뺏지 않는다.
   setTimeout(() => { const e = document.getElementById('custNewName'); if(e && !e.closest('.docked')){ try{ e.focus(); }catch(_){} } }, 30);
 }
-async function reloadCustomerList(){
+async function reloadCustomerList(opt){
   const box = document.getElementById('custList'); if(!box) return;
   //  ★ 세대 표식은 목록 상자(dataset.gen)에 둔다 — 모듈 상태를 늘리지 않는다. 늦게 온 옛 회신은 새 목록을 덮지 않는다(2026-09-23 §3.4-B).
   const gen = String((Number(box.dataset.gen) || 0) + 1); box.dataset.gen = gen;
-  box.innerHTML = `<div class="cust-empty">${ICON.spinner} 불러오는 중…</div>`;
+  const fresh = !!(opt && opt.fresh) || !box.querySelector('.cust-row');   // 줄이 있으면 비우지 않는다(비우면 scrollTop 이 0 이 된다)
+  if(fresh) box.innerHTML = `<div class="cust-empty">${ICON.spinner} 불러오는 중…</div>`;
   const res = await hostRequest('loadCustomersFull', {}, 20000);
   if(box.dataset.gen !== gen) return;   // 그 사이 다시 불렀다 — 이 회신은 낡았다
-  if(!res || !res.ok){ box.innerHTML = `<div class="cust-empty">발주처 목록을 불러오지 못했습니다.</div>`; return; }
+  if(!res || !res.ok){
+    if(fresh) box.innerHTML = `<div class="cust-empty">발주처 목록을 불러오지 못했습니다.</div>`;
+    else custMsgSet(ICON.alert + ' 발주처 목록을 불러오지 못했습니다.', 'err');
+    return;
+  }
   let arr = []; try{ arr = JSON.parse(res.list || '[]'); }catch(_){ arr = []; }
   custList = Array.isArray(arr)
     ? arr.map(x => ({ id: codeIdOf(x && x.id), name: String((x && x.name) || '').trim(), active: !(x && x.active === false) })).filter(x => x.name && x.id != null)
@@ -15536,7 +15540,7 @@ function openCodeModal(kind){
   codeMsgSet('');
   codeSyncTabs();
   openModal('#codeModal');
-  reloadCodeList();
+  reloadCodeList({ fresh: true });
   setTimeout(() => { const e = document.getElementById('codeNewName'); if(e && !e.closest('.docked')){ try{ e.focus(); }catch(_){} } }, 30);   // 도킹이면 그대로(H12 · 발주처와 같다)
 }
 function codeSyncTabs(){
@@ -15548,16 +15552,21 @@ function codeSyncTabs(){
 }
 function switchCodeKind(kind){
   codeKind = (kind === 'status') ? 'status' : 'section';
-  codeMsgSet(''); codeSyncTabs(); reloadCodeList();
+  codeMsgSet(''); codeSyncTabs(); reloadCodeList({ fresh: true });
 }
-async function reloadCodeList(){
+async function reloadCodeList(opt){
   const box = document.getElementById('codeList'); if(!box) return;
   //  ★ 세대 표식은 목록 상자(dataset.gen)에 둔다 — 모듈 상태를 늘리지 않는다(2026-09-23 §3.4-B).
   const gen = String((Number(box.dataset.gen) || 0) + 1); box.dataset.gen = gen;
-  box.innerHTML = `<div class="cust-empty">${ICON.spinner} 불러오는 중…</div>`;
+  const fresh = !!(opt && opt.fresh) || !box.querySelector('.cust-row');   // 줄이 있으면 비우지 않는다(비우면 scrollTop 이 0 이 된다)
+  if(fresh) box.innerHTML = `<div class="cust-empty">${ICON.spinner} 불러오는 중…</div>`;
   const res = await hostRequest('getCodesFull', { kind: codeKind }, 20000);
   if(box.dataset.gen !== gen) return;   // 탭을 바꿨거나 다시 불렀다 — 이 회신은 낡았다(구분 회신이 상태 탭을 덮지 않게)
-  if(!res || !res.ok){ box.innerHTML = `<div class="cust-empty">목록을 불러오지 못했습니다.</div>`; return; }
+  if(!res || !res.ok){
+    if(fresh) box.innerHTML = `<div class="cust-empty">목록을 불러오지 못했습니다.</div>`;
+    else codeMsgSet(ICON.alert + ' 목록을 불러오지 못했습니다.', 'err');
+    return;
+  }
   let arr = []; try{ arr = JSON.parse(res.list || '[]'); }catch(_){ arr = []; }
   codeList = Array.isArray(arr)
     ? arr.map(x => ({ id: codeIdOf(x && x.id), name: String((x && x.name) || '').trim(), active: !(x && x.active === false), sort: Number(x && x.sort) || 0 })).filter(x => x.name && x.id != null)
@@ -15710,18 +15719,24 @@ function openRoomAdmin(){
   const inp = document.getElementById('raNewName'); if(inp) inp.value = '';
   raMsgSet('');
   openModal('#roomAdminModal');
-  raReload();
+  raReload({ fresh: true });
   setTimeout(() => { const e = document.getElementById('raNewName'); if(e && !e.closest('.docked')){ try{ e.focus(); }catch(_){} } }, 30);   // 도킹이면 그대로(H12)
 }
-async function raReload(){
+async function raReload(opt){
   const box = document.getElementById('raList'); if(!box) return;
   const gen = String((Number(box.dataset.gen) || 0) + 1); box.dataset.gen = gen;   // 늦게 온 회신이 새 회신을 덮지 않게
-  box.innerHTML = `<div class="cust-empty">${ICON.spinner} 불러오는 중…</div>`;
+  const fresh = !!(opt && opt.fresh) || !box.querySelector('.cust-row');   // 줄이 있으면 비우지 않는다(비우면 scrollTop 이 0 이 된다)
+  if(fresh) box.innerHTML = `<div class="cust-empty">${ICON.spinner} 불러오는 중…</div>`;
   let res = null;
   try{ res = await hostRequest('roomsFull', {}, 20000); }catch(_){ res = null; }
   if(box.dataset.gen !== gen) return;
   const list = (res && res.ok) ? raParse(res.list) : null;
-  if(!list){ box.innerHTML = `<div class="cust-empty">${esc((res && res.msg) || '회의실 목록을 불러오지 못했습니다.')}</div>`; return; }
+  if(!list){
+    const msg = (res && res.msg) || '회의실 목록을 불러오지 못했습니다.';
+    if(fresh) box.innerHTML = `<div class="cust-empty">${esc(msg)}</div>`;
+    else raMsgSet(ICON.alert + ' ' + esc(msg), 'err');
+    return;
+  }
   raList = list; raLoaded = true; raEditId = null;
   raRender();
 }
@@ -21448,7 +21463,40 @@ function atFillSelects(status, overtime){
  *  구조가 바뀔 때(열기, 추가, 지우기, 과제 고르기, 불러오기, 초기화)만 통째로 다시 그린다. 글과 시간 입력은 모델만 고치고(포커스와 커서를 지킨다)
  *  그 블록의 빨간 표시와 상태 줄만 고친다. 사람이 적은 글(과제명, 내용)은 esc 와 value 로만 넣는다.
  *  ★ 순서는 사람이 정하지 않는다(▲ ▼ 없음). 늘 캘린더 과제 순서(payload.projects)이고 과제 미정 블록은 맨 끝이다(atSortBlocks). */
-function atGrow(t){ if(!t) return; t.style.height = 'auto'; const h = t.scrollHeight; if(h > 0) t.style.height = h + 'px'; }
+//  다시 재거나 갈아 끼우는 동안 el 의 높이가 지금보다 낮아지지 않게 잠근다. 돌려준 함수로 푼다(원래 inline min-height 로).
+//  스크롤 칸 내용이 한순간 줄면 브라우저가 scrollTop 을 0 으로 내리므로, 줄지 않게 하는 것이 이 도우미의 일이다.
+function holdHeight(el){ if(!el) return () => {}; const keep = el.style.minHeight; el.style.minHeight = el.offsetHeight + 'px'; return () => { el.style.minHeight = keep; }; }
+//  글 칸을 내용 높이로. 재려고 접는 동안 칸을 감싼 부모 높이를 잠근다. extra = 테두리 보정(ceGrow 2).
+function taGrow(t, extra){ if(!t) return; const release = holdHeight(t.parentElement); t.style.height = 'auto'; const h = t.scrollHeight; if(h > 0) t.style.height = (h + (extra || 0)) + 'px'; release(); }
+/* ---------- 한글 조합 중 휠: 커서가 화면 안일 때 먼저 확정 (docs/SCROLL-STABILITY.md 11절) ---------- */
+//  엔진은 누름과 blur 에서 조합을 확정하며 커서를 화면 안으로 끌어온다(reveal). 휠로 커서가 화면 밖에 나간 뒤면 튄다.
+//  그래서 휠이 스크롤하기 전(non-passive, capture)에 blur 로 확정하고, 두 프레임 뒤 같은 칸으로 돌아온다.
+const IME = { el: null, flushing: false };
+function imeFlushing(){ return IME.flushing; }
+function imeOnStart(ev){ IME.el = ev.target; }
+function imeOnEnd(ev){ if(ev.target === IME.el) IME.el = null; }
+function imeOnWheel(){
+  const el = IME.el; if(!el) return;
+  IME.el = null;
+  if(el !== document.activeElement || !el.isConnected) return;
+  const s = el.selectionStart, e = el.selectionEnd, dir = el.selectionDirection;
+  IME.flushing = true;
+  try{ el.blur(); } finally { IME.flushing = false; }
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const a = document.activeElement;
+    if(!el.isConnected || (a && a !== document.body)) return;   // 그 사이 다른 곳에 포커스가 갔으면 그대로 둔다
+    IME.flushing = true;
+    try{ el.focus({ preventScroll: true }); } finally { IME.flushing = false; }
+    if(s != null && (el.selectionStart !== s || el.selectionEnd !== e)){ try{ el.setSelectionRange(s, e, dir || 'none'); }catch(_){} }
+  }));
+}
+function imeGuardInstall(){
+  if(imeGuardInstall.done) return; imeGuardInstall.done = true;
+  document.addEventListener('compositionstart', imeOnStart, true);
+  document.addEventListener('compositionend', imeOnEnd, true);
+  window.addEventListener('wheel', imeOnWheel, { capture: true, passive: false });   // passive 면 스크롤이 먼저 끝나 blur 자체가 튄다. preventDefault 는 하지 않는다
+}
+function atGrow(t){ taGrow(t, 0); }
 function atGrowAll(){ document.querySelectorAll('#atBlocks textarea[data-bt], #atBlocks textarea[data-memo]').forEach(atGrow); }
 //  빨간 블록: 과제 미정은 늘, 그 밖은 보내기를 한 번 막은 뒤부터 보인다(쓰는 중에 시간 0 을 나무라지 않는다).
 function atBlockShowProblem(b){ return (!b.name || ATE.showErr) ? atBlockProblem(b) : ''; }
@@ -21482,6 +21530,7 @@ function atBlocksRender(){
   const memoHtml = '<div class="at-blk at-memo"><div class="at-bh"><span class="at-bn">자유 메모</span></div>'
     + '<textarea class="at-bt" data-memo="1" spellcheck="false" rows="1" aria-label="자유 메모" placeholder="예: * 대전 ADD 외근"></textarea></div>';
   //  머리 순서: [색 점] [과제명] (오른쪽으로) [시간 칸] 시간 [✕]. 과제명은 글자라 고칠 수 없다(자물쇠 표시는 번잡해서 뺐다, 2026-10-29 사용자)
+  const release = holdHeight(box);   // 새 글 칸이 접힌 채 레이아웃을 강제해도 내용 높이가 줄지 않게
   box.innerHTML = memoHtml + (n ? ATE.blocks.map((b, i) => {
     const pr = atBlockShowProblem(b), lab = b.name || '과제 미정';
     const head = b.name
@@ -21499,6 +21548,7 @@ function atBlocksRender(){
   //  내용은 value 로 넣는다(textarea 안에 글을 넣으면 맨 앞 줄바꿈 하나를 HTML 이 먹는다).
   box.querySelectorAll('textarea[data-bt]').forEach(t => { t.value = ATE.blocks[Number(t.dataset.bt)].text; atGrow(t); });
   const mt = box.querySelector('textarea[data-memo]'); if(mt){ mt.value = ATE.memo; atGrow(mt); }
+  release();
   if(ATE.sending) box.querySelectorAll('input, select, textarea, button').forEach(e => { e.disabled = true; });
   if(keep) atFocusRestore(keep);
   atStatRender();
@@ -22286,7 +22336,9 @@ function awHoursPayload(hrs, hours, projects){
   });
 }
 //  이번 주 일간 보고(이 앱으로 보낸 것)를 모은다(§14.2). rows = [{date, content}], names = 캘린더 과제명(순서).
-//    일간 글은 블록 규칙(atParseReport)으로 읽는다. 과제마다 내용 줄을 날짜 순서로 모으고 같은 줄은 한 번만, 시간은 과제별 합계.
+//    일간 글은 블록 규칙(atParseReport)으로 읽는다. 과제마다 그날 글을 날짜 순서로 그대로 이어 붙인다(날 사이 빈 줄 하나), 시간은 과제별 합계.
+//    같은 줄 지우기는 하지 않는다(2026-11-05): 줄만 보고 지우면 머리 줄(1. 설계)이 빠져 다음 날 하위 항목이 엉뚱한 항목 밑으로 갔다.
+//    사람마다 일간 쓰는 모양이 달라 항목별 합치기도 하지 않는다. 반복되는 머리 줄은 주간 편집 칸에서 사람이 정리한다.
 //    prog = 진행사항 초안을 만들 과제별 블록(시간만 있는 과제도 들어간다), hours = 과제별 합계. 과제 미정으로 읽힌 글과 자유 메모는 넣지 않고 수만 센다.
 function awDailyCollect(rows, names){
   const lines = new Map(), sum = {};
@@ -22299,11 +22351,12 @@ function awDailyCollect(rows, names){
       if(!b.name){ skipped++; continue; }
       if(atHoursOk(b.hours) && b.hours > 0) sum[b.name] = (sum[b.name] || 0) + b.hours;
       if(!lines.has(b.name)) lines.set(b.name, []);
-      const L = lines.get(b.name);
-      for(const ln of String(b.text).split('\n')){ const t = ln.replace(/\s+$/, ''); if(t.trim() && !L.includes(t)) L.push(t); }
+      //  그날 이 과제 글(줄 끝 공백만 걷고, 앞뒤 빈 줄만 뺀다. 안쪽 빈 줄과 들여쓰기는 그대로).
+      const day = String(b.text).split('\n').map(ln => ln.replace(/\s+$/, '')).join('\n').replace(/^\n+|\n+$/g, '');
+      if(day) lines.get(b.name).push(day);
     }
   }
-  const prog = (names || []).filter(n => (lines.get(n) || []).length || sum[n] > 0).map(n => ({ name: n, text: (lines.get(n) || []).join('\n'), raw: '' }));
+  const prog = (names || []).filter(n => (lines.get(n) || []).length || sum[n] > 0).map(n => ({ name: n, text: (lines.get(n) || []).join('\n\n'), raw: '' }));
   const hours = {};
   for(const n of Object.keys(sum)) hours[n] = Math.round(sum[n] * 100) / 100;
   return { prog, hours, skipped, days };
@@ -23667,11 +23720,24 @@ function pcRender(){
   const narrow = pcNarrow();
   if(!narrow) PCAL.drawer = false;
   const err = PCAL.loadErr ? '<div class="pc-err" role="alert">' + esc('일정을 읽지 못했습니다. ' + PCAL.loadErr) + '</div>' : '';
-  v.innerHTML = '<div class="pc-main">' + (narrow ? '' : pcSideHtml(false)) + '<div class="pc-area" id="pcArea">' + pcBarHtml(narrow) + err
-    + '<div class="pc-body" id="pcBody"></div>'
-    + (narrow && PCAL.drawer ? '<div class="pc-drawer" id="pcDrawer" role="dialog" aria-label="과제 목록">' + pcSideHtml(true) + '</div>' : '') + '</div></div>';
+  //  껍데기(.pc-main 과 그 안의 스크롤 상자들)는 모양 열쇠가 같으면 그대로 두고 안만 바꾼다. 상자를 새로 만들면 scrollTop 이 0 에서 시작한다.
+  const shellKey = narrow ? 'n' : 'w';
+  const main0 = v.firstElementChild;
+  if(!main0 || !main0.classList.contains('pc-main') || main0.dataset.shell !== shellKey){
+    v.innerHTML = '<div class="pc-main" data-shell="' + shellKey + '">' + (narrow ? '' : pcSideHtml(false)) + '<div class="pc-area" id="pcArea">'
+      + '<div class="pc-body" id="pcBody"></div></div></div>';
+  }
+  //  서랍은 껍데기가 아니라 #pcArea 안의 형제 요소 하나다. 열고 닫을 때 이 요소만 붙이고 떼므로 #pcWScroll 은 그대로다.
+  { const dr0 = document.getElementById('pcDrawer');
+    if(narrow && PCAL.drawer){ if(!dr0) document.getElementById('pcBody').insertAdjacentHTML('afterend', '<div class="pc-drawer" id="pcDrawer" role="dialog" aria-label="과제 목록">' + pcSideHtml(true) + '</div>'); }
+    else if(dr0) dr0.remove(); }
+  v.querySelectorAll('.pc-side').forEach(sd => { sd.innerHTML = pcSideInner(sd.classList.contains('in-drawer')); });
+  const area = document.getElementById('pcArea');
+  area.querySelectorAll(':scope > .pc-bar1, :scope > .pc-bar2, :scope > .pc-err').forEach(x => x.remove());
+  document.getElementById('pcBody').insertAdjacentHTML('beforebegin', pcBarHtml(narrow) + err);
   { const r = v.querySelector('.pc-range'); if(r) fitTitleMinWidth(r, (/^(\d{4})/.exec(r.textContent || '') || [])[1]); }   // 제목 칸 최소 폭(월간과 주간이 같다)
-  v.querySelectorAll('.pc-list .pc-name[data-full]').forEach(catFitName);   // 긴 과제 이름: 두 줄까지, 넘치면 앞부분 … 끝 8자(내 과제 창과 같은 규칙)
+  { const rel = [...v.querySelectorAll('.pc-side .pc-list')].map(holdHeight);   // 이름 줄이기가 줄 수를 바꿔 가며 재는 동안 목록 높이를 잠가 스크롤 칸이 줄지 않게
+    v.querySelectorAll('.pc-list .pc-name[data-full]').forEach(catFitName); rel.forEach(f => f()); }   // 긴 과제 이름: 두 줄까지, 넘치면 앞부분 … 끝 8자(내 과제 창과 같은 규칙)
   const body = document.getElementById('pcBody');
   if(PCAL.view === 'week') pcRenderWeek(body); else pcRenderMonth(body);
   if(narrow && PCAL.drawer){ const b = document.getElementById('pcScope'), dr = document.getElementById('pcDrawer'); if(b && dr) dr.style.top = (b.offsetTop + b.offsetHeight + 6) + 'px'; }
@@ -23710,13 +23776,21 @@ function pcSideSelect(on){
 //  탭을 바꾼다: 목록만 다시 그리고(달력과 범위 읽기는 그대로) 과제 탭 설정에 기억한다. 포커스는 새 탭 단추로.
 function pcSideTabSet(t){
   t = t === 'watch' ? 'watch' : 'mine';
-  if(PCAL.side !== t){ PCAL.side = t; pcPrefsSave(); }
+  const changed = PCAL.side !== t;
+  if(changed){ PCAL.side = t; pcPrefsSave(); }
   pcRender();
+  //  목록 겉틀(.pc-side)은 다시 그려도 남아 스크롤 자리를 지킨다(docs/SCROLL-STABILITY.md). 다른 목록으로 바꿀 때만 맨 위에서 시작한다
+  if(changed) document.querySelectorAll('#pcView .pc-side').forEach(sd => { sd.scrollTop = 0; });
   const b = document.getElementById('pcStab-' + t); if(b) try{ b.focus({ preventScroll: true }); }catch(_){}
 }
 function pcSideHtml(inDrawer){
+  const tag = inDrawer ? 'div' : 'aside';
+  return '<' + tag + ' class="pc-side' + (inDrawer ? ' in-drawer' : '') + '" aria-label="과제 목록">' + pcSideInner(inDrawer) + '</' + tag + '>';
+}
+//  .pc-side 안쪽만(껍데기는 그대로 두고 이것만 갈아 끼운다, docs/SCROLL-STABILITY.md). 서랍이면 머리 줄 끝에 × (docs/MONTH-TODO-POPUP-CLOSE.md §2)
+function pcSideInner(inDrawer){
   const sel = new Set(PCAL.sel || []);
-  const tag = inDrawer ? 'div' : 'aside', tab = pcSideTab(), w = tab === 'watch';
+  const tab = pcSideTab(), w = tab === 'watch';
   const onOf = list => list.filter(p => !p.hidden && sel.has(p.projectUid)).length;
   const list = pcSideList(), read = list.filter(p => !p.hidden).length, on = onOf(list), n = pcVisible().length;
   const tabBtn = (t, label, ps) => {
@@ -23726,8 +23800,7 @@ function pcSideHtml(inDrawer){
       + label + '<i>' + a + '/' + b + '</i></button>';
   };
   const add = '<button type="button" class="pc-addw" data-act="watchAdd" data-fk="watchAdd" title="내 과제가 아닌 과제의 일정을 읽기만 합니다">＋ 관심 과제 추가</button>';
-  return '<' + tag + ' class="pc-side' + (inDrawer ? ' in-drawer' : '') + '" aria-label="과제 목록">'
-    + '<div class="pc-side-h"><b>과제</b><span class="pc-count">달력에 ' + n + '개</span>' + (inDrawer ? popXHtml() : '') + '</div>'
+  return '<div class="pc-side-h"><b>과제</b><span class="pc-count">달력에 ' + n + '개</span>' + (inDrawer ? popXHtml() : '') + '</div>'
     + '<div class="tabs pc-stabs" role="tablist" aria-label="과제 목록 종류">' + tabBtn('mine', '내 과제', PCAL.projects) + tabBtn('watch', '관심 과제', PCAL.watch) + '</div>'
     + '<div class="pc-side-btns"><button type="button" class="btn sm" data-act="selAll" data-fk="selAll"' + (on === read ? ' disabled' : '') + '>전체 선택</button>'
     + '<button type="button" class="btn sm" data-act="selNone" data-fk="selNone"' + (on === 0 ? ' disabled' : '') + '>전체 해제</button></div>'
@@ -23737,8 +23810,7 @@ function pcSideHtml(inDrawer){
     + (w ? add : '')
     + (PCAL.watchErr ? '<p class="pc-hint" role="status">' + esc('관심 과제 목록을 읽지 못했습니다. ' + PCAL.watchErr) + '</p>' : '')
     + '</div>'
-    + '<p class="pc-hint">체크하면 달력에 보이고, 해제하면 숨깁니다. 내 과제에서 빠지지 않습니다.</p>'
-    + '</' + tag + '>';
+    + '<p class="pc-hint">체크하면 달력에 보이고, 해제하면 숨깁니다. 내 과제에서 빠지지 않습니다.</p>';
 }
 function pcRangeLabel(){
   if(PCAL.view === 'month'){ const d = parseYmd(PCAL.anchor); return d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월'; }
@@ -23842,7 +23914,10 @@ function pcRenderWeek(body){
   const R = pcWeekRange(PCAL.anchor), today = todayYmd();
   const days = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(R.from, i));
   const ps = pcVisible(), order = pcOrder();
-  let h = '<div class="pc-wscroll" id="pcWScroll"><div class="pc-wtable" role="grid" aria-label="과제 주간 보기">';
+  //  스크롤 상자(#pcWScroll)는 한 번만 만들고 표만 갈아 끼운다(상자를 새로 만들면 scrollTop 이 0 이 된다).
+  let sc = body.firstElementChild;
+  if(!sc || sc.id !== 'pcWScroll'){ body.innerHTML = '<div class="pc-wscroll" id="pcWScroll"></div>'; sc = body.firstElementChild; }
+  let h = '<div class="pc-wtable" role="grid" aria-label="과제 주간 보기">';
   h += '<div class="pc-wcorner">과제</div><div class="pc-whdays">' + days.map(ds => {
     const d = parseYmd(ds), dw = d.getDay();
     return '<div class="' + calCellCls(ds, 'pc-whday', { today, sel: PCAL.anchor }) + (calTone(ds) ? ' ' + calTone(ds) : '') + '" data-hdate="' + ds + '">'
@@ -23860,8 +23935,8 @@ function pcRenderWeek(body){
     for(const it of L.items) h += pcEvHtml(it, 'w', 'grid-column:' + (it.c0 + 1) + ' / ' + (it.c1 + 2) + ';grid-row:' + (it.lane + 2));
     h += '</div>';
   }
-  h += '</div></div>';
-  body.innerHTML = h;
+  h += '</div>';
+  sc.innerHTML = h;
 }
 //  누른 날짜: 여러 날 막대도 누른 칸의 날짜(시작 달로 튀지 않게, loop-range-chip 과 같은 규칙).
 function pcClickedDate(btn, ev){
@@ -25157,6 +25232,7 @@ function showBootSkeleton(){ const s = document.getElementById('bootSkeleton'); 
 function hideBootSkeleton(){ const s = document.getElementById('bootSkeleton'); if(s) s.classList.add('hidden'); }
 
 /* ---------- 시작 ---------- */
+imeGuardInstall();        // 한글 조합 중 휠 확정(SCROLL-STABILITY 11절). 앱에서 부르는 곳은 여기 하나
 renderWeekdays();
 bind();
 setupModalA11y();

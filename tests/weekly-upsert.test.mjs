@@ -2,7 +2,7 @@
 //
 // 회사 사이트는 쓰지 않는다. 대신 세 겹으로 본다.
 //   A. C# 실행: widget/NetcusText.cs 를 **그대로** 작은 콘솔 프로그램과 함께 컴파일해 돌린다.
-//      고르기 규칙(NcPickSameWeek), 성공 문구(WeekModifyOkMsg), 수정 화면 확인 해석(NcParseModifyProbe)은
+//      고르기 규칙(NcPickSameWeek, 글 번호 NcModifyNo), 성공 문구(WeekModifyOkMsg), 수정 화면 확인 해석(NcParseModifyProbe)은
 //      JS 로 옮겨 적은 사본이 아니라 C# 이 실제로 돌려준 값으로 판정한다.
 //   B. jsdom 행동: A 에서 C# 이 만든 JS 문자열(GoModifyJs, WeekModifyFillJs, WeekModifyOverrideJs, WeekModifyProbeJs,
 //      ListPageMarkJs)을 가짜 수정 화면에서 그대로 실행한다. 가짜 화면은 회사 수정 화면의 **구조만** 따른다
@@ -73,16 +73,16 @@ namespace TaskCalendarWidget
                 var picks = new List<object>();
                 foreach (var c in root.GetProperty("picks").EnumerateArray())
                 {
-                    var items = new List<(string, string, bool)>();
-                    foreach (var it in c.GetProperty("items").EnumerateArray()) items.Add((it[0].GetString() ?? "", it[1].GetString() ?? "", it[2].GetBoolean()));
-                    string v = NcPickSameWeek(items, c.GetProperty("sdate").GetString() ?? "", c.GetProperty("edate").GetString() ?? "", out int m, out int lk);
-                    picks.Add(new { viewNo = v, matches = m, locked = lk });
+                    var items = new List<(string, string, string)>();
+                    foreach (var it in c.GetProperty("items").EnumerateArray()) items.Add((it[0].GetString() ?? "", it[1].GetString() ?? "", it[2].GetString() ?? ""));
+                    var (sq, no) = NcPickSameWeek(items, c.GetProperty("sdate").GetString() ?? "", c.GetProperty("edate").GetString() ?? "", out int m, out int lk);
+                    picks.Add(new { seq = sq, no, matches = m, locked = lk });
                 }
                 o["picks"] = picks;
                 var js = root.GetProperty("js");
                 string S(string k) => js.GetProperty(k).GetString() ?? "";
-                o["goModify"] = GoModifyJs(S("viewNo"), S("id"));
-                o["override"] = WeekModifyOverrideJs(S("viewNo"), S("id"));
+                o["goModify"] = GoModifyJs(S("postNo"), S("id"));
+                o["override"] = WeekModifyOverrideJs(S("postNo"), S("id"));
                 o["fill"] = WeekModifyFillJs(S("endwork"), S("content"), S("planwork"));
                 o["fill4"] = WeekModifyFillJs(S("endwork"), S("content"), S("planwork"), S("resultwork"));   // 회의내용까지(결정 13)
                 o["okMsgMeet"] = WeekModifyOkMsg(1, true);
@@ -94,6 +94,11 @@ namespace TaskCalendarWidget
                 foreach (var n in root.GetProperty("msgs").EnumerateArray()) msgs.Add(WeekModifyOkMsg(n.GetInt32()));
                 o["okMsgs"] = msgs;
                 o["failMsg"] = WeekLookupFailMsg;
+                o["viewMismatchMsg"] = WeekViewMismatchMsg;
+                o["modifyBlankMsg"] = WeekModifyBlankMsg;
+                var modNos = new List<string>();
+                foreach (var r in root.GetProperty("modNos").EnumerateArray()) modNos.Add(NcModifyNo(r.ValueKind == JsonValueKind.Null ? null : r.GetString()));
+                o["modNos"] = modNos;
                 var parsed = new List<object>();
                 foreach (var r in root.GetProperty("probeRaw").EnumerateArray())
                 {
@@ -169,6 +174,7 @@ function runProbe(input, kind = 'real', mutatedText = null) {
 
 // 시험 입력(지어낸 값). 기간 P 는 2026-09-28(월) ~ 2026-10-03(토).
 const SD = '2026-09-28', ED = '2026-10-03', P = '2026-09-28 ~ 2026-10-03';
+const POST_NO = '70001';   // 보기 화면 수정 단추의 글 번호(지어낸 값). 목록 순번(1 ~ 9)과 다르다
 const USER_ID = 'tester+01';   // encodeURIComponent 를 실제로 거치는지 보려고 '+' 를 넣었다
 const NEW = {
   endwork: "[가상과제A]\n1. 구현\n    - 따옴표 ' \" 와 역슬래시 \\ 와 </script> 확인\n\n[가상과제B]\n    - 회의",
@@ -177,25 +183,31 @@ const NEW = {
 };
 //  회의내용(resultwork, 결정 13). 근태 탭 주간 편집만 싣는다(보고서 창의 옛 전송은 회의내용을 건드리지 않는다).
 const NEW_MEET = '- 가상 주간회의\n    - 따옴표 \' 확인';
+//  items = [목록 순번, 기간, 보기 화면 수정 단추의 글 번호]. 목록 순번은 최신이 1 이라 글 번호와 거꾸로다(2026-11-05 결함: 순번을 글 번호로 썼다).
 const PICKS = [
-  { name: '하나가 기간이 정확히 같다', items: [['101', P]], sdate: SD, edate: ED, want: { viewNo: '101', matches: 1 } },
-  { name: '시작만 같다(끝이 다르다)', items: [['101', '2026-09-28 ~ 2026-10-04']], sdate: SD, edate: ED, want: { viewNo: '', matches: 0 } },
-  { name: '끝만 같다(시작이 다르다)', items: [['101', '2026-09-27 ~ 2026-10-03']], sdate: SD, edate: ED, want: { viewNo: '', matches: 0 } },
-  { name: '여러 개면 글 번호가 가장 큰 글(문자열 순서가 아니라 수)', items: [['99', P], ['205', P], ['1000', P], ['3000', '2026-10-05 ~ 2026-10-10']], sdate: SD, edate: ED, want: { viewNo: '1000', matches: 3 } },
-  { name: '기간을 못 읽은 글은 같은 글로 보지 않는다', items: [['500', '기간 미정'], ['501', ''], ['502', '2026-09-28'], ['503', '2026-13-40 ~ 2026-10-03']], sdate: SD, edate: ED, want: { viewNo: '', matches: 0 } },
-  { name: '구분자 모양이 달라도 날짜가 같으면 같은 글(/, 붙여 쓴 ~, ∼)', items: [['601', '2026/09/28 ~ 2026/10/03'], ['602', '2026-09-28~2026-10-03'], ['603', '2026.9.28 ∼ 2026.10.3']], sdate: SD, edate: ED, want: { viewNo: '603', matches: 3 } },
-  { name: '글 번호를 못 읽은 글은 고르지 않는다', items: [['abc', P], ['0', P]], sdate: SD, edate: ED, want: { viewNo: '', matches: 0 } },
-  { name: '요청 기간을 못 읽으면 아무것도 고르지 않는다', items: [['101', P]], sdate: '이번 주', edate: ED, want: { viewNo: '', matches: 0 } },
-  { name: '후보가 없으면 없다', items: [], sdate: SD, edate: ED, want: { viewNo: '', matches: 0 } },
-  //  2026-10-08 검토 2: 수정 단추가 없는 글(내가 고칠 수 없는 글)은 기간이 같아도 고르지 않는다.
-  { name: '수정 단추가 없는 글은 기간이 같아도 고르지 않는다(번호가 더 커도)', items: [['300', P, false], ['120', P]], sdate: SD, edate: ED, want: { viewNo: '120', matches: 1, locked: 1 } },
-  { name: '같은 기간 글이 모두 수정 단추가 없으면 없다', items: [['300', P, false]], sdate: SD, edate: ED, want: { viewNo: '', matches: 0, locked: 1 } },
+  { name: '하나가 기간이 정확히 같다', items: [['1', P, '39438']], sdate: SD, edate: ED, want: { seq: '1', no: '39438', matches: 1 } },
+  { name: '시작만 같다(끝이 다르다)', items: [['1', '2026-09-28 ~ 2026-10-04', '39438']], sdate: SD, edate: ED, want: { seq: '', no: '', matches: 0 } },
+  { name: '끝만 같다(시작이 다르다)', items: [['1', '2026-09-27 ~ 2026-10-03', '39438']], sdate: SD, edate: ED, want: { seq: '', no: '', matches: 0 } },
+  { name: '여러 개면 글 번호가 가장 큰 글(순번이 큰 글이 아니다: 목록은 최신이 1)', items: [['3', P, '39100'], ['1', P, '39438'], ['2', P, '39300'], ['4', '2026-10-05 ~ 2026-10-10', '39999']], sdate: SD, edate: ED, want: { seq: '1', no: '39438', matches: 3 } },
+  { name: '글 번호는 문자열 순서가 아니라 수로 비교한다', items: [['1', P, '999'], ['2', P, '20500'], ['3', P, '100000']], sdate: SD, edate: ED, want: { seq: '3', no: '100000', matches: 3 } },
+  { name: '기간을 못 읽은 글은 같은 글로 보지 않는다', items: [['5', '기간 미정', '40001'], ['6', '', '40002'], ['7', '2026-09-28', '40003'], ['8', '2026-13-40 ~ 2026-10-03', '40004']], sdate: SD, edate: ED, want: { seq: '', no: '', matches: 0 } },
+  { name: '구분자 모양이 달라도 날짜가 같으면 같은 글(/, 붙여 쓴 ~, ∼)', items: [['4', '2026/09/28 ~ 2026/10/03', '70001'], ['5', '2026-09-28~2026-10-03', '70003'], ['6', '2026.9.28 ∼ 2026.10.3', '70002']], sdate: SD, edate: ED, want: { seq: '5', no: '70003', matches: 3 } },
+  { name: '글 번호를 못 뽑은 글(빈 값, 글자, 0)은 기간이 같아도 고르지 않고 locked 로 센다', items: [['1', P, ''], ['2', P, 'abc'], ['3', P, '0']], sdate: SD, edate: ED, want: { seq: '', no: '', matches: 0, locked: 3 } },
+  { name: '순번을 못 읽은 글은 고르지 않는다', items: [['abc', P, '39438'], ['0', P, '39438']], sdate: SD, edate: ED, want: { seq: '', no: '', matches: 0 } },
+  { name: '요청 기간을 못 읽으면 아무것도 고르지 않는다', items: [['1', P, '39438']], sdate: '이번 주', edate: ED, want: { seq: '', no: '', matches: 0 } },
+  { name: '후보가 없으면 없다', items: [], sdate: SD, edate: ED, want: { seq: '', no: '', matches: 0 } },
+  //  글 번호가 없는 글(내가 고칠 수 없는 글)은 기간이 같아도 고르지 않는다(2026-10-08 검토 2).
+  { name: '글 번호가 없는 글은 기간이 같아도 고르지 않는다(순번이 커도)', items: [['900', P, ''], ['2', P, '39100']], sdate: SD, edate: ED, want: { seq: '2', no: '39100', matches: 1, locked: 1 } },
+  { name: '같은 기간 글이 모두 글 번호가 없으면 없다', items: [['3', P, '']], sdate: SD, edate: ED, want: { seq: '', no: '', matches: 0, locked: 1 } },
+  { name: '같은 글 번호가 두 번 나오면 한 건으로 센다', items: [['1', P, '39438'], ['2', P, '39438']], sdate: SD, edate: ED, want: { seq: '1', no: '39438', matches: 1 } },
+  { name: '앞 0 이 붙은 글 번호는 뗀다', items: [['1', P, '039438']], sdate: SD, edate: ED, want: { seq: '1', no: '39438', matches: 1 } },
 ];
 const pickWant = (c) => ({ locked: 0, ...c.want });
 const PROBE_RAW_STATIC = [null, 'null', '"not json"', JSON.stringify(JSON.stringify({ sd: SD, ed: ED, wd: '2026/10/02 17:50' }))];
 const BASE_INPUT = {
-  picks: PICKS.map(({ items, sdate, edate }) => ({ items: items.map((it) => (it.length === 3 ? it : [...it, true])), sdate, edate })),
-  js: { viewNo: '101', id: USER_ID, ...NEW, resultwork: NEW_MEET },
+  picks: PICKS.map(({ items, sdate, edate }) => ({ items, sdate, edate })),
+  js: { postNo: POST_NO, id: USER_ID, ...NEW, resultwork: NEW_MEET },
+  modNos: ['39438', '039438', '', '0', '000', '12a', ' 1 ', '1234567890123456789', '123456789012345678', null],
   msgs: [1, 2, 3],
   probeRaw: PROBE_RAW_STATIC,
 };
@@ -242,6 +254,26 @@ const PAGE_SCRIPT = `function Bmodify(iscompletion){
   F.action='pjm_modify.jsp?go=write&table=report_tbl&view_no=101&id=tester+01';
   F.submit();
 }`;
+//  회사 보기 화면(pjm_view.jsp)의 구조: 빈 <form name="form"> 과 그 밖 형제 숨은 칸 여섯, 라벨 표, "현재 1 / 총 9 건" 줄과 go_view("2") 링크(목록 순번),
+//  버튼 줄(수정 mo, 답장 re, 출력 pr, 제출 report). go_delete 함수만 남아 있고 삭제 단추는 없다. 이름, 번호, 내용은 전부 지어낸 것이다.
+const viewFixture = (btns) => `<!DOCTYPE html><html><head><meta charset="utf-8"><title>가짜 보기 화면</title></head><body>
+<table><tr><td>
+<form name="form" method="post"></form>
+<input type="hidden" name="word_code" value=""><input type="hidden" name="n_code" value=""><input type="hidden" name="s_code" value="">
+<input type="hidden" name="c_code" value=""><input type="hidden" name="table_code" value="report_tbl"><input type="hidden" name="id" value="tester+01">
+<div>현재 1 / 총 9 건 <a href='javascript:go_view("2")'>다음</a></div>
+<table>
+<tr><td><div>기간</div></td><td>${P}</td></tr>
+<tr><td><div>제목</div></td><td>가상 주간보고 제목</td></tr>
+<tr><td><div>작성일</div></td><td>2026/10/02 17:50</td></tr>
+<tr><td><div>진행사항</div></td><td>[가상과제A] 진행</td></tr>
+<tr><td><div>과제투입시간</div></td><td>[가상과제A] : 8</td></tr>
+<tr><td><div>차주계획</div></td><td>가상 계획</td></tr>
+</table>
+${btns}
+</td></tr></table>
+<script>function go_modify(loc){document.form.action='pjm_modify.jsp?list=go&start=1&view_no='+loc;document.form.submit();}function go_delete(loc){}</script>
+</body></html>`;
 const LIST_FIXTURE = `<!DOCTYPE html><html><body><table><tr><td><form name="form" method="post"></form>
 <input type="hidden" name="table_code" value="report_tbl"><input type="hidden" name="id" value="tester+01">
 </td></tr></table></body></html>`;
@@ -277,7 +309,7 @@ const expectedFields = (iscompletion, v, html = false) => [
   ['sdate', v.sdate], ['edate', v.edate], ['subject', v.subject], ...(html ? [['html', 'Y']] : []), ['opt', 'a'],
   ['endwork', v.endwork], ['content', v.content], ['notendwork', v.notendwork], ['planwork', v.planwork], ['problem', v.problem], ['resultwork', v.resultwork]];
 const EXPECTED_NAMES = 'ndate,wdate,iscompletion,seq_key,sdate,edate,subject,opt,endwork,content,notendwork,planwork,problem,resultwork';
-const MODIFY_ACTION = 'pjm_modify.jsp?go=write&table=report_tbl&view_no=101&id=' + encodeURIComponent(USER_ID);
+const MODIFY_ACTION = 'pjm_modify.jsp?go=write&table=report_tbl&view_no=' + POST_NO + '&id=' + encodeURIComponent(USER_ID);
 
 // ══ 등록 ════════════════════════════════════════════════════════════════
 if (!dotnetOk) {
@@ -312,29 +344,46 @@ if (!dotnetOk) {
     assert.strictEqual(base().failMsg, '기존 주간보고를 확인하지 못했습니다. 다시 시도하세요.');
   });
 
+  test('주간 고치기 A15: 글 번호 정리(C# NcModifyNo)는 1 ~ 18자리 양수 숫자만 앞 0 을 떼어 돌려주고 나머지는 빈 문자열이다', () => {
+    assert.deepStrictEqual(base().modNos, ['39438', '39438', '', '', '', '', '', '', '123456789012345678', '']);
+  });
+
+  test('주간 고치기 A16: 새 실패 문구(C#)는 원문 그대로이고 "주간보고 " 로 시작하지 않으며 금지 기호가 없다', () => {
+    const { viewMismatchMsg: a, modifyBlankMsg: b } = base();
+    assert.strictEqual(a, '고를 기존 글이 목록에서 바뀌어 채우지 않았습니다. 다시 시도하세요.');
+    assert.strictEqual(b, '기존 글의 수정 화면이 비어 있어 채우지 않았습니다. 회사 화면에서 글을 확인한 뒤 다시 시도하세요.');
+    for (const m of [a, b]) {
+      assert.ok(!/^주간보고 /.test(m), `실패 문구가 "주간보고 " 로 시작한다(성공 회신으로 오인된다): ${m}`);
+      assert.ok(!/[—–「」]| · /.test(m), `새 문구에 금지 기호가 있다: ${m}`);
+    }
+  });
+
   test('주간 고치기 A12: 수정 화면 확인 해석(C#)은 칸이 없거나 못 읽으면 false, 읽으면 sd, ed, wd', () => {
     const p = base().parsed;
     assert.deepStrictEqual(p.slice(0, 3).map((x) => x.ok), [false, false, false]);
     assert.deepStrictEqual(p[3], { ok: true, sd: SD, ed: ED, wd: '2026/10/02 17:50' });
   });
 
-  test('주간 고치기 A13(변이): NetcusText.cs 사본에서 고르기를 "가장 작은 번호" 로, 기간 비교를 시작만으로 바꾸면 A 판정이 달라진다', () => {
+  test('주간 고치기 A13(변이): NetcusText.cs 사본에서 고르기를 "가장 큰 순번" 이나 "가장 작은 번호" 로, 기간 비교를 시작만으로 바꾸면 A 판정이 달라진다', () => {
     //  A 묶음이 정말 C# 출력으로 판정한다는 증거. 사본을 컴파일해 같은 입력을 넣고, 기대값과 어긋나는지 본다.
-    let mut = mutate(txt, 'if (n > bestNo) { bestNo = n;', 'if (bestNo == 0 || n < bestNo) { bestNo = n;');
+    let mut = mutate(txt, 'if (n > best) { best = n;', 'if (best == 0 || n < best) { best = n;');
     mut = mutate(mut, '|| a != ds || b != de) continue;', '|| a != ds) continue;');
     const out = runProbe(BASE_INPUT, 'mut', mut);
+    //  가장 큰 순번(2026-11-05 결함: 순번을 글 번호처럼 비교하면 같은 기간 글 중 가장 오래된 글을 고른다).
+    const seqMut = runProbe(BASE_INPUT, 'mut-seq', mutate(txt, 'if (n > best) { best = n;', 'if (s > best) { best = s;'));
+    assert.notDeepStrictEqual(seqMut.picks[PICKS.findIndex((c) => /가장 큰 글/.test(c.name))], pickWant(PICKS.find((c) => /가장 큰 글/.test(c.name))), '가장 큰 순번을 고르는 변이를 A 가 못 잡는다');
     const i4 = PICKS.findIndex((c) => /가장 큰 글/.test(c.name)), i2 = PICKS.findIndex((c) => /시작만 같다/.test(c.name));
     assert.notDeepStrictEqual(out.picks[i4], pickWant(PICKS[i4]), '가장 작은 번호를 고르는 변이를 A 가 못 잡는다');
     assert.notDeepStrictEqual(out.picks[i2], pickWant(PICKS[i2]), '시작만 비교하는 변이를 A 가 못 잡는다');
     assert.deepStrictEqual(base().picks[i4], pickWant(PICKS[i4]), '원본 C# 의 판정이 흔들렸다');
   });
 
-  test('주간 고치기 A14(변이): NetcusText.cs 사본에서 수정 단추 검사를 빼면 남의 글(수정 단추 없음)을 고른다', () => {
-    const mut = mutate(txt, 'if (!canModify) { locked++; continue; }', '');
+  test('주간 고치기 A14(변이): NetcusText.cs 사본에서 글 번호 검사를 빼면 남의 글(글 번호 없음)을 고른다', () => {
+    const mut = mutate(txt, 'if (no.Length == 0) { locked++; continue; }', 'if (no.Length == 0) { locked++; no = "99999999"; }');
     const out = runProbe(BASE_INPUT, 'mut-mod', mut);
-    const k = PICKS.findIndex((c) => /수정 단추가 없는 글은 기간이 같아도/.test(c.name));
-    assert.notDeepStrictEqual(out.picks[k], pickWant(PICKS[k]), '수정 단추 검사를 뺀 변이를 A 가 못 잡는다');
-    assert.strictEqual(out.picks[k].viewNo, '300', '변이 사본은 수정 단추 없는 300 을 골라야 한다(변이가 효과를 못 냈다)');
+    const k = PICKS.findIndex((c) => /글 번호가 없는 글은 기간이 같아도/.test(c.name));
+    assert.notDeepStrictEqual(out.picks[k], pickWant(PICKS[k]), '글 번호 검사를 뺀 변이를 A 가 못 잡는다');
+    assert.strictEqual(out.picks[k].seq, '900', '변이 사본은 글 번호 없는 900 을 골라야 한다(변이가 효과를 못 냈다)');
   });
 
   // ── B. jsdom 행동(C# 이 만든 JS 를 그대로 실행) ──
@@ -476,12 +525,17 @@ if (!dotnetOk) {
       assert.ok(page(MODIFY_FIXTURE, "function Bmodify(x){document.forms['form'].submit();}").run(base().override).startsWith('ok sig=0 '));
     });
 
-    test('주간 고치기 B8: GoModifyJs 는 pjm_modify.jsp?list=go&start=1&view_no=<n> 로 숨은 칸을 실어 POST 한다', () => {
+    test('주간 고치기 B8: GoModifyJs 는 pjm_modify.jsp?list=go&start=1&view_no=<글 번호> 로 숨은 칸을 실어 POST 하고, 대체 Bmodify 도 같은 글 번호를 쓴다', () => {
+      //  글 번호는 보기 화면 수정 단추의 번호(70001)다. 목록 순번(1)이 아니다.
+      const PB = page();
+      PB.run(base().override);
+      PB.run("Bmodify('n')");
+      assert.strictEqual(PB.log.sent[0].action, 'pjm_modify.jsp?go=write&table=report_tbl&view_no=70001&id=' + encodeURIComponent(USER_ID), '대체 Bmodify 가 글 번호를 쓰지 않는다');
       const P8 = page(LIST_FIXTURE, '');
       assert.strictEqual(P8.run(base().goModify), 'ok');
       assert.strictEqual(P8.log.sent.length, 1);
       const s = P8.log.sent[0];
-      assert.strictEqual(s.action, 'pjm_modify.jsp?list=go&start=1&view_no=101');
+      assert.strictEqual(s.action, 'pjm_modify.jsp?list=go&start=1&view_no=70001');
       assert.strictEqual(s.method, 'post');
       assert.deepStrictEqual(s.fields, [['word_code', ''], ['n_code', ''], ['s_code', ''], ['c_code', ''], ['table_code', 'report_tbl'], ['id', USER_ID]]);
     });
@@ -506,12 +560,33 @@ if (!dotnetOk) {
       assert.strictEqual(page(BLANK_FIXTURE, '').run(base().listMarkJs), false);
     });
 
-    test('주간 고치기 B11: 보기 화면 추출의 수정 단추 표지(mod)는 go_modify 단추, 링크, input[name=mo] 가 있을 때만 "1" 이다', () => {
-      const V = (inner) => JSON.parse(page('<!DOCTYPE html><html><body><table><tr><td><div>기간</div></td><td>' + P + '</td></tr></table>' + inner + '</body></html>', '').run(base().cellJs)).mod;
-      assert.strictEqual(V('<input type="button" value="수정" onclick="go_modify(101)">'), '1');
-      assert.strictEqual(V('<a href="javascript:go_modify(101)">수정</a>'), '1');
-      assert.strictEqual(V('<input type="hidden" name="mo" value="1">'), '1');
-      assert.strictEqual(V('<input type="button" value="목록" onclick="go_list(1)">'), '', '수정 단추가 없는 글(남의 글)에 표지가 섰다');
+    test('주간 고치기 B11: 보기 화면 추출의 글 번호(modNo)는 수정 단추(go_modify)에서만 뽑고, 못 뽑거나 번호가 둘이면 빈 문자열이다', () => {
+      const cell = (html) => JSON.parse(page(html, '').run(base().cellJs));
+      const mo = (n) => `<input type="button" name="mo" value="수정" onclick="javascript:go_modify('${n}')">`;
+      const others = `<input type="button" name="re" value="답장" onclick="javascript:go_javascript:go_reply('70001','70000','0','0')"> <input type="button" name="pr" value="출력" onclick="javascript:go_print('70001')">`;
+      const report = '<input type="button" name="report" value="제출" onclick="javascript:go_end(\'70001\')">';
+      //  기본 화면: 수정, 답장, 출력, 제출 단추. 답장, 출력, 제출 번호는 글 번호 후보가 아니다(수정 단추만 본다).
+      const full = cell(viewFixture(mo('70001') + ' ' + others + ' ' + report));
+      assert.strictEqual(full.modNo, POST_NO);
+      assert.strictEqual(full.mod, undefined, '옛 표지(mod)가 남아 있다');
+      //  제출된 글이면 제출 단추가 없을 수 있다. 수정 단추(mo)가 내 글 표지다.
+      assert.strictEqual(cell(viewFixture(mo('70001') + ' ' + others)).modNo, POST_NO, '제출 단추가 없다고 글 번호를 못 뽑는다');
+      //  수정 단추가 없는 글(남의 글)은 번호가 없다.
+      assert.strictEqual(cell(viewFixture(others)).modNo, '', '수정 단추가 없는 글(남의 글)에서 번호를 뽑았다');
+      //  링크형 go_modify.
+      assert.strictEqual(cell(viewFixture('<a href="javascript:go_modify(70001)">수정</a>')).modNo, POST_NO);
+      assert.strictEqual(cell(viewFixture('<a href="#" onclick="go_modify(\'70001\');return false;">수정</a>')).modNo, POST_NO);
+      //  onclick 이 없는 mo 단추는 번호를 못 뽑는다.
+      assert.strictEqual(cell(viewFixture('<input type="hidden" name="mo" value="1">')).modNo, '');
+      assert.strictEqual(cell(viewFixture('<input type="button" name="mo" value="수정">')).modNo, '');
+      //  같은 번호가 여러 곳(단추와 링크)이면 그 번호, 서로 다른 번호가 둘 이상이면 어느 글인지 알 수 없어 빈 문자열.
+      assert.strictEqual(cell(viewFixture(mo('70001') + ' <a href="javascript:go_modify(70001)">수정</a>')).modNo, POST_NO);
+      assert.strictEqual(cell(viewFixture(mo('70001') + ' <a href="javascript:go_modify(70002)">수정</a>')).modNo, '', '서로 다른 번호가 둘인데 하나를 골랐다');
+      assert.strictEqual(cell(viewFixture(mo('70001') + ' ' + mo('70002'))).modNo, '');
+      //  목록 순번(go_view)과 이전, 다음 링크의 번호는 글 번호가 아니다.
+      assert.strictEqual(cell(viewFixture('<input type="button" value="목록" onclick="go_list(1)">')).modNo, '');
+      //  C# 이 이 값을 그대로 NcModifyNo 로 정리한다(앞 0, 글자는 거른다).
+      assert.strictEqual(cell(viewFixture(mo('039438'))).modNo, '039438');
     });
 
     test('주간 고치기 B12: 채우기 전 원래 길이 JS 는 네 칸(회의내용 포함, 결정 13)의 글자 수(숫자)만 돌려준다(내용은 싣지 않는다)', () => {
@@ -560,10 +635,12 @@ const checks = {
     assert.ok(f.includes('end.EmptyPage > 0 && await cw.ExecuteScriptAsync(ListPageMarkJs) != "true"'), '행 0 일 때 빈 목록과 못 읽은 목록을 가르지 않는다');
     assert.ok(/if \(res\.ViewNo\.Length == 0 && \(end\.Capped \|\| !finished\)\)/.test(f), '상한에 닿았는데 못 찾은 것을 "없음" 으로 읽는다');
     assert.ok(f.includes('bool finished = end.AllOlder || end.NoProgress || end.EmptyPage > 0;'), '"창 끝까지 봤다" 의 정의가 바뀌었다(페이지 상한에 닿았는데 못 찾은 것을 "없음" 으로 읽게 된다)');
-    assert.ok(f.includes('found.Add((viewNo, cell.period, cell.mod == "1"));'), '수정 단추 표지(cell.mod)를 고르기에 넘기지 않는다(남의 글을 고를 수 있다)');
-    assert.ok(f.includes('NcPickSameWeek(found, sdate, edate, out int matches, out locked)'), '고르기가 수정 단추 없는 글 수(locked)를 돌려받지 않는다');
+    assert.ok(f.includes('found.Add((viewNo, cell.period, cell.modNo));'), '보기 화면의 글 번호(cell.modNo)를 고르기에 넘기지 않는다(목록 순번으로 고르게 된다)');
+    assert.ok(f.includes('NcPickSameWeek(found, sdate, edate, out int matches, out locked)'), '고르기가 글 번호 없는 글 수(locked)를 돌려받지 않는다');
+    assert.ok(f.includes('(res.ViewNo, res.ModifyNo) = NcPickSameWeek('), '고르기가 순번과 글 번호를 둘 다 res 에 담지 않는다(res.ModifyNo 가 없다)');
+    assert.ok(/if \(!res\.Ok \|\| res\.ViewNo\.Length == 0 \|\| res\.ModifyNo\.Length == 0\) \{ res\.ViewNo = ""; res\.ModifyNo = ""; \}/.test(f), '실패나 번호 하나라도 빔이면 둘 다 비우지 않는다');
+    assert.ok(f.includes('고를 글 순번={res.ViewNo}, 글 번호={res.ModifyNo}'), '찾기 로그에 순번과 글 번호를 남기지 않는다');
     assert.ok(f.includes('res.Ok = why.Length == 0;'), '실패 사유가 Ok 를 정하지 않는다');
-    assert.ok(f.includes('res.ViewNo = NcPickSameWeek('), '고르기가 공용 순수 함수(NcPickSameWeek)가 아니다');
   },
 
   //  C3. 수정 경로의 성공 문구는 "주간보고 " 로 시작하는 WeekModifyOkMsg 다(웹이 이 머리로 주간 회신을 가른다).
@@ -610,7 +687,7 @@ const checks = {
   //  C6. 안전판(Bmodify 대체)을 채우기 전에 끼우고, 못 끼우면 창을 닫고 멈춘다(원래 Bmodify 는 빈 폼으로 기존 글을 덮을 수 있다).
   overrideBeforeFill(cs) {
     const om = openModify(cs);
-    const ov = om.indexOf('WeekModifyOverrideJs(hit.ViewNo, id)');
+    const ov = om.indexOf('WeekModifyOverrideJs(hit.ModifyNo, id)');
     const fill = om.indexOf('WeekModifyFillJs(');
     assert.ok(ov > 0 && fill > ov, 'Bmodify 안전판을 채우기 뒤에 끼운다(또는 없다)');
     const g = om.indexOf('if (!ovr.StartsWith("ok", StringComparison.Ordinal))');
@@ -685,6 +762,44 @@ const checks = {
     assert.ok(f.includes('n => NetcusStatus("weekfill", "checking", n, -1)'), '찾는 동안 진행 상태(weekfill checking)를 내지 않는다');
   },
 
+  //  C12. 수정 화면과 안전판에는 진짜 글 번호(hit.ModifyNo)를 넘긴다. 목록 순번(hit.ViewNo)을 넘기면 없는 글의 빈 수정 화면이 열린다(2026-11-05).
+  modifyUsesPostNo(cs) {
+    const om = openModify(cs);
+    assert.ok(om.includes('GoModifyJs(hit.ModifyNo, id)'), 'GoModifyJs 에 진짜 글 번호(hit.ModifyNo)를 넘기지 않는다');
+    assert.ok(om.includes('WeekModifyOverrideJs(hit.ModifyNo, id)'), 'WeekModifyOverrideJs 에 진짜 글 번호(hit.ModifyNo)를 넘기지 않는다');
+    assert.ok(!om.includes('GoModifyJs(hit.ViewNo') && !om.includes('WeekModifyOverrideJs(hit.ViewNo'), '수정 화면이나 안전판에 목록 순번(hit.ViewNo)을 넘긴다(다른 글, 없는 글이 열린다)');
+    assert.ok(om.includes('GoViewJs(hit.ViewNo, id)'), '보기 화면은 목록 순번(hit.ViewNo)으로 열어야 한다(go_view 의 번호)');
+  },
+
+  //  C13. 수정 화면의 기간이 비었으면(잘못 열린 화면) 안전판과 채우기보다 먼저 창을 닫고 멈춘다.
+  blankPeriodStops(cs) {
+    const om = openModify(cs);
+    const at = om.indexOf('!NcDate(msd');
+    assert.ok(at > 0, '수정 화면의 빈 기간 검사(!NcDate(msd ...)를 찾지 못했다');
+    const ov = om.indexOf('WeekModifyOverrideJs('), fill = om.indexOf('WeekModifyFillJs(');
+    assert.ok(at < ov && at < fill, '빈 기간 검사가 안전판이나 채우기보다 뒤에 있다');
+    const b = braceSlice(om, at);
+    assert.ok(/_w2win\?\.Close\(\)/.test(b), '기간이 비었는데 창을 닫지 않는다');
+    assert.ok(b.includes('WeekModifyBlankMsg'), '기간이 비었는데 전용 문구(WeekModifyBlankMsg)를 내지 않는다');
+    assert.ok(/\breturn;/.test(b), '기간이 비었는데 멈추지 않는다(빈 화면을 채운다)');
+    assert.ok(/NetcusResult\(false, WeekModifyBlankMsg\)/.test(b), '기간이 비었을 때 실패(false)로 알리지 않는다');
+  },
+
+  //  C14. 보기 화면을 연 뒤, 수정 화면으로 가기 전(자동수락 detach 전)에 보기 화면의 글 번호를 다시 읽어 찾을 때의 번호와 맞춘다.
+  viewMatchesPostNo(cs) {
+    const om = openModify(cs);
+    const g = om.indexOf('GoViewJs(hit.ViewNo, id)'), d = om.indexOf('detach?.Invoke(); detach = null;');
+    assert.ok(g > 0 && d > g, '보기 화면 열기와 detach 순서를 찾지 못했다');
+    const seg = om.slice(g, d);
+    assert.ok(seg.includes('CellExtractJs'), '보기 화면을 연 뒤 글 번호를 다시 읽지 않는다');
+    assert.ok(seg.includes('!= hit.ModifyNo'), '다시 읽은 글 번호를 찾을 때의 번호(hit.ModifyNo)와 비교하지 않는다');
+    const at = seg.indexOf('!= hit.ModifyNo');
+    const blk = braceSlice(seg, at);
+    assert.ok(blk.includes('WeekViewMismatchMsg') && /\breturn;/.test(blk), '번호가 다른데 전용 문구로 알리고 멈추지 않는다');
+    assert.ok(/_w2win\?\.Close\(\)/.test(blk), '번호가 다른데 창을 닫지 않는다');
+    assert.ok(blk.includes('보기 화면 글 번호 불일치'), '번호 불일치를 로그로 남기지 않는다');
+  },
+
   //  C9. 새로 보이는 문구(호스트가 웹으로 보내는 문구)에 엠 대시, en 대시, 낫표, 가운데 점 구분자가 없다.
   newCopyPunct(cs, text) {
     const om = openModify(cs);
@@ -695,8 +810,13 @@ const checks = {
     const fail = /internal const string WeekLookupFailMsg = "([^"]*)";/.exec(text);
     assert.ok(fail, 'WeekLookupFailMsg 를 찾지 못했다');
     lits.push(fail[1]);
+    for (const k of ['WeekViewMismatchMsg', 'WeekModifyBlankMsg']) {
+      const m = new RegExp(`internal const string ${k} = "([^"]*)";`).exec(text);
+      assert.ok(m, `${k} 를 찾지 못했다`);
+      lits.push(m[1]);
+    }
     for (const m of extractCsMember(text, 'internal static string WeekModifyOkMsg(').matchAll(/"([^"]*)"/g)) lits.push(m[1]);
-    assert.ok(lits.length >= 8, `문구를 충분히 찾지 못했다(${lits.length}). 판정 불가`);
+    assert.ok(lits.length >= 10, `문구를 충분히 찾지 못했다(${lits.length}). 판정 불가`);
     for (const s of lits) assert.ok(!/[—–「」]| · /.test(s), `새 문구에 엠 대시, en 대시, 낫표, 가운데 점 구분자가 있다: ${s}`);
   },
 };
@@ -712,6 +832,9 @@ test('주간 고치기 C8: 같은 기간 글 찾기의 창은 sdate-7 ~ edate+14
 test('주간 고치기 C9: 새 문구에 엠 대시, en 대시, 낫표, 가운데 점 구분자가 없다', () => checks.newCopyPunct(svc, txt));
 test('주간 고치기 C10: 채우기 전에 세 칸의 원래 길이(내용 아님)를 로그로 남긴다', () => checks.origLenLogged(svc));
 test('주간 고치기 C11: 수정 화면 확인 실패 때도 창을 닫고 멈춘다', () => checks.probeFailClosesWindow(svc));
+test('주간 고치기 C12: 수정 화면과 안전판에는 진짜 글 번호(hit.ModifyNo)를 넘기고 목록 순번(hit.ViewNo)은 보기 화면에만 쓴다', () => checks.modifyUsesPostNo(svc));
+test('주간 고치기 C13: 수정 화면의 기간이 비었으면 안전판과 채우기 전에 창을 닫고 멈춘다', () => checks.blankPeriodStops(svc));
+test('주간 고치기 C14: 보기 화면의 글 번호를 다시 읽어 찾을 때의 번호와 맞추고, 다르면 창을 닫고 멈춘다(수정 화면으로 가기 전)', () => checks.viewMatchesPostNo(svc));
 
 // ── 변이(검사가 실제로 잡는가) ──
 test('주간 고치기 변이 CM1: 확인 실패 블록의 return 을 빼면 C1 이 잡는다(새 글로 내려가 중복 재발)', () => {
@@ -793,9 +916,9 @@ test('주간 고치기 변이 CM15: "창 끝까지 봤다" 를 늘 참으로 바
   const bad = mutate(svc, 'bool finished = end.AllOlder || end.NoProgress || end.EmptyPage > 0;', 'bool finished = true;');
   assert.throws(() => checks.lookupFailReasons(bad), /창 끝까지 봤다/);
 });
-test('주간 고치기 변이 CM16: 수정 단추 표지를 버리고 모든 글을 고칠 수 있다고 넘기면 C2 가 잡는다', () => {
-  const bad = mutate(svc, 'found.Add((viewNo, cell.period, cell.mod == "1"));', 'found.Add((viewNo, cell.period, true));');
-  assert.throws(() => checks.lookupFailReasons(bad), /수정 단추 표지/);
+test('주간 고치기 변이 CM16: 보기 화면의 글 번호를 버리고 목록 순번을 글 번호로 넘기면 C2 가 잡는다', () => {
+  const bad = mutate(svc, 'found.Add((viewNo, cell.period, cell.modNo));', 'found.Add((viewNo, cell.period, viewNo));');
+  assert.throws(() => checks.lookupFailReasons(bad), /cell\.modNo/);
 });
 test('주간 고치기 변이 CM17: 원래 길이 읽기를 빼거나 채우기 뒤로 옮기면 C10 이 잡는다', () => {
   const line = 'try { olen = await wv.ExecuteScriptAsync(WeekModifyOrigLenJs) ?? ""; }';
@@ -807,4 +930,18 @@ test('주간 고치기 변이 CM18: 수정 화면 확인 실패 때 창 닫기�
   const close = '                        try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }' + NL + '                        NetcusResult(false, "주간보고 수정 화면을 찾지 못했습니다.';
   const bad = mutate(svc, close, '                        NetcusResult(false, "주간보고 수정 화면을 찾지 못했습니다.');
   assert.throws(() => checks.probeFailClosesWindow(bad), /창을 닫지 않는다/);
+});
+test('주간 고치기 변이 CM19: 수정 화면이나 안전판에 목록 순번을 다시 넘기면 C12 가 잡는다(2026-11-05 결함 되돌림)', () => {
+  assert.throws(() => checks.modifyUsesPostNo(mutate(svc, 'GoModifyJs(hit.ModifyNo, id)', 'GoModifyJs(hit.ViewNo, id)')), /GoModifyJs 에 진짜 글 번호|목록 순번/);
+  assert.throws(() => checks.modifyUsesPostNo(mutate(svc, 'WeekModifyOverrideJs(hit.ModifyNo, id)', 'WeekModifyOverrideJs(hit.ViewNo, id)')), /WeekModifyOverrideJs 에 진짜 글 번호|목록 순번/);
+});
+test('주간 고치기 변이 CM20: 빈 기간 검사의 return 을 빼거나 옛 조건(못 읽으면 진행)으로 되돌리면 C13 이 잡는다', () => {
+  const noRet = mutate(svc, 'NetcusResult(false, WeekModifyBlankMsg);' + NL + '                        return;', 'NetcusResult(false, WeekModifyBlankMsg);');
+  assert.throws(() => checks.blankPeriodStops(noRet), /멈추지 않는다/);
+  const old = mutate(svc, 'if (!NcDate(msd, out var mA) || !NcDate(med, out var mB))', 'if (NcDate(msd, out var mA) && NcDate(med, out var mB) && false)');
+  assert.throws(() => checks.blankPeriodStops(old), /빈 기간 검사/);
+});
+test('주간 고치기 변이 CM21: 보기 화면 글 번호 비교를 지우면 C14 가 잡는다', () => {
+  assert.throws(() => checks.viewMatchesPostNo(mutate(svc, 'if (vNo != hit.ModifyNo)', 'if (false)')), /비교하지 않는다/);
+  assert.throws(() => checks.viewMatchesPostNo(mutate(svc, 'NetcusResult(false, WeekViewMismatchMsg);' + NL + '                        return;', 'NetcusResult(false, WeekViewMismatchMsg);')), /멈추고|전용 문구/);
 });

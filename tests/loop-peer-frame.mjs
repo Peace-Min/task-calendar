@@ -654,7 +654,10 @@ try {
                            "fbBtn","dpSheetClose",
                            //  ★ 2026-11-03(PERSONAL-PANEL): 패널의 탭은 없어졌다. 할 일은 패널의 묶음으로 보이고, 맨 아래 '밀린 할 일' 줄(dpFoot)은 읽기다.
                            //    [+ 추가](btnAddHere)는 열람 프레임에서 아예 그리지 않는다.
-                           "dpFoot"]);
+                           "dpFoot",
+                           //  ★ 2026-11-05(PC-WATCH-2 §5, §7.1): 묶음 머리 접기(dp-fold), 일정 줄 펼치기(dp-er-b), 5개 넘을 때 더 보기(dp-more)는 읽기다.
+                           //    펼친 상세는 열람 창에서 [수정] [삭제]를 그리지 않는다(dpDetAcHtml 의 PEER 갈래).
+                           "dp-fold","dp-er-b","dp-more"]);
     const extra = (vis.seen || []).filter((k) => !ALLOW.has(k));
     //  ★ 한계를 적어 둔다: 위젯 창이 화면에 안 그려지면 iframe 뷰포트가 0폭이 되고,
     //    그러면 **좁은 화면용 반응형 규칙**이 켜져 일부 버튼이 저절로 숨는다 — 이 검사가 그만큼 약해진다.

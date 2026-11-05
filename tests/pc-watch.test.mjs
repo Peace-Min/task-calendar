@@ -185,7 +185,7 @@ test('보기만D③: 정본 정의(복합 숫자 PK, 과제 FK CASCADE, 사람 F
 /* ══ (W) 웹 정적 ═══════════════════════════════════════════════════════ */
 const PUNCT = [[/—/, '엠 대시'], [/–/, 'en 대시'], [/「|」/, '낫표'], [/(^|\s)·|·(\s|$)/, '띄어 쓴 가운데 점']];
 test('보기만W①: 새로 쓴 함수와 문구에 엠 대시, en 대시, 낫표, 띄어 쓴 가운데 점이 없다', () => {
-  const fns = ['pcWatchFromDto', 'pcRowHtml', 'pcSideHtml', 'pcWatchAdd', 'pcWatchRemove', 'pcWatchDrop', 'caModeSet', 'caWatchSyncChrome', 'caWatchLoad', 'caWatchRows',
+  const fns = ['pcWatchFromDto', 'pcRowHtml', 'pcSideHtml', 'pcSideInner', 'pcWatchAdd', 'pcWatchRemove', 'pcWatchDrop', 'caModeSet', 'caWatchSyncChrome', 'caWatchLoad', 'caWatchRows',
     'caWatchActHtml', 'caWatchRowHtml', 'renderCaWatchList', 'caWatchMembers', 'caWatchToggle', 'caWhoOpen', 'caAgoText',
     'pcDotCls', 'pcSideTabSet', 'pcSideSelect', 'caWhoText', 'caWhoRender', 'caWhoFoundEl', 'caWhoPlace', 'caWhoClose', 'caWhoKey', 'fbHeadMarkup', 'fbListMarkup', 'fbFill', 'fbListKey', 'fbListClick', 'fbPopKey', 'fbPopEdgeKey',
     'pkCheckRowEl', 'pkAllEl', 'sortHeadHtml', 'sortNext'];

@@ -7,6 +7,16 @@
 
 ---
 
+## 🆕 2026-11-05 (다음 판, 번호는 배포 때): 주간보고 기존 글 수정, 스크롤 튐, 일간 불러오기, 한글 입력 중 휠(fix/weekly-modify-viewno 병합)
+
+다른 세션의 작업을 feat/db-app 에 병합. 기획은 [docs/WEEKLY-UPSERT.md](docs/WEEKLY-UPSERT.md), [docs/SCROLL-STABILITY.md](docs/SCROLL-STABILITY.md).
+
+- **주간보고 기존 글 수정**: 목록 순번(go_view 의 n)을 글 번호로 쓰던 결함. 보기 화면 수정 단추의 진짜 글 번호로 수정 화면과 Bmodify 를 연다. 같은 기간 글이 여럿이면 글 번호가 가장 큰 글. 번호가 달라졌거나 수정 화면 기간이 비면 채우지 않고 멈춤(`WeekViewMismatchMsg`, `WeekModifyBlankMsg`).
+- **스크롤 튐 6곳**: 입력칸 높이 재기는 `taGrow` 한 길(부모 높이 잠금), 과제 탭은 겉틀과 `#pcWScroll`, `.pc-side` 를 한 번만 만들고 안만 교체(`pcSideInner`), 관리 목록 셋은 회신 뒤 교체.
+- **주간보고 일간 불러오기**: 같은 줄 지우기를 걷고 과제마다 그날 글을 날짜 순서로 이어 붙임.
+- **한글 조합 중 휠**: `imeGuardInstall`(조합 중 첫 휠에서 확정 뒤 같은 칸 같은 커서로 복귀).
+- **병합 때 맞춘 것**: 과제 탭 왼쪽 목록은 그쪽 겉틀 구조에 관심 과제 탭과 서랍 × 를 얹음. 겉틀이 남아 스크롤이 유지되므로 [내 과제 | 관심 과제]를 바꿀 때만 목록을 맨 위로. 위키 옛 이름(다른 과제 보기) 정리.
+
 ## 🆕 2026-11-05 (다음 판, 번호는 배포 때): 달력 칸 일정과 할 일 합쳐 채우기, 팝업 닫기 ×
 
 기획 [docs/MONTH-TODO-POPUP-CLOSE.md](docs/MONTH-TODO-POPUP-CLOSE.md). DB 구조 그대로.

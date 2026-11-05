@@ -24,6 +24,14 @@ function mutate(text, find, repl) {
 }
 
 /* ══ (S) 정적 ═══════════════════════════════════════════════════════════ */
+test('(S) 병합(SCROLL-STABILITY 와 관심 과제 탭): 왼쪽 목록은 겉틀을 두고 안만 바꾸며(pcSideInner, 서랍 × 포함), 탭을 바꿀 때만 목록을 맨 위로', () => {
+  const r = extractFunction(app, 'pcRender');
+  assert.ok(r.includes("sd.innerHTML = pcSideInner(sd.classList.contains('in-drawer'))"), '다시 그릴 때 .pc-side 안만 바꾸지 않거나 서랍 여부를 넘기지 않는다');
+  assert.ok(/function pcSideInner\(inDrawer\)/.test(app) && extractFunction(app, 'pcSideInner').includes("(inDrawer ? popXHtml() : '')"), '서랍 머리의 × 가 안쪽 함수에 없다');
+  assert.ok(extractFunction(app, 'pcSideInner').includes('pcStab-'), '안쪽 함수에 관심 과제 탭이 없다');
+  const t = extractFunction(app, 'pcSideTabSet');
+  assert.ok(/if\(changed\) document\.querySelectorAll\('#pcView \.pc-side'\)\.forEach\(sd => \{ sd\.scrollTop = 0; \}\)/.test(t), '탭을 바꿀 때 목록을 맨 위로 올리지 않는다(앞 목록의 스크롤 자리가 남는다)');
+});
 test('(S) 관심 과제 전용 칸(.ca-wo)은 과제 추가 창에서 숨는다: .check 의 display:flex !important 를 이기도록 숨김도 !important(jsdom 은 이 겨룸을 못 본다, 2026-11-05 사용자)', () => {
   assert.ok(/#catAddModal:not\(\.ca-watch\) \.ca-wo\{display:none !important\}/.test(css), '과제 추가 창에 일정 없는 과제 숨김이 보인다');
   assert.ok(/\n\.check\{display:flex !important/.test(css), '.check 규칙이 바뀌었다(이 시험의 전제를 다시 볼 것)');

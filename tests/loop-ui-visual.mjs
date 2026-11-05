@@ -121,6 +121,8 @@ const EXEMPT = {
   hscroll: [
     // 주간 과제별 줄(#grid.wrows)은 과제 탭 주간(.pc-wscroll)처럼 좁은 폭에서 표가 가로로 스크롤된다(이름 칸 + 7칸 최소 폭). 2026-10-30 PERSONAL-PEER-WEEK-VIEW
     '#grid.wrows',
+    // 과제 탭 주간 표(#pcWScroll)도 같은 짜임이다(이름 칸 + 7칸 최소 폭, 위 주석의 .pc-wscroll). pcRenderWeek. 2026-11-05 관심 과제 화면이 주간일 때 드러남
+    '#pcWScroll',
     // (과제 필터 줄은 2026-10-30 42px 한 줄 고정으로 바뀌어 가로 스크롤 예외를 뺐다, FILTER-MULTI. 넘치면 결함이다.)
   ],
   // V3 액션 바 줄바꿈 — 여러 줄이 정상인 wrap 컨테이너
@@ -146,7 +148,9 @@ const EXEMPT = {
   //  '.pc-ev'(과제 탭 달력 일정 칩): 개인 달력 칩(.chip.chip-bar 19px, div 라 V7 이 보지 않을 뿐 같은 크기로 눌린다)과 같은 근거다.
   //  칩 높이는 칸 안 차선(lane) 배치가 정한다(월간 .pc-ev 20px). 32px 로 키우면 320px 높이 칸에서 한 줄도 못 담는다. 주간 칩은 38px 로 이미 충분하다.
   //  눌러야 할 바탕은 칸(.pc-day 전체)이라 칩을 못 맞춰도 같은 날을 열 수 있다.
-  smallTargetWarnOnly: ['a', '.lnk', '.link', '.off-subtick', '.pc-ev'],
+  //  '#grid.bars .more'("+n개 더보기", 16px): 누르면 그 날짜를 고르는데, 칸(.cell) 어디를 눌러도 같은 날짜를 고른다(.pc-ev 와 같은 근거).
+  //  32px 로 키우면 좁은 폭에서 칸이 차선 하나를 더 잃는다. 2026-11-05 할 일이 칸에 들어가 +n 이 흔해지며 드러남(MONTH-TODO-POPUP-CLOSE §1).
+  smallTargetWarnOnly: ['a', '.lnk', '.link', '.off-subtick', '.pc-ev', '#grid.bars .more'],
   // V8 대비 — 없음(대비는 예외 대신 '판정 불가'로 뺀다)
 };
 
@@ -531,7 +535,8 @@ function resolveBg(e, styles){
     if (c && c.a > 0){ layers.push(c); if (c.a >= 0.999) break; }
     //  개인 월간 막대(.chip-bar)는 주 줄(.gridrow)의 자식이지만 화면에서는 그 아래 칸(.cell) 위에 그려진다.
     //  부모로 올라가면 칸 사이 선 색(gridrow 배경)을 바탕으로 잘못 읽으니, 막대 가운데 아래의 칸으로 건너간다.
-    if (n.classList && n.classList.contains('chip-bar') && n.parentElement && n.parentElement.classList.contains('gridrow')){
+    //  "+n개 더보기"(.more, fitBars 가 주 줄에 붙인다)도 같은 짜임이다. 칸에 할 일까지 들어가 +n 이 흔해진 뒤 세피아, 고대비에서 오탐(2026-11-05)
+    if (n.classList && (n.classList.contains('chip-bar') || n.classList.contains('more')) && n.parentElement && n.parentElement.classList.contains('gridrow')){
       var rb = n.getBoundingClientRect(), under = null, stack = document.elementsFromPoint(rb.left + rb.width / 2, rb.top + rb.height / 2);
       for (var k = 0; k < stack.length; k++){ if (stack[k].classList && stack[k].classList.contains('cell') && stack[k].parentElement === n.parentElement){ under = stack[k]; break; } }
       if (under){ n = under; continue; }
