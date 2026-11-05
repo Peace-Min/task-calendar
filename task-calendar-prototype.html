@@ -13926,7 +13926,7 @@ function locBind(pfx){
   __loc[pfx] = { open: false, typed: false, act: -1, mute: false };
   const wrap = inp.closest('.loc-combo'), pop = document.getElementById(pfx + 'LocPop');
   inp.addEventListener('mousedown', () => { const c = __loc[pfx]; if(c && !c.open) setTimeout(() => locOpen(pfx, false), 0); });
-  inp.addEventListener('focus', () => { const c = __loc[pfx]; if(c && !c.open && !c.mute) locOpen(pfx, false); });
+  inp.addEventListener('focus', () => { if(imeFlushing()) return; const c = __loc[pfx]; if(c && !c.open && !c.mute) locOpen(pfx, false); });
   inp.addEventListener('input', () => { locSyncClear(pfx); locOpen(pfx, true); });
   inp.addEventListener('keydown', ev => {
     if(ev.isComposing || ev.keyCode === 229) return;   // 한글 조합 중에는 조합이 먼저다
@@ -13945,7 +13945,7 @@ function locBind(pfx){
       if(c.open){ ev.preventDefault(); ev.stopPropagation(); locClose(pfx); }   // 목록만 닫는다(창은 그대로)
     } else if(ev.key === 'Tab'){ locClose(pfx); }
   });
-  inp.addEventListener('blur', () => setTimeout(() => { if(!wrap || !wrap.contains(document.activeElement)) locClose(pfx); }, 120));
+  inp.addEventListener('blur', () => { if(imeFlushing()) return; setTimeout(() => { if(!wrap || !wrap.contains(document.activeElement)) locClose(pfx); }, 120); });
   if(pop){
     pop.addEventListener('mousedown', ev => ev.preventDefault());   // 고르는 동안 칸의 포커스를 잃지 않게
     pop.addEventListener('click', ev => { const o = ev.target.closest('.loc-opt'); if(o) locPick(pfx, Number(o.dataset.i)); });
@@ -21354,6 +21354,34 @@ function atFillSelects(status, overtime){
 function holdHeight(el){ if(!el) return () => {}; const keep = el.style.minHeight; el.style.minHeight = el.offsetHeight + 'px'; return () => { el.style.minHeight = keep; }; }
 //  글 칸을 내용 높이로. 재려고 접는 동안 칸을 감싼 부모 높이를 잠근다. extra = 테두리 보정(ceGrow 2).
 function taGrow(t, extra){ if(!t) return; const release = holdHeight(t.parentElement); t.style.height = 'auto'; const h = t.scrollHeight; if(h > 0) t.style.height = (h + (extra || 0)) + 'px'; release(); }
+/* ---------- 한글 조합 중 휠: 커서가 화면 안일 때 먼저 확정 (docs/SCROLL-STABILITY.md 11절) ---------- */
+//  엔진은 누름과 blur 에서 조합을 확정하며 커서를 화면 안으로 끌어온다(reveal). 휠로 커서가 화면 밖에 나간 뒤면 튄다.
+//  그래서 휠이 스크롤하기 전(non-passive, capture)에 blur 로 확정하고, 두 프레임 뒤 같은 칸으로 돌아온다.
+const IME = { el: null, flushing: false };
+function imeFlushing(){ return IME.flushing; }
+function imeOnStart(ev){ IME.el = ev.target; }
+function imeOnEnd(ev){ if(ev.target === IME.el) IME.el = null; }
+function imeOnWheel(){
+  const el = IME.el; if(!el) return;
+  IME.el = null;
+  if(el !== document.activeElement || !el.isConnected) return;
+  const s = el.selectionStart, e = el.selectionEnd, dir = el.selectionDirection;
+  IME.flushing = true;
+  try{ el.blur(); } finally { IME.flushing = false; }
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const a = document.activeElement;
+    if(!el.isConnected || (a && a !== document.body)) return;   // 그 사이 다른 곳에 포커스가 갔으면 그대로 둔다
+    IME.flushing = true;
+    try{ el.focus({ preventScroll: true }); } finally { IME.flushing = false; }
+    if(s != null && (el.selectionStart !== s || el.selectionEnd !== e)){ try{ el.setSelectionRange(s, e, dir || 'none'); }catch(_){} }
+  }));
+}
+function imeGuardInstall(){
+  if(imeGuardInstall.done) return; imeGuardInstall.done = true;
+  document.addEventListener('compositionstart', imeOnStart, true);
+  document.addEventListener('compositionend', imeOnEnd, true);
+  window.addEventListener('wheel', imeOnWheel, { capture: true, passive: false });   // passive 면 스크롤이 먼저 끝나 blur 자체가 튄다. preventDefault 는 하지 않는다
+}
 function atGrow(t){ taGrow(t, 0); }
 function atGrowAll(){ document.querySelectorAll('#atBlocks textarea[data-bt], #atBlocks textarea[data-memo]').forEach(atGrow); }
 //  빨간 블록: 과제 미정은 늘, 그 밖은 보내기를 한 번 막은 뒤부터 보인다(쓰는 중에 시간 0 을 나무라지 않는다).
@@ -24853,6 +24881,7 @@ function showBootSkeleton(){ const s = document.getElementById('bootSkeleton'); 
 function hideBootSkeleton(){ const s = document.getElementById('bootSkeleton'); if(s) s.classList.add('hidden'); }
 
 /* ---------- 시작 ---------- */
+imeGuardInstall();        // 한글 조합 중 휠 확정(SCROLL-STABILITY 11절). 앱에서 부르는 곳은 여기 하나
 renderWeekdays();
 bind();
 setupModalA11y();

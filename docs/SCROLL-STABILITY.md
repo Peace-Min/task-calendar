@@ -219,6 +219,7 @@ async function reloadCustomerList(opt){
 4. 비동기 회신을 기다리는 동안 목록을 비우지 않는다. 스피너는 상자가 비어 있을 때(첫 로드)나 목록 자체가 바뀔 때(탭, 창 열기)만 보인다. 다시 읽기 실패는 목록을 지우지 말고 메시지 줄로 알린다.
 5. 맨 위로 가야 하는 경우(새 날짜, 새 주, 목록 종류가 바뀜)는 `scrollTop = 0` 을 명시해 의도를 드러낸다. 저장한 위치를 되돌리는 코드는 쓰지 않는다.
 6. 시험: 다시 그리기 전후로 스크롤 상자가 같은 요소인지(정체성) 보는 jsdom 시험을 하나 둔다.
+7. 한글 조합 중 휠은 공용 장치 `imeGuardInstall` 한 곳이 맡는다(11절). 새 편집 칸에 휠, 스크롤, 조합 처리를 따로 넣지 않고, 새 blur, focus 처리기는 확정용 blur(`imeFlushing()`)에 반응해도 무해한지 11.6 표에 적는다.
 
 ## 8. 고치지 않는 곳과 이유
 
@@ -291,3 +292,120 @@ async function reloadCustomerList(opt){
 6. 의도된 맨 위가 지켜지는가: 새 날짜, 새 주, 구분과 상태 탭 바꾸기, 관리 창 다시 열기, 과제 탭 월간에서 주간으로.
 7. 높이 같음: 같은 글(빈 칸, 한 줄, 열 줄, 긴 한 줄 줄바꿈)에서 고치기 전후 글 칸 높이(`offsetHeight`)가 같은가. `#ceName` 긴 이름 포함.
 8. 비용: 블록 30개에서 `atGrowAll` 한 번 시간(고치기 전후).
+
+## 11. 한글 조합 중 휠 스크롤 (2026-11-05)
+
+1~10절(앱이 내용 높이를 흔드는 결함)과 별개다. 이번 것은 브라우저 엔진의 의도된 동작이고, 앱은 그 동작이 일어나기 전에 조합을 먼저 끝내 주는 것만 한다.
+
+### 11.1 현상 (실측)
+
+한글로 줄 30 에 글을 쓰다가 마지막 글자를 조합 중인 채(밑줄 상태) 휠로 아래로 내려 그 줄이 화면 밖으로 나간다. 그다음 다른 줄을 누르면 compositionend("뮻")가 나고, mousedown 바로 뒤 스크롤이 795 에서 638 로 올라간다(줄 30 이 화면 맨 위 가장자리에 붙는다). 영어로 쓰면 안 튄다. 앱 코드가 없는 빈 HTML(textarea 하나와 긴 내용)에서도 똑같이 된다.
+
+### 11.2 엔진 원인
+
+1. 브라우저 프로세스는 마우스 누름(`kMousePressed`, 터치는 `GestureTapDown`)을 렌더러에 보내기 전에 `FinishImeCompositionSession()` 으로 조합을 확정한다. 페이지 JS 는 이 앞에 끼어들 수 없다(mousedown, pointerdown 처리기는 이미 확정된 뒤에 돈다).
+   [render_widget_host_view_event_handler.cc](https://chromium.googlesource.com/chromium/src/+/main/content/browser/renderer_host/render_widget_host_view_event_handler.cc)
+2. Blink `InputMethodController::FinishComposingText(kKeepSelection)` 은 `RevealSelectionScope` 를 잡는다. 그 소멸자가 조건 없이 `RevealSelection(ToEdgeIfNeeded)` 를 불러 커서가 보이도록 조상 스크롤 상자를 모두 스크롤한다. 커서가 화면 밖이면 가장 가까운 가장자리까지 끌어온다(그래서 줄 30 이 맨 위 가장자리에 붙는다). 의도된 설계이고 고쳐진 버전이 없다. 버전을 감지해 피할 길도 없다.
+   [input_method_controller.cc](https://chromium.googlesource.com/chromium/src/+/main/third_party/blink/renderer/core/editing/ime/input_method_controller.cc),
+   [reveal_selection_scope.cc](https://chromium.googlesource.com/chromium/src/+/main/third_party/blink/renderer/core/editing/reveal_selection_scope.cc),
+   [frame_selection.cc](https://chromium.googlesource.com/chromium/src/+/main/third_party/blink/renderer/core/editing/frame_selection.cc)
+   (경로는 main 기준이다. 옮겨졌으면 Chromium 코드 검색에서 파일 이름으로 찾는다.)
+3. blur 도 같은 길이다. `FocusController` 가 포커스를 바꾸기 전 `WillChangeFocus` 에서 `FinishComposingText` 를 불러 똑같이 reveal 한다. 그래서 휠 뒤에 앱이 blur 해도 커서가 이미 화면 밖이면 똑같이 튄다.
+   [focus_controller.cc](https://chromium.googlesource.com/chromium/src/+/main/third_party/blink/renderer/core/page/focus_controller.cc)
+4. 영어가 안 튀는 까닭: 조합이 없으니 `FinishComposingText` 가 할 일이 없고 reveal 도 없다.
+
+### 11.3 왜 앱 결함이 아닌가
+
+* 앱 코드가 없는 빈 HTML 에서 같은 수치로 재현된다.
+* 스크롤을 움직이는 것은 엔진의 확정 처리(reveal)이고, 앱은 그 사이에 높이를 바꾸거나 scrollTop 을 쓰지 않는다(1~10절의 결함과 뿌리가 다르다).
+* 확정은 브라우저 프로세스가 누름을 넘기기 전에 하므로 페이지가 막을 방법이 없다. 남는 길은 커서가 아직 화면 안에 있을 때 앱이 먼저 확정하는 것뿐이다. 커서가 화면 안이면 reveal 이 스크롤할 것이 없다.
+
+사용자 방침(2026-11-05): 스크롤 위치를 저장했다 되돌리는 땜질 금지, 버전에 따라 갈리는 두 길 금지, UI 모양 변화와 새 안내 문구와 확인 창 금지.
+
+### 11.4 대응 설계
+
+부팅 때 한 번 설치하는 공용 장치 하나(`imeGuardInstall`)가 앱의 모든 편집 칸(textarea, input text, search 등)을 맡는다. 입력칸마다 따로 넣지 않는다.
+
+1. 조합 상태: `document` 에 capture 로 `compositionstart`(그 요소를 기억), `compositionend`(같은 요소면 지움)를 건다. 판정은 이 기억으로 한다. 기억한 요소가 `document.activeElement` 가 아니면(조합 중 다른 곳으로 포커스가 갔으면) 지우고 아무것도 안 한다.
+2. 휠: `window` 에 `wheel` 을 `{ capture: true, passive: false }` 로 건다. 조합 중인 요소가 있으면 그 처리기 안에서, 즉 컴포지터가 스크롤하기 전, 커서가 아직 화면 안일 때 `el.blur()` 로 확정한다. reveal 은 할 일이 없다. `preventDefault` 는 하지 않으니 스크롤은 그대로 일어난다.
+3. 기억은 blur 전에 지운다. 실제 브라우저는 blur 가 compositionend 를 내서 어차피 지워지지만, 앞서 지워 두면 compositionend 가 오지 않는 경우(jsdom, 일부 입력기)에도 재포커스 뒤의 휠에서 blur 가 다시 나지 않는다.
+4. 재포커스는 두 프레임 뒤(`requestAnimationFrame` 안의 `requestAnimationFrame`)에 `el.focus({ preventScroll: true })` 로 한다. 그 사이 다른 포커스가 생겼으면(activeElement 가 body 나 null 이 아니면) 되돌리지 않는다. 요소가 문서에서 빠졌으면(다시 그려짐) 하지 않는다.
+5. 커서 위치: blur 전에 `selectionStart`, `selectionEnd`, `selectionDirection` 을 적어 두고, 재포커스 뒤 다르면 `setSelectionRange` 로 되돌린다. textarea 와 input 은 보통 blur 뒤에도 선택을 지키므로 같으면 손대지 않는다.
+6. 표시 변수 `IME.flushing`: blur 호출과 재포커스 호출 동안만 참(try, finally). 앱 처리기는 `imeFlushing()` 으로 읽는다. 쓰는 곳은 11.6 표의 두 곳뿐이다.
+7. 조합이 없으면 아무 일도 하지 않는다. 영어 입력, 한글을 다 확정한 뒤의 휠, 포커스가 편집 칸에 없을 때의 휠에는 blur 가 없다.
+
+#### 재포커스: 동기 대신 두 프레임 지연을 고른 근거
+
+* 동기(같은 작업 안에서 blur 하고 바로 focus)이면 렌더러가 브라우저 프로세스에 보내는 글 입력 상태가 편집 칸 그대로로만 보일 수 있다. 그러면 TSF(MS 한국어 IME)는 조합이 끝났다는 것을 모른 채 자기 쪽 조합("뮻")을 들고 있다가, 다음 글자(ㅏ)에서 "무"를 확정하고 "차"를 새로 조합해 앞서 Blink 가 확정한 "뮻" 뒤에 붙인다. 글자가 겹치거나 빠질 위험(추측, 수동 확인 대상)을 피할 수 없다.
+* Chromium 은 휠 같은 연속 입력을 프레임에 맞춰(rAF 정렬) 처리한다. 휠 처리기 안에서 부른 `requestAnimationFrame` 은 같은 프레임의 애니메이션 단계에서 바로 돌 수 있어, 한 번만 미루면 동기와 다르지 않을 수 있다. 두 번 미루면 포커스가 없는 상태로 한 프레임이 끝까지 돌아(그 프레임 끝에 글 입력 상태가 브라우저로 간다) 브라우저와 TSF 가 조합 끝을 본다.
+* 비용: 약 두 프레임(60Hz 에서 33ms 안팎) 동안 포커스가 없다. 휠을 굴리는 손이 그 사이 글자를 치기는 어렵다. 그 사이 사용자가 다른 칸을 누르면 그 칸이 이기고 되돌리지 않는다.
+* `setTimeout` 은 쓰지 않는다. 길은 이것 하나다. 동기 재포커스 코드는 남기지 않는다.
+
+### 11.5 걸지 않는 신호와 이유
+
+| 신호 | 걸지 않는 이유 |
+|---|---|
+| mousedown, pointerdown, 터치 GestureTapDown | 브라우저가 렌더러에 넘기기 전에 이미 확정하고 reveal 한다. 처리기가 돌 때는 늦다. |
+| 스크롤 막대 누름과 끌기, 빈 곳 클릭 | 누름이라 위와 같다. 누르는 순간 커서는 아직 화면 안이라 reveal 이 스크롤하지 않는다(손댈 필요 없음, 수동 확인). |
+| 가운데 버튼 자동 스크롤 | 누름으로 시작하므로 스크롤 전에 확정된다(수동 확인). |
+| `scroll` 이벤트 | 스크롤이 이미 끝난 뒤에 온다. 그때 blur 하면 커서가 화면 밖이라 blur 자체가 reveal 을 일으킨다(새 튐). |
+| touchmove, touchstart | 터치 탭다운이 누름이라 이미 확정된다. touchmove 를 non-passive 로 걸면 터치 스크롤이 매번 메인 스레드를 기다린다. |
+| keydown(PageDown, 화살표) | 조합 중 키는 IME 가 먼저 받아 조합을 확정하고, 키 스크롤은 커서를 따라가므로 화면 밖으로 나가지 않는다(수동 확인). |
+
+#### passive 함정
+
+`window`, `document`, `body` 에 건 `wheel` 리스너는 Chrome 에서 기본이 passive 다. passive 면 컴포지터가 먼저 스크롤하고 메인 스레드에는 나중에 알린다. 그 처리기에서 blur 하면 커서가 이미 화면 밖이라 blur 의 `FinishComposingText` 가 reveal 해서 새 튐이 생긴다. 그래서 반드시 `{ passive: false }` 로 걸고, 다른 처리기보다 먼저 받도록 `capture: true` 로 건다. `preventDefault` 는 하지 않는다.
+
+비용: non-passive 휠 리스너가 창 전체에 있으면 한 스크롤 묶음의 첫 휠 이벤트는 메인 스레드 응답을 기다린다(첫 이벤트를 막지 않으면 같은 묶음의 나머지는 기다리지 않는다). 처리기는 조합이 없으면 바로 돌아오므로 짧다. 메인 스레드가 바쁠 때(큰 다시 그리기 중) 스크롤 시작이 그만큼 늦을 수 있어 수동 확인에 넣는다. 조합 중에만 붙였다 떼는 방식은 컴포지터가 리스너 목록을 다음 커밋에야 알게 되는 틈이 있고 길이 둘로 늘어 쓰지 않는다.
+
+### 11.6 확정용 blur 가 일으키는 앱 처리기와 할 일
+
+확정용 `el.blur()` 는 blur, focusout 을 동기로 내고, 포커스 뒤 값이 바뀌었으면 change 를 낸다. 재포커스는 focus, focusin 을 낸다. `input` 은 내지 않는다. 창(`window`) blur, focus 는 나지 않는다.
+
+| 위치(대략 줄) | 처리기 | 확정용 blur 때 | 할 일 |
+|---|---|---|---|
+| `locBind` blur (13948) | 120ms 뒤 포커스가 콤보 밖이면 `locClose` | 느린 프레임이면 재포커스 전에 닫혀 장소 추천 목록이 사라진다 | `imeFlushing()` 이면 건너뜀 |
+| `locBind` focus (13929) | 목록이 닫혀 있으면 `locOpen` | 재포커스가 목록을 새로 열 수 있다(UI 바뀜) | `imeFlushing()` 이면 건너뜀 |
+| `timeField` blur (18625) | `tfClose` | 시각 칸은 readOnly, inputmode none 이라 조합이 생기지 않는다 | 그대로 |
+| 사람 고르기 팝업 focusout (8806) | relatedTarget 이 팝업 밖이면 닫기 | `blur()` 의 relatedTarget 은 null 이라 닫지 않는다 | 그대로 |
+| 과제 목록 메뉴 focusout (20034), 공식 과제 메뉴 focusout (20233) | 같은 relatedTarget 판정 | null 이라 닫지 않는다 | 그대로 |
+| 근태 일간 `#atBlocks` focusout (22039), 주간 편집 focusout (23071) | 시간 칸(`data-bh`, `data-wh`)만 0.5 단위로 맞춤 | 시간 칸은 숫자 칸이라 조합 대상이 아니다. 글 칸이면 거른다 | 그대로 |
+| 필터 팝업 focusin (11789) | 포커스가 팝업 밖이면 닫기 | 재포커스 대상이 팝업 안(찾기 칸)이면 그대로, 밖이면 팝업은 이미 닫혀 있다 | 그대로 |
+| `#rptMarkerCustom` change (20459) | `save()`, `buildReport()` | 포커스 뒤 값이 바뀌었으면 한 번 돈다(저장 한 번 더) | 그대로 둔다. 건너뛰면 브라우저가 change 기준값을 지금 값으로 바꿔 버려 나중 진짜 blur 에서 change 가 안 나고 저장이 빠진다 |
+| 그 밖의 change(`#rptmPick`, `#rptmEtc`, `pkOnChange`, `awfBind`, 과제 폼 `fm`, 변경 이력 `cm`, `#pcView`, `#atCards`, `#atBlocks` 과제 고르기 등) | 체크, 선택, 날짜 칸이나 id 로 걸러 글 칸에는 반응하지 않는다 | 반응 없음 | 그대로 |
+| 일간, 주간, 메모의 자동 저장(`atOnEdit`, `awOnEdit`) | `input` 에서만 돈다 | blur 는 input 을 내지 않는다 | 그대로(자동 저장 횟수는 수동 확인) |
+| `formSnapshot` | 값을 직접 읽는 스냅숏 | 값이 그대로라 같다 | 그대로 |
+| 창 blur, focus(8825, 20098, 20296, 22114, 24817) | 창 포커스 | 요소 blur 로는 나지 않는다 | 그대로 |
+
+표시 변수를 쓰는 곳은 `locBind` 두 줄뿐이다. 새 처리기가 생기면 이 표에 더한다(7절 규칙 7).
+
+### 11.7 시험 계획
+
+새 파일 `tests/ime-wheel-guard.test.mjs`. jsdom 은 실제 IME, 스크롤, reveal 을 흉내 내지 못한다. 정적 계약, jsdom 행동(가짜 compositionstart, 가짜 wheel), 변이로 묶는다. 실제 입력기 확인은 11.8 을 손으로 한다.
+
+* 정적 계약: 설치 함수가 앱에 하나, 부르는 곳 하나. `wheel` 은 `window` 에 `capture: true, passive: false`. 조합 둘은 `document` 에 capture. 설치 함수와 휠 처리기에 `scroll`, `touchmove`, `touchstart`, `pointerdown`, `mousedown`, `keydown` 리스너가 없다. 휠 처리기에 `preventDefault`, `scrollTop`, `scrollTo`, `scrollIntoView` 가 없다. 재포커스는 `preventScroll: true`, 두 겹 `requestAnimationFrame` 안에만 있고 `setTimeout` 이 없다. `imeFlushing()` 을 쓰는 곳이 `locBind` 안 두 곳뿐. 문장부호 규칙.
+* jsdom 행동: 조합 중 휠이면 blur 한 번, 두 프레임 뒤 focus 한 번(preventScroll), 선택 범위 그대로, 휠 이벤트는 막히지 않음. 조합이 없으면 blur 없음. compositionend 뒤에는 blur 없음. 한 번 돈 뒤 이어지는 휠에는 blur 없음. 그 사이 다른 칸에 포커스가 가면 되돌리지 않음. 요소가 빠지면 되돌리지 않고 오류 없음. 확정용 blur 와 재포커스 동안만 `imeFlushing()` 이 참. 느린 프레임(120ms 넘김)에도 장소 목록이 닫히지 않고, 재포커스가 목록을 새로 열지 않음.
+* 변이: 핵심 줄(passive false, capture, wheel 이름, blur, 기억 지우기, compositionend 지우기, activeElement 판정 둘, 두 겹 rAF, preventScroll, 선택 되돌리기, 표시 변수, `locBind` 건너뛰기, 설치 호출)을 하나씩 되돌리면 실패해야 한다.
+
+### 11.8 수동 확인 목록 (메인과 사용자, 실제 위젯 WebView2 와 웹 Edge)
+
+입력기 셋에서 각각 한다: MS 한국어 IME 기본, MS 한국어 IME 이전 버전 사용 켬, 타사 입력기(날개셋 등, 가능하면).
+
+대상 칸: 근태 일간 블록 글 칸(`#atList` 안), 주간 진행사항(`#awScroll` 안), 빠른 추가 메모, 장소 칸(추천 목록 열린 채), 과제 폼 메모.
+
+| 동작 | 기대 |
+|---|---|
+| 조합 중 휠 한 칸 | 스크롤이 한 칸 그대로 움직인다. 조합 글자는 확정되고 밑줄이 사라진다 |
+| 조합 중 휠 여러 칸, 빠르게 | 첫 칸에서 한 번 확정, 나머지는 보통 스크롤. 끊김 없음 |
+| 정밀 터치패드 두 손가락 스크롤과 관성 | 위와 같음. 관성 동안 튐 없음 |
+| 커서가 스크롤 상자 아래 가장자리에 걸린 채 휠 | 확정할 때 화면이 움직이지 않는다 |
+| 휠로 줄을 화면 밖으로 보낸 뒤 다른 줄 클릭 | 스크롤 그대로(예전 795 에서 638), 누른 줄에 커서 |
+| 휠 직후 같은 칸에 바로 이어 치기(뮻 다음 ㅏ) | "뮻" 뒤에 "ㅏ" 가 새로 시작된다. 겹침("뮻무차"), 빠짐 없음 |
+| 조합 중 스크롤 막대 끌기, 스크롤 막대 빈 곳 클릭 | 튐 없음(브라우저가 누름에서 확정, 커서는 아직 화면 안) |
+| 조합 중 가운데 버튼 자동 스크롤 | 튐 없음 |
+| 조합 중 PageDown, 화살표 | 튐 없음 |
+| 자동 저장 횟수(일간, 주간) | 휠 한 번에 저장 요청이 더 늘지 않는다(호스트 로그나 개발자 도구 네트워크) |
+| 조합이 없을 때(영어, 한글 확정 뒤) 휠 | 포커스, 커서, 저장 아무 변화 없음 |
+| 휠 뒤 클릭한 줄 | 그 줄에 커서가 놓이고 원래 칸으로 되돌아가지 않는다 |
+| 장소 칸 추천 목록 열린 채 조합 중 휠 | 목록 그대로 열려 있다 |
+| 큰 화면(과제 탭 일정 400건)에서 조합 없이 휠 | 스크롤 시작이 예전과 같이 부드럽다(non-passive 비용) |

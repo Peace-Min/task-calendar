@@ -90,7 +90,7 @@ const S = {
   },
   S7(s) {
     const PUNCT = [[/—/, '엠 대시'], [/–/, 'en 대시'], [/「|」/, '낫표'], [/(^|\s)·|·(\s|$)/, '띄어 쓴 가운데 점']];
-    for (const fn of ['holdHeight', 'taGrow', 'pcSideInner']) {
+    for (const fn of ['holdHeight', 'taGrow', 'pcSideInner', 'imeOnWheel', 'imeGuardInstall']) {
       for (const [re, name] of PUNCT) assert.ok(!re.test(extractFn(s, fn)), `${fn} 에 ${name}가 있다`);
     }
     //  고친 함수에 새로 단 주석(스크롤, 껍데기, 비우기, 잠금을 말하는 줄)
