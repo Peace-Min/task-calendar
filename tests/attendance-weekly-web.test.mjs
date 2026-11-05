@@ -245,10 +245,10 @@ if (!JSDOM) {
       assert.ok(X.$('#awTitle').textContent.startsWith(X.ev(`calWeekTitle('${mon}')`)), '제목이 월요일이 든 달 기준이 아니다');
       //  편집 화면: 표 네 줄과 단추들
       assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#awEd .aw-k'), function(k){ return k.textContent; })"), ['진행사항', '과제투입시간', '차주계획', '회의내용']);
-      //  머리: [‹ 목록](앱의 ‹ 아이콘) | 주간 보고 ‹ 제목 (기간) ›, [전체 초기화]는 기간, 제목 줄 끝
+      //  머리: [‹ 목록](앱의 ‹ 아이콘) | 주간 보고 ‹ 제목 (기간) › (오른쪽 끝에 작성 보조 [수준][문단 모양], docs/WRITING-ASSIST.md), [전체 초기화]는 기간, 제목 줄 끝
       assert.strictEqual(X.$('#awBack').textContent, '목록');
       assert.ok(X.$('#awBack svg.ic') && X.$('#awBack').classList.contains('btn') && X.$('#awBack').classList.contains('sm'), '목록 단추에 ‹ 아이콘이 없다');
-      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelector('#awEd .at-ed-head').children, function(e){ return e.id || e.className; })"), ['awBack', 'aw-sep', 'awHead', 'at-ed-nav']);
+      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelector('#awEd .at-ed-head').children, function(e){ return e.id || e.className; })"), ['awBack', 'aw-sep', 'awHead', 'at-ed-nav', 'spacer', 'wa-tools']);
       assert.strictEqual(X.$('#awHead').textContent, '주간 보고');
       assert.ok(X.$('#awTitle').classList.contains('at-ed-date') && X.$('#awTitle').parentElement.classList.contains('at-ed-nav'), '제목 (기간) 이 ‹ › 사이(at-ed-nav)에 있지 않다');
       assert.strictEqual(X.$('#awReset').parentElement, X.$('#awEd .aw-meta'), '[전체 초기화]가 기간, 제목 줄에 있지 않다');

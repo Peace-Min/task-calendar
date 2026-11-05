@@ -2928,9 +2928,10 @@ body:not(.at-on) #atView{display:none !important}
 .at-ed-foot{display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--line);flex:none;flex-wrap:wrap}
 .at-msg{font-size:var(--fs-body);color:var(--muted);min-width:0}
 .at-msg.ok{color:var(--ok)} .at-msg.err{color:var(--danger-text)}
-/* 근태 창(위젯, ?win=attend): 보고 화면이 문서 전체다. 보고 화면, 확인 창, 토스트, 버전 관문 카드만 보인다(allowlist).
-   ★ 브라우저로 돌아가는 단추(← 근태 달력)는 없다. 창 테두리의 닫기와 닫기 단추가 그 일을 한다(쓰던 글이 있으면 먼저 묻는다). */
-html[data-attendwin] body > :not(#atEd):not(#awEd):not(#awList):not(#confirmModal):not(#toastWrap):not(#vgGate){ display:none !important }
+/* 근태 창(위젯, ?win=attend): 보고 화면이 문서 전체다. 보고 화면, 확인 창, 토스트, 버전 관문 카드, 문단 모양 창(#waPop)만 보인다(allowlist).
+   ★ 브라우저로 돌아가는 단추(← 근태 달력)는 없다. 창 테두리의 닫기와 닫기 단추가 그 일을 한다(쓰던 글이 있으면 먼저 묻는다).
+   ★ body 바로 아래에 새 띄움 창을 달면 여기에 함께 넣어야 근태 창에서 보인다(2026-11-05 #waPop 이 빠져 창이 안 떴다). */
+html[data-attendwin] body > :not(#atEd):not(#awEd):not(#awList):not(#confirmModal):not(#toastWrap):not(#vgGate):not(#waPop){ display:none !important }
 html[data-attendwin] body{ overflow:hidden; background:var(--panel) }
 html[data-attendwin] #atEd{ height:100% }
 html[data-attendwin] #atBack{ display:none }
@@ -3079,6 +3080,39 @@ html.at-idle #atEd,html.at-idle #awEd,html.at-idle #awList{ visibility:hidden } 
 /* 자유 글 칸(진행사항, 차주계획, 회의내용): 쓰는 만큼 늘어난다. 진행사항, 차주계획은 처음부터 넉넉하게(결정 14) */
 .at-ed .aw-free{display:block;width:100%;min-height:52px;resize:none;overflow:hidden;line-height:1.65;white-space:pre-wrap;tab-size:4}
 .at-ed .aw-free.aw-big{min-height:160px}
+.at-ed .aw-free:focus{outline:none;border-color:var(--accent)}
+/* 작성 보조(docs/WRITING-ASSIST.md): 머리 줄 도구 [수준][문단 모양]과 문단 모양 창(#waPop, body 끝 하나를 일간 주간이 같이 쓴다).
+   높이는 머리 줄 단추(.btn.sm)와 같게: 단추 높이에 고르기 칸을 늘여 맞춘다. 색은 모두 토큰이라 어둡게 테마를 그대로 따른다 */
+.wa-tools{display:inline-flex;align-items:stretch;gap:6px;flex:none}
+.at-ed .wa-lv{width:8.8em;font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);background:var(--panel);color:var(--text);padding:0 4px 0 8px;cursor:pointer}
+.at-ed .wa-lv:disabled{opacity:.6;cursor:default}
+.btn.sm.wa-b{font-weight:400;color:var(--text)}
+.btn.sm.wa-b[aria-expanded="true"]{border-color:var(--ctl-border);background:var(--hover-bg)}
+.btn.sm.wa-b:disabled{opacity:.6;cursor:default}
+.at-ed .wa-lv:focus-visible,.btn.sm.wa-b:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* 도구 줄이나 문단 모양 창에 초점이 가 있는 동안(html.wa-hold, waHoldSync)에도 도구가 고칠 본문(마지막에 쓰던 본문) 테두리를 초점 때와 같게 둔다.
+   시안의 body:has(:focus-within) 대신 클래스로 둔다(초점 판정을 스크립트 한 곳에서, 시험에서도 읽힌다) */
+html.wa-hold .at-blk.wa-tgt,
+html.wa-hold .at-ed .aw-free.wa-tgt{border-color:var(--accent)}
+.wa-pop{position:fixed;z-index:50;left:0;top:0;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);display:flex;flex-direction:column;font-size:var(--fs-body);max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);overflow:auto}
+.wa-pop.hidden{display:none !important}   /* .shotViewer.hidden 과 같은 까닭: 뒤에 오는 display 규칙보다 늘 이기게(jsdom 계산 스타일 포함) */
+.wa-pop .x:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.wa-pop-in{display:flex;flex-direction:column;gap:8px;padding:8px 12px 10px}
+.wa-tbl{border-collapse:collapse}
+.wa-tbl th{font-size:var(--fs-meta);color:var(--muted);font-weight:600;text-align:left;padding:0 6px 4px}
+.wa-tbl td{padding:3px 6px;white-space:nowrap;vertical-align:middle}
+.wa-tbl th:first-child,.wa-tbl td:first-child{padding-left:0}
+.wa-tbl th:last-child,.wa-tbl td:last-child{padding-right:0}
+.wa-tbl select{height:26px;font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);background:var(--panel);color:var(--text);vertical-align:middle;padding:0 2px 0 6px;cursor:pointer}
+.wa-tbl select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.wa-tbl .wa-sym{min-width:132px}
+.wa-tbl .wa-ind{min-width:68px}
+.wa-lvn{display:inline-block;min-width:3.2em}
+.wa-tbl .wa-k{margin-left:4px;color:var(--muted);font-size:var(--fs-micro)}
+/* 단축키 글자: 도움말의 kbd 와 같은 모양(옅은 바탕, 1px 테두리) */
+kbd.wa-kbd{display:inline-block;min-width:18px;margin:0 1px;padding:0 5px;border:1px solid var(--line-2);border-radius:4px;background:var(--bg);color:var(--text);font-family:ui-monospace,Consolas,monospace;font-size:var(--fs-micro);line-height:16px;text-align:center;vertical-align:1px}
+.wa-keys{display:flex;gap:6px 16px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--line);color:var(--muted);font-size:var(--fs-meta)}
+.wa-keys span{white-space:nowrap}
 .aw-pv{flex:1;min-height:0;overflow:auto;margin:10px 14px}
 #awImp{gap:8px}
 .aw-ibtn{display:block;width:100%;text-align:left;border:1px solid var(--line-2);background:var(--panel);color:var(--text);border-radius:var(--r-md);padding:9px 12px;cursor:pointer;font:inherit}
@@ -3496,6 +3530,8 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
           <button type="button" class="btn icon sm" id="atNext" title="다음날" aria-label="다음날">›</button>
         </span>
         <span class="spacer"></span>
+        <!-- 작성 보조(docs/WRITING-ASSIST.md): [수준][문단 모양]. waInit 이 채운다(주간 머리와 같은 한 벌) -->
+        <span class="wa-tools" data-watools="d"></span>
         <button type="button" class="at-fold" id="atFold" aria-expanded="true" aria-controls="atPanel">패널 접기 ›</button>
       </div>
       <div class="at-ed-body" id="atEdBody">
@@ -3573,6 +3609,8 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
           <span class="at-ed-date" id="awTitle" aria-live="polite"></span>
           <button type="button" class="btn icon sm" id="awNext" title="다음 주" aria-label="다음 주">›</button>
         </span>
+        <span class="spacer"></span>
+        <span class="wa-tools" data-watools="w"></span>
       </div>
       <div class="at-ed-body" id="awBody">
         <div class="at-left">
@@ -21500,6 +21538,7 @@ function atBlocksRender(){
   if(keep) atFocusRestore(keep);
   atStatRender();
   if(atAddShown()) atAddPlace();   // [+ 과제 추가] 줄이 내려가거나 올라가면 체크 목록도 따라간다
+  waRefresh();   // 다시 그린 본문(작성 보조의 고칠 본문은 초점이 돌아오면 다시 잡힌다)
 }
 //  다시 그린 뒤 포커스를 같은 자리로(같은 블록의 같은 칸, 글이면 커서까지).
 function atFocusKey(el){
@@ -21767,6 +21806,7 @@ function atSetBusy(on){
   ed.classList.toggle('busy', !!on);
   if(!on){ atSyncNav(); atPanelRender(); atBlocksRender(); atResetSync(); }   // [전체 초기화]는 비었을 때 잠근다
   atIntraRender();
+  waRefresh();   // 작성 보조 도구: 보내는 중이면 끄고 문단 모양 창을 닫는다
 }
 function atSyncNav(){
   const pv = $('#atPrev'), nx = $('#atNext');
@@ -22038,6 +22078,7 @@ function atWinCloseNow(){
 }
 //  전역 Esc: 닫기 단추와 같다(보내는 중이면 닫지 않는다).
 function atEscape(){
+  if(waPopEscape()) return true;   // 문단 모양 창(작성 보조)이 열려 있으면 그 창만 닫는다
   if(awEscape()) return true;   // 주간 화면(결정 13)
   if(!atEdShown()) return false;
   if(atAddShown()){ atAddOpen(false); const a = $('#atAdd'); if(a) try{ a.focus(); }catch(_){} return true; }   // 과제 추가 메뉴만 닫는다
@@ -22047,6 +22088,7 @@ function atEscape(){
 
 /* ── 그릇: 브라우저의 화면 전환과 근태 창 ── */
 function atSyncScreen(){
+  waReset();   // 화면이 바뀌면 작성 보조의 고칠 본문과 문단 모양 창을 비운다
   if(ATTENDWIN){ atwSync(); return; }   // 근태 창은 창 안의 화면(일간, 주간 목록, 주간 편집) 하나만 보인다
   const mo = $('#atMonth'), ed = $('#atEd'), wl = $('#awList'), we = $('#awEd'), su = $('#atSum'), wk = ATT.kind === 'week', sm = ATT.kind === 'sum';
   if(mo) mo.classList.toggle('hidden', ATT.screen !== 'month' || wk || sm);
@@ -22065,6 +22107,7 @@ function atCloseEditor(){
   clearTimeout(ATE.timer); ATE.timer = null;
   ATE.p = null; ATE.date = ''; ATE.base = null; ATE.navPending = ''; ATE.memo = ''; ATE.blocks = [];
   atAddOpen(false); atCalCancel();
+  waReset();   // 문단 모양 창을 닫고 고칠 본문을 비운다(작성 보조)
   ATT.screen = 'month'; atSyncScreen();
 }
 function atShowMonth(){
@@ -22104,6 +22147,7 @@ window.__attendWinHidden = function(){
   try{ awCloseEditor(); }catch(_){}
   try{ ATE.prev = { date: '', content: null, loading: false, err: '', gen: ATE.prev.gen + 1 }; ATE.intra = false; ATE.armed = false; }catch(_){}
   try{ closeOverlay(document.getElementById('confirmModal')); }catch(_){}
+  try{ waReset(); }catch(_){}
   try{ ATW.view = 'day'; atwSync(); document.title = '근태 보고'; document.documentElement.classList.add('at-idle'); }catch(_){}
 };
 window.__attendWinActivated = function(){ if(ATTENDWIN) atWinRefresh(); };
@@ -22111,6 +22155,7 @@ window.__attendWinActivated = function(){ if(ATTENDWIN) atWinRefresh(); };
 /* ── 배선. 시작 때 한 번(pcInit 다음) ── */
 function atInit(){
   awInit();   // 주간보고(결정 13) 목록과 편집 화면 배선
+  waInit();   // 작성 보조: 본문 수준과 문단 모양(docs/WRITING-ASSIST.md)
   const ed = document.getElementById('atEd');
   if(ed){
     const on = (id, ev, fn) => { const e = document.getElementById(id); if(e) e.addEventListener(ev, fn); };
@@ -22790,6 +22835,7 @@ function awSetBusy(on){
   const b = $('#awSend'); if(b) b.textContent = AWE.sending ? '보고하는 중…' : '보고';
   ed.classList.toggle('busy', !!on);
   if(!on && AWE.p){ awRender(); }
+  waRefresh();   // 작성 보조 도구
 }
 
 /* ── 주 고르기 달력(§13.2): 일요일 시작 달력, 보고 있는 달의 월~토 날짜를 누르면 그 줄이 그 주. 제목 = 그 달 달력의 몇째 줄(calWeekTitle) ──
@@ -23108,6 +23154,7 @@ function awCloseEditor(){
   clearTimeout(AWE.timer); AWE.timer = null;
   AWE.p = null; AWE.mon = ''; AWE.base = null; AWE.prog = ''; AWE.plan = ''; AWE.hrs = []; AWE.hours = {}; AWE.meet = ''; AWE.gen++;
   AWE.cal.open = false; awAddOpen('');
+  waReset();   // 작성 보조
 }
 //  근태 창의 화면 바꾸기(일간 보고, 주간 목록, 주간 편집). 한 창에 하나만 보인다.
 function atwShow(view){
@@ -23116,6 +23163,7 @@ function atwShow(view){
   atwSync();
 }
 function atwSync(){
+  waReset();
   const tog = (id, show) => { const e = document.getElementById(id); if(e) e.classList.toggle('hidden', !show); };
   tog('atEd', ATW.view === 'day'); tog('awList', ATW.view === 'wlist'); tog('awEd', ATW.view === 'wedit');
 }
@@ -23211,6 +23259,728 @@ function awInit(){
   }
   window.addEventListener('pagehide', () => { try{ awDraftFlushNow(); }catch(_){} });
 }
+
+/* ===== 작성 보조: 근태 본문 수준과 문단 모양(docs/WRITING-ASSIST.md, 이슈 #19, 시안 writing-assist-v3 2026-11-05 사용자 확정) =====
+ *  근태 일간 보고의 자유 메모와 과제 블록 글, 주간 보고의 진행사항, 차주계획, 회의내용을 한글 개요 수준처럼 쓴다(본문과 1~7수준).
+ *  글은 그대로 평문(빈칸과 머리기호 글자)이다. 수준은 그때그때 읽는다(머리기호 먼저, 같은 기호면 가장 가까운 들여쓰기).
+ *  ★ 모든 고침은 textarea 를 거친다(execCommand insertText, 안 되면 setRangeText 와 input). 그래야 근태 입력 처리(ATE, AWE, 임시 저장, 미리보기)가 그대로 따라온다.
+ *    편집 화면을 다시 그리지 않는다. 표(문단 모양)를 바꾸면 지금 보이는 보고의 본문만 새 표대로 다시 쓴다. 열기와 초점만으로는 글을 고치지 않는다. */
+/* ----- wa-core 시작: 순수 글 변환(DOM 없음). tests/writing-assist.test.mjs 가 이 구역만 떼어 돌린다 ----- */
+const WA = (function(){
+  'use strict';
+  function lineStartAt(v, i){ return v.lastIndexOf('\n', i - 1) + 1; }
+  function leadWs(s){ const m = /^[ \t　 ]*/.exec(s); return m ? m[0] : ''; }
+  //  앞 공백의 칸 수(탭과 전각 공백은 두 칸)
+  function wsWidth(ws){ let w = 0; for(const ch of ws) w += (ch === '\t' || ch === '　') ? 2 : 1; return w; }
+  //  붙여 넣는 글: 줄 앞 탭과 전각 공백은 빈칸 둘, 줄 바꿈 없는 공백은 빈칸 하나로
+  function normPaste(t){
+    return String(t).replace(/\r\n?/g, '\n').split('\n').map(l => {
+      const w = leadWs(l);
+      return w.replace(/[\t　]/g, '  ').replace(/ /g, ' ') + l.slice(w.length);
+    }).join('\n');
+  }
+
+  // ---------- 수준 표 ----------
+  //  표 한 줄 = { mk: 기호 또는 번호 형식, indent: 앞 칸 수 }. 1수준부터 7수준까지 일곱 줄.
+  const KO = '가나다라마바사아자차카타파하';
+  //  번호 형식 = [앞 글자, 차례 종류, 뒤 글자]. 근태 가져오기 서식의 머리기호 목록(#rptMarker)과 같은 형식들
+  const SEQ = { ko: KO, jm: 'ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ', A: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', a: 'abcdefghijklmnopqrstuvwxyz', c: '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳' };
+  const FMT = {
+    '1.': ['', 'n', '.'], '1)': ['', 'n', ')'], '(1)': ['(', 'n', ')'],
+    '가.': ['', 'ko', '.'], '가)': ['', 'ko', ')'], '(가)': ['(', 'ko', ')'],
+    'ㄱ.': ['', 'jm', '.'], 'ㄱ)': ['', 'jm', ')'],
+    'A.': ['', 'A', '.'], 'a.': ['', 'a', '.'], '①': ['', 'c', '']
+  };
+  const NUMS = Object.keys(FMT);
+  const BASE_NUMS = ['1.', '1)', '(1)', '가.', '가)', '(가)'];   // 표에 없어도 늘 번호로 읽는 형식(나머지는 표에 들어 있을 때만: "A. " 같은 글 오인 방지)
+  const isNum = f => Object.prototype.hasOwnProperty.call(FMT, f);
+  const SYM_DEF = ['-', '*', '·', '•', '□', '■', '○', '●', '◦', '▪', '◆', '◇', '※'];
+  const LEVELS = 7, IND_MAX = 20;   // 수준 수는 7로 고정(더하고 빼는 화면 없음), 들여쓰기는 0~20칸
+  const PRESETS = {
+    sym:    ['-', '*', '-', '*', '-', '*', '-'],
+    report: ['□', '○', '-', '·', '*', '▪', '◦'],
+    num:    ['1.', '가.', '1)', '가)', '(1)', '(가)', '①']
+  };
+  function preset(k){ return PRESETS[k].map((mk, i) => ({ mk, indent: i * 2 })); }
+  //  표 규칙은 하나뿐: 머리기호(같은 기호, 같은 번호 형식)가 같은 두 수준은 들여쓰기가 같을 수 없다. 수준 사이 순서는 자유
+  //  i 수준(0부터)이 고를 수 없는 들여쓰기 = 같은 머리기호를 쓰는 다른 수준의 들여쓰기
+  function indentBlocked(T, i, mk){
+    const m = mk == null ? T[i].mk : mk, out = [];
+    T.forEach((r, j) => { if(j !== i && r.mk === m && out.indexOf(r.indent) < 0) out.push(r.indent); });
+    return out.sort((a, b) => a - b);
+  }
+  //  규칙을 어긴 수준 짝 [i, j](i < j)
+  function conflicts(T){
+    const out = [];
+    for(let i = 0; i < T.length; i++) for(let j = i + 1; j < T.length; j++)
+      if(T[i].mk === T[j].mk && T[i].indent === T[j].indent) out.push([i, j]);
+    return out;
+  }
+  //  want 에서 가장 가까운 빈 들여쓰기(같으면 깊은 쪽 먼저, 0~20칸). 하나도 없으면 null
+  function freeIndent(T, i, want, mk){
+    const bad = indentBlocked(T, i, mk);
+    for(let d = 0; d <= IND_MAX; d++){
+      if(want + d <= IND_MAX && bad.indexOf(want + d) < 0) return want + d;
+      if(d > 0 && want - d >= 0 && bad.indexOf(want - d) < 0) return want - d;
+    }
+    return null;
+  }
+  //  i 수준 머리기호를 mk 로 바꾼 새 표. 같은 기호의 다른 수준과 들여쓰기가 겹치면 이 수준 들여쓰기를 가장 가까운 빈 값으로 옮긴다
+  function setMarker(T, i, mk){
+    const nt = T.map(r => ({ mk: r.mk, indent: r.indent }));
+    nt[i].mk = mk;
+    if(indentBlocked(nt, i).indexOf(nt[i].indent) >= 0){ const f = freeIndent(nt, i, nt[i].indent); if(f != null) nt[i].indent = f; }
+    return nt;
+  }
+  //  저장해 둔 표를 7수준 표로 맞춘다. 예전 5수준 표는 그대로 두고 6, 7수준에 기본값을 붙인다
+  //  (기본값이 규칙에 걸리면 바로 윗수준 +2칸 이상에서 가장 작은 빈 값, 20칸까지). 읽을 수 없는 표면 null
+  function fitTable(t){
+    if(!Array.isArray(t) || t.length < 1 || t.length > LEVELS) return null;
+    if(!t.every(r => r && typeof r.mk === 'string' && r.mk.trim() && r.mk.length <= 3
+      && Number.isInteger(r.indent) && r.indent >= 0 && r.indent <= IND_MAX)) return null;
+    const nt = t.map(r => ({ mk: r.mk, indent: r.indent })), def = preset('sym');
+    //  저장된 줄끼리 겹치면(손으로 고친 값 등) 뒤 수준을 옮긴다
+    for(let i = 1; i < nt.length; i++) if(indentBlocked(nt.slice(0, i + 1), i).indexOf(nt[i].indent) >= 0){ const f = freeIndent(nt.slice(0, i + 1), i, nt[i].indent); if(f == null) return null; nt[i].indent = f; }
+    for(let i = nt.length; i < LEVELS; i++){
+      const row = { mk: def[i].mk, indent: def[i].indent }, part = nt.concat([row]);
+      if(indentBlocked(part, i).indexOf(row.indent) >= 0){
+        const bad = indentBlocked(part, i);
+        const from = Math.min(IND_MAX, nt[i - 1].indent + 2);
+        let v = null;
+        for(let x = from; x <= IND_MAX; x++) if(bad.indexOf(x) < 0){ v = x; break; }
+        row.indent = v != null ? v : freeIndent(part, i, from);   // 20칸까지 다 찼으면 그 아래에서 가장 가까운 빈 값
+        if(row.indent == null) return null;
+      }
+      nt.push(row);
+    }
+    return nt;
+  }
+  function sameTable(a, b){ return a.length === b.length && a.every((r, i) => r.mk === b[i].mk && r.indent === b[i].indent); }
+  function markerText(f, n){
+    const d = FMT[f]; if(!d) return f;
+    const s = SEQ[d[1]];
+    return d[0] + (s ? s[(n - 1) % s.length] : String(n)) + d[2];
+  }
+  //  rest 앞의 번호를 읽는다. 읽을 형식 = 늘 읽는 형식 + 표에 든 형식. 앞 글자가 긴 형식부터
+  //  표에 번호 형식이 하나도 없으면 늘 읽는 형식도 쓰지 않는다("1. 일정" 같은 글을 항목으로 읽지 않는다)
+  function numFmtsOf(T){
+    const a = T.some(r => isNum(r.mk)) ? BASE_NUMS.slice() : [];
+    T.forEach(r => { if(isNum(r.mk) && a.indexOf(r.mk) < 0) a.push(r.mk); });
+    return a.sort((x, y) => FMT[y][0].length - FMT[x][0].length);
+  }
+  function readNum(rest, fmts){
+    for(const f of fmts){
+      const [pre, kind, suf] = FMT[f];
+      if(!rest.startsWith(pre)) continue;
+      let i = pre.length, num = 0, j = i;
+      if(kind === 'n'){ const m = /^\d{1,3}/.exec(rest.slice(i)); if(!m) continue; num = Number(m[0]); j = i + m[0].length; }
+      else { const k = SEQ[kind].indexOf(rest[i]); if(k < 0 || !rest[i]) continue; num = k + 1; j = i + 1; }
+      if(!rest.startsWith(suf, j)) continue;
+      return { mk: rest.slice(0, j + suf.length), kind: f, num };
+    }
+    return null;
+  }
+
+  // ---------- 줄 읽기 ----------
+  //  번호: 1. 가. 1) 가) (1). 기호: 기본 기호 + 표에 든 기호. 뒤에 빈칸이 하나 이상 있어야 항목이다(1.5시간 은 항목 아님).
+  function symsOf(T){
+    const a = SYM_DEF.slice();
+    T.forEach(r => { if(r.mk && !isNum(r.mk) && a.indexOf(r.mk) < 0) a.push(r.mk); });
+    return a.sort((x, y) => y.length - x.length);
+  }
+  function parseLine(raw, syms, fmts){
+    const ws = leadWs(raw), rest = raw.slice(ws.length);
+    let mk = '', kind = '', num = 0;
+    const m = readNum(rest, fmts || BASE_NUMS);
+    if(m){
+      mk = m.mk; kind = m.kind; num = m.num;
+    } else {
+      for(const s of syms) if(rest.startsWith(s)){ mk = s; kind = 'sym'; break; }
+    }
+    if(mk){
+      const g = /^ +/.exec(rest.slice(mk.length));
+      if(g) return { raw, ws, mk, kind, num, gap: g[0], body: rest.slice(mk.length + g[0].length), item: true, level: 0, mode: 'raw' };
+    }
+    return { raw, ws, mk: '', kind: '', num: 0, gap: '', body: rest, item: false, level: 0, mode: 'raw' };
+  }
+  //  수준 = 기호(번호 형식)가 맞는 수준이 하나뿐이면 앞 칸 수와 상관없이 그 수준.
+  //  맞는 수준이 여럿이면 그 가운데서, 하나도 없으면 모든 수준에서 앞 칸 수가 가장 가까운 수준(같으면 바깥 수준).
+  function infer(p, T){
+    const all = [], hit = [];
+    for(let L = 1; L <= T.length; L++){
+      const r = T[L - 1];
+      all.push(L);
+      if(isNum(r.mk) ? p.kind === r.mk : (p.kind === 'sym' && p.mk === r.mk)) hit.push(L);
+    }
+    if(hit.length === 1) return hit[0];
+    const w = wsWidth(p.ws);
+    let best = 1, bd = Infinity;
+    (hit.length ? hit : all).forEach(L => { const d = Math.abs(w - T[L - 1].indent); if(d < bd){ bd = d; best = L; } });
+    return best;
+  }
+  function parse(v, T){
+    const syms = symsOf(T), fmts = numFmtsOf(T), lines = v.split('\n'), starts = [];
+    let pos = 0;
+    const P = lines.map(raw => {
+      starts.push(pos); pos += raw.length + 1;
+      const p = parseLine(raw, syms, fmts);
+      if(p.item) p.level = infer(p, T);
+      p.pre = p.item ? p.ws.length + p.mk.length + p.gap.length : p.ws.length;
+      return p;
+    });
+    return { v, P, starts };
+  }
+  function lineIdx(M, pos){ let i = M.starts.length - 1; while(i > 0 && M.starts[i] > pos) i--; return i; }
+  function rangeIdx(M, s, e){
+    if(e < s){ const t = s; s = e; e = t; }
+    const endRef = (e > s && M.v[e - 1] === '\n') ? e - 1 : e;   // 줄 맨 앞에서 끝난 선택은 그 줄을 넣지 않는다
+    return [lineIdx(M, s), lineIdx(M, endRef)];
+  }
+  //  본문 줄이 앞 항목에 딸린 이어 쓰기 줄이면 그 항목의 수준, 아니면 0
+  function contParent(P, i){
+    const p = P[i];
+    if(p.item || !p.ws) return 0;
+    for(let j = i - 1; j >= 0; j--){
+      if(P[j].level > 0) return P[j].level;
+      if(P[j].raw.trim() !== '' && !P[j].ws) return 0;
+    }
+    return 0;
+  }
+
+  // ---------- 다시 쓰기(번호 다시 매기기 포함) ----------
+  //  mode: raw(그대로, 번호만 고침), render(표대로 다시 그림), cont(앞 항목 글 첫 칸에 맞춘 본문)
+  function finish(P, T){
+    const cnt = new Array(Math.max(T.length, LEVELS) + 2).fill(0);   // cnt[L] = L 수준 차례(0 은 쓰지 않음)
+    let col = 0;
+    const out = [], npre = [];
+    P.forEach(p => {
+      let s;
+      if(p.level > 0){
+        const L = p.level, r = T[L - 1];
+        cnt[L]++; for(let k = L + 1; k < cnt.length; k++) cnt[k] = 0;
+        let head;
+        if(p.mode === 'render') head = ' '.repeat(r.indent) + markerText(r.mk, cnt[L]) + ' ';
+        //  번호 줄은 제 형식 그대로 차례만 고친다(다른 표로 쓴 글을 손대지 않은 채 읽는다)
+        else if(p.kind !== 'sym' && isNum(p.kind)) head = p.ws + markerText(p.kind, cnt[L]) + p.gap;
+        else head = p.ws + p.mk + p.gap;
+        col = head.length; npre.push(head.length); s = head + p.body;
+      } else if(p.mode === 'cont'){
+        if(col === 0 && p.body.trim() !== '') cnt.fill(0);
+        npre.push(col); s = ' '.repeat(col) + p.body;
+      } else if(p.mode === 'body0'){
+        //  본문으로 바꾼 줄: 기호도 들여쓰기도 없이 맨 앞(Shift+Enter 와 같은 본문 줄). 글이 있으면 번호를 다시 센다
+        const b = p.body.replace(/^[ \t　 ]+/, '');
+        if(b.trim() !== ''){ col = 0; cnt.fill(0); }
+        npre.push(0); s = b;
+      } else {
+        //  앞 칸 없이 쓴 본문 줄(소제목 등) 아래에서는 번호를 1부터 다시 센다. 빈 줄은 그대로 이어 센다
+        if(p.raw.trim() !== '' && !p.ws){ col = 0; cnt.fill(0); }
+        npre.push(p.ws.length); s = p.raw;
+      }
+      out.push(s);
+    });
+    const starts = []; let pos = 0;
+    out.forEach(s => { starts.push(pos); pos += s.length + 1; });
+    return { text: out.join('\n'), starts, npre };
+  }
+  //  옛 위치 -> 새 위치. 글 안이면 글 기준으로 따라가고, 머리(들여쓰기와 기호) 안이면 글 첫 칸으로.
+  function mapPos(M, F, pos, keep0){
+    const i = lineIdx(M, pos), p = M.P[i], c = pos - M.starts[i], rel = c - p.pre;
+    const ns = F.starts[i];
+    if(keep0 && c === 0) return ns;   // 줄 맨 앞에서 시작하는 선택은 줄 맨 앞을 지킨다
+    if(rel >= 0) return ns + F.npre[i] + rel;
+    if(p.mode === 'raw' && c <= p.ws.length) return ns + c;
+    return ns + F.npre[i];
+  }
+  function diffOp(a, b, selS, selE){
+    const n = Math.min(a.length, b.length);
+    let p = 0; while(p < n && a[p] === b[p]) p++;
+    let q = 0; while(q < n - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++;
+    return { from: p, to: a.length - q, text: b.slice(p, b.length - q), selS, selE };
+  }
+  function transform(v, T, s, e, mutate){
+    const M = parse(v, T);
+    if(mutate && mutate(M) === false) return null;
+    const F = finish(M.P, T);
+    if(F.text === v) return null;
+    const keep0 = s !== e;
+    return diffOp(v, F.text, mapPos(M, F, s, keep0), mapPos(M, F, e, keep0));
+  }
+  //  글을 v2 로 고친 뒤 번호를 다시 매겨 원래 v 와의 차이 하나로 돌려준다
+  function finalize(v, v2, T, c2){
+    const M = parse(v2, T), F = finish(M.P, T), c = mapPos(M, F, c2, false);
+    return diffOp(v, F.text, c, c);
+  }
+
+  // ---------- 동작 ----------
+  //  수준 감소(-1)/증가(+1). 커서 줄 또는 고른 줄 모두. 바꿀 것이 없으면 null.
+  function shiftLevel(v, s, e, T, dir){
+    return transform(v, T, s, e, M => {
+      const [a, b] = rangeIdx(M, s, e), multi = b > a;
+      let changed = false;
+      for(let i = a; i <= b; i++){
+        const p = M.P[i];
+        if(multi && p.raw.trim() === '') continue;
+        if(p.level > 0){
+          const nl = Math.max(0, Math.min(T.length, p.level + dir));
+          if(nl === p.level) continue;
+          changed = true;
+          if(nl === 0){ p.level = 0; p.mode = 'body0'; }
+          else { p.level = nl; p.mode = 'render'; }
+        } else {
+          const par = contParent(M.P, i);
+          if(multi && par > 0){ p.mode = 'cont'; continue; }   // 여러 줄이면 이어 쓰기 줄은 제 항목을 따라간다
+          if(dir > 0 && par < T.length){ p.level = par + 1; p.mode = 'render'; changed = true; }
+        }
+      }
+      return changed;
+    });
+  }
+  //  수준 바로 정하기. L=0 은 본문(기호도 들여쓰기도 없이 맨 앞, Shift+Enter 와 같음).
+  function setLevel(v, s, e, T, L){
+    return transform(v, T, s, e, M => {
+      const [a, b] = rangeIdx(M, s, e), multi = b > a;
+      let changed = false;
+      for(let i = a; i <= b; i++){
+        const p = M.P[i];
+        if(multi && p.raw.trim() === '') continue;
+        if(L === 0){ if(p.level > 0 || p.ws){ p.level = 0; p.mode = 'body0'; changed = true; } }
+        else { p.level = L; p.mode = 'render'; changed = true; }
+      }
+      return changed;
+    });
+  }
+  //  커서 줄(여러 줄이면 고른 줄 모두)의 수준. 섞여 있으면 null.
+  function levelAt(v, s, e, T){
+    const M = parse(v, T), [a, b] = rangeIdx(M, s, e), multi = b > a;
+    let lv = null;
+    for(let i = a; i <= b; i++){
+      const p = M.P[i];
+      if(multi && p.raw.trim() === '') continue;
+      if(lv === null) lv = p.level; else if(lv !== p.level) return null;
+    }
+    return lv === null ? 0 : lv;
+  }
+  function trimSp(v, e){ const m = /^ +/.exec(v.slice(e)); return m ? e + m[0].length : e; }
+  //  Enter: 같은 수준의 새 항목(다음 번호 또는 같은 기호). 빈 항목이면 한 수준 바깥으로, 1수준이면 빈 본문 줄로.
+  //  줄을 나눌 때 커서 앞 빈칸을 윗줄 끝에서 지운다(머리나 앞 칸 안으로는 들어가지 않는다)
+  function trimBack(v, s, ls, min){ let a = s; while(a > ls + min && v[a - 1] === ' ') a--; return a; }
+  //  Enter = 줄바꿈만. 수준은 절대 바꾸지 않는다(2026-11-05 사용자 결정). 항목 줄이면 같은 수준의 새 항목(다음 번호 또는 같은 기호),
+  //  빈 항목에서 쳐도 같은 수준 빈 항목이 하나 더 생긴다. 수준 바꾸기는 Tab, Alt+←/→, Alt+0~7 만 한다.
+  //  커서가 항목 머리(앞 칸, 기호, 뒤 빈칸) 안이면 같은 수준 빈 항목을 위에 넣고 커서는 그 줄 그 자리에 둔다.
+  //  본문 줄(빈칸만 있는 줄 포함)은 들여쓰기만 잇는다.
+  function enter(v, s, e, T){
+    if(e < s){ const t = s; s = e; e = t; }
+    const M = parse(v, T), i = lineIdx(M, s), p = M.P[i], ls = M.starts[i], c = s - ls;
+    if(s === e && p.item && c < p.pre){
+      const head = p.ws + (p.kind === 'sym' ? p.mk : markerText(p.kind, p.num)) + p.gap + '\n';
+      return finalize(v, v.slice(0, ls) + head + v.slice(ls), T, s + head.length);
+    }
+    if(p.item && c >= p.pre){
+      const a = trimBack(v, s, ls, p.pre);
+      const head = '\n' + p.ws + (p.kind === 'sym' ? p.mk : markerText(p.kind, p.num + 1)) + p.gap;
+      return finalize(v, v.slice(0, a) + head + v.slice(trimSp(v, e)), T, a + head.length);
+    }
+    //  본문 줄: 들여쓰기만 잇는다
+    const inText = c > p.ws.length, a = inText ? trimBack(v, s, ls, p.ws.length) : s;
+    const head = '\n' + leadWs(v.slice(ls, a));
+    return finalize(v, v.slice(0, a) + head + v.slice(inText ? trimSp(v, e) : e), T, a + head.length);
+  }
+  //  Shift+Enter: 본문 줄. 기호도 들여쓰기도 없이 맨 앞에서 시작한다(2026-11-05 사용자 결정)
+  function contEnter(v, s, e, T){
+    if(e < s){ const t = s; s = e; e = t; }
+    const M = parse(v, T), i = lineIdx(M, s), p = M.P[i], ls = M.starts[i], c = s - ls;
+    const inItem = p.item && c >= p.pre, inText = inItem || (!p.item && c > p.ws.length);
+    const a = inText ? trimBack(v, s, ls, inItem ? p.pre : p.ws.length) : s;
+    const head = '\n';
+    return finalize(v, v.slice(0, a) + head + v.slice(inText ? trimSp(v, e) : e), T, a + head.length);
+  }
+  //  Backspace: 항목 글 첫 칸에서 누르면 기호를 지우고 이어 쓰기 줄로 바꾼다(글은 앞 항목 글 첫 칸에 맞춘다)
+  function unmark(v, s, e, T){
+    if(s !== e) return null;
+    return transform(v, T, s, e, M => {
+      const i = lineIdx(M, s), p = M.P[i];
+      if(!p.item || s - M.starts[i] !== p.pre) return false;
+      p.level = 0; p.mode = 'cont';
+      return true;
+    });
+  }
+  //  붙여넣기: 줄 앞 공백을 고르게 한 뒤 번호를 다시 매겨 차이 하나로 돌려준다
+  function pasteOp(v, s, e, text, T){
+    if(e < s){ const t = s; s = e; e = t; }
+    const t = normPaste(text);
+    if(t === '' && s === e) return null;
+    return finalize(v, v.slice(0, s) + t + v.slice(e), T, s + t.length);
+  }
+  function renumber(v, s, e, T){ return transform(v, T, s, e, null); }
+  //  표가 바뀌면 항목 줄을 새 표대로 다시 그린다. 옛 표로 수준을 읽는다.
+  //  옛 항목 글 첫 칸에 꼭 맞춘 본문 줄은 새 글 첫 칸으로 옮긴다.
+  function reshape(v, oldT, newT, s, e){
+    const M = parse(v, oldT);
+    let col = 0;
+    M.P.forEach(p => {
+      if(p.level > 0){ p.mode = 'render'; col = p.pre; }
+      else if(p.raw.trim() !== ''){
+        if(p.ws && p.ws.length === col) p.mode = 'cont';
+        else if(!p.ws) col = 0;
+      }
+    });
+    const F = finish(M.P, newT);
+    if(F.text === v) return null;
+    const keep0 = s !== e;
+    return diffOp(v, F.text, mapPos(M, F, s, keep0), mapPos(M, F, e, keep0));
+  }
+  function applyOp(v, op){ return v.slice(0, op.from) + op.text + v.slice(op.to); }
+  return { LEVELS, IND_MAX, NUMS, PRESETS, preset, sameTable, isNum, markerText, parse, levelAt, shiftLevel, setLevel, enter, contEnter, unmark, pasteOp, normPaste, indentBlocked, conflicts, freeIndent, setMarker, fitTable, renumber, reshape, applyOp, lineStartAt };
+})();
+/* ----- wa-core 끝 ----- */
+/* ----- 작성 보조 화면 배선(wa*). 도구 줄은 일간, 주간 편집 머리에 하나씩(waToolsHtml 한 벌을 두 자리에 넣는다), 문단 모양 창은 하나(#waPop, body 끝) ----- */
+const WA_KEY_PREFIX = 'tc_attOutline:';   // 키 = tc_attOutline:<who>. 값 = { v: 1, rows: [{ mk, indent }] }(7줄). 시안에서 저장한 5줄 표(배열)도 읽는다(6, 7수준은 기본값)
+const WA_BODY_SEL = '#atBlocks textarea[data-bt], #atBlocks textarea[data-memo], #awProg, #awPlan, #awMeet';
+//  머리기호 고르기 = 보고서 머리기호 목록(#rptMarker)과 같은 묶음(시안 승인 목록: 대시 대신 빈 네모, 빈 동그라미). 표에 든 값이 목록에 없으면 맨 아래에 그 값을 더해 보인다
+const WA_MK_GROUPS = [
+  ['불릿', [['-', '- 하이픈'], ['•', '• 점'], ['·', '· 가운뎃점'], ['*', '* 별표'], ['▪', '▪ 네모'], ['◦', '◦ 빈 점'], ['□', '□ 빈 네모'], ['○', '○ 빈 동그라미']]],
+  ['숫자', [['1.', '1. 2. 3.'], ['1)', '1) 2) 3)'], ['(1)', '(1) (2) (3)']]],
+  ['가나다', [['가.', '가. 나. 다.'], ['가)', '가) 나) 다)'], ['(가)', '(가) (나) (다)']]],
+  ['자모', [['ㄱ.', 'ㄱ. ㄴ. ㄷ.'], ['ㄱ)', 'ㄱ) ㄴ) ㄷ)']]],
+  ['영문, 기타', [['A.', 'A. B. C.'], ['a.', 'a. b. c.'], ['①', '① ② ③']]]
+];
+//  상태: T = 지금 계정의 표, who = 그 계정, last = 마지막에 쓰던 본문(도구가 고칠 본문), quiet = 도구가 다른 본문을 잠깐 고치는 중(초점 이동을 무시),
+//  mark = 표시 중인 본문 칸(wa-tgt), hist = 문단 모양 창이 열린 동안의 표 바꿈 기록, queue = 한글 조합 중에 누른 수준 키
+const WAS = { T: null, who: null, last: null, quiet: false, mark: null, hist: [], queue: [], composing: false, shift: false, altRight: false, pop: null };
+const waClone = t => t.map(r => ({ mk: r.mk, indent: r.indent }));
+function waWho(){ return (ATTENDWIN && ATW.view !== 'day') ? awWho() : atWho(); }
+//  계정별 표 읽기. { v:1, rows } 또는 예전 배열. 읽을 수 없으면 기본(기호형 - * - * - * -, 0~12칸)
+function waLoad(who){
+  try{
+    const o = JSON.parse(localStorage.getItem(WA_KEY_PREFIX + who) || 'null');
+    const t = WA.fitTable(Array.isArray(o) ? o : (o && o.v === 1 ? o.rows : null));
+    if(t) return t;
+  }catch(_){}
+  return WA.preset('sym');
+}
+function waT(){
+  const who = waWho();
+  if(WAS.who !== who || !WAS.T){ WAS.who = who; WAS.T = waLoad(who); }
+  return WAS.T;
+}
+function waSave(){ try{ localStorage.setItem(WA_KEY_PREFIX + WAS.who, JSON.stringify({ v: 1, rows: WAS.T })); }catch(_){} }
+function waVis(el){ return !!el && el.isConnected && !el.closest('.hidden') && !document.documentElement.classList.contains('at-idle'); }
+//  지금 보이는 편집 화면(일간 #atEd 또는 주간 #awEd). 없으면 null
+function waEd(){
+  const d = document.getElementById('atEd'), w = document.getElementById('awEd');
+  if(ATE.p && waVis(d)) return d;
+  if(AWE.p && waVis(w)) return w;
+  return null;
+}
+function waBusy(ed){ return !ed || ed.classList.contains('busy') || (ed.id === 'atEd' ? !!ATE.sending : !!(AWE.sending || AWE.busy)); }
+function waIsBody(el){ return !!(el && el.tagName === 'TEXTAREA' && el.matches(WA_BODY_SEL)); }
+function waTarget(){
+  const ta = WAS.last, ed = waEd();
+  return (ta && ed && ed.contains(ta) && waVis(ta) && !ta.disabled) ? ta : null;
+}
+function waBodies(ed){ return ed ? Array.from(ed.querySelectorAll(WA_BODY_SEL)).filter(t => waVis(t) && !t.disabled) : []; }
+const waSel = ta => [ta.selectionStart, ta.selectionEnd];
+
+//  execCommand 로 고쳐 한 번의 Ctrl+Z 로 되돌릴 수 있게 한다(번호 다시 매기기도 같은 한 번에 든다). 못 하면 setRangeText 와 input 알림
+function waEdit(ta, op){
+  if(!op) return false;
+  ta.setSelectionRange(op.from, op.to);
+  let ok = false;
+  try{
+    if(typeof document.execCommand === 'function')
+      ok = op.text === '' ? (op.from === op.to ? true : document.execCommand('delete', false)) : document.execCommand('insertText', false, op.text);
+  }catch(_){ ok = false; }
+  if(!ok){
+    ta.setRangeText(op.text, op.from, op.to, 'end');
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  ta.setSelectionRange(op.selS, op.selE);
+  return true;
+}
+//  초점이 없는 본문을 고칠 때: 잠깐 초점을 옮겨 고치고, 초점과 선택, 목록 스크롤을 그대로 돌려놓는다
+function waEditAside(ta, op){
+  const prev = document.activeElement, sc = ta.closest('.at-list'), top = sc ? sc.scrollTop : 0;
+  let ps = null, pe = null;
+  try{ if(prev && prev !== ta && prev.setSelectionRange && prev.selectionStart != null){ ps = prev.selectionStart; pe = prev.selectionEnd; } }catch(_){}
+  WAS.quiet = true;
+  try{
+    if(prev !== ta) ta.focus({ preventScroll: true });
+    waEdit(ta, op);
+    if(prev && prev !== ta && prev.focus){
+      prev.focus({ preventScroll: true });
+      if(ps != null) try{ prev.setSelectionRange(ps, pe); }catch(_){}
+    }
+  } finally { WAS.quiet = false; }
+  if(sc) sc.scrollTop = top;
+}
+
+//  도구가 고칠 본문 표시(화면만): 일간은 과제 상자, 주간은 글 칸에 wa-tgt
+function waMarkTarget(ta){
+  const el = ta ? (ta.closest('.at-blk') || ta) : null;
+  if(el === WAS.mark) return;
+  if(WAS.mark) WAS.mark.classList.remove('wa-tgt');
+  if(el) el.classList.add('wa-tgt');
+  WAS.mark = el;
+}
+function waSetDis(el, d){ if(el && el.disabled !== d) el.disabled = d; }
+//  도구 줄 상태: 보이는 편집 화면의 도구만 켠다. 보내는 중이면 끈다. 수준 칸은 커서 줄 수준(섞여 있으면 빈칸), 고칠 본문이 없으면 꺼진 "수준"
+function waRefresh(){
+  const ed = waEd(), ta = waTarget();
+  if(WAS.pop && !WAS.pop.classList.contains('hidden') && (!ed || waBusy(ed))) waClosePop(false);
+  waMarkTarget(ta);
+  document.querySelectorAll('.wa-tools').forEach(box => {
+    const mine = !!ed && ed.contains(box), off = !mine || waBusy(ed);
+    const lv = box.querySelector('.wa-lv'), b = box.querySelector('.wa-b');
+    waSetDis(b, off); waSetDis(lv, off || !ta);
+    let want = '';
+    if(!off && ta){ const l = WA.levelAt(ta.value, ta.selectionStart, ta.selectionEnd, waT()); want = l === null ? '' : String(l); }
+    if(lv && lv.value !== want) lv.value = want;
+  });
+}
+//  편집 화면을 닫거나 바꾸거나 근태 창을 숨길 때: 문단 모양 창을 닫고 고칠 본문을 비운다
+function waReset(){
+  waClosePop(false);
+  WAS.last = null; WAS.queue.length = 0; WAS.composing = false; WAS.hist.length = 0;
+  waMarkTarget(null);
+  waRefresh();
+}
+function waAct(fn){
+  const ta = waTarget(); if(!ta) return;
+  if(document.activeElement !== ta) ta.focus({ preventScroll: true });
+  const [s, e] = waSel(ta);
+  waEdit(ta, fn(ta.value, s, e));
+  waRefresh();
+}
+function waRunOn(ta, fn){ const [s, e] = waSel(ta); waEdit(ta, fn(ta.value, s, e)); waRefresh(); }
+//  한글 조합 중에 누른 수준 키: 기본 동작(초점 이동 등)은 바로 막고, 조합 글자가 들어간 뒤 값과 선택을 다시 읽어 한다
+function waFlush(){
+  if(WAS.composing) return;   // 조합이 다시 시작됐으면 끝날 때까지 기다린다
+  while(WAS.queue.length){ const q = WAS.queue.shift(); if(document.activeElement === q.ta) waRunOn(q.ta, q.fn); }
+}
+function waLater(ta, fn){ WAS.queue.push({ ta, fn }); if(!WAS.composing) setTimeout(waFlush, 0); }
+//  수준 키 -> 할 일. 없으면 null. 조합 중에는 key 가 Process 로 올 수 있어 code 도 본다
+function waLevelKey(ev){
+  const k = ev.key, code = ev.code || '', c = ev.ctrlKey || ev.metaKey;
+  //  Tab = 한 수준 증가. Shift+Tab 은 쓰지 않는다(감소는 Alt+왼쪽). Ctrl+Tab 도 그대로 보낸다
+  if((k === 'Tab' || code === 'Tab') && !c && !ev.altKey && !ev.shiftKey) return (v, s, e) => WA.shiftLevel(v, s, e, waT(), 1);
+  //  Alt+왼쪽/오른쪽 = 한 수준 감소/증가, Alt+0~7 = 그 수준(숫자 줄 키만). 오른쪽 Alt(AltGr)는 쓰지 않는다
+  if(ev.altKey && !c && !ev.shiftKey && !WAS.altRight && !(ev.getModifierState && ev.getModifierState('AltGraph'))){
+    if(code === 'ArrowLeft' || code === 'ArrowRight' || k === 'ArrowLeft' || k === 'ArrowRight'){
+      const d = (code === 'ArrowLeft' || (code !== 'ArrowRight' && k === 'ArrowLeft')) ? -1 : 1;
+      return (v, s, e) => WA.shiftLevel(v, s, e, waT(), d);
+    }
+    const dm = /^Digit([0-7])$/.exec(code);
+    if(dm){ const L = Number(dm[1]); return (v, s, e) => WA.setLevel(v, s, e, waT(), L); }
+  }
+  return null;
+}
+
+//  문단 모양 창
+function waFillRows(){
+  const pop = WAS.pop, T = waT(), known = new Set(WA_MK_GROUPS.flatMap(g => g[1].map(o => o[0])));
+  T.forEach((r, i) => {
+    const s = pop.querySelector('.wa-sym[data-r="' + i + '"]');
+    let x = s.querySelector('option[data-extra]');
+    if(!known.has(r.mk)){
+      if(!x){ x = document.createElement('option'); x.dataset.extra = '1'; s.appendChild(x); }
+      x.value = r.mk; x.textContent = r.mk;
+    } else if(x) x.remove();
+    s.value = r.mk;
+    //  같은 머리기호를 쓰는 다른 수준이 이미 쓰는 들여쓰기는 꺼 둔다(순서는 자유)
+    const ind = pop.querySelector('.wa-ind[data-r="' + i + '"]'), bad = WA.indentBlocked(T, i);
+    Array.from(ind.options).forEach(o => { const off = bad.indexOf(Number(o.value)) >= 0; if(o.disabled !== off) o.disabled = off; });
+    ind.value = String(r.indent);
+  });
+}
+//  바뀐 표를 지금 보이는 보고의 본문에만 바로 맞춘다(본문마다 되돌리기 한 단계). 안 보이는 쪽 글은 그대로 둔다
+function waApplyTable(nt){
+  const old = waClone(waT());
+  if(WA.sameTable(nt, old)) return;
+  WAS.T = waClone(nt); waSave();
+  //  되돌리기 기록은 문서 하나에 쌓이므로, 마지막에 쓰던 본문을 맨 나중에 고쳐 Ctrl+Z 한 번이 그 본문부터 되돌리게 한다
+  const last = waTarget(), list = waBodies(waEd()).filter(ta => ta !== last);
+  if(last) list.push(last);
+  list.forEach(ta => {
+    const [s, e] = waSel(ta), op = WA.reshape(ta.value, old, WAS.T, s, e);
+    if(op) waEditAside(ta, op);
+  });
+  waRefresh();
+}
+//  창 안 Ctrl+Z: 마지막 표 바꿈을 표와 본문 모두 한 번에 되돌린다(값을 바로 넣고 input 을 알린다. 이 본문들의 기본 되돌리기 기록은 끊길 수 있다)
+function waUndoTable(){
+  const h = WAS.hist.pop(); if(!h) return;
+  waT(); WAS.T = waClone(h.T); waSave();
+  h.bodies.forEach(b => {
+    if(!b.ta.isConnected) return;
+    b.ta.value = b.v;
+    try{ b.ta.setSelectionRange(b.s, b.e); }catch(_){}
+    b.ta.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  waFillRows(); waRefresh();
+}
+function waOnPopChange(ev){
+  const t = ev.target, i = Number(t.dataset.r), T = waT();
+  let nt;
+  //  머리기호를 바꿔 같은 기호의 다른 수준과 들여쓰기가 겹치면 이 수준 들여쓰기도 같이 옮긴다(되돌리기 한 번)
+  if(t.classList.contains('wa-sym')) nt = WA.setMarker(T, i, t.value);
+  else if(t.classList.contains('wa-ind')){
+    nt = waClone(T); nt[i].indent = Number(t.value);
+    if(WA.conflicts(nt).length){ waFillRows(); return; }
+  }
+  else return;
+  if(WA.sameTable(nt, T)){ waFillRows(); return; }
+  const oldT = waClone(T), before = waBodies(waEd()).map(ta => ({ ta, v: ta.value, s: ta.selectionStart, e: ta.selectionEnd }));
+  waApplyTable(nt);
+  WAS.hist.push({ T: oldT, bodies: before.filter(b => b.ta.value !== b.v) });
+  waFillRows();
+}
+function waShapeBtn(){ const ed = waEd(); return ed ? ed.querySelector('.wa-tools .wa-b') : null; }
+function waPlacePop(){
+  const pop = WAS.pop, b = waShapeBtn(); if(!pop || !b) return;
+  const r = b.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+  const left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8));
+  let top = r.bottom + 4;
+  if(top + h > innerHeight - 8) top = Math.max(8, innerHeight - h - 8);
+  pop.style.left = left + 'px'; pop.style.top = top + 'px';
+}
+function waPopShown(){ return !!WAS.pop && !WAS.pop.classList.contains('hidden'); }
+function waOpenPop(){
+  const ed = waEd(); if(!ed || waBusy(ed)) return;
+  waFillRows(); WAS.hist.length = 0;
+  WAS.pop.classList.remove('hidden'); waPlacePop();
+  document.querySelectorAll('.wa-tools .wa-b').forEach(b => b.setAttribute('aria-expanded', String(ed.contains(b))));
+}
+function waClosePop(refocus){
+  if(!waPopShown()) return;
+  const inPop = WAS.pop.contains(document.activeElement);
+  WAS.pop.classList.add('hidden');
+  document.querySelectorAll('.wa-tools .wa-b').forEach(b => b.setAttribute('aria-expanded', 'false'));
+  WAS.hist.length = 0;
+  if(refocus && inPop){ const ta = waTarget(); if(ta) ta.focus({ preventScroll: true }); }
+}
+//  전역 Esc(atEscape 맨 앞): 문단 모양 창이 열려 있으면 창만 닫는다
+function waPopEscape(){ if(!waPopShown()) return false; waClosePop(true); return true; }
+function waToolsHtml(){
+  //  고를 수 없는 마지막 줄: 목록을 펼친 사람에게 한 수준 이동 키를 보인다
+  return '<select class="wa-lv" aria-label="수준" title="수준" disabled><option value="" hidden>수준</option>'
+    + Array.from({ length: WA.LEVELS + 1 }, (_, L) => '<option value="' + L + '">' + (L ? L + '수준' : '본문') + '&nbsp;&nbsp;&nbsp;Alt+' + L + '</option>').join('')
+    + '<hr><option value="mv" disabled>한 수준 이동&nbsp;&nbsp;&nbsp;Alt+← →</option></select>'
+    + '<button type="button" class="btn sm wa-b" data-wa-tool aria-haspopup="dialog" aria-controls="waPop" aria-expanded="false">문단 모양</button>';
+}
+function waPopHtml(){
+  const escH = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const kbd = s => '<kbd class="wa-kbd">' + s + '</kbd>';
+  const mk = WA_MK_GROUPS.map(g => '<optgroup label="' + g[0] + '">' + g[1].map(o => '<option value="' + escH(o[0]) + '">' + escH(o[1]) + '</option>').join('') + '</optgroup>').join('');
+  const ind = Array.from({ length: WA.IND_MAX + 1 }, (_, n) => '<option value="' + n + '">' + n + '칸</option>').join('');
+  return popHeadHtml('문단 모양')
+    + '<div class="wa-pop-in"><table class="wa-tbl"><thead><tr><th>수준</th><th>머리기호</th><th>들여쓰기</th></tr></thead><tbody>'
+    + Array.from({ length: WA.LEVELS }, (_, i) => '<tr><td><span class="wa-lvn">' + (i + 1) + '수준</span><span class="wa-k">' + kbd('Alt') + '+' + kbd(i + 1) + '</span></td>'
+      + '<td><select class="wa-sym" data-r="' + i + '" aria-label="' + (i + 1) + '수준 머리기호">' + mk + '</select></td>'
+      + '<td><select class="wa-ind" data-r="' + i + '" aria-label="' + (i + 1) + '수준 들여쓰기">' + ind + '</select></td></tr>').join('')
+    + '</tbody></table>'
+    //  키 표: 화면 설명이 아니라 키 이름만 적는다
+    + '<div class="wa-keys"><span>' + kbd('Alt') + '+' + kbd('←') + kbd('→') + ' 한 수준 이동</span>'
+    + '<span>' + kbd('Alt') + '+' + kbd('0') + ' 본문</span>'
+    + '<span>' + kbd('Shift') + '+' + kbd('Enter') + ' 본문 줄</span></div></div>';
+}
+
+/* ── 배선(atInit 이 부른다) ── */
+function waInit(){
+  if(WAS.pop) return;
+  document.querySelectorAll('.wa-tools').forEach(box => { box.innerHTML = waToolsHtml(); });
+  const pop = document.createElement('div');
+  pop.className = 'wa-pop hidden'; pop.id = 'waPop';
+  pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', '문단 모양');
+  pop.innerHTML = waPopHtml();
+  document.body.appendChild(pop);
+  WAS.pop = pop;
+  pop.addEventListener('change', waOnPopChange);
+  pop.querySelector('[data-popx]').addEventListener('click', () => { const b = waShapeBtn(); waClosePop(true); if(!waTarget() && b) try{ b.focus({ preventScroll: true }); }catch(_){} });
+  //  도구 줄: 단추를 눌러도 본문이 초점과 선택을 그대로 갖는다
+  document.addEventListener('mousedown', ev => { if(ev.target.closest && ev.target.closest('[data-wa-tool]')) ev.preventDefault(); });
+  document.addEventListener('mousedown', ev => {
+    if(!waPopShown()) return;
+    if(pop.contains(ev.target) || (ev.target.closest && ev.target.closest('.wa-tools .wa-b'))) return;
+    waClosePop(false);
+  }, true);
+  document.addEventListener('click', ev => {
+    const b = ev.target.closest && ev.target.closest('.wa-tools .wa-b'); if(!b || b.disabled) return;
+    if(waPopShown()) waClosePop(false); else waOpenPop();
+  });
+  document.addEventListener('change', ev => {
+    const lv = ev.target; if(!lv.classList || !lv.classList.contains('wa-lv')) return;
+    if(lv.value === '' || lv.value === 'mv'){ waRefresh(); return; }
+    const L = Number(lv.value);
+    waAct((v, s, e) => WA.setLevel(v, s, e, waT(), L));
+  });
+  //  도구 줄이나 문단 모양 창에 초점이 있는가(html.wa-hold: 고칠 본문 테두리를 초점 때와 같게)
+  const waHoldSync = () => { const ae = document.activeElement, on = !!(ae && ae.closest && (ae.closest('.wa-tools') || pop.contains(ae))); document.documentElement.classList.toggle('wa-hold', on); };
+  document.addEventListener('focusin', ev => { waHoldSync(); if(!WAS.quiet && waIsBody(ev.target)){ WAS.last = ev.target; waRefresh(); } });
+  document.addEventListener('focusout', () => { setTimeout(waHoldSync, 0); });
+  document.addEventListener('selectionchange', () => { if(!WAS.quiet && WAS.last && document.activeElement === WAS.last) waRefresh(); });
+  //  본문 키. Enter 는 beforeinput(insertLineBreak, insertParagraph)에서 받는다. 한글 조합이 끝난 뒤에 오므로 "진행"+Enter 도 바로 이어진다.
+  //  beforeinput 에는 Shift 정보가 없어 마지막 keydown 의 Shift 를 쓴다
+  const HAS_BI = typeof InputEvent !== 'undefined' && typeof InputEvent.prototype.getTargetRanges === 'function';
+  document.addEventListener('compositionstart', ev => { if(waIsBody(ev.target)) WAS.composing = true; });
+  document.addEventListener('compositionend', () => { WAS.composing = false; if(WAS.queue.length) setTimeout(waFlush, 0); });
+  document.addEventListener('focusout', ev => { if(waIsBody(ev.target)) WAS.composing = false; });
+  document.addEventListener('keydown', ev => {
+    if(ev.code === 'AltRight') WAS.altRight = true;
+    //  문단 모양 창 안에서 Ctrl+Z = 마지막 표 바꿈을 한 번에 되돌린다(표와 본문 모두)
+    if(waPopShown() && pop.contains(ev.target) && (ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && (ev.code === 'KeyZ' || ev.key === 'z' || ev.key === 'Z')){ ev.preventDefault(); waUndoTable(); return; }
+    const ta = ev.target;
+    if(!waIsBody(ta) || ta.disabled || ta.readOnly) return;
+    WAS.shift = ev.shiftKey;
+    const ime = ev.isComposing || ev.keyCode === 229, c = ev.ctrlKey || ev.metaKey;
+    const fn = waLevelKey(ev);
+    if(fn){ ev.preventDefault(); if(ime) waLater(ta, fn); else waRunOn(ta, fn); return; }
+    if(ime) return;   // 그 밖의 키는 한글 조합 중에 손대지 않는다
+    if(ev.key === 'Backspace' && !c && !ev.altKey){
+      const [s, e] = waSel(ta), op = WA.unmark(ta.value, s, e, waT());
+      if(op){ ev.preventDefault(); waEdit(ta, op); waRefresh(); }
+      return;
+    }
+    if(!HAS_BI && ev.key === 'Enter' && !c && !ev.altKey){ ev.preventDefault(); const [s, e] = waSel(ta); waEdit(ta, (ev.shiftKey ? WA.contEnter : WA.enter)(ta.value, s, e, waT())); waRefresh(); }
+  });
+  document.addEventListener('keyup', ev => { if(ev.key === 'Shift') WAS.shift = false; if(ev.code === 'AltRight') WAS.altRight = false; });
+  window.addEventListener('blur', () => { WAS.altRight = false; });
+  document.addEventListener('beforeinput', ev => {
+    const ta = ev.target;
+    if(!waIsBody(ta) || ev.isComposing) return;
+    if(ev.inputType !== 'insertLineBreak' && ev.inputType !== 'insertParagraph') return;
+    ev.preventDefault();
+    const [s, e] = waSel(ta);
+    waEdit(ta, (WAS.shift ? WA.contEnter : WA.enter)(ta.value, s, e, waT()));
+    waRefresh();
+  });
+  //  붙여넣기: 줄 앞 탭, 전각 공백, 줄 바꿈 없는 공백을 고르고 번호까지 다시 매겨 한 번에 넣는다(되돌리기 한 단계)
+  document.addEventListener('paste', ev => {
+    const ta = ev.target;
+    if(!waIsBody(ta) || WAS.composing || !ev.clipboardData) return;
+    const text = ev.clipboardData.getData('text/plain');
+    if(!text) return;
+    ev.preventDefault();
+    const [s, e] = waSel(ta);
+    waEdit(ta, WA.pasteOp(ta.value, s, e, text, waT())); waRefresh();
+  });
+  //  지우기, 끌어 놓기 뒤에는 번호를 다시 매긴다(되돌리기 한 단계가 따로 생긴다). 되돌리기/다시 하기 뒤에는 하지 않는다
+  const RENUM_AFTER = /^(delete|insertFromPaste|insertFromDrop)/;
+  document.addEventListener('input', ev => {
+    const ta = ev.target;
+    if(!waIsBody(ta) || WAS.quiet || ev.isComposing || !ev.inputType || !RENUM_AFTER.test(ev.inputType)) return;
+    const v0 = ta.value;
+    setTimeout(() => {
+      if(document.activeElement !== ta || ta.value !== v0) return;
+      const [s, e] = waSel(ta);
+      waEdit(ta, WA.renumber(ta.value, s, e, waT())); waRefresh();
+    }, 0);
+  });
+  let rz = 0;
+  window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if(waPopShown()) waPlacePop(); }, 60); });
+  waRefresh();
+}
+/* ===== 작성 보조 끝 ===== */
 
 /* ================================================================================
  *  과제 공용 캘린더: 과제 탭(docs/PROJECT-CALENDAR-PLAN.md §5.4 ~ §6.6, 시안 docs/prototypes/project-calendar.html 2차)
