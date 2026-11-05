@@ -7,6 +7,21 @@
 
 ---
 
+## 🆕 2026-11-05 (다음 판, 번호는 배포 때): 근태 본문 수준과 문단 모양(이슈 #19)
+
+기획 [docs/WRITING-ASSIST.md](docs/WRITING-ASSIST.md), 시안 `dist/proto/writing-assist-v3.html`(저장소 밖). DB 구조 그대로.
+
+- **대상**: 일간 자유 메모와 과제 블록 글(`#atBlocks textarea[data-memo]`, `[data-bt]`), 주간 진행사항, 차주계획, 회의내용(`#awProg`, `#awPlan`, `#awMeet`). 글은 평문 그대로(빈칸과 머리기호), 수준은 그때그때 읽는다.
+- **코드**: `task-calendar-prototype.html` 의 "작성 보조" 구역(주간보고 배선 `awInit` 바로 뒤). `wa-core` 표지 안이 순수 글 변환 `WA`(시안 그대로, DOM 없음), 그 아래 `wa*` 가 화면 배선. 고침은 모두 `execCommand('insertText')`(안 되면 `setRangeText` 와 input 알림)라 기존 input 처리(ATE, AWE, 임시 저장, 미리보기)가 그대로 돈다. 편집 화면을 다시 그리지 않는다.
+- **머리 줄 도구**: `waToolsHtml` 한 벌을 일간 머리(`[패널 접기]` 왼쪽)와 주간 머리(오른쪽 끝)의 `.wa-tools` 자리에 넣는다. 문단 모양 창 `#waPop` 은 body 끝 하나(`popHeadHtml`). 키는 Tab, Alt+← →, Alt+0~7(숫자 줄만, 오른쪽 Alt 무시), Enter(beforeinput, 같은 수준), Shift+Enter(0칸 본문), Backspace(기호 지우기), 붙여넣기 정리. 한글 조합 중 수준 키는 조합 뒤 한 번.
+- **저장**: `tc_attOutline:<계정>` = `{ v:1, rows }`(7줄). 계정은 근태 임시 저장과 같은 `atWho`, 근태 창 주간이면 `awWho`. 시안이 저장한 배열(5줄 포함)도 읽는다(`WA.fitTable`).
+- **정리 고리**: `atCloseEditor`, `awCloseEditor`, `atSyncScreen`, `atwSync`, `__attendWinHidden` 이 `waReset`(창 닫기, 고칠 본문 비우기). `atSetBusy`, `awSetBusy`, `atBlocksRender` 가 `waRefresh`(보내는 중이면 도구 끄고 창 닫기). `atEscape` 맨 앞이 `waPopEscape`(Esc 는 창만 닫는다).
+- **CSS**: `.wa-*`, `kbd.wa-kbd`. 주간 글 칸에 초점 테두리(`.at-ed .aw-free:focus`, 시안과 같은 파란 테두리)를 더했다. 도구나 창에 초점이 있는 동안 고칠 본문 테두리를 유지(시안의 `body:has(...)` 대신 `html.wa-hold .wa-tgt`, 초점 판정은 `waHoldSync`). `.wa-pop.hidden` 은 `!important` 로 한 번 더 둔다(jsdom 계산 스타일이 뒤의 `display:flex` 를 따라 열람 창 시험이 창을 보이는 것으로 읽었다).
+- **시험**: 새 `tests/writing-assist.test.mjs`(시안 핵심 시험 이식, 근태 창 jsdom 일간과 주간). 고친 시험 attendance-weekly-web(주간 머리 줄 자식에 spacer, wa-tools), ui-copy-punct(문단 모양 머리기호 선택지의 가운뎃점 이름표 허용, #rptMarker 와 같은 까닭), month-todo-close(비모달 팝업 목록에 `waPop`, 머리줄 × 확인).
+- **병합(feat/writing-assist 를 feat/db-app 에, 같은 날 밤)**: 앞서 병합한 스크롤 안정성(taGrow, imeGuard)보다 이른 시점에서 갈라진 작업이라 함께 시험. 충돌은 CHANGELOG 뿐. scroll-stability J4 의 흉내 환경에 `waRefresh` 를 더함(atBlocksRender 가 부른다). 실제 Chromium(Edge, 가짜 호스트)에서 Tab, Alt+1, Ctrl+Z, 한글 조합 중 휠 뒤 같은 칸 같은 커서와 이어지는 Tab, 문단 모양 창 × 와 포커스 복귀, 글 칸 늘어남과 스크롤 유지 확인. 실제 위젯 루프 12개 통과.
+
+---
+
 ## 🆕 2026-11-05 (다음 판, 번호는 배포 때): 주간보고 기존 글 수정, 스크롤 튐, 일간 불러오기, 한글 입력 중 휠(fix/weekly-modify-viewno 병합)
 
 다른 세션의 작업을 feat/db-app 에 병합. 기획은 [docs/WEEKLY-UPSERT.md](docs/WEEKLY-UPSERT.md), [docs/SCROLL-STABILITY.md](docs/SCROLL-STABILITY.md).

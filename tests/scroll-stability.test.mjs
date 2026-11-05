@@ -179,6 +179,7 @@ if (!JSDOM) {
       "var ATE = { blocks: [{ name: 'A과제', text: 'hello world', hours: 1 }, { name: 'B과제', text: 'second', hours: 2 }], memo: 'memo text', sending: false, showErr: false };",
       'function atProjects(){ return []; }', "function atProjColor(){ return '#000'; }", "function atHoursText(h){ return String(h); }", 'function atHoursOk(){ return true; }',
       "function atBlockProblem(){ return ''; }", 'function atStatRender(){}',
+      'function waRefresh(){}',   // 작성 보조 도구 다시 맞추기(docs/WRITING-ASSIST.md, feat/writing-assist 병합). 이 시험은 높이 잠금만 본다
       'var __placeMin = null; function atAddShown(){ return true; } function atAddPlace(){ __placeMin = document.getElementById("atBlocks").style.minHeight; }',
       extractFn(s, 'atBlockShowProblem'), extractFn(s, 'atHoursBad'), extractFn(s, 'atFocusKey'), extractFn(s, 'atFocusRestore'),
       extractFn(s, 'holdHeight'), extractFn(s, 'taGrow'), extractFn(s, 'atGrow'), extractFn(s, 'atBlocksRender'),

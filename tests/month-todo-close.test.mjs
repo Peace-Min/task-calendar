@@ -42,7 +42,9 @@ test('(S) §2: 비모달 팝업(role=dialog, aria-modal 없음)은 정해진 것
   for (const m of app.matchAll(/(\w+)\.id = '([^']+)'[^\n]*\n[^\n]*\n?[^\n]*setAttribute\('role', 'dialog'\)/g)) ids.add(m[2]);
   for (const m of app.matchAll(/pop\.className = '[^']*'; pop\.id = '([^']+)';\n\s*pop\.setAttribute\('role', 'dialog'\)/g)) ids.add(m[1]);
   ids.add('peerPicker');   // pkEnsure 는 id 와 role 사이에 줄이 더 있다
-  assert.deepStrictEqual([...ids].sort(), ['atAddMenu', 'awAddMenu', 'awWCal', 'caWhoPop', 'fbPop', 'pcDrawer', 'pcPop', 'peerPicker'].sort(), '비모달 팝업 목록이 바뀌었다(새 팝업이면 닫기 × 를 붙이고 이 목록에 더한다)');
+  //  waPop = 문단 모양 창(docs/WRITING-ASSIST.md). 머리줄 × 는 waPopHtml 의 popHeadHtml('문단 모양')
+  assert.ok(app.slice(app.indexOf('function waPopHtml('), app.indexOf('function waInit(')).includes("popHeadHtml('문단 모양')"),'문단 모양 창에 공용 머리줄 × 가 없다');
+  assert.deepStrictEqual([...ids].sort(), ['atAddMenu', 'awAddMenu', 'awWCal', 'caWhoPop', 'fbPop', 'pcDrawer', 'pcPop', 'peerPicker', 'waPop'].sort(),'비모달 팝업 목록이 바뀌었다(새 팝업이면 닫기 × 를 붙이고 이 목록에 더한다)');
   //  이미 [닫기] 가 있는 두 과제 추가 메뉴는 그대로
   assert.ok(app.includes('<button type="button" class="btn sm" id="atAddDone">닫기</button>') && app.includes('<button type="button" class="btn sm" id="awAddDone">닫기</button>'), '과제 추가 메뉴의 [닫기] 가 바뀌었다');
   //  나머지는 공용 머리줄 × 를 쓴다
