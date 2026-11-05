@@ -55,4 +55,16 @@
 
 ## QA 기록
 
-(QA 단계에서 채운다)
+2026-11-05, 워크트리 `feat/writing-assist`(기준 81c31dd).
+
+- **strict**: `TC_TEST_STRICT=1 node tests/run-tests.mjs` 3447 pass / 0 fail / 0 skip, exit 0. 새 시험 `tests/writing-assist.test.mjs` 17건(정적 3, 시안 핵심 시험 154건을 옮긴 순수 7, jsdom 근태 창 7). 고친 기존 시험: attendance-weekly-web(주간 머리 줄 자식), ui-copy-punct(`· 가운뎃점` 이름표 허용, #rptMarker 와 같은 까닭), month-todo-close(비모달 팝업 목록에 #waPop).
+- **실제 Chromium**(위젯 연결만 흉내 낸 근태 창 `?win=attend`, 실제 마우스와 키):
+  - 일간: 도구가 [패널 접기] 왼쪽에 보임. Tab 으로 2수준이 3수준, Alt+1 로 1수준. 오른쪽 미리보기와 "이 PC에 임시 저장됨"이 따라옴. Ctrl+Z 두 번에 원래 글, ATE 모델도 원래대로.
+  - 주간, 어두운 테마: 도구가 머리 줄 오른쪽 끝. Alt+← 로 2수준이 1수준. 문단 모양 창 7줄이 읽기 좋게 보임. 콘솔 오류 0.
+- **QA 에서 찾아 고친 결함**: 근태 창은 body 바로 아래 요소를 허용 목록(`html[data-attendwin] body > :not(...)`)으로만 보이는데 `#waPop` 이 빠져 [문단 모양]을 눌러도 창이 뜨지 않았다. jsdom 이 이 선택자의 `!important` 를 계산하지 못해 시험이 놓쳤다. 목록에 넣고, 선택자 글자를 지키는 정적 시험을 더했다.
+- **아직 못 본 것**(실제 위젯에서만):
+  - 한글 IME 로 조합하다 바로 Tab, Alt+숫자, Enter.
+  - WPF 창에서 Alt 키를 눌렀다 뗄 때.
+  - 펼친 수준 목록의 모양(`<hr>` 구분선, 고를 수 없는 마지막 줄). 화면 캡처에 안 잡힌다.
+  - 인트라넷에 붙였을 때 줄 앞 공백이 남는지.
+  - 1600, 900, 400 폭(이번에는 800 폭 한 가지로 봤다).
