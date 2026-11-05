@@ -13,7 +13,7 @@ namespace TaskCalendarWidget
     {
         // ----- 주간범위 읽기 응답 DTO -----
         internal sealed class NcRow { public string viewNo = "", regDate = "", title = ""; }
-        internal sealed class NcCell { public string period = "", title = "", regdate = "", endwork = "", content = "", plan = "", mod = ""; }
+        internal sealed class NcCell { public string period = "", title = "", regdate = "", endwork = "", content = "", plan = "", modNo = ""; }
 
         internal static string J(string s) => JsonSerializer.Serialize(s);
 
@@ -75,9 +75,10 @@ namespace TaskCalendarWidget
         internal const string RowExtractJs = @"(function(){var out=[];var as=document.getElementsByTagName('a');for(var i=0;i<as.length;i++){var a=as[i];var h=a.getAttribute('href')||'';if(h.indexOf('go_view')<0)continue;var m=/go_view\(\s*['""]?(\d+)['""]?\s*\)/.exec(h);if(!m)continue;var title=((a.innerText||a.textContent||'')+'').replace(/\s+/g,' ').trim();var reg='';var tr=a.closest?a.closest('tr'):null;if(tr){var tds=tr.getElementsByTagName('td');for(var j=0;j<tds.length;j++){var tx=((tds[j].innerText||'')+'').trim();var dm=/(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/.exec(tx);if(dm){var mm=dm[2].length<2?'0'+dm[2]:dm[2];var dd=dm[3].length<2?'0'+dm[3]:dm[3];reg=dm[1]+'-'+mm+'-'+dd;break;}}}out.push({viewNo:m[1],regDate:reg,title:title});}return JSON.stringify(out);})()";
 
         // 조회 페이지 라벨셀 추출 — 라벨 div/td 텍스트 정규화 정확일치 → 다음 셀 innerText. JSON 객체 문자열 반환.
-        //   mod: 이 글의 수정 단추(onclick 이나 href 에 go_modify, 또는 input[name=mo])가 있으면 "1". 내가 고칠 수 있는 글이라는 표지다(WEEKLY-UPSERT).
+        //   modNo: 이 글의 수정 단추(input[name=mo] 의 onclick, 또는 go_modify 가 든 onclick, 링크)에서 뽑은 **진짜 글 번호**(go_modify('39438') 의 숫자).
+        //     목록의 go_view(n) 의 n 은 목록 순번이라 글 번호가 아니다(2026-11-05). 번호를 못 뽑거나 서로 다른 번호가 둘 이상이면 "". 수정 단추가 없으면(남의 글) "" 다.
         //   주간범위 읽기는 이 값을 쓰지 않는다(회신 모양 그대로).
-        internal const string CellExtractJs = @"(function(){function C(lb){var tds=document.getElementsByTagName('td');for(var i=0;i<tds.length;i++){var d=tds[i].querySelector&&tds[i].querySelector('div');var tx=((d?d.innerText:tds[i].innerText)||'').replace(/\s+/g,' ').trim();if(tx===lb){var n=tds[i].nextElementSibling;if(n)return n.innerText;}}return '';}return JSON.stringify({period:C('기간'),title:C('제목'),regdate:C('작성일'),endwork:C('진행사항'),content:C('과제투입시간'),plan:C('차주계획'),mod:(document.querySelector('[onclick*=go_modify],a[href*=go_modify],input[name=mo]')?'1':'')});})()";
+        internal const string CellExtractJs = @"(function(){function C(lb){var tds=document.getElementsByTagName('td');for(var i=0;i<tds.length;i++){var d=tds[i].querySelector&&tds[i].querySelector('div');var tx=((d?d.innerText:tds[i].innerText)||'').replace(/\s+/g,' ').trim();if(tx===lb){var n=tds[i].nextElementSibling;if(n)return n.innerText;}}return '';}function M(){var re=/go_modify\(\s*['""]?(\d+)['""]?\s*\)/;var seen={},cnt=0,no='';var els=document.querySelectorAll('input[name=mo],[onclick*=go_modify],a[href*=go_modify]');for(var i=0;i<els.length;i++){var at=['onclick','href'];for(var j=0;j<at.length;j++){var m=re.exec(els[i].getAttribute(at[j])||'');if(m&&!seen[m[1]]){seen[m[1]]=1;cnt++;no=m[1];}}}return cnt===1?no:'';}return JSON.stringify({period:C('기간'),title:C('제목'),regdate:C('작성일'),endwork:C('진행사항'),content:C('과제투입시간'),plan:C('차주계획'),modNo:M()});})()";
 
         // ================================================================================
         // 주간보고 같은 기간 글 고치기(WEEKLY-UPSERT, docs/WEEKLY-UPSERT.md). 아래는 전부 순수 함수다.
@@ -88,24 +89,45 @@ namespace TaskCalendarWidget
         // 확인 실패 문구. 이때는 새 글을 열지 않는다(확인 없이 열면 같은 주 글이 다시 둘이 된다).
         internal const string WeekLookupFailMsg = "기존 주간보고를 확인하지 못했습니다. 다시 시도하세요.";
 
+        // 번호 맞춰 보기 실패 문구. 목록 순번으로 연 보기 화면의 글 번호가 찾을 때 읽은 번호와 다르면(그 사이 목록이 밀렸다) 다른 글을 고치지 않도록 멈춘다.
+        //   "주간보고 " 로 시작하지 않는다(웹이 실패 회신으로 읽는다).
+        internal const string WeekViewMismatchMsg = "고를 기존 글이 목록에서 바뀌어 채우지 않았습니다. 다시 시도하세요.";
+
+        // 수정 화면의 기간이 비었다 = 기존 글의 수정 화면이 아니라 잘못 열린 화면이다(회사 서버가 빈 폼 제출을 실패시킨다).
+        internal const string WeekModifyBlankMsg = "기존 글의 수정 화면이 비어 있어 채우지 않았습니다. 회사 화면에서 글을 확인한 뒤 다시 시도하세요.";
+
+        // 글 번호 정리. 숫자만으로 된 1 ~ 18자리이고 0 보다 크면 앞 0 을 뗀 문자열, 그 밖에는 "".
+        //   보기 화면 수정 단추의 go_modify('39438') 에서 뽑은 값을 검증하는 자리다(목록 순번이 아니라 진짜 글 번호).
+        internal static string NcModifyNo(string? raw)
+        {
+            if (string.IsNullOrEmpty(raw) || raw.Length > 18) return "";
+            foreach (var c in raw) if (c < '0' || c > '9') return "";
+            return raw.TrimStart('0');
+        }
+
         // 같은 기간 글 고르기. 기간 칸을 NcPeriod 로 읽어 시작과 끝이 둘 다 요청과 같아야 같은 글이다.
-        //   기간을 못 읽은 글, 글 번호를 못 읽은 글은 같은 글로 보지 않는다. 요청 기간을 못 읽으면 아무것도 고르지 않는다.
-        //   수정 단추가 없는 글(canModify=false: 내가 고칠 수 없는 글)은 기간이 같아도 고르지 않는다. 그런 글 수는 locked 로 따로 센다(로그용).
-        //   여러 개면 글 번호가 가장 큰(가장 최근) 글. 반환은 숫자만 남긴 글 번호, 없으면 "". matches = 고를 수 있는 같은 기간 글 수.
-        internal static string NcPickSameWeek(IEnumerable<(string viewNo, string period, bool canModify)> items, string sdate, string edate, out int matches, out int locked)
+        //   items = (목록 순번 seq, 기간, 보기 화면에서 뽑은 글 번호 modNo). 순번은 보기 화면을 다시 열 때만 쓰고, 고르는 기준은 글 번호다
+        //   (목록은 최신이 1 이라 순번이 큰 글이 오래된 글이다).
+        //   기간을 못 읽은 글, 순번을 못 읽은 글은 같은 글로 보지 않는다. 요청 기간을 못 읽으면 아무것도 고르지 않는다.
+        //   글 번호를 못 뽑은 글(수정 단추가 없는 남의 글 포함)은 기간이 같아도 고르지 않는다. 그런 글 수는 locked 로 따로 센다(로그용).
+        //   여러 개면 글 번호가 가장 큰(가장 최근) 글. 반환은 (그 글의 순번, 글 번호), 없으면 ("", ""). matches = 서로 다른 글 번호 수.
+        internal static (string seq, string no) NcPickSameWeek(IEnumerable<(string seq, string period, string modNo)> items, string sdate, string edate, out int matches, out int locked)
         {
             matches = 0; locked = 0;
-            if (!NcDate(sdate, out var ds) || !NcDate(edate, out var de)) return "";
-            string best = ""; long bestNo = 0;
-            foreach (var (viewNo, period, canModify) in items ?? Array.Empty<(string, string, bool)>())
+            if (!NcDate(sdate, out var ds) || !NcDate(edate, out var de)) return ("", "");
+            string bestSeq = "", bestNo = ""; long best = 0;
+            var seen = new HashSet<long>();
+            foreach (var (seq, period, modNo) in items ?? Array.Empty<(string, string, string)>())
             {
                 if (!NcPeriod(period, out var a, out var b) || a != ds || b != de) continue;
-                if (!long.TryParse(NcDigits(viewNo), NumberStyles.None, CultureInfo.InvariantCulture, out var n) || n <= 0) continue;
-                if (!canModify) { locked++; continue; }
-                matches++;
-                if (n > bestNo) { bestNo = n; best = n.ToString(CultureInfo.InvariantCulture); }
+                if (!long.TryParse(NcDigits(seq), NumberStyles.None, CultureInfo.InvariantCulture, out var s) || s <= 0) continue;
+                string no = NcModifyNo(modNo);
+                if (no.Length == 0) { locked++; continue; }
+                long n = long.Parse(no, NumberStyles.None, CultureInfo.InvariantCulture);
+                if (seen.Add(n)) matches++;
+                if (n > best) { best = n; bestNo = no; bestSeq = s.ToString(CultureInfo.InvariantCulture); }
             }
-            return best;
+            return (bestSeq, bestNo);
         }
 
         // 수정 화면 성공 문구. 반드시 "주간보고 " 로 시작한다(웹 RPT_WEEKFILL_OK_RE = /^주간보고 / 가 이걸로 주간 회신을 가른다).
@@ -122,9 +144,10 @@ namespace TaskCalendarWidget
         // [WEEKLY-UPSERT:JS] 목록 페이지 표지: 행이 0개일 때 '빈 목록'과 '목록을 못 읽음'을 가른다(go_view, go_list 함수 또는 table_code 칸).
         internal const string ListPageMarkJs = "(function(){try{return !!(typeof go_view==='function'||typeof go_list==='function'||document.getElementsByName('table_code')[0]);}catch(e){return false;}})()";
 
-        // [WEEKLY-UPSERT:JS] go_modify(viewNo) 재현: pjm_modify.jsp?list=go&start=1&view_no=viewNo 로 동적 POST(GoViewJs 와 같은 hidden 필드).
-        internal static string GoModifyJs(string viewNo, string id) =>
-            "(function(){try{var f=document.createElement('form');f.method='post';f.action='pjm_modify.jsp?list=go&start=1&view_no=" + NcDigits(viewNo) + "';"
+        // [WEEKLY-UPSERT:JS] go_modify(postNo) 재현: pjm_modify.jsp?list=go&start=1&view_no=postNo 로 동적 POST(GoViewJs 와 같은 hidden 필드).
+        //   postNo 는 보기 화면 수정 단추의 진짜 글 번호다(목록 순번이 아니다).
+        internal static string GoModifyJs(string postNo, string id) =>
+            "(function(){try{var f=document.createElement('form');f.method='post';f.action='pjm_modify.jsp?list=go&start=1&view_no=" + NcDigits(postNo) + "';"
           + "function H(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
           + "H('word_code','');H('n_code','');H('s_code','');H('c_code','');H('table_code','report_tbl');H('id'," + J(id) + ");"
           + "document.body.appendChild(f);f.submit();return 'ok';}catch(e){return 'err';}})()";
@@ -179,7 +202,7 @@ namespace TaskCalendarWidget
         //   iscompletion 은 인자로 바꿔 싣는다(없으면 덧붙인다). textarea 는 textarea 로 옮긴다. 검사(기간, 제목)와 'y'(제출)의 확인창, action 은 원본과 같다.
         //   반환 "ok sig=1|0 form=1|0 names=a,b,..." : sig=1 이면 원래 Bmodify 소스에 pjm_modify.jsp?go=write 가 있었다(구조 그대로),
         //   form=1 이면 form.elements 로 모았다(칸이 폼에 묶여 있다), names 는 지금 모이는 칸 이름(값은 싣지 않는다).
-        internal static string WeekModifyOverrideJs(string viewNo, string id) =>
+        internal static string WeekModifyOverrideJs(string postNo, string id) =>
             "(function(){try{var sig=0;try{sig=(String(window.Bmodify||'').indexOf('pjm_modify.jsp?go=write')>=0)?1:0;}catch(_){}"
           + "window.__tcWeekFields=function(){var fm=document.forms&&document.forms['form'];var useForm=!!(fm&&fm.elements&&fm.elements.length>0);"
           + "var src=useForm?fm.elements:document.querySelectorAll('input[name],textarea[name],select[name]');var out=[];"
@@ -197,7 +220,7 @@ namespace TaskCalendarWidget
           + "if(iscompletion==='y'&&!confirm('제출하시겠습니까?'))return;"
           + "var c=window.__tcWeekFields();"
           + "var f=document.createElement('form');f.method='post';f.enctype='multipart/form-data';f.acceptCharset='euc-kr';f.setAttribute('data-tc-week','1');"
-          + "f.action='pjm_modify.jsp?go=write&table=report_tbl&view_no=" + NcDigits(viewNo) + "&id='+encodeURIComponent(" + J(id) + ");"
+          + "f.action='pjm_modify.jsp?go=write&table=report_tbl&view_no=" + NcDigits(postNo) + "&id='+encodeURIComponent(" + J(id) + ");"
           + "function H(n,v,ta){var i=document.createElement(ta?'textarea':'input');if(!ta)i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
           + "var isc=false;for(var j=0;j<c.list.length;j++){var x=c.list[j];if(x[0]==='iscompletion'){if(!isc){H('iscompletion',iscompletion,0);isc=true;}continue;}H(x[0],x[1],x[2]);}"
           + "if(!isc)H('iscompletion',iscompletion,0);"
