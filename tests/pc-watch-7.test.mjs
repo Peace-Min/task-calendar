@@ -24,6 +24,10 @@ function mutate(text, find, repl) {
 }
 
 /* ══ (S) 정적 ═══════════════════════════════════════════════════════════ */
+test('(S) 관심 과제 전용 칸(.ca-wo)은 과제 추가 창에서 숨는다: .check 의 display:flex !important 를 이기도록 숨김도 !important(jsdom 은 이 겨룸을 못 본다, 2026-11-05 사용자)', () => {
+  assert.ok(/#catAddModal:not\(\.ca-watch\) \.ca-wo\{display:none !important\}/.test(css), '과제 추가 창에 일정 없는 과제 숨김이 보인다');
+  assert.ok(/\n\.check\{display:flex !important/.test(css), '.check 규칙이 바뀌었다(이 시험의 전제를 다시 볼 것)');
+});
 test('(S) 7.1: 펼친 줄만 옅은 바탕이고 상세는 바탕 없이 왼쪽 가는 선으로 들여쓴다(상세까지 칠하면 상자처럼 보인다, 2026-11-05 실제 위젯 점검)', () => {
   const hi = css.match(/([^}]*)\{background:var\(--accent-soft\)\}[^\n]*펼친 줄만/);
   assert.ok(hi && hi[1].includes('.dp-er.open .dp-er-b') && hi[1].includes('.todo-row.open') && !hi[1].includes('dp-det') && !/\.dp-er\.open\s*(,|$)/.test(hi[1]), '펼친 바탕이 줄이 아닌 묶음(상세 포함)에 칠해진다');

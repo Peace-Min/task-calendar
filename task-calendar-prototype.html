@@ -845,7 +845,7 @@ body.cat-dragging,body.cat-dragging *{cursor:grabbing!important;user-select:none
   #catAddModal .ca-pane:not(.ca-own){flex:none}
   #catAddModal .ca-pane .ca-res{flex:none;height:min(200px,60vh)}
 }
-#catAddModal:not(.ca-watch) .ca-wo{display:none}
+#catAddModal:not(.ca-watch) .ca-wo{display:none !important}   /* .check 의 display:flex !important 를 이겨야 한다. 안 그러면 과제 추가 창에 일정 없는 과제 숨김이 보였다(2026-11-05 사용자) */
 #catAddModal.ca-watch .ca-tabs{display:none}
 .ca-who{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .ca-who .k{color:var(--muted)}
@@ -12276,7 +12276,7 @@ function barChipHtml(it, pos){
 }
 //  하루짜리 할 일 순서: 중요한 할 일 먼저, 안 끝낸 것 먼저(달력 칸과 오른쪽 패널이 같다).
 function todoZoneCmp(a, b){ return ((b.prio === 'high') - (a.prio === 'high')) || ((!!a.done) - (!!b.done)) || String(a.createdAt).localeCompare(String(b.createdAt)); }
-//  일정과 할 일이 둘 다 보일 때 칸 안 하루짜리 순서(docs/PERSONAL-PANEL.md §2.4): 일정(시간순) 다음 할 일(todoZoneCmp).
+//  칸 안 하루짜리 순서(docs/PERSONAL-PANEL.md §2.4): 일정(시간순) 다음 할 일(todoZoneCmp). 할 일만 보기도 같은 순서(중요 먼저, 2026-11-05 사용자).
 //  여러 날 막대(일정과 여러 날 할 일)는 pmLayoutWeek 가 먼저 놓는다. 넘치면 일정과 할 일을 합쳐 +n개 더보기 하나(fitBars).
 function pmCellCmp(a, b){
   if(!!a.todo !== !!b.todo) return a.todo ? 1 : -1;
@@ -12291,9 +12291,8 @@ function renderMonthBars(g, dens, pick, opts){
   if(tabDs < startDs || tabDs > endDs) tabDs = (tY >= startDs && tY <= endDs) ? tY : startDs;
   if(o.roving !== false) focusDs = tabDs;
   const RCAP = dens === 'expand' ? 60 : 12;   // 그리는 차선 한도(성능). 넘는 기록은 그 칸의 +N 에 든다
-  //  일정과 할 일을 한 줄 채우기 하나로 놓는다(§2.4, 할 일 구역 없음). 둘 다 보이면 하루짜리는 일정 다음 할 일, 한 종류만이면 예전 순서 그대로
-  const both = o.todos !== false && viewKinds.ev && viewKinds.td;
-  const cmp = both ? pmCellCmp : (a, b) => entrySort(a.occ || a.todo, b.occ || b.todo);
+  //  일정과 할 일을 한 줄 채우기 하나로 놓는다(§2.4, 할 일 구역 없음). 하루짜리는 일정 다음 할 일. 할 일만 보기도 중요 먼저로 같은 순서
+  const cmp = pmCellCmp;
   const ovlDays = (o.sideOvl || (PEER && __peerOverlay)) ? peerOverlapDays(startDs, endDs) : null;
   const mineItems = all.filter(x => x.mine);
   let html = '';
@@ -12448,6 +12447,10 @@ function fitBars(g){
   const expand = g.classList.contains('expand');
   g.querySelectorAll('.gridrow[data-from]').forEach(wk => {
     wk.querySelectorAll('.more').forEach(b => b.remove());
+    //  칸(grid-row 1 / -1)은 숨긴 차선까지 합친 높이라 줄(overflow:hidden)보다 길어져 선택 테두리 아래가 잘렸다(2026-11-05 사용자).
+    //  보이는 줄 높이로 막는다. 펼침(expand)은 줄이 내용만큼 늘어나므로 막지 않는다
+    const cap = (expand || !(wk.clientHeight > 0)) ? '' : wk.clientHeight + 'px';   // 높이를 모르면(숨은 화면) 막지 않는다(pmFitWeek 와 같은 규칙)
+    wk.querySelectorAll(':scope > .cell').forEach(c => { c.style.maxHeight = cap; });
     const bars = [...wk.querySelectorAll('.chip-bar')];
     bars.forEach(b => { b.style.display = ''; });
     const lay = bars.map(b => ({ c0: Number(b.dataset.c0), c1: Number(b.dataset.c1), lane: Number(b.dataset.lane) }));

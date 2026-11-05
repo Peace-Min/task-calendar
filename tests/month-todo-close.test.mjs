@@ -6,7 +6,7 @@
 //       × 는 모달 × 와 같은 .x, aria-label 과 title 이 "닫기". 새 글에 금지 기호 없음, 새 CSS 는 토큰만.
 //   (R) jsdom:
 //       §1 월간 칸: 여러 날 막대 다음 하루짜리 일정(시간순), 그다음 하루짜리 할 일(중요 먼저, 안 끝낸 것 먼저). 할 일 많은 날이 옆 칸을 밀지 않는다.
-//          넘치면 일정과 할 일을 합친 "+n개 더보기" 하나, 누르면 그 날짜. 할 일만 보기와 일정만 보기는 예전 순서 그대로.
+//          넘치면 일정과 할 일을 합친 "+n개 더보기" 하나, 누르면 그 날짜. 할 일만 보기도 중요 먼저, 일정만 보기는 예전 순서 그대로.
 //       §2 팝업마다(#fbPop, #peerPicker, #awWCal, #pcPop, #pcDrawer, #caWhoPop) 머리줄 × 가 있고, 누르면 닫히고, 포커스는 연 단추로, 고른 상태는 그대로.
 //   (M) 변이: 칸 안에서 할 일을 일정보다 먼저 놓거나, × 를 받는 갈래를 빼면 위 시험이 실패한다.
 // ★ 회사 사이트에는 아무것도 보내지 않는다(호스트 postMessage 는 시험 안에서 버리거나 가짜로 답한다).
@@ -23,10 +23,16 @@ function mutate(text, find, repl) {
 }
 
 /* ══ (S) 정적 ═══════════════════════════════════════════════════════════ */
+test('(S) 막대 달력 칸은 보이는 줄 높이로 막는다(숨긴 차선까지 길어져 선택 테두리 아래가 잘리던 결함, 2026-11-05 사용자)', () => {
+  const f = extractFunction(app, 'fitBars');
+  assert.ok(/:scope > \.cell'\)\.forEach\(c => \{ c\.style\.maxHeight = cap; \}\)/.test(f), 'fitBars 가 칸 높이를 줄 높이로 막지 않는다');
+  assert.ok(/\(expand \|\| !\(wk\.clientHeight > 0\)\) \? '' : wk\.clientHeight \+ 'px'/.test(f), '펼침이나 높이를 모를 때는 막지 않아야 한다');
+});
+
 test('(S) §1: 칸 맨 위 할 일 구역, 점선, "할 일 n" 개수 칩과 그 CSS 가 없고, 칸 안 순서는 pmCellCmp(일정 다음 할 일) 하나다', () => {
   for (const gone of ['pmTodoZone', 'todoCount', 'tdcnt', '.td-sep', 'chip-tdcnt', 'dayTodo = ']) assert.ok(!app.includes(gone), `걷어야 할 할 일 구역 흔적 ${gone} 이 남았다`);
   const rb = extractFunction(app, 'renderMonthBars');
-  assert.ok(/const cmp = both \? pmCellCmp :/.test(rb), '둘 다 보일 때 칸 안 순서가 pmCellCmp 가 아니다');
+  assert.ok(/const cmp = pmCellCmp;/.test(rb), '칸 안 순서가 pmCellCmp 하나가 아니다(할 일만 보기도 같은 순서, 2026-11-05 사용자)');
   assert.ok(/cnt\[c\]\+\+;/.test(rb), '칸 기록 수가 항목마다 하나로 세어지지 않는다');
 });
 test('(S) §2: 비모달 팝업(role=dialog, aria-modal 없음)은 정해진 것뿐이고 모두 닫기 단추가 있다', () => {
@@ -162,12 +168,12 @@ if (!JSDOM) {
     } finally { W.close(); }
   });
 
-  test('(R) §1 할 일만 보기와 일정만 보기는 예전 그대로(한 종류만, 할 일만은 만든 순서)', async () => {
+  test('(R) §1 할 일만 보기도 중요 먼저, 안 끝낸 것 먼저(2026-11-05 사용자). 일정만 보기는 예전 그대로', async () => {
     const W = await bootMonth();
     try {
       const { T } = W.M;
       setView(W, 'viewSetKind("td")');
-      assert.deepStrictEqual(order(W, T), ['t1', 't2', 't3', 't4', 't5', 't6'], '할 일만 보기의 칸 순서가 바뀌었다');
+      assert.deepStrictEqual(order(W, T), ['t2', 't5', 't1', 't4', 't6', 't3'], '할 일만 보기의 칸 순서가 중요 먼저, 안 끝낸 것 먼저가 아니다');
       setView(W, 'viewReset(); viewSetKind("ev")');
       assert.deepStrictEqual(order(W, T), ['eM', 'eA', 'eB'], '일정만 보기의 칸이 바뀌었다');
       assert.strictEqual(W.$$('#grid [data-todo]').length, 0);
@@ -396,7 +402,7 @@ if (!JSDOM) {
     await assert.rejects(() => checks.cellOrder(bad), /칸 안 순서/);
   });
   test('(M) 할 일 구역을 되살리면(하루짜리 할 일을 맨 위 차선에) 옆 칸 시험이 실패한다', async () => {
-    const bad = mutate(app, "  const cmp = both ? pmCellCmp :", "  const cmp = both ? ((a, b) => (!!b.todo - !!a.todo) || pmCellCmp(a, b)) :");
+    const bad = mutate(app, "  const cmp = pmCellCmp;", "  const cmp = (a, b) => (!!b.todo - !!a.todo) || pmCellCmp(a, b);");
     await assert.rejects(() => checks.cellOrder(bad), /칸 안 순서|옆 칸/);
   });
   test('(M) 보기 팝업 × 갈래를 빼면 보기 팝업 시험이 실패한다', async () => {

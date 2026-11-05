@@ -644,7 +644,7 @@ if (!JSDOM) {
     assert.strictEqual(W.el('caHead').textContent, '과제 추가');
     assert.ok(!W.el('catAddModal').classList.contains('ca-watch'));
     assert.notStrictEqual(W.w.getComputedStyle(W.el('caTabs')).display, 'none', '과제 추가 모드에서 위 탭이 숨겨졌다');
-    assert.strictEqual(W.w.getComputedStyle(W.q('#catAddModal .ca-wo')).display, 'none', '과제 추가 모드에 보기 모드 전용 칸(참여자, 일정 있는 과제만, 정렬)이 보인다');
+    for (const e of W.q('#catAddModal').querySelectorAll('.ca-wo')) assert.strictEqual(W.w.getComputedStyle(e).display, 'none', '과제 추가 모드에 보기 모드 전용 칸이 보인다: ' + e.className + ' ' + e.textContent.trim());   // 첫 칸만 보다가 .check(display:flex !important)에 진 '일정 없는 과제 숨김'을 놓쳤다(2026-11-05)
     const heads = [...W.q('#caList .ca-h').querySelectorAll('[role="columnheader"]')].map((x) => x.textContent.replace(/\s*\/\s*발주처$/, ''));
     assert.deepStrictEqual(heads.filter(Boolean), ['통상명칭', '계약명', '발주처', '상태', '계약기간'], '과제 추가 모드의 열이 바뀌었다');
     assert.ok(W.q('#caList .ca-g'), '과제 추가 모드에 구분 묶음이 없다');
