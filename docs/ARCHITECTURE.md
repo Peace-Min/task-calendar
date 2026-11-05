@@ -201,6 +201,7 @@ Platform.report.submitDaily(payload);        // 위젯=postMessage / 브라우�
 ---
 
 ## 관련 문서
+- **화면 다시 그리기와 스크롤 칸 규칙**: [SCROLL-STABILITY.md](SCROLL-STABILITY.md) 7절
 - **범위와 YAGNI 결정 기록**: [DECISIONS.md](DECISIONS.md)
 - **지금 어디이고 다음이 무엇인가**: [ROADMAP.md](ROADMAP.md)
 - **DB 설계 정본**: [db/CALENDAR-TABLE-DESIGN.md](../db/CALENDAR-TABLE-DESIGN.md)(캘린더 `cal_*`), [db/ARCHITECTURE.md](../db/ARCHITECTURE.md)(과제 트랙 배포와 운영). DDL은 `db/deploy/schema-calendar.sql`, `db/deploy/schema-structure.sql`(과제 트랙. 옛 `db/schema.sql` 은 2026-10-15 에 지웠다). 코드표는 번호 키다(2026-10-15, [CODE-TABLE-IDS.md](CODE-TABLE-IDS.md)). 사내 서버에 올린 뒤의 스키마 변경과 배포 절차는 [DB-RELEASE-OPS.md](DB-RELEASE-OPS.md)
