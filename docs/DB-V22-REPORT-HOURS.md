@@ -1,6 +1,6 @@
 # DB 구조 22: 일간보고 과제별 줄, 안 쓰는 표 정리(셋), 공식 과제 연결 이관
 
-상태: 기획(2026-11-06 사용자 결정 A). 배포 판(0.26.0 에 같이 넣을지, 다음 판)은 미정.
+상태: 기획(2026-11-06 사용자 결정 A, 메모 칸 추가). 개발 전. 배포 판(0.26.0 에 같이 넣을지, 다음 판)은 미정.
 
 ## 배경
 - 일간보고는 `cal_report_daily.content`(회사에 보낸 글 한 덩어리)에만 과제별 시간과 내용이 들어 있다(`[과제] : 시간` 머리 줄). 주간보고 [일간 불러오기], 근태 [이전 보고], 공식 과제 이관이 모두 이 문자열을 해석해야 한다. 해석은 지금 캘린더 과제 목록과 이름을 맞춰 보므로, 이름이 바뀌거나 과제가 없어지면 그 블록이 "과제 미정"이 된다.
@@ -27,6 +27,13 @@
 - 그대로: 기본 키 (user_id, work_date, line_no), `fk_crh_daily`(→ `cal_report_daily` CASCADE), `task_name`, `hours`.
 - **옛 줄**: 이관 조각은 기존 줄을 고치지 않는다(`body` 와 `project_uid` 는 NULL 로 남는다). `body IS NULL` 인 날짜는 옛 형식으로 보고 지금처럼 `content` 를 해석한다(아래 앱 변경).
 
+### 1-2. `cal_report_daily` 칸 추가
+| 바꿀 것 | 지금 | 바뀐 뒤 | 이유 |
+|---|---|---|---|
+| 칸 추가 `memo` | 없음 | `MEDIUMTEXT NULL`. 근태 일간 작성 맨 위 "자유 메모" 칸의 글(과제와 상관없는 그날 내용, 예: 출장, 교육) | 저장된 일간보고를 다시 불러올 때 글 해석을 없앤다(과제 블록은 `cal_report_hours`, 메모는 이 칸) |
+- 회사로 보내는 글(`content`)에는 지금처럼 메모가 첫 과제 머리 줄 앞에 들어간다. `content` 는 보낸 원본 기록 그대로.
+- 옛 줄은 `memo` 가 NULL 이다. `cal_report_hours.body` 가 없는 날(옛 보고)과 함께 지금처럼 `content` 를 해석한다(첫 머리 줄 앞 = 메모).
+
 ### 2. 표 삭제
 | 표 | 데이터 | 처리 |
 |---|---|---|
@@ -38,20 +45,20 @@
 
 ### 3. 이관 조각 규칙(DB-RELEASE-OPS 4.2, 5.2, 6-1 과 v14~v21 본보기)
 - `@go`(구조 번호가 정확히 21 일 때만) 패턴, `information_schema` 로 지금 모양을 보고 한 번만 바꾼다(다시 돌려도 그대로).
-- 바꾼 뒤 검증: `cal_report_hours` 칸 7개(`body`, `project_uid` 있음, `cat_no` 없음), FK 하나(`fk_crh_daily`), 시간 제약 `>= 0`, 세 표(`cal_task_hours`, `cal_migration_log`, `cal_user_pref`) 없음. 다르면 없는 표 SELECT 로 멈춘다.
+- 바꾼 뒤 검증: `cal_report_daily.memo` 있음, `cal_report_hours` 칸 7개(`body`, `project_uid` 있음, `cat_no` 없음), FK 하나(`fk_crh_daily`), 시간 제약 `>= 0`, 세 표(`cal_task_hours`, `cal_migration_log`, `cal_user_pref`) 없음. 다르면 없는 표 SELECT 로 멈춘다.
 - 구조 번호 갱신은 `WHERE k = 'db_structure_version' AND v = '21'`. DELETE, UPDATE 에는 키 WHERE. INSERT IGNORE 금지.
 - 정본 `db/deploy/schema-calendar.sql` 과 조각의 정의는 글자까지 같게. `DbGate.AppStructureVersion` 22.
 
 ## 앱 변경(호스트, 웹)
-1. **일간보고 저장**(`ReportDb` 일간 저장, `NetcusSubmit` 성공 뒤): 블록마다 `task_name`, `project_uid`(공식 과제면), `hours`(0 포함), `body` 를 한 줄씩. `content` 는 지금처럼 보낸 글 그대로. `HoursInDomain`(> 0) 을 일간은 `>= 0` 으로.
+1. **일간보고 저장**(`ReportDb` 일간 저장, `NetcusSubmit` 성공 뒤): 자유 메모는 `cal_report_daily.memo` 에, 블록마다 `task_name`, `project_uid`(공식 과제면), `hours`(0 포함), `body` 를 한 줄씩. `content` 는 지금처럼 보낸 글 그대로. `HoursInDomain`(> 0) 을 일간은 `>= 0` 으로.
 2. **주간보고 [일간 불러오기]**(`awDailyCollect`): 그 주 날짜마다 `cal_report_hours` 에 `body` 가 있는 줄이 있으면 그 줄(과제, 시간, 내용)을 쓰고, 없으면(옛 보고) 지금처럼 `content` 를 해석한다. 호스트 `reportDailyList` 회신에 그날 줄을 싣는다.
-3. **근태 일간 [이전 보고]**: 같은 규칙(줄이 있으면 줄, 없으면 해석). 자유 메모는 아래 열린 결정.
+3. **근태 일간 [이전 보고]**, 보고한 날 다시 열기: 그날 줄이 있으면 메모는 `memo`, 블록은 `cal_report_hours` 에서. 없으면(옛 보고) 지금처럼 `content` 해석.
 4. **근태 일간 0시간 허용**: 웹 `atBlockProblem` 의 "내용이 있는데 0시간" 막기를 걷는다. 회사로는 `[과제] : 0` 아래 내용이 나간다. 주간보고에는 과제별 0시간 막기가 원래 없다(확인).
 5. **공식 과제로 연결**(`runRelink`): 일정과 할 일 이동은 지금처럼(합치기의 `moveCategoryData` 를 쓰도록 맞춘다). 성공하면 새 호스트 명령 하나로 한 트랜잭션: 이 사람의 `cal_report_hours` 와 `cal_report_weekly_hours` 에서 `task_name = 옛 이름` 이고 공식 과제 id 가 비었거나 다른 줄의 `task_name` 을 공식 이름으로, `project_uid` 를 공식 과제 id 로. 같은 날(주)에 공식 과제 줄이 이미 있으면 시간을 더해 한 줄로(내용은 이어 붙임). `content` 와 주간 글은 바꾸지 않는다. 그다음 옛 개인 과제를 지운다(확인 창 문구에 "원래 과제는 지웁니다"). 옛 보고(`body` 가 없는 날)는 공수 이관 대상이 아니다(글 해석 쪽은 옛 이름이 "과제 미정" 으로 남는다. 알고 가는 한계).
 6. **표 삭제에 따른 정리**: `cal_user_pref` 의 읽기와 저장 동기화(웹 `reportFormatPrefs`, `reportMarker*`, `reportIndent*` 상태와 옛 XML `<prefs>` 서식 읽기 포함, 글꼴은 localStorage 로), 호스트의 `cal_task_hours` 저장 동기화와 읽기, 옛 XML 가져오기의 `taskHours`, 과제 삭제와 휴지통 영구 삭제의 정리 순서, 웹 `state.taskHours`, `getTaskHours`(근태 가져오기 시간 칸 미리 채우기), `dropCatHours`. 관리자 도구 `db/deploy/xml-to-db` 와 그 시험, 문서.
 
 ## 열린 결정
-1. **자유 메모 칸**: `cal_report_daily` 에 `memo` 칸을 더할지. 더하면 저장된 일간보고를 다시 불러올 때 해석이 완전히 없어진다(해석은 옛 보고에만). 더하지 않으면 메모만 `content` 첫 머리 줄 앞을 읽는다. 추천: 더한다.
+1. ~~자유 메모 칸~~: 2026-11-06 사용자 결정, `cal_report_daily.memo` 를 더한다(위 1-2).
 2. **배포 판**: 0.26.0 에 같이 넣을지, 다음 판으로 미룰지.
 
 ## 시험과 문서
