@@ -45,7 +45,7 @@
 |---|---|---|---|
 | 칸 추가 `cat_uid` | 없음 | 일간과 같은 정의, `task_name` 뒤. NULL 은 캘린더 과제와 이어지지 않은 줄 | 주간 줄도 id 로 이관 |
 | 색인 추가 `ix_crwh_cat` | 없음 | (user_id, cat_uid) | 이관 때 찾기 |
-- **기존 주간 줄 채우기**(이관 조각 안, 한 번): `project_uid` 가 있는 줄은 `cat_uid = CONCAT('db-', project_uid)`. `project_uid` 가 NULL 인 줄은 그 사람의 개인 과제 가운데 이름이 글자까지 같은(`_bin`) 과제가 **하나뿐일 때만** 그 `uid`. 둘 이상이거나 없으면 NULL 로 둔다(그 줄은 이관 대상이 아니다. 알고 가는 한계). UPDATE 에는 키 WHERE(`user_id > 0`).
+- **기존 주간 줄 채우기**(이관 조각 안, 한 번): `project_uid` 가 있는 줄은 `cat_uid = CONCAT('db-', project_uid)`. `project_uid` 가 NULL 인 줄은 그 사람의 개인 과제 가운데 이름이 글자까지 같은(`_bin` 에 글자 수까지. `_bin` 은 끝 공백을 무시하므로) 과제가 **하나뿐일 때만** 그 `uid`. 둘 이상이거나 없으면 NULL 로 둔다(그 줄은 이관 대상이 아니다. 알고 가는 한계). UPDATE 에는 키 WHERE(`user_id > 0`). 안전 갱신 모드(1175)를 피하려고 여러 표 UPDATE 대신 한 표 UPDATE 에 상관 부분 조회를 쓴다(2026-11-06 QA).
 - 시간 제약 `chk_crwh_hours`(0 초과 168 이하)는 그대로. 주간은 0시간 줄을 쓰지 않는다.
 
 ### 2. 표 삭제

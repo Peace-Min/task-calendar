@@ -721,19 +721,34 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(B) 임시 저장 14일 정리: 이 계정의 14일 지난 키만 지운다(14일째와 다른 계정, 날짜 꼴 아닌 키는 남는다)', () => {
+  test('(B) 임시 저장 14일 정리: 마지막 저장(savedAt)이 14일보다 오래된 이 계정 것만 지운다(지난 날짜 보고를 요즘 쓴 것, 저장 시각 없는 옛 값, 다른 계정, 날짜 꼴 아닌 키는 남는다)', () => {
     const X = bootBrowser();
     try {
-      const v = JSON.stringify({ v: 2, memo: '', blocks: [], status: '', overtime: 0, savedAt: '' });
-      const keys = { old: 'tc_attDraft:me:' + X.ev('addDays(todayYmd(), -15)'), edge: 'tc_attDraft:me:' + X.ev('addDays(todayYmd(), -14)'),
-        other: 'tc_attDraft:zz9:' + X.ev('addDays(todayYmd(), -30)'), odd: 'tc_attDraft:me:abc' };
-      for (const k of Object.values(keys)) X.ev(`localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(v)})`);
+      const at = (days) => X.ev(`new Date(Date.now() - ${days} * 86400000).toISOString()`);
+      const v = (savedAt) => JSON.stringify({ v: 2, memo: '', blocks: [], status: '', overtime: 0, savedAt });
+      const day = (n) => X.ev(`addDays(todayYmd(), ${n})`);
+      const keys = {
+        old: ['tc_attDraft:me:' + day(-3), v(at(15))],            // 날짜는 최근이지만 15일 전에 저장했다: 지운다
+        fresh: ['tc_attDraft:me:' + day(-30), v(at(1))],          // 30일 전 날짜의 보고를 어제 썼다: 남긴다(전에는 날짜로 걸러 사라졌다)
+        edge: ['tc_attDraft:me:' + day(-20), v(at(13))],          // 13일 전 저장: 남긴다
+        noTime: ['tc_attDraft:me:' + day(-40), v('')],            // 저장 시각이 없는 옛 값: 지우지 않는다
+        other: ['tc_attDraft:zz9:' + day(-30), v(at(30))],        // 다른 계정
+        odd: ['tc_attDraft:me:abc', v(at(30))],                    // 날짜 꼴이 아닌 키
+      };
+      for (const [k, val] of Object.values(keys)) X.ev(`localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(val)})`);
       openB(X);
-      const has = (k) => X.ev(`localStorage.getItem(${JSON.stringify(k)}) !== null`);
-      assert.strictEqual(has(keys.old), false, '15일 지난 키가 남았다');
-      assert.strictEqual(has(keys.edge), true, '14일째 키를 지웠다');
+      const has = (k) => X.ev(`localStorage.getItem(${JSON.stringify(k[0])}) !== null`);
+      assert.strictEqual(has(keys.old), false, '15일 전에 저장한 임시 저장이 남았다');
+      assert.strictEqual(has(keys.fresh), true, '어제 쓴 지난 날짜의 임시 저장을 지웠다(보고 날짜로 걸렀다)');
+      assert.strictEqual(has(keys.edge), true, '13일 전에 저장한 것을 지웠다');
+      assert.strictEqual(has(keys.noTime), true, '저장 시각이 없는 옛 값을 지웠다');
       assert.strictEqual(has(keys.other), true, '다른 계정의 키를 지웠다');
       assert.strictEqual(has(keys.odd), true, '날짜 꼴이 아닌 키를 지웠다');
+      //  저장할 때 시각을 싣는다
+      const D = day(-25);
+      X.ev(`attDraftPut(${JSON.stringify(D)}, { memo: 'm', blocks: [], status: '1', overtime: 0 })`);
+      const sv = JSON.parse(X.ev(`localStorage.getItem('tc_attDraft:me:${D}')`)).savedAt;
+      assert.ok(Math.abs(Date.parse(sv) - Date.now()) < 60000, `저장할 때 시각을 싣지 않는다: ${sv}`);
     } finally { X.close(); }
   });
 

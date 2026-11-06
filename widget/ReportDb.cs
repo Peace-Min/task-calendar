@@ -206,7 +206,7 @@ namespace TaskCalendarWidget
         public async Task<bool> SaveDailyAsync(
             string? loginId, int y, int m, int d,
             string? status, int overtime, string? content, string? memo,
-            IReadOnlyList<ReportHourLine>? hours)
+            IReadOnlyList<ReportHourLine>? hours, bool legacyMemo = false)
         {
             LastFailure = null;
             var date = SafeDate(y, m, d);
@@ -244,6 +244,9 @@ namespace TaskCalendarWidget
                     cmd.Parameters.AddWithValue("@ot", overtime);
                     cmd.Parameters.AddWithValue("@c", content);
                     cmd.Parameters.AddWithValue("@mm", memo ?? "");   // NULL 을 쓰지 않는다(NULL = 옛 보고라는 표시)
+                    //  예외: 호스트가 블록 배열 전체를 읽지 못한 날(legacyMemo)은 줄 0개의 새 보고로 굳히지 않고 옛 보고(NULL)로 남긴다.
+                    //    다시 열 때 content 를 해석해 블록을 되살린다(MainWindow.ParseHoursJson 의 unreadable).
+                    if (legacyMemo) cmd.Parameters["@mm"].Value = DBNull.Value;
                     cmd.Parameters.AddWithValue("@at", DateTime.UtcNow);
                     await cmd.ExecuteNonQueryAsync(cts.Token);
                 }

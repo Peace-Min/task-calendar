@@ -9623,7 +9623,7 @@ function uaSetActive(userId, name, active){
   const ask = active
     ? { t: '직원 복구', m: "'" + who + "' 님을 명부에 다시 표시합니다. 계속할까요?" + dirty, ok: '복구' }
     : { t: '퇴사 처리', m: "'" + who + "' 님을 퇴사 처리합니다. 기록은 남고 명부에서만 사라집니다." + dirty, ok: '퇴사 처리' };
-  confirmBox(ask.t, ask.m, ask.ok, '취소').then(async r => {
+  confirmBox(ask.t, ask.m, ask.ok).then(async r => {
     if(r !== 'ok') return;
     //  ★ 회신은 **이 클로저가** 받는다 — 이 폼에서 나간 요청이므로 '어느 폼의 결과인가'를 표로 가릴 이유가 없다.
     const rep = await uaSend({ cmd: 'setUserActive', userId: userId, active: active });
@@ -10420,7 +10420,7 @@ function trAfterWrite(r){
 
 // 복구 — 확인 한 번. 되돌릴 수 있는 조작이라 이름 입력까지 요구하지 않는다.
 function trRestore(kind, key, name){
-  confirmBox('복구', "'" + name + "' 을(를) 목록에 다시 표시합니다. 계속할까요?", '복구', '취소').then(async r => {
+  confirmBox('복구', "'" + name + "' 을(를) 목록에 다시 표시합니다. 계속할까요?", '복구').then(async r => {
     if(r !== 'ok') return;
     const rep = await trSend({ cmd: 'trashRestore', kind: kind, key: key });
     if(rep) trAfterWrite(rep);
@@ -10451,7 +10451,7 @@ function trSeatOrg(json){
 }
 // 소속·직급 복구 — 확인 한 번(휴지통의 다른 복구와 같은 손). 상위가 숨김이면 버튼이 꺼져 있다(trOrgRows 의 why).
 function trOrgRestore(kind, key, name){
-  confirmBox('복구', "'" + name + "' 을(를) 다시 씁니다. '직급·소속' 목록과 드롭다운에 돌아옵니다. 계속할까요?", '복구', '취소').then(async r => {
+  confirmBox('복구', "'" + name + "' 을(를) 다시 씁니다. '직급·소속' 목록과 드롭다운에 돌아옵니다. 계속할까요?", '복구').then(async r => {
     if(r !== 'ok') return;
     const p = (kind === 'unit') ? { cmd: 'unitSetActive', orgId: Number(key), active: true }
                                 : { cmd: 'titleSetActive', titleId: Number(key), active: true };
@@ -13416,12 +13416,13 @@ function confirmDiscardIfDirty(ov){
   if(ov.id === 'settingsModal'){
     const dirty = ['updBadge'].some(id => { const b = document.getElementById(id); return b && b.classList.contains('dirty'); });
     if(!dirty) return Promise.resolve(true);
-    return confirmBox('저장하지 않고 닫기', '저장하지 않은 입력이 있습니다. 저장 버튼을 누르지 않으면 사라집니다.', '닫기', '계속 편집')
+    return confirmBox('저장하지 않고 닫기', '저장하지 않은 입력이 있습니다. 저장 버튼을 누르지 않으면 사라집니다.', '닫기')
       .then(function(r){ return r === 'ok'; });
   }
   if(formSnapshot(ov) === (ov.__openSnap||'')) return Promise.resolve(true);
-  // confirmBox 반환: 'ok'(닫기)·'alt'(계속 편집)·false(확인모달 자체 닫힘) → 'ok'만 truthy로 매핑(안전 기본=계속 편집)
-  return confirmBox('저장하지 않고 닫기', '저장하지 않고 닫을까요? 변경한 내용이 사라집니다.', '닫기', '계속 편집').then(function(r){ return r === 'ok'; });
+  // confirmBox 반환: 'ok'(닫기) 또는 false([취소], Esc, 바깥 누름) → 'ok'만 truthy로 매핑(안전 기본=편집을 이어 간다).
+  //   [계속 편집]은 [취소]와 같은 일이라 두지 않는다(단추 하나로).
+  return confirmBox('저장하지 않고 닫기', '저장하지 않고 닫을까요? 변경한 내용이 사라집니다.', '닫기').then(function(r){ return r === 'ok'; });
 }
 
 /* ---------- 모달 접근성: 포커스 트랩 · 복원 · 배경 inert ----------
@@ -14511,7 +14512,7 @@ function offSubHtml(c){
   const subbed = catIsSubscribed(c.id);
   if(!subbed) return `<div class="off-d-sub"><button type="button" class="btn sm primary" data-offadd="${esc(c.id)}">＋ 캘린더에 추가</button></div>`;
   const n = catUsageCount(c.id), removable = (n === 0);
-  const tip = removable ? '캘린더 목록에서 제거(구독 해제)' : `일정·할일 ${n}건에서 사용 중입니다. 일정 정리/재연결 후 제거할 수 있습니다`;
+  const tip = removable ? '캘린더 목록에서 제거(구독 해제)' : `일정과 할 일 ${n}건에서 사용 중입니다. 일정 정리/재연결 후 제거할 수 있습니다`;
   // 버튼은 '제거' 한 단어 — 바로 앞 상태 문구가 이미 '캘린더에'라는 맥락을 주고 있고(중복),
   // 라벨이 길면 한 줄 액션바(.off-d-bar)가 위젯 실폭에서 두 줄로 접힌다. 전체 뜻은 title로 남긴다.
   // 과제 관리 목록의 공식 행도 같은 동작을 '제거'로 부르므로 어휘도 일치한다.
@@ -15275,7 +15276,7 @@ window.__projectSaved = function(ok, msg, needConfirm){
   if(!ok && needConfirm){
     const pending = __offEdPending;
     if(edOpen) offEdMsgSet('');   // 경고는 오류가 아니므로 폼의 오류 표시는 지운다
-    confirmBox('비슷한 과제', msg || '비슷한 과제가 있습니다. 그래도 추가하시겠습니까?', '추가', '취소')
+    confirmBox('비슷한 과제', msg || '비슷한 과제가 있습니다. 그래도 추가하시겠습니까?', '추가')
       .then(r => {
         if(r === 'ok' && pending){ offEdSend(Object.assign({}, pending, { confirm: true })); }
         // '취소'면 아무것도 저장하지 않고 모달은 그대로(사용자가 이름을 고치거나 닫으면 된다)
@@ -15297,8 +15298,8 @@ window.__projectSaved = function(ok, msg, needConfirm){
 function offHideProject(id){
   const c = dbCatalogById(id); if(!c) return;
   confirmBox('공식 과제 숨김',
-    `'${c.name}'을(를) 공식 과제 목록에서 숨깁니다. 이 과제로 태그된 일정·할일은 그대로 남습니다. 계속할까요? 숨긴 과제는 이 화면의 '🗑 휴지통'에서 복구하거나 영구 삭제할 수 있습니다(관리자).`,
-    '숨김', '취소')
+    `'${c.name}'을(를) 공식 과제 목록에서 숨깁니다. 이 과제로 태그된 일정과 할 일은 그대로 남습니다. 계속할까요? 숨긴 과제는 이 화면의 '🗑 휴지통'에서 복구하거나 영구 삭제할 수 있습니다(관리자).`,
+    '숨김')
     .then(r => {
       if(r !== 'ok') return;
       if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
@@ -15424,11 +15425,11 @@ function custDoHide(id){
     const n = known ? (Number(rc.count) || 0) : 0;
     if(!known){
       const r = await confirmBox('발주처 숨김',
-        `이 발주처를 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 '🗑 휴지통'에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
+        `이 발주처를 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 '🗑 휴지통'에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김');
       if(r !== 'ok') return;
     } else if(n > 0){
       const r = await confirmBox('발주처 숨김',
-        `이 발주처를 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 '🗑 휴지통'에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
+        `이 발주처를 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 '🗑 휴지통'에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김');
       if(r !== 'ok') return;
     }
     custSend('setCustomerActive', { customerId, active: false }, '발주처를 숨겼습니다', null, OT_HIDDEN_MSG);   // 「휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서」(직급·소속과 같은 말)
@@ -15581,11 +15582,11 @@ function codeDoHide(key){
     const n = known ? (Number(rc.count) || 0) : 0;
     if(!known){
       const r = await confirmBox(codeKindLabel() + ' 숨김',
-        `이 ${codeKindLabel()}을(를) 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 '🗑 휴지통'에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
+        `이 ${codeKindLabel()}을(를) 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 '🗑 휴지통'에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김');
       if(r !== 'ok') return;
     } else if(n > 0){
       const r = await confirmBox(codeKindLabel() + ' 숨김',
-        `이 ${codeKindLabel()}을(를) 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 '🗑 휴지통'에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
+        `이 ${codeKindLabel()}을(를) 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 '🗑 휴지통'에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김');
       if(r !== 'ok') return;
     }
     codeSend('codeSetActive', { id, active: false }, codeKindLabel() + '을(를) 숨겼습니다', null, OT_HIDDEN_MSG);   // 직급·소속과 같은 말(ADMIN-HUB-4 후속)
@@ -16150,7 +16151,7 @@ function otDoHide(key){
   const it = otItem(key); if(!it) return;
   const unit = __otTab === 'unit';
   const nm = String(it.name || '');
-  confirmBox('숨김', "'" + nm + "' 을(를) 숨깁니다. 드롭다운과 이 목록에서 빠지고 기존 표기는 남습니다(복구는 🗑 휴지통). 계속할까요?", '숨김', '취소').then(r => {
+  confirmBox('숨김', "'" + nm + "' 을(를) 숨깁니다. 드롭다운과 이 목록에서 빠지고 기존 표기는 남습니다(복구는 🗑 휴지통). 계속할까요?", '숨김').then(r => {
     if(r !== 'ok') return;
     if(unit) otSend('unitSetActive', { orgId: Number(key), active: false }, OT_HIDDEN_MSG);
     else otSend('titleSetActive', { titleId: Number(key), active: false }, OT_HIDDEN_MSG);
@@ -16302,7 +16303,7 @@ function rlUpdateSummary(){
   const sel = rlSelections();
   const items = sel.reduce((a, m) => a + rlUsageCount(m.from), 0);
   const s = document.getElementById('rlSummary');
-  if(s) s.textContent = sel.length ? `${sel.length}개 과제 선택, 일정·할일 ${items}건 변경 예정` : '연결할 공식 과제를 고르세요';
+  if(s) s.textContent = sel.length ? `${sel.length}개 과제 선택, 일정과 할 일 ${items}건 변경 예정` : '연결할 공식 과제를 고르세요';
   const b = document.getElementById('rlRun'); if(b) b.disabled = (sel.length === 0);
 }
 // 선택된 공식 과제의 배지 텍스트: 통상명칭(전시명) · 발주처 · 계약명 — 식별 가능하게(콤보가 못 보여주던 것).
@@ -16457,7 +16458,7 @@ function runRelink(){
   const items = sel.reduce((a, m) => a + rlUsageCount(m.from), 0);
   confirmBox('공식 과제로 연결',
     `일반 과제 ${sel.length}개를 공식 과제로 연결합니다. 일정과 할 일 ${items}건, 보고한 공수가 공식 과제로 옮겨지고 원래 과제는 지웁니다. 계속할까요?`,
-    '연결', '취소', { ok: 'safe' })
+    '연결', null, { ok: 'safe' })
     .then(async r => {
       if(r !== 'ok' || rlBusy) return;
       if(guardEdit()) return;
@@ -16504,6 +16505,8 @@ function runRelink(){
       //  ② 과제마다 보고 공수 옮기기(호스트 한 트랜잭션). 성공한 과제만 ③ 옛 개인 과제를 지운다. 위젯이 아니면(브라우저) 보고 기록이 없다.
       rlBusy = true;
       const b = document.getElementById('rlRun'); if(b) b.disabled = true;
+      const fromName = new Map(), toName = new Map();   // 지우기 전에 이름을 잡아 둔다(임시 저장 고치기)
+      for(const [fromId, toId] of valid){ const f = catById(fromId), t = catById(toId); fromName.set(fromId, f ? String(f.name) : ''); toName.set(toId, t ? String(t.name) : ''); }
       let done = 0, failMsg = '', failed = 0;
       try{
         for(const [fromId, toId] of valid){
@@ -16514,6 +16517,7 @@ function runRelink(){
             ok = !!(res && res.ok === true);
             if(!ok) err = (res && typeof res.error === 'string' && res.error) || '공수를 옮기지 못했습니다. 원래 과제는 그대로 두었습니다.';
           }
+          if(ok){ try{ relinkAttDrafts(fromId, toId, fromName.get(fromId), toName.get(toId)); }catch(_){} }   // 근태 임시 저장도 새 과제로(다시 열 때 과제 미정이 되지 않게)
           if(ok && deleteCategory(fromId)) done++;
           else { failed++; if(!failMsg) failMsg = err || '원래 과제를 지우지 못했습니다.'; }
         }
@@ -16528,6 +16532,45 @@ function runRelink(){
         + (kept ? ` (같은 공식 과제로 합쳐지며 ${kept}개 항목은 먼저 옮긴 값을 유지했습니다)` : '')
         + (skipped ? ` (대상 없음 ${skipped}개 건너뜀)` : ''), (skipped || kept || failed) ? 'warn' : 'success');
     });
+}
+
+//  공식 과제로 연결한 과제의 근태 임시 저장(이 계정 것)을 새 과제로 고친다. 저장 시각(savedAt)은 그대로 둔다.
+//    일간(tc_attDraft, v2 블록): catId 가 fromId 인 블록을 toId 와 공식 이름으로. 과제 id 가 없는 옛 v1 글은 열 때 이름으로 다시 찾으므로 두지 않는다.
+//    주간(tc_attWDraft, v2): 과제를 이름으로 저장하므로 과제투입시간 목록(hrs)과 시간(hours)의 옛 이름을 공식 이름으로(이미 있으면 시간을 더한다).
+//    저장소가 막혀도 연결은 계속한다(try/catch). 돌려주는 값 = 고친 임시 저장 수.
+function relinkAttDrafts(fromId, toId, fromNm, toNm){
+  if(PEER || !fromId || !toId) return 0;
+  let n = 0;
+  const fix = (pre, mem, edit) => {
+    const keys = new Set();
+    try{ for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && k.startsWith(pre)) keys.add(k); } }catch(_){}
+    for(const k of mem.keys()) if(k.startsWith(pre)) keys.add(k);
+    for(const k of keys){
+      let o = mem.has(k) ? mem.get(k) : null, inStore = false;
+      if(!o){ try{ const raw = localStorage.getItem(k); o = raw == null ? null : JSON.parse(raw); inStore = o != null; }catch(_){ o = null; } }
+      if(!o || typeof o !== 'object' || !edit(o)) continue;
+      n++;
+      if(mem.has(k)) mem.set(k, o);
+      if(inStore || !mem.has(k)){ try{ localStorage.setItem(k, JSON.stringify(o)); }catch(_){ mem.set(k, o); } }
+    }
+  };
+  fix(AT_DRAFT_PREFIX + atWho() + ':', __attDraftMem, o => {
+    if(o.v !== 2 || !Array.isArray(o.blocks)) return false;
+    let hit = false;
+    for(const b of o.blocks) if(b && typeof b === 'object' && b.catId === fromId){ b.catId = toId; if(toNm) b.name = toNm; hit = true; }
+    return hit;
+  });
+  if(fromNm && toNm && fromNm !== toNm) fix(AW_DRAFT_PREFIX + awWho() + ':', __awDraftMem, o => {
+    if(o.v !== 2 || !Array.isArray(o.hrs) || !o.hrs.includes(fromNm)) return false;
+    const h = (o.hours && typeof o.hours === 'object') ? o.hours : {};
+    const had = o.hrs.includes(toNm), a = Number(h[fromNm]) || 0, b = Number(h[toNm]) || 0;
+    o.hrs = had ? o.hrs.filter(x => x !== fromNm) : o.hrs.map(x => x === fromNm ? toNm : x);
+    delete h[fromNm];
+    if(a || b || had) h[toNm] = Math.round((a + b) * 100) / 100;
+    o.hours = h;
+    return true;
+  });
+  return n;
 }
 
 /* ---------- 탭 공통 키보드(APG) ---------- */
@@ -20783,7 +20826,7 @@ function setupGuideResize(){
  *    회사 보고와 DB 저장이 둘 다 성공하면(호스트의 성공 회신) 지운다. 읽기와 쓰기는 attDraft* 함수만 거친다(나중에 서버 저장으로 바꿀 때 여기만).
  *  ★ 열람 창(PEER)은 localStorage 를 부모 창과 같이 쓴다. 그래서 임시 저장을 읽지도 쓰지도 않는다(보고서 초안과 같은 규칙). */
 const AT_DRAFT_PREFIX = 'tc_attDraft:';   // 키 = tc_attDraft:<who>:<YYYY-MM-DD>. who 는 보고서 초안과 같은 규칙(rptDraftWho)
-const AT_DRAFT_KEEP_DAYS = 14;            // 보고 화면을 열 때 이보다 오래된 날짜의 임시 저장은 지운다
+const AT_DRAFT_KEEP_DAYS = 14;            // 보고 화면을 열 때 마지막 저장(savedAt)이 이보다 오래된 임시 저장은 지운다
 const AT_DRAFT_DEBOUNCE_MS = 1000;        // 입력은 1초 모아서 쓴다. 날짜 이동, 닫기, 보내기 직전에는 바로 쓴다
 const AT_SRC_WAIT_MS = 15000;             // 다른 날짜의 캘린더 기록을 메인 창에 청하고 기다리는 시간(넘으면 못 가져왔다고 보인다)
 const AT_SEND_WATCHDOG_MS = 100000;       // 회신 없이 끝난 전송(호스트 이상)에서 잠금을 푸는 시간(보고서 창의 워치독과 같다)
@@ -20870,7 +20913,7 @@ function atComposeParts(blocks, memo){
   const m = atBodyNorm(memo);
   const parts = (blocks || []).filter(b => b && b.name).map(b => {
     const body = atBodyNorm(b.text);
-    return { text: '[' + b.name + '] : ' + atHoursText(atHoursOk(b.hours) ? b.hours : 0) + (body.trim() ? '\n' + body : ''), bad: !!atBlockProblem(b) };
+    return { text: '[' + b.name + '] : ' + atHoursText(atHoursOk(b.hours) ? b.hours : 0) + (body.trim() ? '\n' + body : ''), bad: !!atBlockProblem(b, blocks) };
   });
   if(m.trim()) parts.unshift({ text: m, bad: false });
   return parts;
@@ -20896,10 +20939,19 @@ function atHoursPayload(blocks){
   return out;
 }
 //  보내기를 막는 까닭(없으면 ''). 블록이 하나도 없는 것은 atSubmit 이 따로 본다. 합계 검사(정근 8 등)는 하지 않는다.
-function atBlockProblem(b){
+//    list = 그날 블록 전부(주면 같은 과제 id 블록의 시간 합도 본다). 호스트는 같은 과제 id 블록을 한 줄로 합치는데 24 를 넘으면
+//    말없이 24 로 잘라 기록한다(ReportDb 의 마지막 관문). 그래서 보내기 전에 여기서 막는다.
+function atBlockProblem(b, list){
   if(!b.name) return '과제를 고르세요. 캘린더 과제로 나누지 못한 글입니다.';
   if(!atHoursOk(b.hours)) return '시간은 0 이상 24 이하로 적으세요.';
+  if(b.catId && Array.isArray(list) && atCatHoursSum(list, b.catId) > 24) return '같은 과제의 시간 합이 24시간을 넘습니다. 한 블록으로 합치거나 줄이세요.';
   return '';   // 내용이 있는 0시간 블록도 보낸다(구조 22. 회사로는 `[과제] : 0` 아래 내용이 나간다)
+}
+//  같은 과제 id 블록의 시간 합(범위 안의 시간만, 소수 둘째 자리까지).
+function atCatHoursSum(list, catId){
+  let t = 0;
+  for(const x of (list || [])) if(x && x.name && x.catId === catId && atHoursOk(x.hours)) t += x.hours;
+  return Math.round(t * 100) / 100;
 }
 //  글을 자유 메모와 블록으로 되살린다(이전 보고, 보고한 날, 옛 임시 저장 v1). names = 내 캘린더 과제명. 돌려주는 값 { memo, blocks }.
 //    머리 줄: 정확히 `[이름] : 숫자` 이거나, 이름이 캘린더 과제명이면 시간 없는 `[이름]`(0시간, 블록 이전에 쓰던 꼴)도 받는다.
@@ -20952,6 +21004,23 @@ function atSavedParts(sv, names, all){
   }
   const r = atParseReport(sv ? sv.content : '', names);
   return { memo: r.memo, blocks: atBlocksKnown(r.blocks, all) };
+}
+//  열린 채 과제가 지워졌거나 공식 과제로 연결돼 id 가 없어진 블록을 과제 미정으로 돌린다(내용은 그대로). 바뀐 블록이 있으면 true.
+//    죽은 id 를 그대로 보내면 보고 줄이 없는 과제 id 로 남아 공식 과제 이관과 주간 불러오기에서 빠진다.
+//    id 를 버린 뒤 atBlocksKnown 과 같은 규칙으로 이름이 글자까지 같은 과제가 하나뿐이고 다른 블록이 쓰지 않을 때만 그 과제에 다시 잇는다.
+//    못 이으면 미정 블록이 되어 보내기가 "과제를 고르세요" 로 막힌다(atBlockProblem).
+function atBlocksDropDead(blocks, all){
+  const list = all || [], keys = new Set(list.map(x => x.key));
+  if(!Array.isArray(blocks) || !blocks.some(b => b && b.catId && !keys.has(b.catId))) return false;
+  const used = new Set(blocks.filter(b => b && b.catId && keys.has(b.catId)).map(b => b.catId));
+  for(let i = 0; i < blocks.length; i++){
+    const b = blocks[i];
+    if(!b || !b.catId || keys.has(b.catId)) continue;
+    const p = atCatResolve({ name: b.name, catId: null }, list, false);
+    if(p && !used.has(p.key)){ used.add(p.key); b.catId = p.key; b.name = p.name; b.raw = ''; continue; }
+    blocks[i] = atBlocksKnown([{ name: b.name, catId: null, hours: b.hours, text: b.text }], [])[0];   // 머리 줄을 내용 첫 줄에 둔 미정 블록
+  }
+  return true;
 }
 //  열린 블록의 과제 이름을 id 로 지금 이름에 맞춘다(과제 이름을 바꾸고 돌아왔다). 바뀐 블록이 있으면 true.
 function atBlocksRename(blocks, all){
@@ -21045,14 +21114,22 @@ function attDraftDel(date){
   __attDraftMem.delete(k);
   try{ localStorage.removeItem(k); }catch(_){}
 }
-//  보고 화면을 열 때: 이 계정의 14일 지난 임시 저장을 지운다(키의 날짜로 판단, 14일째 키는 남는다. 날짜 꼴이 아닌 키는 건드리지 않는다).
+//  보고 화면을 열 때: 이 계정의 임시 저장 가운데 마지막으로 저장한 때(savedAt)가 14일보다 오래된 것을 지운다.
+//    보고 날짜로 거르지 않는다(지난 날짜의 보고를 오늘 써 둔 임시 저장이 다시 열 때 사라지지 않게). 저장 시각이 없거나 읽지 못하는 값은 남긴다.
+//    날짜 꼴이 아닌 키는 건드리지 않는다.
+function attDraftOld(raw, cutMs){
+  let o = raw;
+  if(typeof raw === 'string'){ try{ o = JSON.parse(raw); }catch(_){ return false; } }
+  const t = o && typeof o === 'object' && typeof o.savedAt === 'string' ? Date.parse(o.savedAt) : NaN;
+  return isFinite(t) && t < cutMs;
+}
 function attDraftPrune(){
   if(PEER) return;
-  const pre = AT_DRAFT_PREFIX + atWho() + ':', cut = addDays(todayYmd(), -AT_DRAFT_KEEP_DAYS);
-  const old = k => { const d = String(k).slice(pre.length); return String(k).startsWith(pre) && atIsYmd(d) && d.length === 10 && d < cut; };
+  const pre = AT_DRAFT_PREFIX + atWho() + ':', cutMs = Date.now() - AT_DRAFT_KEEP_DAYS * 86400000;
+  const mine = k => { const d = String(k).slice(pre.length); return String(k).startsWith(pre) && atIsYmd(d) && d.length === 10; };
   let keys = [];
-  try{ for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && old(k)) keys.push(k); } }catch(_){ keys = []; }
-  for(const k of [...__attDraftMem.keys()]) if(old(k) && !keys.includes(k)) keys.push(k);
+  try{ for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && mine(k) && attDraftOld(localStorage.getItem(k), cutMs)) keys.push(k); } }catch(_){ keys = []; }
+  for(const [k, v] of [...__attDraftMem]) if(mine(k) && attDraftOld(v, cutMs) && !keys.includes(k)) keys.push(k);
   for(const k of keys){ __attDraftMem.delete(k); try{ localStorage.removeItem(k); }catch(_){} }
 }
 
@@ -21358,7 +21435,9 @@ function atEdOpen(raw){
     atPanelRender(); atSyncNav();
     //  과제 목록이 바뀌었을 수 있다(메인 창에서 새 과제를 만들거나 이름을 바꾸고 돌아왔다). 블록 내용은 그대로 두고
     //    과제 이름만 id 로 지금 이름에 맞춘 뒤(구조 22) 고르기 칸과 추가 메뉴, 색을 다시 그린다.
-    if(atBlocksRename(ATE.blocks, p.allProjects)){ atSortBlocks(); atOnEdit(); }
+    //    지워졌거나 연결로 id 가 바뀐 과제의 블록은 과제 미정으로 돌린다(atBlocksDropDead).
+    const dead = atBlocksDropDead(ATE.blocks, p.allProjects);
+    if(atBlocksRename(ATE.blocks, p.allProjects) || dead){ atSortBlocks(); atOnEdit(); }
     atBlocksRender(); if(atAddShown()) atAddRender();
     if(!ATE.sending) atMsg('');
     return;
@@ -21486,7 +21565,7 @@ function imeGuardInstall(){
 function atGrow(t){ taGrow(t, 0); }
 function atGrowAll(){ document.querySelectorAll('#atBlocks textarea[data-bt], #atBlocks textarea[data-memo]').forEach(atGrow); }
 //  빨간 블록: 과제 미정은 늘, 그 밖은 보내기를 한 번 막은 뒤부터 보인다(쓰는 중에 시간 0 을 나무라지 않는다).
-function atBlockShowProblem(b){ return (!b.name || ATE.showErr) ? atBlockProblem(b) : ''; }
+function atBlockShowProblem(b){ return (!b.name || ATE.showErr) ? atBlockProblem(b, ATE.blocks) : ''; }
 //  시간 칸이 까닭인가(범위 밖): 그때는 시간 칸 테두리도 빨갛다. 0시간은 막지 않는다(구조 22).
 function atHoursBad(b){ return !!b.name && !!atBlockShowProblem(b) && !atHoursOk(b.hours); }
 //  캘린더 과제 순서로 정렬한다(안정 정렬). 캘린더에 없는 이름은 그 뒤, 과제 미정은 맨 끝. 자리가 바뀐 블록 객체들을 돌려준다(반짝임).
@@ -21993,7 +22072,7 @@ function atSubmitBlocked(){
     const a = $('#atAdd'); if(a) try{ a.focus(); }catch(_){}
     return true;
   }
-  const bad = ATE.blocks.map((b, i) => atBlockProblem(b) ? i : -1).filter(i => i >= 0);
+  const bad = ATE.blocks.map((b, i) => atBlockProblem(b, ATE.blocks) ? i : -1).filter(i => i >= 0);
   if(!bad.length) return false;
   ATE.showErr = true;
   atBlocksRender();
@@ -22006,6 +22085,8 @@ function atSubmitBlocked(){
 }
 function atSubmit(){
   if(!ATE.p || ATE.sending) return;
+  //  보내기 직전: 지금 과제 목록에 없는 id 의 블록을 과제 미정으로 돌린다(죽은 id 로 보내지 않는다). 그러면 아래 검사가 막는다.
+  if(atBlocksDropDead(ATE.blocks, atProjectsAll())){ atSortBlocks(); atBlocksRender(); atOnEdit(); }
   if(atSubmitBlocked()) return;
   const payload = atBuildSubmit();
   atDraftFlushNow(true);
@@ -22775,13 +22856,14 @@ async function awImpDaily(auto){
   if(g !== AWE.gen) return '';
   let t;
   if(!rows) t = '이번 주 일간 보고를 읽지 못했습니다.';
+  else if(!rows.length){ t = auto ? '이번 주 일간 보고가 없습니다.' : ''; awImpMsg('이번 주 일간 보고가 없습니다.'); }   // 가져올 것이 없으면 쓴 글을 그대로 둔다([← 지난주 차주계획]과 같은 규칙)
   else {
     //  과제투입시간 목록과 시간을 그 주 일간 합계로 바꾸고, 진행사항 칸에 `[과제명]` 머리로 정리한 초안 글을 넣는다(덮어쓴다, §14.2).
     const names = awProjNames(), c = awDailyCollect(rows, names, awProjectsAll());
     AWE.hrs = names.filter(n => c.hours[n] > 0); AWE.hours = c.hours;
     AWE.prog = awBlocksText(c.prog);
-    t = !rows.length ? '이번 주 일간 보고가 없습니다.'
-      : '일간 보고 ' + c.days + '일에서 과제 ' + AWE.hrs.length + '개를 가져왔습니다.';
+    awImpMsg('');
+    t = '일간 보고 ' + c.days + '일에서 과제 ' + AWE.hrs.length + '개를 가져왔습니다.';
   }
   if(!auto){ awSetBusy(false); awRender(); awOnEdit(); awMsg(t, rows ? '' : 'err'); }
   return t;

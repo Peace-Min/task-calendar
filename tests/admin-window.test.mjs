@@ -451,8 +451,10 @@ if (!JSDOM) {
       assert.strictEqual(isOpen(A, 'confirmModal'), true, '확인 창이 뜨지 않았다');
       assert.match($(A, '#cfMsg').textContent, /저장하지 않고 닫을까요/, '같은 확인 문구가 아니다');
       assert.strictEqual(A.ev('__winCloseRequest()'), 'ask', '묻는 중에 다시 누르면 기다려야 한다');
-      A.ev("document.getElementById('cfAlt').click()"); await settle(FADE);
-      assert.strictEqual(A.ev('window.__closeCalls'), 0, '[계속 편집]인데 창을 닫았다');
+      //  [계속 편집]은 [취소]와 같은 일이라 단추를 하나만 둔다(2026-11-06 QA): 남는 쪽은 [취소]
+      assert.strictEqual(A.ev("document.getElementById('cfAlt').style.display"), 'none', '[취소]와 같은 일인 [계속 편집] 단추가 보인다');
+      A.ev("document.querySelector('#confirmModal .modal-foot [data-close]').click()"); await settle(FADE);
+      assert.strictEqual(A.ev('window.__closeCalls'), 0, '[취소]인데 창을 닫았다');
       //  허브 닫기(closeOverlay) 길도 같은 확인을 지난다
       A.ev("closeOverlay(document.getElementById('adminHub'))"); await settle(40);
       assert.strictEqual(isOpen(A, 'confirmModal'), true, '허브 닫기 길이 같은 확인을 지나지 않는다');
@@ -471,7 +473,7 @@ if (!JSDOM) {
       assert.deepStrictEqual(A.errors, []);
     } finally { A.close(); }
   }
-  test('(R) 닫기 전 확인: 저장 안 한 입력이 있으면 같은 확인(ask) · [계속 편집]은 남고 [닫기]는 닫는다 · 허브 닫기도 같은 길 · 저장 중이면 busy · Esc 로 닫지 않는다', () => closeAsk(app));
+  test('(R) 닫기 전 확인: 저장 안 한 입력이 있으면 같은 확인(ask), [취소]는 남고 [닫기]는 닫는다, 허브 닫기도 같은 길, 저장 중이면 busy, Esc 로 닫지 않는다', () => closeAsk(app));
 
   test('(R) 목록 알림: 관리 창에도 반영된다(공식 과제 개수) · 메인 창은 새 과제 자동 편입 대상을 받는다(관리 창은 받지 않는다)', async () => {
     const A = boot(app, ADMIN_URL, { stub: true }), M = boot(app, MAIN_URL);

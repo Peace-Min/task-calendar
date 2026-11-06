@@ -631,6 +631,25 @@ if (!JSDOM) {
     } finally { A.close(); }
   });
 
+  test('(A) [← 이번 주 일간 보고]: 그 주 일간 보고가 0건이면 진행사항과 과제투입시간을 그대로 두고 알리기만 한다([← 지난주 차주계획]과 같은 규칙)', async () => {
+    const A = bootAttend();
+    try {
+      A.ev('__attendWinOpen(' + JSON.stringify(wpayload(MON, WROW(MON, { subject: '10월 다섯째주', content: '[알파] : 8\n[휴가] : 2\n-----\n합계 : 10', endwork: '[알파]\n&nbsp;&nbsp;- 한 일\n\n[휴가]\n-', meeting: '' }))) + ')');
+      await tick(40);
+      input(A, '#awProg', '[알파]\n- 사람이 고친 글');
+      const before = { prog: A.ev('AWE.prog'), hours: hoursRows(A) };
+      A.ev('__rep.reportDailyList = { ok: true, rows: [] }');
+      A.$('#awPanel [data-awtab="imp"]').click();
+      A.$('#awImpDaily').click(); await tick(40);
+      assert.strictEqual(A.ev('AWE.prog'), before.prog, '일간 보고가 없는데 진행사항을 지웠다');
+      assert.strictEqual(A.$('#awProg').value, before.prog);
+      assert.deepStrictEqual(hoursRows(A), before.hours, '일간 보고가 없는데 과제투입시간을 바꿨다');
+      assert.strictEqual(A.$('#awImpMsg').textContent, '이번 주 일간 보고가 없습니다.', '가져올 것이 없다고 알리지 않았다');
+      assert.strictEqual(A.ev('awDirty()'), true, '사람이 고친 글이 처음 상태로 돌아갔다');
+      assert.deepStrictEqual(A.errors, []);
+    } finally { A.close(); }
+  });
+
   function sendWeekly(A) {
     input(A, '#awProg', A.ev('AWE.prog') + '\n\t- 연차');
     input(A, '#awPlan', '[베타]\n  - 다음 일');

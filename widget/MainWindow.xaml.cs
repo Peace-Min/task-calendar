@@ -2107,6 +2107,10 @@ namespace TaskCalendarWidget
         //    catId = 옛 개인 과제 id, projectUid = 공식 과제 uid. 사람은 세션에서 읽는다. 옮기는 동안 보고 보내기를 막는다(_reportRelinkBusy).
         //    회신: { ok:true, daily, weekly } | { ok:false, error }. 실패면 웹은 옛 과제를 지우지 않는다.
         private bool _reportRelinkBusy;
+        //  보고 기록 DB 저장(일간, 주간과 그 10, 30, 60초 재시도)이 진행 중인 수. 주간 재시도는 _netcus 가 풀린 뒤에도 백그라운드에서 돈다.
+        //  그 사이에 공수 옮기기가 돌면 옮긴 뒤에 옛 과제 id 줄이 다시 써질 수 있어 0 보다 크면 연결을 막는다(Interlocked 로만 바꾼다).
+        private int _reportSavesPending;
+        internal const string ReportSavingMsg = "보고 기록을 저장하는 중입니다. 잠시 뒤 다시 연결해 주세요.";
         internal const string RelinkBusyMsg = "공식 과제 연결 중입니다. 끝난 뒤 다시 보내세요.";
         //  연결 중이면 보내기를 막고 두 창에 실패를 알린다. 막았으면 true.
         private bool RelinkBlocksSend()
@@ -2120,6 +2124,7 @@ namespace TaskCalendarWidget
             string? loginId = CurrentLoginId();
             if (string.IsNullOrEmpty(loginId)) { ReplyOnUi(reqId, new { ok = false, error = "로그인이 필요합니다." }); return; }
             if (_reportRelinkBusy || _netcus.IsBusy) { ReplyOnUi(reqId, new { ok = false, error = "보고를 보내는 중입니다. 끝난 뒤 다시 연결하세요." }); return; }
+            if (System.Threading.Volatile.Read(ref _reportSavesPending) > 0) { ReplyOnUi(reqId, new { ok = false, error = ReportSavingMsg }); return; }
             _reportRelinkBusy = true;
             try
             {
@@ -2603,7 +2608,7 @@ namespace TaskCalendarWidget
         async Task<bool> INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string memo, string hoursJson)
         {
             string? loginId = CurrentLoginId();
-            var hours = ParseHoursJson(hoursJson);
+            var hours = ParseHoursJson(hoursJson, out bool hoursUnreadable);
             //  ★ 쓰기 직전 재검증(2026-09-09 CHECK 도메인 · chk_crd_status / chk_crd_overtime).
             //    값 하나가 3819 를 내면 **그 날 보고 저장 트랜잭션 전체가 롤백**된다 — 전송은 이미 성공한 뒤라
             //    가장 나쁜 실패다(ReportDb 클래스 주석). 그래서 도메인 밖 값은 여기서 안전한 값으로 내리고,
@@ -2612,8 +2617,12 @@ namespace TaskCalendarWidget
             int ot = SafeOvertime(overtime);
             var db = new ReportDb(Log);
             bool ok;
-            try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours)); }
+            //  ★ 블록 배열 전체를 읽지 못했으면(hoursUnreadable) 줄 0개의 '새 보고'로 굳히지 않고 memo 를 NULL(옛 보고)로 남긴다.
+            //    다시 열 때 content 를 해석하므로 블록이 살아난다.
+            System.Threading.Interlocked.Increment(ref _reportSavesPending);   // 공수 옮기기와 겹치지 않게(RunReportRelinkAsync)
+            try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours, legacyMemo: hoursUnreadable)); }
             catch (Exception ex) { Log("보고 기록 저장 예외(일간): " + ex.Message); ok = false; }
+            finally { System.Threading.Interlocked.Decrement(ref _reportSavesPending); }
             if (ok)
             {
                 string date = $"{y:D4}-{m:D2}-{d:D2}";
@@ -2627,15 +2636,24 @@ namespace TaskCalendarWidget
             string? loginId = CurrentLoginId();
             var hours = hoursJson == null ? null : ParseWeeklyHoursJson(hoursJson);
             var db = new ReportDb(Log);
-            _ = Task.Run(() => SaveReportRecordWithRetryAsync("weekly", sdate, db,   // 실패 시 10·30·60초 재시도(OfflineHost.cs · S10)
-                async () =>
+            //  재시도까지 끝날 때까지 저장 중으로 센다(공수 옮기기를 막는다, RunReportRelinkAsync)
+            System.Threading.Interlocked.Increment(ref _reportSavesPending);
+            _ = Task.Run(async () =>
+            {
+                try
                 {
-                    bool ok = await db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork, meeting, hours);
-                    //  기록이 커밋된 뒤에만 알린다(결정 13): 웹은 그 주 임시 저장을 지우고 목록 상태를 완료로 바꾼다.
-                    //    폼 채우기 성공 회신만 보고 지우면, 기록이 끝내 실패했을 때 글이 어디에도 남지 않는다.
-                    if (ok) ReportPush("window.__reportWeeklySaved && window.__reportWeeklySaved(" + JsonSerializer.Serialize(new { periodStart = sdate }) + ")");
-                    return ok;
-                }));
+                    await SaveReportRecordWithRetryAsync("weekly", sdate, db,   // 실패 시 10·30·60초 재시도(OfflineHost.cs · S10)
+                        async () =>
+                        {
+                            bool ok = await db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork, meeting, hours);
+                            //  기록이 커밋된 뒤에만 알린다(결정 13): 웹은 그 주 임시 저장을 지우고 목록 상태를 완료로 바꾼다.
+                            //    폼 채우기 성공 회신만 보고 지우면, 기록이 끝내 실패했을 때 글이 어디에도 남지 않는다.
+                            if (ok) ReportPush("window.__reportWeeklySaved && window.__reportWeeklySaved(" + JsonSerializer.Serialize(new { periodStart = sdate }) + ")");
+                            return ok;
+                        });
+                }
+                finally { System.Threading.Interlocked.Decrement(ref _reportSavesPending); }
+            });
         }
 
         // ================================================================================
@@ -2854,14 +2872,17 @@ namespace TaskCalendarWidget
         //  0시간 블록은 내용(body)이 있을 때만 남긴다(ReportDb.DailyLineKept). 같은 과제 id 블록 합치기는 ReportDb 저장이 한다.
         //  ★ 파싱 실패는 빈 목록이다 — 예외를 던지지 않는다. 시간줄이 없다고 본문 기록까지
         //    날리면 "보고한 사실" 자체를 잃는다.
-        private List<ReportHourLine> ParseHoursJson(string? json)
+        //  unreadable = 배열 전체를 읽지 못했다(JSON 이 깨졌거나 배열이 아니다). 호출자는 이때 memo 를 NULL(옛 보고)로 남긴다.
+        //    줄 하나를 거른 것과 빈 값(블록 없음)은 unreadable 이 아니다.
+        private List<ReportHourLine> ParseHoursJson(string? json, out bool unreadable)
         {
+            unreadable = false;
             var list = new List<ReportHourLine>();
             if (string.IsNullOrWhiteSpace(json)) return list;
             try
             {
                 using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.ValueKind != JsonValueKind.Array) return list;
+                if (doc.RootElement.ValueKind != JsonValueKind.Array) { unreadable = true; Log("보고 시간줄이 배열이 아니다(옛 보고로 남긴다)"); return list; }
                 foreach (var el in doc.RootElement.EnumerateArray())
                 {
                     if (el.ValueKind != JsonValueKind.Object) continue;
@@ -2891,7 +2912,7 @@ namespace TaskCalendarWidget
                     list.Add(new ReportHourLine { TaskName = name.Trim(), CatUid = cat, ProjectUid = ReportDb.ProjectUidFor(cat, puid), Hours = h, Body = body });
                 }
             }
-            catch (Exception ex) { Log("보고 시간줄 파싱 실패(본문 기록은 계속한다): " + ex.Message); }
+            catch (Exception ex) { unreadable = true; list.Clear(); Log("보고 시간줄 파싱 실패(본문 기록은 계속하고 옛 보고로 남긴다): " + ex.Message); }
             return list;
         }
 

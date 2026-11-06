@@ -294,7 +294,7 @@ const checks = {
   reportRetry(s) {
     //  결정 9: 일간은 재시도하지 않는다. 저장을 기다려 결과를 돌려주고, 실패 알림(__reportRecordFailed)도 일간으로는 나가지 않는다.
     const daily = csMember(s.main, 'async Task<bool> INetcusHost.SaveDailyReport(');
-    assert.ok(/ok = await Task\.Run\(\(\) => db\.SaveDailyAsync\(loginId, y, m, d, st, ot, content, memo \?\? "", hours\)\);/.test(daily), '일간 보고 기록 저장을 기다리지 않는다(결정 9)');
+    assert.ok(/ok = await Task\.Run\(\(\) => db\.SaveDailyAsync\(loginId, y, m, d, st, ot, content, memo \?\? "", hours, legacyMemo: hoursUnreadable\)\);/.test(daily), '일간 보고 기록 저장을 기다리지 않는다(결정 9)');
     assert.ok(!/SaveReportRecordWithRetryAsync|__reportRecordFailed/.test(stripCs(daily)), '일간 보고 기록이 아직 백그라운드 재시도로 간다(결정 9 위반)');
     assert.ok(!/SaveReportRecordWithRetryAsync\("daily"/.test(stripCs(s.main)), '일간 재시도 호출이 남아 있다');
     const weekly = csMember(s.main, 'void INetcusHost.SaveWeeklyReport(');
@@ -506,8 +506,8 @@ test('변이㉒: 재시도 간격을 바꾸면 S10⑩ 이 실패한다', () => {
 });
 
 test('변이㉒b: 일간을 옛 백그라운드 재시도로 되돌리면 S10⑩ 이 실패한다(결정 9)', () => {
-  const bad = mutate(src.main, 'try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours)); }',
-    'try { _ = Task.Run(() => SaveReportRecordWithRetryAsync("daily", "", db, () => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours))); ok = true; }');
+  const bad = mutate(src.main, 'try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours, legacyMemo: hoursUnreadable)); }',
+    'try { _ = Task.Run(() => SaveReportRecordWithRetryAsync("daily", "", db, () => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours, legacyMemo: hoursUnreadable))); ok = true; }');
   assert.throws(() => checks.reportRetry(with_('main', bad)), /기다리지 않는다|백그라운드 재시도/);
 });
 

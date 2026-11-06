@@ -391,8 +391,8 @@ const RH_KEY = { cal_report_hours: 'crh', cal_report_daily: 'crd', cal_report_we
 const RH_TABLES = '(cal_report_hours|cal_report_daily|cal_report_weekly_hours)';
 //  v22 가 PREPARE 로 실행하는 데이터 문장과 검증 하위 질의(공백 하나로 접은 글자). 조각이 바뀌면 여기도 함께 바꾼다(다르면 모르는 문장).
 export const V22_FILL_DB = "UPDATE cal_report_weekly_hours SET cat_uid = CONCAT('db-', project_uid) WHERE user_id > 0 AND cat_uid IS NULL AND project_uid IS NOT NULL";
-export const V22_FILL_LOCAL = "UPDATE cal_report_weekly_hours h JOIN (SELECT user_id, name COLLATE utf8mb4_bin AS nm, MIN(uid) AS uid FROM cal_category WHERE source = 'local' GROUP BY user_id, nm HAVING COUNT(*) = 1) c "
-  + 'ON c.user_id = h.user_id AND c.nm = h.task_name COLLATE utf8mb4_bin SET h.cat_uid = c.uid WHERE h.user_id > 0 AND h.cat_uid IS NULL AND h.project_uid IS NULL';
+export const V22_FILL_LOCAL = "UPDATE cal_report_weekly_hours h SET h.cat_uid = (SELECT IF(COUNT(*) = 1, MIN(c.uid), NULL) FROM cal_category c WHERE c.user_id = h.user_id AND c.source = 'local' "
+  + 'AND c.name COLLATE utf8mb4_bin = h.task_name COLLATE utf8mb4_bin AND CHAR_LENGTH(c.name) = CHAR_LENGTH(h.task_name)) WHERE h.user_id > 0 AND h.cat_uid IS NULL AND h.project_uid IS NULL';
 const V22_HNEW = "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cal_report_hours' AND IS_NULLABLE = 'YES' "
   + "AND ((COLUMN_NAME = 'cat_uid' AND COLUMN_TYPE = 'varchar(80)' AND COLLATION_NAME = 'utf8mb4_bin') "
   + "OR (COLUMN_NAME = 'project_uid' AND COLUMN_TYPE = 'char(36)' AND COLLATION_NAME = (SELECT COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project' AND COLUMN_NAME = 'uid')) "
@@ -862,7 +862,8 @@ export class FakeDb {
       if (q === V22_FILL_DB) {
         for (const r of this.rh.crwh.rows) if (r.user_id > 0 && r.cat_uid === null && r.project_uid !== null) { r.cat_uid = 'db-' + r.project_uid; n++; }
       } else {
-        const groups = new Map();   // 사람 + 이름(_bin: 글자 그대로) → uid 목록
+        //  사람 + 이름(_bin 에 글자 수까지 같음: 끝 공백까지 글자 그대로) → uid 목록. 같은 이름이 하나뿐일 때만 채운다(0 이나 2 이상이면 NULL 그대로)
+        const groups = new Map();
         for (const c of this.rh.cats) {
           if (c.source !== 'local') continue;
           const k = `${c.user_id}\u0000${c.name}`;

@@ -184,13 +184,15 @@ SELECT IF(@go, '일간 과제별 줄 표를 바꿨다(옛 줄 지움, 과제 id 
 
 -- 8) 기존 주간 줄 cat_uid 채우기(한 트랜잭션). 아직 빈 줄만 채우므로 다시 돌려도 같다.
 --    a) 공식 과제 줄: 앱의 공식 과제 id 는 db-<project.uid> 다.
---    b) 개인 과제 줄: 그 사람의 개인 과제 가운데 이름이 글자까지 같은 과제가 하나뿐일 때만. 묶기와 비교를 _bin 으로 한다
---       (표 기본 콜레이션은 대소문자를 구분하지 않아 다른 과제를 하나로 셀 수 있다).
+--    b) 개인 과제 줄: 그 사람의 개인 과제 가운데 이름이 글자까지 같은 과제가 하나뿐일 때만. 비교를 _bin 으로 한다
+--       (표 기본 콜레이션은 대소문자를 구분하지 않아 다른 과제를 하나로 셀 수 있다). _bin 은 끝 공백을 무시해(PAD SPACE)
+--       글자 수도 같아야 한다. 안전 갱신 모드(1175)에서 실행 계획에 따라 막힐 수 있는 여러 표 UPDATE 대신
+--       한 표 UPDATE 에 상관 부분 조회를 쓴다. 같은 이름이 0 이나 2 이상이면 NULL 로 남는다.
 START TRANSACTION;
 SET @s := IF(@go, 'UPDATE cal_report_weekly_hours SET cat_uid = CONCAT(''db-'', project_uid) WHERE user_id > 0 AND cat_uid IS NULL AND project_uid IS NOT NULL', 'DO 0');
 PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
 SET @s := IF(@go,
-  'UPDATE cal_report_weekly_hours h JOIN (SELECT user_id, name COLLATE utf8mb4_bin AS nm, MIN(uid) AS uid FROM cal_category WHERE source = ''local'' GROUP BY user_id, nm HAVING COUNT(*) = 1) c ON c.user_id = h.user_id AND c.nm = h.task_name COLLATE utf8mb4_bin SET h.cat_uid = c.uid WHERE h.user_id > 0 AND h.cat_uid IS NULL AND h.project_uid IS NULL',
+  'UPDATE cal_report_weekly_hours h SET h.cat_uid = (SELECT IF(COUNT(*) = 1, MIN(c.uid), NULL) FROM cal_category c WHERE c.user_id = h.user_id AND c.source = ''local'' AND c.name COLLATE utf8mb4_bin = h.task_name COLLATE utf8mb4_bin AND CHAR_LENGTH(c.name) = CHAR_LENGTH(h.task_name)) WHERE h.user_id > 0 AND h.cat_uid IS NULL AND h.project_uid IS NULL',
   'DO 0');
 PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
 COMMIT;

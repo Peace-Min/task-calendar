@@ -189,10 +189,10 @@ const checks = {
     // (c) 두 검증이 **저장 호출 앞**에 실제로 끼어 있고, 내린 값이 저장으로 간다(안 그러면 장식이다).
     const i = mainCs.indexOf('Task<bool> INetcusHost.SaveDailyReport(');
     assert.ok(i > 0, 'INetcusHost.SaveDailyReport 를 찾지 못했다');
-    const hook = mainCs.slice(i, i + 1600);
+    const hook = mainCs.slice(i, i + 2600);
     assert.ok(/SafeReportStatus\(status\)/.test(hook) && /SafeOvertime\(overtime\)/.test(hook),
       '저장 훅이 재검증을 부르지 않는다 — 웹이 보낸 값이 그대로 DB 로 간다');
-    assert.ok(/SaveDailyAsync\(loginId, y, m, d, st, ot, content, memo \?\? "", hours\)/.test(hook),
+    assert.ok(/SaveDailyAsync\(loginId, y, m, d, st, ot, content, memo \?\? "", hours, legacyMemo: hoursUnreadable\)/.test(hook),
       '재검증한 값(st·ot)이 아니라 원본을 저장한다 — 검증이 장식이 된다');
 
     // (d) 공수 줄은 CHECK 범위 밖이면 **버린다**(줄 하나 때문에 그 날 기록 전체를 잃지 않게).
@@ -352,8 +352,8 @@ test('변이⑧: 호스트의 근태 코드 집합에서 하나를 빼면 배선
 });
 
 test('변이⑨: 재검증한 값 대신 원본을 저장하면 배선⑨ 가 실패한다(검증이 장식이 된다)', () => {
-  const bad = mutate('SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours)',
-    'SaveDailyAsync(loginId, y, m, d, status, overtime, content, memo ?? "", hours)', mainwin);
+  const bad = mutate('SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours, legacyMemo: hoursUnreadable)',
+    'SaveDailyAsync(loginId, y, m, d, status, overtime, content, memo ?? "", hours, legacyMemo: hoursUnreadable)', mainwin);
   assert.throws(() => checks.revalidatesCheckDomains(bad, reportdb, canonSql(), canonStatusCodes('chk_crd_status')),
     /재검증한 값\(st·ot\)이 아니라 원본을 저장한다/);
 });

@@ -1210,8 +1210,9 @@ const RH_ROWS21 = () => [
   { user_id: 1, period_start: '2026-10-26', line_no: 3, task_name: 'Alpha', project_uid: null },           // 대소문자만 다르다(_bin): 채우지 않는다
   { user_id: 1, period_start: '2026-10-26', line_no: 4, task_name: '없는 과제', project_uid: null },       // 같은 이름 없음
   { user_id: 2, period_start: '2026-10-26', line_no: 0, task_name: '사내 교육', project_uid: null },       // 다른 사람: 그 사람의 과제로
+  { user_id: 1, period_start: '2026-10-26', line_no: 5, task_name: '사내 교육 ', project_uid: null },      // 끝 공백만 다르다(_bin 은 PAD SPACE): 글자 수까지 보아 채우지 않는다
 ];
-const RH_FILLED = ['db-' + PU, RH_CATS21[0].uid, null, null, null, RH_CATS21[4].uid];
+const RH_FILLED = ['db-' + PU, RH_CATS21[0].uid, null, null, null, RH_CATS21[4].uid, null];
 const at21Weekly = () => { const x = S.at(21); x.rh = RH_V21(); x.rh.crwh.rows = RH_ROWS21(); x.rh.cats = RH_CATS21.map((c) => ({ ...c })); return x; };
 //  정본에서 표 하나의 CREATE 본문을 읽는다
 const canonBody = (t) => {
@@ -1364,13 +1365,48 @@ test('배포SQL③r4: v22 조각의 칸, 색인, 시간 제약, 표 설명이 �
   assert.ok(!/\b(GRANT|REVOKE)\b/i.test(code), 'v22 조각이 권한을 주거나 거둔다(배포 SQL 금지)');
   assert.ok(!/INSERT\s+IGNORE/i.test(code), 'v22 조각이 INSERT IGNORE 를 쓴다');
 });
+//  안전 갱신 모드(Workbench 기본)에서 여러 표 UPDATE, DELETE 는 실행 계획에 따라 1175 로 멈출 수 있다. 바꾸는 문장은 한 표로만 쓴다.
+//  v19 의 순서 채우기(UPDATE project p JOIN ...)는 0.2x 에서 이미 폐쇄망에 돌아간 조각이라 그대로 두고 예외로만 적는다(새 조각은 예외 없음).
+const MULTI_TABLE_OK = new Set(['v19-project-order.sql']);
+const multiTableWrites = (sql) => {
+  const code = sql.replace(/^\s*--.*$/gm, '').replace(/\bON\s+(UPDATE|DELETE)\b/gi, 'ON _$1');   // FK 규칙(ON UPDATE CASCADE)은 문장이 아니다
+  const out = [];
+  //  UPDATE <표> [별칭] [, | JOIN] ...  또는 DELETE ... FROM ... JOIN / DELETE a, b FROM
+  for (const m of code.matchAll(/\bUPDATE\s+`?\w+`?(?:\s+(?:AS\s+)?(?!SET\b)\w+)?\s*(?:,|(?:(?:INNER|LEFT|RIGHT|CROSS|STRAIGHT_)\s*)?JOIN\b)/gi)) out.push(m[0].replace(/\s+/g, ' '));
+  for (const m of code.matchAll(/\bDELETE\b[^;']*?\bFROM\b[^;']*?\bJOIN\b/gi)) out.push(m[0].replace(/\s+/g, ' ').slice(0, 80));
+  for (const m of code.matchAll(/\bDELETE\s+\w+\s*,\s*\w+\s+FROM\b/gi)) out.push(m[0]);
+  return out;
+};
+test('배포SQL③r6: 이관 조각의 바꾸는 문장은 한 표 UPDATE, DELETE 뿐이다(여러 표 UPDATE, DELETE JOIN 은 안전 갱신 모드에서 1175 로 멈출 수 있다)', () => {
+  //  검사기 자체: 잡아야 할 꼴과 잡지 말아야 할 꼴
+  for (const bad of ["UPDATE cal_report_weekly_hours h JOIN (SELECT 1) c ON 1 SET h.cat_uid = 1 WHERE h.user_id > 0",
+    'UPDATE project p\n     JOIN x o ON o.id = p.id SET p.a = 1', 'UPDATE a, b SET a.x = b.x WHERE a.id > 0', 'UPDATE t LEFT JOIN u ON 1 SET t.a = 1',
+    'DELETE h FROM cal_report_hours h JOIN cal_category c ON 1 WHERE h.user_id > 0', 'DELETE a, b FROM a JOIN b ON 1']) {
+    assert.ok(multiTableWrites(bad).length > 0, `검사기가 놓쳤다: ${bad}`);
+  }
+  for (const ok of ["UPDATE cal_report_weekly_hours h SET h.cat_uid = (SELECT MIN(c.uid) FROM cal_category c JOIN x ON 1) WHERE h.user_id > 0",
+    "UPDATE cal_report_weekly_hours SET cat_uid = CONCAT('db-', project_uid) WHERE user_id > 0", 'DELETE FROM cal_report_hours WHERE user_id > 0',
+    'SELECT COUNT(*) FROM information_schema.COLUMNS a JOIN information_schema.COLUMNS b ON 1']) {
+    assert.deepStrictEqual(multiTableWrites(ok), [], `검사기가 잘못 잡았다: ${ok}`);
+  }
+  const files = readdirSync(FRAG_DIR).filter((f) => f.endsWith('.sql'));
+  assert.ok(files.includes('v22-report-hours.sql'), '조각 목록을 읽지 못했다(판정 불가)');
+  for (const f of files) {
+    const found = multiTableWrites(readText(join(FRAG_DIR, f)));
+    if (MULTI_TABLE_OK.has(f)) { assert.ok(found.length > 0, `${f} 의 예외가 이제 필요 없다(MULTI_TABLE_OK 에서 지울 것)`); continue; }
+    assert.deepStrictEqual(found, [], `${f} 에 여러 표 UPDATE, DELETE 가 있다`);
+  }
+  //  v22 의 개인 과제 줄 채우기는 한 표 UPDATE 에 상관 부분 조회, 글자 수까지 같은 이름
+  assert.ok(V22_FRAG.includes("'UPDATE cal_report_weekly_hours h SET h.cat_uid = (SELECT IF(COUNT(*) = 1, MIN(c.uid), NULL) FROM cal_category c WHERE"), 'v22 개인 과제 줄 채우기가 한 표 UPDATE 가 아니다');
+  assert.ok(/CHAR_LENGTH\(c\.name\) = CHAR_LENGTH\(h\.task_name\)/.test(V22_FRAG), 'v22 채우기가 끝 공백만 다른 이름을 같다고 본다(_bin 은 PAD SPACE)');
+});
 test('배포SQL③r5: v22 의 바꾸는 단계는 순서가 강제된다(옛 줄 지우기, FK, 색인, 칸, CHECK 지우고 만들기, 칸 추가, 색인, 표 설명, 채우기, 검증, 표 셋 지우기, 구조 번호)', () => {
   const at = (needle) => { const i = V22_FRAG.indexOf(needle); assert.ok(i >= 0, `v22 조각에 ${needle} 가 없다`); return i; };
   const seq = ["'DELETE FROM cal_report_hours WHERE user_id > 0'", "'ALTER TABLE cal_report_hours DROP FOREIGN KEY fk_crh_cat'", "'ALTER TABLE cal_report_hours DROP INDEX idx_crh_cat'",
     "'ALTER TABLE cal_report_hours DROP COLUMN cat_no, ALGORITHM=INSTANT'", "'ALTER TABLE cal_report_hours DROP CHECK chk_crh_hours'", "'ALTER TABLE cal_report_hours ADD CONSTRAINT chk_crh_hours",
     "'ALTER TABLE cal_report_hours ADD COLUMN cat_uid", "'ALTER TABLE cal_report_hours ADD COLUMN project_uid", "'ALTER TABLE cal_report_hours ADD COLUMN body",
     "'ALTER TABLE cal_report_daily ADD COLUMN memo", "'ALTER TABLE cal_report_weekly_hours ADD COLUMN cat_uid", "ADD INDEX ix_crh_project", "ADD INDEX ix_crh_cat", "ADD INDEX ix_crwh_cat",
-    "'ALTER TABLE cal_report_hours COMMENT", "'UPDATE cal_report_weekly_hours SET cat_uid", "'UPDATE cal_report_weekly_hours h JOIN", "`중단: v22 조각 검증 실패 - 일간 줄 표의 칸",
+    "'ALTER TABLE cal_report_hours COMMENT", "'UPDATE cal_report_weekly_hours SET cat_uid", "'UPDATE cal_report_weekly_hours h SET h.cat_uid = (SELECT IF(COUNT(*) = 1", "`중단: v22 조각 검증 실패 - 일간 줄 표의 칸",
     "`중단: v22 조각 검증 실패 - 주간 줄 표의", "'DROP TABLE IF EXISTS cal_task_hours'", "UPDATE cal_schema_meta SET v = '22'"];
   const pos = seq.map(at);
   for (let k = 1; k < pos.length; k++) assert.ok(pos[k - 1] < pos[k], `v22 의 순서가 틀렸다: ${seq[k - 1]} 가 ${seq[k]} 보다 뒤다`);
@@ -1418,6 +1454,6 @@ test('변이R46: v22 가 표 셋을 검증 앞에서 지우면 검증에서 멈�
   assert.throws(() => checks.v22Verify(bad, V22_BAD_SHAPES[0][0], V22_BAD_SHAPES[0][1]), /지울 표를 지웠다/);
 });
 test('변이R47: v22 가 개인 과제 줄을 채우지 않으면 ③r 이 실패한다', () => {
-  const bad = mutate(realSql(), "SET @s := IF(@go,\n  'UPDATE cal_report_weekly_hours h JOIN", "SET @s := IF(0,\n  'UPDATE cal_report_weekly_hours h JOIN");
+  const bad = mutate(realSql(), "SET @s := IF(@go,\n  'UPDATE cal_report_weekly_hours h SET", "SET @s := IF(0,\n  'UPDATE cal_report_weekly_hours h SET");
   assert.throws(() => checks.v22Upgraded(bad), /cat_uid 채우기가 다르다/);
 });

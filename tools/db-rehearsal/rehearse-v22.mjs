@@ -90,6 +90,9 @@ export function fragmentSpan(releaseSql, name) {
   return { start, end: tail, body: releaseSql.slice(start, tail) };
 }
 
+//  Workbench 기본(Safe Updates)과 같은 조건: 돌리는 release SQL 맨 앞에 붙인다(0.25.0 의 1175 사고)
+export const SAFE = 'SET SESSION sql_safe_updates = 1;\n';
+
 //  끊을 경계: 조각의 바꾸는 단계(PREPARE _s ... DEALLOCATE PREPARE _s) 하나가 끝난 자리와 COMMIT 뒤.
 //  돌려주는 값은 "앞에서부터 이만큼의 문장을 돌린 뒤 끊는다" 의 문장 수 목록이다(트랜잭션 안에서 끊긴 연결은 되돌려진다).
 export function stepBoundaries(stmts) {
@@ -208,7 +211,7 @@ async function body(o, ctx) {
   const srcVer = q1(o.source, "SELECT v FROM cal_schema_meta WHERE k = 'db_structure_version';");
   if (srcVer !== '21') { console.error(`X 원본 ${o.source} 의 구조 번호가 21 이 아니다([${srcVer}]). 구조 21 사본에서만 리허설한다.`); return 2; }
   const sameName = (op) => "(SELECT COUNT(*) FROM cal_report_weekly_hours h WHERE h.project_uid IS NULL AND (SELECT COUNT(*) FROM cal_category c WHERE c.user_id = h.user_id AND c.source = 'local' "
-    + `AND c.name COLLATE utf8mb4_bin = h.task_name COLLATE utf8mb4_bin) ${op})`;
+    + `AND c.name COLLATE utf8mb4_bin = h.task_name COLLATE utf8mb4_bin AND CHAR_LENGTH(c.name) = CHAR_LENGTH(h.task_name)) ${op})`;
   const pre = cells(q1(o.source, 'SELECT (SELECT COUNT(*) FROM cal_report_hours), (SELECT COUNT(*) FROM cal_report_hours WHERE cat_no IS NOT NULL), '
     + '(SELECT COUNT(*) FROM cal_report_weekly_hours), (SELECT COUNT(*) FROM cal_report_weekly_hours WHERE project_uid IS NOT NULL), '
     + `${sameName('= 1')}, ${sameName('> 1')}, ` + OLD_TABLES.map((t) => `(SELECT COUNT(*) FROM ${t})`).join(', ') + ';')).map(Number);
@@ -223,7 +226,8 @@ async function body(o, ctx) {
     '-FragmentDir', join(ROOT, 'db', 'deploy', 'migrations'), '-Structure', String(app), '-Version', '0.0.0', '-InstallerFile', 'TaskCalendarWidget-Setup-v0.0.0-rehearsal.exe',
     '-Sha256', '0'.repeat(64), '-Notes', 'v22 rehearsal', '-OutFile', relPath, '-Stamp', 'rehearsal'], { encoding: 'utf8', windowsHide: true });
   if (g.status !== 0 || !existsSync(relPath)) { console.error(`X release SQL 을 조립하지 못했다(exit ${g.status}): ${(g.stdout || '') + (g.stderr || '')}`); return 2; }
-  const rel = readFileSync(relPath, 'utf8');
+  //  Workbench 기본(Safe Updates)과 같은 조건에서 돌린다(0.25.0 의 1175 사고). 끊기 실행도 이 머리를 그대로 쓴다.
+  const rel = SAFE + readFileSync(relPath, 'utf8');
   const span = fragmentSpan(rel, FRAG_NAME);
   const fragStmts = splitStatements(span.body);
   const bounds = stepBoundaries(fragStmts);

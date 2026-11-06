@@ -194,7 +194,7 @@ const checks = {
   // ⑧ 저장 성공 알림
   savedNotice(s) {
     const hook = stripCsComments(member(s.main, 'async Task<bool> INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string memo, string hoursJson)'));
-    const save = hook.indexOf('ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours));');
+    const save = hook.indexOf('ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours, legacyMemo: hoursUnreadable));');
     const gate = hook.indexOf('if (ok)');
     const push = hook.indexOf('ReportPush("window.__reportDailySaved && window.__reportDailySaved(" + JsonSerializer.Serialize(new { date, status = st, overtime = ot }) + ")");');
     assert.ok(save > 0, '저장을 기다리지 않는다');
@@ -412,8 +412,8 @@ test('변이⑤: 옛 순서(결과 먼저, 저장 나중)로 되돌리면 결정
 });
 
 test('변이⑥: 일간을 백그라운드 재시도로 되돌리면 결정9⑥ 이 실패한다', () => {
-  const bad = mutate(src.main, 'try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours)); }',
-    'try { _ = Task.Run(() => SaveReportRecordWithRetryAsync("daily", "", db, () => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours))); ok = true; }');
+  const bad = mutate(src.main, 'try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours, legacyMemo: hoursUnreadable)); }',
+    'try { _ = Task.Run(() => SaveReportRecordWithRetryAsync("daily", "", db, () => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours, legacyMemo: hoursUnreadable))); ok = true; }');
   assert.throws(() => checks.noDailyRetry(with_('main', bad)), /백그라운드 재시도|재시도 호출이 남아/);
 });
 

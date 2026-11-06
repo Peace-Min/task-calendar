@@ -91,6 +91,10 @@ test('구조22④: 관리자 도구 xml-to-db 와 그 전용 시험(migrate-tool
   assert.ok(!/xml-to-db/.test(read('db/deploy/init-calendar.ps1').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')), 'init-calendar.ps1 의 코드가 xml-to-db 를 말한다');
 });
 test('구조22⑤: 리허설 스크립트는 비밀번호를 환경 변수로만 받아 자식 환경으로만 넘기고, 일회용 DB(tc_rh_v22_*)만 만들고 지운다', () => checks.rehearsalSafety(RH_SRC));
+test('구조22⑥: 리허설은 Workbench 안전 갱신 모드(sql_safe_updates = 1)를 release SQL 맨 앞에 붙여 돌린다(0.25.0 의 1175 사고)', () => {
+  assert.strictEqual(RH.SAFE, 'SET SESSION sql_safe_updates = 1;' + String.fromCharCode(10));
+  assert.ok(/const rel = SAFE \+ readFileSync\(relPath/.test(RH_SRC), '리허설이 돌리는 release SQL 에 안전 갱신 모드 머리가 없다');
+});
 
 // ── 리허설 스크립트 순수 함수 ─────────────────────────────────────────
 test('리허설①: 일회용 DB 이름 판정과 인자 읽기(원본 기본값 taskcalendar, 일회용 이름을 원본으로 받지 않는다)', () => {

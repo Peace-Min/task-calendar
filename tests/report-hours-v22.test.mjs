@@ -135,6 +135,41 @@ test('(H) 변이: 일간 memo 를 NULL 로 쓰면, 줄의 잠금 순서를 바�
   assert.throws(() => H.droppedTables([['ProjectDb', mutate(PDB, '"cal_category", "cal_entry", "cal_todo",', '"cal_category", "cal_entry", "cal_todo", "cal_task_hours",')]]), /cal_task_hours/);
 });
 
+//  공수 옮기기와 보고 기록 저장(일간, 주간과 그 재시도)이 겹치지 않는다: 저장 중 수(Interlocked)가 0 보다 크면 연결을 막는다
+const pendingSaves = (main) => {
+  const m = code(main);
+  assert.ok(/private int _reportSavesPending;/.test(m), '보고 기록 저장 중 수가 없다');
+  const r = code(member(main, 'private async Task RunReportRelinkAsync('));
+  assert.ok(/if \(System\.Threading\.Volatile\.Read\(ref _reportSavesPending\) > 0\) \{ ReplyOnUi\(reqId, new \{ ok = false, error = ReportSavingMsg \}\); return; \}/.test(r), '저장 중에 연결을 막지 않는다');
+  assert.ok(r.indexOf('_reportSavesPending') < r.indexOf('_reportRelinkBusy = true;'), '저장 중 검사가 연결 표시보다 뒤다');
+  assert.ok(/internal const string ReportSavingMsg = "보고 기록을 저장하는 중입니다\. 잠시 뒤 다시 연결해 주세요\.";/.test(m), '저장 중 안내 문구가 다르다');
+  const d = code(member(main, 'async Task<bool> INetcusHost.SaveDailyReport('));
+  const di = d.indexOf('Interlocked.Increment(ref _reportSavesPending)'), ds = d.indexOf('db.SaveDailyAsync('), dd = d.indexOf('finally { System.Threading.Interlocked.Decrement(ref _reportSavesPending); }');
+  assert.ok(di > 0 && di < ds && ds < dd, '일간 저장을 저장 중으로 세지 않거나 finally 로 풀지 않는다');
+  const w = code(member(main, 'void INetcusHost.SaveWeeklyReport('));
+  const wi = w.indexOf('Interlocked.Increment(ref _reportSavesPending)'), wr = w.indexOf('await SaveReportRecordWithRetryAsync("weekly"'), wd = w.indexOf('finally { System.Threading.Interlocked.Decrement(ref _reportSavesPending); }');
+  assert.ok(wi > 0 && wi < w.indexOf('Task.Run(') && wr > 0 && wr < wd, '주간 저장(재시도 포함)을 끝날 때까지 저장 중으로 세지 않는다');
+};
+//  블록 배열 전체를 읽지 못한 날은 줄 0개의 새 보고로 굳히지 않고 memo NULL(옛 보고, 글 해석)로 남긴다
+const unreadableHours = (main, rdb) => {
+  const p = code(member(main, 'private List<ReportHourLine> ParseHoursJson('));
+  assert.ok(/ParseHoursJson\(string\? json, out bool unreadable\)/.test(p) && /unreadable = false;/.test(p), 'ParseHoursJson 이 읽지 못함을 알리지 않는다');
+  assert.ok(/catch \(Exception ex\) \{ unreadable = true;/.test(p), '파싱 예외에서 읽지 못함으로 표시하지 않는다');
+  assert.ok(/!= JsonValueKind\.Array\) \{ unreadable = true;/.test(p), '배열이 아닌 값을 읽지 못함으로 표시하지 않는다');
+  assert.ok(/if \(string\.IsNullOrWhiteSpace\(json\)\) return list;/.test(p), '빈 값(블록 없음)을 읽지 못함으로 본다');
+  const d = code(member(main, 'async Task<bool> INetcusHost.SaveDailyReport('));
+  assert.ok(/ParseHoursJson\(hoursJson, out bool hoursUnreadable\)/.test(d) && /legacyMemo: hoursUnreadable/.test(d), '읽지 못한 날을 옛 보고로 저장하지 않는다');
+  const s = code(member(rdb, 'public async Task<bool> SaveDailyAsync('));
+  assert.ok(/bool legacyMemo = false\)/.test(s) && /if \(legacyMemo\) cmd\.Parameters\["@mm"\]\.Value = DBNull\.Value;/.test(s), 'legacyMemo 일 때 memo 를 NULL 로 쓰지 않는다');
+};
+test('(H) 공수 옮기기는 보고 기록 저장(일간, 주간 재시도 포함) 중이면 막는다', () => pendingSaves(MAIN));
+test('(H) 블록 배열 전체를 읽지 못하면 memo NULL(옛 보고)로 저장한다(줄 0개 새 보고로 굳히지 않는다)', () => unreadableHours(MAIN, RDB));
+test('(H) 변이: 저장 중 검사를 빼면, 주간 재시도 밖에서 풀면, 읽지 못함을 무시하면 잡는다', () => {
+  assert.throws(() => pendingSaves(mutate(MAIN, 'if (System.Threading.Volatile.Read(ref _reportSavesPending) > 0)', 'if (false)')), /저장 중에 연결을 막지 않는다/);
+  assert.throws(() => unreadableHours(mutate(MAIN, 'legacyMemo: hoursUnreadable', 'legacyMemo: false'), RDB), /옛 보고로 저장하지 않는다/);
+  assert.throws(() => unreadableHours(MAIN, mutate(RDB, 'if (legacyMemo) cmd.Parameters["@mm"].Value = DBNull.Value;', '')), /NULL 로 쓰지 않는다/);
+});
+
 // ══ (P) 호스트 C# 그대로(dotnet 프로브) ════════════════════════════════════
 const dotnetOk = (() => { const r = spawnSync('dotnet', ['--version'], { windowsHide: true, timeout: 120000 }); return !r.error && r.status === 0; })();
 let PROBE = null;
@@ -385,6 +420,105 @@ if (!JSDOM) {
       assert.deepStrictEqual(K([{ name: '알파', catId: null, hours: 1, text: '' }], { idOnly: true }), [['', null, '[알파] : 1']], 'idOnly 인데 이름으로 찾았다');
       assert.deepStrictEqual(K([{ name: '알파', catId: 'c-a', hours: 1, text: '' }, { name: '알파', catId: 'c-a', hours: 2, text: '' }]).map((x) => x[1]), ['c-a', null], '같은 과제의 두 번째 블록이 미정이 아니다');
     } finally { X.close(); }
+  });
+
+  test('(U) 죽은 과제 id(열린 채 지워졌거나 공식 과제로 연결됨): 과제 미정으로 돌린다. 이름이 하나뿐이고 다른 블록이 안 쓰면 다시 잇는다', () => {
+    const X = bootBrowser();
+    try {
+      const D = (b, all) => X.evJSON(`(function(){ var a = ${JSON.stringify(b)}; var r = atBlocksDropDead(a, ${JSON.stringify(all || ALL)}); return [r, a.map(function(x){ return [x.name, x.catId, x.text]; })]; })()`);
+      assert.deepStrictEqual(D([{ name: '알파', catId: 'c-a', hours: 1, text: 'a' }]), [false, [['알파', 'c-a', 'a']]], '살아 있는 id 를 건드렸다');
+      //  지운 과제: 같은 이름이 없으니 미정(머리 줄을 내용 첫 줄에)
+      assert.deepStrictEqual(D([{ name: '지운 과제', catId: 'c-gone', hours: 2, text: '- 한 일' }]), [true, [['', null, '[지운 과제] : 2\n- 한 일']]], '지운 과제의 블록이 미정이 아니다');
+      //  이름이 글자까지 같은 과제가 하나뿐이면 그 과제로 다시 잇는다(다른 id 로 다시 만든 과제)
+      assert.deepStrictEqual(D([{ name: '베타', catId: 'c-old-b', hours: 1, text: '' }]), [true, [['베타', 'c-b', '']]], '이름이 하나뿐인데 다시 잇지 않았다');
+      //  같은 이름이 둘이면 미정, 다른 블록이 이미 쓰는 과제면 미정
+      assert.deepStrictEqual(D([{ name: '중복', catId: 'c-gone', hours: 1, text: '' }])[1], [['', null, '[중복] : 1']], '같은 이름 둘인데 하나를 골랐다');
+      assert.deepStrictEqual(D([{ name: '알파', catId: 'c-gone', hours: 1, text: 'x' }, { name: '알파', catId: 'c-a', hours: 2, text: 'y' }])[1],
+        [['', null, '[알파] : 1\nx'], ['알파', 'c-a', 'y']], '다른 블록이 쓰는 과제에 죽은 블록을 이었다');
+      //  공식 과제로 연결: 옛 id 가 사라지고 공식 이름이 다르다 → 미정. 미정 블록은 보내기를 막는다
+      const all2 = ALL.filter((x) => x.key !== 'c-b').concat([{ key: 'db-' + U1, name: '공식 베타' }]);
+      const r = D([{ name: '베타', catId: 'c-b', hours: 3, text: '- 회신' }], all2);
+      assert.deepStrictEqual(r[1], [['', null, '[베타] : 3\n- 회신']]);
+      assert.ok(/과제를 고르세요/.test(X.ev("atBlockProblem({ name: '', catId: null, hours: 3, text: '' })")), '미정 블록을 막지 않는다');
+    } finally { X.close(); }
+  });
+
+  test('(U) 보내기 직전과 새로고침: 지금 과제 목록에 없는 id 의 블록은 과제 미정이 되어 보내지 않는다(죽은 id 로 보내지 않는다)', () => {
+    const X = bootBrowser();
+    try {
+      X.ev("pcSetTab('attend')"); X.ev(`atOpen(${JSON.stringify(X.T)})`);
+      X.ev("ATE.blocks = [{ name: '알파', catId: 'c-a', hours: 2, text: '- 일', raw: '' }, { name: '베타', catId: 'c-b', hours: 3, text: '- 회신', raw: '' }]; atBlocksRender();");
+      //  열린 채 메인 창에서 베타를 지웠다
+      X.ev("state.categories = state.categories.filter(function(c){ return c.id !== 'c-b'; })");
+      const sent = X.ev('(function(){ var n = 0, o = Platform.report.submitDaily; Platform.report.submitDaily = function(){ n++; }; atSubmit(); Platform.report.submitDaily = o; return n; })()');
+      assert.strictEqual(sent, 0, '지운 과제의 id 로 보냈다');
+      assert.deepStrictEqual(X.evJSON('ATE.blocks.map(function(b){ return [b.name, b.catId]; })'), [['알파', 'c-a'], ['', null]], '죽은 id 블록이 과제 미정이 아니다');
+      assert.ok(/보내지 않았습니다/.test(X.$('#atMsg').textContent), '보내기를 막았다고 알리지 않았다');
+      assert.strictEqual(X.ev('ATE.blocks[1].text'), '[베타] : 3\n- 회신', '미정 블록의 글을 잃었다');
+      //  근태 창 새로고침(같은 날짜): atEdOpen 이 같은 규칙으로 돌린다
+      const src = X.ev('atEdOpen.toString()');
+      assert.ok(/const dead = atBlocksDropDead\(ATE\.blocks, p\.allProjects\);/.test(src) && /atBlocksRename\(ATE\.blocks, p\.allProjects\) \|\| dead/.test(src), '같은 날짜 새로고침이 죽은 id 를 거르지 않는다');
+      const sub = X.ev('atSubmit.toString()');
+      assert.ok(sub.indexOf('atBlocksDropDead(ATE.blocks, atProjectsAll())') > 0 && sub.indexOf('atBlocksDropDead') < sub.indexOf('atSubmitBlocked()'), '보내기 검사 앞에서 죽은 id 를 거르지 않는다');
+    } finally { X.close(); }
+  });
+
+  test('(U) 같은 과제 id 블록의 시간 합이 24 를 넘으면 보내기를 막는다(호스트가 말없이 24 로 자르지 않게)', () => {
+    const X = bootBrowser();
+    try {
+      const L = [{ name: '알파', catId: 'c-a', hours: 20, text: '' }, { name: '알파', catId: 'c-a', hours: 5, text: '' }, { name: '베타', catId: 'c-b', hours: 24, text: '' }];
+      const P = (i, list) => X.ev(`atBlockProblem(${JSON.stringify(L[i])}, ${JSON.stringify(list)})`);
+      assert.ok(/24시간을 넘습니다/.test(P(0, L)) && /24시간을 넘습니다/.test(P(1, L)), '같은 과제 합 25 시간을 막지 않는다');
+      assert.strictEqual(P(2, L), '', '다른 과제 24 시간을 막았다');
+      assert.strictEqual(P(0, [L[0], { name: '알파', catId: 'c-a', hours: 4, text: '' }]), '', '합이 24 인데 막았다');
+      assert.strictEqual(P(0, undefined), '', '목록 없이 부르면 합을 보지 않아야 한다(옛 호출)');
+      //  보내기 화면에서도 막는다
+      X.ev("pcSetTab('attend')"); X.ev(`atOpen(${JSON.stringify(X.T)})`);
+      X.ev(`ATE.blocks = ${JSON.stringify(L.slice(0, 2).map((b) => Object.assign({ raw: '' }, b)))}; atBlocksRender();`);
+      const sent = X.ev('(function(){ var n = 0, o = Platform.report.submitDaily; Platform.report.submitDaily = function(){ n++; }; atSubmit(); Platform.report.submitDaily = o; return n; })()');
+      assert.strictEqual(sent, 0, '같은 과제 합이 24 를 넘는데 보냈다');
+      assert.ok(/고칠 과제가 2개/.test(X.$('#atMsg').textContent), `막은 블록 수가 다르다: ${X.$('#atMsg').textContent}`);
+    } finally { X.close(); }
+  });
+
+  test('(U) 공식 과제 연결은 이 계정의 근태 임시 저장(일간 v2 블록의 catId, 주간 과제 이름)도 새 과제로 고친다', () => {
+    const X = bootBrowser();
+    try {
+      const D1 = X.ev('addDays(todayYmd(), -2)'), MONW = X.ev('(function(){ var d = todayYmd(); while(calDow(d) !== 1) d = addDays(d, -1); return d; })()');
+      const daily = { v: 2, memo: '', blocks: [{ name: '베타', catId: 'c-b', hours: 3, text: '- 회신' }, { name: '알파', catId: 'c-a', hours: 1, text: '' }], status: '1', overtime: 0, savedAt: '2026-11-01T00:00:00.000Z' };
+      const weekly = { v: 2, subj: '', picked: '', prog: '[베타]\n- 회신', plan: '', hrs: ['알파', '베타'], hours: { '알파': 2, '베타': 4 }, meet: '', savedAt: '2026-11-01T00:00:00.000Z' };
+      const other = 'tc_attDraft:zz9:' + D1;
+      X.ev(`localStorage.setItem('tc_attDraft:me:${D1}', ${JSON.stringify(JSON.stringify(daily))})`);
+      X.ev(`localStorage.setItem('tc_attWDraft:me:${MONW}', ${JSON.stringify(JSON.stringify(weekly))})`);
+      X.ev(`localStorage.setItem('${other}', ${JSON.stringify(JSON.stringify(daily))})`);
+      const n = X.ev(`relinkAttDrafts('c-b', 'db-${U1}', '베타', '공식 베타')`);
+      assert.strictEqual(n, 2, '고친 임시 저장 수가 다르다');
+      const d = JSON.parse(X.ev(`localStorage.getItem('tc_attDraft:me:${D1}')`));
+      assert.deepStrictEqual(d.blocks.map((b) => [b.name, b.catId]), [['공식 베타', 'db-' + U1], ['알파', 'c-a']], '일간 임시 저장의 과제 id 를 고치지 않았다');
+      assert.strictEqual(d.savedAt, daily.savedAt, '저장 시각을 바꿨다');
+      const w = JSON.parse(X.ev(`localStorage.getItem('tc_attWDraft:me:${MONW}')`));
+      assert.deepStrictEqual([w.hrs, w.hours], [['알파', '공식 베타'], { '알파': 2, '공식 베타': 4 }], '주간 임시 저장의 과제 이름을 고치지 않았다');
+      assert.strictEqual(JSON.parse(X.ev(`localStorage.getItem('${other}')`)).blocks[0].catId, 'c-b', '다른 계정의 임시 저장을 고쳤다');
+      //  다시 열면 과제 미정이 아니라 공식 과제 블록이다
+      X.ev(`state.categories.push({ id: 'db-${U1}', name: '공식 베타', color: '#3e5be0', desc: '', createdAt: '${CA}' })`);
+      X.ev("pcSetTab('attend')"); X.ev(`atOpen(${JSON.stringify(D1)})`);
+      assert.ok(X.evJSON('ATE.blocks.map(function(b){ return [b.name, b.catId]; })').some((b) => b[0] === '공식 베타' && b[1] === 'db-' + U1), '연결 뒤 임시 저장이 과제 미정으로 열렸다');
+      //  저장소가 막혀도 던지지 않는다
+      X.ev("Object.defineProperty(window, 'localStorage', { get(){ throw new Error('막힘'); } })");
+      assert.strictEqual(X.ev(`relinkAttDrafts('c-a', 'db-${U2}', '알파', '공식 알파')`), 0);
+      //  runRelink 은 공수 옮기기가 성공한 과제에만 부른다
+      const rr = X.ev('runRelink.toString()');
+      assert.ok(/if\(ok\)\{ try\{ relinkAttDrafts\(fromId, toId, fromName\.get\(fromId\), toName\.get\(toId\)\); \}catch\(_\)\{\} \}/.test(rr), 'runRelink 이 성공한 과제의 임시 저장을 고치지 않는다');
+    } finally { X.close(); }
+  });
+
+  test('(S) 확인 창: [취소]는 창의 기본 단추 하나뿐이다(confirmBox 의 둘째 단추로 취소를 또 넘기지 않는다), 저장하지 않고 닫기는 [취소] 와 [닫기]', () => {
+    const calls = [...app.matchAll(/confirmBox\(([^;]*?)\)(?=\s*(?:\.then|;))/g)].map((m) => m[1]);
+    assert.ok(calls.length >= 15, `확인 창 호출을 찾지 못했다(판정 불가): ${calls.length}`);
+    const dup = calls.filter((c) => /,\s*'취소'\s*(,\s*\{[^}]*\})?$/.test(c.trim()));
+    assert.deepStrictEqual(dup, [], '둘째 단추로 [취소]를 넘겨 [취소]가 두 개 나온다');
+    assert.ok(!/confirmBox\('저장하지 않고 닫기'[^\n]*'계속 편집'/.test(app), '저장하지 않고 닫기 창에 [취소]와 같은 일인 [계속 편집]이 남았다');
+    assert.ok(/일정과 할 일 \$\{items\}건 변경 예정/.test(app), '공식 과제 연결 창 아래 줄 문구가 규칙대로가 아니다');
   });
 
   test('(U) 새 보고와 옛 보고 가르기(memo): 문자열이면 메모 칸과 줄(id 로만), null 이면 글 해석. 줄이 0개인 새 보고도 새 보고다', () => {
