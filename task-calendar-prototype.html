@@ -16279,9 +16279,9 @@ function otAfterClose(){
 }
 
 /* ---------- 기존 과제 재연결(P3.4) — 개인 과제 → 공식 과제 ----------
-   순서(구조 22, docs/DB-V22-REPORT-HOURS.md 앱 변경 6): 일정과 할 일 옮기기(catMoveRefs, 합치기와 같은 옮기기) → 저장 →
-   과제마다 보고 공수 옮기기(호스트 reportRelink, 한 트랜잭션) → 그것이 성공한 과제만 옛 개인 과제를 지운다(deleteCategory).
-   공수 옮기기가 실패하면 옛 과제를 남기고 알린다(일정과 할 일은 이미 공식 과제로 갔으므로 다시 연결하면 공수만 옮긴다).
+   순서(구조 22, docs/DB-V22-REPORT-HOURS.md 앱 변경 6), 과제마다: 보고 공수 옮기기(호스트 reportRelink, 한 트랜잭션) →
+   그것이 성공한 과제만 일정과 할 일 옮기기(catMoveRefs, 합치기와 같은 옮기기)와 설명, 색 이관 → 저장 → 저장이 들어갔으면 옛 개인 과제를 지운다(deleteCategory).
+   공수 옮기기가 거절되면 그 과제는 아무것도 바꾸지 않고 이유를 알린다(일정과 공수가 두 과제로 갈라지지 않게).
    자동 이름매칭은 하지 않는다 — 잘못 붙은 과제는 보고서·통계를 조용히 오염시키므로 사용자가 직접 고른 것만 옮긴다. */
 function rlUsageCount(catId){
   let n = 0;
@@ -16452,12 +16452,26 @@ function rlpChoose(dbId){
   renderRelink();
 }
 let rlBusy = false;   // 연결(공수 옮기기) 중. 두 번 누르기를 막는다. 보고 보내기는 호스트가 막는다(_reportRelinkBusy)
+//  공식 과제로 연결의 저장 한 번을 보내고 서버에 들어갔는지 기다린다(위젯). 브라우저는 localStorage 라 바로 참.
+//    앞 저장이 도는 중이면 먼저 끝나기를 기다린다(그래야 이번 save() 가 새 왕복이 되고 그 회신을 본다). 잠겼으면 보내지 않고 거짓.
+async function rlSaveDone(){
+  if(!isDbHost()){ save(); return true; }
+  await awaitSaveIdle();
+  if(editLocked()) return false;
+  save();
+  if(!__dbSaving || !__dbSaveP) return false;
+  try{ return (await __dbSaveP) === true; }catch(_){ return false; }
+}
+//  호스트 실패 문구 끝의 "원래 과제는 그대로 두었습니다." 는 결과 안내가 한 번만 말한다. 끝 마침표도 뗀다.
+function rlFailReason(msg){
+  return String(msg || '').replace(/\s*원래 과제는 그대로 두었습니다\.?\s*$/, '').replace(/\.\s*$/, '').trim() || '공수를 옮기지 못했습니다';
+}
 function runRelink(){
   if(rlBusy) return;
   const sel = rlSelections(); if(!sel.length) return;
   const items = sel.reduce((a, m) => a + rlUsageCount(m.from), 0);
   confirmBox('공식 과제로 연결',
-    `일반 과제 ${sel.length}개를 공식 과제로 연결합니다. 일정과 할 일 ${items}건, 보고한 공수가 공식 과제로 옮겨지고 원래 과제는 지웁니다. 계속할까요?`,
+    `일반 과제 ${sel.length}개를 공식 과제로 연결합니다. 일정과 할 일 ${items}건, 보고한 공수가 공식 과제로 옮겨지고 원래 과제는 지웁니다. 이번 판 전에 보낸 일간보고의 시간은 옮기지 않습니다. 계속할까요?`,
     '연결', null, { ok: 'safe' })
     .then(async r => {
       if(r !== 'ok' || rlBusy) return;
@@ -16472,6 +16486,11 @@ function runRelink(){
         else skipped++;                                                   // 유령 uid → 건너뜀
       }
       if(!valid.size){ toast('연결할 대상 과제를 찾을 수 없습니다. 목록을 새로고침해 주세요', 'error'); return; }
+      //  과제마다(구조 22, docs/DB-V22-REPORT-HOURS.md 앱 변경 6): ① 보고 공수 옮기기(호스트 reportRelink, 한 트랜잭션)를 **먼저** 한다.
+      //    거절되면(하루 24, 한 주 168 초과, 보내는 중, DB 오류) 그 과제는 아무것도 바꾸지 않는다(일정, 할 일, 색, 설명 모두 그대로).
+      //    ② 성공한 과제만 일정과 할 일 옮기기(catMoveRefs, 합치기와 같은 옮기기)와 설명, 색 이관 → 저장 → 서버에 들어갔으면 ③ 옛 과제 지우기.
+      //    저장이 실패하면 옛 과제를 남긴다. 다시 연결하면 공수는 이미 옮겨져 있어(옮길 줄 없음 = 성공) 일정만 옮기고 지운다.
+      //    위젯이 아니면(브라우저) 보고 기록이 없어 ① 을 건너뛴다.
       // 로컬 정보(설명·색상) 이관 — DB가 주는 건 '이름'뿐이다. 이 두 칸은 어느 쪽에 있든 전부
       // 사용자가 직접 정의한 값이지 DB 데이터가 아니다(색은 DB에 컬럼조차 없다). 그래서 재연결의 의미는
       // '이 개인 과제가 이제부터 공식 이름(통상명칭)을 쓴다'이고, 나머지 정의는 그대로 따라간다 → 덮어쓴다.
@@ -16480,12 +16499,11 @@ function runRelink(){
       // ★ desc와 달리 color는 절대 비지 않으므로 '항상' 이관 대상이다(= 합칠 땐 항상 충돌 →
       //   먼저 온 색이 이긴다). 그동안 보던 색을 그대로 유지하는 게 위 정책에 맞다. 깨진 헥사는 전파하지 않는다.
       const filledNow = new Map();   // toId → Set(이번 실행에서 이미 채운 필드)
-      let moved = 0, kept = 0;
-      for(const [fromId, toId] of valid){
+      const copyDef = (fromId, toId) => {
         const from = (state.categories || []).find(c => c.id === fromId);
         const to = (state.categories || []).find(c => c.id === toId);
-        if(!from || !to) continue;
-        let any = false;
+        if(!from || !to) return { any: false, kept: 0 };
+        let any = false, kept = 0;
         for(const k of ['desc', 'color']){
           const v = String(from[k] || '').trim();
           if(!v) continue;
@@ -16494,43 +16512,45 @@ function runRelink(){
           if(done.has(k)){ kept++; continue; }        // 다른 개인 과제가 이번에 이미 채운 칸 → 먼저 온 것 유지
           to[k] = from[k]; done.add(k); any = true;   // 그 외는 개인 과제 정의로 덮어쓴다
         }
-        if(any) moved++;
-      }
-      //  ① 일정과 할 일 옮기기(합치기와 같은 catMoveRefs) 뒤 저장 한 번. 옛 개인 과제는 아직 남는다.
-      let n = 0;
-      for(const [fromId, toId] of valid){ const c = catMoveRefs(fromId, toId); n += c.entries + c.todos; }
-      save();
-      renderAll();
-      try{ renderCatModal(); }catch(_){}
-      //  ② 과제마다 보고 공수 옮기기(호스트 한 트랜잭션). 성공한 과제만 ③ 옛 개인 과제를 지운다. 위젯이 아니면(브라우저) 보고 기록이 없다.
+        return { any, kept };
+      };
       rlBusy = true;
       const b = document.getElementById('rlRun'); if(b) b.disabled = true;
-      const fromName = new Map(), toName = new Map();   // 지우기 전에 이름을 잡아 둔다(임시 저장 고치기)
+      const fromName = new Map(), toName = new Map();   // 지우기 전에 이름을 잡아 둔다(결과 안내, 임시 저장 고치기)
       for(const [fromId, toId] of valid){ const f = catById(fromId), t = catById(toId); fromName.set(fromId, f ? String(f.name) : ''); toName.set(toId, t ? String(t.name) : ''); }
-      let done = 0, failMsg = '', failed = 0;
+      let linked = 0, n = 0, moved = 0, kept = 0;
+      const fails = [];   // [과제 이름, 이유]
       try{
         for(const [fromId, toId] of valid){
-          let ok = true, err = '';
+          const nm = fromName.get(fromId) || '과제';
+          if(HOST && editLocked()){ fails.push([nm, '서버와 연결이 끊겨 연결하지 않았습니다']); continue; }
+          //  ① 공수 옮기기 먼저
           if(HOST){
             let res = null;
             try{ res = await hostRequest('reportRelink', { catId: fromId, projectUid: String(toId).slice(3) }, 30000); }catch(_){ res = null; }
-            ok = !!(res && res.ok === true);
-            if(!ok) err = (res && typeof res.error === 'string' && res.error) || '공수를 옮기지 못했습니다. 원래 과제는 그대로 두었습니다.';
+            if(!(res && res.ok === true)){ fails.push([nm, rlFailReason(res && typeof res.error === 'string' ? res.error : '')]); continue; }
           }
-          if(ok){ try{ relinkAttDrafts(fromId, toId, fromName.get(fromId), toName.get(toId)); }catch(_){} }   // 근태 임시 저장도 새 과제로(다시 열 때 과제 미정이 되지 않게)
-          if(ok && deleteCategory(fromId)) done++;
-          else { failed++; if(!failMsg) failMsg = err || '원래 과제를 지우지 못했습니다.'; }
+          //  ② 공수가 옮겨진 과제만 일정과 할 일, 설명과 색을 옮기고 저장한다
+          const c = catMoveRefs(fromId, toId);
+          const d = copyDef(fromId, toId); if(d.any) moved++; kept += d.kept;
+          const ok = await rlSaveDone();
+          if(!ok){ fails.push([nm, '공수는 옮겼지만 일정을 저장하지 못했습니다. 다시 연결하세요']); continue; }
+          n += c.entries + c.todos;
+          try{ relinkAttDrafts(fromId, toId, fromName.get(fromId), toName.get(toId)); }catch(_){}   // 근태 임시 저장도 새 과제로(다시 열 때 과제 미정이 되지 않게)
+          //  ③ 저장이 들어간 과제만 옛 과제를 지운다
+          if(deleteCategory(fromId)) linked++;
+          else fails.push([nm, '일정은 옮겼지만 원래 과제를 지우지 못했습니다']);
         }
       } finally { rlBusy = false; }
       renderAll();
       try{ renderCatModal(); }catch(_){}
       closeModal('#relinkModal');
-      toast(`${valid.size}개 과제와 일정, 할 일 ${n}건을 공식 과제로 연결했습니다.`
-        + (done ? ` 원래 과제 ${done}개를 지웠습니다.` : '')
-        + (failed ? ` ${failed}개 과제는 원래 과제를 남겼습니다. ${failMsg}` : '')
+      const why = fails.map(([nm, w]) => `${nm}(${w})`).join(', ');
+      toast((linked ? `${linked}개 과제를 공식 과제로 연결했습니다(일정과 할 일 ${n}건).` : '공식 과제로 연결한 과제가 없습니다.')
         + (moved ? ` 설명과 색상 ${moved}개 과제분을 함께 옮겼습니다.` : '')
         + (kept ? ` (같은 공식 과제로 합쳐지며 ${kept}개 항목은 먼저 옮긴 값을 유지했습니다)` : '')
-        + (skipped ? ` (대상 없음 ${skipped}개 건너뜀)` : ''), (skipped || kept || failed) ? 'warn' : 'success');
+        + (fails.length ? ` 연결하지 못한 과제 ${fails.length}개: ${why}. 그 과제는 그대로 두었습니다.` : '')
+        + (skipped ? ` (대상 없음 ${skipped}개 건너뜀)` : ''), fails.length ? (linked ? 'warn' : 'error') : ((skipped || kept) ? 'warn' : 'success'));
     });
 }
 

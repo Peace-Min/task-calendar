@@ -2103,7 +2103,7 @@ namespace TaskCalendarWidget
             }
         }
 
-        //  공식 과제로 연결할 때 보고 공수 줄 옮기기(구조 22, docs/DB-V22-REPORT-HOURS.md 앱 변경 6). 웹 runRelink 이 일정과 할 일을 옮긴 뒤 과제마다 부른다.
+        //  공식 과제로 연결할 때 보고 공수 줄 옮기기(구조 22, docs/DB-V22-REPORT-HOURS.md 앱 변경 6). 웹 runRelink 이 과제마다 먼저 부르고, 성공한 과제만 일정과 할 일을 옮긴다.
         //    catId = 옛 개인 과제 id, projectUid = 공식 과제 uid. 사람은 세션에서 읽는다. 옮기는 동안 보고 보내기를 막는다(_reportRelinkBusy).
         //    회신: { ok:true, daily, weekly } | { ok:false, error }. 실패면 웹은 옛 과제를 지우지 않는다.
         private bool _reportRelinkBusy;

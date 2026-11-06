@@ -82,7 +82,7 @@
 4. **근태 일간 0시간 허용**: 웹 `atBlockProblem` 의 "내용이 있는데 0시간" 막기를 걷는다. 회사로는 `[과제] : 0` 아래 내용이 나간다. 0시간 판정을 쓰는 다른 곳(`MainWindow.xaml.cs` `ParseHoursJson`/`HoursInDomain`, `ReportDb.cs` 의 시간 검사)도 일간만 맞춘다. 주간보고에는 과제별 0시간 막기가 원래 없다(확인).
 5. **주간보고 저장**: `cal_report_weekly_hours` 줄에 `cat_uid` 도 쓴다.
 6. **공식 과제로 연결**(`runRelink`, 새 호스트 명령 하나):
-   - 순서: 일정과 할 일 이동(합치기의 `moveCategoryData` 를 쓰도록 맞춘다) → 공수 이관 트랜잭션 커밋 확인 → 그다음에만 옛 개인 과제 삭제. 공수 이관이 실패하면 옛 과제를 남기고 문구로 알린다. 확인 창 문구에 "원래 과제는 지웁니다".
+   - 순서(2026-11-06 실위젯 점검에서 바꿈, 과제마다): 공수 이관 트랜잭션(`reportRelink`) 커밋 확인 → 그것이 성공한 과제만 일정과 할 일 이동(합치기와 같은 `catMoveRefs`)과 설명, 색 이관 → 저장 회신 확인(`rlSaveDone`) → 그다음에만 옛 개인 과제 삭제. 공수 이관이 거절되면(24, 168 넘침, 보내는 중, DB 오류) 그 과제는 일정, 할 일, 색, 설명을 하나도 바꾸지 않고 이유를 알린다(예전 순서는 일정을 먼저 옮겨서, 거절되면 일정과 공수가 두 과제로 갈라졌다). 저장이 실패하면 옛 과제를 남긴다(다시 연결하면 공수는 옮길 줄이 없어 성공하고 일정만 옮긴다). 결과 안내는 연결한 과제 수와 건수, 연결하지 못한 과제와 이유를 따로 말한다. 확인 창 문구에 "원래 과제는 지웁니다" 와 "이번 판 전에 보낸 일간보고의 시간은 옮기지 않습니다". 브라우저(호스트 없음)는 공수 이관 없이 같은 순서.
    - 대상: 이 사람의 `cal_report_hours` 와 `cal_report_weekly_hours` 에서 **`cat_uid` = 옛 개인 과제 id 인 줄만**. 그 줄의 `cat_uid` 를 `db-<공식 uid>`, `project_uid` 를 공식 uid, `task_name` 을 공식 이름으로 바꾼다. 공식 이름은 호스트가 `project` 에서 uid 로 읽는다(웹이 보낸 이름을 믿지 않는다).
    - 같은 날(주)에 그 공식 과제 줄(`cat_uid` 가 같은 줄)이 이미 있으면 시간을 더해 가장 작은 `line_no` 한 줄로 남기고 나머지는 지운다. 내용은 `CONCAT_WS` 와 `COALESCE` 로 이어 붙인다(NULL 이 섞여 통째로 NULL 이 되지 않게).
    - 합친 시간이 하루 24, 한 주 168 을 넘으면 DB 제약에 걸려 전체가 실패하므로, 미리 검사해 문구로 거절한다.
@@ -116,7 +116,7 @@
 - 상태: 구현 끝, 커밋 전. 배포 판 0.26.0. CHANGELOG 2026-11-06 "DB 구조 22" 항목에 계약 개정을 모았다.
 - 이관 조각 `db/deploy/migrations/v22-report-hours.sql` 은 위 3의 순서 그대로(옛 일간 줄 삭제, FK, 색인, 칸, CHECK 두 문장, 칸 추가, 색인, 표 설명, 주간 채우기, 검증, 표 셋 DROP, 구조 번호). 표 28개에서 25개.
 - 호스트: `ReportDb.SaveDailyAsync(..., memo)`(메모와 과제별 줄 한 트랜잭션, 같은 `cat_uid` 합치기, 0시간 줄은 `body` 가 있을 때만), `ReportDb.ListDailyAsync(..., withLines)`(detail 요청에만 `memo` 와 `lines`), 새 명령 `reportRelink` 와 `ReportDb.RelinkHoursAsync`(id 로만, 합치기, 24와 168 미리 거절, 잠금 순서, 커밋 직전 관문, 연결과 보내기 서로 막기 `RelinkBusyMsg`). `CalendarDb`, `CalendarWriteDb`, `ProjectDb` 에서 지운 세 표를 걷었다. `DbGate.AppStructureVersion` 22.
-- 웹: 블록 `catId`(옛 블록은 같은 이름 과제가 하나뿐일 때만 `atBlocksKnown`), `atSavedParts`(memo 로 새 보고와 옛 보고 가르기), 주간 `awDailyCollect` 두 길, `atBlockProblem` 0시간 막기 삭제, `runRelink`(`catMoveRefs` 와 저장, 과제마다 `reportRelink`, 성공한 과제만 삭제, 확인 문구 "원래 과제는 지웁니다"). `state.taskHours` 와 보고 서식 상태를 걷고 보고 글꼴은 `tc_rptFont:<계정>` localStorage. 근태 캘린더 가져오기의 시간 칸은 0 으로 시작한다(작성 중 시간이 없어졌으므로).
+- 웹: 블록 `catId`(옛 블록은 같은 이름 과제가 하나뿐일 때만 `atBlocksKnown`), `atSavedParts`(memo 로 새 보고와 옛 보고 가르기), 주간 `awDailyCollect` 두 길, `atBlockProblem` 0시간 막기 삭제, `runRelink`(과제마다 `reportRelink` 먼저, 성공한 과제만 `catMoveRefs` 와 설명, 색, 저장 회신 확인 뒤 삭제, 확인 문구 "원래 과제는 지웁니다"). `state.taskHours` 와 보고 서식 상태를 걷고 보고 글꼴은 `tc_rptFont:<계정>` localStorage. 근태 캘린더 가져오기의 시간 칸은 0 으로 시작한다(작성 중 시간이 없어졌으므로).
 - 지운 도구: `db/deploy/xml-to-db` 와 그 시험(`dryrun-xml-to-db`, `migrate-tool`).
 - 실제 리허설(`tools/db-rehearsal/rehearse-v22.mjs`, 개발 PC MySQL 8.4): 처음 돌리기, 다시 돌리기, 중간 끊기 27곳 모두 통과. 새로 깐 DB 와 21 에서 올린 DB 의 `information_schema` 같음. 시드 복사본에서 주간 채우기는 공식 1, 하나뿐인 개인 1을 채우고 같은 이름 둘, 대소문자만 다른 이름, 모르는 과제 줄은 비워 두었다.
 - 시험: 새 `report-hours-v22`, `db-v22`, release-sql ③r~③r5 와 변이 R40~R47, 지운 표를 보던 시험 여럿을 새 계약으로. 전체(비 strict) 3612 통과, 0 실패, 0 건너뜀. strict, 루프, 실제 위젯 확인은 메인이 이어서 한다.

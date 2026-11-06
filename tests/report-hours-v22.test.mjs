@@ -11,7 +11,8 @@
 //       주간 [일간 불러오기] 두 길(awDailyCollect), 주간 줄 catUid(awHoursPayload), 0시간 블록 허용.
 //   (A) 근태 창: 보고한 새 보고를 줄로 되살린다(이름이 바뀐 과제는 id 로 지금 이름), 이전 보고는 detail 로 읽는다, 보내기 payload(memo, 줄),
 //       과제 이름이 바뀐 채 보내면 지금 이름으로 보낸다.
-//   (W) 위젯 메인 창: 공식 과제로 연결(일정 옮기고 저장 → reportRelink → 성공한 과제만 지움, 실패하면 남기고 알림), 글꼴 저장.
+//   (W) 위젯 메인 창: 공식 과제로 연결(과제마다 reportRelink 먼저 → 성공한 과제만 일정, 할 일, 색, 설명 옮기고 저장 → 저장이 들어가면 지움,
+//       거절되면 그 과제는 그대로 두고 이유를 알림), 글꼴 저장.
 // ★ 실제 DB 리허설(MySQL 8.4)과 이관 조각 시험은 DB 쪽 시험이 맡는다. 여기서는 C# 을 그대로 컴파일한 프로브와 정적 계약으로 본다.
 import vm from 'node:vm';
 import { test, skip, assert, loadAppSource, extractFunction, extractCsMember, stripCsComments,
@@ -33,6 +34,18 @@ function mutate(text, find, repl) {
   assert.strictEqual(a, text.lastIndexOf(find), '변이 앵커가 여러 곳에 있다: ' + find.slice(0, 100));
   return text.slice(0, a) + repl + text.slice(a + find.length);
 }
+
+//  변이: 예전 순서(일정과 할 일, 설명과 색을 먼저 옮기고 공수 옮기기)로 되돌린다
+const RL_MOVE_FIRST = [
+  '          //  ① 공수 옮기기 먼저\n          if(HOST){',
+  '          const c0 = catMoveRefs(fromId, toId); const d0 = copyDef(fromId, toId); if(d0.any) moved++; kept += d0.kept;\n          if(HOST){',
+];
+const RL_MOVE_FIRST_TAIL = [
+  '          const c = catMoveRefs(fromId, toId);\n          const d = copyDef(fromId, toId); if(d.any) moved++; kept += d.kept;',
+  '          const c = c0;',
+];
+//  두 변이를 함께 걸면 실제로 돌릴 수 있는 옛 순서가 된다(옮기기 한 번)
+const relinkMoveFirst = (src) => mutate(mutate(src, RL_MOVE_FIRST[0], RL_MOVE_FIRST[1]), RL_MOVE_FIRST_TAIL[0], RL_MOVE_FIRST_TAIL[1]);
 
 // ══ (H) 호스트 정적 ══════════════════════════════════════════════════════
 const H = {
@@ -333,18 +346,30 @@ const S = {
   relink(src) {
     const f = extractFunction(src, 'runRelink');
     assert.ok(f.includes('원래 과제는 지웁니다'), '확인 창 문구에 "원래 과제는 지웁니다" 가 없다');
-    const mv = f.indexOf('catMoveRefs(fromId, toId)'), sv = f.indexOf('save();', mv), rq = f.indexOf("hostRequest('reportRelink'"), del = f.indexOf('deleteCategory(fromId)');
-    assert.ok(mv > 0 && sv > mv && rq > sv && del > rq, '순서가 일정과 할 일 옮기기, 저장, 공수 옮기기, 옛 과제 지우기가 아니다');
-    assert.ok(/if\(ok && deleteCategory\(fromId\)\) done\+\+;/.test(f), '공수 옮기기가 실패해도 옛 과제를 지운다');
+    assert.ok(f.includes('이번 판 전에 보낸 일간보고의 시간은 옮기지 않습니다'), '확인 창이 옛 보고 시간은 옮기지 않는다고 말하지 않는다');
+    //  과제마다: 공수 옮기기 먼저 → 성공한 과제만 일정과 할 일 옮기기, 설명과 색 → 저장(회신 기다림) → 옛 과제 지우기
+    const rq = f.indexOf("hostRequest('reportRelink'"), mv = f.indexOf('catMoveRefs(fromId, toId)'), cp = f.indexOf('copyDef(fromId, toId)', mv),
+          sv = f.indexOf('await rlSaveDone()'), del = f.indexOf('deleteCategory(fromId)');
+    assert.ok(rq > 0 && mv > rq && cp > mv && sv > cp && del > sv, '순서가 공수 옮기기, 일정과 할 일 옮기기, 설명과 색, 저장, 옛 과제 지우기가 아니다');
+    assert.ok(f.indexOf('catMoveRefs(') === mv && f.indexOf('to[k] = from[k]') > f.indexOf('const copyDef'), '공수 옮기기 전에 일정이나 색을 옮기는 곳이 있다');
+    assert.ok(/if\(!\(res && res\.ok === true\)\)\{ fails\.push\([^\n]*\); continue; \}/.test(f), '공수 옮기기가 거절된 과제를 건너뛰지 않는다(그 과제를 바꾼다)');
+    assert.ok(/const ok = await rlSaveDone\(\);\s*if\(!ok\)\{ fails\.push\([^\n]*\); continue; \}/.test(f), '저장이 실패해도 옛 과제를 지운다');
+    assert.ok(/if\(deleteCategory\(fromId\)\) linked\+\+;/.test(f), '저장이 들어간 과제만 지우지 않는다');
+    assert.ok(/연결하지 못한 과제 \$\{fails\.length\}개: \$\{why\}\. 그 과제는 그대로 두었습니다\./.test(f), '결과 안내가 연결하지 못한 과제와 이유를 따로 말하지 않는다');
+    const g = extractFunction(src, 'rlSaveDone');
+    assert.ok(/await awaitSaveIdle\(\);[\s\S]*if\(editLocked\(\)\) return false;[\s\S]*save\(\);[\s\S]*return \(await __dbSaveP\) === true;/.test(g), '연결 저장이 서버 회신을 기다리지 않는다');
     assert.ok(/catMoveRefs\(fromId, toId\)/.test(extractFunction(src, 'moveCategoryData')), '합치기와 연결이 같은 옮기기(catMoveRefs)를 쓰지 않는다');
   },
 };
 test('(S) 웹: 작성 중 시간, 서식 저장, state 글꼴, 옛 XML <prefs>, <taskHours> 가 없다', () => S.noDropped(app));
 test('(S) 웹: 보고 글꼴은 계정별 localStorage(tc_rptFont:<계정>), 읽기와 쓰기 모두 try/catch', () => S.font(app));
-test('(S) 웹: 공식 과제로 연결 순서(옮기기, 저장, reportRelink, 성공한 과제만 지움)와 확인 문구', () => S.relink(app));
+test('(S) 웹: 공식 과제로 연결 순서(reportRelink 먼저, 성공한 과제만 옮기기, 저장, 지움)와 확인 문구', () => S.relink(app));
 test('(S) 변이: 연결이 실패해도 옛 과제를 지우거나, 글꼴을 state 에 두거나, 확인 문구를 빼면 잡는다', () => {
-  assert.throws(() => S.relink(mutate(app, 'if(ok && deleteCategory(fromId)) done++;', 'if(deleteCategory(fromId)) done++;')), /실패해도 옛 과제를 지운다/);
-  assert.throws(() => S.relink(mutate(app, '원래 과제는 지웁니다. 계속할까요?', '계속할까요?')), /원래 과제는 지웁니다/);
+  assert.throws(() => S.relink(mutate(app, RL_MOVE_FIRST[0], RL_MOVE_FIRST[1])), /순서가|공수 옮기기 전에/);
+  assert.throws(() => S.relink(mutate(app, "fails.push([nm, rlFailReason(res && typeof res.error === 'string' ? res.error : '')]); continue; }", "fails.push([nm, rlFailReason(res && typeof res.error === 'string' ? res.error : '')]); }")), /거절된 과제를 건너뛰지 않는다/);
+  assert.throws(() => S.relink(mutate(app, "fails.push([nm, '공수는 옮겼지만 일정을 저장하지 못했습니다. 다시 연결하세요']); continue; }", "fails.push([nm, '공수는 옮겼지만 일정을 저장하지 못했습니다. 다시 연결하세요']); }")), /저장이 실패해도 옛 과제를 지운다/);
+  assert.throws(() => S.relink(mutate(app, '원래 과제는 지웁니다. 이번', '이번')), /원래 과제는 지웁니다/);
+  assert.throws(() => S.relink(mutate(app, ' 이번 판 전에 보낸 일간보고의 시간은 옮기지 않습니다.', '')), /옛 보고 시간/);
   assert.throws(() => S.noDropped(app + '\nstate.reportFont = 1;'), /서식이나 글꼴/);
 });
 
@@ -508,7 +533,7 @@ if (!JSDOM) {
       assert.strictEqual(X.ev(`relinkAttDrafts('c-a', 'db-${U2}', '알파', '공식 알파')`), 0);
       //  runRelink 은 공수 옮기기가 성공한 과제에만 부른다
       const rr = X.ev('runRelink.toString()');
-      assert.ok(/if\(ok\)\{ try\{ relinkAttDrafts\(fromId, toId, fromName\.get\(fromId\), toName\.get\(toId\)\); \}catch\(_\)\{\} \}/.test(rr), 'runRelink 이 성공한 과제의 임시 저장을 고치지 않는다');
+      assert.ok(/if\(!ok\)\{ fails\.push\([^\n]*\); continue; \}[\s\S]*try\{ relinkAttDrafts\(fromId, toId, fromName\.get\(fromId\), toName\.get\(toId\)\); \}catch\(_\)\{\}/.test(rr), 'runRelink 이 성공한 과제의 임시 저장을 고치지 않는다');
     } finally { X.close(); }
   });
 
@@ -629,8 +654,8 @@ if (!JSDOM) {
 
   // ── (W) 위젯 메인 창: 공식 과제로 연결 ─────────────────────────────────
   const META = { schemaVersion: '22', expectedSchema: '22', schemaMismatch: false, rev: 1, canWrite: true, userId: 7 };
-  async function bootMain() {
-    const X = boot(app, 'https://tcapp.local/', true);
+  async function bootMain(src = app) {
+    const X = boot(src, 'https://tcapp.local/', true);
     const sess = X.posted.find((x) => x && x.cmd === 'userSessionGet');
     if (sess) X.ev('__hostReply(' + JSON.stringify(sess.reqId) + ', ' + JSON.stringify({ ok: true, user: { loginId: 'tester', name: '시험자' } }) + ')');
     const st = stateFor();
@@ -641,28 +666,92 @@ if (!JSDOM) {
     X.ev(`dbCatalog = [{ id: 'db-${U1}', name: '공식 하나', color: '#3e5be0', source: 'db' }, { id: 'db-${U2}', name: '공식 둘', color: '#2e9e6b', source: 'db' }]; dbOnline = true;`);
     X.ev("confirmBox = function(){ window.__confirmMsg = arguments[1]; return Promise.resolve('ok'); }");
     X.ev("window.__toasts = []; toast = function(m, k){ window.__toasts.push([String(m), k]); };");
+    //  부팅 중 나간 저장(기본 과제 보장 등)에 회신한다. 회신이 없으면 저장이 끝나지 않아 연결의 저장(rlSaveDone)이 그 끝을 기다린다.
+    for (let i = 0; i < 3; i++) {
+      for (const p of X.posted.filter((x) => x && x.cmd === 'saveState' && !x.__answered)) { p.__answered = true; X.ev('__hostReply(' + JSON.stringify(p.reqId) + ', {"ok":true})'); }
+      await tick();
+    }
     return X;
   }
-  test('(W) 공식 과제로 연결: 일정을 옮기고 저장 → 과제마다 reportRelink → 성공한 과제만 지우고, 실패한 과제는 남기고 알린다', async () => {
-    const X = await bootMain();
+  //  연결 한 번: A(c-y, 일정 e-2 와 할 일 t-2, 설명과 색)는 호스트가 24시간 넘침으로 거절, B(c-x, 일정 e-1)는 받아들인다.
+  //    A 를 먼저 고른다(거절 뒤에도 B 는 연결돼야 한다). 돌려주는 값 = 관찰한 것.
+  const RL_REFUSE = '합친 시간이 하루 24시간을 넘는 날(2026-08-03)이 있어 연결하지 않았습니다. 원래 과제는 그대로 두었습니다.';
+  async function relinkScenario(src = app) {
+    const X = await bootMain(src);
     try {
-      stubHost(X, `{ reportRelink: function(p){ return p.catId === 'c-x' ? { ok: true, daily: 2, weekly: 1 } : { ok: false, error: '합친 시간이 하루 24시간을 넘는 날(2026-11-03)이 있어 연결하지 않았습니다. 원래 과제는 그대로 두었습니다.' }; } }`);
-      X.ev(`openRelinkModal(); rlPick.set('c-x', 'db-${U1}'); rlPick.set('c-y', 'db-${U2}'); runRelink();`);
+      X.ev(`(function(){ var a = state.categories.find(function(c){ return c.id === 'c-y'; }); a.desc = 'A 설명';
+        state.entries.push({ id: 'e-2', date: '2026-08-03', title: 'A 일정', categoryId: 'c-y', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: null, endDate: '', recur: null, recurExcept: [], createdAt: '${CA}', updatedAt: '${CA}' });
+        state.todos.push({ id: 't-2', title: 'A 할 일', categoryId: 'c-y', done: false, createdAt: '${CA}', updatedAt: '${CA}' }); })()`);
+      stubHost(X, `{ saveState: { ok: true }, reportRelink: function(p){ return p.catId === 'c-x' ? { ok: true, daily: 2, weekly: 1 } : { ok: false, error: ${JSON.stringify(RL_REFUSE)} }; } }`);
+      X.ev(`openRelinkModal(); rlPick.set('c-y', 'db-${U2}'); rlPick.set('c-x', 'db-${U1}'); runRelink();`);
       for (let i = 0; i < 10; i++) await tick();
-      assert.ok(String(X.ev('window.__confirmMsg')).includes('원래 과제는 지웁니다'), '확인 창 문구가 다르다');
-      const calls = X.evJSON('__calls').filter((c) => c[0] === 'reportRelink').map((c) => c[1]);
-      assert.deepStrictEqual(calls, [{ catId: 'c-x', projectUid: U1 }, { catId: 'c-y', projectUid: U2 }], 'reportRelink 을 과제마다 공식 uid 로 부르지 않았다');
-      const ids = X.evJSON('state.categories.map(function(c){ return c.id; })');
-      assert.ok(!ids.includes('c-x'), '공수 옮기기가 성공했는데 옛 과제를 지우지 않았다');
-      assert.ok(ids.includes('c-y'), '공수 옮기기가 실패했는데 옛 과제를 지웠다');
-      assert.strictEqual(X.ev("state.entries.find(function(e){ return e.id === 'e-1'; }).categoryId"), 'db-' + U1, '일정을 공식 과제로 옮기지 않았다');
-      const t = X.evJSON('__toasts').map((x) => x[0]).join(' / ');
-      assert.ok(t.includes('원래 과제 1개를 지웠습니다') && t.includes('1개 과제는 원래 과제를 남겼습니다') && t.includes('24시간'), '결과 안내가 다르다: ' + t);
-      //  다시 보내기: 남은 c-y 를 다시 연결하면(이번엔 성공) 지운다
+      const cat = (id) => X.evJSON(`state.categories.find(function(c){ return c.id === '${id}'; }) || null`);
+      return {
+        confirm: String(X.ev('window.__confirmMsg')),
+        calls: X.evJSON('__calls').filter((c) => c[0] === 'reportRelink').map((c) => c[1]),
+        ids: X.evJSON('state.categories.map(function(c){ return c.id; })'),
+        e1: X.ev("state.entries.find(function(e){ return e.id === 'e-1'; }).categoryId"),
+        e2: X.ev("state.entries.find(function(e){ return e.id === 'e-2'; }).categoryId"),
+        t2: X.ev("state.todos.find(function(t){ return t.id === 't-2'; }).categoryId"),
+        a: cat('c-y'), toA: cat('db-' + U2), toB: cat('db-' + U1),
+        toasts: X.evJSON('__toasts'), errors: X.errors.slice(), X,
+      };
+    } catch (e) { X.close(); throw e; }
+  }
+  function checkRefusedUntouched(o) {
+    assert.deepStrictEqual(o.calls, [{ catId: 'c-y', projectUid: U2 }, { catId: 'c-x', projectUid: U1 }], 'reportRelink 을 과제마다 공식 uid 로 부르지 않았다');
+    //  거절된 A: 아무것도 바뀌지 않았다
+    assert.ok(o.ids.includes('c-y'), '공수 옮기기가 거절됐는데 옛 과제를 지웠다');
+    assert.strictEqual(o.e2, 'c-y', '공수 옮기기가 거절됐는데 일정을 공식 과제로 옮겼다(일정과 공수가 두 과제로 갈라진다)');
+    assert.strictEqual(o.t2, 'c-y', '공수 옮기기가 거절됐는데 할 일을 공식 과제로 옮겼다');
+    assert.deepStrictEqual([o.a.color, o.a.desc], ['#654321', 'A 설명'], '거절된 과제의 색이나 설명이 바뀌었다');
+    assert.strictEqual(o.toA.color, '#2e9e6b', '공수 옮기기가 거절됐는데 공식 과제의 색을 덮었다');
+    assert.ok(!o.toA.desc, '공수 옮기기가 거절됐는데 공식 과제의 설명을 덮었다');
+    //  받아들인 B: 옮기고 지웠다
+    assert.ok(!o.ids.includes('c-x'), '공수 옮기기가 성공했는데 옛 과제를 지우지 않았다');
+    assert.strictEqual(o.e1, 'db-' + U1, '일정을 공식 과제로 옮기지 않았다');
+    assert.deepStrictEqual([o.toB.color, o.toB.desc], ['#123456', '설명'], '받아들인 과제의 색과 설명을 공식 과제로 옮기지 않았다');
+    //  안내: 연결한 수와 건수, 연결하지 못한 과제와 이유를 따로
+    const t = o.toasts.map((x) => x[0]).join(' / ');
+    assert.ok(t.includes('1개 과제를 공식 과제로 연결했습니다(일정과 할 일 1건).'), '연결한 과제 수와 건수를 말하지 않는다: ' + t);
+    assert.ok(t.includes('연결하지 못한 과제 1개: 임시 둘(합친 시간이 하루 24시간을 넘는 날(2026-08-03)이 있어 연결하지 않았습니다). 그 과제는 그대로 두었습니다.'), '연결하지 못한 과제와 이유를 말하지 않는다: ' + t);
+    assert.strictEqual((t.match(/그대로 두었습니다/g) || []).length, 1, '같은 말을 두 번 한다: ' + t);
+    assert.ok(!/[—·「」]/.test(t), '안내에 금지 기호가 있다: ' + t);
+    assert.strictEqual(o.toasts[o.toasts.length - 1][1], 'warn', '일부만 연결했는데 경고가 아니다');
+  }
+  test('(W) 공식 과제로 연결: 과제마다 reportRelink 먼저, 거절된 과제는 일정, 할 일, 색, 설명을 그대로 두고 남기며, 받아들인 과제만 옮기고 지운다', async () => {
+    const o = await relinkScenario();
+    const X = o.X;
+    try {
+      assert.ok(o.confirm.includes('원래 과제는 지웁니다') && o.confirm.includes('이번 판 전에 보낸 일간보고의 시간은 옮기지 않습니다.'), '확인 창 문구가 다르다: ' + o.confirm);
+      checkRefusedUntouched(o);
+      //  다시 연결: 남은 c-y 를 다시 연결하면(이번엔 성공) 옮기고 지운다
       X.ev(`window.__rep.reportRelink = { ok: true, daily: 0, weekly: 0 }; openRelinkModal(); rlPick.set('c-y', 'db-${U2}'); runRelink();`);
       for (let i = 0; i < 10; i++) await tick();
       assert.ok(!X.evJSON('state.categories.map(function(c){ return c.id; })').includes('c-y'), '다시 연결했는데 옛 과제가 남았다');
+      assert.deepStrictEqual(X.evJSON("['e-2'].map(function(id){ return state.entries.find(function(e){ return e.id === id; }).categoryId; }).concat(state.todos.filter(function(t){ return t.id === 't-2'; }).map(function(t){ return t.categoryId; }))"), ['db-' + U2, 'db-' + U2], '다시 연결했는데 일정과 할 일을 옮기지 않았다');
+      assert.ok(X.evJSON('__toasts').map((x) => x[0]).pop().includes('1개 과제를 공식 과제로 연결했습니다(일정과 할 일 2건).'), '다시 연결한 안내가 다르다');
+      assert.deepStrictEqual(o.errors, []);
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
+  });
+  test('(W) 공식 과제로 연결: 공수는 옮겼는데 저장이 실패하면 옛 과제를 지우지 않고 알린다', async () => {
+    const X = await bootMain();
+    try {
+      stubHost(X, `{ saveState: { ok: false, error: '시험: 저장 거절' }, reportRelink: { ok: true, daily: 1, weekly: 0 } }`);
+      X.ev(`openRelinkModal(); rlPick.set('c-x', 'db-${U1}'); runRelink();`);
+      for (let i = 0; i < 10; i++) await tick();
+      assert.ok(X.evJSON('state.categories.map(function(c){ return c.id; })').includes('c-x'), '저장이 실패했는데 옛 과제를 지웠다');
+      const t = X.evJSON('__toasts').map((x) => x[0]).join(' / ');
+      assert.ok(t.includes('연결하지 못한 과제 1개: 임시 과제(공수는 옮겼지만 일정을 저장하지 못했습니다. 다시 연결하세요). 그 과제는 그대로 두었습니다.'), '저장 실패 안내가 다르다: ' + t);
+      assert.ok(t.includes('공식 과제로 연결한 과제가 없습니다.'), '하나도 연결하지 못했는데 연결했다고 한다: ' + t);
+      assert.deepStrictEqual(X.errors, []);
+    } finally { X.close(); }
+  });
+  test('(W) 변이: 예전 순서(일정과 색을 먼저 옮기고 공수 옮기기)로 되돌리면 거절된 과제의 일정이 옮겨져 잡힌다', async () => {
+    const o = await relinkScenario(relinkMoveFirst(app));
+    try {
+      assert.throws(() => checkRefusedUntouched(o), /거절됐는데 일정을 공식 과제로 옮겼다/);
+    } finally { o.X.close(); }
   });
 }

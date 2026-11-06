@@ -39,7 +39,7 @@
 - **계약 개정(웹)**:
   - 근태 블록에 `catId`(임시 저장 `tc_attDraft` v2 포함). id 없는 옛 블록은 이름이 글자까지 같은 내 과제가 하나뿐일 때만 잇는다(`atBlocksKnown`). 저장된 보고 되살리기는 `atSavedParts`(새 보고는 메모와 줄, 과제는 id 로만, 옛 보고는 글 해석). 주간 `awDailyCollect` 도 같은 두 길.
   - `atBlockProblem` 의 "내용이 있는데 0시간" 막기 삭제.
-  - 공식 과제로 연결 `runRelink`: 일정과 할 일 옮기기(`catMoveRefs`, 합치기와 같은 옮기기)와 저장, 과제마다 `reportRelink`, 성공한 과제만 `deleteCategory`. 실패하면 옛 과제를 남기고 알린다.
+  - 공식 과제로 연결 `runRelink`: 과제마다 `reportRelink` 먼저, 성공한 과제만 일정과 할 일 옮기기(`catMoveRefs`, 합치기와 같은 옮기기)와 설명, 색, 저장 회신 확인 뒤 `deleteCategory`. 거절된 과제는 아무것도 바꾸지 않고 이유를 알린다.
   - 없앤 상태: `state.taskHours`, `getTaskHours`, `dropCatHours`, `reportFormatPrefs`, `reportMarker*`, `reportIndent*`, state 의 `reportFont`(옛 저장분과 옛 XML 의 키는 `dropLegacyReportPrefs` 가 걷는다). 근태 캘린더 가져오기의 시간 칸은 0 으로 시작한다. 합치기와 빼기에서 과제별 시간 처리가 빠졌다(빼기 확인 없음).
   - 보고 글꼴은 계정별 localStorage `tc_rptFont:<계정>`(`reportFontGet`, `reportFontSet`). 옛 값은 옮기지 않는다.
 - **지운 도구**: 관리자 도구 `db/deploy/xml-to-db`(와 시험 `tests/dryrun-xml-to-db.mjs`, `tests/migrate-tool.mjs`). 스크립트 `init-calendar.ps1`, `setup-taskcalendar.ps1` 표 목록, demo, seed 정리.

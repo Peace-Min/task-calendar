@@ -106,10 +106,12 @@
 구조가 바뀌는 배포는 퇴근 후에 한다(사용자는 다음 날 버튼을 한 번 누른다). 앱만 바뀌는 배포는 아무 때나 해도 된다.
 
 1. Setup 파일과 `latest.json` 을 공유 폴더에 올린다. 옛 Setup 파일은 지우지 않는다. 이 시점에는 0.23.0 이상 사용자 누구도 새 버전을 안내받지 않는다(`-CopyTo` 를 쓰면 exe 복사, 해시 대조, `latest.json` 순서로 올린다).
+   - **0.26.0(구조 22)부터**: 올리기 전에 `db/deploy/checks/v22-precheck.sql` 을 Workbench 에서 돌린다(읽기만). 구조 번호 20 또는 21, 열림, 지울 표 행 수, 주간 줄 채우기 미리 보기, 앱 계정 권한(`SHOW GRANTS`)을 본다. 앱 계정이 `taskcalendar.*` 전체 권한이 아니라 표마다 권한이면 v21 의 CREATE TABLE 에서 1142 로 멈추므로, 그때는 DDL 권한이 있는 계정으로 3번을 돌린다.
 2. Workbench **Data Export** 로 `taskcalendar` 를 백업한다(Dump Structure and Data, Self-Contained File, Single Transaction, Include Create Schema). 파일 끝에 `-- Dump completed` 가 있는지 본다. 구조 18(`v18-remove-git.sql`)이 든 배포는 커밋 기록을 지우고 표와 칸을 없애므로 되돌릴 길이 이 백업뿐이다. 구조 20(`v20-weekly-meeting.sql`)이 든 배포도 옛 주간보고 기록(`cal_report_weekly`)을 모두 지운다(일간은 그대로). 구조 22(`v22-report-hours.sql`)가 든 배포는 옛 일간 과제별 줄(`cal_report_hours`, 보낸 글 `content` 는 그대로)과 표 셋(`cal_task_hours`, `cal_migration_log`, `cal_user_pref`)을 지운다. 백업 없이 돌리지 않는다.
 3. `release-v<버전>.sql` 을 Workbench 에서 열고 `taskcalendar` 를 기본 스키마로 둔 채 **전체 실행(Ctrl+Shift+Enter)** 을 **한 번** 한다. 오류가 나면 멈추는 기본 설정을 그대로 둔다.
 4. 마지막 결과 표에서 `db_structure_version`(앱 구조 번호), `db_updating = 0`, `app_latest_version`(새 버전)을 본다.
    - 과제 데이터 최신화 SQL 을 함께 받은 배포(0.24.0)는 **배포 SQL 이 끝난 다음에** 그것을 돌린다. 그 SQL 은 비공개 저장소 taskmgr-company-data 의 `project-data/` 에 있고 과제 순서(`sort_no`)를 채우므로 구조 19 이상에서만 돈다(18 이하 DB 에는 그 칸이 없다).
+   - 구조 22 가 든 배포는 이어서 `db/deploy/checks/v22-postcheck.sql` 을 돌려 판정이 모두 OK 인지, 주간 줄 채우기 수가 사전 조회 미리 보기와 같은지 본다.
 5. 내 PC 에서 업데이트 버튼을 눌러 새 버전이 정상 동작하는지 본다.
 
 **Setup 과 SQL 은 같은 빌드에서 나온 짝이어야 한다.** `release-v<버전>.sql` 은 그 빌드의 Setup 해시를 `app_installer_sha256` 에 적는다. 같은 소스라도 빌드할 때마다 Setup 해시가 달라지므로, 공유 폴더에 올린 Setup 을 만든 바로 그 빌드의 SQL 을 쓴다(폐쇄망에서 빌드했으면 폐쇄망 `dist\installer\` 의 SQL). 다른 PC 나 다른 빌드의 SQL 을 쓰면 DB 이관은 되지만 0.23 이상 앱의 자동 업데이트가 해시 불일치로 실패한다(2026-11-02 사고 기록).
