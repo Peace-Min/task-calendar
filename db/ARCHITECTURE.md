@@ -4,6 +4,7 @@
 > DB 스키마 자체의 설계 근거는 [`DESIGN_NOTES.md`](DESIGN_NOTES.md)·[`TABLE-DESIGN.md`](TABLE-DESIGN.md), 컬럼 상세는 [`deploy/schema-structure.sql`](deploy/schema-structure.sql)(옛 `schema.sql` 은 2026-10-15 에 지웠다), [`../docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) 참조.
 > **2026-10-15**: 코드표(발주처, 구분, 상태, 직급)의 기본키가 이름에서 번호로 바뀌었다(ADR #23, `schema_version` 13). 새 DB 진입점은 `deploy/setup-taskcalendar.cmd` 하나다. 본문 §3 은 고쳤고, 그 밖의 본문에 남은 이름 키와 옛 진입점 표기는 그날의 기록이다.
 > 최종 갱신: **2026-09-02**(아래 갱신 노트). 그 이전 본문은 2026-07-24판(ADR #19)이다.
+> **2026-11-06 현행(DB 구조 21)**: 과제 트랙 표는 `customer`, `section_code`, `status_code`, `room_code`(회사 공용 회의실, 구조 15), `project` 다(정본 [`deploy/schema-structure.sql`](deploy/schema-structure.sql)). `project` 에 개발 기간(`dev_start_date` 구조 17, `dev_end_date`)과 구분 안 순서 `sort_no`(구조 19)가 더해졌다. 캘린더 쪽 표 넷이 `project.id` 를 FK 로 가리킨다: 과제 일정 `cal_project_event`, 변경 이력 `cal_project_change`(둘 다 RESTRICT, 구조 16), 과제 탭 보기만 목록 `cal_project_watch`(CASCADE, 구조 21), 월간보고 그림 `project_schedule_image`(CASCADE, 구조 17). 운영 DB 구조 변경은 2026-10-21(구조 14)부터 이관 조각 `deploy/migrations/v<번호>-*.sql` 을 이어 붙인 배포 SQL 하나로 한다([`../docs/DB-RELEASE-OPS.md`](../docs/DB-RELEASE-OPS.md)). 관계는 [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §6.
 
 > ### 갱신 노트: 2026-09-02에 무엇이 달라졌나
 >
@@ -42,12 +43,15 @@
 
 ## 3. 확정 데이터 모델 (요약)
 
-2 테이블 (상세는 `deploy/schema-structure.sql`):
+2 테이블 (상세는 `deploy/schema-structure.sql`. "2 테이블"은 2026-07-21 판의 말이고, 지금은 아래 목록 전부가 과제 트랙 표다):
 - **`customer`**: 발주처 마스터. `customer_id` PK(번호, 2026-10-15 ADR #23) + `name`(UNIQUE 라벨) + `is_active` + 감사.
 - **`project`**: 과제 마스터. `id` PK(내부 대리키·autoinc) + **`uid`(외부 안정 참조키, UUID assign-once, 일정이 `db-<uid>`로 참조)** + `section_id`/`status_id`(코드테이블 FK, 번호) + `customer_id` FK(번호, ON UPDATE/DELETE RESTRICT) + 사업명 + 계약명·통상명칭(`NOT NULL DEFAULT ''`) + 시작/종료일 + `sort_no`(그 구분 안의 순서, 화면 No, 2026-10-26 구조 19) + `note`(비고·관리 전용) + `is_active` + 감사. 유니크는 **`UNIQUE(uid)` 하나뿐**이고, 이름 기반 하드 유니크는 **제거**(ADR-21). `section`/`status`는 **ENUM이 아니라 코드테이블 + FK**(ADR-22). 상세: [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.5·§4.
 - **`section_code` / `status_code`**: 구분·상태 코드(발주처와 대칭 룩업). `section_id`/`status_id` PK(번호) + `name`(UNIQUE 라벨) + `sort_order` + `is_active` + 감사. 앱에서 추가, 개명(라벨 한 행), 순서, 숨김. `project.section_id`/`.status_id`의 FK 타겟(ADR-22, 키 모양은 ADR #23). 기본 행의 번호는 고정이지만 번호가 정하는 것은 표시 색뿐이고, 어느 행이든 숨기고 지울 수 있다(2026-10-26, 선진행, 종료 보호와 연결 규칙 삭제, ADR #24).
+- **`room_code`**(2026-10-21, 구조 15): 회사 공용 회의실 추천 목록. `room_id` PK(번호) + `name`(UNIQUE 라벨) + `sort_order` + 감사. 어떤 표도 이 번호를 가리키지 않는다(일정의 장소는 자유 글자). 그래서 숨김 칸이 없고 지우면 바로 지운다. 관리자만 고친다([`../docs/SHARED-ROOMS.md`](../docs/SHARED-ROOMS.md)).
+- `project` 의 개발 기간: `dev_start_date`(2026-10-22 구조 17, 월간보고), `dev_end_date`. 둘 다 있을 때만 시작 <= 종료를 CHECK(`chk_project_dev_dates`)가 본다.
+- **`project.id` 를 가리키는 캘린더 쪽 표**(정본 `deploy/schema-calendar.sql`): `cal_project_event`, `cal_project_change`(RESTRICT. 공용 일정이 있는 과제는 영구 삭제가 거부된다), `cal_project_watch`(CASCADE, 2026-11-04 구조 21. PK `(user_id, project_id)`, 사람 FK 는 RESTRICT, 한 사람 50개 상한은 호스트가 지킨다), `project_schedule_image`(CASCADE). 상세는 [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §6, [`CALENDAR-TABLE-DESIGN.md`](CALENDAR-TABLE-DESIGN.md) §5.10.
 
-편집 권한 통제를 위해 **`app_user` 테이블이 추가될 예정**(§5, 앱 연동 단계에서).
+편집 권한 통제를 위해 **`app_user` 테이블이 추가될 예정**(§5, 앱 연동 단계에서). *(2026-08-03 v0.17.0 에 들어왔다. DDL 과 명단은 비공개 저장소 `taskmgr-company-data` 에 있다)*
 
 ---
 

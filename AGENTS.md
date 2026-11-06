@@ -6,7 +6,8 @@
 ## 1. 프로젝트 한눈에
 
 - 수행과제 캘린더: WPF(.NET 9) 위젯(`widget/*.cs`)이 단일 HTML 화면(`task-calendar-prototype.html`)을 WebView2 로 띄우고, 사내 MySQL(`taskcalendar` DB)에 저장한다.
-- 큰 그림: `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, 위키 `docs/wiki/Home.md`.
+- 큰 그림: `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, 위키 `docs/wiki/Home.md`. 지금 상태와 다음 판은 `docs/ROADMAP.md` §0 과 `docs/HANDOFF.md` 맨 위 절.
+- 화면 큰 틀: 탭 줄 `[개인 | 과제 | 근태]`. 보고는 근태 탭(일간, 주간, 취합)에서 하고, 옛 보고서 창과 상단 보고서 단추는 2026-11-03 에 없앴다.
 - 시험: `tests/README.md`. DB 배포 규칙: `docs/DB-RELEASE-OPS.md`, `docs/VERSION-GATE.md`.
 - 기능별 기획서는 `docs/<기능>.md` 에 있다. 비슷한 기능을 고치기 전에 해당 기획서와 `docs/DECISIONS.md` 를 먼저 읽는다.
 - 실제 운용은 폐쇄망(사내 서버 DB, 공유 폴더)이다. 이 저장소를 여는 PC 는 개발용이다.
@@ -24,7 +25,7 @@
 - 주변 코드의 문체, 이름, 주석 밀도를 따른다. 한두 줄짜리 자명한 수정에 큰 리팩터링을 섞지 않는다.
 - `widget/MainWindow.xaml.cs` 는 줄끝이 `\r\r\n` 이다(.gitattributes `-text`). 바이트를 보존하는 방법으로 고친다.
 - DB 구조를 바꾸면:
-  - 이관 조각 `db/deploy/migrations/vNN-<이름>.sql` 을 새로 만든다. 규칙은 `installer/release-sql.ps1` 머리말과 `docs/DB-RELEASE-OPS.md` §5 이고, 본보기는 기존 v17, v18, v19 이다. 다시 돌려도 안전해야 하고, 검증 뒤 구조 번호를 정확한 한 줄로 올린다. 주석에도 DELIMITER, PROCEDURE, FUNCTION, TRIGGER, DEFINER 낱말을 쓰지 않는다.
+  - 이관 조각 `db/deploy/migrations/vNN-<이름>.sql` 을 새로 만든다. 규칙은 `installer/release-sql.ps1` 머리말과 `docs/DB-RELEASE-OPS.md` §5 이고, 본보기는 기존 v17~v21 이다(지금 구조 번호 21, 마지막 조각 `v21-project-watch.sql`). 다시 돌려도 안전해야 하고, 검증 뒤 구조 번호를 정확한 한 줄로 올린다. 주석에도 DELIMITER, PROCEDURE, FUNCTION, TRIGGER, DEFINER 낱말을 쓰지 않는다.
   - 정본 스키마(`db/deploy/schema-structure.sql`, `schema-calendar.sql`)와 `widget/DbGate.cs` 의 `AppStructureVersion` 을 같이 맞춘다.
   - `tests/release-sql-sim.mjs` 와 `tests/release-sql.test.mjs` 에 새 문장과 경우를 더한다.
 - 데이터끼리 묶는 규칙(한 칸 값에 따라 다른 칸을 자동으로 비우거나 잠그는 것)을 새로 만들지 않는다(`docs/DECISIONS.md` 결정 8).

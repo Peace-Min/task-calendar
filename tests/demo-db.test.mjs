@@ -337,6 +337,8 @@ test('데모⑥: 지우는 표와 그대로 두는 표가 스키마의 cal_* 표
   assert.ok(/\(1, '진행중', 10\), \(2, '종료', 20\), \(3, '1차 납품완료', 30\), \(4, '미정', 40\);/.test(schemaStruct),
     '상태 코드 고정 번호가 바뀌었다. demo-data.mjs 의 status 번호를 함께 볼 것');
   assert.ok(/INSERT INTO cal_schema_meta \(k, v, updated_at\) VALUES \('db_structure_version', '21'/.test(schemaCal), '구조 번호가 21 이 아니다. SCHEMA_VERSION 을 함께 올릴 것');
+  //  ps1 의 사전 점검 번호도 같아야 한다(2026-11-06: ps1 만 20 으로 남아 구조 21 DB 에서 -Load 가 사전 점검에서 멈추던 결함)
+  assert.ok(/\n\$SCHEMA_VERSION = "21"/.test(psSrc), 'demo-db.ps1 의 $SCHEMA_VERSION 이 build-demo-sql.mjs 의 SCHEMA_VERSION(21)과 다르다');
 });
 
 // ══ ⑦ ps1 과 .cmd 의 공통 계약 ═════════════════════════════════════════

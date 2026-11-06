@@ -2,6 +2,8 @@
 
 > **이 문서의 목적**: 누가 봐도 "이 앱이 어떤 계층으로 이뤄졌고, 각 로직이 왜 그 자리에 있는지, 위젯과 브라우저에서 무엇이 다른지"를 파악하게 한다. 새 기능을 어디에 넣을지 고민될 때 여기의 **배치 결정 규칙**을 조회한다.
 >
+> **갱신 2026-11-06.** §1 호스트 파일 표, §4 명령 갈래, §6 저장 위치를 지금 코드(DB 구조 21)에 맞췄다.
+>
 > **갱신 2026-09-02.** v0.18.0에서 데이터 원본이 로컬 `data.xml`에서 **사내 서버 MySQL 직결**로 바뀌었다(`DeployConfig.XmlRetired = true`). 이 문서의 §4 포트 계약과 §6 저장 위치는 그 뒤 기준이다. 왜 API 서버 없이 직결로 갔는지는 [ROADMAP.md](ROADMAP.md) §1이 정본이다.
 
 ---
@@ -62,6 +64,13 @@ flowchart TB
 | `widget/Update.cs` | 자동 업데이트. `latest.json` 확인, semver 비교, 다운로드, **sha256 필수 검증**, 무인 설치, 자기교체 |
 | `widget/XlsxWriter.cs` | 의존성 0 xlsx 생성(과제 목록 Excel 추출) |
 | `widget/App.xaml.cs` | 부트스트랩. 프로세스 진입점, 단일 인스턴스, 최초 창 띄우기 |
+| `widget/AppWindow.cs` | 따로 뜨는 창 셋(열람 창 `?peerwin=1`, 관리 창 `?win=admin`, 근태 창 `?win=attend`). 같은 HTML 을 모드로 띄우고, 근태 창은 닫으면 숨겨 다시 쓴다(v0.25.1) |
+| `widget/DbGate.cs`, `widget/GateHost.cs` | 버전 관문. DB 구조 번호(`cal_schema_meta.db_structure_version`)와 `AppStructureVersion`(지금 21)이 다르면 읽기와 쓰기를 모두 막는다. 데이터 연결은 모두 여기서 연다 |
+| `widget/DbErrors.cs`, `widget/DbFault.cs`, `widget/OfflineHost.cs` | DB 오류 분류, QA 장애 주입(디버그 전용), 서버 연결 장애 대응([OFFLINE-RESILIENCE.md](OFFLINE-RESILIENCE.md)) |
+| `widget/ProjectCalendarDb.cs`, `widget/ProjectCalendarHost.cs` | 과제 공용 캘린더(`cal_project_*`)와 관심 과제(`cal_project_watch`). 읽기 판정(숨기지 않은 공식 과제 전부 또는 내 과제)과 쓰기 판정(참여자만)을 따로 둔다 |
+| `widget/MonthlyReportExport.cs`, `widget/DocxWriter.cs`, `widget/ScheduleImageDb.cs` | 월간 보고 DOCX 저장(의존성 0 docx), 과제별 개발 일정 그림(사람마다 따로) |
+| `widget/GuideHost.cs` | 사용 영상 안내(업데이트 폴더의 `guide\` 읽기) |
+| `widget/LegacyXmlProbe.cs` | 빈 캘린더일 때 옛 XML 기록 파일을 찾아 묻기(내용은 누른 뒤에만 읽음) |
 
 > 파일 목록은 `widget/*.cs`가 정본이다. 여기 없는 파일이 보이면 이 표가 뒤처진 것이다.
 
@@ -134,8 +143,9 @@ JS는 C# 함수를 직접 호출하지 않는다. **문자열 메시지**만 주
 | **데이터** | `ready`, `reloadState`, `saveState`(차분), `replaceAllState`(전량 교체) | `__applyState`, `__applyStateError` |
 | **로그인·권한** | `userLogin`, `userLogout`, `userSessionGet`, `userInfoGet`, `membersGet` | `__hostReply` |
 | **과제 마스터** | `loadProjects`, `saveProject`, `projectReorder`(구분 하나의 과제 순서, 2026-10-26), `loadCustomers`, `addCustomer`, `code*`, `dbInfoGet` | `__applyProjects`, `__applyCustomers`, `__applyCodes`, `__projectSaved`, `__dbInfo` |
-| **과제 캘린더**(2026-10-22, 메인 창 전용) | `projectCalendarBootstrap`, `projectCalendarLoad`, `projectCalendarSave`, `projectCalendarDelete`, `projectCalendarChanges`, `projectCalendarCopy` | `__hostReply`(`{ ok, data?, error?: { kind, message } }`). 개인 일정에 등록(`projectCalendarCopy`)은 부를 때마다 새 개인 일정 한 건을 만드는 사본이다(대응표 없음, 원본과 이어지지 않음). 성공하면 `__applyState` 로 개인 스냅샷을 다시 싣는다 |
-| **회사 보고** | `netcusSubmit`, `netcusWeekSubmit`, `netcusWeekMerge`, `netcusCreds*`, `netcusProbe` | `__netcus*` |
+| **과제 캘린더**(2026-10-22, 메인 창 전용) | `projectCalendarBootstrap`, `projectCalendarLoad`, `projectCalendarSave`, `projectCalendarDelete`, `projectCalendarChanges`, `projectCalendarCopy`, `projectCalendarMembers`, 관심 과제 `pcWatchList`, `pcWatchAdd`, `pcWatchRemove`, `pcWatchCatalog`(2026-11-04, 구조 21) | `__hostReply`(`{ ok, data?, error?: { kind, message } }`). 개인 일정에 등록(`projectCalendarCopy`)은 부를 때마다 새 개인 일정 한 건을 만드는 사본이다(대응표 없음, 원본과 이어지지 않음). 성공하면 `__applyState` 로 개인 스냅샷을 다시 싣는다 |
+| **회사 보고** | `netcusSubmit`, `netcusWeekSubmit`(임시저장까지 하고 되읽기, 2026-11-06), `netcusViewMonth`, `netcusViewWeek`(인트라넷에서 확인, 읽기만), `netcusWeeklyRangeRead`(취합의 인트라넷 주간), `netcusWeekMerge`(호스트에 남음, 웹은 2026-10-29 부터 부르지 않음), `netcusCreds*`, `netcusProbe` | `__netcus*` |
+| **근태와 보고 기록** | `attendOpen`, `attendNav`, `attendSourceReq`, `attendSourcePush`, `attendCatNew`, `reportDailyList`, `reportWeeklyList`, `exportMonthlyDocx`, `scheduleImage*` | `__hostReply`, 근태 창 가져오기는 메인 창을 거쳐 `__attendSource` |
 | **창, 업데이트, 기타** | `menu`/`pin`/`focus`/`hide`/`close`, `drag*`/`resize*`, `reminderSync`, `update*`, `pickImportXml`, `openFolder`/`openLogFolder`, `export*` | `__setPinned`, `__setTray`, `__setFocus`, `__update*` |
 
 > **없앤 것(2026-10-26, Git, SVN 기능 삭제)**: `gitlog`, `gitauthor`, `gitcheck`, `pickfolder` 와 `widget/Svn.cs`, `widget/RepoPaths.cs`. `exportResearch` 는 남아 캘린더.md 만 쓴다([GIT-SVN-REMOVAL.md](GIT-SVN-REMOVAL.md)).
@@ -188,7 +198,9 @@ Platform.report.submitDaily(payload);        // 위젯=postMessage / 브라우�
 | 데이터 | 위젯 | 브라우저 |
 |---|---|---|
 | 일정, 할일, 과제, 회의실, 공수, 근태 (캘린더 본체) | **사내 서버 MySQL `cal_*`** (`CalendarDb`/`CalendarWriteDb`) | 그 브라우저의 `localStorage` |
-| 보낸 일간·주간 보고 기록 | 서버 `cal_report_daily`/`_hours`/`_weekly` | - (전송 자체가 없음) |
+| 보낸 일간·주간 보고 기록 | 서버 `cal_report_daily`/`_hours`/`_weekly`/`_weekly_hours` | - (전송 자체가 없음) |
+| 과제 공용 일정, 관심 과제 목록 | 서버 `cal_project_event`(+`_except`)/`cal_project_change`, `cal_project_watch`(구조 21) | - (DB 접속 불가) |
+| 근태 작성 중 글, 문단 모양 표, 보기와 패널 접기 | localStorage(계정별 열쇠, 이 PC 한정) | localStorage |
 | 공식 과제 마스터, 사용자, 조직 | 서버 `project`, `customer`, `app_user`, `org_unit`, `title_code` | - (DB 접속 불가) |
 | 창 위치, 크기, 모드, 알림 확인 이력 | `widget.settings.json`, `reminders.json` | - |
 | 테마, 패널 폭 등 이 PC 한정 UI 상태 | localStorage(가상 호스트 `tcapp.local` origin) | localStorage |

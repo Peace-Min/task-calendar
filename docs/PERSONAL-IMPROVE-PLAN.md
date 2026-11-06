@@ -1,6 +1,6 @@
 # 개인 탭 개선 기획 (기간 막대, 한 화면 입력 폼)
 
-작성 2026-10-23. 상태: 개발 끝(실제 앱 QA 전). 구현 메모는 §6. 브랜치 `feat/personal-improve`. 시안: [prototypes/personal-improve.html](prototypes/personal-improve.html).
+작성 2026-10-23. 상태: 구현(2026-10-23, 09e513d, 8a940f2), 0.23.0 판에 실림(실제 앱 QA 결과는 이 문서에 적지 않았다). 구현 메모는 §6. 브랜치 `feat/personal-improve`. 시안: [prototypes/personal-improve.html](prototypes/personal-improve.html).
 
 ## 1. 목표
 

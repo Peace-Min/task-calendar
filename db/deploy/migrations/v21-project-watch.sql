@@ -66,7 +66,7 @@ SET @s := IF(@go,
   CONSTRAINT fk_cal_project_watch_user    FOREIGN KEY (user_id)    REFERENCES app_user (user_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_cal_project_watch_project FOREIGN KEY (project_id) REFERENCES project (id)       ON DELETE CASCADE  ON UPDATE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT=''과제 탭 보기만 목록. 내 과제(cal_category)가 아니다. 근태, 보고, 필터 과제 목록에 들어가지 않는다''',
+  COMMENT=''과제 탭 관심 과제 목록. 내 과제(cal_category)가 아니다. 근태, 보고, 필터 과제 목록에 들어가지 않는다''',
   'DO 0');
 PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
 

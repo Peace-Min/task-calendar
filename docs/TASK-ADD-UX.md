@@ -1,6 +1,6 @@
 # 내 과제 창과 과제 추가 창 개선
 
-> 상태: 구현 완료, 병합 대기 (2026-10-30, 브랜치 `feat/task-add`)
+> 상태: 구현 완료(2026-10-30, 브랜치 `feat/task-add`, ad26473, feat/db-app 병합 c23b20e), 0.25.0 판에 실림.
 > 시안: [prototypes/task-add-proto.html](prototypes/task-add-proto.html) 의 '제안' 탭. 결정은 2026-10-30 사용자와의 대화에서 정했다.
 > 먼저 읽을 원칙: [UI-FEEDBACK-ATTENDANCE.md](UI-FEEDBACK-ATTENDANCE.md) §1 (설명 문구 없음, 확인 창 최소, 장식 아이콘 없음, 정적인 화면, 마우스 먼저).
 

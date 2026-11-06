@@ -2,6 +2,8 @@
 
 작성 2026-10-16. 워크트리 `feat/window-ui`(8c7ef67 기준). 개발 완료: §3 은 c4308a3, §1 과 §2 는 4accafc, §4 는 75a806f 에 들어갔다. 독립 리뷰 뒤 수정은 e9cc1fc 에 들어갔다. 실제 위젯 루프는 리뷰 수정 전후로 두 번 33/33 통과, strict 2706/0/0. feat/db-app 에 합쳤고 0.22.0 으로 낸다.
 
+> 2026-10-22 바뀜: 열람 창 코드 `widget/PeerWindow.cs` 는 창 종류를 일반화한 `widget/AppWindow.cs` 가 됐다. [ADMIN-WINDOW.md](ADMIN-WINDOW.md) 참고.
+
 ## 0. 사용자 요구와 결정
 
 | # | 요구 | 결정(2026-10-16) |

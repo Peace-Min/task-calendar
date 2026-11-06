@@ -1,6 +1,6 @@
 # 과제 필터 다중 선택과 팝업형 필터 줄
 
-상태: 구현 완료(2026-10-30, 브랜치 `feat/filter-multi`). 시안 `docs/prototypes/filterbar-proto-v3.html` 의 V2 카드(세션 "과제필터 UI 프로토타입" 에서 확정).
+상태: 구현 완료(2026-10-30, 브랜치 `feat/filter-multi`, 34a1e1a), 0.25.0 판에 실림. 시안 `docs/prototypes/filterbar-proto-v3.html` 의 V2 카드(세션 "과제필터 UI 프로토타입" 에서 확정).
 
 ## 1. 배경
 

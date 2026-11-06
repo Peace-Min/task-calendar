@@ -93,5 +93,10 @@
   },
   "cal_project_event_except": {
     "except_date": "반복 일정에서 건너뛸 회차 날짜. 실제 회차 날짜만 들어갑니다(호스트가 반복 규칙으로 거릅니다). 반복 종류를 바꾸거나 끄면 그 일정의 날짜를 지웁니다."
+  },
+  "cal_project_watch": {
+    "user_id": "관심 과제를 넣은 사람(<code>app_user</code>). 사람 FK 는 RESTRICT 라 이 표에 줄이 있는 사람은 지워지지 않습니다(퇴사는 비활성으로).",
+    "project_id": "관심 과제로 넣은 공식 과제(<code>project</code>). 과제가 지워지면 줄도 지워집니다(CASCADE). 내 과제(<code>cal_category</code>)가 아니므로 근태, 보고, 필터 과제 목록에 들어가지 않습니다.",
+    "added_at": "넣은 시각(UTC, 밀리초). 한 사람이 넣을 수 있는 수(50개)는 호스트가 지킵니다."
   }
 }

@@ -1,6 +1,6 @@
 # 날짜 줄 배치 C: 주간 제목도 월, 과제 필터는 [월간 | 주간] 옆
 
-상태: 구현 완료(2026-10-30, 브랜치 `feat/nav-c`). 실제 위젯(1920px)과 브라우저(1000, 720, 520px, 어둡게)에서 월간 주간 전환, 9월 12월 전환 때 [주간] 단추와 과제 단추 이동 0px 확인. 시안 `dist/proto/nav-layout-ab.html` 의 C 카드, `dist/proto/filter-in-nav.html`.
+상태: 구현 완료(2026-10-30, 브랜치 `feat/nav-c`, f563165), 0.25.0 판에 실림. 실제 위젯(1920px)과 브라우저(1000, 720, 520px, 어둡게)에서 월간 주간 전환, 9월 12월 전환 때 [주간] 단추와 과제 단추 이동 0px 확인. 시안 `dist/proto/nav-layout-ab.html` 의 C 카드, `dist/proto/filter-in-nav.html`.
 
 ## 1. 배경
 

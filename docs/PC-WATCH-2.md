@@ -1,10 +1,12 @@
 # 관심 과제(다른 과제 보기 2차)와 날짜 패널 묶음 접기
 
-상태: **2차 구현**(2026-11-05, strict 3412/0/0). 1차(strict 3399/0/0) 뒤 실제 위젯 점검과 사용자 피드백으로 §7 을 더했다(시안 dist/proto/day-panel-v3.html, pc-watch-v12.html). QA 기록은 §8.
+상태: **2차 구현**(2026-11-05, 1차 556a179, 2차 7789e40, strict 3412/0/0), 다음 판(0.26.0 예정). 1차(strict 3399/0/0) 뒤 실제 위젯 점검과 사용자 피드백으로 §7 을 더했다(시안 dist/proto/day-panel-v3.html, pc-watch-v12.html). QA 기록은 §8.
 시안: 과제 탭 dist/proto/pc-scope-v2.html(D안), 참여자 필터 dist/proto/pc-watch-v11.html, 날짜 패널 dist/proto/day-panel-v1.html(B안).
 앞 문서: docs/PC-WATCH.md(1차, 구조 21), docs/PERSONAL-PANEL.md, docs/FILTER-MULTI.md.
 
 원칙: 같은 기능은 같은 화면과 같은 코드로(docs/PC-WATCH.md 머리, 메모리 reuse-existing-ui). DB, 호스트 구조, 구조 번호는 바꾸지 않는다(구조 21 그대로).
+
+> 2026-11-06 바뀜: §5, §7.1 의 한 줄 일정과 줄 펼침 상세는 예전 카드로 되돌렸다. [DAY-PANEL-CARDS.md](DAY-PANEL-CARDS.md) 참고.
 
 ## 1. 이름: "보기만 과제" → "관심 과제"
 

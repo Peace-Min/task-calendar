@@ -1,6 +1,6 @@
 # 개인 일정과 다른 사람 일정의 월간, 주간 보기
 
-상태: 구현 완료(2026-10-30, 브랜치 feat/peer-week). 시안 `dist/proto/personal-peer-week-rows.html`.
+상태: 구현 완료(2026-10-30, 브랜치 feat/peer-week, 9242eac), 0.25.0 판에 실림. 시안 `dist/proto/personal-peer-week-rows.html`.
 
 ## 1. 배경
 

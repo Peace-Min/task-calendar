@@ -1,6 +1,6 @@
 # 다른 사람 일정 열람 창 기간 막대 공용화 (PEER-RANGE-BARS)
 
-작성 2026-10-29. 상태: 구현 완료(2026-10-29, 8d10879). 브랜치 `codex/peer-org-recent`. 시안: `dist/proto/peer-range-bars.html`.
+작성 2026-10-29. 상태: 구현 완료(2026-10-29, codex 브랜치 8d10879, feat/db-app 에는 0fe5338), 0.25.0 판에 실림. 브랜치 `codex/peer-org-recent`. 시안: `dist/proto/peer-range-bars.html`.
 
 ## 1. 배경
 

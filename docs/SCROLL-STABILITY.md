@@ -1,5 +1,7 @@
 # 스크롤 칸 안정성 (2026-11-05 기획)
 
+상태: 구현(2026-11-05, d773b96, 한글 조합 중 휠 §11 d465058, feat/db-app 병합 e8798a2), 다음 판(0.26.0 예정).
+
 대상: `task-calendar-prototype.html` (위젯 WebView2 와 웹이 같이 쓰는 단일 HTML).
 브랜치: `fix/weekly-modify-viewno` 워크트리 `weekly-modify`.
 

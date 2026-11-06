@@ -40,6 +40,13 @@
 > `cal_entry_commit` 표, `cal_entry.source`, `cal_category.uses_repo`, `cal_user_pref` 의 `git_author`, `svn_author`, `git_commit_body`
 > 칸과 그 CHECK 를 없앤다. 커밋 기록은 일반 일정으로 바꾸지 않고 버린다(되돌릴 수 없어 배포 전 백업 필수). 부팅 조회는 8개 표가 된다.
 > 아래 본문의 커밋 표, 저장소 플래그, 작성자 칸, `repo-paths.json` 이야기는 그 전의 기록이다.
+> **2026-11-06 현행(DB 구조 21)**: 2026-10-21 구조 14 부터 구조 변경은 이관 조각 `db/deploy/migrations/v<번호>-*.sql` 로 내고 배포 SQL
+> `release-v<버전>.sql` 하나에 담긴다([`../docs/DB-RELEASE-OPS.md`](../docs/DB-RELEASE-OPS.md)). 판마다 바뀐 표는 이렇다.
+> 14 버전 관문(`cal_schema_meta` 의 키가 `schema_version` 하나에서 `db_structure_version`, `db_updating`, `app_` 세 키로. §5.5 덧붙임),
+> 15 `cal_room` 삭제와 `room_code`, 16 과제 캘린더 `cal_project_event`, `cal_project_change`(§5.10),
+> 17 `project_schedule_image` 와 `project.dev_start_date`, 18 Git, SVN 삭제, 19 `project.sort_no`,
+> 20 `cal_report_weekly.meeting`, `cal_report_weekly_hours`, `cal_project_event.recur_freq`, `cal_project_event_except`,
+> 21 과제 탭 보기만 목록 `cal_project_watch`(§5.10). 명부는 §5.1, 판별 정본은 `schema-calendar.sql` 의 `cal_schema_meta` 시딩 줄 위 주석이다.
 > 이 문서는 **결정과 근거**를 담는다. 컬럼 수준 DDL 의 단일 소스는
 > `db/deploy/schema-calendar.sql` 이다. 문서와 그 파일이 어긋나면 **그 파일이 정본**이다.
 > **표를 두 벌 두지 않는다**: 실제로 그 사고가 났다(초안 §4.0 이 `ON DELETE CASCADE` 로 적혀
@@ -787,7 +794,7 @@ repo-paths.json 생성(csvn → SVN 경로)
 버림 보고: 일정별 hours 17건(§5.3 — 받을 컬럼이 없다)
 ```
 
-위젯을 DB 모드로 띄워 실제 화면을 확인했다. 6월 달력에 팀 주간회의, ADD 요구사항, 현충일,
+위젯을 DB 모드로 띄워 실제 화면을 확인했다. 6월 달력에 팀 주간회의, 발주처A 요구사항, 현충일,
 연차 휴가, 완료된 할 일(취소선)이 전부 그대로 떴고 과제 필터 7개도 살아 있다.
 `data.xml` **mtime 불변**(Aug 7 17:33).
 
@@ -967,7 +974,7 @@ git/svn 작성자, **근태·초과시간**(`<attendance>` → 신규 `cal_atten
 > **2026-08-27, 만들었다. 이 자리에는 *"이 플래그는 아직 만들지 않았다"* 가 적혀 있었다.**
 > 컬럼은 **`cal_category.uses_repo`**(`TINYINT(1) NOT NULL DEFAULT 0`, `CHECK (uses_repo IN (0,1))`)이고,
 > 정의의 단일 소스는 [`schema-calendar.sql`](deploy/schema-calendar.sql) 이다.
-> 운영 반영은 [`migrate-2026-08-27-repo-flag.sql`](deploy/migrate-2026-08-27-repo-flag.sql)
+> 운영 반영은 `migrate-2026-08-27-repo-flag.sql`(2026-10-15 에 지웠다. git 이력에 있다. 2026-11-06 에 끊긴 링크를 글자로 바꿨다)
 > (**schema_version 4 → 5**, 0행 가드, 멱등, 차단형 사후검증). 실 `taskmgr` 에 적용 완료.
 > 재구축 경로(`schema-calendar.sql`)와 `information_schema` 전수 대조가 **컬럼, CHECK, 인덱스, FK
 > 전부 일치**했다(`ORDINAL_POSITION` 포함. 그래서 `AFTER project_uid` 로 위치를 못박았다).
@@ -1068,6 +1075,11 @@ git/svn 작성자, **근태·초과시간**(`<attendance>` → 신규 `cal_atten
 | **`cal_project_event`** | 없음 (과제 일정, 공용 트랙, §5.10, 구조 16) |
 | **`cal_project_change`** | 없음 (과제 일정 변경 이력, §5.10) |
 | **`cal_project_event_except`** | 없음 (과제 반복 일정의 예외일, §5.10, 구조 20) |
+| **`cal_project_watch`** | 없음 (과제 탭 보기만 목록, §5.10, 구조 21) |
+| **`project_schedule_image`** | 없음 (사람별 과제 개발 일정 그림, 월간보고, 구조 17. 이름이 `cal_` 로 시작하지 않지만 `schema-calendar.sql` 에 있고 `init-calendar.ps1` 명부에 따로 적혀 있다) |
+
+> **2026-11-06, 이 표에 `cal_project_watch` 와 `project_schedule_image` 를 더했다.** 앞의 것은 §5.10 에만, 뒤의 것은 이 문서 어디에도
+> 적혀 있지 않았다(설계 근거는 `schema-calendar.sql` 의 16번 주석과 [`../docs/MONTHLY-REPORT-PLAN.md`](../docs/MONTHLY-REPORT-PLAN.md) §6).
 
 > **2026-08-31, 보고 기록 3표가 들어왔다(13 → 16).** 이 셋은 `<attendance>`·`<prefs>` 와 달리
 > **XML 에 원본이 없다**: 옮겨 온 것이 아니라 새로 생기는 사실(위젯이 netcus 로 무엇을 보냈는가)이라
@@ -1505,6 +1517,14 @@ CHECK 를 두는 이유: **API 계층이 없어 앱이 유일한 검증기**다.
   (버전을 올려야 할 주체가 앱이라면 애초에 이 게이트가 필요 없다는 뜻이다.)
   이 문장이 배포 스크립트가 '버전 행에 쓰기 권한이 하나라도 있으면 중단' 하는 근거다.
   근거가 문서에 없으면 그 중단은 언젠가 '과한 검사'로 지워진다.
+
+> **2026-10-21 이후(구조 14, 2026-11-06 에 덧붙임)**: 위 '파괴적 연산만 차단' 은 그때의 규칙이다. 지금은 버전 관문
+> `widget/DbGate.cs` 가 연결을 열 때마다 `cal_schema_meta` 의 키 다섯(`db_structure_version`, `db_updating`,
+> `app_latest_version`, `app_installer_file`, `app_installer_sha256`)을 읽고, 구조 번호가 앱 상수 `DbGate.AppStructureVersion`
+> 과 **정확히 같을 때만** 동작한다. 다르면 읽기와 쓰기를 모두 막고, `db_updating = '1'` 이면 기다린다. 옛 키 `schema_version` 과
+> `CalendarDb.ExpectedSchemaVersion` 은 없어졌다. 버전 행의 앱 계정 권한이 `SELECT` 하나뿐이라는 규칙은 그대로다.
+> 판 올림은 배포 SQL 안의 조각이 `UPDATE ... WHERE k = 'db_structure_version' AND v = '<앞 판>'` 한 줄로 한다.
+> 설계는 [`../docs/VERSION-GATE.md`](../docs/VERSION-GATE.md), 운영은 [`../docs/DB-RELEASE-OPS.md`](../docs/DB-RELEASE-OPS.md).
 
 ### 5.6 기본키: 어느 표를 번호 키로 두고 어느 표를 자연키로 두는가 (조건, 실측, 전문가 근거)
 <sub>2026-08-24 신설, **2026-08-24 개정**(`org_unit` 판정 뒤집음, 전문가 근거 신설, 우회 절차 정정),
@@ -2292,6 +2312,8 @@ app_user.org_unit := (org_id 가 가리키는 조직의 name)
 - 행이 `k='schema_version'` **하나**이고 앱은 늘 `k` 로 찾는다(`SELECT v FROM cal_schema_meta WHERE k='schema_version'`).
   번호 키를 붙여도 `k` 에 `UNIQUE` 를 또 걸어야 하고, 찾는 길은 여전히 `k` 다.
 - 자식 없음. B-1("ID Required")이 지목하는 전형적인 과잉 적용 사례다.
+- *(2026-11-06 덧붙임: 2026-10-21 구조 14 부터 행은 키 다섯 개다. `db_structure_version`, `db_updating`, `app_` 세 키. 앱은 그 다섯을
+  `WHERE k IN (...)` 로 한 번에 읽는다. 옛 키 `schema_version` 은 없다. 행이 늘었어도 찾는 길이 `k` 라는 판단은 그대로다)*
 
 ---
 
@@ -2545,6 +2567,8 @@ GRANT SELECT, INSERT, UPDATE         ON taskmgr.cal_report_weekly TO 'taskmgr_ap
 
 *(2026-10-22 신설, 구조 번호 16, 이관 조각 `db/deploy/migrations/v16-project-calendar.sql`. 기획과 결정은 [docs/PROJECT-CALENDAR-PLAN.md](../docs/PROJECT-CALENDAR-PLAN.md) §4, §5)*
 
+*(2026-11-06 덧붙임: 아래 문단의 "두 표"는 구조 16 때의 말이다. 지금 이 절의 표는 넷이다. 공용 표는 `cal_project_event`, `cal_project_change`, `cal_project_event_except`(구조 20) 셋이고, `cal_project_watch`(구조 21)는 공용 데이터가 아니라 사람마다의 보기 목록이다(소유자 `user_id`))*
+
 위의 `cal_*` 는 모두 **사람 한 명의 개인 데이터**(소유자 키 `user_id`)다. 이 절의 두 표는 그렇지 않다. 공식 과제마다 하나씩인 **공용 캘린더**이고, 그 과제를 내 과제에 넣은 사람이 함께 쓴다. 개인 표에 가짜 소유자(`user_id = 0`)를 넣어 흉내 내지 않고 따로 둔다. 공용 일정을 개인 일정으로 옮기는 길은 사람이 누르는 **명시적 복사** 하나다. 복사는 그 순간의 내용을 한 번 찍어 두는 사본이다. 복사본은 평범한 개인 일정(`cal_entry`)이 되고 대응표가 없다. 원본이 바뀌거나 지워져도, 복사본을 고치거나 지워도 서로 이어지지 않는다. 같은 일정을 두 번 등록하면 개인 일정이 두 건 생긴다(2026-10-22 저녁 사용자 결정, 처음에 두었던 대응표 `cal_project_copy` 는 배포 전에 뺐다).
 
 | 표 | 키 | 하는 일 |
@@ -2580,11 +2604,11 @@ GRANT SELECT, INSERT, UPDATE         ON taskmgr.cal_report_weekly TO 'taskmgr_ap
 **잠금 순서**: 어디서나 과제 행, 일정 행, `cal_user_rev` 순서다. 공용 쓰기는 판정 SQL 이 과제 행을 `FOR SHARE OF p` 로 잡고(관리자의 종료 `UPDATE project` 와 휴지통 `DELETE project` 가 진행 중인 쓰기와 엇갈리지 않게) 그다음 그 일정 행을 `FOR UPDATE` 로 잡는다. 과제 행 공유 잠금끼리는 서로 막지 않아 같은 과제의 다른 일정 저장은 줄 서지 않는다. 개인 저장은 `cal_user_rev` 만 잡는다. 개인 복사는 과제 행(공유), 원본 일정 행(공유, `FOR SHARE OF e`), `cal_user_rev`(ODKU) 순서다. 휴지통 영구 삭제와 관리자 종료는 과제 행만 잠그고 일정 행을 먼저 잡지 않으므로 순서가 뒤집히지 않는다. MySQL 8 의 `FOR SHARE` 는 SELECT 에 더해 UPDATE(또는 DELETE, LOCK TABLES) 권한이 필요한데 앱 계정은 `project` 에 UPDATE 가 있다. 복사가 넣는 개인 일정 한 건은 `CalendarWriteDb` 의 같은 행 투영과 같은 INSERT 문(`EntryInsertSql`, 번호 발급 H-1)을 쓴다.
 
 **지우기**
-- 과제 일정은 지우지 않는다(소프트 삭제). 이력도 지우지 않는다. 그래서 앱 계정에 두 표 모두 DELETE 권한이 없다(`grants-calendar.sql`).
+- 과제 일정은 지우지 않는다(소프트 삭제). 이력도 지우지 않는다. 그래서 앱 계정에 두 표 모두 DELETE 권한이 없다(`grants-calendar.sql`). *(예외일 `cal_project_event_except` 와 보기만 목록 `cal_project_watch` 는 행을 지우는 것이 정상 동작이라 SELECT, INSERT, DELETE 를 준다)*
 - 휴지통의 **과제 영구 삭제**는 그 과제에 공용 일정(지운 것 포함)이 한 건이라도 있으면 고정 문구로 거부한다(`ProjectDb.DeleteTrashAsync`, 최종 방어는 `cal_project_event` 의 RESTRICT 1451). 공용 일정이 없으면 공용 표에 그 과제의 행이 없어 과제가 그대로 지워진다.
 - 개인 복사본은 평범한 개인 일정이라 개인 화면에서 지운다. 공용 표에는 남는 흔적이 없다.
 
-**검증**: 정본과 조각의 정의가 글자까지 같음, 첫 문장, 커밋 직전 관문, 판정, 글자 상한(`tests/project-calendar-host.test.mjs`), 배포 SQL 의 13, 14, 15 에서 16 과 실패 뒤 재실행(`tests/release-sql.test.mjs`), 두 사람 시나리오(`tests/db-project-calendar.mjs`, 복사본 DB 에서).
+**검증**: 정본과 조각의 정의가 글자까지 같음, 첫 문장, 커밋 직전 관문, 판정, 글자 상한(`tests/project-calendar-host.test.mjs`), 배포 SQL 의 13, 14, 15 에서 16 과 실패 뒤 재실행(`tests/release-sql.test.mjs`), 두 사람 시나리오(`tests/db-project-calendar.mjs`, 복사본 DB 에서). 구조 21 의 보기만 목록은 `tests/pc-watch.test.mjs`(정본과 조각 대조 포함), 배포 SQL 의 20 에서 21 은 `tests/release-sql.test.mjs`, 앱 상수 21 은 `tests/version-gate-host.test.mjs`.
 
 ## 6. 개인 과제 vs 공식 과제
 
@@ -3289,6 +3313,9 @@ binlog 는 **변경 이력**이다. *"어느 상태에서 출발해 이 변경�
    시딩 줄이고, 실 DB 값은 `SELECT v FROM cal_schema_meta WHERE k='schema_version'` 로 확인한다.
    `tests/schema-integrity.test.mjs` 의 **계약⑥** 이 그 시딩 줄과 최신 `migrate-*.sql` 의 상향 값을
    기계로 대조한다. 사람이 옮겨 적을 자리가 아니다
+   *(2026-11-06 덧붙임: 2026-10-21 구조 14 부터 키는 `db_structure_version` 이고 확인은
+   `SELECT v FROM cal_schema_meta WHERE k='db_structure_version'` 이다. 판 올림은 `migrate-*.sql` 이 아니라 이관 조각
+   `migrations/v<번호>-*.sql` 이 한다. §5.5 덧붙임)*
    - **★ 미반영을 적는 형식**: **어느 파일의 어느 표/컬럼인지**와 *"그게 없으면 무엇이 성립하지
    않는가"* 를 함께 적을 것. 그 두 줄이 있어야 다음 사람이 이 항목을 지울 조건을 안다
    (2026-08-27 시점에는 미반영이 **없었다.** 위 ①②가 그 뒤에 생긴 것이다)
@@ -3350,9 +3377,11 @@ binlog 는 **변경 이력**이다. *"어느 상태에서 출발해 이 변경�
      비어 있지 않으면(그새 무언가를 적었다) 말없이 지우지 않고 늘 쓰던 미리보기(병합/교체)로 넘긴다. 병합은 이
      경로에 없다. ⋯ 메뉴 'XML 가져오기'(`startImport` → `pickImportXml` → `showImportPreview`)는 그대로다.
 4. **타인 일정 열람**: '구성원'의 '준비 중' 해제. `view_scope` 를 그대로 쓴다
+   *(2026-09-03 완료. [`ROADMAP.md`](ROADMAP.md) C4)*
 5. **★ 미리알림의 오프라인 동작: 결정해야 한다(§4 의 미결 항목)**. 앱 저장 경로 전환(3번)이
    **이 결정보다 먼저 나가면** 서버 장애일에 알림이 통째로 없어지고, 사용자는 안 울렸다는 사실을
    모른다. 3번의 **선행 결정**으로 다룰 것. 미룰 수는 있어도 모르는 채로 지나가지는 말 것
+   *(2026-09-02 결정: 온라인일 때만. §4 의 미리알림 절, [`ROADMAP.md`](ROADMAP.md) C5)*
 
 **배포 전 확인**(폐쇄망 서버에서):
 `innodb_buffer_pool_size`, `slow_query_log`/`long_query_time`,
@@ -3365,6 +3394,12 @@ binlog 는 **변경 이력**이다. *"어느 상태에서 출발해 이 변경�
 ---
 
 ## 정정 이력
+
+- **2026-11-06, 구조 21 현행화**(문서만, 구조 변경 없음).
+  - 머리 상자에 구조 14~21 요약을 더했다. §5.1 명부에 `cal_project_watch` 와 `project_schedule_image` 를 더했다(뒤의 것은 구조 17 부터 있었는데 빠져 있었다).
+  - §5.5 와 §5.6.7 에 버전 관문(키 다섯, 정확 일치, `db_updating`) 덧붙임, §11 의 `schema_version` 확인 쿼리와 4, 5번 상태에 덧붙임.
+  - §5.10 머리에 "두 표"가 지금 넷이라는 주, 지우기 항목에 DELETE 를 주는 두 표, 검증에 구조 21 시험을 더했다.
+  - §4 의 끊긴 링크(`migrate-2026-08-27-repo-flag.sql`, 2026-10-15 에 지운 파일)를 글자로 바꿨다. §3.9 실측 기록의 실제 발주처 이름을 `발주처A` 로 바꿨다.
 
 - **2026-11-04, 다른 과제 보기**([`../docs/PC-WATCH.md`](../docs/PC-WATCH.md), 구조 번호 21).
   - §5.10 의 표 목록에 `cal_project_watch` 를, 아래 인용문에 키, FK, 쓰기 규칙, 두 판정을 적었다.

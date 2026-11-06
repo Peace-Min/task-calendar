@@ -1,6 +1,6 @@
 # DB 버전 관문과 DB 기반 업데이트 (VERSION-GATE)
 
-- 상태: 구현과 QA 완료(2026-10-21, 브랜치 feat/version-gate). 앱 버전 올리기(0.23.0)와 배포는 아직이다. 운용 기준은 [DB-RELEASE-OPS.md](DB-RELEASE-OPS.md), 이 문서는 그것을 코드로 옮기는 기획이다.
+- 상태: 구현과 QA 완료(2026-10-21, 브랜치 feat/version-gate, 3f3f1a7), 0.23.0 판에 실림. 운용 기준은 [DB-RELEASE-OPS.md](DB-RELEASE-OPS.md), 이 문서는 그것을 코드로 옮기는 기획이다.
 - 목표 버전: 앱 **0.23.0**, DB 구조 번호 **14**.
 - 범위 밖: 피드백 반영(회의실 등), 서버 주소(`DbHost`)와 공유 폴더 경로 값(배포 때 넣는다).
 

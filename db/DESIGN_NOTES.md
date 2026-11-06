@@ -2,6 +2,7 @@
 
 > 이 DB는 **원본(source of truth)이다.** Admin이 캘린더 앱으로 과제를 등록/수정(CRUD, 대상 행은 `uid` 기준)하고, Excel은 DB에서 **추출하는 리포트**일 뿐이다(양방향 동기화 없음). 기존 사업부 Excel은 **최초 1회만** 이관하고 이후엔 DB가 마스터다.
 > 이전의 "Excel 장표 컴팩트 미러" 서사(Excel 원본 → DB 미러 → 멱등 UPSERT 재임포트, `source_no`/`customer.no` 보존)와 2축(유형×단계), 결정론 uid, 룩업 테이블, 캘린더 전용 뷰, CHECK 설계는 **이 모델 B로 대체(superseded)됨.** 아래는 현재 확정 설계 기준으로만 서술한다.
+> **2026-11-06 현행(DB 구조 21)**: 과제 트랙 정본 [`deploy/schema-structure.sql`](deploy/schema-structure.sql) 의 표는 `customer`, `section_code`, `status_code`, `room_code`(회사 공용 회의실, 구조 15), `project` 다. 컬럼 목록과 `project.id` 를 가리키는 캘린더 쪽 표(`cal_project_event`, `cal_project_change`, `cal_project_watch`, `project_schedule_image`)는 [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.6, §3, §6 이 정리한다.
 
 ## §1 모델 B(DB 원본) 채택 이유
 - **원본을 DB 하나로 못박아 "앱↔Excel 양방향 동기화 지옥"을 원천 차단한다.** 두 원본(Excel과 DB)이 공존하면 어느 쪽이 최신인지, 충돌을 누가 이기는지, 재임포트 멱등성 같은 문제가 끝없이 생긴다.
@@ -14,7 +15,7 @@
 - **`section`/`status` = 코드테이블 + FK** *(2026-07-24 ADR-22, 원래 ENUM이었다)*: Admin이 드롭다운에서 고르게 만들어 "진행중"/"진행 중"/"진행중 " 같은 **오타·공백 변종을 DB가 거부**하는 목표는 같고, 강제 수단이 타입에서 **외래키**로 바뀌었다.
   - `section_id SMALLINT UNSIGNED NOT NULL` → FK `section_code(section_id)`
   - `status_id SMALLINT UNSIGNED NULL` → FK `status_code(status_id)` (상태 없음 = NULL. NULL이면 FK 검사 스킵. 2026-10-26 부터 구분과 무관하게 넣거나 비운다)
-  - 코드테이블은 번호 PK(`section_id`/`status_id`) + `name`(UNIQUE 라벨) + `sort_order` + `is_active` + 감사. **추가=INSERT, 개명=라벨 한 행 UPDATE(과제는 번호를 들고 있어 그대로, 화면은 조인으로 따라온다), 재배치=`sort_order`, 숨김=`is_active=0`** 이 전부 앱에서 된다. 구분 2(선진행), 상태 2(종료)는 고정 번호라 숨김과 삭제가 막힌다.
+  - 코드테이블은 번호 PK(`section_id`/`status_id`) + `name`(UNIQUE 라벨) + `sort_order` + `is_active` + 감사. **추가=INSERT, 개명=라벨 한 행 UPDATE(과제는 번호를 들고 있어 그대로, 화면은 조인으로 따라온다), 재배치=`sort_order`, 숨김=`is_active=0`** 이 전부 앱에서 된다. 구분 2(선진행), 상태 2(종료)는 고정 번호라 숨김과 삭제가 막힌다. *(2026-10-26 구조 19 에서 이 보호를 지웠다. 번호가 정하는 것은 표시 색뿐이고 어느 행이든 숨기고 지울 수 있다. [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.5, ADR-24)*
   - *(2026-10-15 전에는 `section VARCHAR(50)`, `status VARCHAR(50)` 이 이름을 들고 `name` PK 를 `ON UPDATE CASCADE` 로 가리켰다. 번호 키로 바꾼 이유는 [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §9 ADR-23)*
   - **왜 바꿨나: ENUM의 트레이드오프가 실제로 아팠다.** 값 추가, 개명, 순서, 숨김에 전부 `ALTER TABLE ... MODIFY`가 필요해 런타임 관리가 불가능했다. 아래 §5가 "필요해지면 룩업 테이블로 승급"이라 적어 둔 그 경로를 실제로 갔다. 기존 DB 이관은 `deploy/migrate.ps1` 단계2(무손실·멱등. 그 스크립트는 2026-10-15 에 지웠다). 근거표는 [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.5.
 - **`is_active` = 소프트 삭제**: `TINYINT(1) DEFAULT 1`. 앱의 "삭제"는 `is_active=0`(숨김, **복구 가능·이력 보존**). 영구 삭제는 권한자가 DB에서 직접 `DELETE`로 청소. 조회는 보통 `WHERE is_active=1`. customer/project 양쪽에 둔다.

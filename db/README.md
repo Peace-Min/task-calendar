@@ -5,11 +5,13 @@
 >
 > | 트랙 | 표 | 진입점 문서 | 구축 |
 > |---|---|---|---|
-> | **과제**(사업부 공식 과제 마스터) | `project`, `customer`, `section_code`, `status_code` | **이 문서** → [`ARCHITECTURE.md`](ARCHITECTURE.md) → [`DESIGN_NOTES.md`](DESIGN_NOTES.md)/[`TABLE-DESIGN.md`](TABLE-DESIGN.md) | `deploy/setup-taskcalendar.cmd`(세 묶음을 한 번에) |
-> | **캘린더**(개인 일정, 할 일, 공수, 근태, 보고 기록) | `cal_*` | [`CALENDAR-TABLE-DESIGN.md`](CALENDAR-TABLE-DESIGN.md) | 위와 같음. 캘린더만 다시 세울 때는 `deploy/init-calendar.cmd` |
+> | **과제**(사업부 공식 과제 마스터) | `project`, `customer`, `section_code`, `status_code`, `room_code`(회사 공용 회의실, 구조 15) | **이 문서** → [`ARCHITECTURE.md`](ARCHITECTURE.md) → [`DESIGN_NOTES.md`](DESIGN_NOTES.md)/[`TABLE-DESIGN.md`](TABLE-DESIGN.md) | `deploy/setup-taskcalendar.cmd`(세 묶음을 한 번에) |
+> | **캘린더**(개인 일정, 할 일, 공수, 근태, 보고 기록, 과제 캘린더) | `cal_*`, `project_schedule_image`(월간보고 개발 일정 그림, 구조 17) | [`CALENDAR-TABLE-DESIGN.md`](CALENDAR-TABLE-DESIGN.md) | 위와 같음. 캘린더만 다시 세울 때는 `deploy/init-calendar.cmd` |
 > | (밖) 사용자·조직 | `app_user`, `org_unit`, `title_code` | [`../docs/USER-LOGIN.md`](../docs/USER-LOGIN.md) | DDL 과 명단은 **별도 비공개 저장소**. `setup-taskcalendar` 가 그 파일을 읽어 만든다 |
 >
 > **2026-10-15**: 새 DB 진입점은 **`deploy/setup-taskcalendar.cmd` 하나**입니다. 옛 진입점 `deploy/init-db.cmd`, `deploy/migrate.cmd`, `schema.sql`, 지난 `deploy/migrate-2026-*.sql` 과 되돌리기 파일은 지웠습니다(git 이력에 있습니다). 같은 날 코드표(발주처, 구분, 상태, 직급)의 기본키가 번호가 됐습니다(`schema_version` 13, [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §9 ADR-23).
+>
+> **2026-11-06 현행**: DB 구조 번호는 **21** 입니다(`cal_schema_meta.db_structure_version`, 앱 상수 `DbGate.AppStructureVersion`. 정본은 [`deploy/schema-calendar.sql`](deploy/schema-calendar.sql) 끝의 시딩 줄). 2026-10-21(구조 14)부터 운영 DB 의 구조 변경은 `deploy/migrate-*.sql` 이 아니라 이관 조각 [`deploy/migrations/`](deploy/migrations/)`v<번호>-*.sql` 로 내고, 빌드가 조각을 이어 붙인 배포 SQL `release-v<버전>.sql` 하나를 Workbench 에서 돌립니다(규칙은 [`../docs/DB-RELEASE-OPS.md`](../docs/DB-RELEASE-OPS.md)). 지금 사슬은 v14(버전 관문) 에서 v21(과제 탭 보기만 목록 `cal_project_watch`)까지입니다. 각 조각이 무엇을 바꾸는지는 [`deploy/README.md`](deploy/README.md) '구성: 과제 트랙' 표에 있습니다.
 >
 > **한쪽 문서를 다른 쪽 근거로 쓰지 마세요.** 특히 앱 계정 권한 정책이 반대입니다(아래 ⚠️).
 >
@@ -31,7 +33,7 @@
 - **모델 B(DB 원본) 재설계 완료 + 실 DB 검증 완료.** 시드는 아직 **더미**(롤 지명)이고, 실 사업부 Excel 1회 이관이 남아 있습니다.
 - **P3 앱↔DB 연동 완료(localhost)**: 위젯이 이 DB를 **온라인 전용**으로 소비합니다. 조회도 편집도 서버가 필요하고 **로컬 캐시는 없습니다**(ADR-18). 공식 과제 카탈로그 화면, 재연결 도구, 단일 카테고리 스토어 구현. 상세 `ARCHITECTURE.md` §4.7.
 - **P4 Excel 추출·P6.5 권한 완료**: 의존성 0 xlsx 추출기(v0.13.0), 회사 계정 로그인 + `app_user.edit_role` **요청 시점** 판정(v0.17.0). **공용 관리자 비밀번호와 `db-config.json`은 폐지**됐습니다.
-- **과제 트랙 표 4개**: `customer`·`project` + 코드테이블 `section_code`·`status_code`, **뷰 0개**. `section`/`status`는 **ENUM이 아니라 코드테이블 + FK**입니다(2026-07-24 ADR-22. ENUM은 값 추가, 개명, 순서, 숨김에 `ALTER TABLE`이 필요해 런타임 관리가 불가능했습니다).
+- **과제 트랙 표 4개**: `customer`·`project` + 코드테이블 `section_code`·`status_code`, **뷰 0개**. `section`/`status`는 **ENUM이 아니라 코드테이블 + FK**입니다(2026-07-24 ADR-22. ENUM은 값 추가, 개명, 순서, 숨김에 `ALTER TABLE`이 필요해 런타임 관리가 불가능했습니다). *(2026-10-21 구조 15 부터 같은 파일에 회사 공용 회의실 목록 `room_code` 도 있습니다. 어느 표도 가리키지 않는 추천 목록이고 관리자만 고칩니다. [`../docs/SHARED-ROOMS.md`](../docs/SHARED-ROOMS.md))*
   ※ **표 개수를 문서에 박지 않습니다.** 세는 기준은 실 DB가 아니라 스키마 파일입니다: 과제 = [`deploy/schema-structure.sql`](deploy/schema-structure.sql)의 `CREATE TABLE`(옛 `schema.sql` 은 2026-10-15 에 지웠습니다), 캘린더 = [`deploy/schema-calendar.sql`](deploy/schema-calendar.sql)의 `CREATE TABLE`(그 목록 자신이 정본이고 `deploy/init-calendar.ps1`의 `$DESIGN_TABLES` 명부가 그것과 대조됩니다), 사용자·조직 = 비공개 저장소. *(개수를 박아 둔 판이 실제로 사고를 냈습니다. 명부가 13에 멈춰 있어 2026-09-02까지 원큐 구축 진입점이 `Die`로 막혀 있었습니다.)*
   > **2026-08-24 키 전환(캘린더 트랙만 해당).** `cal_*` 의 소유자 컬럼이 `app_user.login_id` 에서 **`app_user.user_id`(신설 대리키)** 로 바뀌었습니다. 그래서 **`app_user` 에 컬럼이 하나 늘고(`user_id`) `login_id` 는 UNIQUE 로 강등**됩니다. 그 DDL 은 이 저장소가 아니라 비공개 저장소(`taskmgr-company-data/01-schema-users.sql`)에 있습니다.
   > ⚠️ **과제 트랙은 그 전환(2026-08-24)의 대상이 아니었습니다.** 그날은 `project`, `customer`, `section_code`, `status_code` 의 이름 PK 를 남겼습니다.
@@ -62,10 +64,11 @@ deploy\backup-taskmgr.cmd -Install   # 주간 백업(구축에 딸려 오지 않
 
 > ⛔ **`setup-taskcalendar`, `schema-structure.sql`, `schema-calendar.sql` 재실행은 파괴적입니다. 초기 구축 전용이며, 운영 중 DB엔 절대 금지.**
 > 앞부분이 테이블을 **`DROP` 해 전 데이터를 삭제**합니다(`setup-taskcalendar` 는 지우기 전에 대상 DB 를 한 벌 덤프하지만, 그 뒤에 쓰인 데이터는 되살릴 곳이 그 덤프뿐입니다). 운영 중 구조 변경은 **`deploy/migrate-*.sql`** 로 하세요(지금 남은 것은 `migrate-2026-10-15-code-ids.sql` 하나).
+> *(2026-10-21 구조 14 부터는 이관 조각 `deploy/migrations/v<번호>-*.sql` 을 이어 붙인 배포 SQL `release-v<버전>.sql` 로 합니다. 위 머리말의 2026-11-06 현행 줄.)*
 > ```bash
-> # 판번호 확인(읽기만 함. 비밀번호는 묻는 창에 넣는다):
+> # 판번호 확인(읽기만 함. 비밀번호는 묻는 창에 넣는다). 2026-10-21 부터 키가 다섯이고 구조 번호는 db_structure_version 줄이다:
 > MYSQL="/c/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe"
-> "$MYSQL" -uroot -p --get-server-public-key --default-character-set=utf8mb4 taskcalendar -e "SELECT v FROM cal_schema_meta;"
+> "$MYSQL" -uroot -p --get-server-public-key --default-character-set=utf8mb4 taskcalendar -e "SELECT k, v FROM cal_schema_meta;"
 > ```
 > 운영 DB의 데이터 변경은 **앱의 CRUD(또는 DB 직접 편집)**로만 합니다.
 
@@ -87,15 +90,17 @@ MYSQL="/c/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe"
 ## 📁 파일 지도
 | 파일 | 내용 |
 |---|---|
-| `deploy/schema-structure.sql` | **과제 트랙 DDL 정본**(옛 `schema.sql` 을 2026-10-15 에 지우고 이것 하나로 모았다. 더미 시드 없음): `customer`, `project`, `section_code`, `status_code`, 뷰 0. 코드표는 **번호 PK + `name` UNIQUE 라벨**(ADR-23), 기본 코드 행은 고정 번호로 시드(구분 1 일반계약, 2 선진행, 3 사업부관리, 상태 1 진행중, 2 종료, 3 1차 납품완료, 4 미정. 번호에 묶인 동작은 색뿐). 과제의 구분 안 순서 `sort_no`(구조 19). `is_active`=소프트삭제, 감사 컬럼. 유니크는 과제 쪽 **`uid` 하나**(이름 유니크는 ADR-21로 제거하고 소프트 경고로 대체). FK `project.customer_id→customer.customer_id` 등 `RESTRICT/RESTRICT`. |
+| `deploy/schema-structure.sql` | **과제 트랙 DDL 정본**(옛 `schema.sql` 을 2026-10-15 에 지우고 이것 하나로 모았다. 더미 시드 없음): `customer`, `project`, `section_code`, `status_code`, `room_code`(회사 공용 회의실, 구조 15), 뷰 0. `project` 에는 개발 기간 `dev_start_date`(구조 17), `dev_end_date` 와 CHECK `chk_project_dev_dates` 가 있다. 코드표는 **번호 PK + `name` UNIQUE 라벨**(ADR-23), 기본 코드 행은 고정 번호로 시드(구분 1 일반계약, 2 선진행, 3 사업부관리, 상태 1 진행중, 2 종료, 3 1차 납품완료, 4 미정. 번호에 묶인 동작은 색뿐). 과제의 구분 안 순서 `sort_no`(구조 19). `is_active`=소프트삭제, 감사 컬럼. 유니크는 과제 쪽 **`uid` 하나**(이름 유니크는 ADR-21로 제거하고 소프트 경고로 대체). FK `project.customer_id→customer.customer_id` 등 `RESTRICT/RESTRICT`. |
 | `deploy/migrate-2026-10-15-code-ids.sql` | **데이터가 있는 v12 DB 전용 1회 이관**(12 → 13, 코드표 번호 키). 새 DB 에는 쓰지 않는다. [`deploy/README.md`](deploy/README.md) |
+| `deploy/migrations/v<번호>-*.sql` | **이관 조각**(2026-10-21 구조 14 부터). 혼자 돌리지 않는다. 빌드가 구조 번호 순서로 이어 붙여 배포 SQL `release-v<버전>.sql` 하나를 만든다. 지금 v14 에서 v21 까지([`../docs/DB-RELEASE-OPS.md`](../docs/DB-RELEASE-OPS.md) §5) |
+| `deploy/schema-calendar.sql`, `deploy/grants-calendar.sql` | 캘린더 트랙 DDL 정본(`cal_*` 와 `project_schedule_image`, 구조 번호 시딩)과 앱 계정 권한 정본. 표마다 주는 동사와 그 근거는 권한 파일 주석에 있다 |
 | `ARCHITECTURE.md` | **배포·운영 아키텍처 결정**: 클라이언트-서버, 엔진선택(MySQL/SQLite기각), 조회캐시/편집온라인(ADR-18), **접속정보 배포 베이크**, 단일 카테고리 스토어(§4.7.4), 권한, 네트워크(고정IP), 개발→배포 흐름, ADR, 용어집. **머리말의 2026-09-02 갱신 노트를 먼저 읽을 것** |
 | `ROADMAP.md` | **작업 로드맵**: 축 A(과제) P0~P8, 축 B(캘린더) C1~C5, 의존성, 게이트, 규모, 선행조건 |
 | `TABLE-DESIGN.md` | 과제 표의 컬럼별 설계 판정(에이전트 기준). ADR-21, ADR-22, ADR-23(코드표 번호 키)의 근거 |
 | `DESIGN_NOTES.md` | 모델 B 근거, 필드별 설계결정, Excel 추출 방향, 초기이관/재구축 전략, 향후 |
 | ~~`schema-overview.html`~~ | **2026-09-02 삭제**: 스스로 "대체됨"이라 적어 둔 07-21 ENUM 시절 스냅샷. 현행 구조는 아래 `DB-SCHEMA.html`과 정본 MD |
 | [`../docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) | **현행 테이블 구조 레퍼런스**: 과제 4표 + 사용자·조직 3표(2026-08-11 추가)의 컬럼과 제약, DB가 강제하는 것 vs 앱이 지키는 것, 바꾸려면 어디를 여는가 |
-| `table-design-report.html` | **현재 DB 구조 한 장 보고서이며 생성물이다.** `information_schema` 실측에서 만든다(23표 전부의 컬럼, 타입, 제약, CHECK, 권한 + 관계도 + '지킨다/하지 않는다' + 변경 이력). **손으로 고치지 마세요.** 재생성은 `TC_TEST_DB_ADMIN_PW=<root 비번> node tools/schema-report/dump-schema.mjs tools/schema-report/schema.json` 뒤에 `node tools/schema-report/build-schema-html.mjs tools/schema-report/schema.json db/table-design-report.html`. 숫자뿐 아니라 **결론 문장까지 실측에서 뽑으므로** 구조를 바꾼 라운드마다 다시 만듭니다(안 만들면 문서가 혼자 옛말을 합니다. 2026-09-09 에 실제로 그랬습니다) |
+| `table-design-report.html` | **현재 DB 구조 한 장 보고서이며 생성물이다.** `information_schema` 실측에서 만든다(모든 표의 컬럼, 타입, 제약, CHECK, 권한 + 관계도 + '지킨다/하지 않는다' + 변경 이력). **손으로 고치지 마세요.** 재생성은 `TC_TEST_DB_ADMIN_PW=<root 비번> node tools/schema-report/dump-schema.mjs tools/schema-report/schema.json` 뒤에 `node tools/schema-report/build-schema-html.mjs tools/schema-report/schema.json db/table-design-report.html`. 숫자뿐 아니라 **결론 문장까지 실측에서 뽑으므로** 구조를 바꾼 라운드마다 다시 만듭니다(안 만들면 문서가 혼자 옛말을 합니다. 2026-09-09 에 실제로 그랬습니다) |
 | `README.md` | (이 파일) 트랙 이어받기 진입점 |
 | `CALENDAR-TABLE-DESIGN.md` | **별도 트랙인 캘린더(`cal_*`) 설계 근거와 정본.** 온라인 전용 정책(§2), 동시성 규약, 어댑터 계약 G, 권한, 로그/백업, `data.xml` 1회 이관(§8·3b) + **키 설계(§5.2 대리키 전환, §5.6 어느 표를 번호 키로 두고 어느 표를 자연키로 두는가. 2026-10-15 코드표 전환 포함)**. 컬럼 수준 DDL 의 정본은 이 문서가 아니라 `deploy/schema-calendar.sql` |
 | `../docs/USER-LOGIN.md` | **로그인·권한 관문 확정 설계**: netcus 인증 위임, `app_user.edit_role` 요청 시점 판정, 세션 4필드, `view_scope`. 공용 관리자 비밀번호 폐지의 정본 |
@@ -109,8 +114,8 @@ MYSQL="/c/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe"
 1. ✅ **앱↔DB 연동(P3), Excel 추출기(P4), 권한(P6.5) 완료.** 앱이 이 DB를 원본으로 과제 등록/수정/소프트삭제(대상 행은 `uid` 기준), 구분/상태는 **코드테이블 드롭다운**, "삭제"=`is_active=0`. (상세 `ARCHITECTURE.md` §4.7)
 2. **실 Excel 1회 이관**: 현재 시드는 더미(롤 지명). 실제 사업부 엑셀(2시트)에서 `customer`를 먼저(발주처 FK 타겟), 그다음 `project`를 옮긴다. **최초 1회성 마이그레이션**(이후 DB가 마스터, 재임포트 없음). 이관기 정리(발주처 표기 정규화, '미정'/공백→NULL, 선진행 상태 NULL, 섹션 헤더행→`section` 승격)는 `DESIGN_NOTES.md` §4. ⚠️ 실데이터가 더미에 없던 컬럼/케이스면 스키마 재검.
 3. **서버 배포(P5·P6)**: 순서는 다음과 같다. 사내 MySQL(**8.0.16+**)에 `deploy/` 원큐로 구조 적용, **백업 설치(`backup-taskmgr.cmd -Install`)**, 실 Excel 1회 이관, `DeployConfig.cs`의 `DbHost`·`DbPassword`를 실값으로 교체해 재빌드·배포. ⚠️ 배포 전 콜레이션과 CHECK 지원 확인(게이트가 봅니다).
-4. **낡은 클라이언트 쓰기 차단**: 설계 §5.5가 확정한 `schema_version` 비교가 아직 앱 코드에 없습니다. 다음 `ALTER` 순간 낡은 위젯이 그대로 씁니다.
-5. **타인 일정 열람(C4)**: 데이터도 `view_scope` 판정도 이미 있습니다. 남은 것은 화면입니다.
+4. **낡은 클라이언트 쓰기 차단**: 설계 §5.5가 확정한 `schema_version` 비교가 아직 앱 코드에 없습니다. 다음 `ALTER` 순간 낡은 위젯이 그대로 씁니다. *(2026-10-21 해소: 버전 관문 `DbGate` 가 연결마다 `db_structure_version` 을 앱 상수와 비교해 다르면 읽기와 쓰기를 모두 막습니다. [`../docs/VERSION-GATE.md`](../docs/VERSION-GATE.md))*
+5. **타인 일정 열람(C4)**: 데이터도 `view_scope` 판정도 이미 있습니다. 남은 것은 화면입니다. *(2026-09-03 완료, [`ROADMAP.md`](ROADMAP.md) C4)*
 
 ## 🔕 이 DB 범위 밖 (참고)
 - **위젯(캘린더) 표시 로직**: 위젯이 이 DB를 읽어 렌더하는 어댑터/뷰는 위젯 트랙의 관심사다. 재설계로 색상, uid 앵커, 캘린더 전용 뷰를 모두 걷어냈다(DB는 순수 데이터). 어댑터의 계약과 게이트는 [`CALENDAR-TABLE-DESIGN.md`](CALENDAR-TABLE-DESIGN.md) 계약 G와 `tests/calendar-adapter.mjs`에 있다.

@@ -27,15 +27,19 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 |---|---|
 | `setup-taskcalendar.cmd` / `setup-taskcalendar.ps1` | **원큐(진입점)**: 새 DB 구조 + 회사 시드 + 원본 과제 복사(코드표 이름을 번호로) + 앱 권한 + 검증. 아래 캘린더 트랙 표의 같은 줄 참조 |
 | `schema-structure.sql` | 과제 트랙 구조 DDL(customer, section_code, status_code, project, room_code). 코드표는 번호 키(2026-10-15), 기본 코드 행은 고정 번호로 시드. room_code 는 회사 공용 회의실 목록(2026-10-21, 관리자만 고친다, docs/SHARED-ROOMS.md) |
+| `migrations/v14-version-gate.sql` | **이관 조각**(13 → 14, 2026-10-21, docs/VERSION-GATE.md). 혼자 돌리지 않는다. 표 구조는 그대로이고 `cal_schema_meta` 의 옛 키 `schema_version` 을 지우고 `db_structure_version`, `app_latest_version`, `app_installer_file`, `app_installer_sha256` 를 둔다(`db_updating` 은 배포 SQL 의 닫기가 만든다). 이미 14 이상이면 건너뛴다 |
 | `migrations/v15-shared-rooms.sql` | **이관 조각**(14 → 15, 2026-10-21). 혼자 돌리지 않는다. 배포 SQL(release-v<버전>.sql)에 들어가 room_code 를 만들고, 사람마다 두던 cal_room 의 이름을 모아(앞뒤 공백 정리, 중복 제거) 넣고 검증한 뒤 cal_room 을 지운다. 이미 15 이상이면 건너뛴다 |
+| `migrations/v16-project-calendar.sql` | **이관 조각**(15 → 16, 2026-10-22, docs/PROJECT-CALENDAR-PLAN.md §4). 혼자 돌리지 않는다. 과제 캘린더 공용 표 `cal_project_event`, `cal_project_change` 를 없을 때만 만든다(정본 `schema-calendar.sql` 과 글자까지 같은 정의, `project.id` FK RESTRICT). 옮길 데이터는 없다. 이미 16 이상이면 건너뛴다 |
+| `migrations/v17-monthly-report.sql` | **이관 조각**(16 → 17, 2026-10-22, docs/MONTHLY-REPORT-PLAN.md §6). 혼자 돌리지 않는다. `project.dev_start_date`(end_date 뒤, INSTANT)와 CHECK `chk_project_dev_dates` 를 더하고 개발 날짜가 빈 기존 과제에 기본값을 채운다. 사람별 과제 개발 일정 그림 표 `project_schedule_image`(과제 FK CASCADE, 주인 FK RESTRICT)를 없을 때만 만든다. 이미 17 이상이면 건너뛴다 |
 | `migrations/v18-remove-git.sql` | **이관 조각**(17 → 18, 2026-10-26, docs/GIT-SVN-REMOVAL.md). 혼자 돌리지 않는다. 커밋 기록(`cal_entry.source = 'git'` 인 행, 그 메모와 장소와 공수, 예외일까지)을 지우고 `cal_entry_commit` 표, `cal_entry.source`, `cal_category.uses_repo`, `cal_user_pref` 의 `git_author`, `svn_author`, `git_commit_body` 칸과 그 CHECK 를 없앤다. 되돌릴 수 없으므로 배포 SQL 을 돌리기 전 Workbench 백업이 필수다. 이미 18 이상이면 건너뛰고, 다시 돌려도 있는 것만 지운다 |
 | `migrations/v19-project-order.sql` | **이관 조각**(18 → 19, 2026-10-26, docs/PROJECT-ADMIN-UX.md). 혼자 돌리지 않는다. `project.sort_no`(그 구분 안의 순서, 화면 No)를 `status_id` 뒤에 더하고(INSTANT), 보이는 과제에 구분마다 지금 화면 순서(통상명칭, 비었으면 사업명)로 1 부터 매긴다(숨긴 과제는 비워 둔다). `section_code`, `status_code` 표 설명에서 고정 번호 문구를 지운다. 이미 19 이상이면 건너뛰고, 다시 돌려도 번호가 빈 행만 채운다. 과제 최신화 SQL(엑셀 No 순서)은 이 조각이 든 배포 SQL 다음에 돌린다 |
 | `migrations/v20-weekly-meeting.sql` | **이관 조각**(19 → 20, 2026-10-29, docs/ATTENDANCE-PLAN.md §13.4). 혼자 돌리지 않는다. `cal_report_weekly.meeting`(주간보고 회의내용, MEDIUMTEXT NULL)을 `plan` 뒤에 더한다(INSTANT). 기존 행은 NULL 로 두고(이 칸이 생기기 전에 작성한 주) 앱은 빈 글로 읽는다. 2026-10-30(결정 14, §14.4)부터 같은 조각이 주간 과제투입시간 표 `cal_report_weekly_hours`(MM 집계의 원천, `cal_report_weekly` 의 CASCADE 자식)도 없을 때만 만든다(구조 번호는 20 그대로). 이미 20 이상이면 건너뛰고, 다시 돌려도 칸과 표가 없을 때만 더한다. 2026-11-02(docs/PC-RECUR.md)부터 같은 조각이 과제 일정 반복 칸 `cal_project_event.recur_freq`(ENUM weekly, monthly, NULL, `memo` 뒤, INSTANT)와 예외일 표 `cal_project_event_except`(`cal_project_event` 의 CASCADE 자식)도 없을 때만 만든다. 새 표의 권한은 이 조각이 주지 않는다. 폐쇄망 서버 앱 계정은 DB 전체 권한이라 그대로 쓰고, 표마다 권한을 주는 개발 PC 는 `grants-calendar.sql` 의 그 줄을 root 로 따로 준다(이미 20 인 개발 DB 는 `dist/rehearsal/apply-v20c-dev.sql`) |
+| `migrations/v21-project-watch.sql` | **이관 조각**(20 → 21, 2026-11-04, docs/PC-WATCH.md). 혼자 돌리지 않는다. 과제 탭 보기만 목록 표 `cal_project_watch`(보는 사람, 보는 공식 과제, 넣은 시각 `added_at`)를 없을 때만 만든다. PK `(user_id, project_id)`, 과제 FK CASCADE(휴지통의 과제 영구 삭제를 막지 않는다), 사람 FK RESTRICT. 한 사람 50개 상한은 DB 가 아니라 앱이 넣을 때 센다. 옮길 데이터는 없다(빈 표). `information_schema` 로 열 수 3, 기본 키 열 수 2, FK 둘의 대상과 규칙을 확인한 뒤 구조 번호를 21 로 올린다. 이 조각에 DELETE 는 없고 UPDATE 는 끝의 구조 번호 한 줄(키 칸 WHERE)이다. 권한은 주지 않는다. 표마다 권한을 주는 개발 PC 는 `grants-calendar.sql` 의 `cal_project_watch` 줄(SELECT, INSERT, DELETE)을 root 로 따로 준다. 이미 21 이상이면 건너뛴다 |
 | `create-app-user.sql` | 앱 계정 생성과 과제 표 권한(setup 이 스키마 이름을 바꿔 적용한다) |
 | `load-template.sql` | **내부망 LLM용** 데이터 INSERT 템플릿 + 규칙(이름으로 적고 번호로 바꿔 넣는다) |
 | `migrate-2026-10-15-code-ids.sql` | **데이터가 있는 로컬 DB 전용 1회 이관**(v12 → v13). 코드표 넷(발주처, 구분, 상태, 직급)을 번호 키로. 절단 관문(BINARY)과 사후 검증이 어긋나면 에러로 멈춘다. 언제, 어떻게는 아래 '코드표 번호 키 이관' 절 |
 | `migrate-code-ids.cmd` / `migrate-code-ids.ps1` | **위 이관 SQL 의 마스터 cmd**(2026-10-16). 더블클릭 한 번으로 판번호 확인(13 이면 할 일 없음), 앱 세션 확인, 확인(Y), 백업과 검증, 이관 SQL(`--force` 없이), 결과 판정까지 한다. 멈추면 절단 전인지 뒤인지 DB 상태로 가르고 되돌리는 명령을 보여 준다. 종료코드 0~5. 아래 '기존 PC 의 DB 이관(마스터 cmd)' 절 |
-| `migrations/v<번호>-*.sql` | **이관 조각**(2026-10-21 부터의 구조 변경, 첫 조각 `v14-version-gate.sql` 13 에서 14). 혼자 돌리지 않는다. `installer/publish-update.ps1` 이 구조 번호 순서로 이어 붙여 배포 SQL `release-v<버전>.sql` 하나를 만들고, 운영자는 그 파일만 Workbench 에서 한 번 실행한다. 지금 사슬은 13 에서 20 이다(v14 에서 v20, 0.24.0 은 18 과 19 를 함께 싣는다). 비공개 저장소의 과제 데이터 최신화 SQL 은 배포 SQL 다음에 돌린다(구조 19 의 `sort_no` 를 채운다). 규칙은 `docs/DB-RELEASE-OPS.md` 4.2, 5절 |
+| `migrations/v<번호>-*.sql` | **이관 조각**(2026-10-21 부터의 구조 변경, 첫 조각 `v14-version-gate.sql` 13 에서 14). 혼자 돌리지 않는다. `installer/publish-update.ps1` 이 구조 번호 순서로 이어 붙여 배포 SQL `release-v<버전>.sql` 하나를 만들고, 운영자는 그 파일만 Workbench 에서 한 번 실행한다. 지금 사슬은 13 에서 21 이다(v14 에서 v21, 0.24.0 은 18 과 19 를 함께 싣는다. 2026-11-06 에 20 에서 21 로 고쳤다). 비공개 저장소의 과제 데이터 최신화 SQL 은 배포 SQL 다음에 돌린다(구조 19 의 `sort_no` 를 채운다). 규칙은 `docs/DB-RELEASE-OPS.md` 4.2, 5절 |
 
 ## 구성: 캘린더 트랙 (`cal_*`), 백업
 
@@ -54,7 +58,7 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 
 > 두 `.sql` 은 `init-calendar` 없이 `mysql` 로 직접 돌려도 되지만, **순서와 게이트를 사람이 대신 지켜야 한다.** 아래 두 절이 그 내용이다.
 
-> **`init-calendar` 는 최초 1회 구축용이다.** 이미 데이터가 든 DB 의 구조를 바꿀 때는 이것이 아니라 **`migrate-*.sql`** 을 쓴다. 목록, 적용 순서, `schema_version` 개념은 아래 '캘린더 표 마이그레이션' 절.
+> **`init-calendar` 는 최초 1회 구축용이다.** 이미 데이터가 든 DB 의 구조를 바꿀 때는 이것이 아니라 **`migrate-*.sql`** 을 쓴다. 목록, 적용 순서, `schema_version` 개념은 아래 '캘린더 표 마이그레이션' 절. *(2026-10-21 구조 14 부터는 `migrate-*.sql` 대신 위 과제 트랙 표의 이관 조각 `migrations/v<번호>-*.sql` 을 담은 배포 SQL 이다)*
 
 > **2026-08-11: `triggers-calendar.sql`(감사 트리거) 이 이 표에서 빠졌습니다.** 파일째 폐기됐습니다.
 > 근거는 설계 [`../CALENDAR-TABLE-DESIGN.md`](../CALENDAR-TABLE-DESIGN.md) **§7.5**. 요약하면
@@ -212,9 +216,14 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 
 > **백업은 이 게이트가 보지 않습니다.** 별도 도구라서입니다. 아래 '백업' 절의 확인을 따로 하세요.
 
-> ⚠️ `init-calendar`/`schema-calendar.sql` 도 **멱등 재구축이라 기존 `cal_*` 를 DROP** 합니다(최초 1회 구축용). 데이터가 든 DB 에 다시 돌리면 캘린더 데이터가 사라집니다. 운영 중 구조 변경은 별도 `migrate-*.sql` 로 하세요(지금 남은 것은 `migrate-2026-10-15-code-ids.sql` 하나).
+> ⚠️ `init-calendar`/`schema-calendar.sql` 도 **멱등 재구축이라 기존 `cal_*` 를 DROP** 합니다(최초 1회 구축용). 데이터가 든 DB 에 다시 돌리면 캘린더 데이터가 사라집니다. 운영 중 구조 변경은 별도 `migrate-*.sql` 로 하세요(지금 남은 것은 `migrate-2026-10-15-code-ids.sql` 하나). 구조 14 부터는 이관 조각을 담은 배포 SQL `release-v<버전>.sql` 입니다.
 
 ## 캘린더 표 마이그레이션: `cal_*`, `schema_version`
+
+> **2026-10-21 이후(구조 14, 2026-11-06 에 덧붙임). 이 절의 아래 본문은 구조 13 까지의 기록입니다.**
+> - 키가 바뀌었습니다. `cal_schema_meta` 의 `schema_version` 한 행 대신 키 다섯(`db_structure_version`, `db_updating`, `app_latest_version`, `app_installer_file`, `app_installer_sha256`)이 있습니다. 구조 번호 확인은 `SELECT v FROM cal_schema_meta WHERE k = 'db_structure_version';` 입니다.
+> - 앱의 비교 상대는 `CalendarDb.ExpectedSchemaVersion` 이 아니라 `widget/DbGate.cs` 의 `AppStructureVersion` 입니다. 다르면 전량 교체만이 아니라 **읽기와 쓰기를 모두** 막고, `db_updating = '1'` 이면 기다립니다(docs/VERSION-GATE.md). 정본 시딩 줄을 올리는 커밋에서 이 상수도 함께 올립니다(`tests/schema-guards.test.mjs` 가드 ⑨).
+> - 구조 변경은 `migrate-*.sql` 이 아니라 이관 조각 `migrations/v<번호>-*.sql` 이고, 운영자는 그 조각들을 이어 붙인 배포 SQL `release-v<버전>.sql` 하나만 Workbench 에서 돌립니다(docs/DB-RELEASE-OPS.md). 조각마다 무엇을 바꾸는지는 위 '구성: 과제 트랙' 표에 있습니다. 지금 구조 번호는 21 입니다.
 
 **`init-calendar`(=`schema-calendar.sql`)는 최초 1회 구축용입니다.** 기존 `cal_*` 를 `DROP` 하므로 데이터가 든 DB 에 다시 돌리면 캘린더가 사라집니다. **운영 중 구조 변경은 아래 `migrate-*.sql` 로만** 합니다.
 
@@ -480,7 +489,7 @@ mysql -u root -p --default-character-set=utf8mb4 taskmgr < migrate-2026-08-24-or
 > **⚠️ `--force` 를 붙이지 마세요.** 이 파일의 안전장치는 전부 *'에러로 멈추는'* 방식입니다
 > (순수 SQL 에는 `IF/THEN` 도 `SIGNAL` 도 없어서, 조건이 깨지면 **없는 테이블명 자리에 사람이 읽을
 > 메시지를 넣어** `ERROR 1146` 을 냅니다). `--force` 는 그 멈춤을 전부 무력화합니다.
-> **특히 [가드 1](조직 명부 해시)이 무력화되면 89명 전원의 소속이 한 칸씩 밀립니다.**
+> **특히 가드 1(조직 명부 해시)이 무력화되면 89명 전원의 소속이 한 칸씩 밀립니다.**
 > 번호가 곧 소속이고, `app_user.org_id` 백필이 그 번호를 그대로 씁니다. 오류 없이 틀립니다.
 
 #### ★ 컷오버 낙진: 배포된 v0.17.1 위젯 89대에 **무슨 일이 일어나나**

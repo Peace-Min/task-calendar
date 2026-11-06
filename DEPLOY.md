@@ -9,6 +9,8 @@
 
 **한 줄 요약**: `installer\배포-빌드.cmd`를 **더블클릭**하면 결과물 2개(`TaskCalendarWidget-Setup-v<버전>.exe` + `latest.json`)가 `dist\installer\`에 생긴다. **그 2개를 공유폴더(FTP)에 함께 업로드**하면 배포 끝.
 
+> **2026-10-21 바뀜: 결과물은 셋이다.** 빌드가 `release-v<버전>.sql`(이 배포의 DB 작업 전부, `installer\release-sql.ps1` 이 조립)도 만든다. **Setup 과 `latest.json` 을 먼저 공유폴더에 올리고, Workbench 백업을 받은 뒤 그 SQL 을 한 번 실행한다.** Setup 과 SQL 은 같은 빌드의 짝이다(SQL 에 Setup 해시가 들어간다). 정본은 [docs/DB-RELEASE-OPS.md](docs/DB-RELEASE-OPS.md) §4, §5, §6-1.
+>
 > **단, 그 앞에 §0(서버 DB 선행 작업)이 있다.** 캘린더 데이터가 서버 MySQL에 있으므로 **빌드보다 서버가 먼저**다. 접속값을 채워 빌드하고, 스키마가 바뀌는 버전이면 서버에 먼저 적용한다.
 
 ### 준비물
@@ -28,6 +30,8 @@
 ---
 
 ## 0. 서버 DB 선행 작업 (§2~§3보다 **먼저**)
+
+> **2026-10-21 바뀜(사내 서버에 붓고 난 뒤의 방식).** 스키마 변경은 `db/deploy/migrations/vNN-<이름>.sql` 이관 조각으로 만들고, 배포 때는 빌드가 조립한 `release-v<버전>.sql` 하나를 Workbench 에서 돌린다(Setup 먼저). 판번호는 `cal_schema_meta` 의 `db_structure_version`(지금 **21**, 이관 조각 `v21-project-watch.sql`)이고 앱 상수는 `widget/DbGate.cs` 의 `AppStructureVersion` 이다. 두 값이 다르면 앱이 읽기와 쓰기를 모두 막는다([docs/VERSION-GATE.md](docs/VERSION-GATE.md)). 아래 §0-3 의 `migrate-*.sql`, §0-4 의 `schema_version` 과 `ExpectedSchemaVersion` 은 그 전 방식이다(새로 세우는 DB 는 §0-6 이 그대로다).
 
 캘린더 데이터는 서버 MySQL(`taskcalendar`, v0.19.0부터의 주 DB. 0.16과 0.17.1 은 `taskmgr`)에 있다(v0.18.0부터). 그래서 **빌드보다 서버가 먼저**다. 아래 다섯을 끝내지 않으면 잘 만들어진 인스톨러를 배포해도 동료 PC에서 캘린더가 열리지 않는다.
 
@@ -81,6 +85,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File db\deploy\backup-taskmgr.ps1
 - `db/deploy/grants-calendar.sql`: `cal_user_pref`, `cal_user_rev`(계정 영구 삭제가 먼저 지우는 부속 2표) + 머리말 서술
 - `taskmgr-company-data/05-grants.sql`: `app_user`
 - **v0.19.0 은 하나 더 얹는다. `org_unit`·`title_code` 의 `INSERT`·`UPDATE`**(직급·소속 관리, [docs/ORG-TITLE-ADMIN.md](docs/ORG-TITLE-ADMIN.md) §6). 세 파일이 **같은 목록**이라 셋 다 다시 돌린다. 빠지면 '직급·소속 관리'의 첫 쓰기가 ERROR 1142 로 죽는다. `DELETE` 는 주지 않는다(숨김까지만 하고 행은 남는다).
+
+- **구조 21(다음 판, 관심 과제)은 `cal_project_watch` 의 `SELECT`, `INSERT`, `DELETE` 를 얹는다.** 사내 서버처럼 `taskmgr_app` 이 `taskcalendar.*` 전체 권한이면 할 일이 없고, 표마다 권한을 주는 환경은 `grants-calendar.sql` 의 그 줄을 root 로 따로 준다.
 
 확인(일곱 표에 DELETE 가 보여야 한다. 2026-09-10 개발 DB 에서 부속 2표가 빠져 계정 삭제가 ERROR 1142 로 죽는 것을 루프 시험이 잡았다):
 
@@ -207,7 +213,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "task-calendar\installer\pub
 
 ### 3-2. 결과물 확인
 
-빌드가 끝나면 `dist\installer\`에 **정확히 이 2개**가 있어야 한다(`<버전>` = `csproj <Version>`):
+빌드가 끝나면 `dist\installer\`에 **정확히 이 2개**가 있어야 한다(`<버전>` = `csproj <Version>`. 2026-10-21 부터는 `release-v<버전>.sql` 도 함께 생긴다. 맨 위 주의):
 
 | 파일 | 내용 |
 |---|---|
@@ -254,6 +260,7 @@ ftp://192.168.1.175/            ← FTP 루트에 올린 예(소스 URL도 이 �
 - [ ] `배포-빌드.cmd` 더블클릭, 오류 없이 완료
 - [ ] `dist\installer\`에 `TaskCalendarWidget-Setup-v<버전>.exe` + `latest.json` 2개 존재
 - [ ] `latest.json`의 `version`/`file`이 실제 exe와 일치 (파일명 변경 금지)
+- [ ] 같은 빌드의 `release-v<버전>.sql` 을 Setup 을 올린 **뒤에** Workbench 에서 한 번 실행(2026-10-21 부터. 산출물을 만든 뒤에는 빌드를 다시 돌리지 않는다)
 - [ ] 공유폴더(FTP)에 **두 파일 모두** 업로드
 - [ ] 배너 안내문: `-Notes`를 줬거나, `RELEASE_NOTES.md`에 이번 버전 절이 있어 자동 추출됐는지(콘솔의 `* Notes(자동 …)` 줄로 확인. 둘 다 아니면 빈 채로 나간다)
 - [ ] **§0-5 GRANT 재적용 + `SHOW GRANTS` 로 일곱 표 DELETE 확인**. 스키마가 안 바뀐 판도 해당한다(§6-1 ★)

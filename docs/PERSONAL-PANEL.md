@@ -1,6 +1,8 @@
 # 개인 달력: 날짜 패널 정리와 보기 필터 하나 (0.26.0)
 
-상태: **구현 완료**(2026-11-03, 시험 tests/personal-panel.test.mjs, 위키 [개인 달력 패널](wiki/개인-달력-패널.md)). 기획 확정은 2026-11-03 사용자, 시안 dist/proto/personal-panel.html. 관련 이슈 #15(1단계). 다음: 배포 때 버전 번호(0.26.0 예정).
+상태: **구현 완료**(2026-11-03, 4f5c976, 1e39bb8, 시험 tests/personal-panel.test.mjs, 위키 [개인 달력 패널](wiki/개인-달력-패널.md)). 기획 확정은 2026-11-03 사용자, 시안 dist/proto/personal-panel.html. 관련 이슈 #15(1단계). 다음 판(0.26.0 예정).
+
+> 2026-11-05 바뀜: 달력 칸 할 일 구역은 걷고 일정과 함께 채운다([MONTH-TODO-POPUP-CLOSE.md](MONTH-TODO-POPUP-CLOSE.md) 참고). 날짜 패널에는 묶음 접기([PC-WATCH-2.md](PC-WATCH-2.md) §5)와 일정 카드, 늘 보이는 묶음 머리([DAY-PANEL-CARDS.md](DAY-PANEL-CARDS.md), 2026-11-06)가 더해졌다.
 
 ## 1. 배경
 

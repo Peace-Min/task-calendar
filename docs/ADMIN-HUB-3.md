@@ -2,6 +2,8 @@
 
 > 2026-10-02, 대상 v0.19.x, 파이프라인은 기획, 개발, QA, 위키 순. 앞 단계: [`ADMIN-HUB.md`](ADMIN-HUB.md), [`ADMIN-HUB-2.md`](ADMIN-HUB-2.md). 순서 기능 정본: [`CATEGORY-ORDER.md`](CATEGORY-ORDER.md)
 
+> 2026-10-06 바뀜: M6 의 내 과제 끌기는 ▲▼ 로 되돌렸다([ADMIN-HUB-4.md](ADMIN-HUB-4.md) N3). 2026-10-30 에 다시 ⠿ 끌기와 ⋯ 메뉴로 바뀌었다([TASK-ADD-UX.md](TASK-ADD-UX.md) D3).
+
 ## 0. 사용자 지적과 결정(2026-10-02)
 
 | # | 지적 | 결정 |

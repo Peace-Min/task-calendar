@@ -3,6 +3,8 @@
 > 작성 2026-10-07. 스키마 변경 없음(판번호 12 그대로). 웹(HTML)과 시험만. 호스트(C#) 변경 없음.
 > 프로토타입: `dist/rehearsal/report-edit-proto/index.html`(로컬, gitignore). 이 문서는 구현 전 설계다. 구현하며 달라지는 곳은 맨 아래 정정 이력에 적는다. 본문과 정정 이력이 다르면 정정 이력이 맞다.
 
+> 2026-11-03 바뀜: 일간 작성은 근태 탭으로 옮겼고([ATTENDANCE-PLAN.md](ATTENDANCE-PLAN.md), 2026-10-29) 보고서 창은 없앴다([ATTEND-SUMMARY.md](ATTEND-SUMMARY.md)).
+
 ## 1. 요구 (2026-10-07 사용자와 대화로 확정)
 
 - 회사 일간보고에는 업무 아래에 상세 줄을 쓴다. 예:

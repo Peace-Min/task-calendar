@@ -1,11 +1,13 @@
 # 과제 공용 캘린더 적용 기획 (PROJECT-CALENDAR-PLAN)
 
-- 상태: **기획 확정(2026-10-22).** 열린 질문은 사용자 답으로 모두 정했다(9 절). 화면 기준은 시안 [prototypes/project-calendar.html](prototypes/project-calendar.html)(2차, 6.6 절)이다. **P1(DB 와 호스트) 구현(2026-10-22, 8.3 절). P2(과제 탭 화면) 구현(2026-10-22, 8.4 절). 실제 앱 검토 반영(2026-10-22 저녁, 6.7 절): 단독 보기, 막대 미리보기, 복사 대응표와 과제별 판 번호 표를 없앴다(표 둘).** 공용 개발 DB 반영과 위젯 실동작 QA(루프 `tests/loop-project-calendar.mjs`)는 아직 하지 않았다.
+- 상태: **기획 확정(2026-10-22).** 열린 질문은 사용자 답으로 모두 정했다(9 절). 화면 기준은 시안 [prototypes/project-calendar.html](prototypes/project-calendar.html)(2차, 6.6 절)이다. **P1(DB 와 호스트) 구현(2026-10-22, 8.3 절). P2(과제 탭 화면) 구현(2026-10-22, 8.4 절). 실제 앱 검토 반영(2026-10-22 저녁, 6.7 절): 단독 보기, 막대 미리보기, 복사 대응표와 과제별 판 번호 표를 없앴다(표 둘).** 공용 개발 DB 반영과 위젯 실동작 QA(루프 `tests/loop-project-calendar.mjs`)는 아직 하지 않았다. 0.23.0 판에 실림(P1 4fdba9c, P2 57461b4).
 - 출처: GitHub 이슈 [Peace-Min/task-calendar#14](https://github.com/Peace-Min/task-calendar/issues/14) 와 전달 묶음(Gist `111fd188…`의 `IMPLEMENTATION.md`, `final.html`, `previews.html`, `RESEARCH.md`). 이슈 본문과 `IMPLEMENTATION.md` 는 같은 내용이다.
 - 이 문서의 역할: 이슈는 HEAD `f461182`(앱 0.22.0, 구조 번호 13)를 보고 썼다. 그 뒤 버전 관문(14), 회의실 공용화(15), 배포 SQL 하나 방식, 관리 화면 별도 창 기획이 들어왔다. 이 문서는 이슈를 **지금 코드와 운용 규칙, 그리고 사용자 결정에 맞게 고친 적용 계획**이다. 이슈의 과제 탭 화면 계약(§3)과 수용 기준(§10)은 이 문서가 고치지 않는 한 그대로 쓴다.
 - 기준 HEAD: `e19d073`(feat/db-app). 운용 기준: [DB-RELEASE-OPS.md](DB-RELEASE-OPS.md). 이 문서의 DB 이야기는 모두 **외부망 개발 PC 의 개발과 QA** 이야기다. 폐쇄망 서버에는 배포 SQL 로만 간다.
 
 ---
+
+> 2026-10-30 바뀜: 과제 탭 날짜 목록 팝업은 과제별 묶음으로 바꿨다. [PROJECT-CAL-DAY-POPUP-DECISIONS.md](PROJECT-CAL-DAY-POPUP-DECISIONS.md) 참고.
 
 ## 1. 이슈가 요구하는 것 (요약)
 

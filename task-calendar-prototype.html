@@ -21024,7 +21024,7 @@ function atBlockProblem(b){
 //  글을 자유 메모와 블록으로 되살린다(이전 보고, 보고한 날, 옛 임시 저장 v1). names = 내 캘린더 과제명. 돌려주는 값 { memo, blocks }.
 //    머리 줄: 정확히 `[이름] : 숫자` 이거나, 이름이 캘린더 과제명이면 시간 없는 `[이름]`(0시간, 블록 이전에 쓰던 꼴)도 받는다.
 //    캘린더 과제명이면 블록, 정확한 꼴인데 캘린더에 없는 이름(같은 과제의 두 번째 머리도)은 과제 미정 블록이다. `[일정]` 처럼 과제명이 아닌 `[...]` 는 내용이다.
-//    첫 머리 앞의 글은 자유 메모(과제와 상관없는 글, 예: `* 대전 ADD 외근`), 그 밖은 앞 블록의 내용이다.
+//    첫 머리 앞의 글은 자유 메모(과제와 상관없는 글, 예: `* 대전 출장`), 그 밖은 앞 블록의 내용이다.
 function atParseReport(content, names){
   const known = new Set(names || []), used = new Set(), blocks = [];
   let memo = '', cur = null;
@@ -21594,7 +21594,7 @@ function atBlocksRender(){
   const projs = atProjects(), used = new Set(ATE.blocks.map(b => b.name).filter(Boolean)), n = ATE.blocks.length;
   //  맨 위 자유 메모: 과제와 상관없는 글(예: 외근 표시). 과제, 시간, ✕ 가 없고 비어 있어도 된다. 보낼 때 맨 앞에 붙는다.
   const memoHtml = '<div class="at-blk at-memo"><div class="at-bh"><span class="at-bn">자유 메모</span></div>'
-    + '<textarea class="at-bt" data-memo="1" spellcheck="false" rows="1" aria-label="자유 메모" placeholder="예: * 대전 ADD 외근"></textarea></div>';
+    + '<textarea class="at-bt" data-memo="1" spellcheck="false" rows="1" aria-label="자유 메모" placeholder="예: * 대전 출장"></textarea></div>';
   //  머리 순서: [색 점] [과제명] (오른쪽으로) [시간 칸] 시간 [✕]. 과제명은 글자라 고칠 수 없다(자물쇠 표시는 번잡해서 뺐다, 2026-10-29 사용자)
   const release = holdHeight(box);   // 새 글 칸이 접힌 채 레이아웃을 강제해도 내용 높이가 줄지 않게
   box.innerHTML = memoHtml + (n ? ATE.blocks.map((b, i) => {

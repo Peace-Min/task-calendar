@@ -4,6 +4,8 @@
 > 짝 문서: [REPORT-EDIT.md](REPORT-EDIT.md)(일간 글 편집, 같은 틀). 프로토타입: `dist/rehearsal/weekly-edit-proto/index.html`(로컬, gitignore, 미처리사항 등 세 칸은 이번 범위에서 빠졌다).
 > 이 문서는 구현 전 설계다. 구현하며 달라지는 곳은 맨 아래 정정 이력에 적는다. 본문과 정정 이력이 다르면 정정 이력이 맞다.
 
+> 2026-11-03 바뀜: 주간 작성은 근태 탭 [주간]으로 옮겼고([ATTENDANCE-PLAN.md](ATTENDANCE-PLAN.md) 결정 13, 2026-10-29) 보고서 창은 없앴다([ATTEND-SUMMARY.md](ATTEND-SUMMARY.md)).
+
 ## 1. 요구 (2026-10-08 사용자와 대화로 확정)
 
 - 주간 작성도 앱에서 자유롭게 고쳐서, 사람들이 실제로 쓰는 최종 내용이 캘린더 DB(`cal_report_weekly`)에 남게 한다.

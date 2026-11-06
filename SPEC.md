@@ -14,6 +14,7 @@
 > | 네트워크 | 호출 0개 | 인터넷 0개(폐쇄망). 사내 MySQL(3306)과 사내 보고 시스템(netcus)에는 붙는다 |
 >
 > 그래서 §1 표의 *"단일 HTML 파일로 완결 → USB 복사만 하면 실행"*, §6의 *"데이터는 … `data.xml`에 저장"* 같은 문장은 **그 시점 기준으로 읽어야 한다.**
+> 화면 서술도 같다. §2 R4 의 과제 필터 칩과 §8 의 우측 패널 탭(`[일정 상세|할 일|작업일지]`)은 없어졌다(2026-11-03 바뀜: 날짜 패널은 고른 날짜의 일정과 할 일 두 묶음, 거르기는 ⚲ 보기 단추 하나). 지금 화면은 [USAGE.md](USAGE.md)다.
 > 현행 구조는 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), 현행 DB 설계는 [db/CALENDAR-TABLE-DESIGN.md](db/CALENDAR-TABLE-DESIGN.md), 지금 어디인지는 [docs/ROADMAP.md](docs/ROADMAP.md)가 정본이다.
 >
 > **직렬화의 진짜 정본은 문서가 아니라 코드다.** `task-calendar-prototype.html`의 `toXML()`/`fromXML()`/`xmlRoundTrip()`.

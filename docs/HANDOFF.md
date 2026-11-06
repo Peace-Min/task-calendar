@@ -4,10 +4,26 @@
 > 상세 설계와 이력은 각 문서의 §11 이 정본이다. 여기는 "지금 어디에 있고, 무엇부터 하며, 무엇을 밟으면 안 되는가"만 적는다.
 > **환경 구분(2026-10-21):** 이 저장소를 여는 PC 는 **외부망 개발 PC** 다. 실제 사용자, 사내 서버 DB, 설치 파일 공유 폴더는 모두 **폐쇄망**에 있다. 개발 PC 의 MySQL 은 개발과 QA 전용이고, 산출물(인스톨러, 이관 SQL)은 여기서 만들어 폐쇄망으로 옮긴다. 폐쇄망 값(서버 주소, 비밀번호, 공유 폴더)은 저장소에 넣지 않는다. 자세한 표는 [DB-RELEASE-OPS.md](DB-RELEASE-OPS.md) "환경 구분".
 > [ROADMAP.md](ROADMAP.md) §0 은 2026-09-02 기준이라 이 문서보다 낡았다. 충돌하면 이 문서가 맞다.
+> **2026-11-06:** 아래 0절이 지금 상태다. 1~3절은 2026-10-01 기준 기록이라 그대로 둔다(그 안의 `ExpectedSchemaVersion` 은 2026-10-21 부터 `DbGate.AppStructureVersion` 이다).
 
 ---
 
-## 1. 지금 어디에 있나
+## 0. 지금 (2026-11-06)
+
+| 항목 | 값 |
+|---|---|
+| 브랜치 | `feat/db-app`(사용자가 말하는 "메인 브랜치"). HEAD `1fca902` |
+| 마지막 배포판 | **v0.25.1**(2026-11-02, `8b273b5`, DB 구조 20). 업로드와 SQL 실행은 폐쇄망에서 사용자가 한다 |
+| 다음 판 | **0.26.0 예정**, 버전 갱신과 빌드 전. 앱 구조 번호 `DbGate.AppStructureVersion = 21`, 이관 조각 `db/deploy/migrations/v21-project-watch.sql`(`cal_project_watch`) |
+| 0.25.1 뒤 들어간 것 | CHANGELOG.md 맨 위 "다음 판" 항목들(2026-11-03 ~ 11-06): 근태 탭 [일간 \| 주간 \| 취합](보고서 창과 상단 보고서 단추 없앰), 날짜 패널 정리(탭과 ＋ 새 기록 없앰, 밀린 할 일, 일정 카드, 늘 보이는 묶음 머리), ⚲ 보기 단추, 관심 과제, 달력 칸 합쳐 채우기, 팝업 ×, 스크롤 안정성, 작성 보조 수준과 문단 모양, 주간보고 임시저장과 [인트라넷에서 확인] |
+| 화면 큰 틀 | 상단 `[월간 \| 주간]`, `⚲ 보기`, 🔍, 👥, 🏷️ 내 과제, 🐞, 👤, 🎨, ?, ⋯. 탭 줄 `[개인 \| 과제 \| 근태]`. 따로 뜨는 창은 열람, 관리, 근태 셋(`widget/AppWindow.cs`) |
+| 배포 방식 | Setup, `latest.json`, `release-v<버전>.sql` 세 개가 같은 빌드의 짝. Setup 먼저 올리고 SQL(DB-RELEASE-OPS §4). 산출물을 만든 뒤에는 빌드를 다시 돌리지 않는다 |
+
+**다음 할 일**: 사용자가 지시하면 0.26.0 릴리스(CLAUDE.md 체크리스트 전체). 남은 후보는 [NEXT-VERSION.md](NEXT-VERSION.md). 기능별 인계는 `docs/handoff/<날짜>-<주제>.md`.
+
+---
+
+## 1. 지금 어디에 있나 (2026-10-01 기준)
 
 | 항목 | 값 |
 |---|---|
@@ -78,7 +94,7 @@
 16. **2026-10-01, 팝업 '가져오기'는 바로 교체**: 미리보기(병합/교체) 없이 이 사용자의 캘린더 행을 지우고 파일을 넣는다(한 트랜잭션, 실패하면 그대로). 누르는 순간 캘린더가 비어 있지 않으면 기존 미리보기로 넘긴다. ⋯ 메뉴 'XML 가져오기'는 미리보기를 유지한다. 교체에 성공하면 원본은 `<이름>.migrated-<날짜>` 로 이름을 바꾼다(병합은 바꾸지 않는다).
 17. **2026-10-01, 루프 정비**: 루프 4종(import-ui, schema-gate, peer-frame, peer-view)의 DB 이름 하드코딩 제거(`TC_TEST_DB_NAME`). C# 러너 4종(calendar-write, peer-view, report-wiring, dryrun-xml-to-db)에 `DbErrors.cs`/`DbFault.cs` 링크. loop-offline 이 앞 루프가 남긴 접근 거부 상태를 시작 전에 푼다. 실 DB 루프 실행기 `dist/rehearsal/run-loops.ps1`(gitignore)은 **메인이 직접 돌린다**(사용자 지시).
 
-## 3. 다음 할 일 (우선순위순)
+## 3. 다음 할 일 (우선순위순, 2026-10-01 기준. 지금 할 일은 0절)
 
 1. **폐쇄망 개인 PC 에 v0.19.0 설치**(사용자). Setup sha256 `0ad02b32…3df8`. 순서:
     1. 0.17.1 에서 'XML 내보내기'로 안전 사본을 만든다.
@@ -112,7 +128,7 @@ read -rs TC_TEST_DB_ADMIN_PW; export TC_TEST_DB_ADMIN_PW; node tests/loop-user-a
 
 ## 5. 밟으면 안 되는 것 (실제로 밟았던 것)
 
-- **줄끝**: `widget/MainWindow.xaml.cs` 는 `\r\r\n` 다수와 **정확히 24 CRLF**, LF 0. Edit 툴이 통째로 정규화한 사례가 있으니 바이트 스크립트로 고치고 전후 카운트를 확인한다. ProjectDb.cs, prototype.html, 대부분의 tests 는 LF, `tests/harness*.mjs`, `tests/user-info.test.mjs`, `tests/README.md`, `DEPLOY.md` 는 CRLF. `git stash` 금지(워크트리 공유).
+- **줄끝**: `widget/MainWindow.xaml.cs` 는 `\r\r\n` 다수와 **정확히 24 CRLF**, LF 0. Edit 툴이 통째로 정규화한 사례가 있으니 바이트 스크립트로 고치고 전후 카운트를 확인한다. ProjectDb.cs, prototype.html, 대부분의 tests 는 LF, `tests/harness*.mjs`, `tests/user-info.test.mjs`, `tests/README.md`, `DEPLOY.md` 는 CRLF(2026-10-22 `.gitattributes` 줄끝 규칙 뒤로 이 파일들도 LF 다. `widget/MainWindow.xaml.cs` 만 `-text`). `git stash` 금지(워크트리 공유).
 - **prototype.html 전역 치환 금지**. 임베드 base64 이미지 16블록이 깨진 적이 있다. Edit 는 고유 앵커로만 하고, 끝나면 HEAD 와 base64 동일성을 확인한다.
 - **CDP 측정 스크립트가 페이지에 `window.__vt` 를 남기면 `loop-ui-visual` 이 자기 헬퍼를 안 심고 전 상태를 스킵한다**(2026-09-23 실제로 144/144 스킵). 측정 뒤 `delete window.__vt` 를 하거나 위젯을 재기동한 뒤 루프를 돌린다.
 - **루프의 `el.click()` 은 포커스를 옮기지 않는다**. 포커스 보존을 재려면 `focus()` 를 먼저 부른다(C21).
@@ -142,7 +158,12 @@ read -rs TC_TEST_DB_ADMIN_PW; export TC_TEST_DB_ADMIN_PW; node tests/loop-user-a
 | 마이그레이션 순서표 | db/deploy/README.md |
 | 시험 하네스, 루프 규약, 형제 폴더 전제 | tests/README.md |
 | 표 설계 정본 | db/CALENDAR-TABLE-DESIGN.md, db/deploy/schema-calendar.sql |
-| 검토자 보고용 스키마 | docs/DB-SCHEMA.html, db/table-design-report.html (v12) |
+| 검토자 보고용 스키마 | docs/DB-SCHEMA.html, db/table-design-report.html (DB 구조 21, 2026-11-06 다시 생성. 도구 tools/schema-report/) |
 | 서버(DB) 연결 장애 대응 기획, 수용 기준, 결과 | docs/OFFLINE-RESILIENCE.md |
 | 위키 원본(사용자 안내, 운영 진단) | docs/wiki/ (GitHub 위키로 복사) |
 | 새 주 DB 구축 스크립트 | db/deploy/setup-taskcalendar.cmd/.ps1, DEPLOY.md §0-6 |
+| 사내 서버 배포, 버전 관문(2026-10-21~) | docs/DB-RELEASE-OPS.md, docs/VERSION-GATE.md |
+| 근태 보고, 취합, 주간보고 수정과 임시저장 | docs/ATTENDANCE-PLAN.md, docs/ATTEND-SUMMARY.md, docs/WEEKLY-UPSERT.md |
+| 날짜 패널, 보기, 밀린 할 일 | docs/PERSONAL-PANEL.md, docs/DAY-PANEL-CARDS.md, docs/FILTER-MULTI.md |
+| 과제 탭, 관심 과제 | docs/PROJECT-CALENDAR-PLAN.md, docs/PC-WATCH.md, docs/PC-WATCH-2.md |
+| 작성 보조(수준과 문단 모양), 스크롤 안정성 | docs/WRITING-ASSIST.md, docs/SCROLL-STABILITY.md |

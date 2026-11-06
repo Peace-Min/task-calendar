@@ -12,7 +12,7 @@
               나머지 사람은 name 과 login_id 를 가상 명단(demo-data.mjs)으로. user_id, 소속, 직급, 권한, 재직 여부, 순서는 그대로.
     customer, project: 전부 지우고 '(예시)' 로 시작하는 발주처 5개, 공식 과제 8개로.
     cal_*: 사용자 데이터를 전부 지우고 녹화 계정과 동료 셋(김철수, 이영희, 박민수)에게 지난달과 이번 달 데이터를 만든다.
-           cal_user_rev 는 지우지 않고 모두 하나씩 올린다. cal_schema_meta 는 그대로(13).
+           cal_user_rev 는 지우지 않고 모두 하나씩 올린다. cal_schema_meta 는 그대로(구조 번호는 $SCHEMA_VERSION, build-demo-sql.mjs 의 SCHEMA_VERSION 과 같아야 한다).
     그대로: org_unit, title_code, section_code, status_code, MySQL 계정과 권한(이 도구는 GRANT, CREATE USER 를 내지 않는다).
 
   녹화 계정을 고르는 법
@@ -102,7 +102,7 @@ $EXIT_BACKUP    = 5
 $ADMIN_PW_ENV   = "TASKMGR_ADMIN_PW"   # 무인 실행 자격(restore-taskmgr.ps1, migrate-code-ids.ps1 과 같은 이름)
 $STDIN_WAIT_SEC = 10                   # stdin 첫 줄 읽기 상한(초)
 $DEFAULT_MYSQL_DIR = "C:\Program Files\MySQL\MySQL Server 8.4"
-$SCHEMA_VERSION = "20"   # cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
+$SCHEMA_VERSION = "21"   # cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
 $DEFAULT_COLLATION = "utf8mb4_0900_ai_ci"
 $GENERATOR      = "build-demo-sql.mjs"
 $LOGIN_RE       = '^[A-Za-z0-9._@-]{1,50}$'   # build-demo-sql.mjs 의 LOGIN_RE 와 같다

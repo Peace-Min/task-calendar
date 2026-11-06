@@ -325,7 +325,7 @@ const html = `<!DOCTYPE html>
 <header class="report">
   <div class="eyebrow">과제관리 시스템 데이터 설계 보고</div>
   <h1>${esc(S.meta.db || 'taskcalendar')} 스키마 v${esc(S.meta.schemaVersion)}</h1>
-  <div class="scope"><b>범위·시점</b> ${esc(stamp)} 개발 PC 의 실제 DB 에서 읽은 구조. 2026-07-24 판(과제 마스터 5표)을 잇되 사용자·조직 표와 캘린더 표까지 <b>23표 전부</b>를 다룬다. 설계의 근거와 결정 이력은 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> 가 정본이고, 이 문서는 배포 전 검토용으로 현재 DB 구조를 한 장에 정리했다.</div>
+  <div class="scope"><b>범위·시점</b> ${esc(stamp)} 개발 PC 의 실제 DB 에서 읽은 구조. 2026-07-24 판(과제 마스터 5표)을 잇되 사용자·조직 표와 캘린더 표까지 <b>${S.tables.length}표 전부</b>를 다룬다. 설계의 근거와 결정 이력은 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> 가 정본이고, 이 문서는 배포 전 검토용으로 현재 DB 구조를 한 장에 정리했다.</div>
   <p class="lede">테이블은 과제, 사용자·조직, 캘린더 세 그룹으로 나뉜다. 과제와 사용자·조직은 회사가 관리하는 마스터이고, 캘린더는 사용자별 데이터라 user_id 로 시작하는 복합 키를 쓴다. 앱 계정 권한도 이 구분을 따른다.</p>
   <div class="meta">
     <span class="m"><span class="dot"></span>DB <b>${esc(S.meta.db || 'taskcalendar')}</b>, MySQL <b>${esc(S.meta.mysql)}</b>, ${esc(S.meta.charset[0])}</span>

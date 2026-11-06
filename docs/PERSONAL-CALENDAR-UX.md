@@ -3,6 +3,8 @@
 > 2026-10-22 보완. 관련: [이슈 #15](https://github.com/Peace-Min/task-calendar/issues/15), [이슈 #14](https://github.com/Peace-Min/task-calendar/issues/14).
 > **현재 앱 기능·DB는 변경하지 않았다.** 이 문서는 후속 구현의 범위와 검증 기준이며, 첨부 화면은 가상 데이터를 사용하는 동작 시안이다.
 
+> 2026-11-03 바뀜: 보기와 우측 패널은 [PERSONAL-PANEL.md](PERSONAL-PANEL.md)로 구현했다(패널은 탭 없이 고른 날짜만, 보기 팝업 하나). 커밋 내역은 [GIT-SVN-REMOVAL.md](GIT-SVN-REMOVAL.md)로 없어졌다.
+
 ## 1. 실제 검토 피드백과 문제
 
 검토 대화는 다음 순서였다.

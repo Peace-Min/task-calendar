@@ -12,6 +12,14 @@
 >
 > **2026-10-26: Git, SVN 기능을 지웠다**(구조 번호 18, [`../docs/GIT-SVN-REMOVAL.md`](../docs/GIT-SVN-REMOVAL.md)). 커밋 기록과 `cal_entry_commit` 표,
 > `cal_category.uses_repo`, 작성자 칸이 없어졌다. 아래 C1~C3 의 커밋, 저장소 경로 항목은 그 전의 기록이다.
+>
+> **2026-11-06 현행화: 이 로드맵의 본문은 2026-09 까지의 기록이다.** 그 뒤 DB 는 `taskcalendar`(v0.19.0 부터)로 옮겼고, 구조 변경은 2026-10-21 부터
+> 이관 조각(`deploy/migrations/v<번호>-*.sql`)을 이어 붙인 배포 SQL 하나로 낸다([`../docs/DB-RELEASE-OPS.md`](../docs/DB-RELEASE-OPS.md)). 지금 구조 번호는 **21** 이다.
+> 14 버전 관문(`cal_schema_meta` 키 다섯, `DbGate`), 15 회의실 공용화(`room_code`, `cal_room` 삭제), 16 과제 캘린더(`cal_project_event`, `cal_project_change`),
+> 17 월간보고(`project.dev_start_date`, `project_schedule_image`), 18 Git, SVN 삭제, 19 과제 순서(`project.sort_no`),
+> 20 주간보고 회의내용과 과제투입시간, 과제 일정 반복(`cal_report_weekly.meeting`, `cal_report_weekly_hours`, `cal_project_event.recur_freq`, `cal_project_event_except`),
+> 21 과제 탭 보기만 목록(`cal_project_watch`). 각 판의 내용은 [`deploy/schema-calendar.sql`](deploy/schema-calendar.sql) 의 `cal_schema_meta` 시딩 줄 위 주석과 각 조각 머리말이 정본이다.
+> 아래 요약 표의 C4, C5 상태 칸도 이날 본문(완료, 결정)에 맞췄다.
 
 ---
 
@@ -219,12 +227,12 @@ P6 폐쇄망 임시서버 ─▶ P7 배포·운영        P6.5 per-user 인증(a
 # 축 B: 캘린더 데이터 (`data.xml` → DB)
 
 > **정본은 [`CALENDAR-TABLE-DESIGN.md`](CALENDAR-TABLE-DESIGN.md) §11.** 여기엔 진행 상태만 옮겨 적는다.
-> 축 A 와 **DB 는 같고**(`taskmgr`) 표만 다르다(`cal_*`). 사용자 신원도 같은 `app_user.user_id` 를 공유한다.
+> 축 A 와 **DB 는 같고**(`taskmgr`. 지금은 `taskcalendar`) 표만 다르다(`cal_*`). 사용자 신원도 같은 `app_user.user_id` 를 공유한다.
 > 그래서 `cal_*` 의 FK 가 그 컬럼을 가리키고, **배포 순서를 바꾸면 errno 1824 로 터진다**.
 
 ## C1. 캘린더 스키마: **[M]** ✅ **완료**
 
-- [x] `cal_*` **16표** *(실측 2026-09-01)*: 일정, 반복예외, 과제, 커밋, 할일, 날짜메모, 근태, 설정, 회의실, rev, 이관로그. **`schema_version` 값은 여기 적지 않는다.** 정본은 `deploy/schema-calendar.sql` 끝의 `cal_schema_meta` 시딩 줄이고, 실 DB 값은 `SELECT v FROM cal_schema_meta WHERE k='schema_version'` 로 본다(판번호를 문서에 박으면 마이그레이션 한 판마다 뒤처진다)
+- [x] `cal_*` **16표** *(실측 2026-09-01)*: 일정, 반복예외, 과제, 커밋, 할일, 날짜메모, 근태, 설정, 회의실, rev, 이관로그. **`schema_version` 값은 여기 적지 않는다.** 정본은 `deploy/schema-calendar.sql` 끝의 `cal_schema_meta` 시딩 줄이고, 실 DB 값은 `SELECT v FROM cal_schema_meta WHERE k='schema_version'` 로 본다(판번호를 문서에 박으면 마이그레이션 한 판마다 뒤처진다). *(2026-10-21 구조 14 부터 키 이름은 `db_structure_version` 이다. 옛 키 `schema_version` 은 `migrations/v14-version-gate.sql` 이 지웠다)*
 - [x] **대리키 전환**(§5.2): PK `(user_id, <표>_no)`, `login_id` 사슬 폐기. `org_unit` 도 완전 절단(이름 미러 없음)
 - [x] **보고 기록 3표**(§5.9): `cal_report_daily`, `cal_report_hours`, `cal_report_weekly`. **로드맵에 없던 항목**.
       "캘린더가 **보낸 것만** 담는다". 사이트 되읽기 동기화는 **버린 안**이다(사이트가 무효화 신호를 주지 않는다).
@@ -422,8 +430,8 @@ P6 폐쇄망 임시서버 ─▶ P7 배포·운영        P6.5 per-user 인증(a
 | C3 | 앱 저장 경로 전환(읽기·쓰기·기본 DB·실이관) | L | localhost | ✅ 완료 |
 | C3.5 | XML 경로 폐기(`XmlRetired`) | S | localhost | ✅ 완료 |
 | C3.6 | 이관 방식 확정(자동이관 폐기, 명시적 가져오기) | M | localhost | ✅ 완료 |
-| C4 | 타인 일정 열람(`view_scope`) | S~M | localhost | ⬜ |
-| C5 | 미리알림 오프라인 동작 | S | - | ⬜ **미결 결정** |
+| C4 | 타인 일정 열람(`view_scope`) | S~M | localhost | ✅ 완료(2026-09-03. 이 칸은 2026-11-06 에 ⬜ 에서 고쳤다) |
+| C5 | 미리알림 오프라인 동작 | S | - | ✅ 결정(2026-09-02, ③ 온라인일 때만. 이 칸은 2026-11-06 에 '⬜ 미결 결정'에서 고쳤다) |
 
 ---
 
@@ -440,7 +448,7 @@ P6 폐쇄망 임시서버 ─▶ P7 배포·운영        P6.5 per-user 인증(a
 
 5. ✅ **완료**: **C1·C2·C3**: 스키마, 이관 도구, 앱 저장 경로 전환. **기본 출처가 이미 DB 다**(XML 은 명시적 탈출구로만 남아 있다).
 6. ✅ **완료**: **C3.5**(XML 저장 경로 폐기), **C3.6**(자동이관을 폐기하고 명시적 'XML 가져오기'로 이관).
-7. **지금 손댈 것**: **C5**(미리알림 결정, 이미 순서가 뒤집혔다), **C4**(타인 일정 열람).
+7. **지금 손댈 것**: **C5**(미리알림 결정, 이미 순서가 뒤집혔다), **C4**(타인 일정 열람). *(2026-11-06 덧붙임: C5 는 2026-09-02 에 결정했고 C4 는 2026-09-03 에 끝났다. 아래 표와 '가장 먼저 손댈 조각'은 그 전의 기록이다)*
 
 ---
 

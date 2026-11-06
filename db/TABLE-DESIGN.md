@@ -4,6 +4,7 @@
 > **범위**: `taskmgr` 데이터베이스의 테이블 구조, 식별·유니크 규칙, 그 결정 근거와 유지보수 지침
 > **관련**: 배포/운영은 [`ARCHITECTURE.md`](ARCHITECTURE.md), 진행 계획은 [`ROADMAP.md`](ROADMAP.md), DDL은 [`deploy/schema-structure.sql`](deploy/schema-structure.sql)(옛 `schema.sql` 은 2026-10-15 에 지웠다)
 > **최종 갱신**: 2026-10-15 (ADR-23: 코드표를 번호 키로, `schema_version` 13). 그 전은 2026-07-24 (ADR-21, 22: 유니크 규칙 재정의, 구분/상태 코드테이블 전환, note 컬럼)
+> **2026-11-06 현행화**: DB 구조 21 에 맞춰 `room_code`(§2.6), `project.dev_start_date`(§3), `project.id` 를 가리키는 캘린더 쪽 표(§6, `cal_project_watch` 포함)를 적었다. 구조 번호 이력은 [`deploy/schema-calendar.sql`](deploy/schema-calendar.sql) 의 `cal_schema_meta` 시딩 줄 위 주석이 정본이다.
 > **DB 이름**: 지금 앱이 쓰는 DB 는 `taskcalendar` 다. 이 문서가 `taskmgr` 이라 적은 곳은 옛 DB(과제 트랙 원본) 이야기다.
 
 ---
@@ -11,7 +12,8 @@
 ## 1. 한 장 요약
 
 - **DB가 원본(source of truth)**: Admin이 캘린더 앱으로 과제를 관리하고, Excel은 DB에서 뽑는 리포트다.
-- **테이블은 4개**: `customer`(발주처) + `section_code`/`status_code`(구분·상태 코드) + `project`(과제). 셋 다 `project`의 FK 타겟인 룩업이고, 과제 본체는 하나뿐이다.
+- **테이블은 4개**: `customer`(발주처) + `section_code`/`status_code`(구분·상태 코드) + `project`(과제). 셋 다 `project`의 FK 타겟인 룩업이고, 과제 본체는 하나뿐이다. *(2026-10-21 구조 15 부터 같은 정본 파일에 회사 공용 회의실 `room_code` 가 더 있다. 어떤 표도 가리키지 않는 추천 목록이다. §2.6)*
+- **`project.id` 를 FK 로 가리키는 캘린더 쪽 표가 넷 있다**(정본 `deploy/schema-calendar.sql`): `cal_project_event`, `cal_project_change`(RESTRICT), `cal_project_watch`, `project_schedule_image`(CASCADE). §6.
 - **코드표는 번호가 기본키다**(2026-10-15, ADR-23). `customer_id`, `section_id`, `status_id` 가 기본키이고 `name` 은 `UNIQUE` 라벨이다. `project` 는 `customer_id`, `section_id`, `status_id` 로 번호를 가리킨다.
 - **구분/상태는 ENUM이 아니라 룩업 코드테이블**(2026-07-24)이고, 발주처와 대칭이다. 런타임에 추가/개명/순서변경/숨김이 가능하고, FK가 무결성을 승계한다(없는 값 거부). 개명은 라벨 한 행 `UPDATE` 이고 화면은 조인으로 따라온다.
 - **과제의 정체성은 이름이 아니라 `uid`(UUID)다.** 같은 이름의 과제가 여럿 존재할 수 있다(구성품별 계약·연도별 갱신). 실데이터가 이를 증명했다.
@@ -70,6 +72,21 @@
 
 ---
 
+## 2.6 테이블: `room_code` (회사 공용 회의실, 2026-10-21 구조 15)
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|---|---|---|---|
+| `room_id` | SMALLINT UNSIGNED | **PK**, AUTO_INCREMENT | 회의실 번호. 관리 화면의 이름 바꾸기, 삭제, 순서가 이 번호로 가리킨다 |
+| `name` | VARCHAR(40) | NOT NULL, **UNIQUE**(`uq_room_code_name`), CHECK `name<>''` | 회의실 이름(라벨, ai_ci) |
+| `sort_order` | INT | NOT NULL | 장소 칸 추천 순서(10, 20, 30 …). 추가는 MAX+10 |
+| `created_at`/`updated_at` | DATETIME(3) | NOT NULL, 자동 | 감사 |
+
+- 사람마다 두던 `cal_room` 을 지우고 회사 공용 목록 하나로 바꿨다([`../docs/SHARED-ROOMS.md`](../docs/SHARED-ROOMS.md)). 이관은 조각 `deploy/migrations/v15-shared-rooms.sql`.
+- **어떤 표도 이 번호를 가리키지 않는다.** 일정의 장소(`cal_entry.location`)는 자유 글자다. 그래서 숨김(`is_active`)과 휴지통이 없고 지우면 바로 지운다(이미 적힌 일정의 장소 글자는 그대로 남는다).
+- 관리자만 고친다(호스트 `OpenAdminAsync`). 일반 사용자는 읽기만 한다.
+
+---
+
 ## 3. 테이블: `project` (과제 마스터, 핵심)
 
 | 컬럼 | 타입 | 제약 | 설명 |
@@ -83,6 +100,7 @@
 | `common_name` | VARCHAR(200) | NOT NULL, 기본 `''` ¹ | 통상명칭 |
 | `start_date` | DATE | NULL | 계약시작일(미정=NULL. 어느 구분이든 넣거나 비울 수 있다) |
 | `end_date` | DATE | NULL | 계약종료일(미정=NULL) |
+| `dev_start_date` | DATE | NULL | **개발시작일**(2026-10-22 구조 17, 월간보고 과제 수행 기간의 시작). 계약시작일과 별개. 미정=NULL. `end_date` 와 `dev_end_date` 사이에 있다 |
 | `dev_end_date` | DATE | NULL | **개발종료일**. 계약종료일과 **별개**(개발 완료 목표·실제). 어느 구분이든 잠그지 않는다(2026-10-26 전에는 선진행이 계약 날짜만 잠갔다). 미정=NULL. 목록 행에는 안 나온다(폭 고정). 상세, 편집, Excel 전용 |
 | `status_id` | SMALLINT UNSIGNED | NULL, **FK→status_code.status_id** | 상태 번호(NULL=상태 없음, FK 스킵). RESTRICT / RESTRICT |
 | `sort_no` | INT UNSIGNED | NULL | **그 구분 안의 순서**(1 부터, 2026-10-26 구조 19). 정렬은 구분 순서, `sort_no`(NULL 은 뒤), 표시 이름. 화면과 Excel 의 No 는 이 값이 아니라 그 구분 안에서 몇 번째인가다. 새 과제, 구분을 바꾼 과제, 되살린 과제는 앱이 맨 뒤 번호를 준다. 숨긴 과제의 번호는 그대로 둔다. 관리 화면의 옮기기가 그 구분 전체를 1 부터 다시 쓴다 |
@@ -97,6 +115,7 @@
 - `FK fk_project_customer_id` → customer.customer_id (ON UPDATE RESTRICT / ON DELETE RESTRICT)
 - `FK fk_project_section_id` → section_code.section_id (RESTRICT / RESTRICT)
 - `FK fk_project_status_id` → status_code.status_id (RESTRICT / RESTRICT. NULL이면 스킵)
+- `CHECK chk_project_dev_dates`(구조 17): 개발 기간이 둘 다 있을 때만 `dev_start_date <= dev_end_date`. 한쪽이 미정이면 통과
 - `CHECK chk_project_active (is_active IN (0,1))`. 계약일 순서 CHECK(`start_date <= end_date`)는 아직 없다. 실데이터 역전은 0건이었고(로컬 `taskcalendar`, 원본 `taskmgr`, 2026-10-15) 넣을지는 따로 정한다
 - 번호는 바뀌지 않으므로 갱신 전파(CASCADE)가 필요 없다. 2026-10-15 전에는 이름 열 `customer`, `section`, `status` 와 `fk_project_customer`(ON UPDATE CASCADE) 등이 있었다
 - ~~`UNIQUE KEY (customer, project_name)`~~: **제거**(§4 참조)
@@ -180,6 +199,8 @@ section_code(section_id) 1 ────< project(section_id)    같음
 status_code(status_id)   1 ────< project(status_id)     같음 (status_id NULL 허용)
 project(uid)             ────< cal_category(project_uid)  ※ 외래키가 아닌 외부 식별자('db-<uid>')
 project(id)              1 ────< cal_project_event(project_id), cal_project_change(project_id)   FK RESTRICT (2026-10-22 과제 캘린더)
+project(id)              1 ────< project_schedule_image(project_id)   FK ON DELETE CASCADE (구조 17, 월간보고 그림)
+project(id)              1 ────< cal_project_watch(project_id)        FK ON DELETE CASCADE (구조 21, 과제 탭 보기만 목록)
 ```
 
 - 발주처, 구분, 상태를 **개명**하면 그 표의 한 행만 바뀌고, 과제 화면은 조인으로 새 이름을 보인다. 과제 행은 그대로다.
@@ -188,6 +209,7 @@ project(id)              1 ────< cal_project_event(project_id), cal_proj
 - 일정↔과제 링크는 `uid` 기반이라 **채번·이관에도 안 깨진다**. `cal_category.project_uid` 는 FK 가 아니라 외부 식별자다(웹과 XML 의 `db-<uid>` 정체성).
 - **과제 캘린더(구조 16)는 다르다.** 공용 일정 표가 `project.id` 를 진짜 FK 로 가리킨다(번호 키, CODE-TABLE-IDS). 그래서 공용 일정(지운 것 포함)이 있는 과제는 휴지통에서 영구 삭제가 거부된다(고정 문구, 최종 방어는 RESTRICT 1451). 공용 일정이 없으면 공용 표에 그 과제의 행이 없어 그대로 지워진다. 설계는 db/CALENDAR-TABLE-DESIGN.md §5.10.
 - **월간보고 개발 일정 그림(구조 17, `project_schedule_image`)** 은 `project.id` 를 CASCADE 로 가리킨다. 그림은 **사람마다 따로**다(2026-10-23 결정). 주인 `user_id`(`app_user.user_id`)가 있고 UNIQUE 는 (user_id, project_id, seq), 주인만 보고 고치며 그 사람 문서에만 들어간다. 과제를 영구 삭제하면 함께 지워진다. 주인은 RESTRICT 이고 `ProjectDb.UserRecordTables` 의 기록 표다(그림이 있는 계정은 퇴사 처리만 되고, 지우려면 그 사람 기록을 먼저 지운다). 같은 판에 `project.dev_start_date`(개발시작일, end_date 와 dev_end_date 사이)와 CHECK `chk_project_dev_dates` 가 들어왔다. 설계는 docs/MONTHLY-REPORT-PLAN.md §6.
+- **과제 탭 보기만 목록(구조 21, `cal_project_watch`, 2026-11-04)** 은 "다른 과제 보기"에서 사람이 고른 공식 과제를 계정에 저장한다. PK `(user_id, project_id)`, 칸은 그 둘과 `added_at`(UTC) 셋이다. 과제 FK 는 CASCADE 라 휴지통의 과제 영구 삭제를 이 줄이 막지 않고 함께 지워진다. 사람 FK 는 RESTRICT 라 퇴사자 영구 삭제 때 휴지통이 그 사람의 줄을 먼저 지운다(기록이 아니라 화면 설정이라 `UserRecordTables` 에는 없다). 한 사람 50개 상한은 DB 가 아니라 호스트가 넣을 때 센다. 보기만 과제는 내 과제(`cal_category`)가 아니고 쓰기 판정에 쓰이지 않는다. 앱 계정 권한은 SELECT, INSERT, DELETE. 설계는 [`CALENDAR-TABLE-DESIGN.md`](CALENDAR-TABLE-DESIGN.md) §5.10, [`../docs/PC-WATCH.md`](../docs/PC-WATCH.md).
 
 ---
 
@@ -225,7 +247,7 @@ project(id)              1 ────< cal_project_event(project_id), cal_proj
 
 | 시점 | 변경 |
 |---|---|
-| **P6.5** | `app_user`(=`Employee(NetcusId)`) 테이블 추가. 편집 권한 per-user. 코어 2테이블과 독립이라 지연 무비용 |
+| **P6.5** | `app_user`(=`Employee(NetcusId)`) 테이블 추가. 편집 권한 per-user. 코어 2테이블과 독립이라 지연 무비용 *(2026-08-03 v0.17.0 에 들어왔다. DDL 은 비공개 저장소)* |
 | 필요 시 | `updated_by`(누가 수정했는지) 컬럼. 지금은 없음(공유 관리자) |
 | 필요 시 | 연도 갱신을 "묶어 집계"할 요구가 크면 `contract_year`/차수 컬럼 검토(현재는 불필요, 반복 1건뿐) |
 
@@ -261,11 +283,11 @@ project(id)              1 ────< cal_project_event(project_id), cal_proj
 - 이름을 보여주는 조회마다 코드표 조인이 붙는다. 호스트가 조회 SQL 에서 조인해 이름과 번호를 함께 보낸다. 원시 행이나 덤프에서 `project` 만 보고는 발주처 이름을 읽을 수 없다(받아들인다).
 - 대소문자만 다른 이름을 막던 옛 기본키의 역할은 `UNIQUE(name)`(ai_ci)이 넘겨받는다.
 - 실측(2026-10-15, 실데이터 로컬 복제본): 이관의 절단 관문과 사후 검증 0, 재실행은 v12 가드에서 멈춤, 대소문자만 다른 표류는 절단 관문에서 멈추고 옛 열 보존, 이관 결과와 재구축 결과의 `information_schema` 359줄 차이 0.
-- `cal_room (user_id, name)`, `cal_schema_meta (k)` 는 그대로 둔다. 가리키는 자식이 없어 검토 규칙의 대상이 아니고, 구조상 지금이 낫다(§5.6.7).
+- `cal_room (user_id, name)`, `cal_schema_meta (k)` 는 그대로 둔다. 가리키는 자식이 없어 검토 규칙의 대상이 아니고, 구조상 지금이 낫다(§5.6.7). *(2026-10-21 구조 15 에서 `cal_room` 은 지우고 회사 공용 `room_code`(번호 키)로 바꿨다. §2.6)*
 
 **기각한 안**
 - **이름 키 유지**: 2026-08-24 판정. 마지막 근거(운영 중이라 옮기는 비용)가 사실이 아니었고, 비용으로 센 "개명 전파 재구현" 은 틀렸다. 남는 장점(표시할 때 조인이 없음, 원시 행 가독성)은 작다.
 - **역할 열**(코드표에 '선진행 역할', '종료 역할' 같은 표시 열을 둠): 동작이 묶인 행이 둘뿐이라 웹과 호스트에 한 곳씩 둔 번호 상수로 충분하다(사용자 결정 2026-10-15). 열을 두면 그 열을 지키는 제약과 관리 화면이 따로 필요해진다.
 - **색 열**(구분 색을 DB 에): 색은 웹 코드의 색 표(`DB_SECTION_COLORS`)에 그대로 두고 기준만 이름에서 번호로 바꾼다(사용자 결정 2026-10-15). 표에 없는 번호는 기본색.
 
-*(ADR 전체 목록은 [`ARCHITECTURE.md`](ARCHITECTURE.md) §5)*
+*(ADR 전체 목록은 [`ARCHITECTURE.md`](ARCHITECTURE.md) §9. 2026-11-06 에 §5 를 §9 로 고쳤다)*

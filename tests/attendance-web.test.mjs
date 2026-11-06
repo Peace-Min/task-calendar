@@ -176,7 +176,7 @@ if (!JSDOM) {
       const B = [{ name: '알파', hours: 6, text: '\n  - 한 일\n\t- 탭 줄  \n\n' }, { name: '베타', hours: 2.5, text: '- 둘째' }, { name: '감마', hours: 0, text: '   ' }];
       const cp = (b, m) => X.ev(`atCompose(${JSON.stringify(b)}, ${JSON.stringify(m)})`);
       assert.strictEqual(cp(B, ''), '[알파] : 6\n  - 한 일\n\t- 탭 줄\n\n[베타] : 2.5\n- 둘째\n\n[감마] : 0');
-      assert.strictEqual(cp(B.slice(1, 2), '* 대전 ADD 외근\n\n'), '* 대전 ADD 외근\n\n[베타] : 2.5\n- 둘째', '자유 메모가 맨 앞에 빈 줄 하나로 붙지 않았다');
+      assert.strictEqual(cp(B.slice(1, 2), '* 대전 출장\n\n'), '* 대전 출장\n\n[베타] : 2.5\n- 둘째', '자유 메모가 맨 앞에 빈 줄 하나로 붙지 않았다');
       assert.strictEqual(cp([], '  '), '', '빈 메모만 있으면 빈 글이어야 한다');
       assert.strictEqual(cp([{ name: '', hours: 3, text: '미정' }], ''), '', '과제 미정 블록이 조립에 들어갔다');
       assert.deepStrictEqual(X.evJSON(`atHoursPayload(${JSON.stringify(B)})`), [{ name: '알파', hours: 6 }, { name: '베타', hours: 2.5 }], 'hours 에 0 이 들어갔거나 빠졌다');
@@ -193,9 +193,9 @@ if (!JSDOM) {
   test('(U) 되살리기: 정확한 머리만(캘린더 과제명), 시간 없는 [과제명] 은 0시간, [일정] 은 내용, 첫 머리 앞은 자유 메모, 모르는 이름과 두 번째 머리는 미정', () => {
     const X = bootBrowser();
     try {
-      const text = '* 대전 ADD 외근\n\n[알파] : 5\n[일정]\n    - 연동\n◈ 알파 3\n[알파] 3\n[모름] : 2\n- 기타 일\n[베타]\n\n[감마] : 1.5\n[알파] : 1';
+      const text = '* 대전 출장\n\n[알파] : 5\n[일정]\n    - 연동\n◈ 알파 3\n[알파] 3\n[모름] : 2\n- 기타 일\n[베타]\n\n[감마] : 1.5\n[알파] : 1';
       const r = X.evJSON(`atParseReport(${JSON.stringify(text)}, ['알파', '베타', '감마', '델타'])`);
-      assert.strictEqual(r.memo, '* 대전 ADD 외근', '첫 머리 앞의 글이 자유 메모가 아니다');
+      assert.strictEqual(r.memo, '* 대전 출장', '첫 머리 앞의 글이 자유 메모가 아니다');
       assert.deepStrictEqual(r.blocks, [
         { name: '알파', hours: 5, text: '[일정]\n    - 연동\n◈ 알파 3\n[알파] 3', raw: '' },
         { name: '', hours: 2, text: '[모름] : 2\n- 기타 일', raw: '[모름] : 2' },
@@ -391,7 +391,7 @@ if (!JSDOM) {
       assert.ok(!X.$('#atBlocks [data-bup], #atBlocks [data-bdn]'), '▲ ▼ 단추가 남아 있다');
       //  화면에 보이는 것을 되풀이하는 안내 글은 두지 않는다(2026-10-29 UI 검토): 정렬 안내, 자유 메모 머리 안내, 불러오기 옆 안내, 미리보기 줄 수와 글자 수
       assert.ok(!X.$('.at-sorthint'), '정렬 안내가 남아 있다');
-      assert.ok(!X.$('#atBlocks .at-memo .at-hint') && X.$('#atBlocks textarea[data-memo]').placeholder === '예: * 대전 ADD 외근', '자유 메모 안내가 남았거나 예시가 다르다');
+      assert.ok(!X.$('#atBlocks .at-memo .at-hint') && X.$('#atBlocks textarea[data-memo]').placeholder === '예: * 대전 출장', '자유 메모 안내가 남았거나 예시가 다르다');
       assert.ok(!X.$('#atImpFoot .at-hint') && !X.$('#atPvStat') && !X.$('#atPvFoot'), '불러오기 옆 안내나 미리보기 줄 수가 남아 있다');
       assert.strictEqual(X.$('#atBlocks textarea[data-bt="0"]').placeholder, '', '블록 내용 칸에 (자유롭게) 안내가 남아 있다');
       //  머리 순서: 점, 과제명, 시간 칸, 시간, ✕(맨 끝)
@@ -1099,7 +1099,7 @@ if (!JSDOM) {
     assert.ok(!A.evJSON("[].map.call(document.querySelectorAll('#atStatus option'), function(o){ return o.value; })").includes(''), '근태 목록에 미기록이 있다');
     input(A, '#atStatus', '2');
     input(A, '#atOt', '2');
-    typeMemo(A, '* 대전 ADD 외근\n');
+    typeMemo(A, '* 대전 출장\n');
     typeBlock(A, 0, '\n    - 납품 준비\n\t- 탭 줄\n\n');
     setHours(A, 0, '2.5');
     typeBlock(A, 1, '- 회신');
@@ -1115,7 +1115,7 @@ if (!JSDOM) {
     try {
       const s = sendFlow(A);
       const NB = '&nbsp;';
-      assert.strictEqual(s.content, '* 대전 ADD 외근\n\n[알파] : 2.5\n' + NB.repeat(4) + '- 납품 준비\n' + NB.repeat(4) + '- 탭 줄\n\n[베타] : 3\n- 회신\n\n[감마] : 0');
+      assert.strictEqual(s.content, '* 대전 출장\n\n[알파] : 2.5\n' + NB.repeat(4) + '- 납품 준비\n' + NB.repeat(4) + '- 탭 줄\n\n[베타] : 3\n- 회신\n\n[감마] : 0');
       assert.deepStrictEqual(s.hours, [{ name: '알파', hours: 2.5 }, { name: '베타', hours: 3 }]);
       assert.strictEqual(s.status, '2', '고른 근태 코드가 아니다(이 화면은 null 을 보내지 않는다)');
       assert.strictEqual(s.overtime, 2);
