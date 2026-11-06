@@ -28,7 +28,8 @@ namespace TaskCalendarWidget
         //  true = cal_report_daily 1행과 cal_report_hours N행을 한 트랜잭션으로 커밋했다. false 면 호출자가 공통 실패 안내를 띄운다
         //  (재시도는 회사 보고부터 다시 한다. DB 만 다시 저장하는 길은 없다). 예외는 던지지 않고 false 로 돌려준다.
         Task<bool> SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson);
-        //  주간 보고 기록 저장. 반환값이 없다: 주간은 폼 채우기까지만 하고, 기록은 호스트가 뒤에서 10, 30, 60초 재시도한다(OfflineHost.cs S10).
+        //  주간 보고 기록 저장. 반환값이 없다: 기록은 호스트가 뒤에서 10, 30, 60초 재시도한다(OfflineHost.cs S10).
+        //    2026-11-06: 주간도 임시저장까지 앱이 하고 되읽기로 확인된 뒤에만 부른다(WEEKLY-UPSERT 끝 절). 제출은 사용자가 인트라넷에서 한다.
         //  meeting = 회의내용(resultwork, 구조 20). 폼에 채운 값 그대로 남긴다(ATTENDANCE-PLAN §13.3).
         //    null = 이 요청은 회의내용을 다루지 않았다(보고서 창의 옛 주간 전송). 그때는 DB 의 회의내용도 그대로 둔다.
         //    hoursJson = 과제투입시간 구조([{name, projectUid, hours}], 결정 14). null 이면 그 주의 시간 줄을 그대로 둔다(옛 전송).
@@ -52,6 +53,7 @@ namespace TaskCalendarWidget
         private bool _ncBusy;                   // netcus 단일 실행 가드("한 번에 하나" — 단일 _w2 레이스 방지). 6개 op 공유.
         private bool _probeOpen;                // 캡처 창이 열려 있는지(열려 있는 동안 _ncBusy 계속 보유)
         private bool _ncProbeFolderOpened;      // 최초 캡처 저장 시 저장 폴더 1회만 자동 열기
+        private List<string>? _dlgSeen;         // 주간 임시저장 구간에 자동 수락한 알림 문구(null 이면 모으지 않는다)
 
         public NetcusService(INetcusHost host) { _host = host; }
 
@@ -77,6 +79,7 @@ namespace TaskCalendarWidget
 
         public Task WeekMerge(string reqId, string from, string to) => NetcusWeekMerge(reqId, from, to);
         public Task ViewMonth(string reqId, int y, int m, int d) => NetcusViewMonth(reqId, y, m, d);
+        public Task ViewWeek(string reqId, string sdate, string edate) => NetcusViewWeek(reqId, sdate, edate);
         public Task WeeklyRangeRead(string reqId, string from, string to) => NetcusWeeklyRangeRead(reqId, from, to);
         public Task Probe() => NetcusProbeStart();
         public void SaveCreds(string id, string pw) => NetcusSaveCreds(id, pw);
@@ -420,7 +423,8 @@ namespace TaskCalendarWidget
             //   (핸들러는 없고 기본 다이얼로그도 꺼진 상태) — 주간 채움의 confirm('제출하시겠습니까?')이 죽는다.
             bool prev = cw.Settings.AreDefaultScriptDialogsEnabled;
             try { cw.Settings.AreDefaultScriptDialogsEnabled = false; } catch { }
-            void H(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { Log("netcus(" + tag + ") alert: " + (ev.Message ?? "")); try { ev.Accept(); } catch { } }
+            //  _dlgSeen 이 켜져 있으면(주간 임시저장 구간) 알림 문구를 모은다. 회사 사이트가 저장 실패를 알렸는지 가리는 데 쓴다.
+            void H(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { Log("netcus(" + tag + ") alert: " + (ev.Message ?? "")); try { _dlgSeen?.Add(ev.Message ?? ""); } catch { } try { ev.Accept(); } catch { } }
             cw.ScriptDialogOpening += H;
             return () =>
             {
@@ -630,15 +634,22 @@ namespace TaskCalendarWidget
             finally { detach?.Invoke(); _ncBusy = false; NetcusBusy(false); }
         }
 
-        // 주간보고 — '채우고 열어두기'(자동 제출 안 함). pjm_write.jsp 폼에 기간/제목/과제투입시간/진행사항/차주계획/회의내용을 채운 뒤
-        // 창을 띄워 둔다. 보완 후 사용자가 직접 '제출'(Bwrite) — euc-kr은 네이티브 폼이 처리.
+        // 주간보고 보내기: 채우고 **임시저장('n')까지** 앱이 누른다(2026-11-06 사용자 확정, WEEKLY-UPSERT 끝 절). 제출('y')은 사용자가 인트라넷에서 한다.
+        //   같은 기간 글이 있으면 그 글의 수정 화면(pjm_modify.jsp), 없으면 새 글 화면(pjm_write.jsp)에 기간/제목/과제투입시간/진행사항/차주계획/회의내용을 채우고
+        //   안전한 Bwrite/Bmodify 를 끼운 뒤 'n' 으로 부른다. 저장 뒤 같은 기간 글을 다시 찾아 보기 화면의 진행사항을 대조하고(일간 되읽기와 같은 규칙),
+        //   맞으면 기록(SaveWeeklyReport)하고 창을 닫는다. 아니면 창을 되읽기 문서째 남기고 실패를 알린다(기록하지 않는다).
         // 회의내용(resultwork)은 결정 13(2026-10-29)에서 더했다. 미처리사항(notendwork), 문제점(problem)은 여전히 건드리지 않는다.
+        // ★ 자동 수락(AttachDialogAutoAccept) 계약: 새 글 화면과 수정 화면은 이제 사용자에게 넘기는 문서가 아니다. 그래서 저장이 끝날 때까지 켜 둔다
+        //   (회사 서버가 저장 뒤 알림을 띄워도 멈추지 않게). 끄는 곳은 되읽기에서 **사용자에게 남을 수 있는 문서(보기 화면 또는 목록)를 로드하기 직전** 한 곳뿐이다.
+        //   켜진 채 로드된 문서(목록, 보기, 새 글, 수정, 저장 결과)는 사용자에게 남기지 않는다: 그 문서에서 끄면 confirm 이 응답 없이 멈춘다(붙였다 떼기).
+        //   그래서 저장 전 실패와 예외는 창을 닫는다.
         private async Task NetcusWeekFill(NetcusWeekReq req)
         {
             if (_ncBusy) { NetcusResult(false, "다른 netcus 작업이 진행 중입니다. 잠시 후 다시 시도하세요."); return; }
             _ncBusy = true; NetcusBusy(true);
             CoreWebView2? cw = null;
             Action? detach = null;
+            string? modOld = null;   // 수정 경로: 채우기 전 기존 진행사항(되읽기 대조 토막 고르기용, 로그에 남기지 않는다)
             try
             {
                 //  버전 관문(VERSION-GATE §2.4). 자격 확인과 창 준비보다 먼저, 회사 사이트에 닿기 전에 본다.
@@ -649,6 +660,7 @@ namespace TaskCalendarWidget
 
                 NetcusProgress("창 준비 중…");
                 await EnsureW2();
+                try { Dispatcher.Invoke(() => { if (_w2win != null) _w2win.Title = "회사 주간보고 임시저장 (확인용)"; }); } catch { }   // 다른 op 가 바꿔 둔 제목을 맞춘다
                 cw = _w2!.CoreWebView2;
                 detach = AttachDialogAutoAccept(cw, "week");
 
@@ -693,10 +705,7 @@ namespace TaskCalendarWidget
                 // pjm_write.jsp로 POST해야 함. 폼 연결 의존을 피해 동적 POST 폼으로 table_code/id를 실어 이동.
                 NetcusProgress("작성 폼 여는 중…");
                 NetcusStatus("weekfill", "opening");
-                // ★ 여기서부터 로드되는 문서(pjm_write.jsp)는 사용자에게 넘긴다 — 그 전에 자동수락을 반드시 끈다.
-                //   AreDefaultScriptDialogsEnabled 는 문서 로드 시점에 스냅샷되므로, 로드 뒤 원복은 이미 늦다(실측).
-                //   또 핸들러를 붙였다 떼면 무음 취소가 아니라 '응답 주체 없는 정지'가 된다 — 제출 confirm 이 죽는다.
-                detach?.Invoke(); detach = null;
+                // 새 글 화면은 앱이 임시저장까지 하는 문서다(사용자에게 넘기지 않는다). 자동수락은 켠 채 연다(저장 뒤 알림을 받아낸다).
                 var wnav = NavOnce(cw, 15000);
                 string goWrite = "(function(){try{var f=document.createElement('form');f.method='post';f.action='pjm_write.jsp';"
                     + "function H(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
@@ -715,7 +724,12 @@ namespace TaskCalendarWidget
                     if (probe == "true") break;
                     await Task.Delay(300);
                 }
-                if (probe != "true") { NetcusResult(false, "주간보고 작성 폼을 찾지 못했습니다. 로그인 또는 페이지 접근을 확인하세요."); return; }
+                if (probe != "true")
+                {
+                    try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 자동수락이 켜진 채 로드된 문서는 넘기지 않는다
+                    NetcusResult(false, "주간보고 작성 폼을 찾지 못했습니다. 로그인 또는 페이지 접근을 확인하세요.");
+                    return;
+                }
 
                 NetcusProgress("내용 작성 중…");
                 NetcusStatus("weekfill", "filling");
@@ -726,38 +740,48 @@ namespace TaskCalendarWidget
                     + (req.Resultwork != null ? $"set('resultwork',{J(req.Resultwork)});" : "")
                     + "return !!document.getElementsByName('content')[0];}catch(e){return false;}})()";
                 var filled = await cw.ExecuteScriptAsync(fill);
-                if (filled != "true") { NetcusResult(false, "주간보고 폼 채우기 실패. 페이지 구조가 바뀌었을 수 있습니다."); return; }
+                if (filled != "true")
+                {
+                    try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
+                    NetcusResult(false, "주간보고 폼 채우기 실패. 페이지 구조가 바뀌었을 수 있습니다.");
+                    return;
+                }
 
                 // 안전장치 — 이 폼도 <table> 안 빈 폼이라 페이지의 Bwrite(document.form.submit)가 빈 폼을 보낼 수 있다.
-                // Bwrite를 euc-kr 동적 폼 버전으로 오버라이드(원본과 동일 검증·confirm 유지) → 사용자가 보완 후 직접 제출해도 안전.
+                // Bwrite를 euc-kr 동적 폼 버전으로 오버라이드(원본과 동일 검증·confirm 유지). 앱이 아래에서 Bwrite('n')(임시저장)로 부른다.
+                //   보낼 때 만드는 폼에 data-tc-week="1" 을 단다(임시저장 JS 가 폼이 만들어졌는지 이 표지로 본다). 못 끼우면 창을 닫고 멈춘다.
                 string ov = "(function(){try{window.Bwrite=function(iscompletion){"
                     + "var sd=document.getElementsByName('sdate')[0],sj=document.getElementsByName('subject')[0];"
                     + "if(sd&&!sd.value){alert('기간을 선택하세요.');return;}"
                     + "if(sj&&!sj.value){alert('제목을 입력하세요.');return;}"
                     + "if(iscompletion==='y'&&!confirm('제출하시겠습니까?'))return;"
-                    + "var f=document.createElement('form');f.method='post';f.enctype='multipart/form-data';f.acceptCharset='euc-kr';"
+                    + "var f=document.createElement('form');f.method='post';f.enctype='multipart/form-data';f.acceptCharset='euc-kr';f.setAttribute('data-tc-week','1');"
                     + $"f.action='pjm_write.jsp?go=write&table=report_tbl&id='+encodeURIComponent({J(id)});"
                     + "function H(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
                     + "H('iscompletion',iscompletion);"
                     + "['ndate','sdate','edate','subject','endwork','content','notendwork','planwork','problem','resultwork'].forEach(function(n){var e=document.getElementsByName(n)[0];if(e)H(n,e.value);});"
                     + "var hc=document.getElementsByName('html')[0];if(hc&&hc.checked)H('html',hc.value);"
                     + "document.body.appendChild(f);f.submit();};return 'ok';}catch(e){return 'err';}})()";
-                try { Log("netcus(week) Bwrite override: " + await cw.ExecuteScriptAsync(ov)); } catch { }
+                string wov = "";
+                try { wov = (await cw.ExecuteScriptAsync(ov) ?? "").Trim('"'); } catch (Exception oex) { wov = "err " + oex.Message; }
+                Log("netcus(week) Bwrite override: " + wov);
+                if (wov != "ok")
+                {
+                    try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
+                    NetcusResult(false, WeekSaveFailMsg);
+                    return;
+                }
 
-                try { _w2win?.Activate(); } catch { }
-                NetcusResult(true, "주간보고 작성 폼을 채웠습니다. 차주계획 내용 등을 보완한 뒤 열린 창에서 직접 ‘제출’하세요.");
-                //  ★ 여기서 기록하는 것은 '보냈다'가 아니라 **'캘린더가 작성했다'**다.
-                //    위젯은 주간을 전송하지 않고 사용자가 직접 제출한다(위 문구 그대로).
-                //    그래서 사용자가 폼에서 보완한 내용은 담기지 않고, 컴럼 이름도 composed_at 이다(§5.9.5).
-                _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);
+                await SaveAndVerify(cw, false, "", 0);
+                return;
 
                 // ── 같은 기간 글이 있을 때: 그 글의 수정 화면(pjm_modify.jsp)을 열어 네 칸만 채운다(WEEKLY-UPSERT §3.2, 결정 13 에서 회의내용을 더했다) ──
-                //   로컬 함수인 이유: 자동수락 detach(이 메서드의 지역 변수)를 수정 화면 로드 직전에 여기서 끊어야 한다(인계 계약).
+                //   로컬 함수인 이유: 자동수락 detach(이 메서드의 지역 변수)를 되읽기에서 끊어야 한다(SaveAndVerify, 인계 계약).
                 async Task OpenModify(CoreWebView2 wv, NcSameWeek hit)
                 {
                     NetcusProgress("기존 주간보고 여는 중…");
                     NetcusStatus("weekfill", "opening");
-                    // 실제 흐름(보기 화면 → 수정 버튼)대로 그 글의 보기 화면부터 연다. 읽기 문서라 자동수락은 아직 켜 둔다.
+                    // 실제 흐름(보기 화면 → 수정 버튼)대로 그 글의 보기 화면부터 연다. 읽기 문서라 자동수락은 켜 둔다.
                     var vnav = NavOnce(wv, 15000);
                     await wv.ExecuteScriptAsync(GoViewJs(hit.ViewNo, id));
                     await vnav;
@@ -781,9 +805,8 @@ namespace TaskCalendarWidget
                         return;
                     }
 
-                    // ★ 수정 화면은 사용자에게 넘기는 문서다. 새 글 경로와 같은 이유로 로드 전에 자동수락을 끈다
-                    //   (로드 시점 스냅샷이라 로드 뒤 원복은 늦고, 붙였다 떼면 임시저장, 제출 confirm 이 응답 없이 멈춘다).
-                    detach?.Invoke(); detach = null;
+                    // 수정 화면도 앱이 임시저장까지 하는 문서다(사용자에게 넘기지 않는다). 자동수락은 켠 채 연다.
+                    //   (예전에는 여기서 끊었다. 이제 끊는 곳은 되읽기의 사용자에게 남을 문서 로드 직전이다.)
                     var mnav = NavOnce(wv, 15000);
                     string goModify = GoModifyJs(hit.ModifyNo, id);
                     await wv.ExecuteScriptAsync(goModify);
@@ -801,7 +824,7 @@ namespace TaskCalendarWidget
                     }
                     if (!NcParseModifyProbe(mprobe, out var msd, out var med, out var mwd))
                     {
-                        // 수정 화면이 아니다(칸이 없거나 같은 이름이 둘 이상). 다른 실패 경로처럼 창을 닫는다(자동수락은 이미 꺼져 있다).
+                        // 수정 화면이 아니다(칸이 없거나 같은 이름이 둘 이상). 다른 실패 경로처럼 창을 닫는다(자동수락이 켜진 채 로드된 문서다).
                         try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
                         NetcusResult(false, "주간보고 수정 화면을 찾지 못했습니다. 로그인 또는 페이지 접근을 확인하세요.");
                         return;
@@ -844,25 +867,116 @@ namespace TaskCalendarWidget
                     string olen = "";
                     try { olen = await wv.ExecuteScriptAsync(WeekModifyOrigLenJs) ?? ""; } catch (Exception lex2) { olen = "err " + lex2.Message; }
                     Log($"netcus(week) 수정 화면 원래 길이(글자 수) {olen} → 새 길이 endwork={req.Endwork.Length}, content={req.Content.Length}, planwork={req.Planwork.Length}, resultwork={(req.Resultwork == null ? -1 : req.Resultwork.Length)}");
+                    // 기존 진행사항을 읽어 둔다(되읽기 대조 토막을 '새 글에만 있는 토막'으로 고르려고, NcWeekNeedle). 못 읽으면 null 로 두어 새 글 규칙을 쓴다.
+                    try { string oraw = await wv.ExecuteScriptAsync(WeekModifyOldEndworkJs) ?? "null"; modOld = oraw == "null" ? null : JsonSerializer.Deserialize<string>(oraw); } catch { modOld = null; }
                     // 진행사항, 과제투입시간, 차주계획(+ 요청에 있으면 회의내용)만 채운다. 기간, 제목, 작성일, 미처리사항, 문제점은 그대로 둔다.
                     //   회의내용은 이 앱이 DB 에 남기므로(구조 20) 완료한 주를 다시 열어도 빈칸이 아니다. 그래서 덮어써도 사라지지 않는다(결정 13).
                     //   요청에 회의내용이 없으면(보고서 창의 옛 전송, null) 예전처럼 세 칸만 채운다.
                     var mfilled = await wv.ExecuteScriptAsync(WeekModifyFillJs(req.Endwork, req.Content, req.Planwork, req.Resultwork));
-                    if (mfilled != "1") { NetcusResult(false, "주간보고 수정 화면 채우기 실패. 페이지 구조가 바뀌었을 수 있습니다."); return; }
+                    if (mfilled != "1")
+                    {
+                        try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
+                        NetcusResult(false, "주간보고 수정 화면 채우기 실패. 페이지 구조가 바뀌었을 수 있습니다.");
+                        return;
+                    }
 
-                    try { _w2win?.Activate(); } catch { }
-                    NetcusResult(true, WeekModifyOkMsg(hit.Matches, req.Resultwork != null));
-                    //  새 글 경로와 같다: 기록하는 것은 '캘린더가 채운 내용'이다(사용자가 창에서 고친 내용은 담기지 않는다).
+                    await SaveAndVerify(wv, true, hit.ModifyNo, hit.Matches);
+                }
+
+                // ── 임시저장과 되읽기(두 경로 공용). modify = 수정 화면(Bmodify), expectNo = 고친 글 번호(새 글이면 ""), matches = 성공 문구의 중복 안내용 ──
+                //   일간 NetcusSubmit 과 같은 모양: 저장 → 다시 찾아 읽기 → vr==1 일 때만 기록하고 창을 닫는다. 실패면 창을 되읽기 문서째 남긴다.
+                async Task SaveAndVerify(CoreWebView2 wv, bool modify, string expectNo, int matches)
+                {
+                    NetcusProgress("임시저장 중…");
+                    NetcusStatus("weekfill", "saving");
+                    //  저장 구간에는 자동수락이 켜져 있다. 회사 사이트가 띄우는 알림 문구를 모은다(저장 실패 알림을 가린다). 예외면 바깥 finally 가 비운다.
+                    var seen = new List<string>();
+                    _dlgSeen = seen;
+                    var snav = NavOnce(wv, 20000);
+                    string sraw = await wv.ExecuteScriptAsync(WeekTempSaveJs(modify)) ?? "";
+                    string sres;
+                    try { sres = JsonSerializer.Deserialize<string>(sraw) ?? ""; } catch { sres = sraw.Trim('"'); }
+                    Log("netcus(week) 임시저장 fire: " + sres + (modify ? " (수정 글 번호 " + expectNo + ")" : " (새 글)"));
+                    if (!sres.StartsWith("SUBMITTED", StringComparison.Ordinal))
+                    {
+                        _dlgSeen = null;
+                        try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 저장하지 않은 문서다. 켜진 채 로드된 문서라 넘기지 않는다
+                        NetcusResult(false, WeekSaveFailMsg);
+                        return;
+                    }
+                    bool sNav = await snav;
+                    //  저장 결과 화면이 알림 뒤 다른 화면으로 옮겨 가는 경우가 있다. 자동수락을 켠 채 잠깐 더 기다린다(옮겨 가는 중에 되읽기를 시작하지 않게).
+                    bool sNav2 = await NavOnce(wv, 2000);
+                    _dlgSeen = null;
+                    bool siteFail = NcSaveAlertFailed(seen);
+                    Log("netcus(week) 임시저장 nav: " + sNav + (sNav2 ? " (+이동 1)" : "") + ", 알림 " + seen.Count + "건" + (siteFail ? " (실패 알림)" : ""));
+                    if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
+
+                    //  되읽기: 목록에서 같은 기간 글을 다시 찾는다(목록과 보기 화면은 자동수락을 켠 채 읽는다).
+                    NetcusProgress("저장 확인 중…");
+                    NetcusStatus("weekfill", "verifying");
+                    await NavTo(wv, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));
+                    if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
+                    NcSameWeek again;
+                    try { again = await NcFindSameWeek(wv, id, req.Sdate, req.Edate, upToToday: true); }
+                    catch (Exception rex) { Log("netcus(week) 되읽기 찾기 예외: " + rex); again = new NcSameWeek(); }
+                    if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
+
+                    //  ★ 여기서 로드하는 문서는 실패 때 창째 사용자에게 남는다 → 로드 '전에' 자동수락을 끈다(로드 시점 스냅샷).
+                    //    끄는 시점의 문서(마지막으로 읽은 목록이나 보기 화면)는 바로 떠나므로 사용자에게 남지 않는다.
+                    detach?.Invoke(); detach = null;
+                    int vr;
+                    string rNo = "";
+                    if (again.ViewNo.Length == 0)
+                    {
+                        var lnav = NavOnce(wv, 15000);
+                        await wv.ExecuteScriptAsync(GoListJs(1, id));
+                        await lnav;
+                        vr = again.SessionLost ? -1 : -2;
+                    }
+                    else
+                    {
+                        var rnav = NavOnce(wv, 15000);
+                        await wv.ExecuteScriptAsync(GoViewJs(again.ViewNo, id));
+                        await rnav;
+                        NcCell? rcell = null;
+                        bool login = false;
+                        for (int ri = 0; ri < 14; ri++)
+                        {
+                            if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
+                            login = await wv.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()") == "true";
+                            if (login) break;
+                            rcell = NcParseCell(await wv.ExecuteScriptAsync(CellExtractJs));
+                            if (rcell != null && !string.IsNullOrWhiteSpace(rcell.period)) break;
+                            await Task.Delay(300);
+                        }
+                        rNo = NcModifyNo(rcell?.modNo);
+                        vr = NcWeekVerify(login, siteFail, again.ModifyNo, rNo, expectNo, rcell?.endwork, req.Endwork, modify ? modOld : null);
+                    }
+                    Log($"netcus(week) 되읽기: {vr} (글 번호 {again.ModifyNo}, 읽음 {rNo}, 기대 {(expectNo.Length > 0 ? expectNo : "새 글")}, 같은 기간 {again.Matches}건, 알림 실패 {siteFail}, needle={(modify && modOld != null ? NcWeekNeedle(req.Endwork, modOld) : NetcusHangulNeedle(req.Endwork))}{(modify && modOld != null && NcWeekNeedle(req.Endwork, modOld).Length == 0 ? "(변경 없음, 회사 실패 알림만 봄)" : "")})");
+                    if (vr != 1)
+                    {
+                        //  실패: 기록하지 않는다. 창은 되읽기 문서째 남겨 사용자가 눈으로 확인하게 한다(자동수락은 이미 꺼졌다).
+                        try { _w2win?.Activate(); } catch { }
+                        NetcusResult(false, WeekVerifyMsg(vr));
+                        return;
+                    }
+                    NetcusResult(true, WeekSavedOkMsg(matches));
+                    //  ★ 회사 임시저장이 되읽기로 확인된 뒤에만 기록한다. 기록하는 것은 앱이 채운 내용이다(composed_at, §5.9.5).
                     _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);
+                    //  성공이면 확인용 창을 닫는다(일간과 같다). 눈으로 보려면 주간 편집 화면의 [인트라넷에서 확인](netcusViewWeek)으로 그 글을 연다.
+                    try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
                 }
             }
             catch (Exception ex)
             {
                 Log("netcus(week) 예외: " + ex);
+                //  자동수락이 아직 켜져 있으면 지금 문서는 켜진 채 로드된 문서다. 끄고 넘기면 confirm 이 멈추므로 창을 닫는다.
+                if (detach != null) { try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { } }
                 bool disposed = (ex.Message ?? "").Contains("disposed");
                 NetcusResult(false, disposed ? "확인 창이 닫혀 중단되었습니다. 다시 시도하세요." : ("주간보고 작성 오류: " + ex.Message));
             }
-            finally { detach?.Invoke(); _ncBusy = false; NetcusBusy(false); }
+            finally { _dlgSeen = null; detach?.Invoke(); _ncBusy = false; NetcusBusy(false); }
         }
 
         // 인트라넷 근태관리 달력 보기(읽기만, 2026-10-29 사용자). 로그인 → pjm_work.jsp?y&m&id(그 달 달력) → 그 날짜 칸을 찾아
@@ -883,25 +997,7 @@ namespace TaskCalendarWidget
 
                 Log($"netcus 근태 달력 보기: {y}-{m:D2}-{d:D2}");
                 await EnsureW2();
-                try
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        if (_w2win == null) return;
-                        _w2win.Title = "인트라넷 근태관리 (확인용)";
-                        //  주간병합 읽기 창(화면 밖, 최소화)이 남아 있었다면 사용자 화면으로 데려온다.
-                        if (_w2win.Left < -10000 || _w2win.Top < -10000)
-                        {
-                            var wa = SystemParameters.WorkArea;
-                            _w2win.Left = wa.Left + Math.Max(0, (wa.Width - _w2win.Width) / 2);
-                            _w2win.Top = wa.Top + Math.Max(0, (wa.Height - _w2win.Height) / 2);
-                        }
-                        _w2win.ShowInTaskbar = true;
-                        if (_w2win.WindowState == WindowState.Minimized) _w2win.WindowState = WindowState.Normal;
-                        _w2win.Activate();
-                    });
-                }
-                catch { }
+                ShowW2ForUser("인트라넷 근태관리 (확인용)");
                 var cw = _w2!.CoreWebView2;
                 detach = AttachDialogAutoAccept(cw, "view");
                 if (!await NetcusLoginVerify(cw, id, pw))
@@ -931,6 +1027,104 @@ namespace TaskCalendarWidget
                 HostReply(reqId, new { ok = true, error = "", marked = r == "1" });
             }
             catch (Exception ex) { Log("netcus 근태 달력 보기 예외: " + ex); HostReply(reqId, new { ok = false, error = "read", marked = false }); }
+            finally { detach?.Invoke(); _ncBusy = false; NetcusBusy(false); }
+        }
+
+        // 확인용 창을 사용자 화면에 보인다(인트라넷 보기 둘이 같이 쓴다). 주간병합 읽기 창(화면 밖, 최소화)이 남아 있었다면 사용자 화면으로 데려온다.
+        private void ShowW2ForUser(string title)
+        {
+            try
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    if (_w2win == null) return;
+                    _w2win.Title = title;
+                    if (_w2win.Left < -10000 || _w2win.Top < -10000)
+                    {
+                        var wa = SystemParameters.WorkArea;
+                        _w2win.Left = wa.Left + Math.Max(0, (wa.Width - _w2win.Width) / 2);
+                        _w2win.Top = wa.Top + Math.Max(0, (wa.Height - _w2win.Height) / 2);
+                    }
+                    _w2win.ShowInTaskbar = true;
+                    if (_w2win.WindowState == WindowState.Minimized) _w2win.WindowState = WindowState.Normal;
+                    _w2win.Activate();
+                });
+            }
+            catch { }
+        }
+
+        // 인트라넷 주간보고 보기(읽기만, 2026-11-06 사용자 확정, WEEKLY-UPSERT 끝 절). 주간 편집 화면의 [인트라넷에서 확인].
+        //   로그인 → 목록 → 같은 기간 글 찾기(NcFindSameWeek, 보내기와 같은 규칙) → 찾으면 그 글의 보기 화면(pjm_view.jsp), 못 찾으면 주간보고 목록 1쪽.
+        //   창은 사용자가 보도록 남긴다. 저장, 제출, 값 넣기는 하지 않는다(보기 화면을 여는 go_view 재현과 목록 go_list 재현만 쓴다).
+        //   보기 화면의 수정 단추 글 번호가 찾을 때의 번호와 같으면 marked:true(그 사이 목록이 밀렸으면 false).
+        // ★ 마지막에 로드하는 보기 화면이나 목록은 사용자에게 넘기는 문서다. 그 로드 직전에 자동수락을 끈다(인계 계약, netcus-dialog HANDOFF_LOADS.viewweek).
+        // 회신 계약: { ok:bool, error:""|"busy"|"no-creds"|"unverified"|"login"|"read", marked:bool }(netcusViewMonth 와 같다)
+        private async Task NetcusViewWeek(string reqId, string sdate, string edate)
+        {
+            if (_ncBusy) { HostReply(reqId, new { ok = false, error = "busy", marked = false }); return; }
+            if (!NcDate(sdate, out var vs) || !NcDate(edate, out var ve) || ve < vs) { HostReply(reqId, new { ok = false, error = "read", marked = false }); return; }
+            _ncBusy = true; NetcusBusy(true);
+            Action? detach = null;
+            try
+            {
+                var (id, pw) = NetcusLoadCreds();
+                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { HostReply(reqId, new { ok = false, error = "no-creds", marked = false }); return; }
+                if (NetcusCredsValid() == false) { HostReply(reqId, new { ok = false, error = "unverified", marked = false }); return; }
+
+                Log($"netcus 주간보고 보기: {sdate} ~ {edate}");
+                await EnsureW2();
+                ShowW2ForUser("인트라넷 주간보고 (확인용)");
+                var cw = _w2!.CoreWebView2;
+                detach = AttachDialogAutoAccept(cw, "viewweek");
+                if (!await NetcusLoginVerify(cw, id, pw))
+                {
+                    try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
+                    HostReply(reqId, new { ok = false, error = "login", marked = false });
+                    return;
+                }
+                //  목록과 보기 화면을 읽는 동안은 자동수락을 켜 둔다(읽기 문서, 넘기지 않는다).
+                await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));
+                NcSameWeek same;
+                try { same = await NcFindSameWeek(cw, id, sdate, edate); }
+                catch (Exception lex) { Log("netcus 주간보고 보기 찾기 예외: " + lex); same = new NcSameWeek(); }
+                if (_w2 == null) { HostReply(reqId, new { ok = false, error = "read", marked = false }); return; }
+
+                if (same.ViewNo.Length == 0)
+                {
+                    //  못 찾았다(없음, 확인 실패, 세션 만료 모두): 주간보고 목록 1쪽을 보인다. 넘기는 문서라 로드 전에 끈다.
+                    detach?.Invoke(); detach = null;
+                    var lnav = NavOnce(cw, 15000);
+                    await cw.ExecuteScriptAsync(GoListJs(1, id));
+                    await lnav;
+                    Log("netcus 주간보고 보기: 같은 기간 글 없음(목록을 보임)" + (same.Ok ? "" : ", 찾기 실패"));
+                    HostReply(reqId, new { ok = true, error = "", marked = false });
+                    return;
+                }
+                //  그 글의 보기 화면(읽기만). 넘기는 문서라 로드 전에 끈다.
+                detach?.Invoke(); detach = null;
+                var vnav = NavOnce(cw, 15000);
+                string goView = GoViewJs(same.ViewNo, id);
+                await cw.ExecuteScriptAsync(goView);
+                await vnav;
+                string vNo = "";
+                for (int i = 0; i < 10; i++)
+                {
+                    if (_w2 == null) break;
+                    var c = NcParseCell(await cw.ExecuteScriptAsync(CellExtractJs));
+                    vNo = NcModifyNo(c?.modNo);
+                    if (c != null && !string.IsNullOrWhiteSpace(c.period)) break;
+                    await Task.Delay(300);
+                }
+                Log($"netcus 주간보고 보기: 글 번호 {same.ModifyNo}(순번 {same.ViewNo}), 읽음 {vNo}");
+                HostReply(reqId, new { ok = true, error = "", marked = vNo.Length > 0 && vNo == same.ModifyNo });
+            }
+            catch (Exception ex)
+            {
+                Log("netcus 주간보고 보기 예외: " + ex);
+                //  자동수락이 켜진 채 로드된 문서를 넘기지 않는다(끄면 그 문서의 confirm 이 멈춘다).
+                if (detach != null) { try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { } }
+                HostReply(reqId, new { ok = false, error = "read", marked = false });
+            }
             finally { detach?.Invoke(); _ncBusy = false; NetcusBusy(false); }
         }
 
@@ -1199,9 +1393,10 @@ namespace TaskCalendarWidget
         //   후보 창은 작성일 sdate-7 ~ edate+14(같은 주를 며칠 뒤 다시 올리는 경우를 위해 뒤를 조금 넓힌다), 열람 상한 20.
         //   Ok=false 면 확인 실패다: 요청 기간을 못 읽음, 세션 만료, 보기 화면이나 기간 칸을 못 읽음, 목록을 못 읽음,
         //   상한에 닿았는데 같은 글을 못 찾음. 호출자는 그때 새 글을 열지 않는다(확인 없이 열면 같은 주 글이 다시 둘이 된다).
-        private sealed class NcSameWeek { public bool Ok; public string ViewNo = "", ModifyNo = ""; public int Matches, Opened; }   // ViewNo = 목록 순번(보기 화면 여는 번호), ModifyNo = 보기 화면 수정 단추의 진짜 글 번호
+        private sealed class NcSameWeek { public bool Ok, SessionLost; public string ViewNo = "", ModifyNo = ""; public int Matches, Opened; }   // ViewNo = 목록 순번(보기 화면 여는 번호), ModifyNo = 보기 화면 수정 단추의 진짜 글 번호
 
-        private async Task<NcSameWeek> NcFindSameWeek(CoreWebView2 cw, string id, string sdate, string edate)
+        //   upToToday(되읽기): 방금 임시저장한 글의 작성일은 오늘이다. 지난 주를 늦게 보낸 경우에도 찾도록 작성일 창의 끝을 오늘까지 늘린다.
+        private async Task<NcSameWeek> NcFindSameWeek(CoreWebView2 cw, string id, string sdate, string edate, bool upToToday = false)
         {
             var res = new NcSameWeek();
             if (!NcDate(sdate, out var ds) || !NcDate(edate, out var de)) { Log("netcus(week) 기존 글 찾기 실패: 요청 기간을 읽지 못함(" + sdate + " ~ " + edate + ")"); return res; }
@@ -1210,7 +1405,9 @@ namespace TaskCalendarWidget
             var found = new List<(string seq, string period, string modNo)>();
             int locked = 0;
             string why = "";
-            var end = await NcCrawlWeekly(cw, id, ds.AddDays(-7), de.AddDays(14), UPSERT_MAXPAGES, UPSERT_MAXREAD, "netcus(week) 기존 글 찾기",
+            var hi = de.AddDays(14);
+            if (upToToday && hi < DateTime.Today.AddDays(1)) hi = DateTime.Today.AddDays(1);
+            var end = await NcCrawlWeekly(cw, id, ds.AddDays(-7), hi, UPSERT_MAXPAGES, UPSERT_MAXREAD, "netcus(week) 기존 글 찾기",
                 n => NetcusStatus("weekfill", "checking", n, -1),
                 (viewNo, regStr, cell) =>
                 {
@@ -1220,6 +1417,7 @@ namespace TaskCalendarWidget
                     return true;
                 });
             res.Opened = end.Opened;
+            res.SessionLost = end.SessionLost;
 
             if (end.SessionLost) why = "세션 만료";
             else if (!end.Aborted && end.EmptyPage > 0 && await cw.ExecuteScriptAsync(ListPageMarkJs) != "true")

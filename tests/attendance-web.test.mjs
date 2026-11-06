@@ -1,8 +1,8 @@
 // 근태 탭과 근태 보고 창(docs/ATTENDANCE-PLAN.md, 2026-10-29), §5 웹 시험과 §12.5 과제 블록(결정 12) 시험.
 //
 // 이 파일이 지키는 것:
-//   (S) 정적: 근태 창 허용 목록(ATTENDWIN_CMD)이 아홉(attendWinReady, attendNav, reportDailyList, netcusSubmit, attendSourceReq, netcusViewMonth, attendCatNew,
-//       주간보고의 reportWeeklyList, netcusWeekSubmit)이고
+//   (S) 정적: 근태 창 허용 목록(ATTENDWIN_CMD)이 열(attendWinReady, attendNav, reportDailyList, netcusSubmit, attendSourceReq, netcusViewMonth, attendCatNew,
+//       주간보고의 reportWeeklyList, netcusWeekSubmit, netcusViewWeek)이고
 //       hpost 가 그 밖을 버린다(attendSourcePush 는 메인 창만, netcusWeekMerge 는 근태 창에서 뺐다).
 //       'tw:' 번호 머리, SUBWIN 에 근태 창이 들어간다, 탭 줄에 근태 탭이 있다, UI 문구에 금지 기호가 없다.
 //   (U) 순수: 근태 표시 문구(야근(+2시간)), 조립(정수와 소수, 빈 과제 : 0, 내용 끝 공백, 자유 메모가 맨 앞), hours(0 제외), 막는 까닭,
@@ -36,13 +36,13 @@ function mutate(text, find, repl) {
 }
 
 // ══ (S) 정적 ══════════════════════════════════════════════════════════
-const ATTEND_CMDS = ['attendCatNew', 'attendNav', 'attendSourceReq', 'attendWinReady', 'netcusSubmit', 'netcusViewMonth', 'netcusWeekSubmit', 'reportDailyList', 'reportWeeklyList'];
+const ATTEND_CMDS = ['attendCatNew', 'attendNav', 'attendSourceReq', 'attendWinReady', 'netcusSubmit', 'netcusViewMonth', 'netcusViewWeek', 'netcusWeekSubmit', 'reportDailyList', 'reportWeeklyList'];
 function webAttendSet(src) {
   const m = /const ATTENDWIN_CMD = new Set\(\[([\s\S]*?)\]\);/.exec(src);
   assert.ok(m, 'ATTENDWIN_CMD 를 찾지 못했다');
   return [...m[1].matchAll(/'(\w+)'/g)].map((x) => x[1]).sort();
 }
-test('(S) 근태 창 허용 목록은 아홉이고(netcusWeekMerge 없음, attendCatNew, 주간 둘 있음), hpost 가 그 밖을 버린다, 번호 머리 tw:, SUBWIN 에 든다', () => {
+test('(S) 근태 창 허용 목록은 열이고(netcusWeekMerge 없음, attendCatNew, 주간 셋 있음), hpost 가 그 밖을 버린다, 번호 머리 tw:, SUBWIN 에 든다', () => {
   assert.deepStrictEqual(webAttendSet(app), ATTEND_CMDS);
   assert.ok(app.includes("  if(ATTENDWIN && !ATTENDWIN_CMD.has(String((o && o.cmd) || ''))) return;\n"), 'hpost 에 근태 창 봉인이 없다');
   assert.ok(/const __reqPfx = [^\n]*ATTENDWIN \? 'tw:'/.test(app), "근태 창 번호 머리가 'tw:' 가 아니다");

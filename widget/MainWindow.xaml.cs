@@ -490,7 +490,8 @@ namespace TaskCalendarWidget
         {
             "attendWinReady", "attendNav", "reportDailyList", "netcusSubmit",
             "attendSourceReq", "netcusViewMonth", "attendCatNew",   // 가져오기(다른 날짜 캘린더 기록 청하기), 인트라넷 달력 보기(읽기만), 새 과제. attendSourcePush 는 메인 창만 보낸다
-            "reportWeeklyList", "netcusWeekSubmit",                 // 주간 기록 읽기(읽기만), 주간 폼 채우기(제출은 사용자가 열린 창에서)
+            "reportWeeklyList", "netcusWeekSubmit",                 // 주간 기록 읽기(읽기만), 주간 임시저장(제출은 사용자가 인트라넷에서, 2026-11-06)
+            "netcusViewWeek",                                       // 주간 편집 화면의 [인트라넷에서 확인]: 그 주 글의 보기 화면(읽기만, 2026-11-06)
         };
         //  요청 번호의 머리. 회신은 이 표시를 보고 그 창으로 간다(ReplyCore). 창끼리 번호가 겹치지 않는다.
         internal const string PeerReqPrefix = "pw:";
@@ -941,7 +942,7 @@ namespace TaskCalendarWidget
                             //  resultwork = 회의내용(결정 13). 칸이 없으면 null(보고서 창의 옛 전송): 인트라넷의 회의내용을 빈 값으로 덮지 않는다
                             doc.RootElement.TryGetProperty("resultwork", out var rw) && rw.ValueKind == JsonValueKind.String ? (rw.GetString() ?? "") : null,
                             //  hours = 과제투입시간 구조(결정 14). 배열일 때만 넘긴다(없으면 null: 그 주의 시간 줄을 건드리지 않는다)
-                            doc.RootElement.TryGetProperty("hours", out var whEl) && whEl.ValueKind == JsonValueKind.Array ? whEl.GetRawText() : null);   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
+                            doc.RootElement.TryGetProperty("hours", out var whEl) && whEl.ValueKind == JsonValueKind.Array ? whEl.GetRawText() : null);   // 주간보고는 임시저장('n')까지 하고 되읽어 확인한다(제출은 사용자가 인트라넷에서, 2026-11-06)
                         break;
                     case "netcusWeekMerge":   // 주간보고 병합(Phase2) — 기간 일간보고 content를 '읽기만' 해서 reqId로 회신
                     {
@@ -955,6 +956,12 @@ namespace TaskCalendarWidget
                         _ = _netcus.ViewMonth(reqId, GetInt(doc, "y"), GetInt(doc, "m"), GetInt(doc, "d"));   // async, { ok, error, marked } 를 __hostReply(reqId, ...)로 회신
                         break;
                     }
+                    case "netcusViewWeek":   // 인트라넷 주간보고에서 그 주 글의 보기 화면을 열어 보이기(읽기만, 주간 편집 화면의 [인트라넷에서 확인])
+                    {
+                        string reqId = GetStr(doc, "reqId");
+                        _ = _netcus.ViewWeek(reqId, GetStr(doc, "sdate"), GetStr(doc, "edate"));   // async, { ok, error, marked } 를 __hostReply(reqId, ...)로 회신
+                        break;
+                    }
                     case "netcusWeeklyRangeRead":   // 주간보고 범위 읽기(Phase2) — 기간에 걸치는 netcus 주간보고들을 '읽기만' 해서 reqId로 회신
                     {
                         string reqId = GetStr(doc, "reqId"), from = GetStr(doc, "from"), to = GetStr(doc, "to");

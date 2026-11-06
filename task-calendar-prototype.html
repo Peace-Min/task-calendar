@@ -3659,9 +3659,10 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
       </div>
       <div class="at-ed-foot">
         <span class="at-msg" id="awMsg" role="status" aria-live="polite"></span>
+        <button type="button" class="at-lnk" id="awIntra" hidden title="인트라넷 주간보고에서 이 주 글을 엽니다(읽기만)">인트라넷에서 확인</button>
         <span class="spacer"></span>
         <button type="button" class="btn" id="awClose">닫기</button>
-        <button type="button" class="btn primary" id="awSend" title="회사 주간보고 폼을 채워 엽니다. 제출은 그 창에서 직접 누릅니다">보고</button>
+        <button type="button" class="btn primary" id="awSend" title="회사 주간보고에 임시저장까지 합니다. 제출은 인트라넷에서 합니다">보고</button>
       </div>
     </div>
   </section>
@@ -5648,8 +5649,8 @@ if(ADMINWIN){ try{ document.documentElement.dataset.adminwin = '1'; }catch(_){} 
 const ATTENDWIN = (() => { try { return HOST && !PEER && new URLSearchParams(location.search).get('win') === 'attend'; }
                            catch (_) { return false; } })();
 //  과제 블록(결정 12): 인트라넷 불러오기(netcusWeekMerge)는 이 창에서 뺐다. attendCatNew = 메인 창의 과제 창 열기(새 과제 만들기).
-//  주간보고(결정 13): reportWeeklyList = 이 앱으로 쓴 주간 기록 읽기, netcusWeekSubmit = 회사 주간 폼 채우기(제출은 사용자가 그 창에서).
-const ATTENDWIN_CMD = new Set(['attendWinReady','attendNav','reportDailyList','netcusSubmit','attendSourceReq','netcusViewMonth','attendCatNew','reportWeeklyList','netcusWeekSubmit']);   // 호스트의 AttendWinCommands 와 같은 목록(tests/attendance-web.test.mjs)
+//  주간보고(결정 13): reportWeeklyList = 이 앱으로 쓴 주간 기록 읽기, netcusWeekSubmit = 회사 주간 임시저장(제출은 사용자가 인트라넷에서, 2026-11-06), netcusViewWeek = 그 주 글 보기(읽기만).
+const ATTENDWIN_CMD = new Set(['attendWinReady','attendNav','reportDailyList','netcusSubmit','attendSourceReq','netcusViewMonth','attendCatNew','reportWeeklyList','netcusWeekSubmit','netcusViewWeek']);   // 호스트의 AttendWinCommands 와 같은 목록(tests/attendance-web.test.mjs)
 if(ATTENDWIN){ try{ document.documentElement.dataset.attendwin = '1'; }catch(_){} }
 //  따로 뜨는 창(열람 창, 관리 창, 근태 창). 버전 관문 카드의 작은 변형, 창 제목, 테마 따라가기 같은 공통 규칙이 이것을 본다.
 const SUBWIN = PEERWIN || ADMINWIN || ATTENDWIN;
@@ -21436,26 +21437,34 @@ function atDateRender(){
 }
 //  [인트라넷에서 확인](보고한 날, 위젯만): 호스트가 인트라넷에 로그인해 그 달 근태관리 달력을 열고 그 날짜 칸으로 스크롤해 강조한다(읽기만).
 //    회사 쪽 창은 호스트가 띄운다. 이 창은 여는 동안 단추만 잠그고 결과가 실패면 안내한다.
-async function atIntraClick(){
-  if(!HOST || !ATE.p || !ATE.p.saved || ATE.sending || ATE.intra) return;
-  const date = ATE.date, [y, m, d] = date.split('-').map(Number);
-  ATE.intra = true; atIntraRender();
+//    주간 편집 화면의 같은 단추(#awIntra, netcusViewWeek)도 아래 두 공용 함수(intraBtnRender, intraOpen)를 쓴다(같은 모양, 같은 문구, 같은 처리).
+function intraBtnRender(b, show, opening, locked){
+  if(!b) return;
+  b.hidden = !show;
+  b.disabled = !!(opening || locked);
+  b.textContent = opening ? '인트라넷 여는 중…' : '인트라넷에서 확인';
+}
+//  st = 상태를 담는 객체(ATE, AWE 의 intra 칸), render = 단추 다시 그리기, say = 그 화면의 안내 줄. 회신 { ok, error, marked }.
+async function intraOpen(cmd, payload, st, render, say){
+  st.intra = true; render();
   let r = null;
-  try{ r = await hostRequest('netcusViewMonth', { y, m, d }, 90000); }catch(_){ r = null; }
-  ATE.intra = false; atIntraRender();
+  try{ r = await hostRequest(cmd, payload, 90000); }catch(_){ r = null; }
+  st.intra = false; render();
   if(r && r.ok) return;
   const e = r && typeof r.error === 'string' ? r.error : '';
-  atMsg(e === 'busy' ? '회사 사이트에서 다른 작업을 하는 중입니다. 잠시 뒤 다시 누르세요.'
+  say(e === 'busy' ? '회사 사이트에서 다른 작업을 하는 중입니다. 잠시 뒤 다시 누르세요.'
     : e === 'no-creds' ? '회사 사이트 로그인 정보가 없습니다. 설정에서 저장한 뒤 다시 누르세요.'
     : e === 'unverified' ? '회사 사이트 로그인 정보가 확인되지 않았습니다. 설정에서 확인한 뒤 다시 누르세요.'
     : e === 'login' ? '회사 사이트 로그인에 실패했습니다. 설정에서 로그인 정보를 확인하세요.'
     : '인트라넷 화면을 열지 못했습니다. 다시 누르세요.', 'err');
 }
+async function atIntraClick(){
+  if(!HOST || !ATE.p || !ATE.p.saved || ATE.sending || ATE.intra) return;
+  const date = ATE.date, [y, m, d] = date.split('-').map(Number);
+  await intraOpen('netcusViewMonth', { y, m, d }, ATE, atIntraRender, atMsg);
+}
 function atIntraRender(){
-  const b = $('#atIntra'); if(!b) return;
-  b.hidden = !(HOST && ATE.p && ATE.p.saved);
-  b.disabled = !!(ATE.intra || ATE.sending);
-  b.textContent = ATE.intra ? '인트라넷 여는 중…' : '인트라넷에서 확인';
+  intraBtnRender($('#atIntra'), !!(HOST && ATE.p && ATE.p.saved), ATE.intra, ATE.sending);
 }
 //  근태(ATTEND_STATUS 그대로, 기본 정근)와 초과시간(없음, +1~+11시간). 값이 목록에 없으면 정근.
 //    이 화면에는 미기록이 없다(2026-10-29 사용자). 보고서 창 레일의 미기록은 그대로다.
@@ -22173,7 +22182,7 @@ window.__attendWinHidden = function(){
   try{ clearTimeout(ATE.pvT); ATE.pvT = null; clearTimeout(AWE.pvT); AWE.pvT = null; clearTimeout(AWE.timer); AWE.timer = null; }catch(_){}
   try{ atCloseEditor(); }catch(_){}
   try{ awCloseEditor(); }catch(_){}
-  try{ ATE.prev = { date: '', content: null, loading: false, err: '', gen: ATE.prev.gen + 1 }; ATE.intra = false; ATE.armed = false; }catch(_){}
+  try{ ATE.prev = { date: '', content: null, loading: false, err: '', gen: ATE.prev.gen + 1 }; ATE.intra = false; ATE.armed = false; AWE.intra = false; }catch(_){}
   try{ closeOverlay(document.getElementById('confirmModal')); }catch(_){}
   try{ waReset(); }catch(_){}
   try{ ATW.view = 'day'; atwSync(); document.title = '근태 보고'; document.documentElement.classList.add('at-idle'); }catch(_){}
@@ -22283,7 +22292,7 @@ function atInit(){
  *    미처리사항, 문제점 및 건의사항은 미리보기에 빈칸으로만 보인다(보내지 않는다. 호스트도 그 칸을 건드리지 않는다).
  *  ★ 과제명은 일간(결정 12)처럼 내 캘린더 과제에서만 고른다. 과제투입시간은 캘린더 과제 순서로 늘 정렬한다(awSortHrs). 맨먼스 집계의 원천이다(결정 14).
  *  ★ 작성 중인 글은 이 PC(localStorage)에 주(월요일)마다 임시 저장한다. 안내 없이 이어서 열고, 보고 기록이 DB 에 저장되면(__reportWeeklySaved) 지운다.
- *  ★ 보내기는 일간과 다르다: 호스트가 회사 주간 폼을 채워 열고 제출은 사용자가 그 창에서 한다(WeekFill). 성공 회신은 "폼을 채웠다" 까지다. */
+ *  ★ 보내기: 호스트가 회사 주간 폼을 채워 임시저장까지 하고 되읽어 확인한 뒤 창을 닫는다(WeekFill, 2026-11-06). 제출은 사용자가 인트라넷에서 한다. */
 const ATT_KIND_KEY = 'tc_attKind';         // 근태 탭의 [일간][주간] 마지막 선택(이 PC에 하나)
 const AW_DRAFT_PREFIX = 'tc_attWDraft:';   // 키 = tc_attWDraft:<who>:<월요일 YYYY-MM-DD>. who 는 일간 임시 저장과 같은 규칙
 const AW_DRAFT_KEEP_DAYS = 120;            // 편집 화면을 열 때 이보다 오래된 주의 임시 저장은 지운다(목록에 남은 옛 작성 중을 치운다)
@@ -22296,7 +22305,7 @@ const AWL = { rows: [], from: '', to: '', loading: false, err: '', gen: 0 };
 //    prog, plan = 진행사항, 차주계획 글(결정 14), hrs = 과제투입시간 과제명 목록, hours = 과제명 → 시간, meet = 회의내용.
 //    gen = 주를 바꿀 때마다 늘린다(늦게 온 가져오기 회신을 버린다). daily = 이번 주 일간 보고(진행사항 과제를 더할 때 시간 칸의 처음 값).
 const AWE = { p: null, mon: '', base: null, subj: '', picked: '', prog: '', plan: '', hrs: [], hours: {}, meet: '',
-  ptab: 'pv', pvT: null, sending: false, armed: false, timer: null, wd: null, savedAt: '', gen: 0, busy: false,
+  ptab: 'pv', pvT: null, sending: false, armed: false, timer: null, wd: null, savedAt: '', gen: 0, busy: false, intra: false,
   cal: { open: false, y: 0, m: 0 }, add: '', daily: { mon: '', rows: null }, nav: false, showErr: false };
 //  근태 창의 화면('day' 일간 보고 | 'wlist' 주간 목록 | 'wedit' 주간 편집)과 받은 신원, 과제 목록(주간 목록에서 다른 주를 열 때 쓴다).
 const ATW = { view: 'day', ctx: { me: null, projects: [] } };
@@ -22844,9 +22853,19 @@ function awStatRender(){
   awResetSync();
 }
 function awSentRender(){
+  awIntraRender();
   const se = $('#awSent'); if(!se) return;
   const sv = AWE.p && AWE.p.saved, t = sv ? atSentLabel(sv.composedAt) : '';
   se.textContent = t ? '작성한 시각 ' + t : '';
+}
+//  [인트라넷에서 확인](주간, 2026-11-06): 일간 #atIntra 와 같은 단추와 처리. 위젯이고 그 주를 이 앱으로 쓴 기록(AWE.p.saved, 목록의 완료 표시와 같은 DB 기록)이 있을 때만 보인다.
+//    누르면 호스트가 인트라넷에 로그인해 같은 기간 글의 보기 화면을 연다(읽기만, netcusViewWeek). 못 찾으면 주간보고 목록이 열린다.
+async function awIntraClick(){
+  if(!HOST || !AWE.p || !AWE.p.saved || AWE.sending || AWE.busy || AWE.intra) return;
+  await intraOpen('netcusViewWeek', { sdate: AWE.mon, edate: calReportPeriod(AWE.mon).sat }, AWE, awIntraRender, awMsg);
+}
+function awIntraRender(){
+  intraBtnRender($('#awIntra'), !!(HOST && AWE.p && AWE.p.saved), AWE.intra, AWE.sending || AWE.busy);
 }
 function awSyncNav(){
   const off = !AWE.p || AWE.sending || AWE.busy || AWE.nav;
@@ -23057,7 +23076,7 @@ function awDraftFlushNow(force){
 }
 function awSavedRender(){ const s = $('#awSaved'); if(!s) return; const t = atHHMM(AWE.savedAt); s.textContent = (AWE.savedAt && t) ? '이 PC에 임시 저장됨 ' + t : ''; }
 
-/* ── 보내기(§13.3): 회사 주간 폼을 채워 연다(netcusWeekSubmit). 제출은 사용자가 그 창에서 한다 ── */
+/* ── 보내기(§13.3): 회사 주간 폼을 채워 임시저장까지 한다(netcusWeekSubmit, 2026-11-06). 제출은 사용자가 인트라넷에서 한다 ── */
 //  줄 앞 공백은 &nbsp; 로(일간과 같은 규칙). 과제투입시간은 줄 앞 공백이 없다. 회의내용(resultwork)은 결정 13 에서 더한 칸이다.
 function awBuildSubmit(){
   const s = awCur(), c = awCompose(s);
@@ -23098,7 +23117,7 @@ function awSubmit(){
 }
 function awOnNetcusProgress(msg){ if(!AWE.armed) return false; awMsg(String(msg || ''), 'busy'); return true; }
 //  호스트 회신(두 창 모두에 온다): 이 화면이 보낸 것일 때만 받는다(armed).
-//    성공 = 회사 폼을 채워 열었다. 보낸 상태가 새 처음 상태가 되고, 임시 저장은 보고 기록이 DB 에 저장됐다는 알림(__reportWeeklySaved)이 오면 지운다.
+//    성공 = 회사 주간보고에 임시저장하고 되읽어 확인했다(호스트가 확인용 창을 닫는다, 2026-11-06). 보낸 상태가 새 처음 상태가 되고, 임시 저장은 보고 기록이 DB 에 저장됐다는 알림(__reportWeeklySaved)이 오면 지운다.
 //    폼 채우기 회신만 보고 지우면 기록 저장이 끝내 실패했을 때 글이 어디에도 남지 않는다.
 function awOnNetcusResult(ok, msg, extra){
   if(!AWE.armed) return false;
@@ -23109,7 +23128,7 @@ function awOnNetcusResult(ok, msg, extra){
     AWE.base = s;
     awSetBusy(false);
     awOnEdit(false);
-    awMsg(String(msg || '주간보고 폼을 채웠습니다'), 'ok');
+    awMsg(String(msg || '주간보고 임시저장을 마쳤습니다. 제출은 인트라넷에서 하세요.'), 'ok');
     return true;
   }
   awSetBusy(false);
@@ -23261,6 +23280,7 @@ function awInit(){
     on('awClose', 'click', awRequestClose);
     on('awReset', 'click', awReset);
     on('awSend', 'click', awSubmit);
+    on('awIntra', 'click', awIntraClick);
     on('awImpDaily', 'click', () => awImpDaily(false));
     on('awImpPlan', 'click', () => awImpPlan(false));
     //  달력과 과제 추가 메뉴는 바깥을 누르면 닫는다

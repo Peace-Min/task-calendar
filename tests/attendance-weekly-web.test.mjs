@@ -16,6 +16,7 @@
 //   (A) jsdom 근태 창: 주간 payload 는 주간 편집을 보이고 일간 화면을 숨긴다, 처음 여는 주는 두 가져오기(reportDailyList 그 주 7일, reportWeeklyList 지난주)로
 //       채우고 그것이 처음 상태다, 완료한 주는 DB 기록으로 연다, 가져오기 단추, 보내기(netcusWeekSubmit 의 네 칸과 resultwork, &nbsp;, 잠금),
 //       성공 회신 뒤 처음 상태, __reportWeeklySaved 가 보낸 모양의 임시 저장만 지운다, 창 안 목록과 ‹ ›, 닫기 지키기, 새로고침은 과제 목록만 바꾼다.
+//       [인트라넷에서 확인](2026-11-06): 그 주를 쓴 기록이 있을 때만 보이고 netcusViewWeek(sdate, edate)를 청한다(일간 #atIntra 와 같은 단추, 같은 처리).
 //   (M) 변이: 빈 내용 `-` 빼기, 과제투입시간이 진행사항을 따라가지 않게 하기, 진행사항 없음 막기 빼기, 임시 저장 지우기 조건 빼기를 같은 검사가 잡는다.
 // ★ 회사 사이트에는 아무것도 보내지 않는다. chrome.webview.postMessage 와 hostRequest 를 가로채 보기만 한다.
 // 생략 규약: jsdom 이 없으면 (U)(B)(W)(A)(M)은 등록되지 않고 skip(판정 없음)으로 계수된다.
@@ -671,9 +672,9 @@ if (!JSDOM) {
     try {
       await openNewA(A);
       sendWeekly(A);
-      A.ev("__netcusResult(true, '주간보고 작성 폼을 채웠습니다. 열린 창에서 직접 제출하세요.')");
+      A.ev("__netcusResult(true, '주간보고 임시저장을 마쳤습니다. 제출은 인트라넷에서 하세요.')");
       assert.strictEqual(A.$('#awSend').textContent, '보고'); assert.strictEqual(A.$('#awSend').disabled, false);
-      assert.strictEqual(A.$('#awMsg').textContent, '주간보고 작성 폼을 채웠습니다. 열린 창에서 직접 제출하세요.');
+      assert.strictEqual(A.$('#awMsg').textContent, '주간보고 임시저장을 마쳤습니다. 제출은 인트라넷에서 하세요.');
       assert.strictEqual(A.ev('awDirty()'), false, '성공 뒤에도 고친 것으로 본다');
       assert.ok(A.ev(`localStorage.getItem('${KEYA}')`), 'DB 저장 알림 전에 임시 저장을 지웠다');
       assert.strictEqual(A.ev('__winCloseRequest()'), 'close');
@@ -683,7 +684,7 @@ if (!JSDOM) {
       assert.strictEqual(A.w.__closeCalls, 0, '성공했는데 창을 닫았다');
       //  보낸 뒤 고친 것은 남긴다
       sendWeekly(A);
-      A.ev("__netcusResult(true, '주간보고 같은 기간에 이미 있는 글을 고치는 화면으로 열었습니다.')");
+      A.ev("__netcusResult(true, '주간보고 임시저장을 마쳤습니다. 제출은 인트라넷에서 하세요. 같은 기간 글이 2개 있어 가장 최근 글을 열었습니다. 나머지는 회사 화면에서 지워 주세요.')");
       input(A, '#awMeet', '보낸 뒤 고침'); A.ev('awDraftFlushNow()');
       A.ev(`__reportWeeklySaved({ periodStart: '${MON}' })`);
       assert.ok(A.ev(`localStorage.getItem('${KEYA}')`).includes('보낸 뒤 고침'), '보낸 뒤 고친 임시 저장을 지웠다');
@@ -695,6 +696,56 @@ if (!JSDOM) {
       assert.strictEqual(A.$('#awMsg').title, '자격증명이 없습니다.');
       assert.strictEqual(A.$('#awSend').disabled, false);
       assert.ok(A.ev(`localStorage.getItem('${KEYA}')`), '실패했는데 임시 저장이 지워졌다');
+      assert.deepStrictEqual(A.errors, []);
+    } finally { A.close(); }
+  });
+
+  test('(A) [인트라넷에서 확인](주간): 그 주를 이 앱으로 쓴 기록이 생기면 보이고, 누르면 netcusViewWeek(sdate, edate)를 청하고 여는 동안 잠근다, 실패면 안내', async () => {
+    const A = bootAttend();
+    try {
+      await openNewA(A);
+      const b = A.$('#awIntra');
+      assert.ok(b, '주간 편집 화면에 [인트라넷에서 확인] 단추가 없다');
+      assert.strictEqual(b.className, A.$('#atIntra').className, '일간 [인트라넷에서 확인]과 같은 모양(클래스)이 아니다');
+      assert.ok(b.closest('.at-ed-foot') && b.previousElementSibling === A.$('#awMsg'), '하단 왼쪽(안내 줄 다음) 자리가 아니다');
+      assert.strictEqual(b.hidden, true, '이 앱으로 쓴 기록이 없는 주인데 보인다');
+      sendWeekly(A);
+      A.ev("__netcusResult(true, '주간보고 임시저장을 마쳤습니다. 제출은 인트라넷에서 하세요.')");
+      assert.strictEqual(b.hidden, true, 'DB 기록 알림 전에 보인다(목록의 완료 표시와 같은 조건이 아니다)');
+      A.ev(`__reportWeeklySaved({ periodStart: '${MON}' })`);
+      assert.ok(!b.hidden && !b.disabled && b.textContent === '인트라넷에서 확인', '기록이 생겼는데 단추가 없다');
+      stubHost(A, `{ netcusViewWeek: function(p){ return window.__vwReply; } }`);
+      A.ev(`window.__vwReply = { ok: true, error: '', marked: true }`);
+      const msg0 = A.$('#awMsg').textContent;
+      b.click();
+      assert.strictEqual(b.disabled, true, '여는 동안 잠그지 않았다');
+      assert.strictEqual(b.textContent, '인트라넷 여는 중…');
+      A.ev('awIntraClick()');   // 여는 중에 또 눌러도 한 번
+      await tick();
+      assert.deepStrictEqual(A.evJSON("__calls.filter(function(c){ return c[0] === 'netcusViewWeek'; })"), [['netcusViewWeek', { sdate: MON, edate: SAT }]], 'netcusViewWeek 를 그 주 기간으로 한 번 청하지 않았다');
+      assert.ok(!b.disabled && b.textContent === '인트라넷에서 확인');
+      assert.strictEqual(A.$('#awMsg').textContent, msg0, '성공했는데 안내를 바꿨다');
+      A.ev(`window.__vwReply = { ok: false, error: 'busy', marked: false }`);
+      b.click(); await tick();
+      assert.ok(A.$('#awMsg').textContent.includes('다른 작업'), '바쁨 안내가 없다');
+      A.ev(`window.__vwReply = { ok: false, error: 'no-creds', marked: false }`);
+      b.click(); await tick();
+      assert.ok(A.$('#awMsg').textContent.includes('로그인 정보가 없습니다'), '자격 없음 안내가 없다');
+      assert.deepStrictEqual(A.errors, []);
+    } finally { A.close(); }
+  });
+
+  test('(A) [인트라넷에서 확인](주간): 완료한 주(DB 기록)로 열면 바로 보이고, 보내는 중에는 잠긴다', async () => {
+    const A = bootAttend();
+    try {
+      A.ev('__attendWinOpen(' + JSON.stringify(wpayload(MON, WROW(MON, { subject: '10월 다섯째주' }))) + ')');
+      await tick(40);
+      const b = A.$('#awIntra');
+      assert.ok(!b.hidden && !b.disabled, '완료한 주인데 [인트라넷에서 확인]이 없다');
+      sendWeekly(A);
+      assert.strictEqual(b.disabled, true, '보내는 중인데 잠기지 않았다');
+      A.ev("__netcusResult(false, '임시저장을 확인하지 못했습니다.')");
+      assert.ok(!b.hidden && !b.disabled, '보내기가 끝났는데 풀리지 않았다');
       assert.deepStrictEqual(A.errors, []);
     } finally { A.close(); }
   });
@@ -815,6 +866,15 @@ if (!JSDOM) {
     const bad = mutate(app, "    return { name: n, projectUid: m ? m[1] : '', hours: Math.round(h[n] * 100) / 100 };", "    return { name: n, projectUid: '', hours: Math.round(h[n] * 100) / 100 };");
     runOn(bad, (X) => assert.notStrictEqual(X.ev("awHoursPayload(['알파'], { '알파': 1 }, [{ key: 'db-0f8fad5b-d9cb-469f-a165-70867728950e', name: '알파' }])[0].projectUid"), '0f8fad5b-d9cb-469f-a165-70867728950e'));
   });
+  test('변이 W6: [인트라넷에서 확인](주간)의 기록 조건을 빼면 보이기 검사가 잡는다', async () => {
+    const bad = mutate(app, "  intraBtnRender($('#awIntra'), !!(HOST && AWE.p && AWE.p.saved), AWE.intra, AWE.sending || AWE.busy);", "  intraBtnRender($('#awIntra'), !!(HOST && AWE.p), AWE.intra, AWE.sending || AWE.busy);");
+    const A = boot(bad, ATTEND_URL, true);
+    try {
+      clearDrafts(A); stubHost(A, REP);
+      await openNewA(A);
+      assert.strictEqual(A.$('#awIntra').hidden, false, '변이가 기록 없는 주에 단추를 보이지 않았다(검사가 이 변이를 못 잡는다)');
+    } finally { A.close(); }
+  });
   test('변이 W4: 저장 알림의 모양 비교를 빼면(늘 지움) 보낸 뒤 고친 임시 저장이 사라진다', async () => {
     const bad = mutate(app, '  if(sig && dr && awSig(dr) === sig) awDraftDel(mon);', '  if(dr) awDraftDel(mon);');
     const A = boot(bad, ATTEND_URL, true);
@@ -822,7 +882,7 @@ if (!JSDOM) {
       clearDrafts(A); stubHost(A, REP);
       await openNewA(A);
       sendWeekly(A);
-      A.ev("__netcusResult(true, '주간보고 작성 폼을 채웠습니다.')");
+      A.ev("__netcusResult(true, '주간보고 임시저장을 마쳤습니다. 제출은 인트라넷에서 하세요.')");
       input(A, '#awMeet', '보낸 뒤 고침'); A.ev('awDraftFlushNow()');
       A.ev(`__reportWeeklySaved({ periodStart: '${MON}' })`);
       assert.strictEqual(A.ev(`localStorage.getItem('${KEYA}')`), null, '변이가 임시 저장을 지우지 않았다(검사가 이 변이를 못 잡는다)');

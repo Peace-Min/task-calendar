@@ -377,7 +377,7 @@ async function main() {
   ok('W6 실패해도 임시 저장이 남는다', !!(await storedIn(M, KEY)));
   if (!(await interceptOkA())) throw new Error('전송 가로채기가 제자리에 없다. 실제 전송 위험이라 누르지 않는다');
   await click(A, 'awSend'); await sleep(150);
-  await A.ev(`window.__netcusResult(true, '주간보고 작성 폼을 채웠습니다(루프, 실제 전송 아님).'); 1`);
+  await A.ev(`window.__netcusResult(true, '주간보고 임시저장을 마쳤습니다. 제출은 인트라넷에서 하세요.(루프, 실제 전송 아님)'); 1`);
   await sleep(200);
   ok('W6 성공 회신 흉내 = 창은 남고 고친 것 없음, 임시 저장은 아직 남는다(DB 저장 알림 전)', (await attendTargets()).length === 1 && !(await A.ev('awDirty()')) && !!(await storedIn(M, KEY)));
   await A.ev(`window.__reportWeeklySaved({ periodStart: ${JSON.stringify(W)} }); 1`);

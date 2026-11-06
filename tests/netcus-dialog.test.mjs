@@ -118,10 +118,12 @@ function closesWindow(site) {
 // '인계 문서' = 이 로드 이후 창이 사용자 손에 남는 문서. 그 로드보다 detach가 앞서야 한다.
 // merge·weekly·userlogin·validate는 finally에서 창을 닫으므로 인계가 없다(아래에서 코드로 확인).
 const HANDOFF_LOADS = {
-  // 주간 채움: 목록에서 pjm_write.jsp로 POST하는 그 순간이 인계 문서의 로드다(창을 열어둔 채 반환).
-  //   2026-10-08 WEEKLY-UPSERT: 같은 기간 글이 있으면 그 글의 수정 화면(pjm_modify.jsp, 로컬 함수 OpenModify)을 넘긴다.
-  //   두 문서 모두 인계 문서다. 값이 배열이면 지점마다 같은 계약(로드 전 detach)을 따로 본다.
-  week: ['await cw.ExecuteScriptAsync(goWrite);', 'await wv.ExecuteScriptAsync(goModify);'],
+  // 주간 채움(2026-11-06 WEEKLY-UPSERT 끝 절): 앱이 임시저장까지 하고 되읽는다. 새 글 화면(goWrite)과 수정 화면(goModify)은 더 이상 인계 문서가 아니다
+  //   (저장이 끝날 때까지 자동수락을 켜 둔다, 아래 '주간 채움: 저장 구간' 검사). 인계 문서는 되읽기에서 실패 때 창째 남는 두 문서다:
+  //   같은 기간 글을 다시 찾았으면 그 글의 보기 화면(GoViewJs), 못 찾았으면 목록 1쪽(GoListJs). 값이 배열이면 지점마다 같은 계약(로드 전 detach)을 따로 본다.
+  week: ['await wv.ExecuteScriptAsync(GoViewJs(again.ViewNo, id));', 'await wv.ExecuteScriptAsync(GoListJs(1, id));'],
+  // 주간보고 보기(2026-11-06, 주간 편집 화면의 [인트라넷에서 확인]): 같은 기간 글의 보기 화면, 못 찾으면 목록 1쪽을 사용자에게 남긴다(읽기만).
+  viewweek: ['await cw.ExecuteScriptAsync(goView);', 'await cw.ExecuteScriptAsync(GoListJs(1, id));'],
   // 캡처: 게시판 홈으로 이동한 뒤 창을 그대로 열어두고 사용자가 직접 탐색·삭제한다.
   probe: 'await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));',
   // 일간 전송: ①DryRun(미제출)이 남기는 폼 페이지 ②실제 제출 뒤 되읽기 페이지 — 같은 문장이 두 번 나온다.
@@ -183,7 +185,7 @@ const checks = {
   allCallSitesDetach(source) {
     const sites = callSites(source);
     const tags = sites.map((s) => s.tag).sort();
-    assert.deepStrictEqual(tags, ['merge', 'probe', 'submit', 'userlogin', 'validate', 'view', 'week', 'weekly'],
+    assert.deepStrictEqual(tags, ['merge', 'probe', 'submit', 'userlogin', 'validate', 'view', 'viewweek', 'week', 'weekly'],
       `AttachDialogAutoAccept 호출부 목록이 계약과 다르다: ${tags}`);
 
     for (const s of sites) {
@@ -263,14 +265,48 @@ const checks = {
     }
   },
 
-  // ⑩ 인계 목록 자체가 계약이다. 창을 남기는 op는 정확히 week, probe, submit, view 넷(view 는 2026-10-29 근태 달력 보기).
+  // ⑩ 인계 목록 자체가 계약이다. 창을 남기는 op는 정확히 week, probe, submit, view, viewweek 다섯(view 는 2026-10-29 근태 달력 보기, viewweek 는 2026-11-06 주간보고 보기).
   //    새 op가 창을 남기게 되면 ⑨의 대상에도 반드시 등록돼야 한다(빠뜨리면 이번 사고 재발).
   handoffSetMatchesWindowKeepers(source) {
     const keeps = callSites(source).filter((s) => !closesWindow(s)).map((s) => s.tag).sort();
-    assert.deepStrictEqual(keeps, ['probe', 'submit', 'view', 'week'],
+    assert.deepStrictEqual(keeps, ['probe', 'submit', 'view', 'viewweek', 'week'],
       `창을 사용자에게 남기는 op 목록이 바뀌었다: ${keeps} — 인계 계약(⑨) 대상도 함께 갱신해야 한다`);
     assert.deepStrictEqual(Object.keys(HANDOFF_LOADS).sort(), keeps,
       '인계 계약(HANDOFF_LOADS)에 등록된 op와 실제로 창을 남기는 op가 다르다');
+  },
+
+  // ⑪ 주간 채움 저장 구간(2026-11-06): 새 글 화면, 수정 화면, 임시저장, 되읽기 찾기까지 자동수락이 켜져 있다.
+  //    끄는 곳(detach 완료 표식)은 되읽기 찾기(NcFindSameWeek ..., upToToday: true) 뒤에만 있다. 앞에서 끄면 그 뒤 로드되는 회사 화면의 알림이
+  //    기본 대화상자로 떠서(보이는 창) 저장 응답이나 되읽기가 사람 손을 기다리며 멈춘다.
+  weekSaveKeepsAutoAccept(source) {
+    const m = callSites(source).find((s) => s.tag === 'week').member;
+    const save = m.indexOf('WeekTempSaveJs(modify)');
+    const reread = m.indexOf('upToToday: true');
+    assert.ok(save > 0 && reread > save, '주간 채움에서 임시저장(WeekTempSaveJs)과 되읽기 찾기(upToToday: true)를 찾지 못했다');
+    for (const a of ['await cw.ExecuteScriptAsync(goWrite);', 'await wv.ExecuteScriptAsync(goModify);']) assert.ok(m.indexOf(a) > 0 && m.indexOf(a) < save, `주간 채움의 저장 문서 로드(${a})를 찾지 못했다`);
+    const marks = [...m.matchAll(DETACH_DONE)].map((x) => x.index);
+    assert.ok(marks.length > 0, '주간 채움에 되읽기 인계 전 detach 가 없다');
+    for (const d of marks) assert.ok(d > reread, '주간 채움이 저장 구간(새 글, 수정 화면 로드, 임시저장, 되읽기 찾기)에서 자동수락을 끈다');
+  },
+
+  // ⑫ 주간 채움: 자동수락이 켜진 채 로드된 문서는 사용자에게 남기지 않는다. 첫 detach 앞의 실패 통지는 모두 창을 닫은 뒤에 나간다
+  //    (창이 이미 닫힌 '확인 창이 닫혀' 경우는 빼고). 예외 경로도 아직 켜져 있으면(detach != null) 창을 닫는다.
+  //    켜진 채 로드된 문서를 남기면 finally 의 detach 가 그 문서에 늦게 먹어 사용자의 confirm 이 응답 없이 멈춘다(붙였다 떼기).
+  weekNoAttachedHandoff(source) {
+    const m = callSites(source).find((s) => s.tag === 'week').member;
+    const attachAt = m.indexOf('AttachDialogAutoAccept(');
+    const first = Math.min(...[...m.matchAll(DETACH_DONE)].map((x) => x.index));
+    assert.ok(attachAt > 0 && first > attachAt, '주간 채움의 attach 와 첫 detach 를 찾지 못했다');
+    const seg = m.slice(attachAt, first);
+    const fails = [...seg.matchAll(/NetcusResult\(false,[^;]*\);/g)];
+    assert.ok(fails.length >= 10, `저장 전 실패 통지를 충분히 찾지 못했다(${fails.length}). 판정 불가`);
+    for (const f of fails) {
+      if (f[0].includes('확인 창이 닫혀')) continue;
+      const before = seg.slice(Math.max(0, f.index - 260), f.index);
+      assert.ok(/_w2win\?\.Close\(\)/.test(before), `자동수락이 켜진 채 로드된 문서를 창째 남기는 실패 경로가 있다: ${f[0]}`);
+    }
+    const ci = m.lastIndexOf('catch (Exception ex)');
+    assert.ok(ci > first && /if \(detach != null\) \{[^\n]*_w2win\?\.Close\(\)/.test(braceSlice(m, ci)), '주간 채움 예외 경로가 자동수락이 켜진 채 남은 창을 닫지 않는다');
   },
 };
 
@@ -301,7 +337,7 @@ test('다이얼로그 자동수락: 핸들러가 ev.Accept()로 수락하고 메
   checks.handlerAcceptsAndLogs(netcus);
 });
 
-test('다이얼로그 자동수락: 호출부 8곳(userlogin, validate, submit, week, merge, weekly, probe, view)이 전부 detach를 부른다', () => {
+test('다이얼로그 자동수락: 호출부 9곳(userlogin, validate, submit, week, merge, weekly, probe, view, viewweek)이 전부 detach를 부른다', () => {
   checks.allCallSitesDetach(netcus);
 });
 
@@ -319,11 +355,11 @@ test('다이얼로그 자동수락: 위젯 다른 소스는 AreDefaultScriptDial
 
 // ══ ★ 인계 순서 계약 ★ ════════════════════════════════════════════════
 
-test('인계 계약: week, probe, submit, view 모두 인계 문서를 로드하기 전에 detach가 끝난다', () => {
+test('인계 계약: week, probe, submit, view, viewweek 모두 인계 문서를 로드하기 전에 detach가 끝난다', () => {
   checks.detachBeforeHandoff(netcus);
 });
 
-test('인계 계약: 창을 사용자에게 남기는 op는 week, probe, submit, view 넷뿐이다', () => {
+test('인계 계약: 창을 사용자에게 남기는 op는 week, probe, submit, view, viewweek 다섯뿐이다', () => {
   checks.handoffSetMatchesWindowKeepers(netcus);
 });
 
@@ -355,6 +391,21 @@ test('일간 전송(submit): 자동 제출(go=write) 구간에서는 자동수�
 });
 
 // ══ 주간 채움 confirm 무변경(이번 수정이 깨뜨리면 안 되는 것) ═════════
+
+test('주간 채움: 저장 구간(새 글, 수정 화면, 임시저장, 되읽기 찾기)에서는 자동수락이 켜져 있고 끄는 곳은 그 뒤뿐이다(2026-11-06)', () => {
+  checks.weekSaveKeepsAutoAccept(netcus);
+});
+
+test('주간 채움: 자동수락이 켜진 채 로드된 문서는 사용자에게 남기지 않는다(저장 전 실패와 예외는 창을 닫는다)', () => {
+  checks.weekNoAttachedHandoff(netcus);
+});
+
+test('주간보고 보기(viewweek): 읽기만 한다(임시저장, 제출, 값 넣기, 폼 보내기 없음)', () => {
+  const m = stripComments(callSites(netcus).find((s) => s.tag === 'viewweek').member);
+  assert.ok(!/WeekTempSaveJs|Bwrite|Bmodify|GoModifyJs|WeekModify|SaveWeeklyReport|SaveDailyReport|\.submit\(|\.value\s*=(?!=)|'y'|"y"/.test(m), '주간보고 보기가 회사 사이트에 쓰거나 저장, 제출한다');
+  assert.ok(m.includes('GoViewJs(same.ViewNo, id)') && m.includes('NcFindSameWeek(cw, id, sdate, edate)'), '주간보고 보기가 같은 기간 글을 찾아 보기 화면을 열지 않는다');
+  assert.ok(m.includes('if (_ncBusy) { HostReply(reqId, new { ok = false, error = "busy", marked = false }); return; }'), '주간보고 보기가 다른 회사 사이트 작업과 겹친다');
+});
 
 test('주간 채움: Bwrite 오버라이드의 confirm(\'제출하시겠습니까?\')은 그대로 남아 있다', () => {
   const site = callSites(netcus).find((s) => s.tag === 'week');
@@ -437,26 +488,41 @@ test('변이⑧: 설정을 전역(다른 멤버)에서 켜두면 onlyAttachTouch
 // 이 형태가 실제 배포 직전까지 갔던 코드다(설정 원복 줄은 있었지만 로드 뒤라 아무 효과가 없었다).
 // 실측: 이 상태로는 다이얼로그가 아예 뜨지 않고 영구 정지한다 → 주간보고 '제출'이 먹통.
 
-test('변이⑨: week의 detach를 인계 로드(pjm_write.jsp POST) 뒤로 옮기면 detachBeforeHandoff가 실패한다', () => {
-  let bad = mutate('                detach?.Invoke(); detach = null;' + NL + '                var wnav = NavOnce(cw, 15000);',
-    '                var wnav = NavOnce(cw, 15000);');
-  bad = mutate('                await wnav;' + NL,
-    '                await wnav;' + NL + '                detach?.Invoke(); detach = null;' + NL, bad);
+test('변이⑨: week의 되읽기 detach를 인계 로드(보기 화면, 목록) 뒤로 옮기면 detachBeforeHandoff가 실패한다', () => {
+  let bad = mutate('                    detach?.Invoke(); detach = null;' + NL + '                    int vr;',
+    '                    int vr;');
+  bad = mutate('                        await rnav;' + NL,
+    '                        await rnav;' + NL + '                        detach?.Invoke(); detach = null;' + NL, bad);
   assert.throws(() => checks.detachBeforeHandoff(bad), /week: 사용자에게 넘길 문서를 로드하기 전에 detach가 끝나지 않는다/);
 });
 
-test('변이⑨b: 주간 채움 수정 경로의 detach를 수정 화면 로드(pjm_modify.jsp POST) 뒤로 옮기면 detachBeforeHandoff가 실패한다', () => {
-  let bad = mutate('                    detach?.Invoke(); detach = null;' + NL + '                    var mnav = NavOnce(wv, 15000);',
-    '                    var mnav = NavOnce(wv, 15000);');
-  bad = mutate('                    await mnav;' + NL,
-    '                    await mnav;' + NL + '                    detach?.Invoke(); detach = null;' + NL, bad);
-  //  수정 경로의 detach 가 빠지면 가장 가까운 앞 detach 는 새 글 경로의 것이고, 그 사이에 return 이 있다(다른 경로다).
-  assert.throws(() => checks.detachBeforeHandoff(bad), /week: (사용자에게 넘길 문서를 로드하기 전에 detach가 끝나지 않는다|detach와 인계 로드 사이에 return이 있다)/);
+test('변이⑨b: 주간 채움이 수정 화면이나 새 글 화면 로드 앞에서 다시 자동수락을 끄면(옛 계약) 저장 구간 검사가 실패한다', () => {
+  const bad = mutate('                    var mnav = NavOnce(wv, 15000);',
+    '                    detach?.Invoke(); detach = null;' + NL + '                    var mnav = NavOnce(wv, 15000);');
+  assert.throws(() => checks.weekSaveKeepsAutoAccept(bad), /저장 구간.*자동수락을 끈다/);
+  const bad2 = mutate('                var wnav = NavOnce(cw, 15000);',
+    '                detach?.Invoke(); detach = null;' + NL + '                var wnav = NavOnce(cw, 15000);');
+  assert.throws(() => checks.weekSaveKeepsAutoAccept(bad2), /저장 구간.*자동수락을 끈다/);
 });
 
-test('변이⑨c: 주간 채움 수정 경로의 인계 지점이 사라지면(앵커 없음) detachBeforeHandoff가 판정 불가로 실패한다', () => {
-  const bad = mutate('await wv.ExecuteScriptAsync(goModify);', 'await wv.ExecuteScriptAsync(GoModifyJs(hit.ViewNo, id));');
+test('변이⑨c: 주간 채움 되읽기의 인계 지점이 사라지면(앵커 없음) detachBeforeHandoff가 판정 불가로 실패한다', () => {
+  const bad = mutate('await wv.ExecuteScriptAsync(GoViewJs(again.ViewNo, id));', 'await wv.ExecuteScriptAsync(GoViewJs(again.ModifyNo, id));');
   assert.throws(() => checks.detachBeforeHandoff(bad), /week: 인계 문서 로드 지점을 찾지 못함/);
+});
+
+test('변이⑨d: 저장 전 실패 경로가 창을 닫지 않으면(켜진 채 로드된 문서를 남김) weekNoAttachedHandoff가 실패한다', () => {
+  const bad = mutate('                    try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }' + NL + '                    NetcusResult(false, "주간보고 폼 채우기 실패.',
+    '                    NetcusResult(false, "주간보고 폼 채우기 실패.');
+  assert.throws(() => checks.weekNoAttachedHandoff(bad), /창째 남기는 실패 경로/);
+  const bad2 = mutate('                if (detach != null) { try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { } }' + NL + '                bool disposed',
+    '                bool disposed');
+  assert.throws(() => checks.weekNoAttachedHandoff(bad2), /예외 경로/);
+});
+
+test('변이⑨e: 주간보고 보기의 보기 화면 로드 전 detach를 지우면 detachBeforeHandoff가 실패한다', () => {
+  const bad = mutate('                detach?.Invoke(); detach = null;' + NL + '                var vnav = NavOnce(cw, 15000);' + NL + '                string goView',
+    '                var vnav = NavOnce(cw, 15000);' + NL + '                string goView');
+  assert.throws(() => checks.detachBeforeHandoff(bad), /viewweek: (사용자에게 넘길 문서를 로드하기 전에 detach가 끝나지 않는다|detach와 인계 로드 사이에 return이 있다)/);
 });
 
 test('변이⑩: probe의 인계 전 detach를 지우면(=창 Closed까지 자동수락 유지) detachBeforeHandoff가 실패한다', () => {

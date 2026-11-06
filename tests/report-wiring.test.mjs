@@ -104,25 +104,29 @@ const checks = {
     }
   },
 
-  // ④ 주간 저장은 폼 채우기 성공 뒤에 불린다
-  //   2026-10-08 WEEKLY-UPSERT: NetcusWeekFill 에 같은 기간 글의 수정 경로(로컬 함수 OpenModify)가 생겨 저장 호출이 둘이다.
-  //   여기는 새 글 경로(OpenModify 앞)만 본다. 수정 경로의 저장은 weekly-upsert.test.mjs 가 같은 방식으로 잠근다.
-  //   옛 판의 고정 창(앞 12000자)은 메서드가 길어지면 수정 경로의 호출을 새 글 경로의 것으로 잘못 집는다 → 멤버 본문으로 자르고 경계에서 끊는다.
+  // ④ 주간 저장은 회사 임시저장이 되읽기로 확인된 뒤에만 불린다(2026-11-06 WEEKLY-UPSERT 끝 절)
+  //   새 글 경로와 수정 경로(OpenModify)가 둘 다 공용 로컬 함수 SaveAndVerify 로 끝난다. 저장 호출은 그 안 한 곳이다.
+  //   순서: 임시저장(WeekTempSaveJs) → 되읽기 판정(NcWeekVerify) → vr != 1 이면 실패 통지와 return → 성공 통지 → SaveWeeklyReport.
   weeklySaveAfterFill(cs) {
     const i = cs.indexOf('private async Task NetcusWeekFill(');
     assert.ok(i > 0, 'NetcusWeekFill 을 찾지 못했다');
     const all = extractCsMember(cs, 'private async Task NetcusWeekFill(');
-    const mod = all.indexOf('async Task OpenModify(');
-    assert.ok(mod > 0, '수정 경로(OpenModify)의 경계를 찾지 못했다. 새 글 경로를 가를 수 없다');
-    const b = all.slice(0, mod);
-    const okMsg = b.indexOf('주간보고 작성 폼을 채웠습니다');
+    const sv = all.indexOf('async Task SaveAndVerify(');
+    assert.ok(sv > 0, '임시저장과 되읽기(SaveAndVerify)를 찾지 못했다');
+    const b = all.slice(sv);
     const call = b.indexOf('_host.SaveWeeklyReport(');
     assert.ok(call > 0, 'NetcusWeekFill 안에서 SaveWeeklyReport 호출을 찾지 못했다 — 배선이 끊겼다');
-    assert.ok(okMsg > 0 && call > okMsg,
-      '주간 저장이 폼 채우기 성공 통지보다 앞에 있다 — 실패한 채우기도 기록된다');
-    // 채우기 실패 경로(return)보다 뒤여야 한다
-    const failRet = b.indexOf('주간보고 폼 채우기 실패');
-    assert.ok(failRet > 0 && call > failRet, '저장이 채우기 실패 분기보다 앞에 있다');
+    assert.strictEqual(all.split('_host.SaveWeeklyReport(').length - 1, 1, 'NetcusWeekFill 에서 SaveWeeklyReport 를 두 곳 이상에서 부른다(되읽기 밖에서 기록하는 경로가 생겼다)');
+    const save = b.indexOf('WeekTempSaveJs(modify)'), verify = b.indexOf('NcWeekVerify('), gate = b.indexOf('if (vr != 1)');
+    const okMsg = b.indexOf('NetcusResult(true, WeekSavedOkMsg(matches));');
+    assert.ok(save > 0 && verify > save && gate > verify, '임시저장, 되읽기 판정, 실패 검사 순서가 아니다');
+    assert.ok(okMsg > gate && call > okMsg,
+      '주간 저장이 되읽기 성공 통지보다 앞에 있다. 확인되지 않은 임시저장도 기록된다');
+    const gb = b.slice(gate, b.indexOf('}', b.indexOf('NetcusResult(false, WeekVerifyMsg(vr));', gate)) + 1);
+    assert.ok(/\breturn;/.test(gb), '되읽기 실패 블록에 return 이 없다. 실패한 임시저장도 기록된다');
+    // 저장 전 실패 경로(채우기 실패)는 SaveAndVerify 에 닿지 않는다
+    const failRet = all.indexOf('주간보고 폼 채우기 실패');
+    assert.ok(failRet > 0 && failRet < all.indexOf('await SaveAndVerify(cw, false, "", 0);'), '채우기 실패 분기가 임시저장 호출보다 뒤에 있다');
   },
 
   // ⑤ 웹→호스트 경계가 hours 를 실어 나른다
@@ -303,14 +307,18 @@ test('변이③b: 일간 저장을 기다리지 않거나 결과를 고정 성�
   assert.doesNotThrow(() => checks.saveNeverBreaksSend(netcus, reportdb));   // 통제군
 });
 
-test('변이④: 주간 저장을 채우기 성공 통지 앞으로 옮기면 배선④ 가 실패한다', () => {
-  const call = '                _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);';   // 회의내용(결정 13)까지
-  const msg = '                NetcusResult(true, "주간보고 작성 폼을 채웠습니다';
-  assert.ok(netcus.includes(call), '주간 저장 호출을 찾지 못했다');
-  const bad = mutate(msg, call + '\n' + msg, netcus).replace(call + '\n', (m, off) => off > netcus.indexOf(msg) ? '' : m);
-  // 위 치환이 애매하면 단순히 호출을 지운 변이로 대체(둘 다 배선④ 를 깨야 한다)
-  const bad2 = mutate(call, '                // 옮겨짐', netcus);
-  assert.throws(() => checks.weeklySaveAfterFill(bad2), /배선이 끊겼다/);
+test('변이④: 주간 저장을 지우거나 되읽기 성공 통지 앞으로 옮기거나 실패 검사의 return 을 빼면 배선④ 가 실패한다', () => {
+  const call = '                    _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);';   // 회의내용(결정 13)까지
+  const msg = '                    NetcusResult(true, WeekSavedOkMsg(matches));';
+  assert.ok(netcus.includes(call) && netcus.includes(msg), '주간 저장 호출이나 성공 통지를 찾지 못했다');
+  const removed = mutate(call, '                    // 지워짐', netcus);
+  assert.throws(() => checks.weeklySaveAfterFill(removed), /배선이 끊겼다/);
+  const NLx = netcus.includes('\r\n') ? '\r\n' : '\n';
+  const moved = mutate(msg, call + NLx + msg, removed);
+  assert.throws(() => checks.weeklySaveAfterFill(moved), /성공 통지보다 앞에 있다/);
+  const noRet = mutate('                        NetcusResult(false, WeekVerifyMsg(vr));' + NLx + '                        return;', '                        NetcusResult(false, WeekVerifyMsg(vr));', netcus);
+  assert.throws(() => checks.weeklySaveAfterFill(noRet), /return 이 없다/);
+  assert.doesNotThrow(() => checks.weeklySaveAfterFill(netcus));   // 통제군
 });
 
 test('변이⑤: 웹이 hours 를 안 실으면 배선⑤ 가 실패한다', () => {

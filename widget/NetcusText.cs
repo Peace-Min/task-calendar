@@ -130,16 +130,99 @@ namespace TaskCalendarWidget
             return (bestSeq, bestNo);
         }
 
-        // 수정 화면 성공 문구. 반드시 "주간보고 " 로 시작한다(웹 RPT_WEEKFILL_OK_RE = /^주간보고 / 가 이걸로 주간 회신을 가른다).
-        //  meeting = 회의내용도 채웠다(근태 탭 주간 편집, 결정 13). false 면 예전 세 칸 문구 그대로다.
-        internal static string WeekModifyOkMsg(int matches, bool meeting = false)
+        // ================================================================================
+        // 주간보고 임시저장과 되읽기(WEEKLY-UPSERT 끝 절, 2026-11-06 사용자 확정). 앱이 임시저장('n')까지 누르고, 같은 기간 글을 다시 찾아
+        //   보기 화면의 진행사항에 보낸 한글 토큰이 있는지 본다(일간 NetcusSubmit 의 되읽기와 같은 규칙). 제출('y')은 사용자가 인트라넷에서 한다.
+        // ================================================================================
+
+        // 성공 문구. 반드시 "주간보고 " 로 시작한다(웹이 이 머리로 주간 회신을 가른다, REPORT-EDIT 정정 3).
+        //   matches = 고친 기존 글을 고를 때 본 같은 기간 글 수. 둘 이상이면 예전 수정 경로 문구의 중복 안내를 그대로 붙인다(새 글이면 0).
+        internal static string WeekSavedOkMsg(int matches)
         {
-            string m = "주간보고 같은 기간에 이미 있는 글을 고치는 화면으로 열었습니다. "
-                + (meeting ? "진행사항, 과제투입시간, 차주계획, 회의내용 네 칸은" : "진행사항, 과제투입시간, 차주계획 세 칸은") + " 캘린더 내용으로 바뀌었습니다. "
-                + "확인 뒤 열린 창에서 임시저장이나 제출을 누르세요. 저장하지 않고 창을 닫으면 회사 글은 그대로입니다.";
+            string m = "주간보고 임시저장을 마쳤습니다. 제출은 인트라넷에서 하세요.";
             if (matches > 1) m += " 같은 기간 글이 " + matches.ToString(CultureInfo.InvariantCulture) + "개 있어 가장 최근 글을 열었습니다. 나머지는 회사 화면에서 지워 주세요.";
             return m;
         }
+
+        // 임시저장 단추를 누르지 못했다(끼운 함수가 없거나 기간, 제목 검사에서 멈춰 폼을 만들지 않았다). 이때 창은 닫는다(자동 수락이 켜진 채 로드된 문서라 넘기지 않는다).
+        internal const string WeekSaveFailMsg = "임시저장을 누르지 못했습니다. 페이지 구조가 바뀌었을 수 있습니다.";
+
+        // [WEEKLY-UPSERT:JS] 임시저장: 앞서 끼운 안전한 Bwrite(새 글) 또는 Bmodify(수정)를 'n' 으로 부른다. 'y'(제출)는 부르지 않는다.
+        //   두 대체 함수는 보낼 때 data-tc-week="1" 폼을 만든다. 그 폼이 생겼으면 SUBMITTED, 함수가 없으면 NOFN, 검사에서 멈췄으면 NOFORM.
+        internal static string WeekTempSaveJs(bool modify)
+        {
+            string fn = modify ? "Bmodify" : "Bwrite";
+            return "(function(){try{if(typeof window." + fn + "!=='function')return 'NOFN';window." + fn + "('n');"
+                + "return document.querySelector('form[data-tc-week=\"1\"]')?'SUBMITTED':'NOFORM';}catch(e){return 'ERR '+((e&&e.message)||e);}})()";
+        }
+
+        // 저장 중 회사 사이트가 띄운 알림에 "실패" 가 있으면 저장이 안 된 것으로 본다(예: "수정하는데 실패하였습니다").
+        //   수정 경로는 예전 글에도 같은 한글 토큰이 있을 수 있어(같은 내용을 다시 보냄) 되읽기만으로는 실패를 못 가린다.
+        internal static bool NcSaveAlertFailed(IEnumerable<string>? alerts)
+        {
+            foreach (var a in alerts ?? Array.Empty<string>()) if ((a ?? "").Contains("실패")) return true;
+            return false;
+        }
+
+        // 되읽기 판정. 일간 되읽기와 같은 번호를 쓴다: -1 로그인 화면(세션 만료), -2 글을 못 찾음(또는 못 읽음, 다른 글), 0 진행사항이 빔,
+        //   1 정상(한글 토큰이 있거나, 보낸 진행사항에 한글이 없고 내용이 있음), 2 저장됐으나 한글 불일치. -3 은 회사 사이트가 저장 실패를 알렸다.
+        //   pickedNo = 다시 찾아 고른 글 번호, viewNo = 그 보기 화면 수정 단추에서 다시 읽은 번호, expectNo = 고친 기존 글 번호(새 글이면 "").
+        //   보낸 진행사항이 비었으면 읽은 칸도 비어야 맞으므로 빈 칸을 정상으로 본다.
+        //   oldEndwork(수정 경로만): 채우기 전 수정 화면의 기존 진행사항. 주면 대조 토막을 NcWeekNeedle(보낸 글, 기존 글)로 고른다.
+        //     그런 토막이 없으면(같은 글을 다시 보냄, 새 글이 옛 글의 일부) 바뀐 것이 없어 대조할 수 없으므로 회사 실패 알림(-3)만 보고 정상으로 본다.
+        //     null 이면(새 글 경로) 예전처럼 보낸 글의 첫 한글 토막(NetcusHangulNeedle)이다.
+        internal static int NcWeekVerify(bool loginPage, bool siteFail, string? pickedNo, string? viewNo, string? expectNo, string? readEndwork, string? sentEndwork, string? oldEndwork = null)
+        {
+            if (loginPage) return -1;
+            string p = NcModifyNo(pickedNo);
+            if (p.Length == 0 || NcModifyNo(viewNo) != p) return -2;
+            string e = NcModifyNo(expectNo);
+            if (e.Length > 0 && e != p) return -2;
+            if (siteFail) return -3;
+            string v = (readEndwork ?? "").Trim();
+            if (v.Length == 0) return (sentEndwork ?? "").Trim().Length == 0 ? 1 : 0;
+            string n = oldEndwork == null ? NetcusHangulNeedle(sentEndwork ?? "") : NcWeekNeedle(sentEndwork, oldEndwork);
+            return n.Length == 0 ? 1 : (v.IndexOf(n, StringComparison.Ordinal) >= 0 ? 1 : 2);
+        }
+
+        // 수정 경로의 대조 토막: 새 진행사항에는 있고 기존 진행사항에는 없는 한글 토막(연속 한글 2 ~ 4자). 없으면 "".
+        //   새 글의 한글 묶음(연속 한글)마다 앞에서부터 길이 min(4, 묶음 길이)의 창을 밀며 기존 글에 없는 첫 창을 고른다.
+        //   기존 글에도 있는 토막을 고르면 저장이 안 됐어도 옛 글이 대조를 통과한다(같은 과제명으로 시작하는 진행사항).
+        internal static string NcWeekNeedle(string? newText, string? oldText)
+        {
+            string s = newText ?? "", old = oldText ?? "";
+            int i = 0;
+            while (i < s.Length)
+            {
+                if (s[i] < 0xAC00 || s[i] > 0xD7A3) { i++; continue; }
+                int j = i;
+                while (j < s.Length && s[j] >= 0xAC00 && s[j] <= 0xD7A3) j++;
+                int len = j - i;
+                if (len >= 2)
+                {
+                    int w = Math.Min(4, len);
+                    for (int k = i; k + w <= j; k++)
+                    {
+                        string c = s.Substring(k, w);
+                        if (old.IndexOf(c, StringComparison.Ordinal) < 0) return c;
+                    }
+                }
+                i = j;
+            }
+            return "";
+        }
+
+        // [WEEKLY-UPSERT:JS] 수정 화면의 기존 진행사항(endwork) 값. 채우기 전에 읽어 대조 토막을 고른다(로그에는 남기지 않는다). 칸이 없으면 null.
+        internal const string WeekModifyOldEndworkJs = "(function(){try{var e=document.getElementsByName('endwork')[0];return e?String(e.value==null?'':e.value):null;}catch(x){return null;}})()";
+
+        // 되읽기 실패 문구(vr != 1). "주간보고 " 로 시작하지 않는다(성공 회신으로 오인되지 않게). 창은 되읽기 문서째 남는다.
+        internal static string WeekVerifyMsg(int vr) => vr switch
+        {
+            -1 => "세션이 만료됐거나 로그인이 필요합니다. 임시저장이 됐는지 인트라넷에서 확인하세요.",
+            -3 => "회사 사이트가 저장 실패를 알렸습니다. 열린 창에서 확인하세요.",
+            2 => "임시저장은 됐으나 한글이 깨졌을 수 있습니다(되읽기 대조 불일치). 열린 창에서 확인하세요.",
+            _ => "임시저장을 확인하지 못했습니다(같은 기간 글을 다시 찾지 못했거나 진행사항이 비어 있음). 열린 창에서 확인하세요.",
+        };
 
         // [WEEKLY-UPSERT:JS] 목록 페이지 표지: 행이 0개일 때 '빈 목록'과 '목록을 못 읽음'을 가른다(go_view, go_list 함수 또는 table_code 칸).
         internal const string ListPageMarkJs = "(function(){try{return !!(typeof go_view==='function'||typeof go_list==='function'||document.getElementsByName('table_code')[0]);}catch(e){return false;}})()";

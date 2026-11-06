@@ -7,6 +7,19 @@
 
 ---
 
+## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 주간보고 임시저장까지 하고 [인트라넷에서 확인]
+
+기획과 구현 기록 [docs/WEEKLY-UPSERT.md](docs/WEEKLY-UPSERT.md) 맨 끝 절. DB 구조 그대로. 계약 개정: 주간 채우기의 인계 문서와 성공 문구, 근태 창 허용 목록(열).
+
+- **호스트**(`widget/NetcusService.cs`): `NetcusWeekFill` 이 채운 뒤 끼운 `Bwrite`/`Bmodify` 를 `'n'`(임시저장)으로 부르고, 공용 로컬 함수 `SaveAndVerify` 가 같은 기간 글을 다시 찾아(`NcFindSameWeek(..., upToToday: true)`) 보기 화면의 진행사항을 한글 토큰으로 대조한다. 확인되면 `WeekSavedOkMsg`, `SaveWeeklyReport`, 확인용 창 닫기. 아니면 `WeekVerifyMsg(vr)` 와 창 남김(기록 없음). 제출(`'y'`)은 부르지 않는다.
+- **자동 수락 계약 개정**: 새 글 화면과 수정 화면은 더 이상 인계 문서가 아니다. 그 로드 앞의 detach 를 없애고, 되읽기에서 사용자에게 남을 문서(보기 화면 또는 목록) 로드 직전 한 곳에서 끈다. 저장 전 실패와 예외(아직 붙어 있을 때)는 창을 닫는다. 저장 구간의 회사 알림은 `_dlgSeen` 에 모아 "실패" 가 있으면 실패로 본다.
+- **새 명령 `netcusViewWeek {sdate, edate}`**(`NetcusViewWeek`, tag `viewweek`, 회신 `{ok, error, marked}`): 같은 기간 글의 보기 화면(못 찾으면 목록)을 연다. 읽기만. `MainWindow.AttendWinCommands` 와 웹 `ATTENDWIN_CMD` 에 더했다. 창 보이기는 `ShowW2ForUser` 로 떼어 `NetcusViewMonth` 와 같이 쓴다.
+- **순수 함수**(`widget/NetcusText.cs`): `WeekSavedOkMsg`, `WeekSaveFailMsg`, `WeekTempSaveJs`, `NcSaveAlertFailed`, `NcWeekVerify`, `WeekVerifyMsg`. `WeekModifyOkMsg` 는 지웠다. `NcSameWeek` 에 `SessionLost`.
+- **웹**: 주간 편집 하단 왼쪽 `#awIntra`(일간 `#atIntra` 와 같은 단추, 공용 `intraBtnRender`, `intraOpen`). 보이는 조건 `HOST && AWE.p && AWE.p.saved`. `#awSend` 툴팁과 기본 성공 문구를 새 흐름으로.
+- **시험**: weekly-upsert(되읽기 판정 표, 임시저장 JS, 저장과 되읽기 계약, 변이), netcus-dialog(`HANDOFF_LOADS.week` 를 되읽기 두 문서로, `viewweek`, 저장 구간 검사), report-wiring ④, attendance-host, attendance-web, attendance-weekly-web(`#awIntra`, 변이 W6), user-login D1, E7(공유 로그인 호출부 여덟). 회사 사이트에 접속하는 시험은 없다. 폐쇄망 확인 목록은 기획 문서에.
+
+---
+
 ## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 근태 가져오기 서식을 문단 모양으로 합침
 
 기획 [docs/WRITING-ASSIST.md](docs/WRITING-ASSIST.md) "2차", 시안 `dist/proto/at-import-fmt-v1.html`(저장소 밖). DB 구조 그대로.

@@ -2,13 +2,15 @@
 //
 // 회사 사이트는 쓰지 않는다. 대신 세 겹으로 본다.
 //   A. C# 실행: widget/NetcusText.cs 를 **그대로** 작은 콘솔 프로그램과 함께 컴파일해 돌린다.
-//      고르기 규칙(NcPickSameWeek, 글 번호 NcModifyNo), 성공 문구(WeekModifyOkMsg), 수정 화면 확인 해석(NcParseModifyProbe)은
+//      고르기 규칙(NcPickSameWeek, 글 번호 NcModifyNo), 성공 문구(WeekSavedOkMsg), 수정 화면 확인 해석(NcParseModifyProbe),
+//      임시저장 뒤 되읽기 판정(NcWeekVerify, WeekVerifyMsg, NcSaveAlertFailed, 2026-11-06)은
 //      JS 로 옮겨 적은 사본이 아니라 C# 이 실제로 돌려준 값으로 판정한다.
 //   B. jsdom 행동: A 에서 C# 이 만든 JS 문자열(GoModifyJs, WeekModifyFillJs, WeekModifyOverrideJs, WeekModifyProbeJs,
 //      ListPageMarkJs)을 가짜 수정 화면에서 그대로 실행한다. 가짜 화면은 회사 수정 화면의 **구조만** 따른다
 //      (빈 form, 그 밖에 형제로 있는 칸, 같은 칸 이름, 숨은 wdate, 미리 채운 미처리사항 등). 이름과 내용은 전부 지어낸 것이다.
 //   C. 정적 계약 + 변이: NetcusService.cs 의 흐름(확인 실패면 새 글을 열지 않음, 저장은 성공 뒤, 주간범위 읽기 회신 계약 그대로).
-//      인계(자동수락 detach) 순서는 netcus-dialog.test.mjs 의 HANDOFF_LOADS.week 가 수정 화면까지 본다.
+//      2026-11-06: 앱이 임시저장('n')까지 누르고 되읽어 확인한다(SaveAndVerify). 제출('y')은 부르지 않는다. 확인된 뒤에만 기록하고 창을 닫는다.
+//      인계(자동수락 detach) 순서는 netcus-dialog.test.mjs 의 HANDOFF_LOADS.week(되읽기 문서)와 저장 구간 검사가 본다.
 import { readFileSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -49,6 +51,13 @@ function openModify(cs) {
   return braceSlice(m, at);
 }
 const writePath = (cs) => { const m = weekFill(cs); return m.slice(0, m.indexOf('async Task OpenModify(')); };
+//  임시저장과 되읽기(두 경로 공용, 2026-11-06).
+function saveAndVerify(cs) {
+  const m = weekFill(cs);
+  const at = m.indexOf('async Task SaveAndVerify(');
+  assert.ok(at > 0, 'NetcusWeekFill 안에서 임시저장과 되읽기(로컬 함수 SaveAndVerify)를 찾지 못했다');
+  return braceSlice(m, at);
+}
 
 // ══ A. C# 프로브(NetcusText.cs 를 그대로 컴파일) ══════════════════════════
 const PROBE_CS = `using System;
@@ -85,13 +94,39 @@ namespace TaskCalendarWidget
                 o["override"] = WeekModifyOverrideJs(S("postNo"), S("id"));
                 o["fill"] = WeekModifyFillJs(S("endwork"), S("content"), S("planwork"));
                 o["fill4"] = WeekModifyFillJs(S("endwork"), S("content"), S("planwork"), S("resultwork"));   // 회의내용까지(결정 13)
-                o["okMsgMeet"] = WeekModifyOkMsg(1, true);
+                o["saveWriteJs"] = WeekTempSaveJs(false);
+                o["saveModifyJs"] = WeekTempSaveJs(true);
+                o["saveFailMsg"] = WeekSaveFailMsg;
+                var vrs = new List<int>();
+                foreach (var v in root.GetProperty("verify").EnumerateArray())
+                {
+                    string? N(int k) => v[k].ValueKind == JsonValueKind.Null ? null : v[k].GetString();
+                    vrs.Add(v.GetArrayLength() > 7 ? NcWeekVerify(v[0].GetBoolean(), v[1].GetBoolean(), N(2), N(3), N(4), N(5), N(6), N(7))
+                                                   : NcWeekVerify(v[0].GetBoolean(), v[1].GetBoolean(), N(2), N(3), N(4), N(5), N(6)));
+                }
+                o["verify"] = vrs;
+                var nds = new List<string>();
+                foreach (var nd in root.GetProperty("needles").EnumerateArray()) nds.Add(NcWeekNeedle(nd[0].GetString(), nd[1].GetString()));
+                o["needles"] = nds;
+                o["oldEwJs"] = WeekModifyOldEndworkJs;
+                var vmsgs = new Dictionary<string, string>();
+                foreach (var k in new[] { -3, -2, -1, 0, 2 }) vmsgs[k.ToString()] = WeekVerifyMsg(k);
+                o["verifyMsgs"] = vmsgs;
+                var afs = new List<bool>();
+                foreach (var a in root.GetProperty("alerts").EnumerateArray())
+                {
+                    if (a.ValueKind == JsonValueKind.Null) { afs.Add(NcSaveAlertFailed(null)); continue; }
+                    var l = new List<string>();
+                    foreach (var x in a.EnumerateArray()) l.Add(x.GetString() ?? "");
+                    afs.Add(NcSaveAlertFailed(l));
+                }
+                o["alertFail"] = afs;
                 o["probeJs"] = WeekModifyProbeJs;
                 o["listMarkJs"] = ListPageMarkJs;
                 o["cellJs"] = CellExtractJs;
                 o["origLenJs"] = WeekModifyOrigLenJs;
                 var msgs = new List<string>();
-                foreach (var n in root.GetProperty("msgs").EnumerateArray()) msgs.Add(WeekModifyOkMsg(n.GetInt32()));
+                foreach (var n in root.GetProperty("msgs").EnumerateArray()) msgs.Add(WeekSavedOkMsg(n.GetInt32()));
                 o["okMsgs"] = msgs;
                 o["failMsg"] = WeekLookupFailMsg;
                 o["viewMismatchMsg"] = WeekViewMismatchMsg;
@@ -203,12 +238,47 @@ const PICKS = [
   { name: '앞 0 이 붙은 글 번호는 뗀다', items: [['1', P, '039438']], sdate: SD, edate: ED, want: { seq: '1', no: '39438', matches: 1 } },
 ];
 const pickWant = (c) => ({ locked: 0, ...c.want });
+//  되읽기 판정 표(2026-11-06). 입력 = [로그인 화면, 저장 실패 알림, 다시 고른 글 번호, 보기 화면에서 다시 읽은 번호, 고친 글 번호(새 글 ""), 읽은 진행사항, 보낸 진행사항].
+//  기대 = 일간 되읽기와 같은 번호(-1 세션, -2 못 찾음, 0 빔, 1 정상, 2 한글 불일치) + -3(회사가 실패를 알림).
+const SENT = '[가상과제A]\n1. 구현 마무리';
+const VERIFY = [
+  { name: '새 글: 다시 찾은 글의 진행사항에 보낸 한글 토큰이 있으면 정상', in: [false, false, '70010', '70010', '', '[가상과제A] 1. 구현 마무리', SENT], want: 1 },
+  { name: '수정: 고친 글 번호와 다시 찾은 글 번호가 같고 토큰이 있으면 정상', in: [false, false, '70001', '70001', '70001', '[가상과제A]\n1. 구현 마무리', SENT], want: 1 },
+  { name: '로그인 화면이면 세션 만료', in: [true, false, '70001', '70001', '70001', SENT, SENT], want: -1 },
+  { name: '같은 기간 글을 다시 못 찾으면 못 찾음', in: [false, false, '', '', '', '', SENT], want: -2 },
+  { name: '보기 화면 번호가 고른 번호와 다르면(목록이 밀림) 못 찾음', in: [false, false, '70010', '70011', '', SENT, SENT], want: -2 },
+  { name: '수정인데 다른 글(번호가 고친 글과 다름)이 잡히면 못 찾음', in: [false, false, '70020', '70020', '70001', SENT, SENT], want: -2 },
+  { name: '진행사항이 비었으면 0', in: [false, false, '70010', '70010', '', '   ', SENT], want: 0 },
+  { name: '한글 토큰이 없으면(깨짐) 2', in: [false, false, '70010', '70010', '', '[??????A] 1. ?? ???', SENT], want: 2 },
+  { name: '보낸 진행사항에 한글이 없으면 내용이 있을 때 정상', in: [false, false, '70010', '70010', '', 'ABC 123', 'ABC 123'], want: 1 },
+  { name: '보낸 진행사항이 비었으면 빈 칸도 정상', in: [false, false, '70010', '70010', '', '', ''], want: 1 },
+  { name: '회사가 저장 실패를 알렸으면 예전 글에 같은 토큰이 있어도 -3', in: [false, true, '70001', '70001', '70001', SENT, SENT], want: -3 },
+  { name: '글 번호가 숫자가 아니면 못 찾음', in: [false, false, 'abc', 'abc', '', SENT, SENT], want: -2 },
+  //  수정 경로(기존 진행사항을 줌): 대조 토막은 새 글에만 있는 한글 토막(NcWeekNeedle).
+  { name: '수정: 첫 토막(과제명)만 같고 저장이 안 돼 옛 글이 남았으면 불일치(2)', in: [false, false, '70001', '70001', '70001', '[가상과제A]\n1. 예전 진행', SENT, '[가상과제A]\n1. 예전 진행'], want: 2 },
+  { name: '수정: 새 토막이 읽은 글에 있으면 정상', in: [false, false, '70001', '70001', '70001', SENT, SENT, '[가상과제A]\n1. 예전 진행'], want: 1 },
+  { name: '수정: 같은 글을 다시 보내면 변경 없음으로 정상', in: [false, false, '70001', '70001', '70001', SENT, SENT, SENT], want: 1 },
+  { name: '수정: 변경 없음이어도 회사 실패 알림이면 -3', in: [false, true, '70001', '70001', '70001', SENT, SENT, SENT], want: -3 },
+];
+//  NcWeekNeedle(새 글, 기존 글) 표.
+const NEEDLES = [
+  { name: '같은 글이면 없다', in: [SENT, SENT], want: '' },
+  { name: '첫 토막만 같으면 그다음 새 토막', in: ['[가상과제A]\n1. 구현 마무리', '[가상과제A]\n1. 예전 진행'], want: '구현' },
+  { name: '긴 묶음은 기존 글에 없는 4자 창', in: ['진행사항정리완료', '진행사항'], want: '행사항정' },
+  { name: '새 글이 옛 글의 일부면 없다', in: ['구현 마무리', '[가상] 구현 마무리 회의'], want: '' },
+  { name: '한글이 없으면 없다', in: ['ABC 123', ''], want: '' },
+  { name: '기존 글이 비면 첫 토막', in: [SENT, ''], want: '가상과제' },
+];
+const ALERTS = [null, [], ['저장되었습니다.'], ['수정하는데 실패하였습니다'], ['안내', '등록 실패']];
 const PROBE_RAW_STATIC = [null, 'null', '"not json"', JSON.stringify(JSON.stringify({ sd: SD, ed: ED, wd: '2026/10/02 17:50' }))];
 const BASE_INPUT = {
   picks: PICKS.map(({ items, sdate, edate }) => ({ items, sdate, edate })),
   js: { postNo: POST_NO, id: USER_ID, ...NEW, resultwork: NEW_MEET },
   modNos: ['39438', '039438', '', '0', '000', '12a', ' 1 ', '1234567890123456789', '123456789012345678', null],
-  msgs: [1, 2, 3],
+  msgs: [0, 1, 2, 3],
+  verify: VERIFY.map((c) => c.in),
+  alerts: ALERTS,
+  needles: NEEDLES.map((c) => c.in),
   probeRaw: PROBE_RAW_STATIC,
 };
 let _base = null;
@@ -323,21 +393,70 @@ if (!dotnetOk) {
     });
   });
 
-  test('주간 고치기 A10: 성공 문구(C#)는 "주간보고 " 로 시작하고, 2개 이상이면 중복 안내를 붙인다', () => {
-    const [one, two, three] = base().okMsgs;
-    for (const m of [one, two, three]) {
-      assert.ok(/^주간보고 /.test(m), `성공 문구가 RPT_WEEKFILL_OK_RE(/^주간보고 /)와 맞지 않는다: ${m}`);
+  test('주간 고치기 A10: 성공 문구(C# WeekSavedOkMsg)는 "주간보고 " 로 시작하는 임시저장 완료 문구이고, 같은 기간 글이 2개 이상이면 중복 안내를 붙인다', () => {
+    const [zero, one, two, three] = base().okMsgs;
+    for (const m of [zero, one, two, three]) {
+      assert.ok(/^주간보고 /.test(m), `성공 문구가 "주간보고 " 로 시작하지 않는다(웹이 주간 회신을 가르는 머리): ${m}`);
       assert.ok(!/[—–「」]| · /.test(m), `새 문구에 엠 대시, en 대시, 낫표, 가운데 점 구분자가 있다: ${m}`);
     }
-    assert.ok(!/같은 기간 글이/.test(one), '하나뿐인데 중복 안내를 붙였다');
-    assert.ok(two.startsWith(one + ' ') && /같은 기간 글이 2개 있어 가장 최근 글을 열었습니다\. 나머지는 회사 화면에서 지워 주세요\.$/.test(two), `2개 안내가 다르다: ${two}`);
+    assert.strictEqual(zero, '주간보고 임시저장을 마쳤습니다. 제출은 인트라넷에서 하세요.', '새 글 성공 문구가 기획 원문과 다르다');
+    assert.strictEqual(one, zero, '하나뿐인데 중복 안내를 붙였다');
+    assert.ok(two.startsWith(zero + ' ') && /같은 기간 글이 2개 있어 가장 최근 글을 열었습니다\. 나머지는 회사 화면에서 지워 주세요\.$/.test(two), `2개 안내가 다르다: ${two}`);
     assert.ok(/같은 기간 글이 3개 있어/.test(three), `3개 안내가 다르다: ${three}`);
-    assert.ok(one.includes('진행사항, 과제투입시간, 차주계획 세 칸은 캘린더 내용으로 바뀌었습니다.'), `세 칸이 통째로 바뀐다는 말이 없다: ${one}`);
-    assert.ok(one.includes('임시저장이나 제출을 누르세요.'), `무엇을 누를지 말하지 않는다: ${one}`);
-    const meet = base().okMsgMeet;
-    assert.ok(/^주간보고 /.test(meet) && meet.includes('진행사항, 과제투입시간, 차주계획, 회의내용 네 칸은 캘린더 내용으로 바뀌었습니다.'), `회의내용까지 채운 문구가 네 칸을 말하지 않는다: ${meet}`);
-    assert.ok(!/[—–「」]| · /.test(meet), '네 칸 문구에 금지 기호가 있다');
-    assert.ok(/저장하지 않고 창을 닫으면 회사 글은 그대로입니다\.$/.test(one), `저장하지 않으면 회사 글이 그대로라는 말이 없다: ${one}`);
+  });
+
+  test('주간 고치기 A17: 되읽기 판정(C# NcWeekVerify)은 일간 되읽기와 같은 번호를 쓴다(로그인, 못 찾음, 빔, 정상, 한글 불일치, 회사 실패 알림)', () => {
+    const got = base().verify;
+    VERIFY.forEach((c, i) => assert.strictEqual(got[i], c.want, `${c.name}: 기대 ${c.want}, 실제 ${got[i]}`));
+  });
+
+  test('주간 고치기 A22: 수정 경로 대조 토막(C# NcWeekNeedle)은 새 진행사항에만 있는 한글 토막이고, 없으면 빈 문자열이다', () => {
+    const got = base().needles;
+    NEEDLES.forEach((c, i) => assert.strictEqual(got[i], c.want, `${c.name}: 기대 ${JSON.stringify(c.want)}, 실제 ${JSON.stringify(got[i])}`));
+  });
+
+  test('주간 고치기 A23(변이): 대조 토막을 기존 글과 상관없이 첫 토막으로 고르면 "첫 토막만 같음" 판정이 정상(1)으로 새어 A17 이 잡는다', () => {
+    const mut = mutate(txt, 'if (old.IndexOf(c, StringComparison.Ordinal) < 0) return c;', 'return c;');
+    const out = runProbe(BASE_INPUT, 'mut-needle', mut);
+    const k = VERIFY.findIndex((c) => /첫 토막\(과제명\)만 같고/.test(c.name));
+    assert.strictEqual(out.verify[k], 1, '변이가 효과를 못 냈다');
+    assert.notStrictEqual(out.verify[k], VERIFY[k].want, 'A17 이 이 변이를 못 잡는다');
+  });
+
+  test('주간 고치기 A18: 되읽기 실패 문구(C# WeekVerifyMsg)와 임시저장 실패 문구는 "주간보고 " 로 시작하지 않고 금지 기호가 없으며 경우마다 다르다', () => {
+    const v = base().verifyMsgs, all = [...Object.values(v), base().saveFailMsg];
+    for (const m of all) {
+      assert.ok(m && !/^주간보고 /.test(m), `실패 문구가 "주간보고 " 로 시작한다(성공 회신으로 오인된다): ${m}`);
+      assert.ok(!/[—–「」]| · /.test(m), `새 문구에 금지 기호가 있다: ${m}`);
+    }
+    assert.ok(/세션이 만료/.test(v['-1']) && /한글이 깨졌을 수/.test(v['2']) && /저장 실패를 알렸습니다/.test(v['-3']), '경우별 문구가 다르지 않다');
+    assert.strictEqual(v['-2'], v['0'], '못 찾음과 빔은 같은 문구다');
+    assert.strictEqual(base().saveFailMsg, '임시저장을 누르지 못했습니다. 페이지 구조가 바뀌었을 수 있습니다.');
+  });
+
+  test('주간 고치기 A19: 저장 알림 판정(C# NcSaveAlertFailed)은 "실패" 가 든 알림이 있을 때만 참이다', () => {
+    assert.deepStrictEqual(base().alertFail, [false, false, false, true, true]);
+  });
+
+  test('주간 고치기 A20: 임시저장 JS(C# WeekTempSaveJs)는 n 만 부르고 제출(y)은 부르지 않는다', () => {
+    const { saveWriteJs: w, saveModifyJs: m } = base();
+    assert.ok(w.includes("window.Bwrite('n')") && !w.includes('Bmodify'), `새 글 임시저장이 Bwrite('n') 이 아니다: ${w}`);
+    assert.ok(m.includes("window.Bmodify('n')") && !m.includes('Bwrite'), `수정 임시저장이 Bmodify('n') 이 아니다: ${m}`);
+    for (const js of [w, m]) assert.ok(!/'y'|"y"/.test(js), `임시저장 JS 가 제출(y)을 부른다: ${js}`);
+  });
+
+  test('주간 고치기 A21(변이): NetcusText.cs 사본에서 되읽기의 한글 대조나 글 번호 맞추기를 빼면 A17 판정이 달라진다', () => {
+    const noNeedle = mutate(txt, 'return n.Length == 0 ? 1 : (v.IndexOf(n, StringComparison.Ordinal) >= 0 ? 1 : 2);', 'return 1;');
+    const o1 = runProbe(BASE_INPUT, 'mut-verify-needle', noNeedle);
+    const k2 = VERIFY.findIndex((c) => c.want === 2);
+    assert.notStrictEqual(o1.verify[k2], 2, '한글 대조를 뺀 변이를 A17 이 못 잡는다');
+    const noNo = mutate(txt, 'if (e.Length > 0 && e != p) return -2;', '');
+    const o2 = runProbe(BASE_INPUT, 'mut-verify-no', noNo);
+    const kOther = VERIFY.findIndex((c) => /다른 글/.test(c.name));
+    assert.notStrictEqual(o2.verify[kOther], -2, '고친 글 번호 맞추기를 뺀 변이를 A17 이 못 잡는다');
+    const noSite = mutate(txt, 'if (siteFail) return -3;', '');
+    const o3 = runProbe(BASE_INPUT, 'mut-verify-site', noSite);
+    assert.strictEqual(o3.verify[VERIFY.findIndex((c) => c.want === -3)], 1, '회사 실패 알림을 뺀 변이가 효과를 못 냈다(같은 토큰이면 정상으로 보인다)');
   });
 
   test('주간 고치기 A11: 확인 실패 문구(C#)는 설계 문구 그대로다', () => {
@@ -598,6 +717,50 @@ if (!dotnetOk) {
       assert.ok(!raw.includes('예전') && !raw.includes('가상 회의'), '원래 내용이 반환값에 섞였다');
       assert.deepStrictEqual(JSON.parse(page(BLANK_FIXTURE, '').run(base().origLenJs)), { endwork: -1, content: -1, planwork: -1, resultwork: -1 });
     });
+
+    test('주간 고치기 B16: 기존 진행사항 읽기 JS 는 채우기 전 endwork 값을 그대로 돌려주고(칸이 없으면 null), 호스트는 수정 경로에서 채우기 전에 읽는다', () => {
+      const PO = page();
+      assert.strictEqual(PO.run(base().oldEwJs), '[가상과제A] 예전 진행 내용');
+      assert.strictEqual(page(BLANK_FIXTURE, '').run(base().oldEwJs), null);
+      const om = openModify(svc);
+      const rd = om.indexOf('ExecuteScriptAsync(WeekModifyOldEndworkJs)'), fill = om.indexOf('WeekModifyFillJs(');
+      assert.ok(rd > 0 && rd < fill, '수정 경로가 채우기 전에 기존 진행사항을 읽지 않는다');
+    });
+
+    test("주간 고치기 B13: 수정 화면 임시저장 JS 는 끼운 Bmodify 를 'n' 으로 불러 확인창 없이 보내고 SUBMITTED 를 돌려준다(제출 y 아님)", () => {
+      const PS = page();
+      PS.run(base().override);
+      PS.run(base().fill4);
+      assert.strictEqual(PS.run(base().saveModifyJs), 'SUBMITTED');
+      assert.deepStrictEqual(PS.log.confirms, [], '임시저장인데 제출 확인창을 띄웠다');
+      assert.strictEqual(PS.log.sent.length, 1, '폼을 한 번 보내지 않았다');
+      assert.strictEqual(PS.log.sent[0].action, MODIFY_ACTION);
+      assert.deepStrictEqual(PS.log.sent[0].fields.filter((f) => f[0] === 'iscompletion'), [['iscompletion', 'n']], "iscompletion 이 'n'(임시저장)이 아니다");
+      assert.strictEqual(Object.fromEntries(PS.log.sent[0].fields).resultwork, NEW_MEET, '회의내용이 채운 값으로 나가지 않았다');
+    });
+
+    test('주간 고치기 B14: 임시저장 JS 는 함수가 없으면 NOFN, 검사에서 멈춰 폼을 만들지 않으면 NOFORM 이다(그때 호스트는 창을 닫고 멈춘다)', () => {
+      assert.strictEqual(page(MODIFY_FIXTURE, '').run(base().saveModifyJs), 'NOFN');
+      const PN = page();
+      PN.run(base().override);
+      PN.w.document.getElementsByName('subject')[0].value = '';
+      assert.strictEqual(PN.run(base().saveModifyJs), 'NOFORM');
+      assert.deepStrictEqual(PN.log.alerts, ['제목을 입력하세요.']);
+      assert.strictEqual(PN.log.sent.length, 0);
+      //  원래 Bmodify(안전판을 안 끼움)는 표지 폼을 만들지 않는다: 빈 폼을 보냈어도 SUBMITTED 로 읽지 않는다.
+      const PO = page();
+      assert.strictEqual(PO.run(base().saveModifyJs), 'NOFORM');
+    });
+
+    test("주간 고치기 B15: 새 글 임시저장 JS 는 Bwrite('n') 을 부른다(호스트의 Bwrite 대체가 다는 data-tc-week 표지로 보냄을 안다)", () => {
+      const PW = page(LIST_FIXTURE, "window.Bwrite=function(x){window.__called=x;var f=document.createElement('form');f.setAttribute('data-tc-week','1');document.body.appendChild(f);};");
+      assert.strictEqual(PW.run(base().saveWriteJs), 'SUBMITTED');
+      assert.strictEqual(PW.w.__called, 'n');
+      assert.strictEqual(page(LIST_FIXTURE, '').run(base().saveWriteJs), 'NOFN');
+      //  호스트의 새 글 Bwrite 대체(NetcusService.cs 안 글)가 그 표지를 단다.
+      const wf = weekFill(svc);
+      assert.ok(/window\.Bwrite=function\(iscompletion\)\{[^]*?f\.setAttribute\('data-tc-week','1'\);/.test(wf), '새 글 Bwrite 대체가 data-tc-week 표지를 달지 않는다(임시저장이 늘 NOFORM 이 된다)');
+    });
   }
 }
 
@@ -622,7 +785,7 @@ const checks = {
     assert.ok(/_w2win\?\.Close\(\)/.test(fb), '확인 실패 때 읽던 목록이나 보기 화면을 사용자에게 남긴다');
     //  예외는 실패로 바뀐다(Ok 기본값 false). 예외를 '없음'으로 읽으면 새 글이 열린다.
     assert.ok(/catch \(Exception \w+\) \{[^{}]*same = new NcSameWeek\(\); \}/.test(w), '찾기 예외가 확인 실패(Ok=false)로 바뀌지 않는다');
-    assert.ok(/private sealed class NcSameWeek \{ public bool Ok; /.test(cs), 'NcSameWeek.Ok 의 기본값이 false 가 아니다');
+    assert.ok(/private sealed class NcSameWeek \{ public bool Ok(, SessionLost)?; /.test(cs), 'NcSameWeek.Ok 의 기본값이 false 가 아니다');
     assert.ok(!/Ok\s*=\s*true/.test(extractCsMember(cs, 'private async Task<NcSameWeek> NcFindSameWeek(')), '찾기가 Ok 를 직접 true 로 세운다(실패 사유와 무관하게 통과)');
   },
 
@@ -643,12 +806,11 @@ const checks = {
     assert.ok(f.includes('res.Ok = why.Length == 0;'), '실패 사유가 Ok 를 정하지 않는다');
   },
 
-  //  C3. 수정 경로의 성공 문구는 "주간보고 " 로 시작하는 WeekModifyOkMsg 다(웹이 이 머리로 주간 회신을 가른다).
+  //  C3. 주간 보내기의 성공 문구는 두 경로 모두 되읽기 뒤 한 곳에서 내는 WeekSavedOkMsg 하나이고 "주간보고 " 로 시작한다(웹이 이 머리로 주간 회신을 가른다).
   okMsgPrefix(cs, text) {
-    const om = openModify(cs);
-    const oks = [...om.matchAll(/NetcusResult\(true,\s*([^;]+)\);/g)].map((m) => m[1]);
-    assert.deepStrictEqual(oks, ['WeekModifyOkMsg(hit.Matches, req.Resultwork != null)'], `수정 경로의 성공 회신이 WeekModifyOkMsg 하나가 아니다: ${oks}`);
-    const body = extractCsMember(text, 'internal static string WeekModifyOkMsg(');
+    const oks = [...weekFill(cs).matchAll(/NetcusResult\(true,\s*([^;]+)\);/g)].map((m) => m[1]);
+    assert.deepStrictEqual(oks, ['WeekSavedOkMsg(matches)'], `주간 보내기의 성공 회신이 WeekSavedOkMsg 하나가 아니다: ${oks}`);
+    const body = extractCsMember(text, 'internal static string WeekSavedOkMsg(');
     const first = /"([^"]*)"/.exec(body);
     assert.ok(first && /^주간보고 /.test(first[1]), '수정 경로 성공 문구가 "주간보고 " 로 시작하지 않는다(웹이 일간 회신으로 오인한다)');
   },
@@ -669,19 +831,46 @@ const checks = {
     assert.ok(!/\.value=/.test(fill.replace(/[ecpr]\.value=/g, '')), '수정 화면 채우기가 세 칸 말고 다른 값을 쓴다');
   },
 
-  //  C5. 수정 경로의 저장은 성공 통지 뒤에 한 번, 실패 경로들보다 뒤에 있다(새 글 경로는 report-wiring ④).
+  //  C5. 수정 경로는 채운 뒤 공용 임시저장과 되읽기(SaveAndVerify)로 끝나고 스스로 기록하지 않는다. 기록은 SaveAndVerify 의 되읽기 성공 뒤 한 번이다(C15).
   modifySaveAfterSuccess(cs) {
     const om = openModify(cs);
-    const call = '_host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);';
-    const at = om.indexOf(call);
-    assert.ok(at > 0, '수정 경로에서 SaveWeeklyReport 호출을 찾지 못했다. 배선이 끊겼다');
-    assert.strictEqual(om.split('_host.SaveWeeklyReport(').length - 1, 1, '수정 경로에서 저장을 두 번 이상 부른다');
-    const ok = om.indexOf('NetcusResult(true, WeekModifyOkMsg(hit.Matches, req.Resultwork != null));');
-    assert.ok(ok > 0 && at > ok, '수정 경로의 저장이 성공 통지보다 앞에 있다. 실패한 채우기도 기록된다');
+    assert.ok(!om.includes('_host.SaveWeeklyReport('), '수정 경로가 되읽기 없이 스스로 기록한다');
+    assert.ok(!/NetcusResult\(true,/.test(om), '수정 경로가 되읽기 없이 성공을 알린다');
+    const sv = om.indexOf('await SaveAndVerify(wv, true, hit.ModifyNo, hit.Matches);');
+    assert.ok(sv > 0, '수정 경로가 임시저장과 되읽기(SaveAndVerify)로 끝나지 않는다. 배선이 끊겼다');
     const lastFail = om.lastIndexOf('NetcusResult(false,');
-    assert.ok(lastFail > 0 && at > lastFail, '수정 경로의 저장이 실패 분기보다 앞에 있다');
+    assert.ok(lastFail > 0 && sv > lastFail, '수정 경로의 임시저장이 실패 분기보다 앞에 있다');
     const fillFail = om.indexOf('주간보고 수정 화면 채우기 실패');
-    assert.ok(fillFail > 0 && fillFail < ok, '채우기 실패 분기가 성공 통지보다 뒤에 있다');
+    assert.ok(fillFail > 0 && fillFail < sv, '채우기 실패 분기가 임시저장보다 뒤에 있다');
+    const w = writePath(cs);
+    assert.ok(w.indexOf('await SaveAndVerify(cw, false, "", 0);') > w.indexOf('주간보고 폼 채우기 실패'), '새 글 경로가 채운 뒤 임시저장과 되읽기로 끝나지 않는다');
+  },
+
+  //  C15. 임시저장과 되읽기(2026-11-06): 'n' 저장 → 같은 기간 글 다시 찾기(upToToday) → 보기 화면 대조(NcWeekVerify) → vr != 1 이면 실패 통지와 return(창은 남김, 기록 없음)
+  //       → 성공 통지 → SaveWeeklyReport → 창 닫기. 저장 JS 를 못 부르면 창을 닫고 멈춘다.
+  saveVerifyContract(cs) {
+    const sv = saveAndVerify(cs);
+    const save = sv.indexOf('await wv.ExecuteScriptAsync(WeekTempSaveJs(modify))');
+    const notSub = sv.indexOf('if (!sres.StartsWith("SUBMITTED", StringComparison.Ordinal))');
+    const again = sv.indexOf('again = await NcFindSameWeek(wv, id, req.Sdate, req.Edate, upToToday: true);');
+    const verify = sv.indexOf('vr = NcWeekVerify(login, siteFail, again.ModifyNo, rNo, expectNo, rcell?.endwork, req.Endwork, modify ? modOld : null);');
+    const gate = sv.indexOf('if (vr != 1)');
+    const ok = sv.indexOf('NetcusResult(true, WeekSavedOkMsg(matches));');
+    const rec = sv.indexOf('_host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);');
+    const close = sv.lastIndexOf('_w2win?.Close()');
+    assert.ok(save > 0, "임시저장 JS(WeekTempSaveJs)를 부르지 않는다");
+    assert.ok(!/Bwrite\('y'\)|Bmodify\('y'\)|WeekTempSaveJs\(true, *"y"|iscompletion', *'y'/.test(weekFill(cs).replace(/if\(iscompletion==='y'&&!confirm\('제출하시겠습니까\?'\)\)return;/g, '')), '주간 보내기가 제출(y)을 부른다');
+    assert.ok(notSub > save, '임시저장 결과(SUBMITTED)를 보지 않는다');
+    const nb = braceSlice(sv, notSub);
+    assert.ok(/_w2win\?\.Close\(\)/.test(nb) && nb.includes('NetcusResult(false, WeekSaveFailMsg);') && /\breturn;/.test(nb), '임시저장을 못 눌렀을 때 창을 닫고 알리고 멈추지 않는다');
+    assert.ok(again > notSub && verify > again && gate > verify, '저장, 다시 찾기(upToToday), 대조, 판정 순서가 아니다');
+    const gb = braceSlice(sv, gate);
+    assert.ok(gb.includes('NetcusResult(false, WeekVerifyMsg(vr));') && /\breturn;/.test(gb), '되읽기 실패에 실패 문구로 알리고 멈추지 않는다');
+    assert.ok(!/_w2win\?\.Close\(\)/.test(gb), '되읽기 실패인데 창을 닫는다(되읽기 문서를 남겨 사용자가 확인해야 한다)');
+    assert.ok(!gb.includes('SaveWeeklyReport'), '되읽기 실패인데 기록한다');
+    assert.ok(ok > gate && rec > ok && close > rec, '되읽기 성공 뒤 성공 통지, 기록, 창 닫기 순서가 아니다');
+    assert.strictEqual(sv.split('_host.SaveWeeklyReport(').length - 1, 1, '기록을 두 번 이상 부른다');
+    assert.ok(sv.indexOf('_dlgSeen = seen;') < save && sv.indexOf('bool siteFail = NcSaveAlertFailed(seen);') > save, '저장 구간의 회사 알림(실패 알림)을 모아 판정하지 않는다');
   },
 
   //  C6. 안전판(Bmodify 대체)을 채우기 전에 끼우고, 못 끼우면 창을 닫고 멈춘다(원래 Bmodify 는 빈 폼으로 기존 글을 덮을 수 있다).
@@ -758,7 +947,10 @@ const checks = {
   upsertWindow(cs) {
     const f = extractCsMember(cs, 'private async Task<NcSameWeek> NcFindSameWeek(');
     assert.ok(f.includes('const int UPSERT_MAXPAGES = 40, UPSERT_MAXREAD = 20;'), '찾기 상한이 설계(열람 20)와 다르다');
-    assert.ok(f.includes('NcCrawlWeekly(cw, id, ds.AddDays(-7), de.AddDays(14), UPSERT_MAXPAGES, UPSERT_MAXREAD,'), '찾기의 작성일 창이 설계(sdate-7 ~ edate+14)와 다르다');
+    assert.ok(f.includes('var hi = de.AddDays(14);') && f.includes('NcCrawlWeekly(cw, id, ds.AddDays(-7), hi, UPSERT_MAXPAGES, UPSERT_MAXREAD,'), '찾기의 작성일 창이 설계(sdate-7 ~ edate+14)와 다르다');
+    //  되읽기(upToToday)만 끝을 오늘까지 늘린다(방금 쓴 글의 작성일은 오늘이다). 보내기 전 찾기와 주간보고 보기는 설계 창 그대로다.
+    assert.ok(f.includes('if (upToToday && hi < DateTime.Today.AddDays(1)) hi = DateTime.Today.AddDays(1);'), '되읽기의 작성일 창 끝을 오늘까지 늘리지 않는다(늦게 보낸 주는 방금 쓴 글을 못 찾는다)');
+    assert.strictEqual(cs.split('upToToday: true').length - 1, 1, '작성일 창을 늘리는 찾기가 되읽기 한 곳이 아니다');
     assert.ok(f.includes('n => NetcusStatus("weekfill", "checking", n, -1)'), '찾는 동안 진행 상태(weekfill checking)를 내지 않는다');
   },
 
@@ -785,11 +977,11 @@ const checks = {
     assert.ok(/NetcusResult\(false, WeekModifyBlankMsg\)/.test(b), '기간이 비었을 때 실패(false)로 알리지 않는다');
   },
 
-  //  C14. 보기 화면을 연 뒤, 수정 화면으로 가기 전(자동수락 detach 전)에 보기 화면의 글 번호를 다시 읽어 찾을 때의 번호와 맞춘다.
+  //  C14. 보기 화면을 연 뒤, 수정 화면으로 가기 전에 보기 화면의 글 번호를 다시 읽어 찾을 때의 번호와 맞춘다.
   viewMatchesPostNo(cs) {
     const om = openModify(cs);
-    const g = om.indexOf('GoViewJs(hit.ViewNo, id)'), d = om.indexOf('detach?.Invoke(); detach = null;');
-    assert.ok(g > 0 && d > g, '보기 화면 열기와 detach 순서를 찾지 못했다');
+    const g = om.indexOf('GoViewJs(hit.ViewNo, id)'), d = om.indexOf('var mnav = NavOnce(wv, 15000);');
+    assert.ok(g > 0 && d > g, '보기 화면 열기와 수정 화면 열기 순서를 찾지 못했다');
     const seg = om.slice(g, d);
     assert.ok(seg.includes('CellExtractJs'), '보기 화면을 연 뒤 글 번호를 다시 읽지 않는다');
     assert.ok(seg.includes('!= hit.ModifyNo'), '다시 읽은 글 번호를 찾을 때의 번호(hit.ModifyNo)와 비교하지 않는다');
@@ -815,7 +1007,11 @@ const checks = {
       assert.ok(m, `${k} 를 찾지 못했다`);
       lits.push(m[1]);
     }
-    for (const m of extractCsMember(text, 'internal static string WeekModifyOkMsg(').matchAll(/"([^"]*)"/g)) lits.push(m[1]);
+    for (const k of ['internal static string WeekSavedOkMsg(', 'internal static string WeekVerifyMsg(']) for (const m of extractCsMember(text, k).matchAll(/"([^"]*)"/g)) lits.push(m[1]);
+    const sf = /internal const string WeekSaveFailMsg = "([^"]*)";/.exec(text);
+    assert.ok(sf, 'WeekSaveFailMsg 를 찾지 못했다');
+    lits.push(sf[1]);
+    for (const m of saveAndVerify(cs).matchAll(/Netcus(?:Result|Progress)\([^"();]*"([^"]*)"/g)) lits.push(m[1]);
     assert.ok(lits.length >= 10, `문구를 충분히 찾지 못했다(${lits.length}). 판정 불가`);
     for (const s of lits) assert.ok(!/[—–「」]| · /.test(s), `새 문구에 엠 대시, en 대시, 낫표, 가운데 점 구분자가 있다: ${s}`);
   },
@@ -823,9 +1019,10 @@ const checks = {
 
 test('주간 고치기 C1: 확인 실패(예외 포함)면 창을 닫고 멈춘다. 새 글 작성 화면은 찾기와 분기 뒤에만 열린다', () => checks.lookupFailStops(svc));
 test('주간 고치기 C2: 찾기는 세션 만료, 못 읽은 글, 못 읽은 목록, 상한 도달을 "없음" 이 아니라 실패로 본다', () => checks.lookupFailReasons(svc));
-test('주간 고치기 C3: 수정 경로 성공 문구는 "주간보고 " 로 시작하는 WeekModifyOkMsg 하나다', () => checks.okMsgPrefix(svc, txt));
+test('주간 고치기 C3: 주간 보내기 성공 문구는 "주간보고 " 로 시작하는 WeekSavedOkMsg 하나다(되읽기 뒤 한 곳)', () => checks.okMsgPrefix(svc, txt));
 test('주간 고치기 C4: 수정 경로는 세 칸(요청에 있으면 회의내용까지)만 채운다(기간, 제목, 작성일, 미처리사항, 문제점은 건드리지 않는다)', () => checks.modifyFillsThreeOnly(svc, txt));
-test('주간 고치기 C5: 수정 경로의 SaveWeeklyReport 는 성공 통지 뒤에 한 번 불린다', () => checks.modifySaveAfterSuccess(svc));
+test('주간 고치기 C5: 두 경로는 채운 뒤 공용 임시저장과 되읽기로 끝나고 수정 경로는 스스로 기록하지 않는다', () => checks.modifySaveAfterSuccess(svc));
+test("주간 고치기 C15: 임시저장('n') 뒤 다시 찾아 대조하고, 실패면 창을 남기고 기록하지 않으며, 성공이면 알리고 기록하고 창을 닫는다", () => checks.saveVerifyContract(svc));
 test('주간 고치기 C6: Bmodify 안전판은 채우기 전에 끼우고, 못 끼우면 창을 닫고 멈춘다', () => checks.overrideBeforeFill(svc));
 test('주간 고치기 C7: 주간범위 읽기의 창, 상한, 오류 코드, 회신, 포함 규칙은 그대로다(공용 순회로 옮긴 뒤)', () => checks.rangeReadContract(svc));
 test('주간 고치기 C8: 같은 기간 글 찾기의 창은 sdate-7 ~ edate+14, 열람 상한 20 이다', () => checks.upsertWindow(svc));
@@ -868,10 +1065,10 @@ test('주간 고치기 변이 CM7: 상한 도달 실패를 지우면 C2 가 잡�
   assert.throws(() => checks.lookupFailReasons(bad), /상한에 닿았는데/);
 });
 test('주간 고치기 변이 CM8: 성공 문구 머리를 바꾸면 C3 이 잡는다', () => {
-  const bad = mutate(txt, 'string m = "주간보고 같은 기간에', 'string m = "같은 기간에');
+  const bad = mutate(txt, 'string m = "주간보고 임시저장을', 'string m = "임시저장을');
   assert.throws(() => checks.okMsgPrefix(svc, bad), /"주간보고 " 로 시작하지 않는다/);
-  const bad2 = mutate(svc, 'NetcusResult(true, WeekModifyOkMsg(hit.Matches, req.Resultwork != null));', 'NetcusResult(true, "기존 글을 열었습니다.");');
-  assert.throws(() => checks.okMsgPrefix(bad2, txt), /WeekModifyOkMsg 하나가 아니다/);
+  const bad2 = mutate(svc, 'NetcusResult(true, WeekSavedOkMsg(matches));', 'NetcusResult(true, "임시저장했습니다.");');
+  assert.throws(() => checks.okMsgPrefix(bad2, txt), /WeekSavedOkMsg 하나가 아니다/);
 });
 test('주간 고치기 변이 CM9: 수정 화면 채우기가 기간이나 제목을 건드리면 C4 가 잡는다', () => {
   const bad = mutate(txt, "p=document.getElementsByName('planwork')[0];", "p=document.getElementsByName('planwork')[0],s=document.getElementsByName('subject')[0];");
@@ -880,17 +1077,40 @@ test('주간 고치기 변이 CM9: 수정 화면 채우기가 기간이나 제�
     'var mfilled = await wv.ExecuteScriptAsync(WeekModifyFillJs(req.Endwork, req.Content, req.Planwork, req.Resultwork) + SetJs("subject", req.Subject));');
   assert.throws(() => checks.modifyFillsThreeOnly(bad2, txt), /subject 에 요청 값을 쓴다/);
 });
-test('주간 고치기 변이 CM10: 수정 경로의 저장을 지우거나 성공 통지 앞으로 옮기면 C5 가 잡는다', () => {
-  const call = '                    _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);';
-  assert.ok(svc.includes(call), '수정 경로의 저장 호출(20칸 들여쓰기)을 찾지 못했다');
-  const at = svc.lastIndexOf(call);
-  const removed = svc.slice(0, at) + '                    // 지워짐' + svc.slice(at + call.length);
-  assert.throws(() => checks.modifySaveAfterSuccess(removed), /배선이 끊겼다/);
-  const okLine = '                    NetcusResult(true, WeekModifyOkMsg(hit.Matches, req.Resultwork != null));';
-  const moved = removed.replace('                    var mfilled = ', call + NL + '                    var mfilled = ');
-  assert.notStrictEqual(moved, removed);
-  assert.ok(moved.includes(okLine));
-  assert.throws(() => checks.modifySaveAfterSuccess(moved), /성공 통지보다 앞에 있다|실패 분기보다 앞에 있다/);
+test('주간 고치기 변이 CM10: 수정 경로가 되읽기 없이 기록하거나 임시저장 호출을 지우면 C5 가 잡는다', () => {
+  const call = '                    await SaveAndVerify(wv, true, hit.ModifyNo, hit.Matches);';
+  assert.throws(() => checks.modifySaveAfterSuccess(mutate(svc, call, '                    // 지워짐')), /배선이 끊겼다/);
+  const rec = '                    _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);';
+  assert.throws(() => checks.modifySaveAfterSuccess(mutate(svc, call, rec + NL + call)), /스스로 기록한다/);
+});
+test('주간 고치기 변이 CM22: 되읽기 판정을 건너뛰거나 실패에 기록하거나 실패 창을 닫으면 C15 가 잡는다', () => {
+  assert.throws(() => checks.saveVerifyContract(mutate(svc, 'if (vr != 1)', 'if (false)')), /되읽기 실패에|판정 순서/);
+  const failLine = '                        NetcusResult(false, WeekVerifyMsg(vr));';
+  const rec = '_host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);';
+  assert.throws(() => checks.saveVerifyContract(mutate(svc, failLine, failLine + NL + '                        ' + rec)), /되읽기 실패인데 기록한다|두 번 이상/);
+  assert.throws(() => checks.saveVerifyContract(mutate(svc, failLine, failLine + NL + '                        try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }')), /창을 닫는다/);
+  assert.throws(() => checks.saveVerifyContract(mutate(svc, failLine + NL + '                        return;', failLine)), /멈추지 않는다/);
+});
+test('주간 고치기 변이 CM23: 성공 뒤 창 닫기를 빼거나 기록을 성공 통지 앞으로 옮기면 C15 가 잡는다', () => {
+  const sv = saveAndVerify(svc);
+  const tail = '                    try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }' + NL + '                }' + NL + '            }';
+  assert.ok(svc.includes(tail), '성공 뒤 창 닫기 줄을 찾지 못했다(변이 전제)');
+  assert.throws(() => checks.saveVerifyContract(mutate(svc, tail, '                }' + NL + '            }')), /창 닫기 순서/);
+  const ok = '                    NetcusResult(true, WeekSavedOkMsg(matches));';
+  const rec = '                    _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork, req.Resultwork, req.HoursJson);';
+  assert.ok(sv.includes(ok) && sv.includes(rec));
+  const swapped = mutate(mutate(svc, rec, '                    // 옮김'), ok, rec + NL + ok);
+  assert.throws(() => checks.saveVerifyContract(swapped), /창 닫기 순서/);
+});
+test("주간 고치기 변이 CM24: 임시저장 결과 검사를 지우거나 그때 창을 닫지 않으면 C15 가 잡는다", () => {
+  assert.throws(() => checks.saveVerifyContract(mutate(svc, 'if (!sres.StartsWith("SUBMITTED", StringComparison.Ordinal))', 'if (sres == null)')), /SUBMITTED|임시저장 결과/);
+  const blk = '                        _dlgSeen = null;' + NL + '                        try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 저장하지 않은 문서다';
+  assert.throws(() => checks.saveVerifyContract(mutate(svc, blk, '                        _dlgSeen = null;' + NL + '                        // 저장하지 않은 문서다')), /창을 닫고/);
+});
+test('주간 고치기 변이 CM25: 되읽기 찾기의 작성일 창을 늘리지 않거나 보내기 전 찾기까지 늘리면 C8 이 잡는다', () => {
+  assert.throws(() => checks.upsertWindow(mutate(svc, 'upToToday: true', 'upToToday: false')), /한 곳이 아니다/);
+  assert.throws(() => checks.upsertWindow(mutate(svc, 'try { same = await NcFindSameWeek(cw, id, req.Sdate, req.Edate); }', 'try { same = await NcFindSameWeek(cw, id, req.Sdate, req.Edate, upToToday: true); }')), /한 곳이 아니다/);
+  assert.throws(() => checks.upsertWindow(mutate(svc, 'if (upToToday && hi < DateTime.Today.AddDays(1)) hi = DateTime.Today.AddDays(1);', '')), /오늘까지/);
 });
 test('주간 고치기 변이 CM11: 안전판 실패 검사를 지우면 C6 이 잡는다', () => {
   const bad = mutate(svc, 'if (!ovr.StartsWith("ok", StringComparison.Ordinal))', 'if (ovr == null)');
@@ -904,7 +1124,7 @@ test('주간 고치기 변이 CM12: 주간범위 읽기의 상한, 창, 세션 �
   assert.throws(() => checks.rangeReadContract(mutate(svc, 'if (allOlder) { end.AllOlder = true; break; }', 'if (allOlder) { end.AllOlder = true; }')), /예전 문장이 사라졌다/);
 });
 test('주간 고치기 변이 CM13: 찾기의 창이나 상한을 바꾸면 C8 이 잡는다', () => {
-  assert.throws(() => checks.upsertWindow(mutate(svc, 'de.AddDays(14), UPSERT_MAXPAGES', 'de.AddDays(7), UPSERT_MAXPAGES')), /작성일 창/);
+  assert.throws(() => checks.upsertWindow(mutate(svc, 'var hi = de.AddDays(14);', 'var hi = de.AddDays(7);')), /작성일 창/);
   assert.throws(() => checks.upsertWindow(mutate(svc, 'UPSERT_MAXREAD = 20;', 'UPSERT_MAXREAD = 60;')), /찾기 상한/);
 });
 test('주간 고치기 변이 CM14: 새 문구에 엠 대시를 넣으면 C9 가 잡는다', () => {
