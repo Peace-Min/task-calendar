@@ -54,7 +54,7 @@ namespace TaskCalendarWidget
     //    4. 자식 표를 건드리면 **같은 트랜잭션에서 부모 updated_at 을 올린다**(§3.4).
     //
     //  【Git, SVN 삭제(2026-10-26, 구조 18)】
-    //    cal_entry_commit 표, cal_entry.source, cal_category.uses_repo, cal_user_pref 의 작성자와 커밋 본문 칸은 없다.
+    //    cal_entry_commit 표, cal_entry.source, cal_category.uses_repo, 서식 설정 표의 작성자와 커밋 본문 칸은 없다(그 표도 구조 22 에서 없앴다).
     //    저장은 그 표와 칸을 **건드리지 않는다**(같은 배포에서 표가 지워진다). 옛 웹이 commits, source, usesRepo,
     //    gitAuthor, svnAuthor, gitCommitBody 를 보내도 읽지 않고 버린다.
     // ================================================================================
@@ -166,14 +166,11 @@ namespace TaskCalendarWidget
                 //   RESTRICT 로 잡고 있어 반드시 마지막이다.
                 //   ★ 지우지 않는 것과 그 이유:
                 //     · cal_user_rev      단조증가여야 삭제까지 감지된다. DELETE 권한도 없다
-                //     · cal_migration_log 재실행 방지 마커. DELETE 권한도 없다
                 //     · cal_report_*      보고한 사실은 캘린더 데이터가 아니다(FK 도 없다).
                 //                         가져오기로 지난 보고 이력이 사라지면 안 된다
-                //     · cal_user_pref     9번이 UPSERT 한다(토큰 검사 없음)
                 if (replaceAll)
                 {
                     int wiped = 0;
-                    wiped += await Exec(conn, tx, $"DELETE FROM cal_task_hours WHERE user_id={u}", ct);
                     wiped += await Exec(conn, tx, $"DELETE FROM cal_entry      WHERE user_id={u}", ct);
                     wiped += await Exec(conn, tx, $"DELETE FROM cal_todo       WHERE user_id={u}", ct);
                     wiped += await Exec(conn, tx, $"DELETE FROM cal_category   WHERE user_id={u}", ct);
@@ -323,37 +320,7 @@ namespace TaskCalendarWidget
                     i++;
                 }
 
-                // ── 6. 공수(날짜×과제) ────────────────────────────────────────────────
-                var seenTh = new HashSet<string>(StringComparer.Ordinal);
-                var th = Obj(st, "taskHours");
-                if (th != null)
-                    foreach (var day in th.Value.EnumerateObject())
-                    {
-                        if (DateOrNull(day.Name) == null || day.Value.ValueKind != JsonValueKind.Object) continue;
-                        foreach (var kv in day.Value.EnumerateObject())
-                        {
-                            if (!catNo.TryGetValue(kv.Name, out uint cn3)) continue;   // 없는 과제의 공수는 버린다(FK)
-                            double h = kv.Value.ValueKind == JsonValueKind.Number ? kv.Value.GetDouble() : 0;
-                            if (!(h > 0)) continue;
-                            string key = "task_hours:" + day.Name + ":" + cn3;
-                            seenTh.Add(key);
-                            var p = new List<(string, object?)> { ("@d", day.Name), ("@h", Math.Round(h, 2)) };
-                            if (tokens.ContainsKey(key))
-                            {
-                                await Upd(conn, tx, "cal_task_hours", "SET hours=@h, updated_at=@now " +
-                                    $"WHERE user_id={u} AND work_date=@d AND cat_no={cn3}", tokens, key, p, now, ct);
-                                upd++;
-                            }
-                            else
-                            {
-                                await Exec(conn, tx, $"INSERT INTO cal_task_hours (user_id,work_date,cat_no,hours,updated_at) VALUES ({u},@d,{cn3},@h,@now)", ct, p, now);
-                                ins++;
-                            }
-                            tokens[key] = now;
-                        }
-                    }
-                del += await DeleteMissing(conn, tx, u, tokens, "task_hours:", seenTh, ct,
-                    k => { var q = k.Split(':'); return ("cal_task_hours", $"work_date='{q[1]}' AND cat_no={q[2]}"); }, now);
+                // ── 6. (작성 중 시간 표는 구조 22 에서 없앴다. state 에 taskHours 가 없다. 옛 웹이 보내도 읽지 않는다) ──
 
                 // ── 7. 근태 ───────────────────────────────────────────────────────────
                 var seenAt = new HashSet<string>(StringComparer.Ordinal);
@@ -387,21 +354,7 @@ namespace TaskCalendarWidget
                 //   사람마다 두던 회의실 목록(cal_room)은 회사 공용 room_code 로 갔다(docs/SHARED-ROOMS.md).
                 //   공용 목록은 관리자만 관리 화면에서 고친다(ProjectDb, OpenAdminAsync). 저장은 회의실을 다루지 않는다.
 
-                // ── 9. 설정(사용자당 1행) ─────────────────────────────────────────────
-                var pp = PrefParams(st);
-                await Exec(conn, tx,
-                    "INSERT INTO cal_user_pref (user_id,report_marker,report_marker_custom,report_indent," +
-                    "report_marker_daily,report_marker_custom_daily,report_indent_daily," +
-                    "report_marker_weekly,report_marker_custom_weekly,report_indent_weekly,report_font_family,report_font_size,updated_at) " +
-                    $"VALUES ({u},@rm,@rmc,@ri,@dm,@dmc,@di,@wm,@wmc,@wi,@ff,@fs,@now) " +
-                    "ON DUPLICATE KEY UPDATE " +
-                    "report_marker=VALUES(report_marker), report_marker_custom=VALUES(report_marker_custom), " +
-                    "report_indent=VALUES(report_indent), " +
-                    "report_marker_daily=VALUES(report_marker_daily), report_marker_custom_daily=VALUES(report_marker_custom_daily), " +
-                    "report_indent_daily=VALUES(report_indent_daily), report_marker_weekly=VALUES(report_marker_weekly), " +
-                    "report_marker_custom_weekly=VALUES(report_marker_custom_weekly), report_indent_weekly=VALUES(report_indent_weekly), " +
-                    "report_font_family=VALUES(report_font_family), report_font_size=VALUES(report_font_size), updated_at=VALUES(updated_at)", ct, pp, now);
-                tokens["user_pref"] = now;
+                // ── 9. (서식 설정 표는 구조 22 에서 없앴다. 서식은 쓰지 않고 보고 글꼴은 웹의 localStorage 다) ──
 
                 // ── 10. 삭제 — 자식→부모 순. 일정/할 일 먼저, 과제는 마지막(FK) ────────
                 //   ★ 과제 삭제는 앱이 같은 저장에서 그 과제의 일정, 할 일, 공수를 **함께 지운 state** 로 온다
@@ -569,32 +522,6 @@ namespace TaskCalendarWidget
             ("@so", i),
         };
 
-        private static List<(string, object?)> PrefParams(JsonElement st)
-        {
-            var rfp = Obj(st, "reportFormatPrefs");
-            var dly = rfp == null ? (JsonElement?)null : Obj(rfp.Value, "daily");
-            var wky = rfp == null ? (JsonElement?)null : Obj(rfp.Value, "weekly");
-            var fnt = Obj(st, "reportFont");
-            //  ★ 마커는 **빈 문자열이면 안 된다**(chk_cal_user_pref_marker). state 에 서식이
-            //    통째로 없을 수 있으므로(구버전·초기 상태) 빈 값을 그대로 흘리면 저장이 통째로
-            //    거부된다 — 설정 하나 때문에 일정·할 일까지 못 쓰게 된다. 그래서 여기서 메운다.
-            //    메우는 값은 상위 reportMarker → 없으면 '-'(앱의 기본값과 같은 값)다.
-            string topMarker = S(st, "reportMarker"); if (topMarker.Length == 0) topMarker = "-";
-            string dMarker = dly == null ? "" : S(dly.Value, "marker"); if (dMarker.Length == 0) dMarker = topMarker;
-            string wMarker = wky == null ? "" : S(wky.Value, "marker"); if (wMarker.Length == 0) wMarker = topMarker;
-            return new List<(string, object?)>
-            {
-                ("@rm", topMarker), ("@rmc", S(st, "reportMarkerCustom")),
-                ("@ri", IntOrNull(st, "reportIndent") ?? 2),
-                ("@dm", dMarker), ("@dmc", dly == null ? "" : S(dly.Value, "markerCustom")),
-                ("@di", dly == null ? 2 : (IntOrNull(dly.Value, "indent") ?? 2)),
-                ("@wm", wMarker), ("@wmc", wky == null ? "" : S(wky.Value, "markerCustom")),
-                ("@wi", wky == null ? 2 : (IntOrNull(wky.Value, "indent") ?? 2)),
-                ("@ff", fnt == null ? "" : S(fnt.Value, "family")),
-                ("@fs", fnt == null ? (object?)null : IntOrNull(fnt.Value, "size")),
-            };
-        }
-
         // ================================================================================
         //  차이 없음 판정 — 응답만 끊긴 저장(S9 · OFFLINE-RESILIENCE §2)
         // ================================================================================
@@ -678,23 +605,6 @@ namespace TaskCalendarWidget
                 i++;
             }
 
-            //  공수 — 있는 과제 · 0 초과 · 소수 2자리(저장과 같은 거름)
-            var hours = new SortedDictionary<string, string>(StringComparer.Ordinal);
-            var th = Obj(st, "taskHours");
-            if (th != null)
-                foreach (var day in th.Value.EnumerateObject())
-                {
-                    if (DateOrNull(day.Name) == null || day.Value.ValueKind != JsonValueKind.Object) continue;
-                    foreach (var kv in day.Value.EnumerateObject())
-                    {
-                        if (!catUids.Contains(kv.Name)) continue;
-                        double h = kv.Value.ValueKind == JsonValueKind.Number ? kv.Value.GetDouble() : 0;
-                        if (!(h > 0)) continue;
-                        hours[day.Name + "|" + kv.Name] = Math.Round(h, 2).ToString("0.##", CultureInfo.InvariantCulture);
-                    }
-                }
-            rows.Add(new object?[] { "hours", hours });
-
             //  근태 — '' 는 행이 없다(미기록)
             var att = new SortedDictionary<string, string>(StringComparer.Ordinal);
             var at = Obj(st, "attendance");
@@ -707,12 +617,6 @@ namespace TaskCalendarWidget
                     att[day.Name] = status + "|" + (IntOrNull(day.Value, "overtime") ?? 0).ToString(CultureInfo.InvariantCulture);
                 }
             rows.Add(new object?[] { "attendance", att });
-
-            //  설정 — 글꼴 크기는 읽기가 NULL 을 0 으로 돌려주므로 같은 규칙으로 맞춘다
-            var pref = Vals(PrefParams(st));
-            for (int k = 0; k < pref.Count; k++)
-                if (pref[k] is string s0 && s0 == "@fs=") pref[k] = "@fs=0";
-            rows.Add(new object?[] { "pref", pref });
 
             return JsonSerializer.Serialize(rows);
         }

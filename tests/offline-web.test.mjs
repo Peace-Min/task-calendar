@@ -58,11 +58,8 @@ const GATED_HANDLERS = [
   ['할 일 행 완료·삭제·중요', "const row = ev.target.closest('.todo-row'); if(!row) return;", 'toggleTodo(row.dataset.id)'],
   //  (과제 목록 #catList 위임의 unsub, del, movedata 는 2026-10-30 ⋯ 메뉴로 옮겼다. 관문은 함수(catUnsub, catDelete, openCatMoveModal)가 진다 → GATED_FUNCTIONS)
   //  (보고서 창의 근태 셀렉트(svGuarded)와 과제별 시간 입력은 보고서 창과 함께 없앴다. 근태 화면의 저장은 attendance-web 시험이 본다.)
-  ['머리기호', "$('#rptMarker').addEventListener('change'", 'save()'],
-  ['머리기호(직접 입력)', "$('#rptMarkerCustom').addEventListener('change'", 'save()'],
-  ['들여쓰기', 'const _setRptInd = d => {', 'save()'],
-  ['보고서 글꼴', "if(_ff) _ff.addEventListener('change'", 'save()'],
-  ['보고서 글자 크기', "if(_fs) _fs.addEventListener('change'", 'save()'],
+  //  (보고서 서식 머리기호, 들여쓰기, 글꼴, 글자 크기는 구조 22 에서 저장(save)이 없어졌다. 서식은 저장하지 않고 글꼴은
+  //   계정별 localStorage(tc_rptFont:<계정>)라 DB 쓰기가 아니다. 그래서 관문 목록에서 뺐다.)
   //  2026-10-23 '빠른 편집 → 자세히 편집'(#qaAdvanced) 진입점은 없앴다(docs/PERSONAL-IMPROVE-PLAN.md 결정 10, 한 화면 폼이 모든 칸을 가진다).
   //  쓰는 길이 사라졌으므로 관문 목록에서도 뺀다. 되살아나지 않는지는 tests/personal-improve.test.mjs 가 본다. 한 화면 폼 저장은 qaSave(위 GATED_FUNCTIONS).
 ];
@@ -101,7 +98,7 @@ const statics = {
   memoryOnly(app) {
     for (const fn of ['editLocked', 'guardEdit', 'setUnsaved', 'connSyncUi', 'connLost', 'connPing', 'connRecover',
                       'lockedSaveRefused', 'connOnBootApplied', 'renderUnsavedBar', 'connAfterLogin']) {
-      const b = extractFunction(app, fn);
+      const b = extractFunction(app, fn).replace(/\/\/[^\n]*/g, '');   //  주석은 뺀다(설명 글에 저장소 이름이 나와도 코드가 닿는 것은 아니다)
       assert.ok(!/localStorage|sessionStorage|indexedDB/.test(b), `${fn}() 가 브라우저 저장소에 닿는다 — 오프라인 대기열은 금지(ADR-18)`);
     }
   },
@@ -112,7 +109,7 @@ test(`정적②: 배선 진입점 ${GATED_HANDLERS.length}곳(끌어 옮기기·
 test('정적③: 연결 상태 경로는 메모리 전용이다(로컬 저장소 대기열 없음)', () => statics.memoryOnly(src));
 test('정적⑤: 보고서 줄편집·삭제 진입점(setCommitSubject, setEntryTitle, setTodoText, 줄 ✎/✕)은 관문이 아니라 아예 없다(REPORT-EDIT §5)', () => statics.reportLineEditGone(src));
 test('변이⑤s: 보고서 줄 삭제 처리기를 되살리면 정적⑤ 가 실패한다', () => {
-  const bad = mutate("  $('#rptMarker').addEventListener('change'",
+  const bad = mutate("if(_ff) _ff.addEventListener('change'",
     "  $('#rptOut').addEventListener('click', ev => { const b = ev.target.closest('[data-ract]'); if(b && b.dataset.ract === 'del') deleteCommitRow(b.dataset.reid, '', 0); });\n  $('#rptOut').addEventListener('input', ev => {", src);
   assert.throws(() => statics.reportLineEditGone(bad), /되살아났다/);
   assert.doesNotThrow(() => statics.reportLineEditGone(src), '대조군: 현재 소스는 통과해야 한다');

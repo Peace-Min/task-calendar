@@ -27,7 +27,6 @@ const src = {
   init: readText(R('db/deploy/init-calendar.ps1')),
   seed: readText(R('db/deploy/seed-dummy.mjs')),
   demo: readText(R('db/demo/build-demo-sql.mjs')),
-  x2d: readText(R('db/deploy/xml-to-db/Program.cs')),
 };
 const hosts = () => csFiles().map((f) => ({ name: 'widget/' + f, code: stripCsComments(readText(new URL(f, WIDGET))) }));
 //  JS 코드에서 줄 주석과 블록 주석을 걷는다(문자열 안의 // 는 이 파일들에 없다. 주석의 옛 설명이 검사에 걸리지 않게 한다).
@@ -88,7 +87,9 @@ const checks = {
     const entry = /CREATE TABLE cal_entry \(([\s\S]*?)\n\) ENGINE/.exec(code);
     assert.ok(entry, '정본에서 cal_entry 정의를 찾지 못했다(판정 불가)');
     assert.ok(!/^\s*source\s/m.test(entry[1]), '정본 cal_entry 에 source 칸이 남았다');
-    assert.ok(!/커밋 수집|git\/svn/.test(/CREATE TABLE cal_user_pref[\s\S]*?COMMENT='[^']*'/.exec(code)[0]), '정본 cal_user_pref 표 설명에 커밋 수집 작성자가 남았다');
+    //  cal_user_pref 는 2026-11-06 구조 22(docs/DB-V22-REPORT-HOURS.md)에서 표째 지웠다. 남아 있다면 그 표 설명에 커밋 수집 작성자가 없어야 한다.
+    const pref = /CREATE TABLE cal_user_pref[\s\S]*?COMMENT='[^']*'/.exec(code);
+    if (pref) assert.ok(!/커밋 수집|git\/svn/.test(pref[0]), '정본 cal_user_pref 표 설명에 커밋 수집 작성자가 남았다');
   },
   // ⑤ 판 번호
   versions(gate, canon, fragNames) {
@@ -111,10 +112,8 @@ const checks = {
       for (const n of DB_NAMES) assert.ok(!code.includes(n), `${name} 이 없앤 이름 ${n} 을 쓴다`);
       assert.ok(!/INSERT INTO cal_entry \([^)]*\bsource\b/.test(code) && !/'title', 'memo', 'source'/.test(code), `${name} 가 cal_entry.source 를 넣는다`);
     }
-    const x = stripCsComments(s.x2d);
-    for (const n of DB_NAMES) assert.ok(!x.includes(n), `xml-to-db/Program.cs 가 없앤 이름 ${n} 을 쓴다`);
-    assert.ok(!/repo-paths\.json/.test(x), 'xml-to-db 가 아직 repo-paths.json 을 쓴다');
-    assert.ok(/A\(e, "source"\) != "git"/.test(x), 'xml-to-db 가 옛 커밋 기록(source="git")을 걸러 내지 않는다');
+    //  XML 이관 도구(db/deploy/xml-to-db)는 구조 22(docs/DB-V22-REPORT-HOURS.md)에서 통째로 지웠다.
+    assert.ok(!existsSync(R('db/deploy/xml-to-db/')), 'db/deploy/xml-to-db 가 다시 생겼다(구조 22 에서 지운 관리자 도구)');
   },
 };
 

@@ -160,9 +160,9 @@ footer p{margin:0 0 4px; max-width:none}
   <li>데이터베이스 <b>taskcalendar</b></li>
   <li>엔진 <b>MySQL 8.4.9 / InnoDB</b></li>
   <li>문자셋 <b>utf8mb4_0900_ai_ci</b></li>
-  <li>표 <b>28</b> <span class="ko">과제 6, 사용자·조직 3, 캘린더 19</span></li>
-  <li>컬럼 <b>220</b>, 외래키 <b>32</b>, CHECK <b>53</b></li>
-  <li>db_structure_version <b>21</b></li>
+  <li>표 <b>25</b> <span class="ko">과제 6, 사용자·조직 3, 캘린더 16</span></li>
+  <li>컬럼 <b>203</b>, 외래키 <b>27</b>, CHECK <b>48</b></li>
+  <li>db_structure_version <b>22</b></li>
   <li>기준 <b>2026-11-06</b></li>
 </ul>
 <!-- GEN:FACTS:END -->
@@ -574,7 +574,7 @@ footer p{margin:0 0 4px; max-width:none}
 <p class="sub">CHECK 2개: <code>chk_title_code_active</code> <code>(`is_active` in (0,1))</code>, <code>chk_title_code_name</code> <code>(`name` &lt;&gt; '')</code></p>
 </section>
 
-<p class="grp">캘린더 <span class="ko">19표: 개인 일정, 할 일, 근태, 보고</span></p>
+<p class="grp">캘린더 <span class="ko">16표: 개인 일정, 할 일, 근태, 보고</span></p>
 
 <section id="calendar">
 <!-- PROSE:calendar.head -->
@@ -688,23 +688,6 @@ footer p{margin:0 0 4px; max-width:none}
 </div>
 </section>
 
-<section id="cal_migration_log">
-<h2><span class="tname">cal_migration_log</span> <span class="ko">data.xml→DB 1회성 이관 마커(사람 단위)</span></h2>
-
-<p class="sub">DB 주석: PK=(user_id). 행 존재=이관 완료, 재실행 거부 근거.</p>
-
-<div class="tw">
-<table>
-<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
-<tbody>
-<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span></td><td class="note auto">기본키입니다. <code>app_user.user_id</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다.</td></tr>
-<tr><td class="col">source_host</td><td class="type">VARCHAR(255)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다.</td></tr>
-<tr><td class="col">migrated_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
-</tbody>
-</table>
-</div>
-</section>
-
 <section id="cal_project_change">
 <h2><span class="tname">cal_project_change</span> <span class="ko">과제 일정 변경 이력(지우지 않는 기록)</span></h2>
 
@@ -813,35 +796,38 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">status</td><td class="type">VARCHAR(2)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다. 허용값은 <code></code>, <code>1</code>, <code>2</code>, <code>3</code>, <code>4</code>, <code>5</code>, <code>6</code>, <code>7</code>, <code>9</code>, <code>10</code>, <code>11</code>, <code>12</code>뿐입니다.</td></tr>
 <tr><td class="col">overtime</td><td class="type">TINYINT</td><td><span class="k nn">NOT NULL</span><span class="k">기본 0</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>0</code>입니다. <code>chk_crd_overtime</code> 제약이 걸려 있습니다.</td></tr>
 <tr><td class="col">content</td><td class="type">MEDIUMTEXT</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
+<tr><td class="col">memo</td><td class="type">MEDIUMTEXT</td><td><span class="k">NULL 허용</span></td><td class="note"><b>자유 메모.</b> 근태 일간 작성 맨 위 칸의 글(과제와 상관없는 그날 내용)입니다. <b>이 칸이 비어 있으면(NULL) 구조 22 이전의 옛 보고</b>라서 앱이 보낸 글(<code>content</code>)을 해석해 읽습니다. 새 앱은 메모가 없어도 빈 글로 씁니다.</td></tr>
 <tr><td class="col">sent_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
 <tr class="audit"><td class="col">created_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 CURRENT_TIMESTAMP(3)</span></td><td class="note auto">필수입니다. 기본값은 <code>CURRENT_TIMESTAMP(3)</code>입니다.</td></tr>
 <tr class="audit"><td class="col">updated_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 CURRENT_TIMESTAMP(3)</span></td><td class="note auto">필수입니다. 기본값은 <code>CURRENT_TIMESTAMP(3)</code>입니다. 행을 고치면 자동으로 갱신됩니다.</td></tr>
 </tbody>
 </table>
 </div>
-<p class="sub">CHECK 2개: <code>chk_crd_status</code> <code>((`status` in ('','1','2','3','4','5','6','7','9','10','11','12')) and (not((`status` like '% '))))</code>, <code>chk_crd_overtime</code> <code>((`overtime` &gt;= 0) and (`overtime` &lt;= 11))</code></p>
+<p class="sub">CHECK 2개: <code>chk_crd_overtime</code> <code>((`overtime` &gt;= 0) and (`overtime` &lt;= 11))</code>, <code>chk_crd_status</code> <code>((`status` in ('','1','2','3','4','5','6','7','9','10','11','12')) and (not((`status` like '% '))))</code></p>
 </section>
 
 <section id="cal_report_hours">
-<h2><span class="tname">cal_report_hours</span> <span class="ko">보낸 과제별 시간 — 공수계산기의 원천</span></h2>
+<h2><span class="tname">cal_report_hours</span> <span class="ko">근태 일간보고 과제별 줄</span></h2>
 
-<p class="sub">DB 주석: 캘린더가 본문을 만들 때 이미 아는 값이다(파싱 아님)</p>
+<p class="sub">DB 주석: 주간 불러오기, 이전 보고, 공수 집계, 공식 과제 이관의 원천</p>
 
 <div class="tw">
 <table>
 <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
 <tbody>
-<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span><span class="k ix">INDEX</span></td><td class="note auto">기본키 <code>(user_id, work_date, line_no)</code>의 일부입니다. <code>cal_category</code>의 <code>(user_id, cat_no)</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다. <code>cal_report_daily</code>의 <code>(user_id, work_date)</code>에 있는 값만 들어갑니다. 부모 행이 지워지면 이 행도 함께 지워집니다. 부모 값이 바뀌면 따라 바뀝니다.</td></tr>
+<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span><span class="k ix">INDEX</span></td><td class="note auto">기본키 <code>(user_id, work_date, line_no)</code>의 일부입니다. <code>cal_report_daily</code>의 <code>(user_id, work_date)</code>에 있는 값만 들어갑니다. 부모 행이 지워지면 이 행도 함께 지워집니다. 부모 값이 바뀌면 따라 바뀝니다.</td></tr>
 <tr class="pk"><td class="col">work_date</td><td class="type">DATE</td><td><span class="k pk">PK</span><span class="k fk">FK</span><span class="k ix">INDEX</span></td><td class="note auto">기본키 <code>(user_id, work_date, line_no)</code>의 일부입니다. <code>cal_report_daily</code>의 <code>(user_id, work_date)</code>에 있는 값만 들어갑니다. 부모 행이 지워지면 이 행도 함께 지워집니다. 부모 값이 바뀌면 따라 바뀝니다.</td></tr>
 <tr class="pk"><td class="col">line_no</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span></td><td class="note auto">기본키 <code>(user_id, work_date, line_no)</code>의 일부입니다.</td></tr>
 <tr><td class="col">task_name</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
-<tr><td class="col">cat_no</td><td class="type">INT UNSIGNED</td><td><span class="k fk">FK</span><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note auto"><code>cal_category</code>의 <code>(user_id, cat_no)</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다. 비워 둘 수 있습니다.</td></tr>
+<tr><td class="col">cat_uid</td><td class="type">VARCHAR(80)</td><td><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note"><b>그 블록의 과제 id.</b> 앱의 과제 id 원문(개인 <code>c-...</code>, 공식 <code>db-...</code>)입니다. 주간 불러오기, 이전 보고, 공식 과제 연결 이관은 이 값으로 과제를 찾습니다(이름으로 찾지 않습니다). 비어 있으면 캘린더 과제와 이어지지 않은 블록입니다.</td></tr>
+<tr><td class="col">project_uid</td><td class="type">CHAR(36)</td><td><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note"><b>공식 과제 id.</b> <code>project.uid</code> 와 같은 값이고 개인 과제는 비어 있습니다. 여러 사람의 공수를 공식 과제별로 합칠 때 씁니다. 과제가 지워져도 줄이 남도록 FK 는 없습니다.</td></tr>
 <tr><td class="col">hours</td><td class="type">DECIMAL(4,2)</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. <code>chk_crh_hours</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">body</td><td class="type">MEDIUMTEXT</td><td><span class="k">NULL 허용</span></td><td class="note"><b>그 과제의 그날 내용.</b> 보낸 그대로의 줄바꿈과 들여쓰기입니다. 새 앱은 내용이 없어도 빈 글로 씁니다.</td></tr>
 </tbody>
 </table>
 </div>
-<p class="sub">인덱스: <code>user_id, cat_no, work_date</code> <span class="ko">idx_crh_cat</span></p>
-<p class="sub">CHECK 1개: <code>chk_crh_hours</code> <code>((`hours` &gt; 0) and (`hours` &lt;= 24))</code></p>
+<p class="sub">인덱스: <code>user_id, cat_uid</code> <span class="ko">ix_crh_cat</span>, <code>project_uid, work_date</code> <span class="ko">ix_crh_project</span></p>
+<p class="sub">CHECK 1개: <code>chk_crh_hours</code> <code>((`hours` &gt;= 0) and (`hours` &lt;= 24))</code></p>
 </section>
 
 <section id="cal_report_weekly">
@@ -879,16 +865,17 @@ footer p{margin:0 0 4px; max-width:none}
 <table>
 <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
 <tbody>
-<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span></td><td class="note auto">기본키 <code>(user_id, period_start, line_no)</code>의 일부입니다. <code>cal_report_weekly</code>의 <code>(user_id, period_start)</code>에 있는 값만 들어갑니다. 부모 행이 지워지면 이 행도 함께 지워집니다. 부모 값이 바뀌면 따라 바뀝니다.</td></tr>
+<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span><span class="k ix">INDEX</span></td><td class="note auto">기본키 <code>(user_id, period_start, line_no)</code>의 일부입니다. <code>cal_report_weekly</code>의 <code>(user_id, period_start)</code>에 있는 값만 들어갑니다. 부모 행이 지워지면 이 행도 함께 지워집니다. 부모 값이 바뀌면 따라 바뀝니다.</td></tr>
 <tr class="pk"><td class="col">period_start</td><td class="type">DATE</td><td><span class="k pk">PK</span><span class="k fk">FK</span><span class="k ix">INDEX</span></td><td class="note auto">기본키 <code>(user_id, period_start, line_no)</code>의 일부입니다. <code>cal_report_weekly</code>의 <code>(user_id, period_start)</code>에 있는 값만 들어갑니다. 부모 행이 지워지면 이 행도 함께 지워집니다. 부모 값이 바뀌면 따라 바뀝니다.</td></tr>
 <tr class="pk"><td class="col">line_no</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span></td><td class="note">과제투입시간 안의 줄 순서(0부터). 다시 보내면 그 주의 줄을 모두 지우고 0부터 새로 넣습니다.</td></tr>
 <tr><td class="col">task_name</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span></td><td class="note">보낸 과제명 그대로입니다. 과제 이름이 나중에 바뀌어도 지난 줄은 그대로 남습니다.</td></tr>
+<tr><td class="col">cat_uid</td><td class="type">VARCHAR(80)</td><td><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note"><b>그 줄의 과제 id.</b> 일간 줄과 같은 규칙입니다. 구조 22 로 올릴 때 기존 줄은 공식 과제면 <code>db-</code> 와 공식 과제 id, 개인 과제면 이름이 글자까지 같은 과제가 하나뿐일 때만 채웠습니다.</td></tr>
 <tr><td class="col">project_uid</td><td class="type">CHAR(36)</td><td><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note">공식 과제면 <code>project.uid</code>, 개인 과제는 NULL 입니다. <b>외래키가 없습니다.</b> 과제를 숨기거나 휴지통에서 영구 삭제해도 지난 공수는 남아야 하기 때문입니다. 과제별 맨먼스 집계는 이 값과 <code>ix_crwh_project</code> 로 합니다.</td></tr>
 <tr><td class="col">hours</td><td class="type">DECIMAL(5,2)</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note">그 주 그 과제의 시간 합계. 0 초과 168(한 주) 이하만 들어갑니다(CHECK). 0 시간 줄은 두지 않습니다.</td></tr>
 </tbody>
 </table>
 </div>
-<p class="sub">인덱스: <code>project_uid, period_start</code> <span class="ko">ix_crwh_project</span></p>
+<p class="sub">인덱스: <code>user_id, cat_uid</code> <span class="ko">ix_crwh_cat</span>, <code>project_uid, period_start</code> <span class="ko">ix_crwh_project</span></p>
 <p class="sub">CHECK 1개: <code>chk_crwh_hours</code> <code>((`hours` &gt; 0) and (`hours` &lt;= 168))</code></p>
 </section>
 
@@ -907,27 +894,6 @@ footer p{margin:0 0 4px; max-width:none}
 </tbody>
 </table>
 </div>
-</section>
-
-<section id="cal_task_hours">
-<h2><span class="tname">cal_task_hours</span> <span class="ko">(날짜×과제) 투입 시간(시간 단위)</span></h2>
-
-<p class="sub">DB 주석: PK=(user_id,work_date,cat_no). 과제 FK RESTRICT. 0=행 삭제.</p>
-
-<div class="tw">
-<table>
-<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
-<tbody>
-<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span><span class="k ix">INDEX</span></td><td class="note auto">기본키 <code>(user_id, work_date, cat_no)</code>의 일부입니다. <code>cal_category</code>의 <code>(user_id, cat_no)</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다. <code>app_user.user_id</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다.</td></tr>
-<tr class="pk"><td class="col">work_date</td><td class="type">DATE</td><td><span class="k pk">PK</span></td><td class="note auto">기본키 <code>(user_id, work_date, cat_no)</code>의 일부입니다.</td></tr>
-<tr class="pk"><td class="col">cat_no</td><td class="type">INT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span><span class="k ix">INDEX</span></td><td class="note auto">기본키 <code>(user_id, work_date, cat_no)</code>의 일부입니다. <code>cal_category</code>의 <code>(user_id, cat_no)</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다.</td></tr>
-<tr><td class="col">hours</td><td class="type">DECIMAL(4,2)</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. <code>chk_cal_task_hours_range</code> 제약이 걸려 있습니다.</td></tr>
-<tr class="audit"><td class="col">updated_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
-</tbody>
-</table>
-</div>
-<p class="sub">인덱스: <code>user_id, cat_no</code> <span class="ko">ix_cal_task_hours_user_cat</span></p>
-<p class="sub">CHECK 1개: <code>chk_cal_task_hours_range</code> <code>((`hours` &gt; 0) and (`hours` &lt;= 24))</code></p>
 </section>
 
 <section id="cal_todo">
@@ -979,34 +945,6 @@ footer p{margin:0 0 4px; max-width:none}
 <p class="sub">CHECK 1개: <code>chk_cal_todo_day_note_text</code> <code>(`note_text` &lt;&gt; '')</code></p>
 </section>
 
-<section id="cal_user_pref">
-<h2><span class="tname">cal_user_pref</span> <span class="ko">사용자당 1행 설정(보고서 서식)</span></h2>
-
-<p class="sub">DB 주석: PK=(user_id). 삭제 경로 없음.</p>
-
-<div class="tw">
-<table>
-<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
-<tbody>
-<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span></td><td class="note auto">기본키입니다. <code>app_user.user_id</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다.</td></tr>
-<tr><td class="col">report_marker</td><td class="type">VARCHAR(8)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 -</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>-</code>입니다. <code>chk_cal_user_pref_marker</code> 제약이 걸려 있습니다.</td></tr>
-<tr><td class="col">report_marker_custom</td><td class="type">VARCHAR(8)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다.</td></tr>
-<tr><td class="col">report_indent</td><td class="type">TINYINT</td><td><span class="k nn">NOT NULL</span><span class="k">기본 2</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>2</code>입니다. <code>chk_cal_user_pref_indent</code> 제약이 걸려 있습니다.</td></tr>
-<tr><td class="col">report_marker_daily</td><td class="type">VARCHAR(8)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 -</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>-</code>입니다. <code>chk_cal_user_pref_marker</code> 제약이 걸려 있습니다.</td></tr>
-<tr><td class="col">report_marker_custom_daily</td><td class="type">VARCHAR(8)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다.</td></tr>
-<tr><td class="col">report_indent_daily</td><td class="type">TINYINT</td><td><span class="k nn">NOT NULL</span><span class="k">기본 2</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>2</code>입니다. <code>chk_cal_user_pref_indent</code> 제약이 걸려 있습니다.</td></tr>
-<tr><td class="col">report_marker_weekly</td><td class="type">VARCHAR(8)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 -</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>-</code>입니다. <code>chk_cal_user_pref_marker</code> 제약이 걸려 있습니다.</td></tr>
-<tr><td class="col">report_marker_custom_weekly</td><td class="type">VARCHAR(8)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다.</td></tr>
-<tr><td class="col">report_indent_weekly</td><td class="type">TINYINT</td><td><span class="k nn">NOT NULL</span><span class="k">기본 2</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>2</code>입니다. <code>chk_cal_user_pref_indent</code> 제약이 걸려 있습니다.</td></tr>
-<tr><td class="col">report_font_family</td><td class="type">VARCHAR(20)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다. 허용값은 <code></code>, <code>Malgun Gothic</code>, <code>Gulim</code>, <code>Dotum</code>, <code>Batang</code>, <code>NanumGothic</code>뿐입니다.</td></tr>
-<tr><td class="col">report_font_size</td><td class="type">TINYINT</td><td><span class="k nn">NOT NULL</span><span class="k">기본 0</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>0</code>입니다. <code>chk_cal_user_pref_font_size</code> 제약이 걸려 있습니다.</td></tr>
-<tr class="audit"><td class="col">updated_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
-</tbody>
-</table>
-</div>
-<p class="sub">CHECK 4개: <code>chk_cal_user_pref_marker</code> <code>((`report_marker` &lt;&gt; '') and (`report_marker_daily` &lt;&gt; '') and (`report_marker_weekly` &lt;&gt; ''))</code>, <code>chk_cal_user_pref_indent</code> <code>((`report_indent` between 0 and 6) and (`report_indent_daily` between 0 and 6) and (`report_indent_weekly` between 0 and 6))</code>, <code>chk_cal_user_pref_font_family</code> <code>((`report_font_family` in ('','Malgun Gothic','Gulim','Dotum','Batang','NanumGothic')) and (not((`report_font_family` like '% '))))</code>, <code>chk_cal_user_pref_font_size</code> <code>((`report_font_size` = 0) or (`report_font_size` between 10 and 16))</code></p>
-</section>
-
 <section id="cal_user_rev">
 <h2><span class="tname">cal_user_rev</span> <span class="ko">사용자별 동시성 감시점</span></h2>
 
@@ -1038,7 +976,7 @@ footer p{margin:0 0 4px; max-width:none}
 <tbody>
 <tr><td class="col">과제</td><td class="type">6표, 30행</td><td class="note"><code>project</code>, <code>customer</code>, <code>section_code</code>, <code>status_code</code>, <code>room_code</code>, <code>project_schedule_image</code></td></tr>
 <tr><td class="col">사용자·조직</td><td class="type">3표, 112행</td><td class="note"><code>app_user</code>, <code>org_unit</code>, <code>title_code</code></td></tr>
-<tr><td class="col">캘린더</td><td class="type">19표, 17,904행</td><td class="note"><code>cal_attendance</code>, <code>cal_category</code>, <code>cal_entry</code>, <code>cal_entry_except</code>, <code>cal_migration_log</code>, <code>cal_project_change</code>, <code>cal_project_event</code>, <code>cal_project_event_except</code>, <code>cal_project_watch</code>, <code>cal_report_daily</code>, <code>cal_report_hours</code>, <code>cal_report_weekly</code>, <code>cal_report_weekly_hours</code>, <code>cal_schema_meta</code>, <code>cal_task_hours</code>, <code>cal_todo</code>, <code>cal_todo_day_note</code>, <code>cal_user_pref</code>, <code>cal_user_rev</code></td></tr>
+<tr><td class="col">캘린더</td><td class="type">16표, 11,341행</td><td class="note"><code>cal_attendance</code>, <code>cal_category</code>, <code>cal_entry</code>, <code>cal_entry_except</code>, <code>cal_project_change</code>, <code>cal_project_event</code>, <code>cal_project_event_except</code>, <code>cal_project_watch</code>, <code>cal_report_daily</code>, <code>cal_report_hours</code>, <code>cal_report_weekly</code>, <code>cal_report_weekly_hours</code>, <code>cal_schema_meta</code>, <code>cal_todo</code>, <code>cal_todo_day_note</code>, <code>cal_user_rev</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -1053,20 +991,17 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">cal_category</td><td class="type">713</td><td class="note">캘린더 과제(카테고리)</td></tr>
 <tr><td class="col">cal_entry</td><td class="type">3,626</td><td class="note">일정</td></tr>
 <tr><td class="col">cal_entry_except</td><td class="type">326</td><td class="note">반복 일정의 예외일</td></tr>
-<tr><td class="col">cal_migration_log</td><td class="type">1</td><td class="note">data.xml→DB 1회성 이관 마커(사람 단위)</td></tr>
 <tr><td class="col">cal_project_change</td><td class="type">0</td><td class="note">과제 일정 변경 이력(지우지 않는 기록)</td></tr>
 <tr><td class="col">cal_project_event</td><td class="type">0</td><td class="note">과제 일정(과제 캘린더 공용 트랙)</td></tr>
 <tr><td class="col">cal_project_event_except</td><td class="type">0</td><td class="note">과제 반복 일정의 예외일(이 날짜만 삭제)</td></tr>
 <tr><td class="col">cal_project_watch</td><td class="type">10</td><td class="note">과제 탭 관심 과제 목록</td></tr>
 <tr><td class="col">cal_report_daily</td><td class="type">0</td><td class="note">캘린더가 보낸 일간보고</td></tr>
-<tr><td class="col">cal_report_hours</td><td class="type">0</td><td class="note">보낸 과제별 시간 — 공수계산기의 원천</td></tr>
+<tr><td class="col">cal_report_hours</td><td class="type">0</td><td class="note">근태 일간보고 과제별 줄</td></tr>
 <tr><td class="col">cal_report_weekly</td><td class="type">1</td><td class="note">캘린더가 작성한 주간보고</td></tr>
 <tr><td class="col">cal_report_weekly_hours</td><td class="type">0</td><td class="note">주간보고 과제투입시간(과제별 줄)</td></tr>
 <tr><td class="col">cal_schema_meta</td><td class="type">5</td><td class="note">구조 번호와 배포 정보(키-값)</td></tr>
-<tr><td class="col">cal_task_hours</td><td class="type">6,561</td><td class="note">(날짜×과제) 투입 시간(시간 단위)</td></tr>
 <tr><td class="col">cal_todo</td><td class="type">564</td><td class="note">할 일</td></tr>
 <tr><td class="col">cal_todo_day_note</td><td class="type">169</td><td class="note">기간 할일의 날짜별 설명</td></tr>
-<tr><td class="col">cal_user_pref</td><td class="type">1</td><td class="note">사용자당 1행 설정(보고서 서식)</td></tr>
 <tr><td class="col">cal_user_rev</td><td class="type">89</td><td class="note">사용자별 동시성 감시점</td></tr>
 <tr><td class="col">customer</td><td class="type">8</td><td class="note">발주처 마스터</td></tr>
 <tr><td class="col">org_unit</td><td class="type">12</td><td class="note">조직 트리</td></tr>

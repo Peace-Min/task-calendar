@@ -559,7 +559,7 @@ function invariants(caseId) {
 /* ────────────────────────────── 5. 정리(시작·종료 양쪽) ────────────────────────────── */
 /*  ★ 종료 정리만으로는 부족하다(강제 종료는 어떤 핸들러도 못 받는다) — 다음 실행이 시작할 때 이전 잔재를
  *    먼저 걷어낸다. 둘을 합쳐야 닫힌다.
- *  ★ 지우는 순서는 FK 순서다: zzU 직원의 캘린더 자식 표 → cal_user_pref/rev → app_user(zzU)
+ *  ★ 지우는 순서는 FK 순서다: zzU 직원의 캘린더 자식 표 → 부속 2표(cal_project_watch, cal_user_rev) → app_user(zzU)
  *    → org_unit(zzO, **잎부터**) → title_code(zzJ).
  *    app_user.title_id 와 app_user.org_id 가 RESTRICT 라 직원이 먼저 사라져야 마스터를 지울 수 있다.
  *  ★ 앱 계정에는 이 두 표의 DELETE 가 **없다**(§6) — 그래서 여기서만 관리자 연결로 지운다. */
@@ -580,9 +580,10 @@ function sweepZz(reason) {
 
   const ids = sql(`SELECT user_id FROM app_user WHERE login_id LIKE 'zzU%'`, { what: 'zz 사용자 id' }).map((r) => r[0]);
   const IN = ids.length ? ids.join(',') : '-1';
+  //  (cal_task_hours, cal_migration_log, cal_user_pref 는 구조 22 에서 없앴다)
   const kids = ['cal_entry_except', 'cal_todo_day_note', 'cal_report_hours',
-    'cal_task_hours', 'cal_attendance', 'cal_report_daily', 'cal_report_weekly', 'cal_migration_log',
-    'cal_todo', 'cal_entry', 'cal_category', 'cal_user_pref', 'cal_user_rev'];
+    'cal_attendance', 'cal_report_daily', 'cal_report_weekly',
+    'cal_todo', 'cal_entry', 'cal_category', 'cal_project_watch', 'cal_user_rev'];
   const stmts = kids.map((t) => `DELETE FROM ${t} WHERE user_id IN (${IN})`);
   stmts.push(`DELETE FROM app_user WHERE login_id LIKE 'zzU%'`);
   //  범위 고정 DELETE — 두 번째는 0행이라 재적용이 무동작이다(idempotent 자격).

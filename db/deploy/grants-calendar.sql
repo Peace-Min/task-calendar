@@ -129,20 +129,8 @@ GRANT SELECT, INSERT, DELETE ON taskmgr.cal_todo_day_note TO 'taskmgr_app'@'%';
 --   cal_* 가 아니라 과제 트랙 코드표라 그 권한은 create-app-user.sql(과 server-app-account.sql)에 있다.
 
 -- ---------- (날짜 × 과제) 투입 시간 ----------
--- DELETE 필요: 공수에 0/빈칸을 넣는 것은 0 저장이 아니라 행 삭제다
---   (setTaskHours :3384 `if(v > 0) day[catId] = v; else delete day[catId];`).
---   CHECK (hours > 0 AND hours <= 24) 가 0 을 3819 로 거부하므로 '0 으로 UPDATE' 는 대안이 아니다.
---   과제 삭제 시 그 과제의 공수 행을 전 날짜에서 동반 정리하는 경로도 DELETE 다(:4517-4521).
---   ※ ★ 2026-08-24. 이 자리에는 "설계 §5.2 의 'FK 없음' 근거는 코드와 반대다. FK 를 안 거는
---     결정은 유지하되 근거만 바꾸자" 고 적혀 있었다. **결정 자체가 뒤집혔다.**
---     schema-calendar.sql 이 fk_cal_task_hours_category (user_id, cat_no) → cal_category 를
---     ON DELETE RESTRICT 로 신설했다(설계 §5.2.1 도 같은 판정으로 고쳤다).
---   ★ 그래서 이 표의 DELETE 는 성격이 달라졌다. 예전에는 '앱이 알아서 하는 뒷정리' 였지만 지금은
---     **과제 삭제가 성립하기 위한 선행 조건**이다. RESTRICT 라 공수 행이 한 줄이라도 남아 있으면
---     cal_category 의 DELETE 가 ERROR 1451 로 막힌다. 이 권한을 회수하면 과제 삭제 UI 는 1142 가
---     아니라 1451 로 죽고, 사람은 원인을 cal_category 권한 쪽에서 찾다가 못 찾는다.
---     즉 cal_category.DELETE 와 cal_task_hours.DELETE 는 한 쌍으로만 의미가 있다.
-GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_task_hours TO 'taskmgr_app'@'%';
+-- cal_task_hours 는 구조 22(2026-11-06, docs/DB-V22-REPORT-HOURS.md)에서 표째 지웠다. 권한 줄도 뺐다.
+--   지운 표의 표 단위 권한 줄은 mysql.tables_priv 에 남을 수 있으나 동작에는 영향이 없다(정리는 root 가 따로, 선택).
 
 -- ---------- 날짜별 근태·초과시간 ----------
 -- ★ DELETE 필요: '미기록으로 되돌리기' 가 UPDATE 가 아니라 **행 삭제**다.
@@ -151,19 +139,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_task_hours TO 'taskmgr_app'@
 --   chk_cal_attendance_status 가 ''를 3819 로 거부하므로 "status=''로 UPDATE" 는 대안이 될 수 없고,
 --   DELETE 가 막히면 사용자는 한 번 적은 근태를 영영 못 지운다. 그 값은 회사 일간보고로 나간다.
 --   INSERT/UPDATE 는 근태를 새로 적거나 코드·초과시간을 바꾸는 통상 경로다.
--- ※ cal_task_hours 의 '0 = 행 삭제' 와 같은 근거·같은 동사 조합이다. 한 쌍으로 읽을 것.
+-- ※ 옛 cal_task_hours(구조 22 에서 지움)의 '0 = 행 삭제' 와 같은 근거였다.
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_attendance TO 'taskmgr_app'@'%';
 
 -- ---------- 사용자당 1행 설정(보고서 서식) ----------
--- DELETE 를 주지 않는다: 앱 전체에 이 표의 삭제 경로가 0건이라(작성자 칸은 2026-10-26 Git, SVN 삭제로 없앴다)
---   설계 §7.3 의 DELETE 금지와 코드가 일치한다(캘린더에서 문서와 코드가 맞는 몇 안 되는 곳).
---   2026-08-21 에 이 표로 옮겨 온 보고서 서식도 같다. 서식을 '기본으로 되돌리기' 는 행 삭제가
---   아니라 기본값 UPDATE 다(파서가 부재를 기본값으로 읽으므로 '행 없음'과 '기본값'이 같은 뜻이다).
---   ★ 근태(cal_attendance)와 반대 방향이니 두 표를 같은 규칙으로 묶지 말 것.
---   ★ 2026-09-10 예외 하나: 휴지통의 **계정 영구 삭제**(ProjectDb.DeleteTrashAsync, TRASH-DELETE §3.2)만은
---     app_user 행을 지우기 직전에 이 표의 그 사용자 행을 같은 트랜잭션에서 지운다(FK RESTRICT 라 먼저 지워야 한다).
---     대상은 기록 0건인 계정뿐이고 경로는 그 함수 하나다. 앱의 다른 어디에도 이 표의 DELETE 는 없다.
-GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_user_pref TO 'taskmgr_app'@'%';
+-- cal_user_pref 는 구조 22 에서 표째 지웠다(보고 글꼴은 계정별 localStorage). 권한 줄도 뺐다.
 
 -- ---------- 동시성 감시점(rev) ----------
 -- INSERT 와 UPDATE 를 둘 다 줘야 한다: §3.1 의 쓰기 트랜잭션 첫 문장이 ODKU 한 문장이라
@@ -174,17 +154,13 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_user_pref TO 'taskmgr_app'@'
 --   INSERT/UPDATE 를 회수하면 rev 만 멈추는 것이 아니라 **새 행을 만드는 모든 경로**가 함께 죽는다.
 -- DELETE 는 금지: rev 는 단조증가여야 삭제까지 감지할 수 있고, 행이 사라지면 그 사용자의
 --   직렬화가 통째로 풀린다. §8 의 '교체' 이관도 이 테이블만은 전량 삭제 대상에서 제외한다.
---   ★ 2026-09-10 예외 하나. 위 cal_user_pref 와 같다: 휴지통의 계정 영구 삭제(DeleteTrashAsync)가 app_user 행을
+--   ★ 2026-09-10 예외 하나: 휴지통의 계정 영구 삭제(DeleteTrashAsync)가 app_user 행을
 --     지우기 직전에 그 사용자의 rev 행을 같은 트랜잭션에서 지운다. 사용자 자체가 사라지므로 '단조증가' 규칙이
 --     지켜야 할 대상도 함께 사라진다. 다른 DELETE 경로는 여전히 0건이다.
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_user_rev TO 'taskmgr_app'@'%';
 
 -- ---------- 이관 1회성 마커 ----------
--- SELECT + INSERT 만: 존재 확인 후 데이터 INSERT 와 같은 트랜잭션에서 한 행을 남기는 것이
---   전부다. UPDATE/REPLACE/선삭제를 주면 재실행 방지가 무력화된다. 그게 이 테이블의 존재 이유다.
--- ※ 가능하면 앱 계정이 아니라 1회성 이관 도구 전용 계정에만 부여하는 편이 낫다.
---   지금은 이관 도구 계정이 정해지지 않아 앱 계정에 둔다(전용 계정이 생기면 여기서 회수할 것).
-GRANT SELECT, INSERT ON taskmgr.cal_migration_log TO 'taskmgr_app'@'%';
+-- cal_migration_log 는 구조 22 에서 관리자 도구 xml-to-db 와 함께 지웠다. 권한 줄도 뺐다.
 
 -- ---------- 보고 기록 (§5.9) ----------
 -- 캘린더가 보낸 일간보고·작성한 주간보고를 남긴다. 공수계산기의 원천이다.
@@ -321,7 +297,7 @@ FLUSH PRIVILEGES;
 --  4) ★ DELETE 를 주면 안 되는 테이블에 DELETE 가 없는지 (기대값 0)
 --     SELECT COUNT(*) FROM information_schema.TABLE_PRIVILEGES
 --      WHERE GRANTEE LIKE '%taskmgr_app%' AND TABLE_SCHEMA = 'taskmgr'
---        AND TABLE_NAME IN ('cal_user_rev','cal_user_pref','cal_migration_log','cal_schema_meta')
+--        AND TABLE_NAME IN ('cal_user_rev','cal_schema_meta')
 --        AND PRIVILEGE_TYPE = 'DELETE';
 --
 --     4b) ★ cal_schema_meta 에 쓰기 권한이 하나도 없는지 (기대값 0. 하나라도 있으면
@@ -346,9 +322,8 @@ FLUSH PRIVILEGES;
 --       SELECT @@log_bin, @@binlog_expire_logs_seconds;   -- 1 / 2592000(=30일) 기대
 --     둘 다 아니면 지금 이 계정은 '되돌릴 수 없는 DELETE 를 전 PC 에 배포한' 상태다.
 --
---  7) ★ 앱 계정으로 직접 접속해 거부되는지 (셋 다 ERROR 1142 여야 한다. 실측으로 볼 것)
+--  7) ★ 앱 계정으로 직접 접속해 거부되는지 (둘 다 ERROR 1142 여야 한다. 실측으로 볼 것)
 --     mysql -u taskmgr_app -p taskmgr
 --       UPDATE cal_schema_meta SET v='999' WHERE k='db_structure_version';  -- 1142 (SELECT 만 줬다)
 --       DELETE FROM cal_user_rev;                                     -- 1142 (rev 는 단조증가)
---       DELETE FROM cal_migration_log;                                -- 1142 (재실행 방지 마커)
 -- ============================================================================

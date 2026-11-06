@@ -671,9 +671,12 @@ namespace TaskCalendarWidget
                         //   NetcusService는 빈 값이면 사이트의 status를 건드리지 않고 기존 근태를 유지한다.
                         //  hours 는 웹이 본문을 만들 때 이미 갖고 있는 값이다 — 파싱이 아니라 전달이다(§5.9.3).
                         //  없으면 빈 문자열 — 구버전 웹이 붙어도 전송은 그대로 동작하고 본문 기록도 남는다.
-                        _ = _netcus.SubmitDaily(GetInt(doc, "y"), GetInt(doc, "m"), GetInt(doc, "d"),
+                        //  공식 과제 연결(공수 옮기기) 중에는 보내지 않는다(구조 22: 옮기는 줄과 새로 쓰는 줄이 엇갈리지 않게).
+                        if (!RelinkBlocksSend()) _ = _netcus.SubmitDaily(GetInt(doc, "y"), GetInt(doc, "m"), GetInt(doc, "d"),
                             GetStr(doc, "status"), GetInt(doc, "overtime"), GetStr(doc, "content"), dryRun,
-                            doc.RootElement.TryGetProperty("hours", out var hrsEl) ? hrsEl.GetRawText() : "");   // async — 진행/결과는 __netcusProgress/__netcusResult로 보고
+                            doc.RootElement.TryGetProperty("hours", out var hrsEl) ? hrsEl.GetRawText() : "",   // async — 진행/결과는 __netcusProgress/__netcusResult로 보고
+                            //  memo = 자유 메모(구조 22). 문자열이 아니면 ''(기록은 NULL 을 쓰지 않는다)
+                            doc.RootElement.TryGetProperty("memo", out var mmEl) && mmEl.ValueKind == JsonValueKind.String ? (mmEl.GetString() ?? "") : "");
                         break;
                     }
                     // ----- 시작 알림(리마인더) -----
@@ -927,7 +930,12 @@ namespace TaskCalendarWidget
                         if (fromWin == null) AttendSourceToWin(doc);
                         break;
                     case "reportDailyList":  // 그 기간에 이 앱으로 보낸 일간 보고(cal_report_daily). 메인 창과 근태 창이 읽는다. 사람은 세션에서 읽는다
-                        _ = RunReportDailyListAsync(rq, GetStr(doc, "from"), GetStr(doc, "to"));
+                        //  detail = 메모와 과제별 줄(내용 포함)도 싣는다(구조 22: 주간 [일간 불러오기], 근태 [이전 보고], 보고한 날 다시 열기)
+                        _ = RunReportDailyListAsync(rq, GetStr(doc, "from"), GetStr(doc, "to"),
+                            doc.RootElement.TryGetProperty("detail", out var dtEl) && dtEl.ValueKind == JsonValueKind.True);
+                        break;
+                    case "reportRelink":     // 공식 과제로 연결: 옛 개인 과제의 보고 공수 줄을 공식 과제로 옮긴다(구조 22). 메인 창만. 사람은 세션에서 읽는다
+                        if (fromWin == null) _ = RunReportRelinkAsync(rq, GetStr(doc, "catId"), GetStr(doc, "projectUid"));
                         break;
                     case "reportWeeklyList": // 그 기간에 이 앱으로 작성한 주간보고(cal_report_weekly, 결정 13). 읽기만. 사람은 세션에서 읽는다
                         _ = RunReportWeeklyListAsync(rq, GetStr(doc, "from"), GetStr(doc, "to"));
@@ -937,7 +945,7 @@ namespace TaskCalendarWidget
                         break;
 
                     case "netcusWeekSubmit":
-                        _ = _netcus.WeekFill(GetStr(doc, "sdate"), GetStr(doc, "edate"), GetStr(doc, "subject"),
+                        if (!RelinkBlocksSend()) _ = _netcus.WeekFill(GetStr(doc, "sdate"), GetStr(doc, "edate"), GetStr(doc, "subject"),
                             GetStr(doc, "content"), GetStr(doc, "endwork"), GetStr(doc, "planwork"),
                             //  resultwork = 회의내용(결정 13). 칸이 없으면 null(보고서 창의 옛 전송): 인트라넷의 회의내용을 빈 값으로 덮지 않는다
                             doc.RootElement.TryGetProperty("resultwork", out var rw) && rw.ValueKind == JsonValueKind.String ? (rw.GetString() ?? "") : null,
@@ -2071,8 +2079,9 @@ namespace TaskCalendarWidget
 
         //  그 기간에 이 앱으로 보낸 일간 보고 목록. 사람은 세션에서 읽는다(웹이 정하지 않는다).
         //  기간은 'YYYY-MM-DD' 두 개이고 ReportDb.ListMaxDays 일까지다. DB 는 UI 스레드 밖에서 읽고 회신은 ReplyOnUi 로 한다.
-        //  회신: { ok:true, rows:[{date, status, overtime, content, sentAt}] } | { ok:false, error }
-        private async Task RunReportDailyListAsync(string reqId, string from, string to)
+        //  회신: { ok:true, rows:[{date, status, overtime, content, sentAt, (detail 이면) memo, lines}] } | { ok:false, error }
+        //    detail 은 ReportDb.ListDailyAsync 주석(memo NULL = 옛 보고, lines = [{catUid, projectUid, name, hours, body}]).
+        private async Task RunReportDailyListAsync(string reqId, string from, string to, bool withLines = false)
         {
             if (!ReportDb.TryParseYmd(from, out var f) || !ReportDb.TryParseYmd(to, out var t) || f > t)
             { ReplyOnUi(reqId, new { ok = false, error = "기간이 올바르지 않습니다." }); return; }
@@ -2083,7 +2092,7 @@ namespace TaskCalendarWidget
             try
             {
                 var db = new ReportDb(Log);
-                var rows = await Task.Run(() => db.ListDailyAsync(loginId, f, t));
+                var rows = await Task.Run(() => db.ListDailyAsync(loginId, f, t, withLines));
                 if (rows == null) { ReplyOnUi(reqId, new { ok = false, error = "보고 기록을 불러오지 못했습니다." }); return; }
                 ReplyOnUi(reqId, new { ok = true, rows });
             }
@@ -2094,6 +2103,39 @@ namespace TaskCalendarWidget
             }
         }
 
+        //  공식 과제로 연결할 때 보고 공수 줄 옮기기(구조 22, docs/DB-V22-REPORT-HOURS.md 앱 변경 6). 웹 runRelink 이 일정과 할 일을 옮긴 뒤 과제마다 부른다.
+        //    catId = 옛 개인 과제 id, projectUid = 공식 과제 uid. 사람은 세션에서 읽는다. 옮기는 동안 보고 보내기를 막는다(_reportRelinkBusy).
+        //    회신: { ok:true, daily, weekly } | { ok:false, error }. 실패면 웹은 옛 과제를 지우지 않는다.
+        private bool _reportRelinkBusy;
+        internal const string RelinkBusyMsg = "공식 과제 연결 중입니다. 끝난 뒤 다시 보내세요.";
+        //  연결 중이면 보내기를 막고 두 창에 실패를 알린다. 막았으면 true.
+        private bool RelinkBlocksSend()
+        {
+            if (!_reportRelinkBusy) return false;
+            ReportPush("window.__netcusResult && window.__netcusResult(false," + JsonSerializer.Serialize(RelinkBusyMsg) + ")");
+            return true;
+        }
+        private async Task RunReportRelinkAsync(string reqId, string catId, string projectUid)
+        {
+            string? loginId = CurrentLoginId();
+            if (string.IsNullOrEmpty(loginId)) { ReplyOnUi(reqId, new { ok = false, error = "로그인이 필요합니다." }); return; }
+            if (_reportRelinkBusy || _netcus.IsBusy) { ReplyOnUi(reqId, new { ok = false, error = "보고를 보내는 중입니다. 끝난 뒤 다시 연결하세요." }); return; }
+            _reportRelinkBusy = true;
+            try
+            {
+                var db = new ReportDb(Log);
+                var (ok, msg, daily, weekly) = await Task.Run(() => db.RelinkHoursAsync(loginId, catId, projectUid));
+                if (ok) ReplyOnUi(reqId, new { ok = true, daily, weekly });
+                else ReplyOnUi(reqId, new { ok = false, error = msg });
+            }
+            catch (Exception ex)
+            {
+                Log("공수 옮기기 예외: " + ex.Message);
+                ReplyOnUi(reqId, new { ok = false, error = ReportDb.RelinkFailMsg });
+            }
+            finally { _reportRelinkBusy = false; }
+        }
+
         //  그 기간에 이 앱으로 작성한 주간보고 목록(결정 13, ATTENDANCE-PLAN §13.3). 일간 목록(RunReportDailyListAsync)과 같은 틀이다:
         //  사람은 세션에서 읽고(웹이 정하지 않는다), 기간은 'YYYY-MM-DD' 두 개에 ReportDb.ListMaxDays 일까지, 회신은 ReplyOnUi.
         //  기간은 period_start(월요일) 기준이고 period_end 는 토요일이다(회사 보고 기간 월~토, 웹이 준 sdate, edate 를 그대로 쓴다). 회신: { ok:true, rows:[{periodStart, periodEnd, subject, content, endwork, plan, meeting, composedAt}] } | { ok:false, error }
@@ -2558,7 +2600,7 @@ namespace TaskCalendarWidget
         //  페이로드 해석과 저장은 호스트인 여기서 한다.
         //  ★ 결정 9(ATTENDANCE-PLAN §3.4): NetcusService 가 이 저장을 기다린 뒤에 결과를 알린다. 백그라운드 재시도는 없다.
         //    true(커밋 확인)일 때만 __reportDailySaved 를 메인 창과 근태 창에 보낸다. 실패는 false 로 돌려주고 로그를 남긴다.
-        async Task<bool> INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson)
+        async Task<bool> INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string memo, string hoursJson)
         {
             string? loginId = CurrentLoginId();
             var hours = ParseHoursJson(hoursJson);
@@ -2570,7 +2612,7 @@ namespace TaskCalendarWidget
             int ot = SafeOvertime(overtime);
             var db = new ReportDb(Log);
             bool ok;
-            try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours)); }
+            try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours)); }
             catch (Exception ex) { Log("보고 기록 저장 예외(일간): " + ex.Message); ok = false; }
             if (ok)
             {
@@ -2807,10 +2849,9 @@ namespace TaskCalendarWidget
             return 0;
         }
 
-        //  웹이 보낸 과제별 시간 배열 → ReportHourLine 목록.
-        //  ★ cat_no 는 채우지 않는다(null). 앱은 아직 XML 을 쓰므로 cal_category.cat_no 를 모른다.
-        //    진실은 task_name 이고 cat_no 는 참조일 뿐이라 기록은 이대로도 완전하다(§5.9.6).
-        //    XML→DB 이관 뒤 앱이 cat_no 를 알게 되면 여기서 함께 실으면 된다.
+        //  웹이 보낸 과제별 블록 배열 [{name, catUid, projectUid, hours, body}] → ReportHourLine 목록(구조 22).
+        //  catUid = 앱 과제 id(없으면 null), projectUid = 공식 과제 id(꼴이 아니면 과제 id 'db-<uid>' 에서 읽고, 그것도 아니면 null).
+        //  0시간 블록은 내용(body)이 있을 때만 남긴다(ReportDb.DailyLineKept). 같은 과제 id 블록 합치기는 ReportDb 저장이 한다.
         //  ★ 파싱 실패는 빈 목록이다 — 예외를 던지지 않는다. 시간줄이 없다고 본문 기록까지
         //    날리면 "보고한 사실" 자체를 잃는다.
         private List<ReportHourLine> ParseHoursJson(string? json)
@@ -2832,18 +2873,22 @@ namespace TaskCalendarWidget
                         if (hv.ValueKind == JsonValueKind.Number) hv.TryGetDecimal(out h);
                         else if (hv.ValueKind == JsonValueKind.String) decimal.TryParse(hv.GetString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out h);
                     }
-                    //  ★ chk_crh_hours 는 `hours > 0 AND hours <= 24` 다. 범위 밖 줄이 하나라도 섞이면 3819 로
+                    //  ★ chk_crh_hours 는 `hours >= 0 AND hours <= 24` 다(구조 22). 범위 밖 줄이 하나라도 섞이면 3819 로
                     //    **그 날 보고 저장 트랜잭션 전체**가 롤백된다(전송은 이미 나간 뒤다). 줄 하나를 버리는 쪽이 낫다 —
                     //    ReportDb 가 저장 직전에 같은 판정을 한 번 더 하지만, 걸러야 할 자리는 값이 들어오는 여기다.
                     //  ★ 그 '같은 판정'을 **글자까지 같게** 하려고 판정 자체는 ReportDb.HoursInDomain 한 곳에만 둔다
                     //    (2026-09-11 R5 — 전에는 `0`·`24` 가 두 파일에 두 벌 적혀 있어 한쪽만 고치면 갈렸다).
                     if (!ReportDb.HoursInDomain(h))
                     {
-                        Log("보고 시간줄 제외(허용 범위 0 초과 ~ 24 이하 밖): " + name.Trim() + " " +
+                        Log("보고 시간줄 제외(허용 범위 0 이상 ~ 24 이하 밖): " + name.Trim() + " " +
                             h.ToString(System.Globalization.CultureInfo.InvariantCulture) + "시간");
                         continue;
                     }
-                    list.Add(new ReportHourLine { TaskName = name.Trim(), CatNo = null, Hours = h });
+                    string body = el.TryGetProperty("body", out var bv) && bv.ValueKind == JsonValueKind.String ? (bv.GetString() ?? "") : "";
+                    if (!ReportDb.DailyLineKept(name, h, body)) continue;   // 내용 없는 0시간 블록은 기록할 것이 없다
+                    string? cat = ReportDb.CatUidOrNull(el.TryGetProperty("catUid", out var cv) && cv.ValueKind == JsonValueKind.String ? cv.GetString() : null);
+                    string? puid = el.TryGetProperty("projectUid", out var pv) && pv.ValueKind == JsonValueKind.String ? pv.GetString() : null;
+                    list.Add(new ReportHourLine { TaskName = name.Trim(), CatUid = cat, ProjectUid = ReportDb.ProjectUidFor(cat, puid), Hours = h, Body = body });
                 }
             }
             catch (Exception ex) { Log("보고 시간줄 파싱 실패(본문 기록은 계속한다): " + ex.Message); }
@@ -2880,7 +2925,8 @@ namespace TaskCalendarWidget
                     }
                     string uid = el.TryGetProperty("projectUid", out var u) && u.ValueKind == JsonValueKind.String ? (u.GetString() ?? "").Trim() : "";
                     if (uid.Length > 0 && !ReportDb.ProjectUidOk(uid)) { Log("주간 시간줄: 공식 과제 id 꼴이 아니라 개인 과제로 남긴다: " + name); uid = ""; }
-                    list.Add(new WeeklyHourLine { TaskName = name, ProjectUid = uid.Length > 0 ? uid : null, Hours = h });
+                    string? cat = ReportDb.CatUidOrNull(el.TryGetProperty("catUid", out var cv) && cv.ValueKind == JsonValueKind.String ? cv.GetString() : null);   // 과제 id(구조 22)
+                    list.Add(new WeeklyHourLine { TaskName = name, CatUid = cat, ProjectUid = uid.Length > 0 ? uid : null, Hours = h });
                 }
             }
             catch (Exception ex) { Log("주간 시간줄 파싱 실패(본문 기록은 계속한다): " + ex.Message); }

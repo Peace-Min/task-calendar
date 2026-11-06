@@ -119,7 +119,8 @@ try {
     cat: num(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`),
     ent: num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U}`),
     todo: num(`SELECT COUNT(*) FROM cal_todo WHERE user_id=${U}`),
-    th: num(`SELECT COUNT(*) FROM cal_task_hours WHERE user_id=${U}`),
+    rpt: num(`SELECT COUNT(*) FROM cal_report_daily WHERE user_id=${U}`),   //  보낸 보고(전량 교체가 지우지 않는다. cal_task_hours 는 구조 22 에서 없앴다)
+    rph: num(`SELECT COUNT(*) FROM cal_report_hours WHERE user_id=${U}`),
     att: num(`SELECT COUNT(*) FROM cal_attendance WHERE user_id=${U}`),
     rev: num(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`),
   };
@@ -157,19 +158,19 @@ try {
     cat: num(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`),
     ent: num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U}`),
     todo: num(`SELECT COUNT(*) FROM cal_todo WHERE user_id=${U}`),
-    th: num(`SELECT COUNT(*) FROM cal_task_hours WHERE user_id=${U}`),
+    rpt: num(`SELECT COUNT(*) FROM cal_report_daily WHERE user_id=${U}`),   //  보낸 보고(전량 교체가 지우지 않는다. cal_task_hours 는 구조 22 에서 없앴다)
+    rph: num(`SELECT COUNT(*) FROM cal_report_hours WHERE user_id=${U}`),
     att: num(`SELECT COUNT(*) FROM cal_attendance WHERE user_id=${U}`),
     rev: num(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`),
   };
-  for (const k of ['cat', 'ent', 'todo', 'th', 'att'])
+  for (const k of ['cat', 'ent', 'todo', 'att', 'rpt', 'rph'])
     ok(`교체 뒤 ${k} 행수가 같다(왕복 무손실)`, after[k] === base[k], `전 ${base[k]} → 후 ${after[k]}`);
   ok('rev 가 올랐다', after.rev > base.rev, `${base.rev} → ${after.rev}`);
   //  ★ 번호가 1 부터 다시 붙었는가 = 차분이 아니라 **전량 교체**가 돌았다는 증거.
   ok('과제 번호가 1 부터 다시 붙었다(전량 교체 확인)',
      num(`SELECT IFNULL(MIN(cat_no),0) FROM cal_category WHERE user_id=${U}`) === 1,
      `교체 전 최소 cat_no=${catNoBefore}`);
-  ok('이관 마커가 살아 있다(전량 교체가 안 지운다)',
-     num(`SELECT COUNT(*) FROM cal_migration_log WHERE user_id=${U}`) >= 0);
+  //  (옛 '이관 마커가 살아 있다' 는 cal_migration_log 가 구조 22 에서 없어져 뺐다. 지우면 안 되는 보고 행수는 위 rpt, rph 가 본다)
 
   /* ── 4. 화면이 갈리지 않았는가 ──────────────────────────────────── */
   console.log('\n[4] 화면 상태');

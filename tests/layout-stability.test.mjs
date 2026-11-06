@@ -81,7 +81,8 @@ test('검색 강조·날짜 머리 색은 테마 토큰을 쓴다', () => {
   assert.ok(mk.includes('var(--mark-bg)') && mk.includes('var(--mark-ink)'),
     'mark 가 --mark-bg/--mark-ink 토큰을 쓰지 않는다 — 고대비·다크에서 강조 잉크 대비를 테마별로 못 맞춘다');
   assert.ok(!src.includes('html.dark mark{'), 'html.dark mark 하드코딩 재정의가 되살아났다 — 토큰 한 곳에서 관리해야 한다');
-  const root = rule(src, '\n:root{');
+  //  베이스 토큰 블록(':root{' 다음 줄바꿈). 2026-11-06 숫자 칸 폭 한 줄 규칙(:root{--cnt-w:...}, CAT-COUNTS-SPLIT)이 따로 있다
+  const root = rule(src, '\n:root{\n');
   assert.ok(root.includes('--mark-bg:') && root.includes('--mark-ink:'), ':root 에 --mark-bg/--mark-ink 선언이 없다 — mark 가 색을 잃는다');
 });
 

@@ -13,7 +13,10 @@
 //       켜고 끄는 동안 팝업이 열린 채 목록에 포커스, 목록에서 하나 빼기, 전체 선택으로 null, Esc 로 닫고 버튼으로.
 //       과제 삭제 정리(묶음에서 빼고, 비면 전체로), 새 기록 기본 과제.
 //       열람 창: 같은 단추가 그 사람의 과제로 그려지고, 필터를 바꿔도 내 일정 겹은 그대로.
+//       숫자 두 칸(docs/CAT-COUNTS-SPLIT.md): 일정, 할 일(끝낸 것 포함)을 따로 보이고, 순서는 합계, 둘 다 0 만 구분선 아래,
+//       보기 팝업과 과제 관리가 같은 숫자와 title("과제명, 일정 N개, 할 일 N개").
 //   (M) 변이: passFilter 가 필터를 무시, 할 일 거르기가 과제를 무시, 과제 삭제가 빈 묶음을 남김 → 위 런타임 시험이 실패한다.
+//       팝업이 할 일을 안 세거나, 끝낸 할 일을 빼거나, 과제 관리가 다른 셈을 쓰면 런타임⑦ 이 실패한다.
 import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 
 const app = loadAppSource();
@@ -51,8 +54,12 @@ test('정적③: 보기 단추는 aria-haspopup="dialog", 과제 목록은 aria-
   assert.ok(/class="fb-btn"[^`]*aria-haspopup="dialog"/.test(rf), '보기 단추에 aria-haspopup="dialog" 가 없다');
   //  2026-11-05(docs/PC-WATCH-2.md §4): 목록 부분은 공용 고르기 목록(fbListMarkup)이다. 보기 팝업은 그 함수로 과제 목록을 그린다(관심 과제 [참여자]와 같은 함수)
   const op = extractFunction(app, 'filterPopOpen');
-  assert.ok(op.includes("fbListMarkup('fbList', '과제 검색', '과제')"), '보기 팝업이 공용 고르기 목록(fbListMarkup)으로 과제 목록을 그리지 않는다');
-  assert.ok(/role="listbox"[^`]*aria-multiselectable="true"/.test(extractFunction(app, 'fbListMarkup')), '팝업 과제 목록이 다중 선택 listbox 가 아니다');
+  //  2026-11-06(docs/CAT-COUNTS-SPLIT.md): 보기 팝업만 넷째 인자 true 로 일정, 할 일 두 칸과 그 칸 머리를 켠다
+  assert.ok(op.includes("fbListMarkup('fbList', '과제 검색', '과제', true)"), '보기 팝업이 공용 고르기 목록(fbListMarkup)으로 두 칸 과제 목록을 그리지 않는다');
+  const lm = extractFunction(app, 'fbListMarkup');
+  assert.ok(/role="listbox"[^`]*aria-multiselectable="true"/.test(lm), '팝업 과제 목록이 다중 선택 listbox 가 아니다');
+  assert.ok(lm.includes('<div class="fb-colh" aria-hidden="true"><span>일정</span><span>할 일</span></div>'), '두 칸 머리(일정, 할 일)가 목록 위에 없다');
+  assert.ok(!app.includes('filterCatCounts'), '옛 일정만 세던 filterCatCounts 가 남았다(과제 관리와 숫자가 갈린다)');
   const bf = extractFunction(app, 'bindFilterbar');
   assert.ok(bf.includes('ev.isComposing || ev.keyCode === 229'), '한글 조합 중 키 건너뛰기가 없다');
 });
@@ -131,7 +138,7 @@ if (!JSDOM) {
   const CAT = (id, name, color) => ({ id, name, color: color || '#3e5be0', desc: '', createdAt: '2026-09-01T00:00:00Z' });
   const ENT = (id, date, categoryId) => ({ id, date, title: '일정 ' + id, categoryId, allDay: true, startTime: '', endTime: '', endDate: '', memo: '', location: '', recur: null, recurExcept: [] });
   const TODO = (id, categoryId, due) => ({ id, text: '할 일 ' + id, done: false, categoryId, due, endDate: '', prio: 'normal', completedAt: '', note: '', dayNotes: {} });
-  //  알파 2건, 베타 1건, 감마 1건, 델타 0건. 할 일은 과제마다 하나(10/14, 10/15, 10/16 로 나눠 칸 맨 위 줄에서 개수 칩으로 접히지 않게)
+  //  알파 일정 2건, 베타 1건, 감마 1건, 델타 0건. 할 일은 과제마다 하나(10/14, 10/15, 10/16 로 나눠 칸 맨 위 줄에서 개수 칩으로 접히지 않게)
   const MINE_DATA = {
     categories: [CAT('c-a', '알파'), CAT('c-b', '베타'), CAT('c-c', '감마'), CAT('c-d', '델타')],
     entries: [ENT('a1', '2026-10-13', 'c-a'), ENT('a2', '2026-10-14', 'c-a'), ENT('b1', '2026-10-14', 'c-b'), ENT('g1', '2026-10-15', 'c-c')],
@@ -148,6 +155,8 @@ if (!JSDOM) {
   }
   const label = (W) => W.doc.querySelector('#filterbar .fb-btn .pv').textContent;
   const gridIds = (W) => [...new Set(W.$$('#grid .chip[data-id], #grid .chip[data-todo]').map((c) => c.dataset.id || c.dataset.todo))].sort();   // 일정(data-id)과 할 일(data-todo)
+  //  팝업 줄 글: "이름 일정/할 일"
+  const optText = (o) => o.querySelector('.nm').textContent + ' ' + [...o.querySelectorAll('.n2')].map((x) => x.textContent).join('/');
   const optOf = (W, name) => W.$$('#fbPop .fb-opt').find((o) => o.querySelector('.nm').textContent === name);
   const click = (el) => { assert.ok(el, '누를 요소가 없다'); el.click(); };
   //  밀린 할 일 팝업의 행(기록 종류를 끄지 않은 보기에서 과제 필터를 따른다)
@@ -170,9 +179,11 @@ if (!JSDOM) {
         assert.ok(pop, '팝업이 열리지 않았다');
         assert.strictEqual(btn.getAttribute('aria-expanded'), 'true');
         assert.strictEqual(W.doc.activeElement, pop.querySelector('.fb-q'), '열면 검색칸에 포커스가 가야 한다');
-        //  기록 많은 순(같으면 가나다), 0건은 구분선 뒤 흐리게
-        assert.deepStrictEqual(W.$$('#fbPop .fb-opt').map((o) => o.querySelector('.nm').textContent + o.querySelector('.n').textContent),
-          ['알파2', '감마1', '베타1', '기타0', '델타0', '휴가0'], '팝업 목록이 기록 많은 순, 같으면 가나다순이 아니다(0건 묶음 포함)');
+        //  기록(일정 + 할 일) 많은 순(같으면 가나다), 둘 다 0 이면 구분선 뒤 흐리게. 줄마다 일정, 할 일 두 칸
+        assert.deepStrictEqual(W.$$('#fbPop .fb-opt').map(optText),
+          ['알파 2/1', '감마 1/1', '베타 1/1', '기타 0/0', '델타 0/0', '휴가 0/0'], '팝업 목록이 기록 많은 순, 같으면 가나다순이 아니다(0건 묶음 포함)');
+        assert.ok(!pop.querySelector('.fb-opt .n'), '보기 팝업에 옛 한 칸 숫자(.n)가 남았다');
+        assert.deepStrictEqual([...pop.querySelectorAll('.fb-colh span')].map((x) => x.textContent), ['일정', '할 일'], '두 칸 머리가 일정, 할 일이 아니다');
         assert.strictEqual(W.$$('#fbPop .fb-opt')[0].querySelector('.nm').textContent, '알파');
         assert.ok(optOf(W, '델타').classList.contains('zero') && W.$$('#fbPop .fb-gap').length === 1, '0건 과제가 구분선 뒤 흐린 묶음이 아니다');
         assert.ok(W.$$('#fbPop .fb-opt').every((o) => o.getAttribute('aria-selected') === 'true'), '전체일 때 모든 과제가 켜져 있어야 한다');
@@ -334,6 +345,48 @@ if (!JSDOM) {
   }
   test('런타임⑥: 열람 창도 같은 필터 줄(그 사람 과제), 필터를 바꿔도 내 일정 겹은 그대로', () => peerFlow());
 
+  //  숫자 두 칸(docs/CAT-COUNTS-SPLIT.md): 할 일만 있는 과제도 위 묶음, 둘 다 0 만 구분선 아래, 보기 팝업과 과제 관리가 같은 숫자, title 문구
+  //   일정만 1(에코), 할 일만 2(하나는 끝냄, 브라보), 일정 1과 할 일 1(찰리), 아무것도 없음(델타). 기본 과제 기타, 휴가도 0.
+  const SPLIT_DATA = {
+    categories: [CAT('s-e', '에코'), CAT('s-b', '브라보'), CAT('s-c', '찰리'), CAT('s-d', '델타')],
+    entries: [ENT('se1', '2026-10-13', 's-e'), ENT('sc1', '2026-10-14', 's-c')],
+    todos: [TODO('tb1', 's-b', '2026-10-14'), Object.assign(TODO('tb2', 's-b', '2026-10-15'), { done: true, completedAt: '2026-10-15T09:00:00Z' }), TODO('tc1', 's-c', '2026-10-16')],
+    attendance: {},
+  };
+  async function splitFlow(src) {
+    const W = bootWindow('https://tcapp.local/', src);
+    try {
+      await settle();
+      W.w.__applyState(JSON.stringify(SPLIT_DATA), META);
+      W.ev('view = {y: 2026, m: 9}; selectedDate = "2026-10-14"; setCalView("month"); renderAll();');
+      await settle();
+      click(W.doc.querySelector('#filterbar .fb-btn'));
+      const pop = W.doc.getElementById('fbPop');
+      //  팝업 줄: 위 묶음(합계 많은 순, 같으면 가나다), 구분선, 둘 다 0 묶음(가나다)
+      const kids = [...pop.querySelector('.fb-opts').children].map((o) => o.classList.contains('fb-gap') ? '|' : optText(o));
+      assert.deepStrictEqual(kids, ['브라보 0/2', '찰리 1/1', '에코 1/0', '|', '기타 0/0', '델타 0/0', '휴가 0/0'],
+        '할 일만 있는 과제가 위 묶음에 서지 않거나(일정만 세었다) 둘 다 0 인 과제가 구분선 아래가 아니다: ' + JSON.stringify(kids));
+      assert.ok(!optOf(W, '브라보').classList.contains('zero') && optOf(W, '델타').classList.contains('zero'), '흐림(zero)이 둘 다 0 인 줄에만 붙지 않는다');
+      assert.deepStrictEqual([...optOf(W, '에코').querySelectorAll('.n2')].map((x) => x.classList.contains('c0')), [false, true], '한쪽만 0 인 칸만 옅게(c0) 그려야 한다');
+      assert.strictEqual(optOf(W, '브라보').title, '브라보, 일정 0개, 할 일 2개', '팝업 줄 title 이 "과제명, 일정 N개, 할 일 N개" 가 아니다');
+      const popNums = Object.fromEntries(W.$$('#fbPop .fb-opt').map((o) => [o.dataset.id, [...o.querySelectorAll('.n2')].map((x) => x.textContent)]));
+      W.ev('filterPopClose(false)');
+      //  과제 관리 목록: 같은 과제는 같은 두 숫자, 같은 title
+      W.ev('openCatModal()');
+      await settle();
+      const rows = W.$$('#catList .cat-row');
+      assert.ok(rows.length === Object.keys(popNums).length, '과제 관리 줄 수가 팝업 줄 수와 다르다');
+      for (const r of rows) {
+        const cs = [...r.querySelectorAll('.cat-count')];
+        assert.deepStrictEqual(cs.map((x) => x.textContent), popNums[r.dataset.id], `보기 팝업과 과제 관리의 숫자가 다르다(${r.dataset.id})`);
+        const nm = r.querySelector('.cat-nm').dataset.full;
+        assert.ok(cs.every((x) => x.title === `${nm}, 일정 ${cs[0].textContent}개, 할 일 ${cs[1].textContent}개`), '과제 관리 숫자 title 이 다르다: ' + cs[0].title);
+      }
+      assert.strictEqual(W.ev('catUsageCount("s-b")'), 2, '빼기 관문 합계가 끝낸 할 일까지 세지 않는다');
+    } finally { W.close(); }
+  }
+  test('런타임⑦: 숫자 두 칸, 할 일만 있는 과제는 위 묶음, 둘 다 0 만 구분선 아래, 보기 팝업과 과제 관리 숫자와 title 이 같다(CAT-COUNTS-SPLIT)', () => splitFlow());
+
   // ══════════════════════════════════════════════════════════════════════
   // (M) 변이: 위 런타임 시험이 실제로 잡는가
   // ══════════════════════════════════════════════════════════════════════
@@ -349,8 +402,38 @@ if (!JSDOM) {
     const bad = mutate(app, 'if(filterCats !== null && filterCats.delete(id) && !filterCats.size) filterCats = null;', 'if(filterCats !== null) filterCats.delete(id);');
     await assert.rejects(() => checks.deleteCleanup(bad), /전체로 돌아가지 않았다/);
   });
+  test('변이M⑤: 팝업이 일정만 세면(옛 filterCatCounts) 런타임⑦ 이 실패한다', async () => {
+    const bad = mutate(app, "  for(const t of (state.todos || [])) if(t && t.categoryId) get(t.categoryId).td++;\n", '');
+    await assert.rejects(() => splitFlow(bad), /할 일만 있는 과제가 위 묶음에 서지 않거나/);
+  });
+  test('변이M⑥: 끝낸 할 일을 빼고 세면 런타임⑦ 이 실패한다', async () => {
+    const bad = mutate(app, "  for(const t of (state.todos || [])) if(t && t.categoryId) get(t.categoryId).td++;", "  for(const t of (state.todos || [])) if(t && t.categoryId && !t.done) get(t.categoryId).td++;");
+    await assert.rejects(() => splitFlow(bad), /위 묶음에 서지 않거나/);
+  });
+  test('변이M⑦: 과제 관리가 팝업과 다른 셈(일정만)을 쓰면 런타임⑦ 이 실패한다', async () => {
+    const bad = mutate(app, "  for(const t of (state.todos || [])) if(t && t.categoryId === id) v.td++;\n", '');
+    await assert.rejects(() => splitFlow(bad), /보기 팝업과 과제 관리의 숫자가 다르다/);
+  });
   test('변이M④: passFilter 의 내 겹 우회를 빼면 런타임⑥ 이 실패한다', async () => {
     const bad = mutate(app, '  if(e && e._mine) return PEER && __peerOverlay;', '  if(e && e._mine && false) return PEER && __peerOverlay;');
     await assert.rejects(() => peerFlow(bad), /내 일정 겹까지 걷어냈다/);
   });
 }
+
+//  2026-11-06 실제 위젯 QA: 목록에 스크롤 막대가 생기면 칸 머리(.fb-colh)가 숫자 칸보다 막대 폭(15px)만큼 오른쪽에 섰다.
+//    목록 높이는 채운 뒤 filterPopPlace 가 정하므로, 맞추기(fbColhSync)는 채운 뒤와 높이를 정한 뒤 두 번 불러야 한다.
+test('단위⑧: 칸 머리 오른쪽 여백 = 10 + 목록 스크롤 막대 폭(막대 없으면 10)', () => {
+  const fn = new Function(extractFunction(app, 'fbColhSync') + '; return fbColhSync;')();
+  const mk = (ow, cw) => { const ch = { classList: { contains: c => c === 'fb-colh' }, style: {} }; return { ch, S: { lb: { offsetWidth: ow, clientWidth: cw, previousElementSibling: ch } } }; };
+  const a = mk(320, 305); fn(a.S); assert.strictEqual(a.ch.style.paddingRight, '25px');
+  const b = mk(320, 320); fn(b.S); assert.strictEqual(b.ch.style.paddingRight, '10px');
+  const c = { classList: { contains: () => false }, style: {} }; fn({ lb: { offsetWidth: 9, clientWidth: 0, previousElementSibling: c } });
+  assert.strictEqual(c.style.paddingRight, undefined, '칸 머리가 아닌 형제는 건드리지 않는다');
+  fn(null);   // 팝업이 없으면 조용히 끝난다
+});
+test('정적⑧: 맞추기는 목록을 채운 뒤(fbFill)와 목록 높이를 정한 뒤(filterPopPlace) 둘 다에서 부른다', () => {
+  assert.ok(/fbColhSync\(S\)/.test(extractFunction(app, 'fbFill')), 'fbFill 끝에서 부른다');
+  const place = extractFunction(app, 'filterPopPlace');
+  const h = place.indexOf("FB.lb.style.height = Math.min("), s = place.indexOf('fbColhSync(FB)');
+  assert.ok(h >= 0 && s > h, '높이를 정한 다음에 부른다(먼저 부르면 막대가 아직 없다)');
+});

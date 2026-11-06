@@ -2247,20 +2247,20 @@ namespace TaskCalendarWidget
             }
         }
 
-        // 인력 '기록 0건'의 기준 표 9개(§3.2). 2026-10-21 회의실 공용화로 cal_room 이 빠져 아홉에서 여덟이 됐고,
-        //   2026-10-22 월간보고(구조 17)로 개발 일정 그림의 주인(project_schedule_image.user_id)이 더해져 다시 아홉이다.
+        // 인력 '기록 0건'의 기준 표 7개(§3.2). 2026-10-21 회의실 공용화로 cal_room 이 빠져 아홉에서 여덟이 됐고,
+        //   2026-10-22 월간보고(구조 17)로 개발 일정 그림의 주인(project_schedule_image.user_id)이 더해져 다시 아홉이었다.
+        //   2026-11-06 구조 22 에서 작성 중 시간 표와 이관 기록 표를 없애 일곱이다(표가 없으면 휴지통의 퇴사자 영구 삭제가 "표 없음" 으로 모두 실패한다).
         //   ★ 원소는 '표' 또는 '표.열'이다. 열을 적지 않으면 user_id 다. 그림 표는 2026-10-23 사람별 그림으로 열 이름이 user_id 가
         //     되었지만, 다른 열로 바뀌어도 눈에 띄게 '표.열' 로 적어 둔다.
         //     그 표도 app_user 를 RESTRICT 로 붙들므로, 빠지면 그림이 있는 계정을 '기록 0건'으로 오판해 지우려 들다가 1451 로 막힌다.
-        //   ★ 정본(db/deploy/schema-calendar.sql)의 `REFERENCES app_user` 집합에서 cal_user_pref·cal_user_rev·cal_project_watch 를
+        //   ★ 정본(db/deploy/schema-calendar.sql)의 `REFERENCES app_user` 집합에서 cal_user_rev·cal_project_watch 를
         //     뺀 것과 **글자까지 같아야 한다** — 시험 계약 ③ 이 정본을 파싱해 이 배열과 대조한다(표 이름 박제 금지).
-        //   ★ 뺀 셋은 '기록'이 아니다. 앞의 둘은 로그인 한 번이면 생기는 부속 행이고, cal_project_watch(구조 21, 과제 탭 보기만 목록)는
-        //     그 사람의 화면 설정이다. 삭제 트랜잭션이 그 셋을 먼저 지운다(부속 3표).
-        //   ★ cal_migration_log 는 뺄 수 없다 — XML 이관을 한 번이라도 한 계정은 일정이 있었던 계정이다(감사 흔적).
+        //   ★ 뺀 둘은 '기록'이 아니다. cal_user_rev 는 로그인 한 번이면 생기는 부속 행이고, cal_project_watch(구조 21, 과제 탭 보기만 목록)는
+        //     그 사람의 화면 설정이다. 삭제 트랜잭션이 그 둘을 먼저 지운다(부속 2표. 서식 설정 표는 구조 22 에서 없앴다).
         private static readonly string[] UserRecordTables =
         {
-            "cal_category", "cal_entry", "cal_todo", "cal_task_hours",
-            "cal_attendance", "cal_report_daily", "cal_report_weekly", "cal_migration_log",
+            "cal_category", "cal_entry", "cal_todo",
+            "cal_attendance", "cal_report_daily", "cal_report_weekly",
             "project_schedule_image.user_id",
         };
 
@@ -2271,7 +2271,7 @@ namespace TaskCalendarWidget
             return dot < 0 ? (t, "user_id") : (t.Substring(0, dot), t.Substring(dot + 1));
         }
 
-        // 한 사람의 기록 수 = 위 배열의 표 아홉의 합. 표와 열 이름은 위 배열(상수)에서만 온다.
+        // 한 사람의 기록 수 = 위 배열의 표 일곱의 합. 표와 열 이름은 위 배열(상수)에서만 온다.
         private static string UserRefCountSql()
         {
             var parts = new List<string>(UserRecordTables.Length);
@@ -2636,7 +2636,7 @@ namespace TaskCalendarWidget
         }
 
         // 영구 삭제 — 되돌릴 수 없다. 다섯 표의 뼈대가 같다(§3.4):
-        //   행 잠금 → 숨김인가 → 참조 수 **재계산** → 이름 대조 → (인력) 부속 3표 → DELETE → 로그 한 줄.
+        //   행 잠금 → 숨김인가 → 참조 수 **재계산** → 이름 대조 → (인력) 부속 2표 → DELETE → 로그 한 줄.
         //   ★ 화면이 같은 판정을 힌트로 먼저 보여 주지만 그건 조회 시점 값이다. 판정은 여기, 트랜잭션 안이다.
         //   ★ 다섯 표의 DELETE 문은 이 함수 안에만 있다 — 시험 계약 ①·⑥ 이 그 사실을 잠근다.
         //   ★ 자기 계정 금지는 퇴사 규칙(§4.4-1)과 **한 벌**이다. 기록 0 이면 로그인한 적도 없어 실제로는
@@ -2755,12 +2755,10 @@ namespace TaskCalendarWidget
                     if (!string.Equals(confirm ?? "", storedName, StringComparison.Ordinal))
                     { await tx.RollbackAsync(cts.Token); return (false, TrashNameMsg); }
 
-                    // ⑤ (인력) 부속 3표를 같은 트랜잭션에서 먼저 지운다 — 앞 둘은 로그인 한 번이면 생기는 행이라
+                    // ⑤ (인력) 부속 2표를 같은 트랜잭션에서 먼저 지운다 — cal_user_rev 는 로그인 한 번이면 생기는 행이라
                     //    '기록 0' 계정에도 남아 있고, 남으면 FK RESTRICT 가 1451 로 거부한다(§3.1).
                     if (kd == "user")
                     {
-                        await using (var cmd = new MySqlCommand("DELETE FROM cal_user_pref WHERE user_id=@u", conn, tx))
-                        { cmd.Parameters.AddWithValue("@u", targetUserId); await cmd.ExecuteNonQueryAsync(cts.Token); }
                         await using (var cmd = new MySqlCommand("DELETE FROM cal_user_rev WHERE user_id=@u", conn, tx))
                         { cmd.Parameters.AddWithValue("@u", targetUserId); await cmd.ExecuteNonQueryAsync(cts.Token); }
                         //  과제 탭 보기만 목록(구조 21): 기록이 아니라 화면 설정이다. 사람 FK 가 RESTRICT 라 먼저 지운다(PC-WATCH §2).

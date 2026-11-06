@@ -69,7 +69,7 @@
   6. 검증(아래). 다르면 없는 표 SELECT 로 멈춘다.
   7. **세 표 DROP 은 맨 끝**(검증을 통과한 뒤).
   8. 구조 번호 갱신 `WHERE k = 'db_structure_version' AND v = '21'`.
-- 검증: `cal_report_daily.memo` 있음, `cal_report_hours` 칸 9개(`cat_uid`, `project_uid`, `body` 있음, `cat_no` 없음)와 칸 순서, 콜레이션(`cat_uid` 가 `utf8mb4_bin`, `project_uid` 가 `project.uid` 와 같음), FK 하나(`fk_crh_daily`, CASCADE), 색인(STATISTICS 로 `ix_crh_project`, `ix_crh_cat` 의 칸과 순서, `idx_crh_cat` 없음), 시간 제약 글(CHECK_CLAUSE 가 `>= 0`), `cal_report_hours` 행 0, 주간 `cat_uid` 와 `ix_crwh_cat` 있음, 주간 행 수가 바뀌기 전과 같음. 세 표 DROP 뒤에는 세 표 없음.
+- 검증: `cal_report_daily.memo` 있음, `cal_report_hours` 칸 8개(user_id, work_date, line_no, task_name, cat_uid, project_uid, hours, body. `cat_no` 없음)와 칸 순서, 콜레이션(`cat_uid` 가 `utf8mb4_bin`, `project_uid` 가 `project.uid` 와 같음), FK 하나(`fk_crh_daily`, CASCADE), 색인(STATISTICS 로 `ix_crh_project`, `ix_crh_cat` 의 칸과 순서, `idx_crh_cat` 없음), 시간 제약 글(CHECK_CLAUSE 가 `>= 0`), `cal_report_hours` 행 0, 주간 `cat_uid` 와 `ix_crwh_cat` 있음, 주간 행 수가 바뀌기 전과 같음. 세 표 DROP 뒤에는 세 표 없음.
 - DELETE, UPDATE 에는 키 WHERE. INSERT IGNORE 금지. GRANT 금지.
 - 정본 `db/deploy/schema-calendar.sql` 과 조각의 정의는 같게. 글자 대조 시험에 더해 **새로 깐 DB 와 21 에서 올린 DB 를 `information_schema` 로 견준다**(칸, 순서, 타입, 콜레이션, 색인, FK, CHECK). `DbGate.AppStructureVersion` 22.
 - **개발 PC MySQL 8.4 실제 리허설 필수**: release-sql 흉내 시험은 FK, 색인, CHECK 순서 오류를 잡지 못한다. 구조 21 복사본에 (a) 처음 돌리기, (b) 다시 돌리기, (c) 단계마다 중간에 끊고 다시 돌리기. 셋 다 같은 결과와 검증 통과.
@@ -111,3 +111,13 @@
 - 개발 PC MySQL 8.4 실제 리허설(위 3의 세 가지), 실제 위젯과 개발 DB 확인, 전체 strict.
 - 스키마 HTML 다시 생성, db 문서, 위키(근태 보고, 근태 주간 보고, 내 과제와 과제 추가), CHANGELOG, DB-RELEASE-OPS 배포 할 일(구조 22, 사전 조회, 관찰).
 - 실제 과제명, 실제 발주처 이름 금지.
+
+## 구현 기록(2026-11-06)
+- 상태: 구현 끝, 커밋 전. 배포 판 0.26.0. CHANGELOG 2026-11-06 "DB 구조 22" 항목에 계약 개정을 모았다.
+- 이관 조각 `db/deploy/migrations/v22-report-hours.sql` 은 위 3의 순서 그대로(옛 일간 줄 삭제, FK, 색인, 칸, CHECK 두 문장, 칸 추가, 색인, 표 설명, 주간 채우기, 검증, 표 셋 DROP, 구조 번호). 표 28개에서 25개.
+- 호스트: `ReportDb.SaveDailyAsync(..., memo)`(메모와 과제별 줄 한 트랜잭션, 같은 `cat_uid` 합치기, 0시간 줄은 `body` 가 있을 때만), `ReportDb.ListDailyAsync(..., withLines)`(detail 요청에만 `memo` 와 `lines`), 새 명령 `reportRelink` 와 `ReportDb.RelinkHoursAsync`(id 로만, 합치기, 24와 168 미리 거절, 잠금 순서, 커밋 직전 관문, 연결과 보내기 서로 막기 `RelinkBusyMsg`). `CalendarDb`, `CalendarWriteDb`, `ProjectDb` 에서 지운 세 표를 걷었다. `DbGate.AppStructureVersion` 22.
+- 웹: 블록 `catId`(옛 블록은 같은 이름 과제가 하나뿐일 때만 `atBlocksKnown`), `atSavedParts`(memo 로 새 보고와 옛 보고 가르기), 주간 `awDailyCollect` 두 길, `atBlockProblem` 0시간 막기 삭제, `runRelink`(`catMoveRefs` 와 저장, 과제마다 `reportRelink`, 성공한 과제만 삭제, 확인 문구 "원래 과제는 지웁니다"). `state.taskHours` 와 보고 서식 상태를 걷고 보고 글꼴은 `tc_rptFont:<계정>` localStorage. 근태 캘린더 가져오기의 시간 칸은 0 으로 시작한다(작성 중 시간이 없어졌으므로).
+- 지운 도구: `db/deploy/xml-to-db` 와 그 시험(`dryrun-xml-to-db`, `migrate-tool`).
+- 실제 리허설(`tools/db-rehearsal/rehearse-v22.mjs`, 개발 PC MySQL 8.4): 처음 돌리기, 다시 돌리기, 중간 끊기 27곳 모두 통과. 새로 깐 DB 와 21 에서 올린 DB 의 `information_schema` 같음. 시드 복사본에서 주간 채우기는 공식 1, 하나뿐인 개인 1을 채우고 같은 이름 둘, 대소문자만 다른 이름, 모르는 과제 줄은 비워 두었다.
+- 시험: 새 `report-hours-v22`, `db-v22`, release-sql ③r~③r5 와 변이 R40~R47, 지운 표를 보던 시험 여럿을 새 계약으로. 전체(비 strict) 3612 통과, 0 실패, 0 건너뜀. strict, 루프, 실제 위젯 확인은 메인이 이어서 한다.
+- 문서: 위키 근태 보고, 근태 주간 보고, 내 과제와 과제 추가, 기본 과제 휴가와 기타, XML 가져오기, 지운 기능.

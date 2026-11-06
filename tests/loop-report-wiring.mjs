@@ -153,13 +153,19 @@ class R {
         foreach (var h in ha.EnumerateArray())
           hs.Add(new ReportHourLine {
             TaskName = h.GetProperty("name").GetString() ?? "",
+            //  구조 22: 과제 id(cat_uid), 공식 과제 id, 내용(body). 위젯의 ParseHoursJson 과 같은 자리를 채운다
+            CatUid = h.TryGetProperty("catUid", out var cu) && cu.ValueKind == JsonValueKind.String ? cu.GetString() : null,
+            ProjectUid = h.TryGetProperty("projectUid", out var pu) && pu.ValueKind == JsonValueKind.String ? pu.GetString() : null,
             Hours = h.GetProperty("hours").GetDecimal(),
+            Body = h.TryGetProperty("body", out var bd) && bd.ValueKind == JsonValueKind.String ? (bd.GetString() ?? "") : "",
           });
       okr = await db.SaveDailyAsync(
         e.GetProperty("loginId").GetString(),
         e.GetProperty("y").GetInt32(), e.GetProperty("m").GetInt32(), e.GetProperty("d").GetInt32(),
         e.GetProperty("status").GetString(), e.GetProperty("overtime").GetInt32(),
-        e.GetProperty("content").GetString(), hs);
+        e.GetProperty("content").GetString(),
+        e.TryGetProperty("memo", out var mm) && mm.ValueKind == JsonValueKind.String ? mm.GetString() : null,   // 구조 22: 자유 메모. null 이면 저장이 '' 로 쓴다
+        hs);
     } else {
       okr = await db.SaveWeeklyAsync(
         e.GetProperty("loginId").GetString(),
@@ -254,26 +260,54 @@ try {
   process.exit(2);
 }
 
+/* ── 구조 22 블록 줄(docs/DB-V22-REPORT-HOURS.md) ─────────────────────────
+ *  줄마다 과제 id(cat_uid), 공식 과제 id(project_uid), 시간, 내용(body)을 싣는다. 같은 과제 id 블록은 저장이 한 줄로 합친다.
+ *  과제 id 는 일부러 겹치게 뽑는다(합치기를 실제로 치게). 공식 과제 id 는 'db-<uuid>' 에서 저장이 뽑는다(FK 없음). */
+const CATS = [null, 'c-loop-a', 'c-loop-b', 'db-00000000-0000-4000-8000-0000000000aa'];
+const BODIES = ['', '내용 한 줄', '여러 줄\n  들여쓴 줄', '   '];
+//  ReportDb.MergeDailyLines 와 같은 규칙: 이름 trim, 200자, 시간 0~24, 0시간은 내용이 있어야, 같은 cat_uid 는 시간 더하고(24 상한) 내용 잇기
+function expectLines(lines) {
+  const out = [], by = new Map();
+  for (const l of lines) {
+    const name = l.name.trim().slice(0, 200), body = l.body || '';
+    if (!(l.hours >= 0 && l.hours <= 24)) continue;
+    if (!name.length || (l.hours === 0 && !body.trim().length)) continue;
+    const cat = l.catUid && l.catUid.trim().length && l.catUid.trim().length <= 80 ? l.catUid.trim() : null;
+    if (cat && by.has(cat)) {
+      const f = by.get(cat);
+      f.hours = Math.min(24, Math.round((f.hours + l.hours) * 100) / 100);
+      if (body.trim().length) f.body = f.body.trim().length ? f.body + '\n' + body : body;
+      continue;
+    }
+    const m = cat && /^db-([0-9a-fA-F-]{36})$/.exec(cat);
+    const line = { name, catUid: cat, projectUid: m ? m[1] : null, hours: l.hours, body };
+    if (cat) by.set(cat, line);
+    out.push(line);
+  }
+  return out;
+}
+
 /* ── 라운드 1회 ──────────────────────────────────────────────────────── */
 function round(i) {
   const day = rint(1, 28), mon = rint(1, 12);
   const nLines = rint(0, 6);
   const lines = [];
-  for (let k = 0; k < nLines; k++) lines.push({ name: pick(NAMES), hours: Math.round(rnd() * 800) / 100 });
+  for (let k = 0; k < nLines; k++)
+    lines.push({ name: pick(NAMES), catUid: pick(CATS), hours: Math.round(rnd() * 800) / 100, body: pick(BODIES) });
   const status = pick(STATUS), overtime = rint(0, 11);
   const content = lines.map(l => `[${l.name}] : ${l.hours}`).join('\n') + '\n-----\n합계 : x';
+  const memo = `메모 ${i}`;
 
-  const res = run({ kind: 'daily', loginId: LID, y: YEAR, m: mon, d: day, status, overtime, content, hours: lines });
+  const res = run({ kind: 'daily', loginId: LID, y: YEAR, m: mon, d: day, status, overtime, content, memo, hours: lines });
   ok(`R${i} 저장이 성공했다`, res.ok === true, res.logs.join(' / '));
   if (!res.ok) return;
 
   const ds = `${YEAR}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  // 러너가 거르는 규칙과 같은 기준으로 '남아야 할 줄'을 미리 센다
-  const kept = lines.map(l => ({ name: l.name.trim().slice(0, 200), hours: l.hours }))
-                    .filter(l => l.name.length > 0 && l.hours >= 0);
+  // 저장이 거르고 합치는 규칙과 같은 기준으로 '남아야 할 줄'을 미리 만든다
+  const kept = expectLines(lines);
 
-  const rows = sql(`SELECT line_no, task_name, hours, IFNULL(cat_no,'~') FROM cal_report_hours
-                    WHERE user_id=${UID} AND work_date='${ds}' ORDER BY line_no`, { what: 'hours 조회' });
+  const rows = sql(`SELECT line_no, task_name, hours, IFNULL(cat_uid,'~'), IFNULL(project_uid,'~'), IFNULL(SHA2(body, 256),'~')
+                    FROM cal_report_hours WHERE user_id=${UID} AND work_date='${ds}' ORDER BY line_no`, { what: 'hours 조회' });
 
   // I1 — 줄 수가 '남아야 할 줄'과 정확히 같다
   ok(`R${i} 시간줄 수가 계약과 같다`, rows.length === kept.length, `DB=${rows.length} 기대=${kept.length}`);
@@ -286,8 +320,17 @@ function round(i) {
   ok(`R${i} 이름·시간이 보낸 값과 같다`,
      rows.every((r, k) => r[1] === kept[k].name && Math.abs(Number(r[2]) - kept[k].hours) < 0.005),
      rows.length ? `DB[0]="${rows[0][1]}"/${rows[0][2]} 기대="${kept[0]?.name}"/${kept[0]?.hours}` : '');
-  // I5 — cat_no 는 아직 NULL 이다(앱이 XML 이라 DB 번호를 모른다 · §5.9.9)
-  ok(`R${i} cat_no 는 NULL 이다`, rows.every(r => r[3] === '~'));
+  // I5 — 구조 22: 과제 id, 공식 과제 id, 내용이 보낸 값(합친 뒤) 그대로다. 내용은 NULL 이 아니다(본문과 같은 이유로 SHA-256 대조)
+  const sha = (t) => createHash('sha256').update(t, 'utf8').digest('hex');
+  ok(`R${i} cat_uid, project_uid 가 보낸 값 그대로다(같은 과제 블록은 한 줄)`,
+     rows.length === kept.length && rows.every((r, k) => r[3] === (kept[k].catUid ?? '~') && r[4] === (kept[k].projectUid ?? '~')),
+     rows.map(r => `${r[3]}/${r[4]}`).join(',') + ' 기대 ' + kept.map(l => `${l.catUid ?? '~'}/${l.projectUid ?? '~'}`).join(','));
+  ok(`R${i} body 가 보낸 내용 그대로다(NULL 아님, 합친 블록은 줄바꿈으로 이음)`,
+     rows.length === kept.length && rows.every((r, k) => r[5] !== '~' && r[5] === sha(kept[k].body)),
+     rows.length ? `DB[0]=${String(rows[0][5]).slice(0, 12)}… 기대=${kept[0] ? sha(kept[0].body).slice(0, 12) : '-'}…` : '');
+  // I5b — 구조 22: 새 보고는 memo 가 NULL 이 아니다(NULL 은 옛 보고 표시)
+  ok(`R${i} memo 가 보낸 값이다(NULL 아님)`,
+     one(`SELECT IFNULL(memo,'~NULL') FROM cal_report_daily WHERE user_id=${UID} AND work_date='${ds}'`) === memo);
   // I6 — 본문·근태가 보낸 값 그대로다
   //   ★ 본문은 SHA-256 으로 대조한다 — mysql -B(배치 모드)는 출력에서 개행을 '\n' 문자 두 개로
   //     이스케이프한다(2026-08-31 실측). 문자열을 직접 비교하면 멀쩡한 값이 전부 불일치로 뜬다.

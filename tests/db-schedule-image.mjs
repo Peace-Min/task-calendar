@@ -464,7 +464,7 @@ async function main() {
     //  시험 데이터 정리(그림, 과제, 사람). 실패해도 일회용 계정은 지운다.
     try {
       for (const k of ['p1', 'p2']) if (D[k]) sql(`DELETE FROM project WHERE id=${D[k].id}`, '과제 정리');
-      for (const k of ['u1', 'u2', 'admin', 'out']) if (D[k]) sql(`DELETE FROM cal_user_rev WHERE user_id=${D[k].id}; DELETE FROM cal_user_pref WHERE user_id=${D[k].id}; DELETE FROM app_user WHERE user_id=${D[k].id}`, '사람 정리');
+      for (const k of ['u1', 'u2', 'admin', 'out']) if (D[k]) sql(`DELETE FROM cal_user_rev WHERE user_id=${D[k].id}; DELETE FROM cal_project_watch WHERE user_id=${D[k].id}; DELETE FROM app_user WHERE user_id=${D[k].id}`, '사람 정리');
     } catch (e) { console.error('시험 데이터를 다 지우지 못했다(zz_si 이름으로 남음): ' + e.message); }
     dropAppAccount();
     try { rmSync(WORK, { recursive: true, force: true }); } catch (_) { }

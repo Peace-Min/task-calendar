@@ -195,7 +195,7 @@ if (!JSDOM) {
     for (const c of p.categories) for (const k of ['gitRepo', 'svnRepo', 'vcs', 'usesRepo']) assert.ok(!(k in c), `과제 ${c.id} 에 ${k} 가 남았다`);
     for (const k of ['gitAuthor', 'svnAuthor', 'gitCommitBody']) assert.ok(!(k in p), `가져온 결과에 ${k} 가 남았다`);
     assert.deepStrictEqual(p.todos.map((t) => t.text), ['검토'], '할 일이 들어오지 않았다');
-    assert.strictEqual(p.reportMarker, '-');
+    assert.ok(!('reportMarker' in p), '옛 <prefs> 서식을 읽었다(구조 22 에서 없앴다)');
   });
 
   test('(R) 옛 XML 가져오기(교체) 뒤 state 에도 커밋 기록과 옛 키가 없다', () => {

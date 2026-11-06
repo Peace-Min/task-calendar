@@ -199,6 +199,8 @@
 --       - 버린다(값이 사라져도 된다): entry@hours, lsMigrated, 루트 @version/@generator/@exportedAt, dbGone
 --       - 버린다(구조 18, Git, SVN 삭제): category@gitRepo / @svnRepo, entry@source 와 <commits>, root@gitAuthor / @svnAuthor,
 --         prefs@gitCommitBody. 아래 '(없앤 절) 로컬에 남기던 값' 참조
+--       - 버린다(구조 22, docs/DB-V22-REPORT-HOURS.md): <taskHours>(cal_task_hours), <prefs> 의 서식과 글꼴(cal_user_pref).
+--         두 표와 cal_migration_log 는 구조 22 에서 지웠다. 이 머리말에 남은 그 세 표의 대응과 규칙은 옛 기록이다.
 --       XML(부재 시)                    → 컬럼                          → 넣을 값(파서 기본값)
 --       ------------------------------------------------------------------------------------
 --       recur@interval                    cal_entry.recur_interval        1        ← ★ NOT NULL 아님에도 CHECK 가 요구
@@ -867,15 +869,15 @@ DROP TABLE IF EXISTS cal_project_change;    -- 과제 캘린더(구조 16). cal_
 DROP TABLE IF EXISTS cal_project_event_except; -- 과제 반복 일정의 예외일(구조 20). cal_project_event 를 참조, 자식 먼저
 DROP TABLE IF EXISTS cal_project_event;     -- project 를 참조(project 는 이 파일이 지우지 않는다)
 DROP TABLE IF EXISTS cal_schema_meta;   -- FK 없음, 순서 무관
-DROP TABLE IF EXISTS cal_migration_log;
+DROP TABLE IF EXISTS cal_migration_log;      -- 폐지(구조 22). 옛 배포분 정리용. 재생성하지 않는다
 DROP TABLE IF EXISTS cal_user_rev;
 DROP TABLE IF EXISTS cal_report_hours;      -- cal_report_daily 를 참조, 자식 먼저
 DROP TABLE IF EXISTS cal_report_daily;
 DROP TABLE IF EXISTS cal_report_weekly_hours; -- 주간 과제투입시간(구조 20). cal_report_weekly 를 참조, 자식 먼저
 DROP TABLE IF EXISTS cal_report_weekly;     -- 자식은 바로 위 cal_report_weekly_hours
-DROP TABLE IF EXISTS cal_user_pref;
+DROP TABLE IF EXISTS cal_user_pref;          -- 폐지(구조 22). 옛 배포분 정리용. 재생성하지 않는다
 DROP TABLE IF EXISTS cal_attendance;
-DROP TABLE IF EXISTS cal_task_hours;         -- cal_category 를 참조(2026-08-24 신설 FK)
+DROP TABLE IF EXISTS cal_task_hours;         -- 폐지(구조 22). 옛 배포분 정리용. cal_category 를 참조해 그보다 먼저. 재생성하지 않는다
 DROP TABLE IF EXISTS cal_todo_day_note;      -- cal_todo 를 참조
 DROP TABLE IF EXISTS cal_todo;
 DROP TABLE IF EXISTS cal_entry_commit;       -- 폐지(구조 18, Git, SVN 삭제). 옛 배포분 정리용. cal_entry 를 참조해 그보다 먼저. 재생성하지 않는다
@@ -1232,87 +1234,12 @@ CREATE TABLE cal_todo_day_note (
 --   되살리지 말 것: 개인 회의실 목록은 2026-10-21 사용자 결정으로 없앴다(회의실 관리는 관리자만).
 
 -- =====================================================================
---  8. cal_task_hours: (날짜 × 과제) 투입 시간
+--  (8. cal_task_hours: 구조 22 에서 지웠다. 번호는 비워 둔다)
 -- =====================================================================
--- XML <taskHours><day><t> 대응. 회사 일간/주간보고 '[과제명] : n' 계약의 원천.
--- 값 0/빈값은 0 저장이 아니라 행 삭제다(setTaskHours). 그래서 hours > 0 CHECK 와 DELETE 권한이 한 쌍이다.
--- ★ 바로 아래 9. cal_attendance 가 같은 규약을 쓴다('미기록 = 행 없음'). 두 표는 같은 코드 경로로 다룰 것.
---   한쪽만 '빈 값을 저장'으로 구현하면 보고서 한 줄이 조용히 틀린 채 회사 시스템으로 나간다.
---
--- ★ 2026-08-11 결정: 공수의 단일 소스는 이 표 하나다. 옛 cal_entry.hours_min(일정 단위 분)은 폐지했다.
---   채우는 UI 도 자동계산도 없었고 회사 일간보고에도 들어가지 않았다. 두 자리에 공수가 있으면
---   '어느 쪽이 맞는가'를 사람이 매번 판정해야 한다. 되살릴 조건은 헤더의 entry@hours 절에 적어 두었다.
---
--- ★★ 2026-08-24 판정: 과제 참조에 **FK 를 건다**(전환 전에는 FK 가 없었다).
---   ※ 설계 문서와 어긋난다. db/CALENDAR-TABLE-DESIGN.md §5.2 의 표는 이 컬럼에 대해
---     "FK 걸지 않음 / 과제를 지워도 지난 공수 기록은 남아야 한다(집계 이력)" 이라고 적고 있다.
---     **문서가 앱과 다르다.** 문서 담당이 그 줄을 고칠 것. 아래가 직접 읽고 확인한 근거다.
---   ① 앱은 과제를 지울 때 그 과제의 공수 행을 **함께 지운다.** deleteCategory() 가
---      loadTaskHoursMap() 을 돌며 `delete day[id]` 하고 빈 날짜까지 정리한다(직접 확인).
---      즉 '지워도 남는다'는 동작은 앱에 존재한 적이 없다. 문서 쪽이 사실과 달랐다.
---   ② 키 전환으로 '미아 행'이라는 상태 자체가 **표현 불가능**해졌다. 옛 컬럼은 문자열 id 라
---      존재하지 않는 과제를 가리키는 값을 그냥 담을 수 있었지만, cat_no 는 번호다.
---      존재하지 않는 과제에는 줄 번호가 없다. FK 를 안 걸어도 미아를 만들 수 없고,
---      안 걸면 '아무 번호나 들어갈 수 있는 NOT NULL 정수' 라는 더 나쁜 상태가 된다.
---   ③ 그래서 방향은 RESTRICT 다(CASCADE 아님). cal_entry·cal_todo 의 과제 FK 와 같은 방향으로 맞춘다.
---      CASCADE 로 하면 과제 하나를 지울 때 회사 일간보고에 나가는 숫자가 **조용히 여러 달치 사라진다.**
---      이 DB 에는 감사 휴지통이 없어(2026-08-11 폐지) 되돌릴 수단이 주간 mysqldump 뿐이다.
---      RESTRICT 면 어댑터가 순서를 틀렸을 때 ERROR 1451 로 시끄럽게 멈춘다. 이 파일의 일관된 취향이다.
---   ★ 그 대가로 **어댑터가 지켜야 할 순서가 하나 생겼다**: 과제 삭제 트랜잭션은
---        (1) 그 과제의 cal_entry, cal_todo 행을 DELETE(2026-10-07 부터. 예전에는 cat_no 를 NULL 로 풀었다),
---        (2) cal_task_hours 의 그 cat_no 행을 DELETE,
---        (3) 마지막에 cal_category 행을 DELETE.
---      ★ 앱 메모리에서의 순서와 다르다. deleteCategory() 는 state 에서 일정, 할 일, 공수를 걷은 뒤 과제를 뺀다.
---        DB 순서는 어댑터(CalendarWriteDb)가 정한다: 공수(6) → 일정, 할 일, 과제(10, 자식→부모).
---   ※ 문구는 2026-10-07 에 고쳤다(docs/DEFAULT-TASKS.md §4.5): 과제 삭제 확인창이 일정, 할 일, 과제별 시간이
---     각각 몇 개 함께 지워지는지 적는다.
---
--- ★ updated_at 이 있다: §3.3 낙관적 잠금 대상이다(2026-08-26 부터. 아래 updated_at 컬럼 주석).
---   엔티티가 아니라 키 (user_id, work_date, cat_no) 로 주소지정되는 값 행이지만, 덮어쓰기 사고는 값 칸에서도
---   똑같이 난다. 그래서 cal_entry, cal_todo 처럼 앱이 UTC 로 계산한 updated_at 을 토큰으로 비교한다.
---   (2026-10-15 정정: 이 머리 주석은 예전에 "updated_at 을 일부러 두지 않는다, 마지막 쓰기가 이긴다" 고 적고
---    있었다. 2026-08-26 에 컬럼을 넣은 뒤로 틀린 문장이었다. 그때의 재검토 조건이 앞당겨 실행된 것이다.)
---   같은 사용자의 동시 쓰기는 여전히 §3.1 rev 락이 직렬화한다. 사후 추적 수단은 이 DB 안에 없고
---   (2026-08-11 감사 트리거 폐지) 주간 mysqldump 와 binlog 뿐이다.
-CREATE TABLE cal_task_hours (
-  user_id     SMALLINT UNSIGNED NOT NULL,   -- 소유자(app_user.user_id)
-  work_date   DATE NOT NULL,                                                          -- 대상 날짜
-  cat_no      INT UNSIGNED NOT NULL,        -- 과제 번호. ★ NULL 불가. '미분류 공수' 라는 상태가 없다(계약 H-3)
-  hours       DECIMAL(4,2) NOT NULL,                                                  -- 투입 시간(★시간 단위, 소수 2자리). 0 초과 24 이하. 앱은 0.5·0.25 같은 소수를 그대로 보낸다
-  -- ★ 2026-08-26 신설. §3.3 낙관적 잠금 토큰. 이 표는 엔티티가 아니라 '값 칸' 이라
-  --   cal_entry·cal_todo 와 달리 타임스탬프가 없었다. 그런데 **덮어쓰기 사고는 값 칸에서도 똑같이 난다**.
-  --   토큰이 없으면 PK 만으로 무조건 덮어쓰므로, 다른 환경에서 적은 값이 흔적 없이 사라지고
-  --   사라졌다는 사실을 알 방법도 없다. 근태·공수는 회사 보고로 나가는 숫자라 조용한 유실이 특히 나쁘다.
-  --   ※ 지금은 클라이언트가 위젯 하나뿐이라 발화하지 않는다. 브라우저가 붙는 순간부터 일한다.
-  --     그때 컬럼을 추가하려면 실제 ALTER 가 되므로, 0행인 지금 미리 둔다.
-  --   ★ 기본값·ON UPDATE 에 서버 함수(NOW(3)·CURRENT_TIMESTAMP)를 달지 않는다(§5.3 '시각' 규칙).
-  --     세션 time_zone 이 SYSTEM(KST)이면 앱이 보내는 UTC 값과 9시간이 한 컬럼에 영구 혼재되고
-  --     DATETIME 은 사후 구분이 불가능하다. cal_entry·cal_todo 와 같이 **앱이 UTC 로 계산해 명시 대입**한다.
-  updated_at  DATETIME(3) NOT NULL,
-  PRIMARY KEY (user_id, work_date, cat_no),
-  -- ★ PK 의 선두가 (user_id, work_date) 라 아래 FK 의 자식 인덱스가 되지 못한다. 이 KEY 가 필요하다.
-  --   겸사겸사 과제 삭제 시의 DELETE … WHERE user_id=? AND cat_no=? 도 이 인덱스를 쓴다.
-  --   PK 를 (user_id, cat_no, work_date) 로 뒤집어 인덱스를 아끼자는 안은 기각했다. 조회가
-  --   날짜 범위 기준이다(보고서·부팅 조회 모두 날짜로 자른다).
-  KEY ix_cal_task_hours_user_cat (user_id, cat_no),
-  CONSTRAINT fk_cal_task_hours_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
-    ON UPDATE RESTRICT ON DELETE RESTRICT,
-  -- ★ 2026-08-24 신설. 전환 전에는 FK 가 없었고 설계 §5.2 는 그 근거를 '과제를 지워도 지난 공수
-  --   기록은 남아야 한다(집계 이력)' 라고 적었다. **코드와 반대였다.** deleteCategory()
-  --   (task-calendar-prototype.html:4516-4521)는 과제를 지울 때 그 과제의 (날짜×과제) 공수 행을
-  --   전 날짜에서 함께 지운다("사라진 과제의 시간이 XML에 유령으로 남지 않게", 그 함수의 주석).
-  --   즉 '남는 이력' 은 구현된 적이 없다. 그리고 키 전환이 요구를 하나 더 만들었다: cat_no 는
-  --   MAX()+1 이라 **번호가 재사용된다**(H-1). FK 가 없으면 지워진 과제의 공수 행이 나중에 같은
-  --   번호를 받은 **다른 과제**의 공수로 조용히 흡수되고, 그 숫자는 회사 일간보고로 나간다.
-  --   문자열 id(UUID) 시절에는 재사용이 없어 미아 행이 무해했지만 번호 키에서는 무해하지 않다.
-  --   CASCADE 가 아니라 RESTRICT 인 이유: 캘린더에 소프트삭제가 없어 CASCADE 는 침묵 삭제와 같은
-  --   말인데 이 값은 보고 숫자다. 앱이 이미 공수를 먼저 지우므로 정상 경로에서는 발화하지 않고,
-  --   발화하면 그건 '앱이 순서를 어겼다' 는 신호다. 그 신호를 죽이지 않는 쪽을 택했다.
-  CONSTRAINT fk_cal_task_hours_category FOREIGN KEY (user_id, cat_no) REFERENCES cal_category(user_id, cat_no)
-    ON UPDATE RESTRICT ON DELETE RESTRICT,
-  CONSTRAINT chk_cal_task_hours_range CHECK (hours > 0 AND hours <= 24)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='(날짜×과제) 투입 시간(시간 단위). PK=(user_id,work_date,cat_no). 과제 FK RESTRICT. 0=행 삭제.';
+-- 0.24.0 까지 보고서 창 일간 작성의 '작성 중 시간'(날짜 x 과제)이었다. 0.25.0 부터 입력 화면이 없었고 앱 어디에서도 읽지 않았다.
+-- 2026-11-06 사용자 결정으로 이관 조각 db/deploy/migrations/v22-report-hours.sql 이 표째 지웠다(docs/DB-V22-REPORT-HOURS.md 2).
+-- 실제로 보고한 시간은 cal_report_hours(일간)와 cal_report_weekly_hours(주간)에 있다. 배포 전 백업에는 남는다.
+--   되살리지 말 것. 위 DROP TABLE IF EXISTS 줄은 옛 배포 DB 를 새로 깔 때 지우는 몫이라 남긴다.
 
 -- =====================================================================
 --  9. cal_attendance: 날짜별 근태·초과시간
@@ -1410,10 +1337,8 @@ CREATE TABLE cal_attendance (
 --  사용자는 캘린더로 초안을 만든 뒤 netcus 에서 상세를 직접 고친다(2026-08-31 사용자 확인).
 --  그러므로 이 표의 값은 사이트의 최종본이 아니다. 그 대가는 설계 §5.9.8 이 명시해 두었다.
 --
---  ★★ cal_task_hours 와 혼동 금지. 둘은 다른 것이다
---     cal_task_hours   = 캘린더에 입력한 시간 = **초안**(사용자가 언제든 고친다)
---     cal_report_hours = 실제로 보고된 시간   = **확정**(공수계산기의 원천)
---     나누는 이유: 보고 후 캘린더를 고치면 과거 집계가 소급해서 바뀐다.
+--  ★★ cal_report_hours 는 실제로 보고된 시간 = **확정**(공수 집계의 원천)이다.
+--     작성 중 시간을 담던 cal_task_hours 는 구조 22 에서 지웠다(0.25.0 부터 입력 화면이 없었다).
 --
 --  ★ 왜 일간만 있고 주간이 없나
 --    일간은 주소가 (사번, 날짜)로 결정된다(pjm_work_view.jsp?y&m&d&id). 검색이 아니라
@@ -1428,7 +1353,11 @@ CREATE TABLE cal_report_daily (
   status       VARCHAR(2) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '',
                                                                             -- 근태 코드. cal_attendance.status 와 같은 타입이라 대조 가능
   overtime     TINYINT           NOT NULL DEFAULT 0,                        -- 초과시간(정수). cal_attendance 와 같음
-  content      MEDIUMTEXT        NOT NULL,                                  -- 본문 전체. 레거시 workpaper_tbl.content 와 같은 크기
+  content      MEDIUMTEXT        NOT NULL,                                  -- 본문 전체(회사에 실제로 보낸 글 원본). 레거시 workpaper_tbl.content 와 같은 크기. 공식 과제 연결 뒤에도 바꾸지 않는다
+  -- ★ 구조 22(2026-11-06, docs/DB-V22-REPORT-HOURS.md 1-2). 옛 보고와 새 보고는 날짜마다 memo IS NULL 로 가른다.
+  --   NULL 이면 옛 보고라 content 를 해석하고, NULL 이 아니면 새 보고라 블록은 그날 cal_report_hours 줄이다(0줄일 수 있다).
+  --   이 줄은 이관 조각 v22-report-hours.sql 의 ADD COLUMN 과 글자까지 같다(시험이 대조한다).
+  memo MEDIUMTEXT NULL COMMENT '근태 일간 작성의 자유 메모(구조 22). NULL 은 이 칸이 생기기 전의 옛 보고(content 를 해석한다)',
   sent_at      DATETIME(3)       NOT NULL,                                  -- 보낸 시각. 이 표는 '보낸 것'만 담는다
   created_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
@@ -1454,45 +1383,42 @@ CREATE TABLE cal_report_daily (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='캘린더가 보낸 일간보고. 사이트의 현재 상태가 아니다';
 
--- ── 2단계: cal_report_hours ──────────────────────────────────────────
---   ★★ 2026-09-09 뒤집음: cat_no 에 **RESTRICT FK 를 건다**(fk_crh_cat).
---     이 자리에는 *"cat_no 에 FK 를 걸지 않는다. 과제를 지워도 과거 보고 기록은 남아야 하기
---     때문이다"* 라고 적혀 있었다. 그 문장은 cal_task_hours 가 2026-08-24 에 이미 기각한 논리와
---     같다. cat_no 는 AUTO_INCREMENT 가 아니라 MAX()+1 발번이라 **번호가 재사용된다**(H-1).
---     FK 가 없으면 '남은 과거 기록' 은 남는 것이 아니라, 나중에 같은 번호를 받은 **다른 과제**의
---     공수로 조용히 흡수된다. 그리고 그 숫자는 회사 일간보고로 나간다.
---     (ON DELETE SET NULL 을 못 쓰는 것은 사실이다. user_id 가 NOT NULL 이라 MySQL 이 거부한다.
---      그래서 남는 선택지는 RESTRICT 뿐이고, 그게 쌍둥이 cal_task_hours 가 고른 것과 같다.)
---   ★ 오늘은 아무 동작도 바뀌지 않는다: 앱은 cat_no 를 항상 NULL 로 쓴다
---     (MainWindow.xaml.cs:2053). 복합 FK 는 MATCH SIMPLE 이라 NULL 행은 검사 면제다.
---     이 제약이 하는 일은 **나중에 이 컬럼을 채우는 사람에게 "과제를 지우기 전에 먼저 비워라"를
---     강제하는 것**이다. 그 사람이 이 주석을 못 봐도 DB 가 1451 로 알려 준다.
+-- ── 2단계: cal_report_hours(구조 22 에서 바꿈, 2026-11-06, docs/DB-V22-REPORT-HOURS.md) ──────────
+--   근태 일간보고의 과제별 줄이다(사람, 날짜, 과제마다 한 줄). 주간보고 [일간 불러오기], 근태 [이전 보고], 공수 집계,
+--   공식 과제 이관이 이 표를 읽는다. cal_report_daily.content 는 회사에 보낸 글 원본 기록으로 따로 남는다(결정 A).
+--   주간의 cal_report_weekly + cal_report_weekly_hours 와 같은 모양이다.
+--   ★ 과제는 id 로 찾는다(cat_uid = cal_category.uid 원문, 개인 c-<uuid>, 공식 db-<project.uid>). 이관과 불러오기는 과제 이름을
+--     비교하지 않는다. task_name 은 보낸 이름 그대로의 기록(화면 표시)이지 찾는 열쇠가 아니다.
+--   ★ 과제에 FK 를 걸지 않는다(cat_uid, project_uid 모두). 과제를 지워도 보고 줄은 남아야 한다.
+--     구조 21 까지의 cat_no 와 fk_crh_cat(cal_category RESTRICT)은 v22 가 지웠다. 앱은 cat_no 를 늘 NULL 로 썼고,
+--     RESTRICT FK 는 과제 삭제의 걸림돌이었다. 번호(cat_no) 재사용 문제는 문자열 id(uid)라 생기지 않는다.
+--   ★ hours 는 0 이상 24 이하(구조 21 까지는 0 초과). 내용이 있는 0시간 블록도 줄로 남긴다.
+--     앱은 0시간 블록을 body 가 비어 있지 않을 때만 줄로 쓴다. 같은 날 같은 cat_uid 블록은 저장할 때 한 줄로 합친다(UNIQUE 는 두지 않는다).
+--   ★ 색인: 공식 과제별 집계 ix_crh_project(project_uid, work_date)(주간 ix_crwh_project 와 같은 모양),
+--     공식 과제 이관 때 그 사람의 옛 과제 줄 찾기 ix_crh_cat(user_id, cat_uid).
+--   ★ 새 칸 셋(cat_uid, project_uid, body)과 두 색인, 시간 제약, 표 설명은 이관 조각 db/deploy/migrations/v22-report-hours.sql 의
+--     ADD COLUMN, ADD INDEX, ADD CONSTRAINT, COMMENT 와 글자까지 같다(tests/release-sql.test.mjs 가 대조한다).
+--     MySQL 8.4 에서 새로 깐 DB 와 21 에서 올린 DB 를 information_schema 로 견주는 리허설은 tools/db-rehearsal/rehearse-v22.mjs.
 CREATE TABLE cal_report_hours (
   user_id    SMALLINT UNSIGNED NOT NULL,
   work_date  DATE              NOT NULL,
-  line_no    SMALLINT UNSIGNED NOT NULL,                                    -- content 안에서의 줄 순서(0부터). 순서 보존 + 좁은 키
-  task_name  VARCHAR(200)      NOT NULL,                                    -- 사이트 원문 그대로. 과제명이 바뀌어도 과거는 안 흔들린다
-  cat_no     INT UNSIGNED      NULL,                                        -- 매칭되면 채움, NULL = 미분류(NULL 은 FK 검사 면제, 위 ★)
-  hours      DECIMAL(4,2)      NOT NULL,                                    -- 폭은 쌍둥이 cal_task_hours 와 같게(2026-09-09). 소수 2자리는 파서의 Math.round(x*100)/100 과 정확히 같다
+  line_no    SMALLINT UNSIGNED NOT NULL,                                    -- 그날 블록 순서(0부터). 순서 보존 + 좁은 키
+  task_name  VARCHAR(200)      NOT NULL,                                    -- 보낸 과제 이름 그대로(화면 표시). 과제명이 바뀌어도 과거는 안 흔들린다. 찾는 열쇠가 아니다
+  cat_uid VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL COMMENT '그 블록의 앱 과제 id 원문(cal_category.uid 와 같은 정의). NULL 은 캘린더 과제와 이어지지 않은 블록. FK 없음',
+  project_uid CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '공식 과제 id(project.uid). 개인 과제는 NULL. 과제가 지워져도 남도록 FK 없음',
+  hours      DECIMAL(4,2)      NOT NULL,                                    -- 그날 그 과제의 시간. 0 이상 24 이하. 소수 2자리는 파서의 Math.round(x*100)/100 과 정확히 같다
+  body MEDIUMTEXT NULL COMMENT '그 과제의 그날 내용(보낸 그대로의 줄바꿈과 들여쓰기). 새 앱은 NULL 을 쓰지 않는다(없으면 빈 글)',
   PRIMARY KEY (user_id, work_date, line_no),
-  KEY idx_crh_cat (user_id, cat_no, work_date),                             -- 계산기: 과제별 기간 합계 + fk_crh_cat 의 지지 인덱스(선두 두 열이 FK 열)
+  KEY ix_crh_project (project_uid, work_date),                              -- 공식 과제별 기간 집계(89명 공수)
+  KEY ix_crh_cat (user_id, cat_uid),                                        -- 공식 과제 이관: 그 사람의 옛 과제 줄 찾기
   CONSTRAINT fk_crh_daily FOREIGN KEY (user_id, work_date)
     REFERENCES cal_report_daily (user_id, work_date) ON DELETE CASCADE ON UPDATE CASCADE,
-  -- ★ 2026-09-09 신설. 위 ★★ 참조. cal_category 는 이 파일 앞쪽(1. cal_category)에서 이미 만들어지므로
-  --   여기서 인라인으로 선언할 수 있다(파일 끝 ALTER 로 미룰 이유가 없다. 표 정의 한자리에 다 보이는 편이 낫다).
-  CONSTRAINT fk_crh_cat FOREIGN KEY (user_id, cat_no) REFERENCES cal_category (user_id, cat_no)
-    ON DELETE RESTRICT ON UPDATE RESTRICT,
-  -- ★ 2026-09-09 hours >= 0 → hours > 0 AND hours <= 24. cal_task_hours 의 chk_cal_task_hours_range 와 같다.
-  --   0 은 '기록할 것이 없다' 이지 '0시간을 일했다' 가 아니다(캘린더 쪽은 이미 0 을 행 삭제로 다룬다).
-  --   상한 24 가 없으면 파서가 잘못 읽은 240 이 그대로 회사 보고 집계에 들어간다.
-  --   ★ 앱과 짝이다. ReportDb.cs 의 0시간 줄 필터가 `<= 0` 이어야 한다(한쪽만 고치면 저장 트랜잭션이 죽는다).
+  -- ★ 상한 24 가 없으면 파서가 잘못 읽은 240 이 그대로 회사 보고 집계에 들어간다.
+  --   ★ 앱과 짝이다. ReportDb.cs 의 일간 시간 검사가 `< 0` 을 막고 0 은 받아야 한다(한쪽만 고치면 저장 트랜잭션이 죽는다).
   --     그 짝을 tests/schema-integrity.test.mjs 의 '계약④: 공수 상한' 이 기계로 붙잡는다.
-  CONSTRAINT chk_crh_hours CHECK (hours > 0 AND hours <= 24)
+  CONSTRAINT chk_crh_hours CHECK (hours >= 0 AND hours <= 24)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='보낸 과제별 시간 — 공수계산기의 원천. 캘린더가 본문을 만들 때 이미 아는 값이다(파싱 아님)';
---  ★ 이 주석을 '되읽은 content 를 파싱해 채운다' 로 되돌리지 말 것. 그건 §5.9.2 에서 **버린 안**이다.
---    표 주석은 DB 안에 남는 설명이라, 여기가 옛 설명을 들고 있으면 재구축할 때마다 버린 설계가
---    근거처럼 되살아난다(2026-08-31 에 실제로 파일과 운영 DB 의 주석이 서로 반대였다).
+  COMMENT='근태 일간보고 과제별 줄. 주간 불러오기, 이전 보고, 공수 집계, 공식 과제 이관의 원천';
 
 -- =====================================================================
 --  cal_report_weekly: 캘린더가 작성한 주간보고
@@ -1549,22 +1475,28 @@ CREATE TABLE cal_report_weekly (
 --     개인 과제는 NULL 이다(빈 글이 아니다. 호스트가 빈 projectUid 를 NULL 로 바꾼다).
 --   ★ hours 는 DECIMAL(5,2), 0 초과 168 이하(한 주 = 168 시간). 0 은 '기록할 것이 없다' 라 행을 두지 않는다(chk_crh_hours 와 같은 뜻).
 --     일간의 24 대신 168 인 것은 한 줄이 한 과제의 **한 주 합계**이기 때문이다.
---   ★ 인덱스: 과제별 기간 집계용 ix_crwh_project(project_uid, period_start) 하나만 둔다.
+--   ★ 인덱스: 과제별 기간 집계용 ix_crwh_project(project_uid, period_start), 공식 과제 이관 때 그 사람의 옛 과제 줄 찾기용
+--     ix_crwh_cat(user_id, cat_uid, 구조 22).
 --     사람별 기간 집계용 (user_id, period_start) 는 따로 만들지 않는다. PK 의 앞 두 열이 정확히 그것이라
 --     MySQL 이 PK 로 범위를 읽고, FK fk_crwh_weekly 의 받침 인덱스도 PK 가 맡는다. 같은 열의 보조 인덱스는 쓰기 비용만 늘린다.
---   ★ 이 정의는 이관 조각 db/deploy/migrations/v20-weekly-meeting.sql 의 CREATE TABLE IF NOT EXISTS 와 **글자까지 같다**
---     (작은따옴표만 두 겹. tests/release-sql.test.mjs 가 대조한다). 그래서 정의 안에 -- 주석을 두지 않고 설명은 COMMENT 로 적는다
---     (과제 캘린더 14~15 와 같은 규칙).
+--   ★ cat_uid(구조 22, docs/DB-V22-REPORT-HOURS.md 1-3): 그 줄의 앱 과제 id 원문(cal_category.uid). 공식 과제 연결 이관은 이 칸으로만 찾는다.
+--     구조 21 까지 쌓인 줄은 v22 조각이 한 번 채웠다(공식 과제 줄은 db-<project_uid>, 개인 과제 줄은 이름이 글자까지 같은 개인 과제가
+--     하나뿐일 때만 그 uid, 아니면 NULL).
+--   ★ 이 정의에서 cat_uid 줄과 ix_crwh_cat 줄을 뺀 것은 이관 조각 db/deploy/migrations/v20-weekly-meeting.sql 의 CREATE TABLE IF NOT EXISTS 와
+--     **글자까지 같다**(작은따옴표만 두 겹). 두 줄은 v22 조각의 ADD COLUMN, ADD INDEX 와 같다(tests/release-sql.test.mjs 가 대조한다).
+--     그래서 정의 안에 -- 주석을 두지 않고 설명은 COMMENT 로 적는다(과제 캘린더 14~15 와 같은 규칙).
 --   ★ 앱 계정 권한(grants-calendar.sql): SELECT, INSERT, UPDATE, DELETE. 다시 보내기가 그 주 줄을 지우고 넣기 때문이다.
 CREATE TABLE cal_report_weekly_hours (
   user_id      SMALLINT UNSIGNED NOT NULL    COMMENT '주인(cal_report_weekly.user_id)',
   period_start DATE              NOT NULL    COMMENT '주간보고 기간 시작(cal_report_weekly.period_start)',
   line_no      SMALLINT UNSIGNED NOT NULL    COMMENT '과제투입시간 안의 줄 순서(0부터)',
   task_name    VARCHAR(200)      NOT NULL    COMMENT '보낸 과제명 그대로. 과제 이름이 바뀌어도 지난 줄은 그대로다',
+  cat_uid VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL COMMENT '그 줄의 앱 과제 id 원문(cal_category.uid 와 같은 정의). NULL 은 캘린더 과제와 이어지지 않은 줄. FK 없음',
   project_uid  CHAR(36)          NULL        COMMENT '공식 과제 id(project.uid). 개인 과제는 NULL. 과제가 지워져도 남도록 FK 없음',
   hours        DECIMAL(5,2)      NOT NULL    COMMENT '그 주 그 과제의 시간. 0 초과 168 이하',
   PRIMARY KEY (user_id, period_start, line_no),
   KEY ix_crwh_project (project_uid, period_start),
+  KEY ix_crwh_cat (user_id, cat_uid),
   CONSTRAINT fk_crwh_weekly FOREIGN KEY (user_id, period_start)
     REFERENCES cal_report_weekly (user_id, period_start) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT chk_crwh_hours CHECK (hours > 0 AND hours <= 168)
@@ -1575,79 +1507,12 @@ CREATE TABLE cal_report_weekly_hours (
 
 
 -- =====================================================================
---  10. cal_user_pref: 사용자당 1행 설정(보고서 서식)
+--  (10. cal_user_pref: 구조 22 에서 지웠다. 번호는 비워 둔다)
 -- =====================================================================
--- XML <prefs> 대응(루트 gitAuthor/svnAuthor 와 prefs@gitCommitBody 는 구조 18 에서 칸째 지웠다). 사용자당 정확히 1행이고 삭제 경로가 없다.
--- ★ 사용자당 1행이므로 PK 는 (user_id) 다. 대리키를 따로 두지 않는다(번호를 붙일 대상이 없다).
---
--- ★ 왜 서식을 여기에 넣는가(설계 §4 의 '보류' 판정을 2026-08-21 뒤집었다):
---   브라우저 지원(로컬 파일이 없는 환경)에서도 필요한 값이라 결국 DB 로 온다. 그리고 이 표가 이미
---   '사용자당 1행 설정' 이므로 표를 늘리지 않고 컬럼만 늘리면 된다.
--- ★ 왜 JSON 컬럼도, key-value 표도 아닌가(설계 §10 의 기각 근거 그대로):
---   DB 가 형식을 못 막기 때문이다. JSON 이면 report_indent 에 "가나다"가 들어가도 서버는 통과시키고,
---   그 값을 읽는 시점(보고서 생성)에 가서야 조용히 기본값으로 흡수된다. key-value 표도 값이 전부
---   문자열 한 컬럼이라 같은 문제다. 평탄한 컬럼 + CHECK 라야 잘못된 값이 들어오는 그 자리에서 3819 로 멈춘다.
---   대가는 '서식을 하나 추가할 때마다 ALTER 가 필요하다' 인데, 서식은 UI 를 함께 고쳐야 늘어나는 값이라
---   어차피 배포가 따라간다(설계 §5.5 의 '추가 컬럼은 DEFAULT 필수' 규칙을 지킬 것).
-CREATE TABLE cal_user_pref (
-  user_id    SMALLINT UNSIGNED NOT NULL,   -- 소유자(app_user.user_id). 사용자당 1행
-  -- ★ 이관 규칙(updated_at): 여기만 '이관 시각'을 쓴다. cal_category 와 달리 복사할 원본이 아예 없다
-  --   (XML 은 서식에 시각을 적지 않고 앱 state 에도 그 개념이 없다).
-  --   사용자당 1행이고 부팅 직후 이 행을 고치는 흐름이 드물어 충돌 오탐 위험이 cal_category 만큼 크지 않다.
-  -- ── 보고서 서식(XML <prefs>) ──────────────────────────────────────────────────────
-  -- 전부 '표시+복사 서식' 이다. 캘린더 데이터를 바꾸지 않는다. 기본값은 파서(fromXML/
-  -- normalizeReportFormatPref/normalizeReportFont)가 쓰는 값과 **같은 값**을 적었다(어댑터 계약 C).
-  --
-  -- (1) 전역 3값. ★ 종류별과 독립인 설정이 아니라 '마지막으로 본 모드의 거울' 이다.
-  --     syncLegacyReportFormatFields() 가 모드를 바꿀 때마다 현재 모드 값으로 덮어쓴다.
-  --     존치 이유: 종류별 속성이 없는 구버전 XML 을 읽을 때 폴백 원본이 된다(헤더 C 의 ※ 참조).
-  --     전역과 daily/weekly 가 달라도 정상이므로 '맞춰서' 고쳐 넣지 말 것.
-  -- 폭 8 의 근거: 프리셋은 전부 4자 이하이고(#rptMarker 의 option value), 직접 입력은
-  --   #rptMarkerCustom maxlength=8, normalizeReportFormatPref 의 `.slice(0,8)`, fromXML 의 `rm.length <= 8`.
-  --   셋이 같은 8 이라 초과는 손으로 고친 XML 에서만 나온다(ERROR 1406 → 이관 도구 사전 스캔 대상).
-  -- 콜레이션: 값 집합이 고정이 아니므로 _bin 을 쓰지 않는다(헤더의 그 규칙 마지막 ※ 참조).
-  report_marker              VARCHAR(8) NOT NULL DEFAULT '-',   -- 머리기호. 프리셋 키 또는 임의 문자열(8자 이하). ''는 불가(파서가 '-'로 흡수한다)
-  report_marker_custom       VARCHAR(8) NOT NULL DEFAULT '',    -- 직접 입력 머리기호. ''=사용 안 함(정상값. NULL 로 바꾸지 말 것)
-  report_indent              TINYINT    NOT NULL DEFAULT 2,     -- 들여쓰기 단수 0..6 (파서가 clamp 하는 범위와 동일)
-  -- (2) 종류별(daily/weekly). custom 모드는 'weekly' 키를 함께 쓴다(reportFormatKeyForMode: daily 외 전부 weekly).
-  --     그래서 키가 둘뿐이고 컬럼도 둘씩이다. 셋째 모드를 만들려면 컬럼을 늘리기 전에 그 키 규칙부터 볼 것.
-  report_marker_daily        VARCHAR(8) NOT NULL DEFAULT '-',   -- 일간 보고서 머리기호
-  report_marker_custom_daily VARCHAR(8) NOT NULL DEFAULT '',    -- 일간 직접 입력 머리기호
-  report_indent_daily        TINYINT    NOT NULL DEFAULT 2,     -- 일간 들여쓰기 0..6
-  report_marker_weekly       VARCHAR(8) NOT NULL DEFAULT '-',   -- 주간(+기간 취합) 머리기호
-  report_marker_custom_weekly VARCHAR(8) NOT NULL DEFAULT '',   -- 주간 직접 입력 머리기호
-  report_indent_weekly       TINYINT    NOT NULL DEFAULT 2,     -- 주간 들여쓰기 0..6
-  -- (3) 글꼴. 기간 취합 보고서 전용이지만 모드별이 아닌 **단일 전역** 값이다(state.reportFont).
-  --     서식 pref 와 분리된 이유가 코드 주석에 있다: custom 이 'weekly' 키를 공유해서, 기간 취합에서
-  --     서식을 바꾸면 주간까지 따라 바뀐다. 글꼴만은 그 결합을 피하려고 최상위 단일값으로 뒀다.
-  -- ★ family 는 화이트리스트다(REPORT_FONTS 에서 ''를 뺀 5개 = REPORT_FONT_FAMILY_SET). 값 집합이
-  --   고정이므로 _bin. ''(기본 글꼴)은 목록에 함께 넣는다. 그게 DEFAULT 이자 '지정 안 함'이다.
-  --   폭 20 의 근거: 가장 긴 'Malgun Gothic' 이 13자. 여유를 두되 화이트리스트가 실질 제한이다.
-  report_font_family         VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '', -- 보고서 글꼴. ''=기본
-  -- ★ 0 은 '크기 지정 안 함(기본)' 이고 10..16 이 실제 pt 다. 1..9 는 두 뜻 사이의 빈 구간이라 막는다
-  --   (normalizeReportFont: `Number.isInteger(n) && n >= 10 && n <= 16` 아니면 0). 드롭다운은 REPORT_FONT_SIZES
-  --   = [0,10,11,12,13,14,15,16] 이지만 파서는 10..16 정수를 전부 받으므로 CHECK 도 범위로 적는다.
-  report_font_size           TINYINT NOT NULL DEFAULT 0,        -- 보고서 글꼴 크기(pt). 0=기본, 그 밖에는 10..16
-  updated_at DATETIME(3)  NOT NULL,              -- 수정 시각(UTC). 낙관적 잠금 토큰
-  PRIMARY KEY (user_id),
-  CONSTRAINT fk_cal_user_pref_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
-    ON UPDATE RESTRICT ON DELETE RESTRICT,
-  -- 머리기호는 파서가 빈 값을 '-'로 흡수하므로 앱에서 ''가 나올 수 없다. 구조로도 막아 둔다.
-  -- (custom 쪽은 ''가 정상값이라 이 CHECK 대상이 아니다)
-  CONSTRAINT chk_cal_user_pref_marker CHECK (report_marker        <> ''
-                                         AND report_marker_daily  <> ''
-                                         AND report_marker_weekly <> ''),
-  CONSTRAINT chk_cal_user_pref_indent CHECK (report_indent        BETWEEN 0 AND 6
-                                         AND report_indent_daily  BETWEEN 0 AND 6
-                                         AND report_indent_weekly BETWEEN 0 AND 6),
-  -- NOT LIKE '% ' 의 근거는 chk_cal_attendance_status 에 적어 두었다(utf8mb4_bin PAD SPACE 로
-  -- 'Gulim ' 이 IN 을 통과하는데, REPORT_FONT_FAMILY_SET.has('Gulim ') 는 false 라 앱은 기본 글꼴로 읽는다).
-  -- 'Malgun Gothic' 의 가운데 공백은 이 검사에 걸리지 않는다. 막는 것은 '끝의' 공백뿐이다.
-  CONSTRAINT chk_cal_user_pref_font_family CHECK (report_font_family IN ('','Malgun Gothic','Gulim','Dotum','Batang','NanumGothic')
-                                              AND report_font_family NOT LIKE '% '),
-  CONSTRAINT chk_cal_user_pref_font_size   CHECK (report_font_size = 0 OR report_font_size BETWEEN 10 AND 16)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='사용자당 1행 설정(보고서 서식). PK=(user_id). 삭제 경로 없음.';
+-- 옛 보고서 창의 서식(머리기호, 들여쓰기의 공통, 일간, 주간 9칸)과 보고 글꼴 2칸을 사용자당 1행으로 담던 표다.
+-- 근태 탭은 서식 칸을 쓰지 않고, 글꼴만 [취합] 미리 보기가 썼다. 글꼴은 계정별 localStorage(tc_rptFont:<계정>)로 옮겼고
+-- 기존 값은 옮기지 않았다(기본 글꼴로 시작). 2026-11-06 사용자 결정으로 v22 조각이 표째 지웠다(docs/DB-V22-REPORT-HOURS.md 2).
+--   되살리지 말 것. 위 DROP TABLE IF EXISTS 줄은 옛 배포 DB 를 새로 깔 때 지우는 몫이라 남긴다.
 
 -- =====================================================================
 --  11. cal_user_rev: 동시성·동기화 단일 감시점(§3.1)
@@ -1682,20 +1547,11 @@ CREATE TABLE cal_user_rev (
   COMMENT='사용자별 동시성 감시점. 쓰기 첫 문장이 ODKU 로 잡는 행 — 번호 발급도 이 락에 기댄다(H-1). DELETE 금지.';
 
 -- =====================================================================
---  12. cal_migration_log: data.xml → DB 1회성 이관의 재실행 방지(§8)
+--  (12. cal_migration_log: 구조 22 에서 지웠다. 번호는 비워 둔다)
 -- =====================================================================
--- 데이터 INSERT 와 같은 트랜잭션에 넣고, 행이 있으면 도구가 거부한다.
--- XML 원본 없음(구 lsMigrated 마커의 후속). UPSERT, REPLACE, 선삭제 금지.
--- ★ 사용자당 1행이므로 PK 는 (user_id) 다.
-CREATE TABLE cal_migration_log (
-  user_id     SMALLINT UNSIGNED NOT NULL,   -- 이관된 사용자. 이관은 PC 단위가 아니라 사람 단위
-  source_host VARCHAR(255) NOT NULL DEFAULT '',   -- 이관을 실행한 PC 이름. 두 자리 사용자 사고 추적용
-  migrated_at DATETIME(3)  NOT NULL,              -- 이관 시각(UTC)
-  PRIMARY KEY (user_id),
-  CONSTRAINT fk_cal_migration_log_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
-    ON UPDATE RESTRICT ON DELETE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='data.xml→DB 1회성 이관 마커(사람 단위). PK=(user_id). 행 존재=이관 완료, 재실행 거부 근거.';
+-- data.xml 에서 DB 로 옮기는 관리자 도구(db/deploy/xml-to-db)의 재실행 방지 마커였다. 앱 안 XML 가져오기는 파일 이름 바꾸기로
+-- 재실행을 막으므로 이 표를 쓰지 않는다. 2026-11-06 사용자 결정으로 도구와 함께 지웠다(v22 조각, docs/DB-V22-REPORT-HOURS.md 2).
+--   되살리지 말 것. 위 DROP TABLE IF EXISTS 줄은 옛 배포 DB 를 새로 깔 때 지우는 몫이라 남긴다.
 
 -- =====================================================================
 --  (cal_audit_trash: 폐지. 번호를 주지 않는다. 옛 명부에서는 12번이었다)
@@ -1813,9 +1669,13 @@ CREATE TABLE cal_schema_meta (
 --       앱 상수는 DbGate.AppStructureVersion(20).
 --   - 21 (2026-11-04): 과제 탭 다른 과제 보기(이관 조각 db/deploy/migrations/v21-project-watch.sql, docs/PC-WATCH.md).
 --       보기만 과제 목록 표 cal_project_watch(아래 15-2)를 더한다. 표 수가 하나 는다. 앱 상수는 DbGate.AppStructureVersion(21).
+--   - 22 (2026-11-06): 일간보고 과제별 줄과 안 쓰는 표 정리(이관 조각 db/deploy/migrations/v22-report-hours.sql, docs/DB-V22-REPORT-HOURS.md).
+--       cal_report_hours 의 옛 줄을 지우고 cat_no, fk_crh_cat, idx_crh_cat 을 걷은 뒤 cat_uid, project_uid, body 와 색인 둘을 더하고
+--       시간 제약을 0 이상으로 넓힌다. cal_report_daily.memo, cal_report_weekly_hours.cat_uid(기존 줄 채우기)와 ix_crwh_cat 을 더한다.
+--       안 쓰는 표 셋(cal_task_hours, cal_migration_log, cal_user_pref)을 지운다. 표 수가 셋 준다. 앱 상수는 DbGate.AppStructureVersion(22).
 --   ★ app_ 세 키는 빈 값으로 시딩한다(새 버전 없음). 배포 때 release-v<버전>.sql 이 채운다(DB-RELEASE-OPS §4).
 --   ★ 첫 줄(db_structure_version)의 모양을 바꾸지 말 것. setup-taskcalendar.ps1 과 시험이 이 줄에서 기대값을 읽는다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '21', UTC_TIMESTAMP(3)),
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '22', UTC_TIMESTAMP(3)),
   ('db_updating', '0', UTC_TIMESTAMP(3)),
   ('app_latest_version', '', UTC_TIMESTAMP(3)),
   ('app_installer_file', '', UTC_TIMESTAMP(3)),

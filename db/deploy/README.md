@@ -35,6 +35,7 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 | `migrations/v19-project-order.sql` | **이관 조각**(18 → 19, 2026-10-26, docs/PROJECT-ADMIN-UX.md). 혼자 돌리지 않는다. `project.sort_no`(그 구분 안의 순서, 화면 No)를 `status_id` 뒤에 더하고(INSTANT), 보이는 과제에 구분마다 지금 화면 순서(통상명칭, 비었으면 사업명)로 1 부터 매긴다(숨긴 과제는 비워 둔다). `section_code`, `status_code` 표 설명에서 고정 번호 문구를 지운다. 이미 19 이상이면 건너뛰고, 다시 돌려도 번호가 빈 행만 채운다. 과제 최신화 SQL(엑셀 No 순서)은 이 조각이 든 배포 SQL 다음에 돌린다 |
 | `migrations/v20-weekly-meeting.sql` | **이관 조각**(19 → 20, 2026-10-29, docs/ATTENDANCE-PLAN.md §13.4). 혼자 돌리지 않는다. `cal_report_weekly.meeting`(주간보고 회의내용, MEDIUMTEXT NULL)을 `plan` 뒤에 더한다(INSTANT). 기존 행은 NULL 로 두고(이 칸이 생기기 전에 작성한 주) 앱은 빈 글로 읽는다. 2026-10-30(결정 14, §14.4)부터 같은 조각이 주간 과제투입시간 표 `cal_report_weekly_hours`(MM 집계의 원천, `cal_report_weekly` 의 CASCADE 자식)도 없을 때만 만든다(구조 번호는 20 그대로). 이미 20 이상이면 건너뛰고, 다시 돌려도 칸과 표가 없을 때만 더한다. 2026-11-02(docs/PC-RECUR.md)부터 같은 조각이 과제 일정 반복 칸 `cal_project_event.recur_freq`(ENUM weekly, monthly, NULL, `memo` 뒤, INSTANT)와 예외일 표 `cal_project_event_except`(`cal_project_event` 의 CASCADE 자식)도 없을 때만 만든다. 새 표의 권한은 이 조각이 주지 않는다. 폐쇄망 서버 앱 계정은 DB 전체 권한이라 그대로 쓰고, 표마다 권한을 주는 개발 PC 는 `grants-calendar.sql` 의 그 줄을 root 로 따로 준다(이미 20 인 개발 DB 는 `dist/rehearsal/apply-v20c-dev.sql`) |
 | `migrations/v21-project-watch.sql` | **이관 조각**(20 → 21, 2026-11-04, docs/PC-WATCH.md). 혼자 돌리지 않는다. 과제 탭 보기만 목록 표 `cal_project_watch`(보는 사람, 보는 공식 과제, 넣은 시각 `added_at`)를 없을 때만 만든다. PK `(user_id, project_id)`, 과제 FK CASCADE(휴지통의 과제 영구 삭제를 막지 않는다), 사람 FK RESTRICT. 한 사람 50개 상한은 DB 가 아니라 앱이 넣을 때 센다. 옮길 데이터는 없다(빈 표). `information_schema` 로 열 수 3, 기본 키 열 수 2, FK 둘의 대상과 규칙을 확인한 뒤 구조 번호를 21 로 올린다. 이 조각에 DELETE 는 없고 UPDATE 는 끝의 구조 번호 한 줄(키 칸 WHERE)이다. 권한은 주지 않는다. 표마다 권한을 주는 개발 PC 는 `grants-calendar.sql` 의 `cal_project_watch` 줄(SELECT, INSERT, DELETE)을 root 로 따로 준다. 이미 21 이상이면 건너뛴다 |
+| `migrations/v22-report-hours.sql` | **이관 조각**(21 → 22, 2026-11-06, docs/DB-V22-REPORT-HOURS.md). 혼자 돌리지 않는다. `cal_report_hours` 의 옛 줄을 모두 지우고(`WHERE user_id > 0`) 과제 번호 참조를 FK `fk_crh_cat`, 색인 `idx_crh_cat`, 칸 `cat_no` 순서로 걷는다. 시간 제약 `chk_crh_hours` 를 두 문장으로 0 이상 24 이하로 바꾸고, `cat_uid`, `project_uid`(`task_name` 뒤), `body`(`hours` 뒤), `cal_report_daily.memo`(`content` 뒤), `cal_report_weekly_hours.cat_uid`(`task_name` 뒤)를 INSTANT 로 더한 뒤 색인 `ix_crh_project`, `ix_crh_cat`, `ix_crwh_cat` 과 표 설명을 단다. 기존 주간 줄 `cat_uid` 를 한 번 채운다(공식 과제는 `db-<project_uid>`, 개인 과제는 이름이 글자까지 같은 개인 과제가 하나뿐일 때만). `information_schema` 검증을 통과한 뒤 맨 끝에 안 쓰는 표 셋(`cal_task_hours`, `cal_migration_log`, `cal_user_pref`)을 지운다. 되돌릴 수 없으므로 Workbench 백업이 필수다. 권한은 주거나 거두지 않는다. 이미 22 이상이면 건너뛰고, 어느 문장 뒤에서 멈췄든 다시 돌리면 이어서 끝낸다. MySQL 8.4 실제 리허설은 `tools/db-rehearsal/rehearse-v22.mjs` |
 | `create-app-user.sql` | 앱 계정 생성과 과제 표 권한(setup 이 스키마 이름을 바꿔 적용한다) |
 | `load-template.sql` | **내부망 LLM용** 데이터 INSERT 템플릿 + 규칙(이름으로 적고 번호로 바꿔 넣는다) |
 | `migrate-2026-10-15-code-ids.sql` | **데이터가 있는 로컬 DB 전용 1회 이관**(v12 → v13). 코드표 넷(발주처, 구분, 상태, 직급)을 번호 키로. 절단 관문(BINARY)과 사후 검증이 어긋나면 에러로 멈춘다. 언제, 어떻게는 아래 '코드표 번호 키 이관' 절 |
@@ -973,8 +974,8 @@ mysqlbinlog --start-datetime="<덤프 시각>" <binlog 파일들> | mysql -u roo
 - **순서를 바꾸지 마세요.** 2 를 먼저 하면 적용할 대상이 없습니다.
 - 일부만 되살리려면 **운영 DB 에 직접 붓지 말고** 임시 DB 로 복원한 뒤 필요한 행만 옮기세요.
   덤프 전체를 그대로 부으면 덤프 이후의 정상 변경까지 되돌아갑니다.
-- **`cal_migration_log` 를 함께 되돌린다는 점에 주의**하세요. 그 표는 이관 재실행 방지 마커라,
-  복원 시점이 이관 이전이면 이관 도구가 다시 돌 수 있는 상태가 됩니다(설계 §8).
+- (구조 22 전 백업만 해당) 옛 백업에는 `cal_migration_log`(지운 관리자 도구 xml-to-db 의 재실행 방지 마커)가 들어 있습니다.
+  구조 22 부터 그 표와 도구는 없으므로 되돌려도 영향이 없습니다.
 
 ### 회귀 계약: `tests/restore-guards.test.mjs`, `tests/backup-guards.test.mjs`
 
@@ -1195,7 +1196,7 @@ setup-taskcalendar.cmd -DbHost <새서버>
 - 사용자 표(`app_user` 등)는 원본에서 옮기지 않습니다. `setup` 이 비공개 저장소 `taskmgr-company-data` 의 시드로 `user_id`, `org_id`, `title_id` 구조를 처음부터 만듭니다. 그래서 옛 덤프가 옛 `app_user`(PK=`login_id`)를 되살려 놓아도 새 DB 에는 영향이 없습니다(옛 키를 옮기던 `migrate-2026-08-24-user-id.sql` 은 2026-10-15 에 지웠습니다).
 - 이미 쓰던 `taskcalendar`(캘린더 기록 포함)를 그대로 옮겨야 하는 경우는 `setup` 이 아니라 덤프 복원입니다(DEPLOY.md §0-6, 아래 '복구' 절의 `restore-taskmgr`). `setup` 을 다시 돌리면 대상의 캘린더 기록이 지워집니다.
 - **이관 직후 새 서버에서 `backup-taskmgr.cmd -Install` 을 돌리세요.** 백업은 구조에 딸려 오지 않습니다(별도 도구·스케줄러 등록). 아래 '백업' 절.
-- 사용자 PC 에 남아 있는 옛 캘린더 파일(`%APPDATA%\TaskCalendar\data.xml`)은 이 dump/restore 경로가 아니라 **1회성 이관**으로 옮깁니다(설계 §8. `cal_migration_log` 가 재실행을 막습니다). 두 갈래가 있습니다. 배포자가 일괄로 돌리는 **`xml-to-db`** 도구, 그리고 사용자가 앱에서 직접 올리는 **XML 가져오기**(자동 이관은 폐기했습니다. 설계 §3b). 어느 쪽이든 **한 번**입니다.
+- 사용자 PC 에 남아 있는 옛 캘린더 파일(`%APPDATA%\TaskCalendar\data.xml`)은 이 dump/restore 경로가 아니라 **1회성 이관**으로 옮깁니다(설계 §8). 길은 하나입니다. 사용자가 앱에서 직접 올리는 **XML 가져오기**(자동 이관은 폐기했습니다. 설계 §3b). 가져온 파일은 이름이 바뀌어 다시 가져오지 않습니다. 배포자 일괄 도구 `xml-to-db` 와 그 마커 표 `cal_migration_log` 는 구조 22(2026-11-06)에서 지웠습니다.
 
 ## 검증
 setup-taskcalendar 후(그 스크립트가 검증 보고서를 남깁니다) 또는:

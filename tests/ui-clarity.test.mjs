@@ -188,7 +188,7 @@ test('변이 M1: #hbHide 를 되살리면 S6 이 잡는다', () => {
   assert.throws(() => S.trayCloseOnly(bad), /hbHide|data-host="hide"|4개/);
 });
 test('변이 M2: payload 를 dryRun:true 로 보내면 S5 가 잡는다', () => {
-  const bad = mutate(app, 'hours: atHoursPayload(c.blocks), dryRun: false };', 'hours: atHoursPayload(c.blocks), dryRun: true };');
+  const bad = mutate(app, 'hours: atHoursPayload(c.blocks), memo: atBodyNorm(c.memo), dryRun: false };', 'hours: atHoursPayload(c.blocks), memo: atBodyNorm(c.memo), dryRun: true };');
   assert.throws(() => S.dailyAlwaysReal(bad), /dryRun/);
 });
 test('변이 M3: 옛 이름(툴팁·안내·☰ 메뉴)을 되돌리면 S1·S2·S3 이 잡는다', () => {
@@ -203,8 +203,8 @@ test('변이 M3: 옛 이름(툴팁·안내·☰ 메뉴)을 되돌리면 S1·S2·
   assert.throws(() => S.hostMenu(badMenu), /맨 앞|넓게 보기/);
 });
 test('변이 M5: 예전 저장값(tc_netcusMode)을 다시 읽으면 S4 가 잡는다', () => {
-  const bad = mutate(app, 'hours: atHoursPayload(c.blocks), dryRun: false };',
-    "hours: atHoursPayload(c.blocks), dryRun: (function(){ try{ return localStorage.getItem('tc_netcusMode') !== 'real'; }catch(_){ return true; } })() };");
+  const bad = mutate(app, 'hours: atHoursPayload(c.blocks), memo: atBodyNorm(c.memo), dryRun: false };',
+    "hours: atHoursPayload(c.blocks), memo: atBodyNorm(c.memo), dryRun: (function(){ try{ return localStorage.getItem('tc_netcusMode') !== 'real'; }catch(_){ return true; } })() };");
   assert.throws(() => S.noSendModeUi(bad), /tc_netcusMode/);
   assert.throws(() => S.dailyAlwaysReal(bad), /dryRun/);
 });

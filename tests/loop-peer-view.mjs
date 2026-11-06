@@ -175,14 +175,16 @@ function setup() {
       { readOnly: false, what: '대상 예외일' });
   //  ★ 2026-10-01(docs/PEER-VIEW-FULL.md P2) — 할 일은 이제 **와야 하는** 것이다(내 화면이 그린다).
   //    (커밋은 2026-10-26 Git, SVN 삭제로 표째 없어졌다. 구조 18)
-  //    '안 준다'를 증명할 것(P3: 과제별 시간·근태·회의실)은 아래에 따로 심는다.
+  //    '안 준다'를 증명할 것(P3: 보고한 과제별 시간과 보고 글, 근태)은 아래에 따로 심는다.
   sql(`INSERT INTO cal_todo (user_id,todo_no,uid,todo_text,note,done,prio,sort_order,created_at,updated_at) ` +
       `VALUES (${t},1,'t-pv-1','비밀 할일','비밀 비고',0,'normal',0,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`,
       { readOnly: false, what: '대상 할일' });
   //  ★ 새어 나오면 안 되는 것들(P3) — '안 준다'를 증명하려면 있어야 한다.
   //  (회의실은 2026-10-21 부터 사람마다 두지 않는다. 회사 공용 room_code 라 열람 창이 숨길 개인 회의실이 없다, SHARED-ROOMS)
-  sql(`INSERT INTO cal_task_hours (user_id,work_date,cat_no,hours,updated_at) VALUES (${t},'2026-09-10',1,7.25,'2026-01-01 00:00:00.000')`,
-      { readOnly: false, what: '대상 과제별 시간' });
+  //  (옛 작성 중 시간 cal_task_hours 는 구조 22 에서 없앴다. 대신 보낸 일간보고의 과제 줄(시간 7.25, 내용, cat_uid)을 심는다)
+  sql(`INSERT INTO cal_report_daily (user_id,work_date,status,overtime,content,memo,sent_at) VALUES (${t},'2026-09-10','2',3,'비밀 보고 본문','비밀 보고 메모','2026-01-01 00:00:00.000');
+       INSERT INTO cal_report_hours (user_id,work_date,line_no,task_name,cat_uid,project_uid,hours,body) VALUES (${t},'2026-09-10',0,'열람시험과제','c-pv-1',NULL,7.25,'비밀 보고 내용')`,
+      { readOnly: false, what: '대상 보낸 일간보고와 과제 줄' });
   sql(`INSERT INTO cal_attendance (user_id,work_date,status,overtime,updated_at) VALUES (${t},'2026-09-10','2',3,'2026-01-01 00:00:00.000')`,
       { readOnly: false, what: '대상 근태' });
 }
@@ -190,8 +192,9 @@ function cleanup() {
   for (const u of ALL_USERS) {
     const id = userId(u);
     if (!id) continue;
-    for (const t of ['cal_entry_except', 'cal_todo_day_note', 'cal_task_hours',
-                     'cal_attendance', 'cal_entry', 'cal_todo', 'cal_category', 'cal_user_pref'])
+    //  (cal_task_hours, cal_user_pref 는 구조 22 에서 없앴다. 보고 줄 cal_report_hours 는 cal_report_daily 를 지우면 CASCADE)
+    for (const t of ['cal_entry_except', 'cal_todo_day_note', 'cal_report_daily',
+                     'cal_attendance', 'cal_entry', 'cal_todo', 'cal_category'])
       sql(`DELETE FROM ${t} WHERE user_id=${id}`, { readOnly: false, what: `정리(${t})` });
     sql(`DELETE FROM cal_user_rev WHERE user_id=${id}`, { readOnly: false, what: 'rev 정리' });
     sql(`DELETE FROM app_user WHERE user_id=${id}`, { readOnly: false, what: '사용자 정리' });
@@ -250,7 +253,7 @@ try {
   for (const k of ['desc', 'gitRepo', 'svnRepo', 'usesRepo'])
     ok(`과제에 ${k} 키가 없다(설정·저장소 경로)`, !(k in c1));
   const blob = JSON.stringify(a);
-  ok('과제별 시간·근태가 새지 않는다', !/taskHours|attendance|7\.25/.test(blob));
+  ok('보고한 과제별 시간, 보고 글, 근태가 새지 않는다', !/taskHours|attendance|7\.25|비밀 보고/.test(blob));
   ok('거부 응답에는 데이터가 없다',
      Object.keys(peek(U_SELF, U_IN)).join(',') === 'allowed');
 

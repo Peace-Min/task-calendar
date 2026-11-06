@@ -27,7 +27,8 @@ namespace TaskCalendarWidget
         //  일간 보고 기록 저장(설계 §5.9, 결정 9). 회사 보고가 되읽기로 확인된 뒤(vr==1)에만 부르고 호출자가 결과를 기다린다.
         //  true = cal_report_daily 1행과 cal_report_hours N행을 한 트랜잭션으로 커밋했다. false 면 호출자가 공통 실패 안내를 띄운다
         //  (재시도는 회사 보고부터 다시 한다. DB 만 다시 저장하는 길은 없다). 예외는 던지지 않고 false 로 돌려준다.
-        Task<bool> SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson);
+        //  memo = 근태 일간 맨 위 자유 메모(구조 22, cal_report_daily.memo). 없으면 ''. hoursJson = 블록마다 {name, catUid, projectUid, hours, body}.
+        Task<bool> SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string memo, string hoursJson);
         //  주간 보고 기록 저장. 반환값이 없다: 기록은 호스트가 뒤에서 10, 30, 60초 재시도한다(OfflineHost.cs S10).
         //    2026-11-06: 주간도 임시저장까지 앱이 하고 되읽기로 확인된 뒤에만 부른다(WEEKLY-UPSERT 끝 절). 제출은 사용자가 인트라넷에서 한다.
         //  meeting = 회의내용(resultwork, 구조 20). 폼에 채운 값 그대로 남긴다(ATTENDANCE-PLAN §13.3).
@@ -67,8 +68,8 @@ namespace TaskCalendarWidget
 
         // ----- 공개 API(원시값 입력 — MainWindow는 Req 타입을 몰라도 됨) -----
         // status: 사이트 근태 코드값 또는 ""(=미기록 — 사이트의 기존 근태를 건드리지 않는다. NetcusReq.Status 주석 참조)
-        public Task SubmitDaily(int y, int m, int d, string status, int overtime, string content, bool dryRun, string hoursJson = "")
-            => NetcusSubmit(new NetcusReq { Y = y, M = m, D = d, Status = status, Overtime = overtime, Content = content, DryRun = dryRun, HoursJson = hoursJson });
+        public Task SubmitDaily(int y, int m, int d, string status, int overtime, string content, bool dryRun, string hoursJson = "", string memo = "")
+            => NetcusSubmit(new NetcusReq { Y = y, M = m, D = d, Status = status, Overtime = overtime, Content = content, DryRun = dryRun, HoursJson = hoursJson, Memo = memo });
 
         //  resultwork = 회의내용(결정 13). 근태 탭 주간 편집이 보내면 새 글, 수정 화면 둘 다 채운다. 미처리사항(notendwork), 문제점(problem)은 받지 않는다.
         //    null = 요청에 회의내용 칸이 없다(보고서 창의 옛 주간 전송). 그때는 예전처럼 회의내용을 건드리지 않는다:
@@ -193,6 +194,7 @@ namespace TaskCalendarWidget
             //  웹이 실어 보낸 과제별 시간 배열(JSON 문자열). NetcusService 는 **해석하지 않고 실어 나를 뿐**이다 —
             //  보고 페이로드를 아는 건 호스트(MainWindow)이고, 여기에 파싱을 두면 통신 책임과 섮인다.
             public string HoursJson = "";
+            public string Memo = "";     // 자유 메모(구조 22). 회사 글(Content)에는 이미 들어 있고 기록(cal_report_daily.memo)에만 따로 남긴다
             public bool DryRun = true;
         }
 
@@ -622,7 +624,7 @@ namespace TaskCalendarWidget
                     //    커밋을 확인한 뒤에만 성공을 알린다. 저장이 실패하면 공통 실패 안내를 띄운다(창과 입력은 웹이 그대로 둔다).
                     //    vr==1 일 때만 부른다. 확인되지 않은 전송을 기록하면 표가 거짓말을 하게 된다.
                     NetcusProgress("기록 저장 중…");
-                    bool stored = await _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.HoursJson);
+                    bool stored = await _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.Memo, req.HoursJson);
                     NetcusResult(stored, stored ? "회사 보고와 기록 저장을 완료했습니다." : "처리를 완료하지 못했습니다. 다시 시도해 주세요.");
                     //  성공이면 확인용 창을 닫는다(2026-10-29 사용자). 눈으로 보려면 근태 창의 [인트라넷에서 확인]으로 그 달 달력을 연다. 실패면 남긴다.
                     if (stored) { try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { } }

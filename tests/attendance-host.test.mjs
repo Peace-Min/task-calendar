@@ -125,19 +125,20 @@ const checks = {
 
   // ④ 보고한 날 목록
   dailyList(s) {
-    assert.match(onWeb(s), /case "reportDailyList":[^\n]*\n\s*_ = RunReportDailyListAsync\(rq, GetStr\(doc, "from"\), GetStr\(doc, "to"\)\);/, 'reportDailyList 가 배선되지 않았다');
-    const r = member(s.main, 'private async Task RunReportDailyListAsync(string reqId, string from, string to)');
+    //  구조 22: detail(메모와 줄)을 함께 넘긴다(tests/report-hours-v22 가 detail 갈래를 본다).
+    assert.match(onWeb(s), /case "reportDailyList":[^\n]*\n(?:\s*\/\/[^\n]*\n)?\s*_ = RunReportDailyListAsync\(rq, GetStr\(doc, "from"\), GetStr\(doc, "to"\),/, 'reportDailyList 가 배선되지 않았다');
+    const r = member(s.main, 'private async Task RunReportDailyListAsync(string reqId, string from, string to');
     assert.match(r, /!ReportDb\.TryParseYmd\(from, out var f\) \|\| !ReportDb\.TryParseYmd\(to, out var t\) \|\| f > t/, '기간 날짜를 엄격히 보지 않는다(또는 뒤집힌 기간을 받는다)');
     assert.match(r, /\(t - f\)\.TotalDays > ReportDb\.ListMaxDays/, '기간 상한을 보지 않는다');
     assert.match(r, /string\? loginId = CurrentLoginId\(\);/, '사람을 세션에서 읽지 않는다(웹이 정하면 남의 보고를 읽는다)');
     assert.ok(!/GetStr\(doc, "loginId"\)|GetStr\(doc, "userId"\)/.test(onWeb(s).slice(onWeb(s).indexOf('case "reportDailyList":'), onWeb(s).indexOf('case "reportDailyList":') + 300)), '목록 읽기가 웹이 보낸 사람을 쓴다');
-    assert.match(r, /await Task\.Run\(\(\) => db\.ListDailyAsync\(loginId, f, t\)\)/, 'DB 를 UI 스레드 밖에서 읽지 않는다');
+    assert.match(r, /await Task\.Run\(\(\) => db\.ListDailyAsync\(loginId, f, t, withLines\)\)/, 'DB 를 UI 스레드 밖에서 읽지 않는다');
     assert.match(r, /ReplyOnUi\(reqId, new \{ ok = true, rows \}\);/, '성공 회신이 { ok, rows } 가 아니다');
     assert.ok(!/HostReply\(/.test(r), '목록 회신이 ReplyOnUi 를 거치지 않는다(백그라운드에서 HostReply 를 부르면 회신이 사라질 수 있다)');
     assert.match(s.rdb, /internal const int ListMaxDays = 400;/, '목록 기간 상한이 400일이 아니다');
     assert.match(s.rdb, /DateTime\.TryParseExact\(s \?\? "", "yyyy-MM-dd", CultureInfo\.InvariantCulture, DateTimeStyles\.None, out d\)/, "날짜 읽기가 'yyyy-MM-dd' 정확 일치가 아니다");
-    const l = member(s.rdb, 'public async Task<List<Dictionary<string, object?>>?> ListDailyAsync(string? loginId, DateTime from, DateTime to)');
-    assert.ok(l.includes('"SELECT work_date, status, overtime, content, sent_at FROM cal_report_daily " +\n                    "WHERE user_id=@u AND work_date BETWEEN @f AND @t ORDER BY work_date";'),
+    const l = member(s.rdb, 'public async Task<List<Dictionary<string, object?>>?> ListDailyAsync(string? loginId, DateTime from, DateTime to');
+    assert.ok(l.includes('"SELECT work_date, status, overtime, content, sent_at, memo FROM cal_report_daily " +\n                    "WHERE user_id=@u AND work_date BETWEEN @f AND @t ORDER BY work_date";'),
       'SELECT 가 사람(user_id)과 기간으로 거르지 않거나 날짜 순이 아니다');
     for (const p of ['@u", userId', '@f", from', '@t", to'])
       assert.ok(l.includes('cmd.Parameters.AddWithValue("' + p + ')'), `파라미터 ${p.split('"')[0]} 를 묶지 않는다`);
@@ -152,22 +153,22 @@ const checks = {
 
   // ⑤ 결정 9: 저장을 기다린 뒤에 결과
   decision9(s) {
-    assert.match(stripCsComments(s.netcus), /Task<bool> SaveDailyReport\(int y, int m, int d, string status, int overtime, string content, string hoursJson\);/, 'INetcusHost.SaveDailyReport 가 Task<bool> 이 아니다');
+    assert.match(stripCsComments(s.netcus), /Task<bool> SaveDailyReport\(int y, int m, int d, string status, int overtime, string content, string memo, string hoursJson\);/, 'INetcusHost.SaveDailyReport 가 Task<bool> 이 아니다');
     const v = verifiedBlock(stripCsComments(s.netcus));
-    const save = v.indexOf('bool stored = await _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.HoursJson);');
+    const save = v.indexOf('bool stored = await _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.Memo, req.HoursJson);');
     const res = v.indexOf('NetcusResult(stored, stored ? "회사 보고와 기록 저장을 완료했습니다." : "처리를 완료하지 못했습니다. 다시 시도해 주세요.");');
     assert.ok(save >= 0, 'vr==1 에서 저장을 기다리지 않는다');
     assert.ok(res >= 0, '결과가 저장 결과를 따르지 않거나 문구가 기획(결정 9)과 다르다');
     assert.ok(save < res, '결과를 저장보다 먼저 알린다(결정 9: 커밋 확인 뒤에만 성공)');
     assert.strictEqual((v.match(/NetcusResult\(/g) || []).length, 1, 'vr==1 블록에서 결과를 두 번 알린다(옛 성공 문구가 남았다)');
-    const hook = member(s.main, 'async Task<bool> INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson)');
+    const hook = member(s.main, 'async Task<bool> INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string memo, string hoursJson)');
     assert.match(hook, /return ok;/, '저장 훅이 결과를 돌려주지 않는다');
     assert.match(hook, /catch \(Exception ex\)[^\n]*ok = false;/, '저장 훅이 예외를 실패로 바꾸지 않는다(결과 알림이 끊긴다)');
   },
 
   // ⑥ 일간 백그라운드 재시도 없음(주간은 그대로)
   noDailyRetry(s) {
-    const hook = stripCsComments(member(s.main, 'async Task<bool> INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson)'));
+    const hook = stripCsComments(member(s.main, 'async Task<bool> INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string memo, string hoursJson)'));
     assert.ok(!/SaveReportRecordWithRetryAsync|__reportRecordFailed/.test(hook), '일간 저장이 아직 백그라운드 재시도나 그 실패 알림을 탄다');
     assert.ok(!/SaveReportRecordWithRetryAsync\("daily"/.test(stripCsComments(s.main) + stripCsComments(s.off)), '일간 재시도 호출이 남아 있다');
     assert.match(member(s.main, 'void INetcusHost.SaveWeeklyReport('), /SaveReportRecordWithRetryAsync\("weekly", sdate, db,/, '주간 재시도가 사라졌다(주간은 바꾸지 않는다)');
@@ -192,8 +193,8 @@ const checks = {
 
   // ⑧ 저장 성공 알림
   savedNotice(s) {
-    const hook = stripCsComments(member(s.main, 'async Task<bool> INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson)'));
-    const save = hook.indexOf('ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours));');
+    const hook = stripCsComments(member(s.main, 'async Task<bool> INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string memo, string hoursJson)'));
+    const save = hook.indexOf('ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours));');
     const gate = hook.indexOf('if (ok)');
     const push = hook.indexOf('ReportPush("window.__reportDailySaved && window.__reportDailySaved(" + JsonSerializer.Serialize(new { date, status = st, overtime = ot }) + ")");');
     assert.ok(save > 0, '저장을 기다리지 않는다');
@@ -288,7 +289,7 @@ const checks = {
     //  주간 과제투입시간(결정 14): 주간 행과 시간 줄을 한 트랜잭션으로, 그 주를 지우고 다시 넣는다(0 시간 제외, 공식 과제 id 꼴만)
     const t = stripCsComments(member(s.rdb, 'public async Task<bool> SaveWeeklyAsync('));
     const iTx = t.indexOf('await using var tx = await conn.BeginTransactionAsync(cts.Token);'), iUp = t.indexOf('INSERT INTO cal_report_weekly "');
-    const iDel = t.indexOf('"DELETE FROM cal_report_weekly_hours WHERE user_id=@u AND period_start=@s"'), iIns = t.indexOf('INSERT INTO cal_report_weekly_hours (user_id, period_start, line_no, task_name, project_uid, hours) VALUES ');
+    const iDel = t.indexOf('"DELETE FROM cal_report_weekly_hours WHERE user_id=@u AND period_start=@s"'), iIns = t.indexOf('INSERT INTO cal_report_weekly_hours (user_id, period_start, line_no, task_name, cat_uid, project_uid, hours) VALUES ');
     const iCommit = t.indexOf('await tx.CommitAsync(cts.Token);');
     assert.ok(iTx > 0 && iTx < iUp && iUp < iDel && iDel < iIns && iIns < iCommit, '주간 행과 시간 줄이 한 트랜잭션(행, 지우기, 넣기, 커밋 순)이 아니다');
     assert.ok((t.match(/\.Transaction = tx;/g) || []).length >= 3, '주간 저장의 명령이 모두 그 트랜잭션에 묶이지 않았다');
@@ -405,14 +406,14 @@ test('변이④b: 목록 회신을 백그라운드 HostReply 로 바꾸면 근�
 
 test('변이⑤: 옛 순서(결과 먼저, 저장 나중)로 되돌리면 결정9⑤ 가 실패한다', () => {
   const bad = mutate(src.netcus,
-    '                    bool stored = await _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.HoursJson);\n                    NetcusResult(stored, stored ? "회사 보고와 기록 저장을 완료했습니다." : "처리를 완료하지 못했습니다. 다시 시도해 주세요.");',
-    '                    NetcusResult(stored, stored ? "회사 보고와 기록 저장을 완료했습니다." : "처리를 완료하지 못했습니다. 다시 시도해 주세요.");\n                    bool stored = await _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.HoursJson);');
+    '                    bool stored = await _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.Memo, req.HoursJson);\n                    NetcusResult(stored, stored ? "회사 보고와 기록 저장을 완료했습니다." : "처리를 완료하지 못했습니다. 다시 시도해 주세요.");',
+    '                    NetcusResult(stored, stored ? "회사 보고와 기록 저장을 완료했습니다." : "처리를 완료하지 못했습니다. 다시 시도해 주세요.");\n                    bool stored = await _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.Memo, req.HoursJson);');
   assert.throws(() => checks.decision9(with_('netcus', bad)), /먼저 알린다/);
 });
 
 test('변이⑥: 일간을 백그라운드 재시도로 되돌리면 결정9⑥ 이 실패한다', () => {
-  const bad = mutate(src.main, 'try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours)); }',
-    'try { _ = Task.Run(() => SaveReportRecordWithRetryAsync("daily", "", db, () => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours))); ok = true; }');
+  const bad = mutate(src.main, 'try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours)); }',
+    'try { _ = Task.Run(() => SaveReportRecordWithRetryAsync("daily", "", db, () => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours))); ok = true; }');
   assert.throws(() => checks.noDailyRetry(with_('main', bad)), /백그라운드 재시도|재시도 호출이 남아/);
 });
 

@@ -338,8 +338,9 @@ const checks = {
   calCount(ps) {
     const code = maskPs(ps);
     const bare = blankStrings(code);
-    const T = ['cal_entry', 'cal_todo', 'cal_task_hours', 'cal_attendance', 'cal_report_daily', 'cal_report_weekly'];
-    assert.deepStrictEqual(listLiteral(code, 'CAL_DATA_TABLES'), T, '$CAL_DATA_TABLES 가 캘린더 기록 6표가 아니다');
+    //  2026-11-06 구조 22: cal_task_hours 를 표째 지워 다섯 표다(docs/DB-V22-REPORT-HOURS.md).
+    const T = ['cal_entry', 'cal_todo', 'cal_attendance', 'cal_report_daily', 'cal_report_weekly'];
+    assert.deepStrictEqual(listLiteral(code, 'CAL_DATA_TABLES'), T, '$CAL_DATA_TABLES 가 캘린더 기록 5표가 아니다');
     for (const t of T) {
       assert.ok(new RegExp(`\\nCREATE TABLE ${t} \\(`).test(calSchemaSrc), `실물: schema-calendar.sql 에 ${t} 가 없다 — 목록을 함께 고칠 것`);
     }

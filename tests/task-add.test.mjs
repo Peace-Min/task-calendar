@@ -56,7 +56,7 @@ const statics = {
   myTasksMarkup(app) {
     const m = block(app, 'categoryModal');
     assert.ok(/<button type="button" class="cat-add" id="btnCatAdd"><span class="cat-plus" aria-hidden="true">\+<\/span>과제 추가<\/button>/.test(m), '목록 아래에 [+ 과제 추가] 가 없다(D1)');
-    assert.ok(/id="catHead"[^>]*>.*<span>과제<\/span><span class="ch-tag"><\/span><span class="ch-count">기록<\/span>/.test(m) && !/ch-kind|건수/.test(m), '열 머리글(과제, 기록)이 없거나 옛 구분, 건수 칸이 남았다(D2)');
+    assert.ok(/id="catHead"[^>]*>.*<span>과제<\/span><span class="ch-tag"><\/span><span class="ch-count">일정<\/span><span class="ch-count">할 일<\/span>/.test(m) && !/ch-kind|건수/.test(m), '열 머리글(과제, 일정, 할 일)이 없거나 옛 구분, 건수 칸이 남았다(D2, CAT-COUNTS-SPLIT)');
     assert.ok(/<div id="catList" role="list"/.test(m), '목록(#catList role=list)이 없다');
     for (const gone of ['id="cName"', 'id="cDesc"', 'id="cPalette"', 'id="btnCatSave"', 'id="btnCatCancelEdit"', 'id="btnOfficialOpen"', 'id="offEntryMeta"', 'id="catOrderHint"', 'class="cat-form"', 'cat-sec-lb'])
       assert.ok(!app.includes(gone), `없앤 입력 폼, 입구 카드, 안내 줄이 남았다: ${gone}(D1)`);
@@ -69,7 +69,9 @@ const statics = {
     assert.ok(!/cat-badge|>DB<|data-act="(up|down|edit|del|unsub|movedata)"|▲|▼|🔒/.test(row), '줄에 「DB」 배지, ▲▼, 옛 버튼, 잠금 아이콘이 남았다(D2, D17)');
     assert.ok(/const CAT_KIND_LABEL = \{ official: '공식', default: '기본', personal: '일반' \};/.test(app), '구분 열의 말이 공식, 기본, 일반이 아니다(D17)');
     assert.ok(row.includes('삭제됨') && row.includes('c.dbGone'), 'DB 에서 사라진 공식 과제를 구분 칸에 「삭제됨」으로 보이지 않는다');
-    assert.ok(row.includes('catUsageCount(c.id)') && !row.includes('}건'), '기록 수가 catUsageCount(빼기 관문과 같은 숫자)가 아니거나 「건」이 붙었다');
+    //  두 칸 숫자는 catUsageSplit(빼기 관문 catUsageCount 의 두 항)에서 나온다(docs/CAT-COUNTS-SPLIT.md)
+    assert.ok(row.includes('catUsageSplit(c.id)') && row.includes('${u.ev}') && row.includes('${u.td}') && !row.includes('}건'), '기록 수가 catUsageSplit(빼기 관문과 같은 셈)의 일정, 할 일 두 칸이 아니거나 「건」이 붙었다');
+    assert.ok(extractFunction(app, 'catUsageCount').includes('const v = catUsageSplit(id); return v.ev + v.td;'), '빼기 관문 합계가 두 칸 숫자의 합이 아니다');
   },
   //  수정 창, 합치기 창, 추가 창 마크업과 버튼 문구(D4, D6, D9~D16)
   dialogsMarkup(app) {
@@ -241,7 +243,7 @@ if (!JSDOM) {
   }
 
   const checks = {
-    //  줄 구조: ⠿, 색 점, 이름(2줄 칸 + data-full + title), 메모 줄(있을 때만), 구분 열, 건수(catUsageCount), ⋯ · 하단 연결 버튼은 일반 과제가 있을 때만
+    //  줄 구조: ⠿, 색 점, 이름(2줄 칸 + data-full + title), 메모 줄(있을 때만), 구분 열, 일정과 할 일 두 칸(catUsageSplit), ⋯ · 하단 연결 버튼은 일반 과제가 있을 때만
     async listRows(source) {
       await withBoot(source, async (W) => {
         assert.deepStrictEqual(W.$$('#catList .cat-row').map((r) => r.dataset.id), W.ids(), '목록이 state.categories 순서가 아니다');
@@ -249,14 +251,15 @@ if (!JSDOM) {
         const kinds = W.$$('#catList .cat-row').map((r) => r.dataset.id + ':' + (r.querySelector('.cat-tag') ? r.querySelector('.cat-tag').textContent : ''));
         assert.deepStrictEqual(kinds, ['c-p:', 'db-1:공식', 'db-2:공식', 'db-g:삭제됨', 'c-v:', 'c-e:'], '이름 뒤 표가 다르다(공식과 삭제됨만 붙는다): ' + JSON.stringify(kinds));
         const r = W.row('c-p');
-        assert.deepStrictEqual([...r.children].map((c) => c.className), ['cat-grip', 'cat-dot', 'cat-main', 'cat-tagcol', 'cat-count', 'cat-more'], '줄의 칸 순서가 다르다(D2)');
+        assert.deepStrictEqual([...r.children].map((c) => c.className), ['cat-grip', 'cat-dot', 'cat-main', 'cat-tagcol', 'cat-count', 'cat-count', 'cat-more'], '줄의 칸 순서가 다르다(D2, 숫자는 일정과 할 일 두 칸)');
         const nm = r.querySelector('.cat-nm');
         assert.ok(nm.dataset.full === '프로젝트' && nm.title === '프로젝트' && nm.textContent === '프로젝트', '이름 칸에 원래 이름(data-full), title 이 없다(D14)');
         assert.strictEqual(r.querySelector('.cat-desc').textContent, '내 메모', '메모 줄이 없다');
         assert.strictEqual(W.row('db-2').querySelector('.cat-desc'), null, '메모가 없는데 메모 줄이 있다');
-        assert.strictEqual(r.querySelector('.cat-count').textContent, '2', '기록 수가 일정과 할 일 합계 숫자가 아니다');
-        assert.strictEqual(r.querySelector('.cat-count').title, '기록 2개', '기록 수 title 이 다르다');
-        assert.strictEqual(W.row('db-1').querySelector('.cat-count').textContent, '1');
+        const cnts = (row) => [...row.querySelectorAll('.cat-count')].map((c) => c.textContent);
+        assert.deepStrictEqual(cnts(r), ['1', '1'], '숫자 두 칸이 일정 수, 할 일 수가 아니다');
+        assert.ok([...r.querySelectorAll('.cat-count')].every((c) => c.title === '프로젝트, 일정 1개, 할 일 1개'), '숫자 title 이 "과제명, 일정 N개, 할 일 N개" 가 아니다');
+        assert.deepStrictEqual(cnts(W.row('db-1')), ['1', '0']);
         assert.strictEqual(r.querySelector('[data-catmore]').getAttribute('aria-haspopup'), 'menu');
         assert.ok(!W.$('#catList .cat-badge') && !W.$('#catList [data-act]'), '「DB」 배지나 옛 줄 버튼이 남았다');
         assert.strictEqual(W.$('#btnRelinkOpen'), null, '없앤 하단 연결 버튼이 남았다(D8)');
@@ -389,20 +392,12 @@ if (!JSDOM) {
         assert.ok(W.ids().includes('db-1'), '사용 중인 공식 과제가 빠졌다');
         W.item('db-2', 'unsub').click();
         await settle();
-        assert.strictEqual(W.confirms().length, 0, '시간 기록이 없는데 빼기 전에 물었다(D7)');
+        assert.strictEqual(W.confirms().length, 0, '빼기 전에 물었다(D7)');
         assert.ok(!W.ids().includes('db-2'), '데이터 없는 공식 과제가 바로 빠지지 않았다');
         assert.strictEqual(W.saves(), 1, '빼기가 한 번의 저장으로 나가지 않았다');
         assert.ok(W.toasts().includes("'공식 둘'을(를) 내 캘린더에서 뺐습니다"), '빼기 결과 토스트가 다르다: ' + JSON.stringify(W.toasts()));
       });
-      //  과제별 시간만 있으면 그때만 묻는다(시간이 함께 지워진다)
-      const withHours = Object.assign({}, DATA, { taskHours: { '2026-10-01': { 'db-2': 2 } } });
-      await withBoot(source, async (W) => {
-        W.item('db-2', 'unsub').click();
-        await settle();
-        const cf = W.confirms();
-        assert.ok(cf.length === 1 && /과제별 시간 1일이 함께 지워집니다/.test(cf[0][1]), '시간 기록이 있는데 묻지 않았다: ' + JSON.stringify(cf));
-        assert.ok(!W.ids().includes('db-2'));
-      }, withHours);
+      //  (과제별 작성 중 시간은 구조 22 에서 없앴다. 빼기는 늘 묻지 않는다. 보고한 공수는 보고 기록에 남는다)
     },
     //  순서 메뉴(맨 위로 등)는 moveCategory 를 한 번 거쳐 저장 한 번
     async orderViaMoveCategory(source) {
@@ -537,7 +532,7 @@ if (!JSDOM) {
   test('런타임③: 줄을 누르면 수정 창(⋯, ⠿ 는 아님) · 줄에서 Enter · ⋯ 의 수정', () => checks.rowOpensEdit(src));
   test('런타임④: 수정 저장 — 일반 이름 바꾸기(줄바꿈은 공백), 같은 이름과 빈 이름 거절, 공식 과제 이름 불변', () => checks.editSave(src));
   test('런타임⑤: 합치기 — 확인창 없음, 체크하면 일반 삭제, 공식 빼기, 기본 과제는 체크 없음', () => checks.mergeAfter(src));
-  test('런타임⑥: 빼기 — 사용 중이면 꺼짐, 0건이면 바로, 과제별 시간이 있을 때만 묻는다', () => checks.unsubNow(src));
+  test('런타임⑥: 빼기는 사용 중이면 꺼짐, 0건이면 묻지 않고 바로', () => checks.unsubNow(src));
   test('런타임⑦: 순서 메뉴는 moveCategory 를 한 번 거쳐 저장 한 번', () => checks.orderViaMoveCategory(src));
   test('런타임⑧: 추가 창 공식 탭 — 표, 그룹, 펼침, [추가] 뒤 그 줄만 「✓ 내 과제」, 창은 열린 채, 연결 안 됨 상태', () => checks.addOfficial(src));
   test('런타임⑨: 추가 창 일반 탭 — 추가 뒤 창이 닫힘, [닫기] 는 같은 자리, 빈 이름 거절', () => checks.addOwn(src));
@@ -546,7 +541,7 @@ if (!JSDOM) {
 
   //  (c) 변이 — 되돌아가면 안 되는 판을 만들고 같은 검사가 잡는지 본다
   test('변이①: 빼기를 늘 확인창으로 되돌리면 런타임⑥ 이 실패한다', async () => {
-    const bad = mutate("  if(hrs && await confirmBox('내 캘린더에서 빼기',", "  if(await confirmBox('내 캘린더에서 빼기',", src);
+    const bad = mutate("  if(unsubscribeDbCat(id)){ save();", "  if(await confirmBox('내 캘린더에서 빼기', '뺄까요?', '빼기') !== 'ok') return;\n  if(unsubscribeDbCat(id)){ save();", src);
     await assert.rejects(() => checks.unsubNow(bad), /묻었다|물었다/);
   });
   test('변이②: 공식 과제 [추가] 뒤 창을 닫으면 런타임⑧ 이 실패한다', async () => {

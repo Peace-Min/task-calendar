@@ -336,7 +336,6 @@ const writedb = readText(new URL('../widget/CalendarWriteDb.cs', import.meta.url
 //  이유 없이 목록만 있으면 다음 사람이 하나 지우고 통과시킨다.
 const NEVER_WIPE = [
   ['cal_user_rev',      'rev 는 단조증가여야 삭제까지 감지된다(§3.1). DELETE 권한도 없다'],
-  ['cal_migration_log', '재실행 방지 마커. 지우면 같은 XML 을 두 번 넣을 수 있다'],
   ['cal_report_daily',  '보고한 사실은 캘린더 데이터가 아니다 — 가져오기로 지난 보고 이력이 사라지면 안 된다'],
   ['cal_report_hours',  '위와 같다(cal_report_daily 의 자식)'],
   ['cal_report_weekly', '위와 같다'],
@@ -400,7 +399,7 @@ const c6 = {
     const i = cs.indexOf('if (replaceAll)');
     const blk = cs.slice(i, cs.indexOf('// ── 2.', i));
     const at = (t) => blk.indexOf('DELETE FROM ' + t);
-    for (const t of ['cal_task_hours', 'cal_entry', 'cal_todo']) {
+    for (const t of ['cal_entry', 'cal_todo']) {   // 작성 중 시간 표는 구조 22 에서 없앴다
       assert.ok(at(t) > 0, `전량 교체가 ${t} 를 지우지 않는다`);
       assert.ok(at(t) < at('cal_category'),
         `${t} 를 cal_category 보다 나중에 지운다 — FK 가 RESTRICT 라 ERROR 1451 로 죽는다`);
@@ -421,8 +420,8 @@ test('변이⑲: 가져오기를 통상 저장으로 되돌리면 교체① 이 
 });
 
 test('변이⑳: 전량 삭제에 cal_user_rev 를 끼워 넣으면 교체④ 가 실패한다', () => {
-  const bad = mutate('                    wiped += await Exec(conn, tx, $"DELETE FROM cal_task_hours WHERE user_id={u}", ct);',
-    '                    wiped += await Exec(conn, tx, $"DELETE FROM cal_user_rev WHERE user_id={u}", ct);', writedb);
+  const bad = mutate('                    wiped += await Exec(conn, tx, $"DELETE FROM cal_attendance WHERE user_id={u}", ct);',
+    '                    wiped += await Exec(conn, tx, $"DELETE FROM cal_attendance WHERE user_id={u}", ct);\n                    wiped += await Exec(conn, tx, $"DELETE FROM cal_user_rev WHERE user_id={u}", ct);', writedb);
   assert.throws(() => c6.wipeSpares(bad), /cal_user_rev 을\(를\) 지운다/);
 });
 

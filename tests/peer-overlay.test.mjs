@@ -399,11 +399,11 @@ if (!JSDOM) {
     test('P 필터바: 과제 팝업 목록은 상대 과제뿐이고, 상대 과제 건수에 내 일정이 안 섞인다(FILTER-MULTI)', () => {
       assert.strictEqual(P.ev('document.querySelector("#filterbar .fb-btn .pv").textContent.trim()'), '전체');
       P.ev('document.querySelector("#filterbar .fb-btn").click()');
-      const opts = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#fbPop .fb-opt"), function(b){return b.querySelector(".nm").textContent + " " + b.querySelector(".n").textContent;})');
+      const opts = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#fbPop .fb-opt"), function(b){return b.querySelector(".nm").textContent + " " + Array.prototype.map.call(b.querySelectorAll(".n2"), function(x){return x.textContent;}).join("/");})');
       P.ev('filterPopClose(false)');
       assert.strictEqual(opts.length, PEER_CATS.length,
         '팝업 목록 수가 상대 과제 수와 다르다(내 과제가 샜다): ' + JSON.stringify(opts));
-      assert.deepStrictEqual(opts, ['설계 검토 2', '보고서 작성 1'],
+      assert.deepStrictEqual(opts, ['설계 검토 2/0', '보고서 작성 1/0'],
         '내 일정이 상대 과제 건수에 섞이면 숫자가 커진다: ' + JSON.stringify(opts));
     });
 

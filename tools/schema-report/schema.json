@@ -1,7 +1,7 @@
 {
  "meta": {
   "db": "taskcalendar",
-  "schemaVersion": "21",
+  "schemaVersion": "22",
   "mysql": "8.4.9",
   "charset": [
    "utf8mb4",
@@ -69,7 +69,7 @@
    "taskmgr_app@%",
    "taskmgr_backup@localhost"
   ],
-  "dumpedAt": "2026-11-06T04:07:08.413Z",
+  "dumpedAt": "2026-11-06T07:43:27.019Z",
   "stats": {
    "viewScope": {
     "self": 71,
@@ -803,61 +803,6 @@
    "checks": []
   },
   {
-   "name": "cal_migration_log",
-   "engine": "InnoDB",
-   "rows": 1,
-   "comment": "data.xml→DB 1회성 이관 마커(사람 단위). PK=(user_id). 행 존재=이관 완료, 재실행 거부 근거.",
-   "coll": "utf8mb4_0900_ai_ci",
-   "exact": 1,
-   "columns": [
-    {
-     "name": "user_id",
-     "type": "smallint unsigned",
-     "nullable": false,
-     "def": null,
-     "key": "PRI",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "source_host",
-     "type": "varchar(255)",
-     "nullable": false,
-     "def": "",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "migrated_at",
-     "type": "datetime(3)",
-     "nullable": false,
-     "def": null,
-     "key": "",
-     "extra": "",
-     "comment": ""
-    }
-   ],
-   "indexes": [
-    {
-     "name": "PRIMARY",
-     "unique": true,
-     "cols": "user_id"
-    }
-   ],
-   "fks": [
-    {
-     "name": "fk_cal_migration_log_user",
-     "cols": "user_id",
-     "ref": "app_user",
-     "refCols": "user_id",
-     "upd": "RESTRICT",
-     "del": "RESTRICT"
-    }
-   ],
-   "checks": []
-  },
-  {
    "name": "cal_project_change",
    "engine": "InnoDB",
    "rows": 0,
@@ -1401,6 +1346,15 @@
      "comment": ""
     },
     {
+     "name": "memo",
+     "type": "mediumtext",
+     "nullable": true,
+     "def": null,
+     "key": "",
+     "extra": "",
+     "comment": "근태 일간 작성의 자유 메모(구조 22). NULL 은 이 칸이 생기기 전의 옛 보고(content 를 해석한다)"
+    },
+    {
      "name": "sent_at",
      "type": "datetime(3)",
      "nullable": false,
@@ -1447,12 +1401,12 @@
    ],
    "checks": [
     {
-     "name": "chk_crd_status",
-     "clause": "((`status` in (_utf8mb4\\\\'\\\\',_utf8mb4\\\\'1\\\\',_utf8mb4\\\\'2\\\\',_utf8mb4\\\\'3\\\\',_utf8mb4\\\\'4\\\\',_utf8mb4\\\\'5\\\\',_utf8mb4\\\\'6\\\\',_utf8mb4\\\\'7\\\\',_utf8mb4\\\\'9\\\\',_utf8mb4\\\\'10\\\\',_utf8mb4\\\\'11\\\\',_utf8mb4\\\\'12\\\\')) and (not((`status` like _utf8mb4\\\\'% \\\\'))))"
-    },
-    {
      "name": "chk_crd_overtime",
      "clause": "((`overtime` >= 0) and (`overtime` <= 11))"
+    },
+    {
+     "name": "chk_crd_status",
+     "clause": "((`status` in (_utf8mb4\\\\'\\\\',_utf8mb4\\\\'1\\\\',_utf8mb4\\\\'2\\\\',_utf8mb4\\\\'3\\\\',_utf8mb4\\\\'4\\\\',_utf8mb4\\\\'5\\\\',_utf8mb4\\\\'6\\\\',_utf8mb4\\\\'7\\\\',_utf8mb4\\\\'9\\\\',_utf8mb4\\\\'10\\\\',_utf8mb4\\\\'11\\\\',_utf8mb4\\\\'12\\\\')) and (not((`status` like _utf8mb4\\\\'% \\\\'))))"
     }
    ]
   },
@@ -1460,7 +1414,7 @@
    "name": "cal_report_hours",
    "engine": "InnoDB",
    "rows": 0,
-   "comment": "보낸 과제별 시간 — 공수계산기의 원천. 캘린더가 본문을 만들 때 이미 아는 값이다(파싱 아님)",
+   "comment": "근태 일간보고 과제별 줄. 주간 불러오기, 이전 보고, 공수 집계, 공식 과제 이관의 원천",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 0,
    "columns": [
@@ -1501,13 +1455,22 @@
      "comment": ""
     },
     {
-     "name": "cat_no",
-     "type": "int unsigned",
+     "name": "cat_uid",
+     "type": "varchar(80)",
      "nullable": true,
      "def": null,
      "key": "",
      "extra": "",
-     "comment": ""
+     "comment": "그 블록의 앱 과제 id 원문(cal_category.uid 와 같은 정의). NULL 은 캘린더 과제와 이어지지 않은 블록. FK 없음"
+    },
+    {
+     "name": "project_uid",
+     "type": "char(36)",
+     "nullable": true,
+     "def": null,
+     "key": "MUL",
+     "extra": "",
+     "comment": "공식 과제 id(project.uid). 개인 과제는 NULL. 과제가 지워져도 남도록 FK 없음"
     },
     {
      "name": "hours",
@@ -1517,13 +1480,27 @@
      "key": "",
      "extra": "",
      "comment": ""
+    },
+    {
+     "name": "body",
+     "type": "mediumtext",
+     "nullable": true,
+     "def": null,
+     "key": "",
+     "extra": "",
+     "comment": "그 과제의 그날 내용(보낸 그대로의 줄바꿈과 들여쓰기). 새 앱은 NULL 을 쓰지 않는다(없으면 빈 글)"
     }
    ],
    "indexes": [
     {
-     "name": "idx_crh_cat",
+     "name": "ix_crh_cat",
      "unique": false,
-     "cols": "user_id,cat_no,work_date"
+     "cols": "user_id,cat_uid"
+    },
+    {
+     "name": "ix_crh_project",
+     "unique": false,
+     "cols": "project_uid,work_date"
     },
     {
      "name": "PRIMARY",
@@ -1532,14 +1509,6 @@
     }
    ],
    "fks": [
-    {
-     "name": "fk_crh_cat",
-     "cols": "user_id,cat_no",
-     "ref": "cal_category",
-     "refCols": "user_id,cat_no",
-     "upd": "RESTRICT",
-     "del": "RESTRICT"
-    },
     {
      "name": "fk_crh_daily",
      "cols": "user_id,work_date",
@@ -1552,7 +1521,7 @@
    "checks": [
     {
      "name": "chk_crh_hours",
-     "clause": "((`hours` > 0) and (`hours` <= 24))"
+     "clause": "((`hours` >= 0) and (`hours` <= 24))"
     }
    ]
   },
@@ -1733,6 +1702,15 @@
      "comment": "보낸 과제명 그대로. 과제 이름이 바뀌어도 지난 줄은 그대로다"
     },
     {
+     "name": "cat_uid",
+     "type": "varchar(80)",
+     "nullable": true,
+     "def": null,
+     "key": "",
+     "extra": "",
+     "comment": "그 줄의 앱 과제 id 원문(cal_category.uid 와 같은 정의). NULL 은 캘린더 과제와 이어지지 않은 줄. FK 없음"
+    },
+    {
      "name": "project_uid",
      "type": "char(36)",
      "nullable": true,
@@ -1752,6 +1730,11 @@
     }
    ],
    "indexes": [
+    {
+     "name": "ix_crwh_cat",
+     "unique": false,
+     "cols": "user_id,cat_uid"
+    },
     {
      "name": "ix_crwh_project",
      "unique": false,
@@ -1825,97 +1808,6 @@
    ],
    "fks": [],
    "checks": []
-  },
-  {
-   "name": "cal_task_hours",
-   "engine": "InnoDB",
-   "rows": 6561,
-   "comment": "(날짜×과제) 투입 시간(시간 단위). PK=(user_id,work_date,cat_no). 과제 FK RESTRICT. 0=행 삭제.",
-   "coll": "utf8mb4_0900_ai_ci",
-   "exact": 6561,
-   "columns": [
-    {
-     "name": "user_id",
-     "type": "smallint unsigned",
-     "nullable": false,
-     "def": null,
-     "key": "PRI",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "work_date",
-     "type": "date",
-     "nullable": false,
-     "def": null,
-     "key": "PRI",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "cat_no",
-     "type": "int unsigned",
-     "nullable": false,
-     "def": null,
-     "key": "PRI",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "hours",
-     "type": "decimal(4,2)",
-     "nullable": false,
-     "def": null,
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "updated_at",
-     "type": "datetime(3)",
-     "nullable": false,
-     "def": null,
-     "key": "",
-     "extra": "",
-     "comment": ""
-    }
-   ],
-   "indexes": [
-    {
-     "name": "ix_cal_task_hours_user_cat",
-     "unique": false,
-     "cols": "user_id,cat_no"
-    },
-    {
-     "name": "PRIMARY",
-     "unique": true,
-     "cols": "user_id,work_date,cat_no"
-    }
-   ],
-   "fks": [
-    {
-     "name": "fk_cal_task_hours_category",
-     "cols": "user_id,cat_no",
-     "ref": "cal_category",
-     "refCols": "user_id,cat_no",
-     "upd": "RESTRICT",
-     "del": "RESTRICT"
-    },
-    {
-     "name": "fk_cal_task_hours_user",
-     "cols": "user_id",
-     "ref": "app_user",
-     "refCols": "user_id",
-     "upd": "RESTRICT",
-     "del": "RESTRICT"
-    }
-   ],
-   "checks": [
-    {
-     "name": "chk_cal_task_hours_range",
-     "clause": "((`hours` > 0) and (`hours` <= 24))"
-    }
-   ]
   },
   {
    "name": "cal_todo",
@@ -2181,168 +2073,6 @@
     {
      "name": "chk_cal_todo_day_note_text",
      "clause": "(`note_text` <> _utf8mb4\\\\'\\\\')"
-    }
-   ]
-  },
-  {
-   "name": "cal_user_pref",
-   "engine": "InnoDB",
-   "rows": 1,
-   "comment": "사용자당 1행 설정(보고서 서식). PK=(user_id). 삭제 경로 없음.",
-   "coll": "utf8mb4_0900_ai_ci",
-   "exact": 1,
-   "columns": [
-    {
-     "name": "user_id",
-     "type": "smallint unsigned",
-     "nullable": false,
-     "def": null,
-     "key": "PRI",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "report_marker",
-     "type": "varchar(8)",
-     "nullable": false,
-     "def": "-",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "report_marker_custom",
-     "type": "varchar(8)",
-     "nullable": false,
-     "def": "",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "report_indent",
-     "type": "tinyint",
-     "nullable": false,
-     "def": "2",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "report_marker_daily",
-     "type": "varchar(8)",
-     "nullable": false,
-     "def": "-",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "report_marker_custom_daily",
-     "type": "varchar(8)",
-     "nullable": false,
-     "def": "",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "report_indent_daily",
-     "type": "tinyint",
-     "nullable": false,
-     "def": "2",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "report_marker_weekly",
-     "type": "varchar(8)",
-     "nullable": false,
-     "def": "-",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "report_marker_custom_weekly",
-     "type": "varchar(8)",
-     "nullable": false,
-     "def": "",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "report_indent_weekly",
-     "type": "tinyint",
-     "nullable": false,
-     "def": "2",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "report_font_family",
-     "type": "varchar(20)",
-     "nullable": false,
-     "def": "",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "report_font_size",
-     "type": "tinyint",
-     "nullable": false,
-     "def": "0",
-     "key": "",
-     "extra": "",
-     "comment": ""
-    },
-    {
-     "name": "updated_at",
-     "type": "datetime(3)",
-     "nullable": false,
-     "def": null,
-     "key": "",
-     "extra": "",
-     "comment": ""
-    }
-   ],
-   "indexes": [
-    {
-     "name": "PRIMARY",
-     "unique": true,
-     "cols": "user_id"
-    }
-   ],
-   "fks": [
-    {
-     "name": "fk_cal_user_pref_user",
-     "cols": "user_id",
-     "ref": "app_user",
-     "refCols": "user_id",
-     "upd": "RESTRICT",
-     "del": "RESTRICT"
-    }
-   ],
-   "checks": [
-    {
-     "name": "chk_cal_user_pref_marker",
-     "clause": "((`report_marker` <> _utf8mb4\\\\'\\\\') and (`report_marker_daily` <> _utf8mb4\\\\'\\\\') and (`report_marker_weekly` <> _utf8mb4\\\\'\\\\'))"
-    },
-    {
-     "name": "chk_cal_user_pref_indent",
-     "clause": "((`report_indent` between 0 and 6) and (`report_indent_daily` between 0 and 6) and (`report_indent_weekly` between 0 and 6))"
-    },
-    {
-     "name": "chk_cal_user_pref_font_family",
-     "clause": "((`report_font_family` in (_utf8mb4\\\\'\\\\',_utf8mb4\\\\'Malgun Gothic\\\\',_utf8mb4\\\\'Gulim\\\\',_utf8mb4\\\\'Dotum\\\\',_utf8mb4\\\\'Batang\\\\',_utf8mb4\\\\'NanumGothic\\\\')) and (not((`report_font_family` like _utf8mb4\\\\'% \\\\'))))"
-    },
-    {
-     "name": "chk_cal_user_pref_font_size",
-     "clause": "((`report_font_size` = 0) or (`report_font_size` between 10 and 16))"
     }
    ]
   },

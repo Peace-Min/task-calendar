@@ -129,22 +129,24 @@ $SEED_TABLES  = @('title_code','org_unit','app_user')
 
 # 대상 DB 가 이미 있을 때 행 수를 세어 요약에 크게 알리는 캘린더 기록 표(사전 점검 · 정보용 — 세지 못해도 멈추지 않는다).
 # 재구축은 늘 한다(머리말 ⚠️ 재구축) — 이 수가 0 이 아니면 '계속하면 지워지는 사람의 기록' 이다.
-$CAL_DATA_TABLES = @('cal_entry','cal_todo','cal_task_hours','cal_attendance','cal_report_daily','cal_report_weekly')
+# (2026-11-06 구조 22: cal_task_hours 를 표째 지워 목록에서 뺐다. docs/DB-V22-REPORT-HOURS.md)
+$CAL_DATA_TABLES = @('cal_entry','cal_todo','cal_attendance','cal_report_daily','cal_report_weekly')
 
 # 복사 SELECT 에서 NULL 을 '' 로 바꿔 넣는 컬럼(옛 2026-07-24 유일성 정규화와 같은 뜻).
 # 0.16 원본은 NULL 을 허용했지만 대상은 NOT NULL DEFAULT '' 라, 그대로 SELECT 하면 INSERT … SELECT 가 NULL 에서
 # 막힌다. 원본은 읽기만 하므로 UPDATE 로 고칠 수 없다 — 그래서 옮기는 순간 IFNULL(<col>, '') 로 바꾼다.
 $NULL_TO_EMPTY = [ordered]@{ project = @('contract_name','common_name') }
 
-# 구조 단계 후 대상 DB 의 표 개수(과제 5 + 사용자 3 + 캘린더 파일 19). 아래 사전 점검이 세 DDL 파일의
+# 구조 단계 후 대상 DB 의 표 개수(과제 5 + 사용자 3 + 캘린더 파일 17). 아래 사전 점검이 세 DDL 파일의
 # CREATE TABLE 수와도 맞춰 본다 — 파일에 표가 늘면 여기서 먼저 멈추고 이 값을 함께 고치라고 말한다.
 # (2026-10-21 회의실 공용화: room_code +1, cal_room -1 로 23 그대로. 2026-10-22 과제 캘린더: cal_project_ 둘 +2 로 25.
 #  2026-10-22 월간보고(구조 17): schema-calendar.sql 의 project_schedule_image +1 로 26.
 #  2026-10-26 Git, SVN 삭제(구조 18): schema-calendar.sql 의 cal_entry_commit -1 로 25.
 #  2026-10-30 주간 과제투입시간(구조 20, 결정 14): schema-calendar.sql 의 cal_report_weekly_hours +1 로 26.
 #  2026-11-02 과제 일정 반복(구조 20 그대로, docs/PC-RECUR.md): schema-calendar.sql 의 cal_project_event_except +1 로 27.
-#  2026-11-04 과제 탭 다른 과제 보기(구조 21, docs/PC-WATCH.md): schema-calendar.sql 의 cal_project_watch +1 로 28.)
-$EXPECTED_TABLE_COUNT = 28
+#  2026-11-04 과제 탭 다른 과제 보기(구조 21, docs/PC-WATCH.md): schema-calendar.sql 의 cal_project_watch +1 로 28.
+#  2026-11-06 일간보고 과제별 줄(구조 22, docs/DB-V22-REPORT-HOURS.md): cal_task_hours, cal_migration_log, cal_user_pref -3 으로 25.)
+$EXPECTED_TABLE_COUNT = 25
 
 # 정체성 컬럼. 원본에 이 컬럼이 없으면 교집합 복사가 조용히 새 번호를 매긴다 — 그러면 cal_* 가
 # 가리킬 과제의 번호가 옛 DB 와 달라진다. 그래서 사전 점검에서 원본에 있는지부터 본다.

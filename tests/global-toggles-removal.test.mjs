@@ -76,8 +76,9 @@ test('변이: 공유 setter 를 되살리면 제거 계약이 실패한다', () 
 });
 
 test('변이: XML 저장에 gitCommitBody 속성을 되살리면 제거 계약이 실패한다', () => {
-  const bad = mutate("  const fmtPrefs = normalizeReportFormatPrefs(state);",
-    "  if(state.gitCommitBody) prefs.setAttribute('gitCommitBody', '1');\n  const fmtPrefs = normalizeReportFormatPrefs(state);", src);
+  //  (옛 앵커였던 <prefs> 쓰기는 구조 22 에서 없앴다. 루트 요소 속성 자리에 되살린다)
+  const bad = mutate("  root.setAttribute('version', '1');",
+    "  root.setAttribute('version', '1');\n  if(state.gitCommitBody) root.setAttribute('gitCommitBody', '1');", src);
   assert.throws(() => checks.gitBodyGone(bad), /gitCommitBody/);
 });
 

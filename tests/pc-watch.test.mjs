@@ -136,7 +136,9 @@ const hostChecks = {
         assert.ok(m && !m[1].includes(`"${c}"`), `${c} 가 ${set} 에 있다`);
       }
     }
-    assert.ok(/public const int AppStructureVersion = 21;/.test(code(gt)), 'DbGate.AppStructureVersion 이 21 이 아니다');
+    //  보기만 목록 표는 구조 21 에서 생겼다. 그 뒤 판(2026-11-06 구조 22 등)에서도 남는다.
+    const sv = /public const int AppStructureVersion = (\d+);/.exec(code(gt));
+    assert.ok(sv && Number(sv[1]) >= 21, 'DbGate.AppStructureVersion 이 21 이상이 아니다');
     //  웹이 보낸 사용자 값은 읽지 않는다: 새 명령은 projectUid 하나만 읽는다
     for (const fn of ['WatchAddAsync', 'WatchRemoveAsync']) {
       const keys = new Set([...code(extractCsMember(cs, `private async Task<object> ${fn}(`)).matchAll(/ReqUid\(q, "(\w+)"/g)].map((m) => m[1]));
@@ -148,7 +150,7 @@ test('보기만H①: 쓰기 판정은 그대로(EligibleSql 불변, 저장, 삭�
 test('보기만H②: 읽기 규칙(숨기지 않은 모든 공식 과제 또는 내 과제), 웹이 보낸 uid 만, 회신에 writable 과 mine', () => hostChecks.readableRule(pcdb));
 test('보기만H③: 넣기는 평범한 INSERT SELECT(IGNORE 없음, 0행 거부, 1062 멱등, 상한 50), 빼기는 키 칸 DELETE, 둘 다 관문 커밋', () => hostChecks.addRemove(pcdb));
 test('보기만H④: 목록은 내 과제를 거르고 숨겨진 과제를 hidden 으로 알리며, 다른 과제 보기 창용 읽기는 login_id 만 싣는다', () => hostChecks.listAndCatalog(pcdb));
-test('보기만H⑤: 새 명령 넷은 메인 창 스위치에만 있고 projectUid 하나만 읽으며 구조 번호는 21 이다', () => hostChecks.wiring(pcdb, main, gate));
+test('보기만H⑤: 새 명령 넷은 메인 창 스위치에만 있고 projectUid 하나만 읽으며 구조 번호는 21 이상이다', () => hostChecks.wiring(pcdb, main, gate));
 
 /* ══ (D) 배포 정적 ═════════════════════════════════════════════════════ */
 test('보기만D①: 권한 셋(grants-calendar.sql, server-app-account.sql, create-app-user.sql 머리말)에 SELECT, INSERT, DELETE', () => {
@@ -165,7 +167,9 @@ test('보기만D②: init-calendar 명부와 개수 주석, 데모 지우기, �
   assert.ok(/WIPE_TABLES = \[\s*'project_schedule_image', 'cal_project_watch',/.test(readText(R('db/demo/build-demo-sql.mjs'))), '데모가 보기만 목록을 맨 앞에서 비우지 않는다');
   assert.ok(/^DROP TABLE IF EXISTS cal_project_watch;/m.test(canon), '정본 DROP 목록에 cal_project_watch 가 없다');
   assert.ok(/cal_project_event, cal_project_change, cal_project_watch 가 project\(id\) 를 가리킨다/.test(canon), '정본 머리말의 project 를 가리키는 cal_ 표 목록에 cal_project_watch 가 없다');
-  assert.ok(/\$EXPECTED_TABLE_COUNT = 28\b/.test(readText(R('db/deploy/setup-taskcalendar.ps1'))), 'setup-taskcalendar.ps1 의 표 수가 28 이 아니다');
+  //  28 은 이 표가 늘었을 때의 수다. 2026-11-06 구조 22 가 안 쓰는 표 셋을 지워 25 다(그 주석에 28 이 남는다).
+  const setupPs = readText(R('db/deploy/setup-taskcalendar.ps1'));
+  assert.ok(/cal_project_watch \+1 로 28/.test(setupPs) && /\$EXPECTED_TABLE_COUNT = 25\b/.test(setupPs), 'setup-taskcalendar.ps1 의 표 수가 25(보기만 목록 +1 로 28, 구조 22 의 -3)가 아니다');
 });
 test('보기만D③: 정본 정의(복합 숫자 PK, 과제 FK CASCADE, 사람 FK RESTRICT)와 조각(GRANT 없음, DELETE 없음, 키 칸 WHERE)', () => {
   const def = /CREATE TABLE cal_project_watch \(([\s\S]*?)\) ENGINE=/.exec(canon);

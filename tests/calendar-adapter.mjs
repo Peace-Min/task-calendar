@@ -64,7 +64,7 @@
  *        `string` / `Task<string>`                       → 그 문자열이 곧 state JSON
  *        `T` / `Task<T>` (T 에 string 프로퍼티 `StateJson`, 없으면 이름이 …Json 인 것)
  *                                                        → 그 프로퍼티가 state JSON
- *        어느 쪽이든 내용은 계약 G-0 의 **10키 객체**를 직렬화한 것이어야 한다.
+ *        어느 쪽이든 내용은 계약 G-0 의 **4키 객체**(categories, entries, todos, attendance)를 직렬화한 것이어야 한다.
  *    · 인자 — 순서와 이름에 기대지 않고 **형(型)으로** 맞춘다:
  *        첫 `string`                       ← loginId (필수. 없으면 후보에서 탈락)
  *        `CancellationToken`               ← None
@@ -90,9 +90,9 @@
  *  판정력은 픽스처가 그 결함을 **만들 수 있는 모양인가**에 달려 있다. 두 픽스처의 성격이 다르다:
  *    real  = 사용자의 실 data.xml. **읽기 전용이라 모양을 고칠 수 없다.** 그래서 실 데이터가
  *            우연히 갖지 않은 결함은 이 픽스처로 만들 수 없다 — 실측: 회의실 4개가 이미
- *            이름순이라 M6(rooms ORDER BY 누락)를 만들 수 없다. remind=0·taskHours 도 없다.
+ *            이름순이라 M6(rooms ORDER BY 누락)를 만들 수 없다. remind=0 도 없다.
  *    synth = 그 구멍을 메우려고 있는 합성 픽스처. 표시 순서 ≠ 이름 순서인 회의실,
- *            remind 3상태, taskHours, 정렬키 동률 그룹을 일부러 넣어 둔다.
+ *            remind 3상태, 정렬키 동률 그룹을 일부러 넣어 둔다.
  *  ★ 그러므로 **`--fixture=real` 단독 실행을 완전한 게이트로 쓰면 안 된다.** 그 실행의 SKIP 은
  *    '통과'가 아니라 '만들지 못했다'이고, 요약이 「아무 픽스처도 덮지 못한 것」으로 그 사실을 찍는다.
  *    게이트로 쓸 실행은 `--fixture=both --selftest`(기본값 both)다.
@@ -712,11 +712,13 @@ async function openOracle() {
 
 /* ────────────────────────────── 6. 픽스처 ──────────────────────────────
  * real  : %APPDATA%/TaskCalendar/data.xml — **읽기만 한다. 고치지 않는다.**
- * synth : 실 데이터가 안 건드리는 계약면(반복·예외·dayNotes·taskHours·remind 3상태·
+ * synth : 실 데이터가 안 건드리는 계약면(반복·예외·dayNotes·remind 3상태·
  *         공식과제 source/dbGone·완료시각·NULL 자리 전수)을 덮는 합성 XML.
  *         2026-10-26 Git, SVN 삭제(구조 18) 뒤에도 옛 흔적(gitRepo/svnRepo, source="git" 일정과 <commits>,
  *         루트 gitAuthor/svnAuthor, prefs@gitCommitBody)을 **일부러 남겨 둔다.** fromXML() 이 그것을 버려야 한다
  *         (legacyDropped 가 본다). 적재기도 어댑터도 그 값을 다루지 않는다.
+ *         2026-11-06 구조 22 뒤에도 옛 <taskHours>(작성 중 시간)와 <prefs>(보고서 서식, 글꼴)를 **일부러 남겨 둔다.**
+ *         fromXML() 이 그것도 버려야 한다(legacyDropped 가 taskHours, report* 키를 본다). 표 cal_task_hours, cal_user_pref 는 없다.
  *         ★ '이관 도구' 가 아니다 — 이 테스트가 쓰는 **시험용 픽스처**다. */
 
 const ATTEND_OK = new Set(['1', '2', '3', '4', '5', '6', '7', '9', '10', '11', '12']);
@@ -787,6 +789,7 @@ function synthFixtureXml(projectUid) {
    *   그래도 옛 파일 모양을 그대로 두어 '있어도 무시한다'를 함께 본다(fromXML 결과에 rooms 키가 없어야 한다). */
   const rooms = ['회의실 Z', '101호', '대회의실', 'A룸'];
 
+  //  ★ 옛 흔적(구조 22 에서 없앤 작성 중 시간). fromXML() 이 버려야 한다(legacyDropped).
   const th = `<taskHours>` +
     `<day date="2026-05-04"><t cat="c-alpha" h="3.5"/><t cat="c-beta" h="4.25"/></day>` +
     `<day date="2026-05-05"><t cat="c-gamma" h="8"/></day>` +
@@ -799,6 +802,7 @@ function synthFixtureXml(projectUid) {
     `</attendance>`;
 
   // ★ lsMigrated 는 2026-09-01 에 없앴다(자동이관과 함께). 픽스처에도 두지 않는다.
+  // ★ <prefs> 는 옛 흔적이다(구조 22 에서 서식 설정 표를 없앴고 글꼴은 localStorage). fromXML() 이 버려야 한다.
   return `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<taskCalendar version="1" generator="calendar-adapter-test" gitAuthor="깃작성자" svnAuthor="svn-author">` +
     `<categories>${cats.join('')}</categories>` +
@@ -868,14 +872,19 @@ function nosAreScrambled(nos) {
 function legacyDropped(exp, fixtureName) {
   const bad = [];
   for (const k of ['gitAuthor', 'svnAuthor', 'gitCommitBody']) if (Object.prototype.hasOwnProperty.call(exp, k)) bad.push(`최상위 ${k}`);
+  //  구조 22(2026-11-06): 작성 중 시간과 보고서 서식, 글꼴도 state 에서 빠졌다. 옛 파일에 있어도 버려야 한다
+  for (const k of LEGACY_V22_KEYS) if (Object.prototype.hasOwnProperty.call(exp, k)) bad.push(`최상위 ${k}(구조 22)`);
   for (const c of exp.categories || []) for (const k of ['gitRepo', 'svnRepo', 'usesRepo']) if (Object.prototype.hasOwnProperty.call(c, k)) bad.push(`categories[${c.id}].${k}`);
   for (const e of exp.entries || []) {
     for (const k of ['source', 'commits']) if (Object.prototype.hasOwnProperty.call(e, k)) bad.push(`entries[${e.id}].${k}`);
   }
   if (fixtureName === 'synth' && (exp.entries || []).some((e) => e.id === 'e-git')) bad.push('entries[e-git](옛 커밋 기록이 남았다)');
-  if (bad.length) violate('G-18', `기준(fromXML)이 없앤 Git, SVN 값을 아직 만든다(2026-10-26 구조 18): ${bad.slice(0, 8).join(', ')}`);
-  else ok('G-18 기준(fromXML)에 Git, SVN 흔적이 없다(옛 파일의 값은 버려졌다)');
+  if (bad.length) violate('G-18', `기준(fromXML)이 없앤 값을 아직 만든다(2026-10-26 구조 18, 2026-11-06 구조 22): ${bad.slice(0, 8).join(', ')}`);
+  else ok('G-18 기준(fromXML)에 Git, SVN 흔적과 구조 22 에서 없앤 키(taskHours, report*)가 없다(옛 파일의 값은 버려졌다)');
 }
+
+//  구조 22 에서 state 에서 빠진 최상위 키(작성 중 시간, 보고서 서식, 글꼴). 기준에도 어댑터 결과에도 없어야 한다
+const LEGACY_V22_KEYS = ['taskHours', 'reportMarker', 'reportMarkerCustom', 'reportIndent', 'reportFormatPrefs', 'reportFont'];
 
 /** expected 객체를 복제 DB 에 적재하고, 적재에 쓴 부수 정보를 돌려준다. */
 function loadFixtureIntoDb(exp, userId) {
@@ -886,8 +895,9 @@ function loadFixtureIntoDb(exp, userId) {
   const U = String(userId);
 
   // ① 이 사용자의 cal_* 를 비운다(자식 먼저). 다른 사용자 행은 건드리지 않는다.
-  for (const tbl of ['cal_todo_day_note', 'cal_entry_except', 'cal_task_hours',
-    'cal_entry', 'cal_todo', 'cal_category', 'cal_attendance', 'cal_user_pref']) {
+  //  (cal_task_hours, cal_user_pref 는 구조 22 에서 없앴다)
+  for (const tbl of ['cal_todo_day_note', 'cal_entry_except',
+    'cal_entry', 'cal_todo', 'cal_category', 'cal_attendance']) {
     S.push(`DELETE FROM ${tbl} WHERE user_id=${U};`);
   }
 
@@ -955,15 +965,8 @@ function loadFixtureIntoDb(exp, userId) {
 
   // ⑤ (회의실은 2026-10-21 에 없앴다. cal_room 이 없고 state 에도 rooms 가 없다)
 
-  // ⑥ 과제별 공수 — 2단 맵 → 행. 안쪽 키는 과제 uid 다(G-1).
+  // ⑥ (과제별 공수 cal_task_hours 는 구조 22 에서 없앴다. state 에도 taskHours 가 없다)
   const NOW = '2026-05-30 00:00:00.000';
-  for (const [date, m] of Object.entries(exp.taskHours || {})) {
-    for (const [catUid, h] of Object.entries(m)) {
-      const catNo = uidToNo.get(catUid);
-      if (catNo === undefined) { violate('FIX', `픽스처의 taskHours 가 없는 과제를 가리킨다: ${date}/${catUid}`); continue; }
-      S.push(`INSERT INTO cal_task_hours (user_id,work_date,cat_no,hours,updated_at) VALUES (${U},${q(date)},${catNo},${num(h)},${q(NOW)});`);
-    }
-  }
 
   // ⑦ 근태 — 행이 없는 날짜가 곧 '미기록' 이다(G-5). 무효 코드는 픽스처 자격 실격.
   for (const [date, a] of Object.entries(exp.attendance || {})) {
@@ -973,15 +976,7 @@ function loadFixtureIntoDb(exp, userId) {
     S.push(`INSERT INTO cal_attendance (user_id,work_date,status,overtime,updated_at) VALUES (${U},${q(date)},${q(a.status)},${num(a.overtime)},${q(NOW)});`);
   }
 
-  // ⑧ 사용자 설정 — 전역 3값 + daily/weekly 6값 + 폰트 2값(작성자와 커밋 본문 칸은 구조 18 에서 없앴다)
-  const rf = exp.reportFormatPrefs || { daily: {}, weekly: {} };
-  const fo = exp.reportFont || { family: '', size: 0 };
-  S.push(`INSERT INTO cal_user_pref (user_id,report_marker,report_marker_custom,report_indent,` +
-    `report_marker_daily,report_marker_custom_daily,report_indent_daily,` +
-    `report_marker_weekly,report_marker_custom_weekly,report_indent_weekly,report_font_family,report_font_size,updated_at) VALUES (` +
-    `${U},${q(exp.reportMarker)},${q(exp.reportMarkerCustom)},${num(exp.reportIndent)},` +
-    `${q(rf.daily.marker)},${q(rf.daily.markerCustom)},${num(rf.daily.indent)},` +
-    `${q(rf.weekly.marker)},${q(rf.weekly.markerCustom)},${num(rf.weekly.indent)},${q(fo.family)},${num(fo.size)},${q(NOW)});`);
+  // ⑧ (사용자 설정 cal_user_pref 는 구조 22 에서 없앴다. 서식은 없고 보고 글꼴은 localStorage tc_rptFont:<계정>)
 
   const sql = S.join('\n');
   const r = mysqlRun(sql, { db: CLONE, what: '픽스처 적재' });
@@ -1002,9 +997,7 @@ function verifyLoaded(exp, userId, maps) {
     { key: 'exc', sql: `SELECT COUNT(*) FROM cal_entry_except WHERE user_id=${U}` },
     { key: 'todo', sql: `SELECT COUNT(*) FROM cal_todo WHERE user_id=${U}` },
     { key: 'dn', sql: `SELECT COUNT(*) FROM cal_todo_day_note WHERE user_id=${U}` },
-    { key: 'th', sql: `SELECT COUNT(*) FROM cal_task_hours WHERE user_id=${U}` },
     { key: 'att', sql: `SELECT COUNT(*) FROM cal_attendance WHERE user_id=${U}` },
-    { key: 'pref', sql: `SELECT COUNT(*) FROM cal_user_pref WHERE user_id=${U}` },
     // ★ GROUP_CONCAT 을 쓰지 않는다 — group_concat_max_len(기본 1024B)에 걸리면 **조용히 잘려**
     //   픽스처 조건 판정이 뒤집힌다(잘린 앞부분만 보고 '어긋나 있다'고 오판한다). 행으로 받는다.
     { key: 'catnos', sql: `SELECT cat_no FROM cal_category WHERE user_id=${U} ORDER BY sort_order` },
@@ -1018,9 +1011,7 @@ function verifyLoaded(exp, userId, maps) {
     exc: exp.entries.reduce((a, e) => a + (e.recurExcept || []).length, 0),
     todo: exp.todos.length,
     dn: exp.todos.reduce((a, t) => a + Object.keys(t.dayNotes || {}).length, 0),
-    th: Object.values(exp.taskHours || {}).reduce((a, m) => a + Object.keys(m).length, 0),
     att: Object.keys(exp.attendance || {}).length,
-    pref: 1,
   };
   let bad = 0;
   for (const [k, v] of Object.entries(want)) {
@@ -1315,13 +1306,9 @@ namespace TaskCalendarWidget
             var entryNoToObj = new Dictionary<int, Dictionary<string, object>>();
             var todos = new List<Dictionary<string, object>>();
             var todoNoToObj = new Dictionary<int, Dictionary<string, object>>();
-            var taskHours = new Dictionary<string, Dictionary<string, double>>();
             var attendance = new Dictionary<string, object>();
-            Dictionary<string, object> pref = null;
-            var prefFmt = new Dictionary<string, object>();
-            var font = new Dictionary<string, object>();
 
-            // ── 부팅 조회는 단일 트랜잭션 · 8개 표(§3.5). cal_entry_commit 은 2026-10-26 Git, SVN 삭제(구조 18)로 없다 ──
+            // ── 부팅 조회는 단일 트랜잭션, 6개 표(§3.5). cal_entry_commit 은 2026-10-26 구조 18, cal_task_hours 와 cal_user_pref 는 2026-11-06 구조 22 로 없다 ──
             await Exec(conn, "START TRANSACTION WITH CONSISTENT SNAPSHOT", ct);
             try
             {
@@ -1443,21 +1430,7 @@ namespace TaskCalendarWidget
                             ((Dictionary<string, object>)p["dayNotes"])[S(rd, "d")] = S(rd, "note_text");
                     }
                 }
-                // ⑦ cal_task_hours → { 날짜: { 과제uid: 시간 } }  안쪽 키는 uid 다(G-1/G-5)
-                using (var cmd = new MySqlCommand(
-                    "SELECT DATE_FORMAT(work_date,'%Y-%m-%d') AS d, cat_no, hours FROM cal_task_hours " +
-                    "WHERE user_id=@u ORDER BY work_date, cat_no", conn))
-                {
-                    cmd.Parameters.AddWithValue("@u", userId);
-                    using var rd = (MySqlDataReader)await cmd.ExecuteReaderAsync(ct);
-                    while (await rd.ReadAsync(ct))
-                    {
-                        string d = S(rd, "d"); int cn = I(rd, "cat_no");
-                        Dictionary<string, double> inner;
-                        if (!taskHours.TryGetValue(d, out inner)) { inner = new Dictionary<string, double>(); taskHours[d] = inner; }
-                        inner[catNoToUid[cn]] = (double)rd.GetDecimal(rd.GetOrdinal("hours"));
-                    }
-                }
+                // ⑦ (cal_task_hours 는 구조 22 에서 없앴다)
                 // ⑧ cal_attendance → { 날짜: { status, overtime } }  행이 없는 날짜의 키를 만들지 않는다(G-5)
                 using (var cmd = new MySqlCommand(
                     "SELECT DATE_FORMAT(work_date,'%Y-%m-%d') AS d, status, overtime FROM cal_attendance " +
@@ -1468,48 +1441,17 @@ namespace TaskCalendarWidget
                     while (await rd.ReadAsync(ct))
                         attendance[S(rd, "d")] = new Dictionary<string, object> { ["status"] = S(rd, "status"), ["overtime"] = I(rd, "overtime") };
                 }
-                // ⑨ cal_user_pref
-                using (var cmd = new MySqlCommand(
-                    "SELECT report_marker, report_marker_custom, report_indent, " +
-                    "report_marker_daily, report_marker_custom_daily, report_indent_daily, " +
-                    "report_marker_weekly, report_marker_custom_weekly, report_indent_weekly, " +
-                    "report_font_family, report_font_size FROM cal_user_pref WHERE user_id=@u", conn))
-                {
-                    cmd.Parameters.AddWithValue("@u", userId);
-                    using var rd = (MySqlDataReader)await cmd.ExecuteReaderAsync(ct);
-                    if (await rd.ReadAsync(ct))
-                    {
-                        pref = new Dictionary<string, object> {
-                            ["reportMarker"] = S(rd, "report_marker"), ["reportMarkerCustom"] = S(rd, "report_marker_custom"),
-                            ["reportIndent"] = I(rd, "report_indent") };
-                        prefFmt["daily"] = new Dictionary<string, object> {
-                            ["marker"] = S(rd, "report_marker_daily"), ["markerCustom"] = S(rd, "report_marker_custom_daily"),
-                            ["indent"] = I(rd, "report_indent_daily") };
-                        prefFmt["weekly"] = new Dictionary<string, object> {
-                            ["marker"] = S(rd, "report_marker_weekly"), ["markerCustom"] = S(rd, "report_marker_custom_weekly"),
-                            ["indent"] = I(rd, "report_indent_weekly") };
-                        font["family"] = S(rd, "report_font_family");
-                        font["size"] = I(rd, "report_font_size");
-                    }
-                }
+                // ⑨ (cal_user_pref 는 구조 22 에서 없앴다)
                 using (var cmd = new MySqlCommand("COMMIT", conn)) await cmd.ExecuteNonQueryAsync(ct);
             }
             catch { try { using var rb = new MySqlCommand("ROLLBACK", conn); await rb.ExecuteNonQueryAsync(ct); } catch { } throw; }
 
-            if (pref == null) throw new Exception("cal_user_pref 행이 없습니다(user_id=" + userId + ")");
-
-            // ── 계약 G-0 — 최상위 10키. 그 이상도 이하도 아니다 ──
+            // ── 계약 G-0 — 최상위 4키(구조 22). 그 이상도 이하도 아니다 ──
             var outObj = new Dictionary<string, object>();
             outObj["categories"] = cats;
             outObj["entries"] = entries;
             outObj["todos"] = todos;
-            outObj["reportMarker"] = pref["reportMarker"];
-            outObj["reportMarkerCustom"] = pref["reportMarkerCustom"];
-            outObj["reportIndent"] = pref["reportIndent"];
-            outObj["reportFormatPrefs"] = prefFmt;
-            outObj["taskHours"] = taskHours;
             outObj["attendance"] = attendance;
-            outObj["reportFont"] = font;
             return JsonSerializer.Serialize(outObj);
         }
     }
@@ -1635,7 +1577,7 @@ ${files.map((f) => `    <Compile Include=${JSON.stringify(f)} />`).join('\n')}
   envFail('어댑터 프로브 빌드 실패 — CalendarDb.cs 를 컴파일하지 못했습니다.', '\n' + lastErr);
 }
 
-/** 프로브 실행 → 어댑터가 돌려준 10키 객체. 실패면 {error}. */
+/** 프로브 실행 → 어댑터가 돌려준 4키 객체. 실패면 {error}. */
 function runProbe(loginId, { allowFail = false } = {}) {
   const r = spawnSync(probeExe, [loginId],
     { windowsHide: true, timeout: 120000, maxBuffer: 128 * 1024 * 1024 });
@@ -1669,7 +1611,7 @@ function runProbe(loginId, { allowFail = false } = {}) {
  *   · **키 유무까지** 본다 — 개인 과제에 source 키가 **없어야** 하는 계약이 있다
  *   · undefined 와 null 을 구분한다(직렬화 센티널로 키를 살려 둔다)
  *   · 배열은 **순서까지** 본다 — categories·rooms·recurExcept·commits·entries·todos
- *   · 맵(taskHours·attendance·dayNotes)은 아래 정책대로 다룬다
+ *   · 맵(attendance·dayNotes)은 아래 정책대로 다룬다
  *
  * ★ entries·todos 는 **배열 그대로 인덱스별로** 비교한다(diffArrayOrdered).
  *   예전에는 대조 **직전에** byId() 로 배열을 id 키 객체로 접었다 — 그 순간 순서가
@@ -1895,10 +1837,9 @@ function normalizeExpected(exp) {
 
 /* ────────────────────────────── 10. 계약별 개별 검사 ────────────────────────────── */
 
-//  (이름은 옛 15키 그대로 둔다. 2026-09-01 lsMigrated, 2026-10-21 rooms, 2026-10-26 gitAuthor, svnAuthor, gitCommitBody 가
-//   빠져 지금은 10키다)
-const TOP15 = ['categories', 'entries', 'todos', 'taskHours', 'attendance',
-  'reportMarker', 'reportMarkerCustom', 'reportIndent', 'reportFormatPrefs', 'reportFont'];
+//  (이름은 옛 15키 그대로 둔다. 2026-09-01 lsMigrated, 2026-10-21 rooms, 2026-10-26 gitAuthor, svnAuthor, gitCommitBody,
+//   2026-11-06 구조 22 에서 taskHours, reportMarker, reportMarkerCustom, reportIndent, reportFormatPrefs, reportFont 가 빠져 지금은 4키다)
+const TOP15 = ['categories', 'entries', 'todos', 'attendance'];
 const ISO_Z = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 // G-1d — state 에 흘리면 안 되는 이름(자식 표의 부모번호·소유자축·정렬 컬럼·DB 컬럼명 그대로)
 const FORBIDDEN_KEYS = new Set(['user_id', 'userId', 'cat_no', 'catNo', 'entry_no', 'entryNo', 'todo_no', 'todoNo',
@@ -1914,7 +1855,7 @@ function walkKeys(v, path, fn) {
 
 /** act 가 계약 G 를 지키는지 — 깊은 비교와 **별개로** 본다(비교가 통과해도 여기서 걸릴 수 있다). */
 function contractChecks(expNorm, act, expRaw, dbFacts) {
-  // ── G-0 최상위 10키 ─────────────────────────────────────────────────
+  // ── G-0 최상위 4키 ──────────────────────────────────────────────────
   const ka = Object.keys(act);
   const missing = TOP15.filter((k) => !Object.prototype.hasOwnProperty.call(act, k));
   const extra = ka.filter((k) => !TOP15.includes(k));
@@ -1941,11 +1882,7 @@ function contractChecks(expNorm, act, expRaw, dbFacts) {
   }
   if (!numeric.length && !dangling.length && !danglingT.length) ok('G-1c 게이트 통과 — 모든 categoryId 가 실재하는 과제 uid 다');
 
-  // taskHours 안쪽 키도 과제 uid 여야 한다(G-1/G-5)
-  const thBad = [];
-  for (const [d, m] of Object.entries(act.taskHours || {})) for (const k of Object.keys(m)) if (!catIds.has(k)) thBad.push(`${d}/${k}`);
-  if (thBad.length) violate('G-1b', `taskHours 의 안쪽 키가 과제 uid 가 아니다: ${thBad.slice(0, 6).join(', ')}`);
-  else if (Object.keys(act.taskHours || {}).length) ok('G-1b taskHours 안쪽 키 = 과제 uid');
+  //  (taskHours 안쪽 키 검사는 구조 22 에서 그 키가 없어져 뺐다. 되살아나면 G-0 의 '없어야 할 키' 가 잡는다)
 
   // ── G-2 NULL → '' (전수 8자리 중 부팅 조회에 나타나는 7자리) ──────────
   const g2 = [];
@@ -2031,10 +1968,9 @@ function contractChecks(expNorm, act, expRaw, dbFacts) {
   const attBad = Object.entries(act.attendance || {}).filter(([, v]) => !v || v.status === '' || v.status == null);
   if (attBad.length) violate('G-5', `근태에 빈 status 키가 있다 — '미기록' 은 키 자체가 없어야 한다: ${attBad.map(([k]) => k).join(', ')}`);
 
-  // taskHours 값은 숫자여야 한다(DECIMAL 을 문자열로 흘리면 화면 합계가 문자열 접합이 된다)
-  const thNum = [];
-  for (const [d, m] of Object.entries(act.taskHours || {})) for (const [k, v] of Object.entries(m)) if (typeof v !== 'number') thNum.push(`${d}/${k}=${TN(v)} ${short(v)}`);
-  if (thNum.length) violate('G-5', `taskHours 값이 숫자가 아니다(DECIMAL 을 문자열로 흘렸다): ${thNum.slice(0, 5).join(', ')}`);
+  // 근태 overtime 은 숫자여야 한다(문자열로 흘리면 합계가 문자열 접합이 된다). 옛 taskHours 숫자 검사(구조 22 에서 없앤 키)의 자리
+  const otNum = Object.entries(act.attendance || {}).filter(([, v]) => v && typeof v.overtime !== 'number');
+  if (otNum.length) violate('G-5', `근태 overtime 이 숫자가 아니다: ${otNum.slice(0, 5).map(([k, v]) => `${k}=${TN(v.overtime)} ${short(v.overtime)}`).join(', ')}`);
 
   // ── G-6 채우기 ──────────────────────────────────────────────────────
   //  (없앤 것) G-6 lsMigrated 검사 — 그 키를 2026-09-01 에 없앴다.
@@ -2132,9 +2068,9 @@ function reportDiffs(diffs, label) { return emitDiffs(diffs, label, { print: tru
  * '어댑터가 정말 한 연결에서, 대상 표 전부를, 스냅샷 트랜잭션으로 읽었나' 를
  * performance_schema 의 문장 다이제스트로 **관측**한다(코드를 읽어 짐작하지 않는다). */
 //  부팅 조회가 읽어야 하는 표. cal_entry_commit 은 2026-09-01 G-7 개정으로 들어왔다가 2026-10-26 Git, SVN 삭제(구조 18)로
-//  표째 없어졌다(이름은 옛 NINE 그대로 둔다. 지금은 여덟이다).
+//  표째 없어졌다. 2026-11-06 구조 22 에서 cal_task_hours, cal_user_pref 도 없앴다(이름은 옛 NINE 그대로 둔다. 지금은 여섯이다).
 const NINE = ['cal_category', 'cal_entry', 'cal_entry_except', 'cal_todo',
-  'cal_todo_day_note', 'cal_task_hours', 'cal_attendance', 'cal_user_pref'];
+  'cal_todo_day_note', 'cal_attendance'];
 
 function psAvailable() {
   const r = mysqlRun(`SELECT ENABLED FROM performance_schema.setup_consumers WHERE NAME='statements_digest';`,
@@ -2307,10 +2243,13 @@ function mutationSuite(expNorm, act, expRaw, dbFacts) {
     const e = a.entries.find((x) => x.remind === 0); e.remind = null; return `entries[${e.id}].remind: 0 → null`;
   }, (a) => a.entries.some((x) => x.remind === 0));
 
-  add('M15', 'DECIMAL 을 문자열로 — taskHours 값이 숫자가 아님', 'G-5', /taskHours 값이 숫자가 아니다/, (a) => {
-    const d = Object.keys(a.taskHours)[0]; const k = Object.keys(a.taskHours[d])[0];
-    a.taskHours[d][k] = String(a.taskHours[d][k]); return `taskHours['${d}']['${k}'] → 문자열`;
-  }, (a) => Object.keys(a.taskHours || {}).length > 0);
+  //  M15 는 옛 'taskHours 값을 문자열로' 였다. 구조 22 에서 그 키가 없어져 '없앤 키가 되살아나면 걸리는가' 와 근태 숫자로 바꿨다.
+  add('M15', 'G-0: 구조 22 에서 없앤 taskHours 키가 되살아남', 'G-0', /없어야 할 키가 있다/, (a) => {
+    a.taskHours = {}; return '최상위 taskHours = {} 되살림';
+  }, () => true);
+  add('M15b', 'G-5: 근태 overtime 을 문자열로', 'G-5', /overtime 이 숫자가 아니다/, (a) => {
+    const d = Object.keys(a.attendance)[0]; a.attendance[d].overtime = String(a.attendance[d].overtime); return `attendance['${d}'].overtime → 문자열`;
+  }, (a) => Object.keys(a.attendance || {}).length > 0);
 
   add('M16', '키 유무 — 일정에서 hours 키를 통째로 뺌(undefined)', 'G-6', /hours 키가 아예 없다/, (a) => {
     delete a.entries[0].hours; return `entries[${a.entries[0].id}].hours 키 삭제`;
@@ -2601,7 +2540,7 @@ async function main() {
     if (kmiss.length) envFail(`기준(fromXML) 결과에 ${TOP15.length}키가 없다 — 오라클이 이상하다: ${kmiss.join(', ')}`);
     legacyDropped(exp, f.name);   // 옛 Git, SVN 흔적이 기준에서 버려졌나(2026-10-26 구조 18)
     log(`기준 산출 — 과제 ${exp.categories.length} · 일정 ${exp.entries.length} · 할일 ${exp.todos.length} · ` +
-      `공수 ${Object.keys(exp.taskHours).length}일 · 근태 ${Object.keys(exp.attendance).length}일`);
+      `근태 ${Object.keys(exp.attendance).length}일`);
 
     const maps = loadFixtureIntoDb(exp, userId);
     verifyLoaded(exp, userId, maps);

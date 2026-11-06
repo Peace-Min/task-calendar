@@ -171,7 +171,7 @@ if (!JSDOM) {
       assert.deepStrictEqual(X.evJSON(`awSortHrs(['감마', '모름', '알파', '감마'], ${JSON.stringify(NAMES)})`), ['알파', '감마', '모름']);
       const U = '0f8fad5b-d9cb-469f-a165-70867728950e';
       const pl = X.evJSON(`awHoursPayload(['알파', '베타', '감마'], { '알파': 6.5, '베타': 0, '감마': 2 }, [{ key: 'db-${U}', name: '알파' }, { key: 'c-c', name: '감마' }])`);
-      assert.deepStrictEqual(pl, [{ name: '알파', projectUid: U, hours: 6.5 }, { name: '감마', projectUid: '', hours: 2 }], '공식 과제 uid 나 0 시간 제외가 다르다');
+      assert.deepStrictEqual(pl, [{ name: '알파', catUid: 'db-' + U, projectUid: U, hours: 6.5 }, { name: '감마', catUid: 'c-c', projectUid: '', hours: 2 }], '과제 id(구조 22), 공식 과제 uid 나 0 시간 제외가 다르다');
       assert.deepStrictEqual(X.evJSON("awParseHours('[알파] : 12\\n[베타] : 2.5\\n-----\\n합계 : 14.5')"), { '알파': 12, '베타': 2.5 });
       const v1 = X.evJSON(`awDraftNorm({ v: 1, subj: 's', prog: [{ name: '알파', text: '- 한 일' }, { name: '', text: '미정' }], plan: [{ name: '베타', text: '' }], hours: { '알파': 3 }, meet: 'm' })`);
       assert.deepStrictEqual([v1.v, v1.prog, v1.plan, v1.hrs, v1.hours, v1.meet], [2, '[알파]\n- 한 일', '[베타]\n-', ['알파'], { '알파': 3 }, 'm'], '옛 블록 임시 저장을 글과 시간 목록으로 바꾸지 않았다');
@@ -581,7 +581,7 @@ if (!JSDOM) {
       assert.strictEqual(A.$('#awEd').parentElement, A.doc.body, '주간 편집이 창 전체로 옮겨지지 않았다');
       const calls = A.evJSON('__calls');
       assert.deepStrictEqual(calls.map((c) => c[0]), ['reportDailyList', 'reportWeeklyList'], '두 가져오기를 하지 않았다');
-      assert.deepStrictEqual(calls[0][1], { from: MON, to: SAT });
+      assert.deepStrictEqual(calls[0][1], { from: MON, to: SAT, detail: true }, '이번 주 일간 보고를 메모와 줄까지(detail) 읽지 않았다(구조 22)');
       assert.deepStrictEqual(calls[1][1], { from: '2026-10-19', to: '2026-10-19' });
       assert.strictEqual(A.ev('AWE.prog'), '[알파]\n  - 연동 환경 구축 중\n\n  - 연동 환경 구축 중\n- 요구사항 구현\n\n[베타]\n- 회신\n\n[휴가]\n-', '진행사항 초안이 [과제명] 머리 글이 아니다');
       assert.strictEqual(A.$('#awProg').value, A.ev('AWE.prog'));
@@ -648,7 +648,7 @@ if (!JSDOM) {
       const s = sendWeekly(A);
       const NB = '&nbsp;';
       assert.deepStrictEqual(Object.keys(s).sort(), ['cmd', 'content', 'edate', 'endwork', 'hours', 'planwork', 'resultwork', 'sdate', 'subject']);
-      assert.deepStrictEqual(s.hours, [{ name: '알파', projectUid: '', hours: 10 }, { name: '베타', projectUid: '', hours: 4 }, { name: '휴가', projectUid: '', hours: 2 }], '과제투입시간 구조(hours)가 다르다');
+      assert.deepStrictEqual(s.hours, [{ name: '알파', catUid: 'c-a', projectUid: '', hours: 10 }, { name: '베타', catUid: 'c-b', projectUid: '', hours: 4 }, { name: '휴가', catUid: 'c-d', projectUid: '', hours: 2 }], '과제투입시간 구조(hours)가 다르다');
       assert.deepStrictEqual([s.sdate, s.edate, s.subject], [MON, SAT, '10월 다섯째주']);
       assert.strictEqual(s.endwork, '[알파]\n' + NB.repeat(2) + '- 연동 환경 구축 중\n\n' + NB.repeat(2) + '- 연동 환경 구축 중\n- 요구사항 구현\n\n[베타]\n- 회신\n\n[휴가]\n-\n' + NB.repeat(4) + '- 연차');
       assert.strictEqual(s.content, '[알파] : 10\n[베타] : 4\n[휴가] : 2\n-----\n합계 : 16');
@@ -822,7 +822,7 @@ if (!JSDOM) {
       const n = A.posted.length;
       A.$('#awSend').click();
       const out = A.posted.slice(n).find((m) => m.cmd === 'netcusWeekSubmit');
-      assert.deepStrictEqual(out.hours, [{ name: '공식', projectUid: U, hours: 7.5 }, { name: '감마', projectUid: '', hours: 2 }]);
+      assert.deepStrictEqual(out.hours, [{ name: '공식', catUid: 'db-' + U, projectUid: U, hours: 7.5 }, { name: '감마', catUid: 'c-c', projectUid: '', hours: 2 }]);
       assert.deepStrictEqual(A.errors, []);
     } finally { A.close(); }
   });
@@ -863,7 +863,7 @@ if (!JSDOM) {
     runOn(bad, (X) => assert.notStrictEqual(X.ev('awProblems({ hrs: [] }).noHours'), true));
   });
   test('변이 W5: 공식 과제 uid 를 빼면 hours 구조 검사가 잡는다', () => {
-    const bad = mutate(app, "    return { name: n, projectUid: m ? m[1] : '', hours: Math.round(h[n] * 100) / 100 };", "    return { name: n, projectUid: '', hours: Math.round(h[n] * 100) / 100 };");
+    const bad = mutate(app, "    return { name: n, catUid: k, projectUid: m ? m[1] : '', hours: Math.round(h[n] * 100) / 100 };", "    return { name: n, catUid: k, projectUid: '', hours: Math.round(h[n] * 100) / 100 };");
     runOn(bad, (X) => assert.notStrictEqual(X.ev("awHoursPayload(['알파'], { '알파': 1 }, [{ key: 'db-0f8fad5b-d9cb-469f-a165-70867728950e', name: '알파' }])[0].projectUid"), '0f8fad5b-d9cb-469f-a165-70867728950e'));
   });
   test('변이 W6: [인트라넷에서 확인](주간)의 기록 조건을 빼면 보이기 검사가 잡는다', async () => {

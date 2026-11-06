@@ -399,8 +399,9 @@ function seedTarget() {
 function wipeTarget() { wipeUser(TU); }
 function wipeUser(login) {
   const u = one(`SELECT user_id FROM app_user WHERE login_id='${login}'`); if (!u) return;
-  for (const t of ['cal_entry_except', 'cal_todo_day_note', 'cal_task_hours',
-                   'cal_attendance', 'cal_entry', 'cal_todo', 'cal_category', 'cal_user_pref'])
+  //  (cal_task_hours, cal_user_pref 는 구조 22 에서 없앴다. 보고 줄은 cal_report_daily 를 지우면 CASCADE)
+  for (const t of ['cal_entry_except', 'cal_todo_day_note', 'cal_report_daily', 'cal_report_weekly',
+                   'cal_attendance', 'cal_entry', 'cal_todo', 'cal_category', 'cal_project_watch'])
     sql(`DELETE FROM ${t} WHERE user_id=${u}`, `정리(${t})`);
   sql(`DELETE FROM cal_user_rev WHERE user_id=${u}`, 'rev 정리');
   sql(`DELETE FROM app_user WHERE user_id=${u}`, '대상 삭제');

@@ -75,7 +75,9 @@ namespace TaskCalendarWidget
         //  ★ 2026-10-26: 18 → 19(이관 조각 migrations/v19-project-order.sql, 과제 순서: project.sort_no 와 코드표 표 설명).
         //  ★ 2026-10-29: 19 → 20(이관 조각 migrations/v20-weekly-meeting.sql, 주간보고 회의내용: cal_report_weekly.meeting).
         //  ★ 2026-11-04: 20 → 21(이관 조각 migrations/v21-project-watch.sql, 과제 탭 다른 과제 보기: cal_project_watch 표 하나).
-        public const int AppStructureVersion = 21;
+        //  ★ 2026-11-06: 21 → 22(이관 조각 migrations/v22-report-hours.sql, 일간보고 과제별 줄: cal_report_hours 의 cat_uid, project_uid, body,
+        //    cal_report_daily.memo, cal_report_weekly_hours.cat_uid, 안 쓰는 표 셋 cal_task_hours, cal_migration_log, cal_user_pref 삭제).
+        public const int AppStructureVersion = 22;
 
         //  키 다섯 개를 한 번에 읽는다. 연결을 열 때마다 도는 유일한 추가 쿼리다(DB-RELEASE-OPS §3.1 의 비용).
         internal const string MetaSql =

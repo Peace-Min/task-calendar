@@ -50,6 +50,12 @@
 //   목록에 칸을 끼우고 열 수를 하나 올린다. information_schema.COLUMNS 의 이름, 형과 NULL 허용과 기본값 NULL, 바로 앞 칸 자리를 그 목록으로 답한다.
 //   과제 탭 보기만 목록(v21 조각 migrations/v21-project-watch.sql, 2026-11-04 docs/PC-WATCH.md): cal_project_watch 도 위와 같은 표 모양(defs)이다.
 //   기본 키 열 수와 FK 둘(app_user 를 RESTRICT 로, project 를 CASCADE 로)의 대상과 규칙을 표 모양에서 읽어 답한다.
+//   일간보고 과제별 줄(v22 조각 migrations/v22-report-hours.sql, 2026-11-06 docs/DB-V22-REPORT-HOURS.md): cal_report_hours, cal_report_daily,
+//   cal_report_weekly_hours 의 열(이름, COLUMN_TYPE, NULL 허용, 콜레이션), 색인, FK, CHECK 글, 표 설명, 행을 rh 옵션(RH_V21, RH_V22)으로 둔다.
+//   DELETE(일간 옛 줄), ALTER TABLE 의 DROP FOREIGN KEY, DROP INDEX, DROP COLUMN, DROP CHECK, ADD CONSTRAINT CHECK, ADD COLUMN ... AFTER,
+//   ADD INDEX, COMMENT(MySQL 의 1091, 1553, 1828, 3821, 3822, 1060, 1061 을 흉내 낸다), 주간 줄 채우기 두 문장(V22_FILL_DB, V22_FILL_LOCAL),
+//   DROP TABLE IF EXISTS(지울 표 셋), SELECT COUNT(*) INTO, 그리고 information_schema 의 COLUMNS, STATISTICS, TABLE_CONSTRAINTS,
+//   CHECK_CONSTRAINTS(LIKE), REFERENTIAL_CONSTRAINTS, TABLES 하위 질의(GROUP_CONCAT 과 COUNT(DISTINCT) 포함)에 답한다.
 //
 // ★ *.test.mjs 가 아니다(러너가 수집하지 않는다. ps-guard-lib.mjs 머리말과 같은 이유).
 
@@ -330,19 +336,100 @@ const ROW_KEY = {
   cal_report_weekly: (r) => `${r.user_id}:${r.period_start}` + ('meeting' in r ? `:${r.meeting === null ? 'NULL' : r.meeting}` : ''),
 };
 
+// ── 일간보고 과제별 줄(v22 조각 migrations/v22-report-hours.sql, docs/DB-V22-REPORT-HOURS.md) ─────────
+//  세 표(cal_report_hours, cal_report_daily, cal_report_weekly_hours)의 열(이름, COLUMN_TYPE, NULL 허용, 콜레이션),
+//  색인(이름 → 칸 순서), FK(이름 → 칸, 대상과 규칙), CHECK(이름 → MySQL 이 보여 주는 CHECK_CLAUSE 글), 표 설명, 행을 rh 옵션으로 둔다.
+//  지울 표 셋(cal_task_hours, cal_migration_log, cal_user_pref)은 rh.old 이름 목록이다(hasTable 이 함께 본다).
+//  ALTER 의 MySQL 규칙을 흉내 낸다: FK 가 받침으로 쓰는 색인은 못 지운다(1553), FK 가 쓰는 칸은 못 지운다(1828),
+//  색인에 든 칸을 지우면 색인이 남은 칸으로 줄어든다(오류 없음), 없는 것을 지우면 1091 이나 3821, 있는 것을 더하면 1060, 1061, 3822.
+const RH_AI = 'utf8mb4_0900_ai_ci', RH_BIN = 'utf8mb4_bin';
+const rc = (name, type, nullable = false, coll = null) => ({ name, type, nullable, coll });
+export const CLAUSE_GT0 = '((`hours` > 0) and (`hours` <= 24))';
+export const CLAUSE_GE0 = '((`hours` >= 0) and (`hours` <= 24))';
+export const CRH_COMMENT_V21 = '(구조 21 의 표 설명)';   // 옛 글자는 검증이 보지 않는다(새 글자와 다르기만 하면 된다)
+export const CRH_COMMENT_V22 = '근태 일간보고 과제별 줄. 주간 불러오기, 이전 보고, 공수 집계, 공식 과제 이관의 원천';
+export const RH_OLD_TABLES = ['cal_migration_log', 'cal_task_hours', 'cal_user_pref'];
+//  21 까지의 모양(정본 schema-calendar.sql 21). 일간 줄 셋(옛 줄, v22 가 지운다). 주간 줄과 개인 과제는 시험이 rh 로 준다.
+export const RH_V21 = () => ({
+  crh: {
+    cols: [rc('user_id', 'smallint unsigned'), rc('work_date', 'date'), rc('line_no', 'smallint unsigned'), rc('task_name', 'varchar(200)', false, RH_AI),
+      rc('cat_no', 'int unsigned', true), rc('hours', 'decimal(4,2)')],
+    idx: { PRIMARY: ['user_id', 'work_date', 'line_no'], idx_crh_cat: ['user_id', 'cat_no', 'work_date'] },
+    fks: { fk_crh_daily: { cols: ['user_id', 'work_date'], ref: 'cal_report_daily:CASCADE:CASCADE' }, fk_crh_cat: { cols: ['user_id', 'cat_no'], ref: 'cal_category:RESTRICT:RESTRICT' } },
+    checks: { chk_crh_hours: CLAUSE_GT0 }, comment: CRH_COMMENT_V21, rows: 3,
+  },
+  crd: { cols: [rc('user_id', 'smallint unsigned'), rc('work_date', 'date'), rc('status', 'varchar(2)', false, RH_BIN), rc('overtime', 'tinyint'),
+    rc('content', 'mediumtext', false, RH_AI), rc('sent_at', 'datetime(3)'), rc('created_at', 'datetime(3)'), rc('updated_at', 'datetime(3)')] },
+  crwh: {
+    cols: [rc('user_id', 'smallint unsigned'), rc('period_start', 'date'), rc('line_no', 'smallint unsigned'), rc('task_name', 'varchar(200)', false, RH_AI),
+      rc('project_uid', 'char(36)', true, RH_AI), rc('hours', 'decimal(5,2)')],
+    idx: { PRIMARY: ['user_id', 'period_start', 'line_no'], ix_crwh_project: ['project_uid', 'period_start'] },
+    rows: [],
+  },
+  cats: [],
+  projectUidColl: RH_AI,
+  old: [...RH_OLD_TABLES],
+});
+//  22 의 모양(정본 schema-calendar.sql 22). 시험이 정본에서 읽은 열, 색인, FK, CHECK, 표 설명과 대조한다.
+export const RH_V22 = () => {
+  const r = RH_V21();
+  r.crh.cols = [rc('user_id', 'smallint unsigned'), rc('work_date', 'date'), rc('line_no', 'smallint unsigned'), rc('task_name', 'varchar(200)', false, RH_AI),
+    rc('cat_uid', 'varchar(80)', true, RH_BIN), rc('project_uid', 'char(36)', true, RH_AI), rc('hours', 'decimal(4,2)'), rc('body', 'mediumtext', true, RH_AI)];
+  r.crh.idx = { PRIMARY: ['user_id', 'work_date', 'line_no'], ix_crh_project: ['project_uid', 'work_date'], ix_crh_cat: ['user_id', 'cat_uid'] };
+  r.crh.fks = { fk_crh_daily: { cols: ['user_id', 'work_date'], ref: 'cal_report_daily:CASCADE:CASCADE' } };
+  r.crh.checks = { chk_crh_hours: CLAUSE_GE0 };
+  r.crh.comment = CRH_COMMENT_V22;
+  r.crh.rows = 0;
+  r.crd.cols.splice(r.crd.cols.findIndex((c) => c.name === 'content') + 1, 0, rc('memo', 'mediumtext', true, RH_AI));
+  r.crwh.cols.splice(r.crwh.cols.findIndex((c) => c.name === 'task_name') + 1, 0, rc('cat_uid', 'varchar(80)', true, RH_BIN));
+  r.crwh.idx = { ...r.crwh.idx, ix_crwh_cat: ['user_id', 'cat_uid'] };
+  r.old = [];
+  return r;
+};
+//  v22 의 표 키(조각의 표 이름 → rh 의 칸)
+const RH_KEY = { cal_report_hours: 'crh', cal_report_daily: 'crd', cal_report_weekly_hours: 'crwh' };
+const RH_TABLES = '(cal_report_hours|cal_report_daily|cal_report_weekly_hours)';
+//  v22 가 PREPARE 로 실행하는 데이터 문장과 검증 하위 질의(공백 하나로 접은 글자). 조각이 바뀌면 여기도 함께 바꾼다(다르면 모르는 문장).
+export const V22_FILL_DB = "UPDATE cal_report_weekly_hours SET cat_uid = CONCAT('db-', project_uid) WHERE user_id > 0 AND cat_uid IS NULL AND project_uid IS NOT NULL";
+export const V22_FILL_LOCAL = "UPDATE cal_report_weekly_hours h JOIN (SELECT user_id, name COLLATE utf8mb4_bin AS nm, MIN(uid) AS uid FROM cal_category WHERE source = 'local' GROUP BY user_id, nm HAVING COUNT(*) = 1) c "
+  + 'ON c.user_id = h.user_id AND c.nm = h.task_name COLLATE utf8mb4_bin SET h.cat_uid = c.uid WHERE h.user_id > 0 AND h.cat_uid IS NULL AND h.project_uid IS NULL';
+const V22_HNEW = "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cal_report_hours' AND IS_NULLABLE = 'YES' "
+  + "AND ((COLUMN_NAME = 'cat_uid' AND COLUMN_TYPE = 'varchar(80)' AND COLLATION_NAME = 'utf8mb4_bin') "
+  + "OR (COLUMN_NAME = 'project_uid' AND COLUMN_TYPE = 'char(36)' AND COLLATION_NAME = (SELECT COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project' AND COLUMN_NAME = 'uid')) "
+  + "OR (COLUMN_NAME = 'body' AND COLUMN_TYPE = 'mediumtext'))";
+const V22_WNEW = "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cal_report_weekly_hours' AND IS_NULLABLE = 'YES' "
+  + "AND COLUMN_NAME = 'cat_uid' AND COLUMN_TYPE = 'varchar(80)' AND COLLATION_NAME = 'utf8mb4_bin'";
+//  ADD COLUMN 의 형 글자 → COLUMN_TYPE 과 콜레이션
+const RH_TYPES = {
+  'VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin': ['varchar(80)', RH_BIN],
+  'CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci': ['char(36)', RH_AI],
+  'MEDIUMTEXT': ['mediumtext', RH_AI],
+};
+//  LIKE '%x%' 하나(이 조각이 쓰는 모양만)
+const likeAll = (v, pats) => pats.every((p) => String(v).includes(p.replace(/^%|%$/g, '')));
+//  상태 비교용 글자(색인과 FK 는 이름 순서와 상관없게)
+const rhState = (rh) => JSON.stringify({
+  ...rh,
+  crh: { ...rh.crh, idx: sortKeys(rh.crh.idx), fks: sortKeys(rh.crh.fks), checks: sortKeys(rh.crh.checks) },
+  crwh: { ...rh.crwh, idx: sortKeys(rh.crwh.idx) },
+  old: [...rh.old].sort(),
+});
+const sortKeys = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
+
 // ── 흉내 DB ────────────────────────────────────────────────────────────
 //  meta: { 키: 값 } (cal_schema_meta). 실행 기록(writes)과 updated_at 흉내(시각 카운터)를 남긴다.
 //  tables: { cal_room: [{ user_id, name }], room_code: [{ name, sort_order }] } 처럼 있는 표만 준다(없는 키 = 없는 표).
 //  표 바꾸기도 writes 에 'table:<이름>' 으로 남긴다(다시 돌렸을 때 바뀐 것이 없는지 보려고).
 export class FakeDb {
-  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {}, project = PROJECT_V16(), vcs = VCS_V17(), codes = CODES_V18(), weekly = WEEKLY_V19() } = {}) {
+  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {}, project = PROJECT_V16(), vcs = VCS_V17(), codes = CODES_V18(), weekly = WEEKLY_V19(), rh = RH_V21() } = {}) {
     this.rows = new Map(Object.entries(meta).map(([k, v]) => [k, { v, at: 0 }]));
     this.tables = Object.fromEntries(Object.entries(tables).map(([n, rs]) => [n, rs.map((r) => ({ ...r }))]));
     this.defs = Object.fromEntries(Object.entries(defs).map(([n, d]) => [n, { ...d }]));   // 표 이름 → { cols, fks }(v16 검증용)
     this.project = { cols: [...project.cols], checks: [...project.checks] };                  // project 표 모양(v17 검증용)
     this.vcs = { cols: [...vcs.cols], checks: [...vcs.checks], prefComment: vcs.prefComment };  // 지울 칸, CHECK, 표 설명(v18 검증용)
     this.codes = { ...codes };                                                                   // 코드표 표 설명(v19 검증용)
-    this.weekly = { cols: [...weekly.cols] };                                                    // cal_report_weekly 모양(v20 검증용)
+    this.weekly = { cols: [...weekly.cols] };
+    this.rh = JSON.parse(JSON.stringify(rh));                                                     // 일간 과제별 줄 표 셋과 지울 표(v22 검증용)                                                    // cal_report_weekly 모양(v20 검증용)
     this.tableExists = tableExists;
     this.schema = schema;
     this.comment = '';
@@ -357,7 +444,7 @@ export class FakeDb {
   snap() { if (!this.tx) this.visible.push(this.state()); }
   meta() { return Object.fromEntries([...this.rows].map(([k, r]) => [k, r.v])); }
   //  meta 에 회의실 표 모양('#tables')을 붙인 것. 앱에 보인 상태 비교와 실패 뒤 재실행 결과 비교에 쓴다.
-  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()), '#project': JSON.stringify(this.project), '#vcs': JSON.stringify(this.vcs), '#codes': JSON.stringify(this.codes), '#weekly': JSON.stringify(this.weekly) }; }
+  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()), '#project': JSON.stringify(this.project), '#vcs': JSON.stringify(this.vcs), '#codes': JSON.stringify(this.codes), '#weekly': JSON.stringify(this.weekly), '#rh': rhState(this.rh) }; }
   projectHasCol(c) { return this.project.cols.some((x) => colOf(x).name === c); }
   //  열 모양을 흉내 내는 표의 열 목록(project, cal_report_weekly)
   shapeCols(t) { return this[COL_SHAPED[t]].cols; }
@@ -374,7 +461,7 @@ export class FakeDb {
     return out;
   }
   hasCol(t, c) { return this.vcs.cols.includes(`${t}.${c}`); }
-  hasTable(n) { return n === 'cal_schema_meta' ? this.tableExists : Object.prototype.hasOwnProperty.call(this.tables, n); }
+  hasTable(n) { return n === 'cal_schema_meta' ? this.tableExists : Object.prototype.hasOwnProperty.call(this.tables, n) || this.rh.old.includes(n) || n === 'cal_report_hours' || n === 'cal_report_daily'; }   // v22: 일간 두 표는 rh 가 늘 갖고 있다(구조 6 부터 있다)
   need(n) { if (!this.hasTable(n)) throw new SqlStop(`${n}(없음)`); return this.tables[n]; }
   //  cal_room 의 이름을 앞뒤 공백을 지우고 ai_ci 로 묶는다. nm 은 묶음의 MIN(cal_room.name 은 _bin 이라 코드 단위 순서).
   roomGroups() {
@@ -398,6 +485,48 @@ export class FakeDb {
       const names = m[1] ? [m[1]] : [...m[2].matchAll(/'(\w+)'/g)].map((x) => x[1]);
       return names.filter((n) => this.hasTable(n)).length;
     }
+    //  v22: 일간 과제별 줄, 일간보고, 주간 줄 표(rh). 이름, 형, 콜레이션, 색인, FK, CHECK, 표 설명.
+    if (s === V22_HNEW) {
+      const t = this.rhT('cal_report_hours');
+      return t.cols.filter((c) => c.nullable && ((c.name === 'cat_uid' && c.type === 'varchar(80)' && c.coll === RH_BIN)
+        || (c.name === 'project_uid' && c.type === 'char(36)' && c.coll === this.rh.projectUidColl) || (c.name === 'body' && c.type === 'mediumtext'))).length;
+    }
+    if (s === V22_WNEW) return this.rhT('cal_report_weekly_hours').cols.filter((c) => c.nullable && c.name === 'cat_uid' && c.type === 'varchar(80)' && c.coll === RH_BIN).length;
+    m = new RegExp(`^SELECT COUNT\\(\\*\\) FROM information_schema\\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\\(\\) AND TABLE_NAME = '${RH_TABLES}' AND COLUMN_NAME = '(\\w+)'(?: AND COLUMN_TYPE = '([\\w() ,]+)' AND IS_NULLABLE = '(YES|NO)')?$`).exec(s);
+    if (m) {
+      const c = this.rhT(m[1]).cols.find((x) => x.name === m[2]);
+      if (!c) return 0;
+      return m[3] === undefined ? 1 : (c.type === m[3] && c.nullable === (m[4] === 'YES') ? 1 : 0);
+    }
+    m = new RegExp(`^SELECT COUNT\\(\\*\\) FROM information_schema\\.COLUMNS a JOIN information_schema\\.COLUMNS b ON b\\.TABLE_SCHEMA = a\\.TABLE_SCHEMA AND b\\.TABLE_NAME = a\\.TABLE_NAME AND b\\.ORDINAL_POSITION = a\\.ORDINAL_POSITION \\+ 1 WHERE a\\.TABLE_SCHEMA = DATABASE\\(\\) AND a\\.TABLE_NAME = '${RH_TABLES}' AND a\\.COLUMN_NAME = '(\\w+)' AND b\\.COLUMN_NAME = '(\\w+)'$`).exec(s);
+    if (m) {
+      const names = this.rhT(m[1]).cols.map((c) => c.name);
+      const i = names.indexOf(m[2]);
+      return i >= 0 && names[i + 1] === m[3] ? 1 : 0;
+    }
+    m = new RegExp(`^SELECT GROUP_CONCAT\\(COLUMN_NAME ORDER BY ORDINAL_POSITION SEPARATOR ','\\) FROM information_schema\\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\\(\\) AND TABLE_NAME = '${RH_TABLES}'$`).exec(s);
+    if (m) return this.rhT(m[1]).cols.map((c) => c.name).join(',');
+    m = new RegExp(`^SELECT COUNT\\(\\*\\) FROM information_schema\\.STATISTICS WHERE TABLE_SCHEMA = DATABASE\\(\\) AND TABLE_NAME = '${RH_TABLES}' AND INDEX_NAME = '(\\w+)'$`).exec(s);
+    if (m) { const ix = this.rhIdx(m[1])[m[2]]; return ix ? ix.length : 0; }
+    m = new RegExp(`^SELECT GROUP_CONCAT\\(COLUMN_NAME ORDER BY SEQ_IN_INDEX SEPARATOR ','\\) FROM information_schema\\.STATISTICS WHERE TABLE_SCHEMA = DATABASE\\(\\) AND TABLE_NAME = '${RH_TABLES}' AND INDEX_NAME = '(\\w+)'$`).exec(s);
+    if (m) { const ix = this.rhIdx(m[1])[m[2]]; return ix ? ix.join(',') : null; }
+    m = new RegExp(`^SELECT COUNT\\(DISTINCT INDEX_NAME\\) FROM information_schema\\.STATISTICS WHERE TABLE_SCHEMA = DATABASE\\(\\) AND TABLE_NAME = '${RH_TABLES}'$`).exec(s);
+    if (m) return Object.keys(this.rhIdx(m[1])).length;
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = 'cal_report_hours' AND CONSTRAINT_NAME = '(\w+)' AND CONSTRAINT_TYPE = '(FOREIGN KEY|CHECK)'$/.exec(s);
+    if (m) { const t = this.rhT('cal_report_hours'); return (m[2] === 'CHECK' ? t.checks : t.fks)[m[1]] === undefined ? 0 : 1; }
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND CONSTRAINT_NAME = 'chk_crh_hours'((?: AND CHECK_CLAUSE LIKE '[^']*')+)$/.exec(s);
+    if (m) {
+      const cl = this.rhT('cal_report_hours').checks.chk_crh_hours;
+      return cl === undefined ? 0 : (likeAll(cl, [...m[1].matchAll(/LIKE '([^']*)'/g)].map((x) => x[1])) ? 1 : 0);
+    }
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = 'cal_report_hours'(?: AND CONSTRAINT_NAME = '(\w+)' AND REFERENCED_TABLE_NAME = '(\w+)' AND DELETE_RULE = '([A-Z ]+)' AND UPDATE_RULE = '([A-Z ]+)')?$/.exec(s);
+    if (m) {
+      const fks = this.rhT('cal_report_hours').fks;
+      if (m[1] === undefined) return Object.keys(fks).length;
+      return fks[m[1]] && fks[m[1]].ref === `${m[2]}:${m[3]}:${m[4]}` ? 1 : 0;
+    }
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLES WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = 'cal_report_hours' AND TABLE_COMMENT = '((?:[^']|'')*)'$/.exec(s);
+    if (m) return this.rhT('cal_report_hours').comment === m[1].replace(/''/g, "'") ? 1 : 0;
     m = /^SELECT COUNT\(\*\) FROM information_schema\.(COLUMNS|REFERENTIAL_CONSTRAINTS) WHERE (?:TABLE_SCHEMA|CONSTRAINT_SCHEMA) = DATABASE\(\) AND TABLE_NAME = '(\w+)'$/i.exec(s);
     if (m) {
       if (!this.schema || !this.hasTable(m[2])) return 0;
@@ -489,6 +618,94 @@ export class FakeDb {
     if (!d || d[field] === undefined) throw new Error(`모양을 모르는 표를 센다(defs 에 ${t}.${field} 가 없다)`);
     return f(d);
   }
+  //  v22: rh 의 표 하나(cal_report_hours, cal_report_daily, cal_report_weekly_hours)
+  rhT(t) { return this.rh[RH_KEY[t]]; }
+  rhIdx(t) { const x = this.rhT(t); if (!x.idx) throw new Error(`색인을 흉내 내지 않는 표: ${t}`); return x.idx; }
+  //  v22 의 ALTER 한 문장(MySQL 의 오류 규칙을 흉내 낸다. 머리말 참조)
+  rhAlter(table, rest) {
+    const t = this.rhT(table), key = RH_KEY[table];
+    const names = () => t.cols.map((c) => c.name);
+    let m;
+    if ((m = /^DROP FOREIGN KEY (\w+)$/.exec(rest))) {
+      if (!t.fks || !t.fks[m[1]]) throw new SqlStop(`1091 FK ${m[1]} 이 없다`);
+      delete t.fks[m[1]];
+      this.writes.push({ k: `rh:${key}.fk.${m[1]}`, v: 'drop' });
+      return;
+    }
+    if ((m = /^DROP INDEX (\w+)$/.exec(rest))) {
+      const idx = this.rhIdx(table);
+      if (!idx[m[1]]) throw new SqlStop(`1091 색인 ${m[1]} 이 없다`);
+      //  FK 의 칸이 앞머리인 다른 색인이 없으면 이 색인이 그 FK 의 받침이라 못 지운다
+      for (const [fk, f] of Object.entries(t.fks || {})) {
+        const backs = (cols) => f.cols.every((c, i) => cols[i] === c);
+        if (backs(idx[m[1]]) && !Object.entries(idx).some(([n, cols]) => n !== m[1] && backs(cols))) throw new SqlStop(`1553 색인 ${m[1]} 은 FK ${fk} 의 받침이다`);
+      }
+      delete idx[m[1]];
+      this.writes.push({ k: `rh:${key}.idx.${m[1]}`, v: 'drop' });
+      return;
+    }
+    if ((m = /^DROP COLUMN (\w+), ALGORITHM=INSTANT$/.exec(rest))) {
+      if (!names().includes(m[1])) throw new SqlStop(`1091 칸 ${table}.${m[1]} 이 없다`);
+      for (const [fk, f] of Object.entries(t.fks || {})) if (f.cols.includes(m[1])) throw new SqlStop(`1828 칸 ${m[1]} 은 FK ${fk} 가 쓴다`);
+      t.cols = t.cols.filter((c) => c.name !== m[1]);
+      //  색인에 든 칸이면 색인이 남은 칸으로 줄어든다(MySQL 은 오류를 내지 않는다). 칸이 하나도 안 남은 색인은 사라진다.
+      for (const [n, cols] of Object.entries(t.idx || {})) {
+        if (!cols.includes(m[1])) continue;
+        const left = cols.filter((c) => c !== m[1]);
+        if (left.length) t.idx[n] = left; else delete t.idx[n];
+      }
+      this.writes.push({ k: `rh:${key}.col.${m[1]}`, v: 'drop' });
+      return;
+    }
+    if ((m = /^DROP CHECK (\w+)$/.exec(rest))) {
+      if (!t.checks || t.checks[m[1]] === undefined) throw new SqlStop(`3821 CHECK ${m[1]} 이 없다`);
+      delete t.checks[m[1]];
+      this.writes.push({ k: `rh:${key}.check.${m[1]}`, v: 'drop' });
+      return;
+    }
+    if ((m = /^ADD CONSTRAINT (\w+) CHECK \((.+)\)$/.exec(rest))) {
+      if (t.checks[m[1]] !== undefined) throw new SqlStop(`3822 CHECK ${m[1]} 이 이미 있다`);
+      t.checks[m[1]] = m[2] === 'hours >= 0 AND hours <= 24' ? CLAUSE_GE0 : m[2] === 'hours > 0 AND hours <= 24' ? CLAUSE_GT0 : m[2];
+      this.writes.push({ k: `rh:${key}.check.${m[1]}`, v: 'add' });
+      return;
+    }
+    if ((m = /^ADD COLUMN (\w+) (.+?) NULL COMMENT '(?:[^']|'')*' AFTER (\w+), ALGORITHM=INSTANT$/.exec(rest))) {
+      const ty = RH_TYPES[m[2]];
+      if (!ty) throw new Error(`모르는 칸 형: ${m[2]}`);
+      if (names().includes(m[1])) throw new SqlStop(`1060 칸 ${m[1]} 이 이미 있다`);
+      const at = names().indexOf(m[3]);
+      if (at < 0) throw new SqlStop(`1054 칸 ${m[3]} 이 없다`);
+      t.cols.splice(at + 1, 0, rc(m[1], ty[0], true, ty[1]));
+      if (key === 'crwh') {
+        for (const r of t.rows) r[m[1]] = null;
+        //  v20 의 표 모양(defs)도 함께 늘린다(열 수와 열 목록. defShape 처럼 형은 첫 낱말)
+        const d = this.defs.cal_report_weekly_hours;
+        if (d) {
+          const list = d.list ? [...d.list] : undefined;
+          if (list) list.splice(list.findIndex((x) => x.name === m[3]) + 1, 0, { name: m[1], type: ty[0].replace(/\(.*$/, ''), nullable: true });
+          this.defs.cal_report_weekly_hours = { ...d, cols: d.cols + 1, ...(list ? { list } : {}) };
+        }
+      }
+      this.writes.push({ k: `rh:${key}.col.${m[1]}`, v: 'add' });
+      return;
+    }
+    if ((m = /^ADD INDEX (\w+) \(([^)]*)\)$/.exec(rest))) {
+      const idx = this.rhIdx(table);
+      if (idx[m[1]]) throw new SqlStop(`1061 색인 ${m[1]} 이 이미 있다`);
+      const cols = m[2].split(',').map((x) => x.trim());
+      for (const c of cols) if (!names().includes(c)) throw new SqlStop(`1072 칸 ${c} 이 없다`);
+      idx[m[1]] = cols;
+      this.writes.push({ k: `rh:${key}.idx.${m[1]}`, v: 'add' });
+      return;
+    }
+    if ((m = /^COMMENT = '((?:[^']|'')*)'$/.exec(rest))) {
+      const v = m[1].replace(/''/g, "'");
+      if (t.comment !== v) this.writes.push({ k: `rh:${key}.comment`, v });
+      t.comment = v;
+      return;
+    }
+    throw new Error(`모르는 문장: ALTER TABLE ${table} ${rest.slice(0, 100)}`);
+  }
   eval(text) { return new Expr(text, this).parse(); }
   put(k, v) {
     const r = this.rows.get(k);
@@ -528,6 +745,12 @@ export class FakeDb {
       this.vars.set(m[1], rows.filter((r) => r.is_active === 1 && r.sort_no === null).length);
       return;
     }
+    //  v22: 표 이름을 고정해 읽는 행 수(PREPARE 로 @go 일 때만)
+    if ((m = /^SELECT COUNT\(\*\) INTO (@\w+) FROM (cal_report_hours|cal_report_weekly_hours)$/.exec(q))) {
+      if (m[2] === 'cal_report_weekly_hours') this.need('cal_report_weekly_hours');
+      this.vars.set(m[1], m[2] === 'cal_report_hours' ? this.rh.crh.rows : this.rh.crwh.rows.length);
+      return;
+    }
     if ((m = /^SELECT COUNT\(\*\) INTO (@\w+) FROM ([\s\S]+)$/.exec(q))) {
       const f = ROOM_COUNTS[m[2]];
       if (!f) throw new Error(`모르는 문장: ${q.slice(0, 160)}`);
@@ -537,7 +760,7 @@ export class FakeDb {
     if (/^SELECT\b/i.test(s)) return;   // 보여 주기만 하는 SELECT
     if (/^START TRANSACTION$/.test(s)) {
       this.tx = { rows: new Map([...this.rows].map(([k, r]) => [k, { ...r }])), writes: this.writes.length,
-        tables: Object.fromEntries(Object.entries(this.tables).map(([n, rs]) => [n, rs.map((r) => ({ ...r }))])) };
+        tables: Object.fromEntries(Object.entries(this.tables).map(([n, rs]) => [n, rs.map((r) => ({ ...r }))])), rh: JSON.parse(JSON.stringify(this.rh)) };
       return;
     }
     if (/^COMMIT$/.test(s)) { this.tx = null; this.snap(); return; }
@@ -621,12 +844,59 @@ export class FakeDb {
       this.rowCount = 0;
       return;
     }
+    //  v22: 일간 옛 줄 지우기(행 수만 흉내 낸다. 줄은 모두 user_id > 0 이다)
+    if (q === 'DELETE FROM cal_report_hours WHERE user_id > 0') {
+      this.mutating(s, opts);
+      const n = this.rh.crh.rows;
+      this.rh.crh.rows = 0;
+      this.rowCount = n;
+      if (n) this.writes.push({ k: 'rh:crh.rows', v: `-${n}` });
+      return;
+    }
+    //  v22: 주간 줄 과제 id 채우기 두 문장(V22_FILL_DB, V22_FILL_LOCAL 과 글자까지 같아야 한다)
+    if (q === V22_FILL_DB || q === V22_FILL_LOCAL) {
+      this.mutating(s, opts);
+      this.need('cal_report_weekly_hours');
+      if (!this.rh.crwh.cols.some((c) => c.name === 'cat_uid')) throw new SqlStop('1054 칸 cal_report_weekly_hours.cat_uid 가 없다');
+      let n = 0;
+      if (q === V22_FILL_DB) {
+        for (const r of this.rh.crwh.rows) if (r.user_id > 0 && r.cat_uid === null && r.project_uid !== null) { r.cat_uid = 'db-' + r.project_uid; n++; }
+      } else {
+        const groups = new Map();   // 사람 + 이름(_bin: 글자 그대로) → uid 목록
+        for (const c of this.rh.cats) {
+          if (c.source !== 'local') continue;
+          const k = `${c.user_id}\u0000${c.name}`;
+          groups.set(k, [...(groups.get(k) || []), c.uid]);
+        }
+        for (const r of this.rh.crwh.rows) {
+          if (!(r.user_id > 0 && r.cat_uid === null && r.project_uid === null)) continue;
+          const g = groups.get(`${r.user_id}\u0000${r.task_name}`);
+          if (g && g.length === 1) { r.cat_uid = g[0]; n++; }
+        }
+      }
+      this.rowCount = n;
+      if (n) this.writes.push({ k: q === V22_FILL_DB ? 'rh:crwh.fill.db' : 'rh:crwh.fill.local', v: `+${n}` });
+      return;
+    }
+    if ((m = /^DROP TABLE IF EXISTS (cal_task_hours|cal_migration_log|cal_user_pref)$/.exec(q))) {
+      if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
+      this.mutating(s, opts);
+      if (this.rh.old.includes(m[1])) { this.rh.old = this.rh.old.filter((x) => x !== m[1]); this.writes.push({ k: `rh:drop.${m[1]}`, v: 'drop' }); }
+      return;
+    }
+    if ((m = new RegExp(`^ALTER TABLE ${RH_TABLES} (.+)$`).exec(q))) {
+      if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
+      this.mutating(s, opts);
+      this.rhAlter(m[1], m[2]);
+      return;
+    }
     //  v20 3-2: 옛 주간보고 기록 모두 지우기. FK CASCADE 로 주간 시간 표의 줄도(행을 흉내 내는 경우) 함께 지운다.
     if (q === 'DELETE FROM cal_report_weekly WHERE user_id > 0') {
       this.mutating(s, opts);
       const rows = this.need('cal_report_weekly');
       this.tables.cal_report_weekly = [];
       if (Array.isArray(this.tables.cal_report_weekly_hours)) this.tables.cal_report_weekly_hours = [];
+      this.rh.crwh.rows = [];   // v22 가 보는 주간 줄도 CASCADE 로 함께 지워진다
       this.rowCount = rows.length;
       if (rows.length) this.writes.push({ k: 'table:cal_report_weekly', v: `-${rows.length}` });
       return;
@@ -760,7 +1030,7 @@ export class FakeDb {
       if (this.tx) throw new Error('끝났는데 트랜잭션이 열려 있다');
       return { ok: true };
     } catch (e) {
-      if (this.tx) { this.rows = this.tx.rows; this.tables = this.tx.tables; this.writes.length = this.tx.writes; this.tx = null; }
+      if (this.tx) { this.rows = this.tx.rows; this.tables = this.tx.tables; this.rh = this.tx.rh; this.writes.length = this.tx.writes; this.tx = null; }
       if (e instanceof SqlStop) return { ok: false, stop: e.stopName };
       if (e instanceof InjectedFault) return { ok: false, fault: e.n };
       throw e;

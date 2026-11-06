@@ -27,3 +27,13 @@
 
 ## QA
 - 실제 위젯 1600, 900, 400 폭, 밝게 어둡게, 긴 이름, 네 자리 숫자.
+
+## 구현 기록(2026-11-06)
+- 상태: 구현 끝, 커밋 전(구조 22 앱 작업 뒤). 다음 판 0.26.0.
+- 셈 하나: `catUsageMap`(과제 id 마다 `{ ev, td }`, 할 일은 끝낸 것까지), `catUsageSplit(id)`, 합계 `catUsageCount`, title `catUsageTip`. `filterCatCounts` 는 걷었다.
+- 보기 팝업: 출처(`FB_SRC.rows`)가 두 칸 값을 줄 때만 `fbFill` 이 머리 줄 `.fb-colh` 와 두 칸을 그린다. 정렬은 `filterSorted`(합계, 가나다, 둘 다 0 구분선 아래).
+- 과제 관리: `.cat-head` 머리 "일정", "할 일", `.cat-row` grid 에 `var(--cnt-w)` 두 칸(380px 미만 규칙 포함), 0 칸은 흐림.
+- 시험: filter-multi 런타임⑦, 변이 M⑤~M⑦. my-tasks-ui, task-add 의 숫자 계약을 두 칸으로.
+- 남은 QA: 위 QA 절(실제 위젯 폭과 테마, 긴 이름, 네 자리 숫자)은 메인이 이어서 한다.
+- 문서: 위키 과제 필터와 보기, 내 과제와 과제 추가. CHANGELOG.
+- **실제 위젯 QA(메인, 2026-11-06)**: 1600, 900, 400 폭에 밝게와 어둡게. 가로 스크롤 없음, 과제 관리의 머리글과 숫자 칸 오른쪽 끝 일치. 보기 팝업에서 목록에 스크롤 막대가 생기면 칸 머리가 숫자 칸보다 15px 오른쪽에 서는 결함을 찾아 고쳤다(`fbColhSync`: 오른쪽 여백 = 10 + 막대 폭, 목록을 채운 뒤와 `filterPopPlace` 가 높이를 정한 뒤 두 번). 시험 filter-multi 단위⑧, 정적⑧. 그림 `dist/qa-morning/cat-counts/`.

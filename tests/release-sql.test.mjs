@@ -26,7 +26,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, assert, readText } from './harness.mjs';
 import { mutate, exitCodeTable, exitCodesInTable, maskPs } from './ps-guard-lib.mjs';
-import { FakeDb, splitStatements, defShape, PROJECT_V16, PROJECT_V17, PROJECT_V19, VCS_V17, VCS_V18, PREF_COMMENT_V18, CODES_V18, CODES_V19, V19_FILL, WEEKLY_V19, WEEKLY_V20 } from './release-sql-sim.mjs';
+import { FakeDb, splitStatements, defShape, PROJECT_V16, PROJECT_V17, PROJECT_V19, VCS_V17, VCS_V18, PREF_COMMENT_V18, CODES_V18, CODES_V19, V19_FILL, WEEKLY_V19, WEEKLY_V20,
+  RH_V21, RH_V22, RH_OLD_TABLES, CLAUSE_GE0, CRH_COMMENT_V22, V22_FILL_DB, V22_FILL_LOCAL } from './release-sql-sim.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const GEN = join(ROOT, 'installer', 'release-sql.ps1');
@@ -191,6 +192,15 @@ const WH_DEFS = (() => {
   assert.ok(i >= 0, `정본에 ${WH_TABLE} 가 없다`);
   return { [WH_TABLE]: defShape(CANON_CAL.slice(i, CANON_CAL.indexOf(';', CANON_CAL.indexOf(') ENGINE=', i)))) };
 })();
+//  22 부터 주간 시간 표에 cat_uid 칸이 있다(v22 조각이 ALTER 로 더한다, 2026-11-06 docs/DB-V22-REPORT-HOURS.md).
+//  20, 21 의 모양은 v20 조각의 CREATE(= 정본에서 cat_uid 줄과 ix_crwh_cat 줄을 뺀 것, ③n4 가 대조한다)에서 같은 함수로 센다.
+const V20_FRAG = readText(join(FRAG_DIR, 'v20-weekly-meeting.sql'));
+const WH_DEF20_SQL = (() => {
+  const m = /'(CREATE TABLE IF NOT EXISTS cal_report_weekly_hours \([\s\S]*?\) ENGINE=InnoDB[^\n]*\n\s*COMMENT=''(?:[^']|'')*'')'/.exec(V20_FRAG);
+  assert.ok(m, 'v20 조각에서 주간 시간 표 정의를 찾지 못했다(판정 불가)');
+  return m[1].replace(/''/g, "'").replace('IF NOT EXISTS ', '');
+})();
+const WH_DEFS20 = { [WH_TABLE]: defShape(WH_DEF20_SQL) };
 //  21 부터는 과제 탭 보기만 목록 표(cal_project_watch)도 있다(v21 조각, 2026-11-04 docs/PC-WATCH.md). 빈 표로 생긴다(옮길 데이터 없음).
 //  모양(열 수, FK 수, 기본 키 열 수, FK 대상과 규칙)은 정본 schema-calendar.sql 의 정의에서 같은 함수 defShape 로 센다.
 const WT_TABLE = 'cal_project_watch';
@@ -220,22 +230,23 @@ const S = {
       ...(Number(n) >= 20 ? { [WH_TABLE]: [], [PX_TABLE]: [] } : {}),
       ...(Number(n) >= 21 ? { [WT_TABLE]: [] } : {}),
     },
-    defs: Number(n) >= 20 ? { ...PC_DEFS, ...PX_DEFS, ...SI_DEFS, ...WH_DEFS, ...(Number(n) >= 21 ? WT_DEFS : {}) } : Number(n) >= 17 ? { ...PC_DEFS16, ...SI_DEFS } : Number(n) >= 16 ? PC_DEFS16 : {},
+    defs: Number(n) >= 20 ? { ...PC_DEFS, ...PX_DEFS, ...SI_DEFS, ...(Number(n) >= 22 ? WH_DEFS : WH_DEFS20), ...(Number(n) >= 21 ? WT_DEFS : {}) } : Number(n) >= 17 ? { ...PC_DEFS16, ...SI_DEFS } : Number(n) >= 16 ? PC_DEFS16 : {},
     project: Number(n) >= 19 ? PROJECT_V19() : Number(n) >= 17 ? PROJECT_V17() : PROJECT_V16(),
     vcs: Number(n) >= 18 ? VCS_V18() : VCS_V17(),
     codes: Number(n) >= 19 ? CODES_V19() : CODES_V18(),
     weekly: Number(n) >= 20 ? WEEKLY_V20() : WEEKLY_V19(),
+    rh: Number(n) >= 22 ? RH_V22() : RH_V21(),
   }),
 };
-const open = (init, opts = {}) => new FakeDb(init.meta, { tables: init.tables || {}, defs: init.defs || {}, project: init.project || PROJECT_V16(), vcs: init.vcs || VCS_V17(), codes: init.codes || CODES_V18(), weekly: init.weekly || WEEKLY_V19(), ...opts });
+const open = (init, opts = {}) => new FakeDb(init.meta, { tables: init.tables || {}, defs: init.defs || {}, project: init.project || PROJECT_V16(), vcs: init.vcs || VCS_V17(), codes: init.codes || CODES_V18(), weekly: init.weekly || WEEKLY_V19(), rh: init.rh || RH_V21(), ...opts });
 const stateOf = (init) => open(init).state();
 const finalMeta = (n) => ({ db_structure_version: String(n), db_updating: '0', app_latest_version: VER, app_installer_file: FILE, app_installer_sha256: SHA });
 //  끝 상태(meta 와 표): 공용 회의실 목록 하나, cal_room 없음, 과제 캘린더 표 둘과 그림 표(정본과 같은 모양), project 에 개발 시작일 칸과 CHECK,
 //  일반 일정과 예외일만(커밋 기록, cal_entry_commit, 지울 칸과 CHECK 없음, cal_user_pref 표 설명은 18),
 //  과제에 순서 칸과 처음 순서(보이는 과제만), 코드표 표 설명은 19, 주간보고에 회의내용 칸(있던 행은 NULL), 주간 과제투입시간 표(빈 표, 정본 모양)
-const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si(), ...VCS_ROWS18(), project: PROJ_ROWS19(), cal_report_weekly: [], [WH_TABLE]: [], [PX_TABLE]: [], [WT_TABLE]: [] }, defs: { ...PC_DEFS, ...PX_DEFS, ...SI_DEFS, ...WH_DEFS, ...WT_DEFS }, project: PROJECT_V19(), vcs: VCS_V18(), codes: CODES_V19(), weekly: WEEKLY_V20() }).state();
+const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si(), ...VCS_ROWS18(), project: PROJ_ROWS19(), cal_report_weekly: [], [WH_TABLE]: [], [PX_TABLE]: [], [WT_TABLE]: [] }, defs: { ...PC_DEFS, ...PX_DEFS, ...SI_DEFS, ...WH_DEFS, ...WT_DEFS }, project: PROJECT_V19(), vcs: VCS_V18(), codes: CODES_V19(), weekly: WEEKLY_V20(), rh: RH_V22() }).state();
 const FINAL_TABLES = FINAL_DB['#tables'];
-const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES, '#project': FINAL_DB['#project'], '#vcs': FINAL_DB['#vcs'], '#codes': FINAL_DB['#codes'], '#weekly': FINAL_DB['#weekly'] });
+const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES, '#project': FINAL_DB['#project'], '#vcs': FINAL_DB['#vcs'], '#codes': FINAL_DB['#codes'], '#weekly': FINAL_DB['#weekly'], '#rh': FINAL_DB['#rh'] });
 const sortObj = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
 const same = (a, b) => JSON.stringify(sortObj(a)) === JSON.stringify(sortObj(b));
 
@@ -603,7 +614,8 @@ const checks = {
     assert.deepStrictEqual(db.tables.cal_report_weekly, [], `옛 주간보고 행이 지워지지 않았다: ${JSON.stringify(db.tables.cal_report_weekly)}`);
     assert.deepStrictEqual(db.writes.filter((w) => w.k.startsWith('col:') || w.k.startsWith('table:')).map((w) => w.k), ['col:cal_report_weekly.meeting', `table:${WH_TABLE}`, 'table:cal_report_weekly', 'col:cal_project_event.recur_freq', `table:${PX_TABLE}`, `table:${WT_TABLE}`],
       '19 에서 올리는데 회의내용 칸, 주간 시간 표, 옛 주간 기록 지우기, 반복 칸, 예외일 표, 보기만 목록 표(v21) 말고 다른 표나 칸을 바꿨다(앞 조각이 건너뛰지 않았다)');
-    assert.ok(!/DELETE FROM cal_report_(daily|hours)\b/.test(sql), '배포 SQL 이 일간 기록을 지운다');
+    assert.ok(!/DELETE FROM cal_report_(daily|hours)\b/.test(V20_FRAG), 'v20 조각이 일간 기록을 지운다');
+    assert.ok(!/DELETE FROM cal_report_daily\b/.test(sql), '배포 SQL 이 보낸 일간보고(cal_report_daily)를 지운다');
     //  다시 돌려도 바뀌는 것이 없다(조각은 건너뛰고 열기는 같은 값이라 0행)
     const n = db.writes.length, shape = db.state();
     assert.ok(db.run(sql).ok, '19 에서 올린 뒤 다시 돌리면 끝나야 한다');
@@ -645,7 +657,12 @@ const checks = {
     init.defs.cal_project_event = PC_DEFS16.cal_project_event;
     const db = open(init);
     const r = db.run(sql);
-    assert.ok(r.ok, `이미 20 인 DB 에서 배포 SQL 이 끝나지 않는다: ${JSON.stringify(r)}`);
+    //  2026-11-06 구조 22: v22 는 주간 시간 표를 바꾸므로 그 표가 없는 DB 에서는 아무것도 바꾸기 전에 이유를 적고 멈춘다(닫힌 채, 구조 21).
+    //    그런 DB 는 일회용 SQL 로 표를 먼저 만든 뒤 다시 돌린다. 운영 DB 는 19 에서 v20 이 표를 만들었으므로 해당하지 않는다.
+    assert.ok(!r.ok && /v22 조각 - 일간이나 주간 보고 표가 없다/.test(r.stop || ''), `이미 20 인(주간 시간 표 없는) DB 에서 v22 의 표 확인으로 멈추지 않았다: ${JSON.stringify(r)}`);
+    assert.strictEqual(db.meta().db_structure_version, '21', '주간 시간 표 없는 DB 가 v21 까지 오르지 않았거나 v22 가 번호를 올렸다');
+    assert.strictEqual(db.meta().db_updating, '1', 'v22 표 확인에서 멈췄는데 닫힌 상태가 아니다');
+    assert.ok(!db.writes.some((w) => w.k.startsWith('rh:')), 'v22 표 확인에서 멈췄는데 일간 줄 표나 지울 표를 바꿨다');
     assert.ok(!db.hasTable(WH_TABLE), '이미 20 인 DB 에서 v20 이 건너뛰지 않고 주간 시간 표를 만들었다');
     assert.ok(!db.hasTable(PX_TABLE), '이미 20 인 DB 에서 v20 이 건너뛰지 않고 예외일 표를 만들었다');
     assert.strictEqual(db.defs.cal_project_event.cols, PC_DEFS16.cal_project_event.cols, '이미 20 인 DB 에서 v20 이 건너뛰지 않고 반복 칸을 더했다');
@@ -663,7 +680,7 @@ const checks = {
     assert.deepStrictEqual(db.defs[WT_TABLE], WT_DEFS[WT_TABLE], `보기만 목록 표 모양이 정본과 다르다: ${JSON.stringify(db.defs[WT_TABLE])}`);
     assert.deepStrictEqual(db.tables[WT_TABLE], [], '새 보기만 목록 표에 행이 있다(옮길 데이터가 없어야 한다)');
     assert.deepStrictEqual(db.writes.filter((w) => w.k.startsWith('table:') || w.k.startsWith('col:')).map((w) => w.k), [`table:${WT_TABLE}`], '20 에서 올리는데 보기만 목록 표 말고 다른 표나 칸을 바꿨다');
-    assert.strictEqual(db.meta().db_structure_version, '21', '20 에서 올렸는데 구조 번호가 21 이 아니다');
+    assert.strictEqual(db.meta().db_structure_version, String(APP), `20 에서 올렸는데 구조 번호가 ${APP} 이 아니다`);
     const n = db.writes.length, shape = db.state();
     assert.ok(db.run(sql).ok, '20 에서 올린 뒤 다시 돌리면 끝나야 한다');
     assert.strictEqual(db.writes.length, n, `다시 돌렸는데 ${db.writes.length - n}행을 바꿨다`);
@@ -736,7 +753,7 @@ const V21_WT_BAD_SHAPES = [
 const whBad = (label, patch) => [label, () => {
   const x = S.at(19);
   x.tables[WH_TABLE] = [];
-  x.defs = { ...x.defs, [WH_TABLE]: { ...WH_DEFS[WH_TABLE], ...patch } };
+  x.defs = { ...x.defs, [WH_TABLE]: { ...WH_DEFS20[WH_TABLE], ...patch } };
   return x;
 }];
 const V20_WH_BAD_SHAPES = [
@@ -832,10 +849,9 @@ test('배포SQL③j3: v18 의 지우기(표 하나, 칸 다섯) 어느 것이 �
   for (const [label, from] of V18_STEPS) checks.gitVerify(mutate(realSql(), from, from.replace('IF(@go AND', 'IF(0 AND')), label);
 });
 test('배포SQL③j4: v18 이 지운 뒤에도 git 기록이 남으면(user_id 0) 칸과 표를 지우기 전에 닫힌 채 멈춘다', () => checks.gitLeft(realSql()));
-test('배포SQL③j5: v18 의 cal_user_pref 표 설명은 정본 schema-calendar.sql 과 같은 글자다', () => {
-  const m = /CREATE TABLE cal_user_pref \([\s\S]*?\) ENGINE=InnoDB[^\n]*\n\s*COMMENT='((?:[^']|'')*)';/.exec(CANON_CAL);
-  assert.ok(m, '정본에서 cal_user_pref 표 설명을 찾지 못했다(판정 불가)');
-  assert.strictEqual(m[1].replace(/''/g, "'"), PREF_COMMENT_V18, '정본 cal_user_pref 표 설명이 v18 조각(흉내 실행기 PREF_COMMENT_V18)과 다르다');
+test('배포SQL③j5: v18 의 cal_user_pref 표 설명은 흉내 실행기와 같은 글자이고, 정본에는 구조 22 부터 그 표가 없다', () => {
+  //  정본은 구조 22 에서 cal_user_pref 를 지웠다(docs/DB-V22-REPORT-HOURS.md). 남은 대조는 v18 조각과 흉내 실행기다.
+  assert.ok(!/CREATE TABLE cal_user_pref \(/.test(CANON_CAL), '정본에 구조 22 에서 지운 cal_user_pref 가 다시 생겼다');
   const frag = readText(join(FRAG_DIR, 'v18-remove-git.sql'));
   assert.ok(frag.includes(`ALTER TABLE cal_user_pref COMMENT = ''${PREF_COMMENT_V18}''`), 'v18 조각의 표 설명이 정본과 다르다');
 });
@@ -911,9 +927,12 @@ test('배포SQL③n4: 주간 과제투입시간 표의 정의가 정본 schema-c
   const frag = readText(join(FRAG_DIR, 'v20-weekly-meeting.sql'));
   const f = /SET @s := IF\(@go,\n  'CREATE TABLE IF NOT EXISTS cal_report_weekly_hours \(([\s\S]*?\) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci\s+COMMENT=''(?:[^']|'')*'')',\n  'DO 0'\);\nPREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;/.exec(frag);
   assert.ok(f, 'v20 조각에 주간 시간 표를 @go 일 때만 IF NOT EXISTS 로 만드는 PREPARE 가 없다');
-  assert.strictEqual(f[1].replace(/''/g, "'"), canon[1], 'v20 조각의 주간 시간 표 정의가 정본과 글자까지 같지 않다');
-  //  검증의 기대값이 정본 정의에서 센 모양과 같다
-  const d = WH_DEFS[WH_TABLE];
+  //  구조 22 의 cat_uid 줄과 ix_crwh_cat 줄은 v22 조각이 ALTER 로 더한다(③r4 가 그 두 줄을 대조한다). 그 둘을 뺀 정본이 v20 의 정의다.
+  const canon20 = canon[1].replace(/^  cat_uid .*\n/m, '').replace(/^  KEY ix_crwh_cat .*\n/m, '');
+  assert.notStrictEqual(canon20, canon[1], '정본 주간 시간 표에 cat_uid 줄이 없다(판정 불가)');
+  assert.strictEqual(f[1].replace(/''/g, "'"), canon20, 'v20 조각의 주간 시간 표 정의가 정본(cat_uid 줄과 ix_crwh_cat 줄을 뺀 것)과 글자까지 같지 않다');
+  //  검증의 기대값이 v20 조각 정의에서 센 모양과 같다
+  const d = WH_DEFS20[WH_TABLE];
   assert.ok(frag.includes(`(@m_hc = ${d.cols} AND @m_hp = ${d.pk} AND @m_hf = ${d.fks} AND @m_hr = 1 AND @m_hk = 1)`), `v20 검증의 기대값이 정본 정의(열 ${d.cols}, 기본 키 ${d.pk}, FK ${d.fks})와 다르다`);
   assert.deepStrictEqual(d.refs, ['cal_report_weekly:CASCADE:CASCADE'], `정본 주간 시간 표의 FK 가 cal_report_weekly 로 CASCADE 하나가 아니다: ${d.refs}`);
   assert.ok(frag.includes("REFERENCED_TABLE_NAME = 'cal_report_weekly' AND DELETE_RULE = 'CASCADE' AND UPDATE_RULE = 'CASCADE'"), 'v20 검증이 FK 의 대상과 규칙을 보지 않는다');
@@ -921,7 +940,7 @@ test('배포SQL③n4: 주간 과제투입시간 표의 정의가 정본 schema-c
   const code = frag.split('\n').filter((l) => !/^\s*--/.test(l)).join('\n');
   assert.ok(!/\bGRANT\b/i.test(code), 'v20 조각이 GRANT 를 한다(배포 SQL 은 권한을 줄 수 없다)');
 });
-test('배포SQL③q: 20 에서 21 로 올리면 보기만 목록 표(cal_project_watch)가 정본 모양의 빈 표로 생기고 구조 번호가 21 이 되며 다시 돌려도 그대로다', () => checks.watchAdded(realSql()));
+test(`배포SQL③q: 20 에서 올리면 보기만 목록 표(cal_project_watch)가 정본 모양의 빈 표로 생기고 구조 번호가 ${APP} 이 되며 다시 돌려도 그대로다`, () => checks.watchAdded(realSql()));
 test('배포SQL③q2: v21 검증이 맞지 않으면(같은 이름의 다른 모양 표) 닫힌 채 멈추고 구조 번호를 올리지 않는다', () => {
   for (const [label, mk] of V21_WT_BAD_SHAPES) checks.watchVerify(realSql(), label, mk);
 });
@@ -1167,4 +1186,238 @@ test('안전 갱신 모드: 이관 조각의 DELETE, UPDATE 에는 모두 WHERE 
     }
   }
   assert.deepStrictEqual(bad, [], 'WHERE 없는 DELETE/UPDATE:\n' + bad.join('\n'));
+});
+
+// ══ v22 일간보고 과제별 줄(docs/DB-V22-REPORT-HOURS.md, 2026-11-06) ═══════════════════════════════
+//  흉내 실행은 순서 오류(FK 받침 색인 1553, FK 칸 1828, 이미 있는 것 1060/1061/3822, 없는 것 1091/3821)를 MySQL 규칙대로 낸다.
+//  그래도 실제 MySQL 8.4 리허설(tools/db-rehearsal/rehearse-v22.mjs)을 대신하지 않는다.
+const V22_FRAG_NAME = 'v22-report-hours.sql';
+const V22_FRAG = readText(join(FRAG_DIR, V22_FRAG_NAME));
+//  21 출발: 주간 줄 다섯과 개인 과제(같은 사람의 같은 이름 둘, 대소문자만 다른 이름, 다른 사람의 같은 이름)
+const RH_CATS21 = [
+  { user_id: 1, uid: 'c-11111111-1111-4111-8111-111111111111', source: 'local', name: '사내 교육' },
+  { user_id: 1, uid: 'c-22222222-2222-4222-8222-222222222222', source: 'local', name: '중복 과제' },
+  { user_id: 1, uid: 'c-33333333-3333-4333-8333-333333333333', source: 'local', name: '중복 과제' },
+  { user_id: 1, uid: 'c-44444444-4444-4444-8444-444444444444', source: 'local', name: 'alpha' },
+  { user_id: 2, uid: 'c-55555555-5555-4555-8555-555555555555', source: 'local', name: '사내 교육' },
+  { user_id: 1, uid: 'db-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', source: 'db', name: '가상 과제 하나' },
+];
+const PU = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const RH_ROWS21 = () => [
+  { user_id: 1, period_start: '2026-10-26', line_no: 0, task_name: '가상 과제 하나', project_uid: PU },   // 공식 과제 줄
+  { user_id: 1, period_start: '2026-10-26', line_no: 1, task_name: '사내 교육', project_uid: null },       // 이름이 같은 개인 과제 하나
+  { user_id: 1, period_start: '2026-10-26', line_no: 2, task_name: '중복 과제', project_uid: null },       // 같은 이름 둘: 채우지 않는다
+  { user_id: 1, period_start: '2026-10-26', line_no: 3, task_name: 'Alpha', project_uid: null },           // 대소문자만 다르다(_bin): 채우지 않는다
+  { user_id: 1, period_start: '2026-10-26', line_no: 4, task_name: '없는 과제', project_uid: null },       // 같은 이름 없음
+  { user_id: 2, period_start: '2026-10-26', line_no: 0, task_name: '사내 교육', project_uid: null },       // 다른 사람: 그 사람의 과제로
+];
+const RH_FILLED = ['db-' + PU, RH_CATS21[0].uid, null, null, null, RH_CATS21[4].uid];
+const at21Weekly = () => { const x = S.at(21); x.rh = RH_V21(); x.rh.crwh.rows = RH_ROWS21(); x.rh.cats = RH_CATS21.map((c) => ({ ...c })); return x; };
+//  정본에서 표 하나의 CREATE 본문을 읽는다
+const canonBody = (t) => {
+  const m = new RegExp(`\\nCREATE TABLE ${t} \\(\\n([\\s\\S]*?)\\n\\) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci\\s+COMMENT='((?:[^']|'')*)';`).exec(CANON_CAL);
+  assert.ok(m, `정본에서 ${t} 정의를 찾지 못했다(판정 불가)`);
+  return { body: m[1], comment: m[2].replace(/''/g, "'") };
+};
+//  정본 정의에서 흉내 실행기와 같은 모양(열의 COLUMN_TYPE, NULL 허용, 콜레이션, 색인, FK, CHECK)을 읽는다
+const TYPE_OF = { 'SMALLINT UNSIGNED': 'smallint unsigned', DATE: 'date', 'VARCHAR(200)': 'varchar(200)', 'VARCHAR(80)': 'varchar(80)', 'CHAR(36)': 'char(36)',
+  'DECIMAL(4,2)': 'decimal(4,2)', 'DECIMAL(5,2)': 'decimal(5,2)', MEDIUMTEXT: 'mediumtext', 'VARCHAR(2)': 'varchar(2)', TINYINT: 'tinyint', 'DATETIME(3)': 'datetime(3)', 'INT UNSIGNED': 'int unsigned' };
+const TEXTISH = (ty) => /^(varchar|char|mediumtext)/.test(ty);
+const canonShape = (t) => {
+  const { body, comment } = canonBody(t);
+  const lines = body.split('\n').map((l) => l.replace(/\s+--.*$/, '')).filter((l) => !/^\s*--/.test(l) && l.trim());
+  const cols = [], idx = {}, fks = {}, checks = {};
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].trim().replace(/,$/, '');
+    let m;
+    if ((m = /^PRIMARY KEY \(([^)]*)\)/.exec(l))) { idx.PRIMARY = m[1].split(',').map((x) => x.trim()); continue; }
+    if ((m = /^KEY (\w+) \(([^)]*)\)/.exec(l))) { idx[m[1]] = m[2].split(',').map((x) => x.trim()); continue; }
+    if ((m = /^CONSTRAINT (\w+) FOREIGN KEY \(([^)]*)\)/.exec(l))) {
+      const rest = (l + ' ' + (lines[i + 1] || '').trim()).replace(/,$/, '');
+      const r = /REFERENCES (\w+) \([^)]*\) ON DELETE (\w+) ON UPDATE (\w+)/.exec(rest);
+      fks[m[1]] = { cols: m[2].split(',').map((x) => x.trim()), ref: `${r[1]}:${r[2]}:${r[3]}` };
+      continue;
+    }
+    if ((m = /^CONSTRAINT (\w+) CHECK \((.*)\)$/.exec(l))) { checks[m[1]] = m[2]; continue; }
+    if ((m = /^(\w+)\s+(SMALLINT UNSIGNED|INT UNSIGNED|DECIMAL\(\d,\d\)|VARCHAR\(\d+\)|CHAR\(\d+\)|MEDIUMTEXT|DATETIME\(3\)|DATE|TINYINT)(?=[\s,]|$)(.*)$/.exec(l))) {
+      const ty = TYPE_OF[m[2]];
+      const coll = /COLLATE (\w+)/.exec(m[3]);
+      cols.push({ name: m[1], type: ty, nullable: !/NOT NULL/.test(m[3].replace(/COMMENT '(?:[^']|'')*'/, '')), coll: TEXTISH(ty) ? (coll ? coll[1] : 'utf8mb4_0900_ai_ci') : null });
+    }
+  }
+  return { cols, idx, fks, checks, comment };
+};
+//  조각에서 PREPARE 로 실행되는 ALTER 한 문장의 글자(두 겹 따옴표를 푼 것)
+const fragAlter = (re) => { const m = re.exec(V22_FRAG); assert.ok(m, `v22 조각에 ${re} 가 없다`); return m[1].replace(/''/g, "'"); };
+
+checks.v22Upgraded = (sql) => {
+  const db = open(at21Weekly());
+  const r = db.run(sql);
+  assert.ok(r.ok, `21 에서 22 로 올리는 배포가 끝나지 않는다: ${JSON.stringify(r)}`);
+  assert.strictEqual(db.meta().db_structure_version, '22', '21 에서 올렸는데 구조 번호가 22 가 아니다');
+  const want = RH_V22();
+  for (const k of ['crh', 'crd']) assert.deepStrictEqual(db.rh[k], want[k], `${k} 모양이 정본(22)과 다르다: ${JSON.stringify(db.rh[k])}`);
+  assert.deepStrictEqual(db.rh.crwh.cols, want.crwh.cols, '주간 줄 표의 열이 정본(22)과 다르다');
+  assert.deepStrictEqual(db.rh.crwh.idx, want.crwh.idx, '주간 줄 표의 색인이 정본(22)과 다르다');
+  assert.deepStrictEqual(db.rh.old, [], `지울 표가 남았다: ${db.rh.old}`);
+  assert.ok(RH_OLD_TABLES.every((t) => !db.hasTable(t)), '지울 표가 information_schema 에 남았다');
+  //  주간 줄 채우기: 공식 과제는 db-<uid>, 개인 과제는 같은 사람의 글자까지 같은 이름이 하나뿐일 때만
+  assert.deepStrictEqual(db.rh.crwh.rows.map((x) => x.cat_uid), RH_FILLED, `주간 줄 cat_uid 채우기가 다르다: ${JSON.stringify(db.rh.crwh.rows)}`);
+  assert.strictEqual(db.rh.crwh.rows.length, RH_ROWS21().length, '주간 줄 수가 바뀌었다');
+  assert.deepStrictEqual(db.rh.crwh.rows.map((x) => x.task_name), RH_ROWS21().map((x) => x.task_name), '주간 줄의 과제 이름이 바뀌었다');
+  //  순서: 옛 줄 지우기, FK, 색인, 칸, 시간 제약(지우고 만들기), 칸 다섯, 색인 셋, 표 설명, 채우기, 표 셋 지우기
+  const order = ['rh:crh.rows', 'rh:crh.fk.fk_crh_cat', 'rh:crh.idx.idx_crh_cat', 'rh:crh.col.cat_no', 'rh:crh.check.chk_crh_hours',
+    'rh:crh.col.cat_uid', 'rh:crh.col.project_uid', 'rh:crh.col.body', 'rh:crd.col.memo', 'rh:crwh.col.cat_uid',
+    'rh:crh.idx.ix_crh_project', 'rh:crh.idx.ix_crh_cat', 'rh:crwh.idx.ix_crwh_cat', 'rh:crh.comment', 'rh:crwh.fill.db', 'rh:crwh.fill.local',
+    'rh:drop.cal_task_hours', 'rh:drop.cal_migration_log', 'rh:drop.cal_user_pref'];
+  const ks = db.writes.filter((w) => w.k.startsWith('rh:')).map((w) => w.k);
+  assert.deepStrictEqual(ks.filter((k, i) => ks.indexOf(k) === i), order, `v22 의 바꾸는 순서가 다르다: ${ks.join(', ')}`);
+  assert.deepStrictEqual(db.writes.filter((w) => w.k === 'rh:crh.check.chk_crh_hours').map((w) => w.v), ['drop', 'add'], '시간 제약을 지우고 다시 만드는 두 문장이 아니다');
+  assert.ok(ks.indexOf('rh:drop.cal_task_hours') > ks.indexOf('rh:crwh.fill.local'), '표 셋 지우기가 검증(채우기 뒤) 앞에 있다');
+  assert.strictEqual(db.writes.find((w) => w.k === 'rh:crh.rows')?.v, '-3', '일간 옛 줄 셋을 지우지 않았다');
+  //  다시 돌려도 바뀌는 것이 없다
+  const n = db.writes.length, shape = db.state();
+  assert.ok(db.run(sql).ok, '21 에서 올린 뒤 다시 돌리면 끝나야 한다');
+  assert.strictEqual(db.writes.length, n, `다시 돌렸는데 ${db.writes.length - n}행을 바꿨다`);
+  assert.ok(same(db.state(), shape), '다시 돌렸는데 표나 칸이 바뀌었다');
+};
+//  v22 검증: 같은 이름의 다른 모양(칸, 콜레이션, 색인)이 이미 있으면 닫힌 채 멈추고, 구조 번호를 올리지 않고, 지울 표 셋을 지우지 않는다
+checks.v22Verify = (sql, label, mk, re = /v22 조각 검증 실패/) => {
+  const db = open(mk());
+  const r = db.run(sql);
+  assert.ok(!r.ok && re.test(r.stop || ''), `${label}: v22 검증에서 멈추지 않았다: ${JSON.stringify(r)}`);
+  assert.strictEqual(db.meta().db_updating, '1', `${label}: v22 검증에서 멈췄는데 닫힌 상태(db_updating 1)가 아니다`);
+  assert.strictEqual(db.meta().db_structure_version, '21', `${label}: v22 검증에서 멈췄는데 구조 번호가 올라갔다`);
+  assert.deepStrictEqual([...db.rh.old].sort(), [...RH_OLD_TABLES].sort(), `${label}: 검증에서 멈췄는데 지울 표를 지웠다(표 셋 지우기는 검증 뒤다)`);
+  assertNoHalfOpen(db, stateOf(mk()), null, `v22 검증 멈춤(${label})`);
+};
+const rh21 = (label, patch) => [label, () => { const x = at21Weekly(); patch(x.rh); return x; }];
+const ins = (cols, after, c) => cols.splice(cols.findIndex((x) => x.name === after) + 1, 0, c);
+const V22_BAD_SHAPES = [
+  rh21('일간 줄 cat_uid 가 대소문자 무시 콜레이션', (rh) => ins(rh.crh.cols, 'task_name', { name: 'cat_uid', type: 'varchar(80)', nullable: true, coll: 'utf8mb4_0900_ai_ci' })),
+  rh21('일간 줄 cat_uid 가 NULL 을 막음', (rh) => ins(rh.crh.cols, 'task_name', { name: 'cat_uid', type: 'varchar(80)', nullable: false, coll: 'utf8mb4_bin' })),
+  rh21('일간 줄 body 가 TEXT', (rh) => ins(rh.crh.cols, 'hours', { name: 'body', type: 'text', nullable: true, coll: 'utf8mb4_0900_ai_ci' })),
+  rh21('일간 줄 body 자리가 다름(맨 앞 칸 뒤)', (rh) => ins(rh.crh.cols, 'user_id', { name: 'body', type: 'mediumtext', nullable: true, coll: 'utf8mb4_0900_ai_ci' })),
+  rh21('project.uid 콜레이션이 일간 줄 project_uid 와 다름', (rh) => { rh.projectUidColl = 'utf8mb4_bin'; }),
+  rh21('일간 줄 표에 모르는 색인이 더 있음', (rh) => { rh.crh.idx.ix_other = ['user_id', 'hours']; }),
+  rh21('같은 이름의 ix_crh_cat 이 다른 칸', (rh) => { rh.crh.idx.ix_crh_cat = ['user_id', 'task_name']; }),
+  rh21('일간 줄 표에 다른 FK 가 더 있음', (rh) => { rh.crh.fks.fk_other = { cols: ['user_id', 'work_date'], ref: 'cal_report_daily:RESTRICT:RESTRICT' }; }),
+  rh21('fk_crh_daily 가 RESTRICT', (rh) => { rh.crh.fks.fk_crh_daily.ref = 'cal_report_daily:RESTRICT:RESTRICT'; }),
+  rh21('일간보고 memo 가 맨 끝', (rh) => { rh.crd.cols.push({ name: 'memo', type: 'mediumtext', nullable: true, coll: 'utf8mb4_0900_ai_ci' }); }),
+  rh21('일간보고 memo 가 TEXT', (rh) => ins(rh.crd.cols, 'content', { name: 'memo', type: 'text', nullable: true, coll: 'utf8mb4_0900_ai_ci' })),
+  rh21('주간 줄 cat_uid 가 대소문자 무시 콜레이션', (rh) => ins(rh.crwh.cols, 'task_name', { name: 'cat_uid', type: 'varchar(80)', nullable: true, coll: 'utf8mb4_0900_ai_ci' })),
+  rh21('같은 이름의 ix_crwh_cat 이 다른 칸', (rh) => { rh.crwh.idx.ix_crwh_cat = ['user_id', 'task_name']; }),
+];
+
+test('배포SQL③r: 21 에서 22 로 올리면 일간 옛 줄이 지워지고 과제 번호 참조(FK, 색인, 칸)가 걷히고 새 칸, 색인, 시간 제약, 표 설명이 정본과 같아지며, 주간 줄 과제 id 가 규칙대로 채워지고 안 쓰는 표 셋이 지워진다. 다시 돌려도 그대로다', () =>
+  checks.v22Upgraded(realSql()));
+test('배포SQL③r2: v22 검증이 맞지 않으면(같은 이름의 다른 모양 칸, 콜레이션, 색인, FK) 닫힌 채 멈추고 구조 번호를 올리지 않으며 지울 표 셋도 그대로 둔다', () => {
+  for (const [label, mk] of V22_BAD_SHAPES) checks.v22Verify(realSql(), label, mk);
+});
+test('배포SQL③r3: 21 에서 올리는 중(주간 줄과 개인 과제가 있는 DB) 어느 문장에서 실패해도 다시 돌리면 실패 없이 돌린 것과 같은 끝 상태가 된다', () =>
+  checks.faults(realSql(), at21Weekly, APP, '21(주간 줄 있음)에서'));
+test('배포SQL③r4: v22 조각의 칸, 색인, 시간 제약, 표 설명이 정본 schema-calendar.sql 과 글자까지 같고, 흉내 실행기의 22 모양(RH_V22)이 정본과 같다', () => {
+  const crh = canonBody('cal_report_hours'), crd = canonBody('cal_report_daily'), crwh = canonBody('cal_report_weekly_hours');
+  const line = (body, name) => { const m = new RegExp(`^  ${name} .*$`, 'm').exec(body); assert.ok(m, `정본에 ${name} 줄이 없다`); return m[0].trim().replace(/,$/, '').replace(/\s+/g, ' '); };
+  const add = (t, c, after) => fragAlter(new RegExp(`SET @s := IF\\(@go AND @m_col = 0,\\n  'ALTER TABLE ${t} ADD COLUMN ((?:[^']|'')*) AFTER ${after}, ALGORITHM=INSTANT',\\n  'DO 0'\\);`));
+  assert.strictEqual(add('cal_report_hours', 'cat_uid', 'task_name'), line(crh.body, 'cat_uid'), 'v22 의 cal_report_hours.cat_uid 가 정본과 다르다');
+  assert.ok(add('cal_report_hours', 'cat_uid', 'task_name').startsWith('cat_uid '), 'v22 의 첫 칸 추가가 cat_uid 가 아니다');
+  assert.strictEqual(fragAlter(/ADD COLUMN (project_uid (?:[^']|'')*) AFTER cat_uid, ALGORITHM=INSTANT/), line(crh.body, 'project_uid'), 'v22 의 cal_report_hours.project_uid 가 정본과 다르다');
+  assert.strictEqual(fragAlter(/ALTER TABLE cal_report_hours ADD COLUMN (body (?:[^']|'')*) AFTER hours, ALGORITHM=INSTANT/), line(crh.body, 'body'), 'v22 의 cal_report_hours.body 가 정본과 다르다');
+  assert.strictEqual(fragAlter(/ALTER TABLE cal_report_daily ADD COLUMN (memo (?:[^']|'')*) AFTER content, ALGORITHM=INSTANT/), line(crd.body, 'memo'), 'v22 의 cal_report_daily.memo 가 정본과 다르다');
+  assert.strictEqual(fragAlter(/ALTER TABLE cal_report_weekly_hours ADD COLUMN (cat_uid (?:[^']|'')*) AFTER task_name, ALGORITHM=INSTANT/), line(crwh.body, 'cat_uid'), 'v22 의 cal_report_weekly_hours.cat_uid 가 정본과 다르다');
+  for (const [t, body, ix] of [['cal_report_hours', crh.body, 'ix_crh_project'], ['cal_report_hours', crh.body, 'ix_crh_cat'], ['cal_report_weekly_hours', crwh.body, 'ix_crwh_cat']]) {
+    const k = new RegExp(`^  KEY ${ix} \\(([^)]*)\\)`, 'm').exec(body);
+    assert.ok(k, `정본 ${t} 에 KEY ${ix} 가 없다`);
+    assert.ok(V22_FRAG.includes(`'ALTER TABLE ${t} ADD INDEX ${ix} (${k[1]})'`), `v22 의 ${ix} 가 정본(${k[1]})과 다르다`);
+  }
+  const ck = /CONSTRAINT chk_crh_hours CHECK \(([^\n]*)\)\n/.exec(crh.body + '\n');
+  assert.ok(ck && V22_FRAG.includes(`'ALTER TABLE cal_report_hours ADD CONSTRAINT chk_crh_hours CHECK (${ck[1]})'`), 'v22 의 시간 제약 글이 정본과 다르다');
+  assert.strictEqual(ck[1], 'hours >= 0 AND hours <= 24', '정본 시간 제약이 0 이상 24 이하가 아니다');
+  assert.ok(V22_FRAG.includes(`'ALTER TABLE cal_report_hours COMMENT = ''${crh.comment.replace(/'/g, "''")}'''`), 'v22 의 표 설명이 정본과 다르다');
+  assert.ok(V22_FRAG.includes(`TABLE_COMMENT = '${crh.comment}'`), 'v22 검증이 정본 표 설명을 보지 않는다');
+  assert.strictEqual(crh.comment, CRH_COMMENT_V22, '흉내 실행기의 표 설명(CRH_COMMENT_V22)이 정본과 다르다');
+  //  흉내 실행기의 22 모양이 정본에서 읽은 모양과 같다(열, 색인, FK, CHECK)
+  const want = RH_V22();
+  const sh = canonShape('cal_report_hours');
+  assert.deepStrictEqual(sh.cols, want.crh.cols, `정본 cal_report_hours 의 열이 흉내 실행기(RH_V22)와 다르다: ${JSON.stringify(sh.cols)}`);
+  assert.deepStrictEqual(sh.idx, want.crh.idx, '정본 cal_report_hours 의 색인이 흉내 실행기와 다르다');
+  assert.deepStrictEqual(sh.fks, want.crh.fks, '정본 cal_report_hours 의 FK 가 흉내 실행기와 다르다');
+  assert.deepStrictEqual(Object.keys(sh.checks), ['chk_crh_hours'], '정본 cal_report_hours 의 CHECK 가 chk_crh_hours 하나가 아니다');
+  assert.deepStrictEqual(canonShape('cal_report_daily').cols, want.crd.cols, '정본 cal_report_daily 의 열이 흉내 실행기와 다르다');
+  const wsh = canonShape('cal_report_weekly_hours');
+  assert.deepStrictEqual(wsh.cols, want.crwh.cols, `정본 cal_report_weekly_hours 의 열이 흉내 실행기와 다르다: ${JSON.stringify(wsh.cols)}`);
+  assert.deepStrictEqual(wsh.idx, want.crwh.idx, '정본 cal_report_weekly_hours 의 색인이 흉내 실행기와 다르다');
+  //  검증의 기대 글자가 정본 칸 순서와 같다
+  assert.ok(V22_FRAG.includes(`@m_hcols <=> '${want.crh.cols.map((c) => c.name).join(',')}'`), 'v22 검증의 일간 줄 칸 순서가 정본과 다르다');
+  assert.ok(V22_FRAG.includes(`@m_wcols <=> '${want.crwh.cols.map((c) => c.name).join(',')}'`), 'v22 검증의 주간 줄 칸 순서가 정본과 다르다');
+  //  지운 표 셋: 정본에 CREATE 가 없고 DROP TABLE IF EXISTS 줄은 남는다
+  for (const t of RH_OLD_TABLES) {
+    assert.ok(!new RegExp(`\\nCREATE TABLE ${t} \\(`).test(CANON_CAL), `정본에 지운 표 ${t} 의 CREATE 가 있다`);
+    assert.ok(new RegExp(`\\nDROP TABLE IF EXISTS ${t};`).test(CANON_CAL), `정본에 지운 표 ${t} 의 DROP TABLE IF EXISTS 줄이 없다(옛 배포 DB 를 새로 깔 때 지우는 몫)`);
+    assert.ok(V22_FRAG.includes(`'DROP TABLE IF EXISTS ${t}'`), `v22 가 ${t} 를 지우지 않는다`);
+  }
+  //  주간 줄 채우기 두 문장이 흉내 실행기의 글자(V22_FILL_DB, V22_FILL_LOCAL)와 같다(다르면 흉내 실행이 모르는 문장으로 실패한다)
+  const fills = [...V22_FRAG.matchAll(/'(UPDATE cal_report_weekly_hours (?:[^']|'')*)'/g)].map((m) => m[1].replace(/''/g, "'").replace(/\s+/g, ' '));
+  assert.deepStrictEqual(fills, [V22_FILL_DB, V22_FILL_LOCAL], 'v22 의 주간 줄 채우기 문장이 흉내 실행기와 다르다');
+  const code = V22_FRAG.split('\n').filter((l) => !/^\s*--/.test(l)).join('\n');
+  assert.ok(!/\b(GRANT|REVOKE)\b/i.test(code), 'v22 조각이 권한을 주거나 거둔다(배포 SQL 금지)');
+  assert.ok(!/INSERT\s+IGNORE/i.test(code), 'v22 조각이 INSERT IGNORE 를 쓴다');
+});
+test('배포SQL③r5: v22 의 바꾸는 단계는 순서가 강제된다(옛 줄 지우기, FK, 색인, 칸, CHECK 지우고 만들기, 칸 추가, 색인, 표 설명, 채우기, 검증, 표 셋 지우기, 구조 번호)', () => {
+  const at = (needle) => { const i = V22_FRAG.indexOf(needle); assert.ok(i >= 0, `v22 조각에 ${needle} 가 없다`); return i; };
+  const seq = ["'DELETE FROM cal_report_hours WHERE user_id > 0'", "'ALTER TABLE cal_report_hours DROP FOREIGN KEY fk_crh_cat'", "'ALTER TABLE cal_report_hours DROP INDEX idx_crh_cat'",
+    "'ALTER TABLE cal_report_hours DROP COLUMN cat_no, ALGORITHM=INSTANT'", "'ALTER TABLE cal_report_hours DROP CHECK chk_crh_hours'", "'ALTER TABLE cal_report_hours ADD CONSTRAINT chk_crh_hours",
+    "'ALTER TABLE cal_report_hours ADD COLUMN cat_uid", "'ALTER TABLE cal_report_hours ADD COLUMN project_uid", "'ALTER TABLE cal_report_hours ADD COLUMN body",
+    "'ALTER TABLE cal_report_daily ADD COLUMN memo", "'ALTER TABLE cal_report_weekly_hours ADD COLUMN cat_uid", "ADD INDEX ix_crh_project", "ADD INDEX ix_crh_cat", "ADD INDEX ix_crwh_cat",
+    "'ALTER TABLE cal_report_hours COMMENT", "'UPDATE cal_report_weekly_hours SET cat_uid", "'UPDATE cal_report_weekly_hours h JOIN", "`중단: v22 조각 검증 실패 - 일간 줄 표의 칸",
+    "`중단: v22 조각 검증 실패 - 주간 줄 표의", "'DROP TABLE IF EXISTS cal_task_hours'", "UPDATE cal_schema_meta SET v = '22'"];
+  const pos = seq.map(at);
+  for (let k = 1; k < pos.length; k++) assert.ok(pos[k - 1] < pos[k], `v22 의 순서가 틀렸다: ${seq[k - 1]} 가 ${seq[k]} 보다 뒤다`);
+});
+test('변이R40: v22 가 FK 보다 색인을 먼저 지우면 21 에서 올리는 배포가 멈춘다(MySQL 1553, ③r 실패)', () => {
+  const sql = realSql();
+  const a = sql.indexOf("SET @m_fk := (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS");
+  const b = sql.indexOf("SET @m_ix := (SELECT COUNT(*) FROM information_schema.STATISTICS\n               WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cal_report_hours' AND INDEX_NAME = 'idx_crh_cat');");
+  const c = sql.indexOf("--    FK 를 ALTER 로 더한 DB 에서는");
+  assert.ok(a >= 0 && b > a && c > b, '변이 준비 실패: v22 의 FK, 색인 단계를 찾지 못했다');
+  const bad = sql.slice(0, a) + sql.slice(b, c) + sql.slice(a, b) + sql.slice(c);
+  assert.throws(() => checks.v22Upgraded(bad), /1553|끝나지 않는다/);
+});
+test('변이R41: v22 가 옛 색인을 지우지 않으면 검증에서 멈춘다(③r 실패)', () => {
+  const bad = mutate(realSql(), "SET @s := IF(@go AND @m_ix > 0, 'ALTER TABLE cal_report_hours DROP INDEX idx_crh_cat'", "SET @s := IF(0, 'ALTER TABLE cal_report_hours DROP INDEX idx_crh_cat'");
+  assert.throws(() => checks.v22Upgraded(bad), /끝나지 않는다/);
+});
+test('변이R42: v22 가 옛 일간 줄을 지우지 않으면 검증에서 멈춘다(③r 실패)', () => {
+  const bad = mutate(realSql(), "SET @s := IF(@go, 'DELETE FROM cal_report_hours WHERE user_id > 0'", "SET @s := IF(0, 'DELETE FROM cal_report_hours WHERE user_id > 0'");
+  assert.throws(() => checks.v22Upgraded(bad), /끝나지 않는다/);
+});
+test('변이R43: v22 가 시간 제약을 있는지 보지 않고 지우면 중간 실패 뒤 재실행이 멈춘다(③r3 실패, MySQL 3821)', () => {
+  const bad = mutate(realSql(), "SET @s := IF(@go AND @m_ck = 1 AND @m_cknew = 0, 'ALTER TABLE cal_report_hours DROP CHECK", "SET @s := IF(@go, 'ALTER TABLE cal_report_hours DROP CHECK");
+  assert.throws(() => checks.faults(bad, at21Weekly, APP, '21 에서'), /다시 돌려도 끝나지 않는다|3821/);
+});
+test('변이R44: v22 가 칸을 있는지 보지 않고 더하면 중간 실패 뒤 재실행이 멈춘다(③r3 실패, MySQL 1060)', () => {
+  const bad = mutate(realSql(), "SET @s := IF(@go AND @m_col = 0,\n  'ALTER TABLE cal_report_hours ADD COLUMN body", "SET @s := IF(@go,\n  'ALTER TABLE cal_report_hours ADD COLUMN body");
+  assert.throws(() => checks.faults(bad, at21Weekly, APP, '21 에서'), /다시 돌려도 끝나지 않는다|1060/);
+});
+test('변이R45: v22 의 검증을 끄면(같은 이름의 다른 모양) ③r2 가 실패한다', () => {
+  const bad = mutate(mutate(mutate(mutate(realSql(),
+    "SET @g := IF(NOT @go OR (@m_hcols <=>", "SET @g := IF(1 OR (@m_hcols <=>"),
+    "SET @g := IF(NOT @go OR (@m_hfk = 1", "SET @g := IF(1 OR (@m_hfk = 1"),
+    "SET @g := IF(NOT @go OR (@m_dm = 1", "SET @g := IF(1 OR (@m_dm = 1"),
+    "SET @g := IF(NOT @go OR (@m_wcols <=>", "SET @g := IF(1 OR (@m_wcols <=>");
+  for (const [label, mk] of V22_BAD_SHAPES) assert.throws(() => checks.v22Verify(bad, label, mk), /멈추지 않았다/, `검증을 꺼도 ${label} 에서 멈췄다`);
+});
+test('변이R46: v22 가 표 셋을 검증 앞에서 지우면 검증에서 멈춘 DB 에 지운 표가 없다(③r2 실패)', () => {
+  const sql = realSql();
+  const a = sql.indexOf("SET @s := IF(@go, 'DROP TABLE IF EXISTS cal_task_hours', 'DO 0');");
+  const b = sql.indexOf('SET @m_old := (SELECT COUNT(*) FROM information_schema.TABLES');
+  const c = sql.indexOf('-- 9) 검증(information_schema)');
+  assert.ok(c > 0 && a > c && b > a, '변이 준비 실패: v22 의 표 셋 지우기를 찾지 못했다');
+  const bad = sql.slice(0, c) + sql.slice(a, b) + sql.slice(c, a) + sql.slice(b);
+  assert.throws(() => checks.v22Verify(bad, V22_BAD_SHAPES[0][0], V22_BAD_SHAPES[0][1]), /지울 표를 지웠다/);
+});
+test('변이R47: v22 가 개인 과제 줄을 채우지 않으면 ③r 이 실패한다', () => {
+  const bad = mutate(realSql(), "SET @s := IF(@go,\n  'UPDATE cal_report_weekly_hours h JOIN", "SET @s := IF(0,\n  'UPDATE cal_report_weekly_hours h JOIN");
+  assert.throws(() => checks.v22Upgraded(bad), /cat_uid 채우기가 다르다/);
 });

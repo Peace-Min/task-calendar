@@ -132,7 +132,7 @@ if (!JSDOM) {
 
   const CA = '2026-07-01T00:00:00.000Z';
   const E = (o) => Object.assign({ allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }, o);
-  //  알파: 일정(메모) + 할 일(노트), 베타: 일정, 감마: 시간만, 델타: 아무것도 없음
+  //  알파: 일정(메모) + 할 일(노트), 베타: 일정, 감마: 할 일(노트 없음), 델타: 아무것도 없음. 작성 중 시간(공수표)은 구조 22 에서 없앴다(블록은 0시간으로 시작한다)
   const stateFor = (T) => ({
     categories: [
       { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', createdAt: CA },
@@ -142,10 +142,9 @@ if (!JSDOM) {
     ],
     entries: [E({ id: 'e-a1', date: T, title: '로그인 화면 리뷰', categoryId: 'c-a', memo: 'UI 확인' }),
               E({ id: 'e-b1', date: T, title: '고객 회신', categoryId: 'c-b' })],
-    todos: [{ id: 't-a', text: '보고서 정리', done: false, categoryId: 'c-a', due: T, endDate: '', prio: 'normal', completedAt: '', note: '세부 메모', dayNotes: {}, createdAt: CA, updatedAt: CA }],
+    todos: [{ id: 't-a', text: '보고서 정리', done: false, categoryId: 'c-a', due: T, endDate: '', prio: 'normal', completedAt: '', note: '세부 메모', dayNotes: {}, createdAt: CA, updatedAt: CA },
+            { id: 't-c', text: '감마 점검', done: false, categoryId: 'c-c', due: T, endDate: '', prio: 'normal', completedAt: '', note: '', dayNotes: {}, createdAt: CA, updatedAt: CA }],
     rooms: [], attendance: { [T]: { status: '6', overtime: 0 } },
-    taskHours: { [T]: { 'c-a': 2, 'c-c': 1 } },
-    reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
   });
   function bootBrowser(src = app) {
     const X = boot(src, 'https://tcapp.local/', false);
@@ -179,12 +178,12 @@ if (!JSDOM) {
       assert.strictEqual(cp(B.slice(1, 2), '* 대전 출장\n\n'), '* 대전 출장\n\n[베타] : 2.5\n- 둘째', '자유 메모가 맨 앞에 빈 줄 하나로 붙지 않았다');
       assert.strictEqual(cp([], '  '), '', '빈 메모만 있으면 빈 글이어야 한다');
       assert.strictEqual(cp([{ name: '', hours: 3, text: '미정' }], ''), '', '과제 미정 블록이 조립에 들어갔다');
-      assert.deepStrictEqual(X.evJSON(`atHoursPayload(${JSON.stringify(B)})`), [{ name: '알파', hours: 6 }, { name: '베타', hours: 2.5 }], 'hours 에 0 이 들어갔거나 빠졌다');
+      assert.deepStrictEqual(X.evJSON(`atHoursPayload(${JSON.stringify(B)})`), [{ name: '알파', catUid: null, projectUid: null, hours: 6, body: '  - 한 일\n\t- 탭 줄' }, { name: '베타', catUid: null, projectUid: null, hours: 2.5, body: '- 둘째' }], 'hours 에 내용 없는 0시간 블록이 들어갔거나 빠졌다(구조 22: 과제별 줄)');
       const pr = (b) => X.ev(`atBlockProblem(${JSON.stringify(b)})`);
       assert.ok(pr({ name: '', hours: 1, text: '' }).includes('과제를 고르세요'));
       assert.ok(pr({ name: '알파', hours: 25, text: '' }).includes('0 이상 24 이하'));
       assert.ok(pr({ name: '알파', hours: -1, text: '' }).includes('0 이상 24 이하'));
-      assert.ok(pr({ name: '알파', hours: 0, text: '- 한 일' }).includes('0시간'));
+      assert.strictEqual(pr({ name: '알파', hours: 0, text: '- 한 일' }), '', '내용이 있는 0시간 블록을 막는다(구조 22 에서 허용)');
       assert.strictEqual(pr({ name: '알파', hours: 0, text: '  ' }), '', '빈 과제(0시간)를 막았다');
       assert.strictEqual(pr({ name: '알파', hours: 24, text: 'x' }), '');
     } finally { X.close(); }
@@ -246,25 +245,26 @@ if (!JSDOM) {
       assert.ok(!X.$('#atText'), '한 칸 글(#atText)이 남아 있다');
       //  2026-11-06(가져오기 서식을 문단 모양으로 합침): 제목은 1수준, 설명은 2수준. 문단 모양 기본 표는 1수준 '-' 0칸, 2수준 '*' 2칸
       const ref = X.evJSON(`(function(){ var rows = collectReportData(${JSON.stringify(X.T)}, ${JSON.stringify(X.T)}, {event:true,todo:true,desc:true}).rows;
-        return rows.filter(function(r){ return r.titles.length || getTaskHours(${JSON.stringify(X.T)}, r.key) > 0; }).map(function(r){
+        return rows.filter(function(r){ return r.titles.length; }).map(function(r){
           return r.titles.map(function(t, i){ return ['- ' + t].concat(reportMetaDetails(r.titleMeta[i]).map(function(d){ return '  * ' + d; })).join('\\n'); }).join('\\n'); }); })()`);
       const b = blk(X);
-      assert.deepStrictEqual(b.map((x) => [x.name, x.hours]), [['알파', 2], ['베타', 0], ['감마', 1]], '블록이 캘린더 기록 있는 과제와 공수표 시간이 아니다');
+      assert.deepStrictEqual(b.map((x) => [x.name, x.hours]), [['알파', 0], ['베타', 0], ['감마', 0]], '블록이 캘린더 기록 있는 과제(0시간으로 시작)가 아니다');
       assert.deepStrictEqual(b.map((x) => x.text), ref, '블록 내용이 문단 모양 기본 표(제목 1수준 "- ", 설명 2수준 "  * ")가 아니다');
-      assert.ok(b[0].text.includes('로그인 화면 리뷰') && b[0].text.includes('UI 확인') && b[2].text === '');
+      assert.ok(b[0].text.includes('로그인 화면 리뷰') && b[0].text.includes('UI 확인') && b[2].text === '- 감마 점검');
+      assert.deepStrictEqual(X.evJSON('ATE.blocks.map(function(x){ return x.catId; })'), ['c-a', 'c-b', 'c-c'], '캘린더에서 가져온 블록에 과제 id 가 없다(구조 22)');
       //  화면: 과제명은 표시(잠금, 입력 칸 아님), 시간은 숫자 칸(0~24, 0.5), 내용은 글 칸, 자유 메모가 맨 위
       const h0 = X.$('#atBlocks .at-blk[data-bi="0"] .at-bh');
       assert.strictEqual(h0.querySelector('.at-bn').textContent, '알파');
       assert.ok(!h0.querySelector('.at-lock'), '자물쇠 표시가 남아 있다(2026-10-29 사용자: 번잡해서 뺀다)');
       assert.ok(!h0.querySelector('select, [contenteditable]') && h0.querySelectorAll('input').length === 1 && h0.querySelector('input[data-bh]'), '과제명을 고칠 수 있는 칸이 있다');
       const hn = X.$('#atBlocks input[data-bh="0"]');
-      assert.deepStrictEqual([hn.type, hn.min, hn.max, hn.step, hn.value], ['number', '0', '24', '0.5', '2'], '시간 칸이 기본 숫자 칸(0~24, 0.5)이 아니다');
+      assert.deepStrictEqual([hn.type, hn.min, hn.max, hn.step, hn.value], ['number', '0', '24', '0.5', '0'], '시간 칸이 기본 숫자 칸(0~24, 0.5)이 아니다');
       assert.strictEqual(X.$('#atBlocks textarea[data-bt="0"]').value, b[0].text);
       assert.ok(X.$('#atBlocks').firstElementChild.querySelector('textarea[data-memo]'), '자유 메모가 맨 위에 없다');
       assert.strictEqual(X.$('#atBlocks textarea[data-memo]').value, '', '처음 자유 메모가 비어 있지 않다');
       assert.strictEqual(X.$('#atStatus').value, '6', '근태 기본값이 그날 개인 캘린더 근태(휴가)가 아니다');
       assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#atStatus option'), function(o){ return o.value; })"), X.evJSON('ATTEND_STATUS.map(function(s){ return s.v; })'), '근태 목록에 미기록(빈 값)이 있거나 목록이 다르다');
-      assert.strictEqual(X.$('#atHours').textContent, '합계 3시간');
+      assert.strictEqual(X.$('#atHours').textContent, '합계 0시간');
       assert.strictEqual(X.$('#atSend').textContent, '보고', '보내기 단추 이름이 보고가 아니다');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
@@ -291,7 +291,7 @@ if (!JSDOM) {
       assert.ok(b[0].text.includes('로그인 화면 리뷰') && !b[0].text.includes('보고서 정리') && b.some((x) => x.name === '베타'));
       click('atOTodo'); click('atOSkip');
       b = loadNow();
-      assert.deepStrictEqual(b.map((x) => [x.name, x.hours]), [['알파', 2], ['베타', 0], ['감마', 1], ['델타', 0]], '기록 없는 과제 제외를 끄면 내 과제가 모두 0시간 블록으로 나와야 한다');
+      assert.deepStrictEqual(b.map((x) => [x.name, x.hours]), [['알파', 0], ['베타', 0], ['감마', 0], ['델타', 0]], '기록 없는 과제 제외를 끄면 내 과제가 모두 0시간 블록으로 나와야 한다');
       assert.strictEqual(X.$('#atPick').textContent, '과제 4 / 4개 선택');
       const cb = X.$('#atCards input[data-atid="c:c-b"]'); cb.checked = false; cb.dispatchEvent(new X.w.Event('change', { bubbles: true }));
       assert.deepStrictEqual(names(X), ['알파', '베타', '감마', '델타'], '체크만으로 왼쪽이 바뀌었다');
@@ -421,8 +421,9 @@ if (!JSDOM) {
     try {
       openB(X);
       const hn = () => X.$('#atBlocks input[data-bh="0"]');
-      assert.deepStrictEqual([hn().type, hn().step, hn().value], ['number', '0.5', '2']);
+      assert.deepStrictEqual([hn().type, hn().step, hn().value], ['number', '0.5', '0']);
       const key = (k, shift) => hn().dispatchEvent(new X.w.KeyboardEvent('keydown', { key: k, shiftKey: !!shift, bubbles: true, cancelable: true }));
+      setHours(X, 0, '2');
       key('ArrowUp');
       assert.deepStrictEqual([hn().value, blk(X)[0].hours], ['2.5', 2.5]);
       key('ArrowUp', true);
@@ -472,7 +473,7 @@ if (!JSDOM) {
       assert.ok(!X.$('#atAsText'), '[글로 보기]가 남아 있다');
       assert.strictEqual(X.ev('atDirty()'), false);
       setHours(X, 1, '1.5');
-      assert.strictEqual(X.$('#atHours').textContent, '합계 4.5시간');
+      assert.strictEqual(X.$('#atHours').textContent, '합계 1.5시간');
       assert.strictEqual(X.ev('atDirty()'), true);
       setHours(X, 1, '0');
       assert.strictEqual(X.ev('atDirty()'), false);
@@ -485,7 +486,7 @@ if (!JSDOM) {
       input(X, '#atStatus', '6');
       X.$('#atBlocks [data-bx="1"]').click();
       assert.deepStrictEqual(names(X), ['알파', '감마']);
-      assert.strictEqual(X.$('#atHours').textContent, '합계 3시간');
+      assert.strictEqual(X.$('#atHours').textContent, '합계 0시간');
       assert.ok(X.$('#atList').lastElementChild === X.$('#atAddWrap') && X.$('#atBlocks').nextElementSibling === X.$('#atAddWrap'), '[+ 과제 추가]가 마지막 블록 바로 아래(같은 스크롤 목록)가 아니다');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
@@ -570,23 +571,25 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(B) 보내기를 막는다: 내용 있는 0시간, 범위 밖 시간, 과제 미정, 블록 없음(빨간 블록, 안내, 보내지 않음), 빈 과제는 : 0 으로 보낸다', () => {
+  test('(B) 보내기를 막는다: 범위 밖 시간, 과제 미정, 블록 없음(빨간 블록, 안내, 보내지 않음). 내용 있는 0시간은 막지 않고, 빈 과제는 : 0 으로 보낸다', () => {
     const X = bootBrowser();
     try {
       openB(X);
       X.ev('window.__cap = []; Platform.report.submitDaily = function(p){ __cap.push(JSON.parse(JSON.stringify(p))); };');
       const cap = () => X.evJSON('__cap').length;
+      setHours(X, 0, '2');
       assert.ok(!isBad(X, 1), '보내기 전에 빨간 블록을 보였다');
-      //  베타: 내용이 있는데 0시간
+      //  범위 밖 시간(베타는 내용이 있는 0시간이지만 막지 않는다, 구조 22)
+      setHours(X, 1, '25');
       X.$('#atSend').click();
-      assert.strictEqual(cap(), 0, '내용 있는 0시간 블록이 있는데 보냈다');
+      assert.strictEqual(cap(), 0, '범위 밖 시간인데 보냈다');
       assert.ok(isBad(X, 1) && !isBad(X, 0) && !isBad(X, 2), '그 블록만 빨갛지 않다');
-      assert.ok(X.$('#atBlocks .at-blk[data-bi="1"] [data-bmsg]').textContent.includes('0시간'));
+      assert.ok(X.$('#atBlocks .at-blk[data-bi="1"] [data-bmsg]').textContent.includes('0 이상 24 이하'));
       assert.ok(X.$('#atMsg').textContent.includes('고칠 과제가 1개'));
       assert.strictEqual(X.doc.activeElement, X.$('#atBlocks input[data-bh="1"]'), '첫 빨간 블록의 시간 칸으로 가지 않았다');
-      //  고치면 바로 풀린다, 범위 밖 시간
-      setHours(X, 1, '1');
-      assert.ok(!isBad(X, 1), '고쳤는데 빨간 표시가 남았다');
+      //  고치면 바로 풀린다
+      setHours(X, 1, '0');
+      assert.ok(!isBad(X, 1), '고쳤는데 빨간 표시가 남았다(내용 있는 0시간은 막지 않는다)');
       setHours(X, 0, '25');
       assert.ok(isBad(X, 0), '보내기를 한 번 막은 뒤에는 고치는 동안 바로 빨개져야 한다');
       X.$('#atSend').click();
@@ -598,13 +601,13 @@ if (!JSDOM) {
       X.$('#atSend').click();
       assert.strictEqual(cap(), 0, '과제 미정 블록이 있는데 보냈다');
       X.$('#atBlocks [data-bx="3"]').click();
-      //  감마를 빈 과제로: [감마] : 0 으로 보내고 hours 에는 없다
-      setHours(X, 2, '0');
+      //  감마를 빈 과제로: [감마] : 0 으로 보내고 hours 에는 없다. 베타는 내용 있는 0시간이라 [베타] : 0 아래 내용이 나가고 줄로 남는다(구조 22)
+      typeBlock(X, 2, '');
       X.$('#atSend').click();
-      assert.strictEqual(cap(), 1, '고칠 것이 없는데 보내지 않았다');
+      assert.strictEqual(cap(), 1, '고칠 것이 없는데 보내지 않았다(내용 있는 0시간을 막았다)');
       const s = X.evJSON('__cap[0]');
-      assert.ok(s.fields.content.endsWith('[감마] : 0'), '빈 과제가 [감마] : 0 으로 나가지 않았다: ' + s.fields.content);
-      assert.deepStrictEqual(s.hours, [{ name: '알파', hours: 2 }, { name: '베타', hours: 1 }]);
+      assert.ok(s.fields.content.endsWith('[베타] : 0\n- 고객 회신\n\n[감마] : 0'), '빈 과제가 [감마] : 0, 내용 있는 0시간이 [베타] : 0 아래 내용으로 나가지 않았다: ' + s.fields.content);
+      assert.deepStrictEqual(s.hours.map((h) => [h.name, h.catUid, h.hours]), [['알파', 'c-a', 2], ['베타', 'c-b', 0]], '보고 줄이 다르다(빈 0시간은 빼고 내용 있는 0시간은 남긴다)');
       //  블록 없음
       for (let i = 0; i < 3; i++) X.$('#atBlocks [data-bx="0"]').click();
       assert.ok(!X.$('#atBlocks .at-bempty') && !/과제가 없습니다/.test(X.$('#atBlocks').textContent), '블록이 없을 때 설명 문구가 남아 있다');
@@ -677,8 +680,8 @@ if (!JSDOM) {
       await tick(1100);
       const d = JSON.parse(X.ev(`localStorage.getItem(${JSON.stringify(KEYB(X))})`));
       assert.strictEqual(d.v, 2); assert.strictEqual(d.memo, '* 외근');
-      assert.deepStrictEqual(d.blocks.map((b) => Object.keys(b).sort().join()), ['hours,name,text', 'hours,name,text', 'hours,name,text'], '블록 모양이 {name, hours, text} 가 아니다');
-      assert.ok(d.blocks[0].name === '알파' && d.blocks[0].hours === 2 && d.blocks[0].text.endsWith('임시 줄'));
+      assert.deepStrictEqual(d.blocks.map((b) => Object.keys(b).sort().join()), ['catId,hours,name,text', 'catId,hours,name,text', 'catId,hours,name,text'], '블록 모양이 {name, catId, hours, text} 가 아니다(구조 22)');
+      assert.ok(d.blocks[0].name === '알파' && d.blocks[0].catId === 'c-a' && d.blocks[0].hours === 0 && d.blocks[0].text.endsWith('임시 줄'));
       assert.strictEqual(d.status, '6'); assert.strictEqual(d.overtime, 0); assert.ok(d.savedAt);
       assert.ok(X.$('#atSaved').textContent.startsWith('이 PC에 임시 저장됨 '));
       X.$('#atClose').click();
@@ -837,15 +840,18 @@ if (!JSDOM) {
       assert.strictEqual(p.attend, '6');
       assert.deepStrictEqual(p.source.rows.map((r) => r.name).slice(0, 4), ['알파', '베타', '감마', '델타'], '행이 내 과제 목록 순서가 아니다');
       assert.deepStrictEqual(p.source.rows[0].titleMeta, [{ kind: 'event', details: ['UI 확인'] }, { kind: 'todo', details: ['세부 메모'] }]);
-      assert.deepStrictEqual(p.source.hours, { 'c-a': 2, 'c-c': 1 });
+      assert.ok(!('hours' in p.source), '가져오기 출처에 없앤 작성 중 시간(공수표)이 있다(구조 22)');
       assert.deepStrictEqual(p.source.fmt, { mkSpec: { kind: 'const', ch: '-' }, indent: 2 });
       assert.deepStrictEqual(p.projects.slice(0, 4), [{ key: 'c-a', name: '알파', color: '#3e5be0' }, { key: 'c-b', name: '베타', color: '#2e9e6b' },
         { key: 'c-c', name: '감마', color: '#d97706' }, { key: 'c-d', name: '델타', color: '#5b6b7d' }], 'payload 에 내 과제 목록(이름, 키, 색, 목록 순서)이 없다');
-      assert.strictEqual(X.evJSON("__calls.filter(function(c){ return c[0] === 'reportDailyList'; })").length, 1, '캐시에 있는 날인데 다시 읽었다');
+      //  구조 22: 보고한 날은 메모와 줄까지(detail) 그날 하루를 다시 읽는다(달력 목록에는 줄이 없다). 캐시에 없는 날(보고 없음)은 읽지 않는다
+      const dl = X.evJSON("__calls.filter(function(c){ return c[0] === 'reportDailyList'; }).map(function(c){ return c[1]; })");
+      assert.strictEqual(dl.length, 2, '보고한 날을 줄까지 다시 읽지 않았거나 더 읽었다');
+      assert.deepStrictEqual(dl[1], { from: X.T, to: X.T, detail: true });
       //  캐시 밖 날짜 → 그날을 읽고 연다
       X.ev("__attendNavFromWin('2001-02-03', true)"); await tick();
       const last = X.evJSON('__calls.slice(-2)');
-      assert.deepStrictEqual(last[0], ['reportDailyList', { from: '2001-02-03', to: '2001-02-03' }]);
+      assert.deepStrictEqual(last[0], ['reportDailyList', { from: '2001-02-03', to: '2001-02-03', detail: true }]);
       assert.strictEqual(last[1][0], 'attendOpen'); assert.strictEqual(last[1][1].payload.date, '2001-02-03'); assert.strictEqual(last[1][1].payload.refresh, true);
       assert.strictEqual(last[1][1].payload.saved, null);
       assert.ok(!shown(X, '#atEd'), '위젯 메인 창에서 보고 화면을 그 자리에 열었다(근태 창에서 열어야 한다)');
@@ -861,7 +867,7 @@ if (!JSDOM) {
       assert.strictEqual(out.length, 1, 'attendSourcePush 를 한 번 보내지 않았다');
       assert.strictEqual(out[0].date, X.T);
       assert.deepStrictEqual(out[0].source, X.evJSON(`atBuildPayload(${JSON.stringify(X.T)}, null, false).source`), 'payload 의 source 와 모양이 다르다');
-      assert.deepStrictEqual(out[0].source.hours, { 'c-a': 2, 'c-c': 1 });
+      assert.ok(!('hours' in out[0].source), '가져오기 출처에 없앤 작성 중 시간이 있다');
       assert.ok(!('reqId' in out[0]), '회신 번호 없이 보내야 한다(호스트가 근태 창으로 넘긴다)');
       const k = X.posted.length;
       X.ev("__attendSourceFor('2026-1-2'); __attendSourceFor('<x>'); __attendSourceFor(null)");
@@ -1027,7 +1033,7 @@ if (!JSDOM) {
     const sd = A.$('#atSrcDate'); sd.value = Y; sd.dispatchEvent(new A.w.Event('change', { bubbles: true }));
     assert.deepStrictEqual(A.posted.slice(n), [{ cmd: 'attendSourceReq', date: Y }], '다른 날짜의 캘린더 기록을 메인 창에 청하지 않았다');
     assert.ok(A.$('#atCards').textContent.includes('가져오는 중'), '기다리는 안내가 없다');
-    const src = payloadFrom(A.T).source; src.rows = src.rows.slice(1, 2); src.hours = { 'c-b': 1.5 };
+    const src = payloadFrom(A.T).source; src.rows = src.rows.slice(1, 2); src.hours = { 'c-b': 1.5 };   // 옛 메인 창이 시간을 실어도 읽지 않는다(구조 22)
     A.ev('__attendSource(' + JSON.stringify({ date: Z, source: src }) + '); atPanelRender()');
     assert.ok(A.$('#atCards').textContent.includes('가져오는 중'), '청하지 않은 날짜의 회신을 받았다');
     A.ev('__attendSource(' + JSON.stringify({ date: Y, source: src }) + ')');
@@ -1035,7 +1041,8 @@ if (!JSDOM) {
     typeBlock(A, 0, '고친 글');
     A.$('#atLoad').click();
     const b = blk(A);
-    assert.ok(b.length === 1 && b[0].name === '베타' && b[0].hours === 1.5 && b[0].text.includes('고객 회신'), '불러오기가 그 날짜의 블록(공수표 시간)으로 바로 바꾸지 않았다: ' + JSON.stringify(b));
+    assert.ok(b.length === 1 && b[0].name === '베타' && b[0].hours === 0 && b[0].text.includes('고객 회신'), '불러오기가 그 날짜의 블록(0시간으로 시작)으로 바로 바꾸지 않았다: ' + JSON.stringify(b));
+    assert.strictEqual(A.ev('ATE.blocks[0].catId'), 'c-b', '불러온 블록에 과제 id 가 없다(구조 22)');
     assert.strictEqual(A.ev('ATE.date'), A.T);
   }
   test('(A) 가져오기 캘린더: 다른 날짜는 attendSourceReq 로 메인 창에 청하고 __attendSource 회신(그 날짜만)으로 카드, 불러오기는 바로 바꾼다', () => {
@@ -1056,7 +1063,7 @@ if (!JSDOM) {
       A.$('[data-atsrc="prev"]').click();
       assert.ok(A.$('#atCards').textContent.includes('읽는 중'), '읽는 중 안내가 없다');
       await tick();
-      assert.deepStrictEqual(A.evJSON("__calls.filter(function(c){ return c[0] === 'reportDailyList'; }).map(function(c){ return c[1]; })"), [{ from: Y, to: Y }], '그날 하루로 읽지 않았다');
+      assert.deepStrictEqual(A.evJSON("__calls.filter(function(c){ return c[0] === 'reportDailyList'; }).map(function(c){ return c[1]; })"), [{ from: Y, to: Y, detail: true }], '그날 하루로(메모와 줄까지) 읽지 않았다');
       assert.ok(!shown(A, '#atOpts'), '이전 보고인데 캘린더 옵션이 보인다');
       assert.deepStrictEqual(A.evJSON("[].map.call(document.querySelectorAll('#atCards .at-cnm'), function(x){ return x.textContent; })"), ['자유 메모', '[알파]', '과제 미정', '[베타]']);
       assert.strictEqual(A.$('#atPick').textContent, '과제 4 / 4개 선택');
@@ -1104,7 +1111,7 @@ if (!JSDOM) {
     setHours(A, 0, '2.5');
     typeBlock(A, 1, '- 회신');
     setHours(A, 1, '3');
-    setHours(A, 2, '0');
+    setHours(A, 2, '0'); typeBlock(A, 2, '');
     A.$('#atSend').click(); A.$('#atSend').click();   // 연속 클릭
     const sub = A.posted.filter((m) => m.cmd === 'netcusSubmit');
     assert.strictEqual(sub.length, 1, '연속 클릭에 두 번 보냈다');
@@ -1116,7 +1123,8 @@ if (!JSDOM) {
       const s = sendFlow(A);
       const NB = '&nbsp;';
       assert.strictEqual(s.content, '* 대전 출장\n\n[알파] : 2.5\n' + NB.repeat(4) + '- 납품 준비\n' + NB.repeat(4) + '- 탭 줄\n\n[베타] : 3\n- 회신\n\n[감마] : 0');
-      assert.deepStrictEqual(s.hours, [{ name: '알파', hours: 2.5 }, { name: '베타', hours: 3 }]);
+      assert.deepStrictEqual(s.hours, [{ name: '알파', catUid: 'c-a', projectUid: null, hours: 2.5, body: '    - 납품 준비\n\t- 탭 줄' }, { name: '베타', catUid: 'c-b', projectUid: null, hours: 3, body: '- 회신' }]);
+      assert.strictEqual(s.memo, '* 대전 출장', '자유 메모를 기록용으로 넘기지 않는다(구조 22)');
       assert.strictEqual(s.status, '2', '고른 근태 코드가 아니다(이 화면은 null 을 보내지 않는다)');
       assert.strictEqual(s.overtime, 2);
       assert.deepStrictEqual([s.y, s.m, s.d], A.T.split('-').map(Number));
@@ -1268,14 +1276,15 @@ if (!JSDOM) {
     const A = bootAttend(bad);
     try { assert.throws(() => calRelay(A), /청하지 않은 날짜의 회신을 받았다/); } finally { A.close(); }
   });
-  test('변이 M7: 내용 있는 0시간 막기를 빼면 보내기 막기 검사가 잡는다', () => {
-    const bad = mutate(app, "  if(String(b.text || '').trim() && b.hours === 0) return '내용이 있는데 0시간입니다. 시간을 적으세요.';" + NL, '');
+  test('변이 M7: 내용 있는 0시간 막기를 되살리면 보내기 검사가 잡는다(구조 22 에서 허용)', () => {
+    const bad = mutate(app, "  if(!atHoursOk(b.hours)) return '시간은 0 이상 24 이하로 적으세요.';" + NL,
+      "  if(!atHoursOk(b.hours)) return '시간은 0 이상 24 이하로 적으세요.';" + NL + "  if(String(b.text || '').trim() && b.hours === 0) return '내용이 있는데 0시간입니다. 시간을 적으세요.';" + NL);
     const X = bootBrowser(bad);
     try {
       openB(X);
       X.ev('window.__cap = []; Platform.report.submitDaily = function(p){ __cap.push(1); };');
       X.$('#atSend').click();
-      assert.strictEqual(X.evJSON('__cap').length, 1, '변이가 경로에 닿지 않았다');
+      assert.strictEqual(X.evJSON('__cap').length, 0, '변이가 경로에 닿지 않았다');
     } finally { X.close(); }
   });
   test('변이 M9: 과제 추가 뒤 정렬을 빼면 새 블록이 맨 끝에 붙는다(순서 검사가 잡는다)', () => {

@@ -84,8 +84,9 @@ namespace TaskCalendarWidget
     //    영원히 알 수 없게 된다.
     //
     //  ★ 이 주석은 2026-08 에 "아직 없는 것: 쓰기 · XML→DB 이관 · MainWindow 브리지 배선 · 폴링.
-    //    그래서 지금은 아무도 이 클래스를 부르지 않는다(컴파일만 된다)" 였다. **셋은 생겼다** —
-    //    쓰기(CalendarWriteDb) · 이관(db/deploy/xml-to-db) · 브리지(MainWindow.BootFromDbAsync).
+    //    그래서 지금은 아무도 이 클래스를 부르지 않는다(컴파일만 된다)" 였다. 쓰기(CalendarWriteDb)와
+    //    브리지(MainWindow.BootFromDbAsync)는 생겼다. XML→DB 이관 도구(db/deploy/xml-to-db)는 한때 있었으나
+    //    구조 22(2026-11-06)에서 cal_migration_log 와 함께 지웠다(앱 안 XML 가져오기가 대신한다).
     //    남은 것은 **폴링**뿐이다(§3.7.3 의 '나중' — rev 를 주기적으로 보고 남의 편집을 당겨오는 것).
     //    ★ 낡은 주석을 그대로 두면 다음 사람이 "안 불리는 클래스" 로 알고 마음대로 고친다.
     // ================================================================================
@@ -167,9 +168,10 @@ namespace TaskCalendarWidget
         // ================================================================================
         //  공개 API 2 — 부팅 조회 (설계 §3.5)
         // ================================================================================
-        //   8개 표를 **한 연결·한 트랜잭션**에서 읽어 계약 G 의 state 를 만든다.
+        //   6개 표를 **한 연결·한 트랜잭션**에서 읽어 계약 G 의 state 를 만든다.
         //     cal_category · cal_entry · cal_entry_except · cal_todo ·
-        //     cal_todo_day_note · cal_task_hours · cal_attendance · cal_user_pref
+        //     cal_todo_day_note · cal_attendance
+        //   (2026-11-06 구조 22 에서 작성 중 시간 표와 서식 설정 표를 없앴다. 서식과 과제별 시간은 state 에 없고 글꼴은 localStorage 다)
         //   (2026-10-21 회의실 공용화로 cal_room 이 빠지고, 2026-10-26 Git, SVN 삭제(구조 18)로 cal_entry_commit 이 빠졌다.
         //    공용 회의실은 loadCodes 로 간다. 커밋 목록, 일정 출처(source), 저장소 경로와 uses_repo, 작성자 설정은 state 에 없다)
         //
@@ -487,7 +489,7 @@ namespace TaskCalendarWidget
                 if (v != null && v is not DBNull) rev = Convert.ToInt64(v, CultureInfo.InvariantCulture);
             }
 
-            // ── 1/8. cal_category ─────────────────────────────────────────────────
+            // ── 1/6. cal_category ─────────────────────────────────────────────────
             //   ORDER BY sort_order — XML 문서 순서를 박제한 유일한 근거(G-5).
             //   동률의 뒷순서는 uid 로 고정한다. ★ cat_no 를 쓰지 않는다 — 번호는 '만들어진 순서'일
             //   뿐이고 삭제 후 재사용되므로 표시 순서의 근거가 되지 못한다(G-5 ★).
@@ -529,7 +531,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 2/8. cal_entry ────────────────────────────────────────────────────
+            // ── 2/6. cal_entry ────────────────────────────────────────────────────
             //   ORDER BY sort_order, uid (G-5). ★ entry_date 도 created_at 도 정렬키가 아니다.
             //   ★ 2026-08-27 에 두 번 바뀐 자리다. 원래 `entry_date, created_at, uid` 였다.
             //     ① created_at 을 뺀 이유 — 실 data.xml 의 일정 23건 중 22건이 같은 밀리초라
@@ -583,7 +585,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 3/8. cal_entry_except ─────────────────────────────────────────────
+            // ── 3/6. cal_entry_except ─────────────────────────────────────────────
             //   ORDER BY except_date(G-5). ★ ORDER BY 에 entry_no 를 쓰지 않는다 — 부모별로 접으므로
             //   행이 어떻게 섞여 오든 각 배열 안의 순서는 날짜순으로 확정된다.
             //   entry_no 는 접는 데만 쓰고 state 에는 남기지 않는다(G-1d).
@@ -607,7 +609,7 @@ namespace TaskCalendarWidget
             }
             if (orphanExcept > 0) _log("반복 없는 일정에 붙은 예외일 " + orphanExcept + "건 — state 에 넣지 않았다(앱이 만들 수 없는 모양)");
 
-            // ── 4/8. cal_todo ─────────────────────────────────────────────────────
+            // ── 4/6. cal_todo ─────────────────────────────────────────────────────
             //   ORDER BY sort_order, uid (G-5 — 2026-08-27 에 확정값으로 못박혔다).
             //   ★ 여기가 원래 created_at → uid 였고, 그 근거는 '앱이 push 하므로 배열 순서 = 생성 순서'
             //     였다. 전제는 맞지만 created_at 이 그 순서를 **표현하지 못한다** — 실 data.xml 의
@@ -646,7 +648,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 5/8. cal_todo_day_note ────────────────────────────────────────────
+            // ── 5/6. cal_todo_day_note ────────────────────────────────────────────
             //   { 'YYYY-MM-DD': '설명' } 로 접는다(G-5). todo_no 는 접는 데만 쓰고 state 에는 없다(G-1d).
             //   ORDER BY note_date — 맵이라 의미는 없지만 JSON 키 순서를 재현 가능하게 만든다.
             const string dayNoteSql =
@@ -667,38 +669,10 @@ namespace TaskCalendarWidget
             //   회의실은 사람마다 두지 않고 회사 공용 목록(room_code) 하나다(docs/SHARED-ROOMS.md). 부팅 state 에는
             //   rooms 가 없다. 공용 목록은 발주처, 구분, 상태와 같은 읽기 경로(loadCodes → __applyCodes)로 간다.
 
-            // ── 6/8. cal_task_hours ───────────────────────────────────────────────
-            //   { 'YYYY-MM-DD': { 과제uid: 시간 } } 2단 중첩(G-5).
-            //   ★ 안쪽 키는 cat_no 가 아니라 그 과제의 uid 다 — JOIN 으로 되돌린다(G-5 ★).
-            //     INNER JOIN 인 이유: cat_no 가 NOT NULL 이고 FK 가 있어 같은 스냅샷 안에서 반드시 해석된다
-            //     (해석 실패는 스냅샷 밖에서만 생길 수 있다 — G-1b).
-            //   ★ 값은 DECIMAL(4,2) 인데 앱은 숫자다. decimal 을 그대로 직렬화하면 8.00 처럼 나가
-            //     JSON 텍스트가 앱이 만드는 8 과 달라진다(파싱 결과는 같지만 §8 왕복 대조가 어긋난다).
-            var taskHours = new Dictionary<string, object?>(StringComparer.Ordinal);
-            const string thSql =
-                "SELECT DATE_FORMAT(th.work_date,'%Y-%m-%d') AS work_date, th.cat_no, c.uid AS cat_uid, th.hours, " +
-                "CAST(th.updated_at AS CHAR) AS updated_at " +
-                "FROM cal_task_hours th " +
-                "JOIN cal_category c ON c.user_id = th.user_id AND c.cat_no = th.cat_no " +
-                "WHERE th.user_id=@u ORDER BY th.work_date, c.uid";
-            await using (var cmd = new MySqlCommand(thSql, conn))
-            {
-                cmd.Parameters.AddWithValue("@u", userId);
-                await using var rd = await cmd.ExecuteReaderAsync(ct);
-                while (await rd.ReadAsync(ct))
-                {
-                    string date = Str(rd, "work_date");
-                    if (!taskHours.TryGetValue(date, out var slot) || slot is not Dictionary<string, object?> inner)
-                    {
-                        inner = new Dictionary<string, object?>(StringComparer.Ordinal);
-                        taskHours[date] = inner;
-                    }
-                    inner[Str(rd, "cat_uid")] = Dbl(rd, "hours");
-                    tokens["task_hours:" + date + ":" + UInt(rd, "cat_no").ToString(CultureInfo.InvariantCulture)] = Str(rd, "updated_at");
-                }
-            }
+            // ── (작성 중 시간 표는 구조 22 에서 없앴다) ─────────────────────────────────
+            //   0.24.0 까지 보고서 창 일간 작성의 "작성 중 시간" 이었다. 입력 화면이 없어져 state 에도 taskHours 가 없다.
 
-            // ── 7/8. cal_attendance ───────────────────────────────────────────────
+            // ── 6/6. cal_attendance ───────────────────────────────────────────────
             //   { 'YYYY-MM-DD': { status, overtime } }(G-5).
             //   ★ 행이 없는 날짜의 키를 만들지 않는다 — 그게 '미기록'이다. 빈 객체나 status:'' 를
             //     넣으면 getAttendance() 가 null 을 못 돌려주고, netcus 일간보고가 사용자가 사이트에
@@ -726,75 +700,27 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 8/8. cal_user_pref ────────────────────────────────────────────────
-            //   사용자당 1행. 최상위의 서식 값(reportMarker 등 다섯 키)이 전부 여기서 온다.
-            //   ★ 행이 없을 때(= 아직 이관 전인 사용자)는 fromXML() 이 <prefs> 없는 XML 에 주는 값과
-            //     똑같이 채운다. 그것이 이 앱이 '설정을 한 번도 만진 적 없는 사람'에게 주던 값이고,
-            //     여기서 다른 값을 지어내면 이관 직후 서식이 이유 없이 바뀐다.
-            //   ★ reportMarker/MarkerCustom/Indent(전역 3값)가 daily/weekly 와 달라도 정상이다 —
-            //     그 셋은 '마지막으로 본 모드의 거울'이다(계약 C 의 ※).
-            //   ★ DB 6컬럼이 전부 NOT NULL DEFAULT 라 fromXML 의 null 폴백 경로는 발화하지 않는다.
-            //     컬럼값을 그대로 접는다.
-            string reportMarker = "-", reportMarkerCustom = "";
-            int reportIndent = 2;
-            string mkDaily = "-", mkcDaily = "", mkWeekly = "-", mkcWeekly = "";
-            int inDaily = 2, inWeekly = 2;
-            string fontFamily = "";
-            int fontSize = 0;
-            const string prefSql =
-                "SELECT report_marker, report_marker_custom, report_indent, " +
-                "report_marker_daily, report_marker_custom_daily, report_indent_daily, " +
-                "report_marker_weekly, report_marker_custom_weekly, report_indent_weekly, " +
-                "report_font_family, report_font_size, CAST(updated_at AS CHAR) AS updated_at " +
-                "FROM cal_user_pref WHERE user_id=@u";
-            await using (var cmd = new MySqlCommand(prefSql, conn))
-            {
-                cmd.Parameters.AddWithValue("@u", userId);
-                await using var rd = await cmd.ExecuteReaderAsync(ct);
-                if (await rd.ReadAsync(ct))
-                {
-                    reportMarker       = Str(rd, "report_marker");
-                    reportMarkerCustom = Str(rd, "report_marker_custom");
-                    reportIndent       = IntOrNull(rd, "report_indent") ?? 2;
-                    mkDaily            = Str(rd, "report_marker_daily");
-                    mkcDaily           = Str(rd, "report_marker_custom_daily");
-                    inDaily            = IntOrNull(rd, "report_indent_daily") ?? 2;
-                    mkWeekly           = Str(rd, "report_marker_weekly");
-                    mkcWeekly          = Str(rd, "report_marker_custom_weekly");
-                    inWeekly           = IntOrNull(rd, "report_indent_weekly") ?? 2;
-                    fontFamily         = Str(rd, "report_font_family");
-                    fontSize           = IntOrNull(rd, "report_font_size") ?? 0;
-                    // cal_user_pref 도 state 에 updatedAt 키가 없다 — 토큰 맵이 유일한 보관처다(G-6).
-                    tokens["user_pref"] = Str(rd, "updated_at");
-                }
-            }
+            // ── (서식 설정 표는 구조 22 에서 없앴다) ──────────────────────────────────
+            //   옛 보고서 창 서식(머리기호, 들여쓰기)은 근태가 쓰지 않고, 보고 글꼴은 계정별 localStorage(tc_rptFont:<계정>)로 갔다.
 
             if (badTimeFmt > 0)
                 _log("DATETIME 문자열이 'yyyy-MM-dd HH:mm:ss.fff' 가 아닌 행 " + badTimeFmt + "건 — 낙관적 잠금 토큰이 어긋날 수 있다");
 
-            // ── 계약 G-0: 최상위 반환 객체 — 키 10개, fromXML() 의 return 과 정확히 동일 ──────
+            // ── 계약 G-0: 최상위 반환 객체 — 키 4개, fromXML() 의 return 과 정확히 동일 ──────
             //   ★ lsMigrated 는 **없앴다**(2026-09-01). 여기 하드코딩 true 가 있었고, 그 이유는
             //     "false/undefined 면 migrateLocalStores() 가 localStorage 좀비를 DB 로 밀어 넣는다"
             //     였다. 즉 이 줄은 **다른 계층의 자동이관을 막으려고** 여기 서 있던 방어 부채였다.
             //     그 자동이관을 걷어내면서 함께 사라진다. 키가 하나 줄어 최상위 키는 14 였다.
             //   ★ rooms 도 없앴다(2026-10-21 회의실 공용화). 최상위 키는 13 이었다.
-            //   ★ gitAuthor, svnAuthor, gitCommitBody 도 없앴다(2026-10-26 Git, SVN 삭제, 구조 18). 최상위 키는 10 이다.
+            //   ★ gitAuthor, svnAuthor, gitCommitBody 도 없앴다(2026-10-26 Git, SVN 삭제, 구조 18). 최상위 키는 10 이었다.
+            //   ★ reportMarker, reportMarkerCustom, reportIndent, reportFormatPrefs, taskHours, reportFont 도 없앴다(구조 22,
+            //     작성 중 시간 표와 서식 설정 표 삭제). 최상위 키는 4 다.
             var state = new Dictionary<string, object?>
             {
                 ["categories"]         = categories,
                 ["entries"]            = entries,
                 ["todos"]              = todos,
-                ["reportMarker"]       = reportMarker,
-                ["reportMarkerCustom"] = reportMarkerCustom,
-                ["reportIndent"]       = reportIndent,
-                ["reportFormatPrefs"]  = new Dictionary<string, object?>
-                {
-                    ["daily"]  = new Dictionary<string, object?> { ["marker"] = mkDaily,  ["markerCustom"] = mkcDaily,  ["indent"] = inDaily },
-                    ["weekly"] = new Dictionary<string, object?> { ["marker"] = mkWeekly, ["markerCustom"] = mkcWeekly, ["indent"] = inWeekly },
-                },
-                ["taskHours"]          = taskHours,
                 ["attendance"]         = attendance,
-                ["reportFont"]         = new Dictionary<string, object?> { ["family"] = fontFamily, ["size"] = fontSize },
             };
 
             return new CalendarSnapshot(

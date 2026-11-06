@@ -300,10 +300,7 @@ if (!JSDOM) {
     ],
     todos: [{ id: 't1', text: '자료 보관 주기 설정', done: false, categoryId: P2, due: '2026-09-14', endDate: '2026-09-18', prio: 'normal', completedAt: '', note: '',
               dayNotes: { '2026-09-14': '월 메모', '2026-09-16': '수 메모' }, createdAt: CA, updatedAt: CA }],
-    rooms: [], attendance: {},
-    taskHours: { '2026-09-03': { [P1]: 2 }, '2026-09-10': { [P2]: 1.5 } },
-    reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
-    reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } },
+    rooms: [], attendance: {},   //  (작성 중 시간 taskHours 와 보고서 서식 report* 는 구조 22 에서 state 에서 빠졌다)
   });
   //  이 앱 주간보고 DB(cal_report_weekly)를 흉내 낸다. 캘린더 기록 출처는 이 행들을 reportWeeklyList 로 읽는다(2026-11-03).
   //  읽는 기간은 시작 쪽을 한 주 더 읽으므로(9월이면 8월 25일부터) 8월 17일 주는 9월 읽기에 오지 않고, 8월 31일 주는 겹쳐서 온다.

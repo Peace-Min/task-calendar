@@ -47,7 +47,7 @@ test('모양①: 관심 과제는 구분 색(sectionColor)을 쓰지 않고 회�
   assert.ok(extractFunction(src, 'pcEvHtml').includes("(p.mine === false ? '' : '--cb:' + tint(p.color, .2) + ';')"), '관심 과제 일정이 색 배경을 만든다');
 });
 test('공용①: 개인 보기 팝업은 공용 고르기 목록 함수(fbListMarkup, fbFill, fbListKey, fbListClick), [참여자]는 그 겉(fbHeadMarkup, fbPopEdgeKey)과 사람 고르기 조직도(§7.3)', () => {
-  assert.ok(extractFunction(src, 'filterPopOpen').includes("fbListMarkup('fbList', '과제 검색', '과제')"), '개인 보기 팝업이 공용 목록 마크업을 쓰지 않는다');
+  assert.ok(extractFunction(src, 'filterPopOpen').includes("fbListMarkup('fbList', '과제 검색', '과제', true)"), '개인 보기 팝업이 공용 목록 마크업(두 칸 숫자, docs/CAT-COUNTS-SPLIT.md)을 쓰지 않는다');
   assert.ok(/FB\.src = FB_SRC;/.test(src) && /idp: 'fbo-'/.test(src), '개인 보기 팝업의 출처(FB_SRC, 항목 id fbo-)가 아니다');
   for (const [fn, inner] of [['filterFillList', 'fbFill(FB, initial)'], ['filterSetAct', 'fbSetAct(FB, i, scroll)'], ['filterPickOpt', 'fbPick(FB, o)']]) {
     assert.ok(extractFunction(src, fn).includes(inner), `${fn} 가 공용 함수(${inner})를 부르지 않는다`);
@@ -262,9 +262,11 @@ if (!JSDOM) {
     assert.ok(q && q.getAttribute('placeholder') === '과제 검색' && q.getAttribute('aria-label') === '과제 검색' && q.getAttribute('aria-controls') === 'fbList' && q.getAttribute('role') === 'searchbox');
     assert.ok(lb && lb.classList.contains('fb-opts') && lb.getAttribute('role') === 'listbox' && lb.getAttribute('aria-label') === '과제' && lb.getAttribute('aria-multiselectable') === 'true' && lb.tabIndex === 0);
     assert.deepStrictEqual([...pop.querySelectorAll('.fb-acts .fb-lk')].map((b) => [b.dataset.act, b.textContent]), [['all', '전체 선택'], ['none', '전체 해제']]);
-    //  항목 한 줄의 마크업(체크, 색점, 이름, 기록 수)과 id 머리 fbo-, 묶음 머리 없음
+    //  항목 한 줄의 마크업(체크, 색점, 이름, 일정 수, 할 일 수)과 id 머리 fbo-, 묶음 머리 없음. 두 칸 머리는 목록 상자 밖(docs/CAT-COUNTS-SPLIT.md)
     const o = pop.querySelector('.fb-opt');
-    assert.ok(/^<div class="fb-opt" role="option" id="fbo-0" data-id="c-1" aria-selected="true" title="휴가, 기록 1건"><span class="fb-ind" aria-hidden="true"><svg[^>]*>.*<\/svg><\/span><span class="dot" style="background:#9aa2b3"><\/span><span class="nm">휴가<\/span><span class="n">1<\/span><\/div>$/.test(o.outerHTML.replace(/ class="act"|(class="fb-opt) act"/, '$1"')), '개인 보기 팝업 항목 마크업이 바뀌었다: ' + o.outerHTML);
+    const colh = pop.querySelector('.fb-colh');
+    assert.ok(colh && colh.getAttribute('aria-hidden') === 'true' && colh.nextElementSibling === lb && [...colh.children].map((x) => x.textContent).join('|') === '일정|할 일', '두 칸 머리(일정, 할 일)가 목록 바로 위, 목록 상자 밖에 없다');
+    assert.ok(/^<div class="fb-opt" role="option" id="fbo-0" data-id="c-1" aria-selected="true" title="휴가, 일정 1개, 할 일 0개"><span class="fb-ind" aria-hidden="true"><svg[^>]*>.*<\/svg><\/span><span class="dot" style="background:#9aa2b3"><\/span><span class="nm">휴가<\/span><span class="n2">1<\/span><span class="n2 c0">0<\/span><\/div>$/.test(o.outerHTML.replace(/ class="act"|(class="fb-opt) act"/, '$1"')), '개인 보기 팝업 항목 마크업이 바뀌었다: ' + o.outerHTML);
     assert.ok(!pop.querySelector('.fb-gh, .fb-car, .fb-sub'), '개인 보기 팝업에 묶음 머리가 생겼다');
     assert.strictEqual(lb.getAttribute('aria-activedescendant'), 'fbo-0');
     //  키보드: 찾기 칸 ↓ 로 목록, Space 로 끄기, Esc 로 닫고 단추로

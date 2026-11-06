@@ -9,24 +9,17 @@ using MySqlConnector;
 
 namespace TaskCalendarWidget
 {
-    // 보고서에 실어 보낸 과제별 시간 한 줄. cal_report_hours 의 한 행이 된다.
-    //   ★ CatNo 는 null 이 정상이다. 진실은 TaskName(보낸 그대로)이고 CatNo 는 참조일 뿐이다.
-    //     지금 이 값을 채우는 코드는 없다 — 유일한 생성지가 MainWindow.xaml.cs 의
-    //     `new ReportHourLine { TaskName = …, CatNo = null, Hours = h }` 한 줄이다.
-    //   ★★ 2026-09-09 정정 — 이 자리에는 "과제를 지워도 과거 보고 기록은 남아야 하므로 **FK 를
-    //     걸지 않았다**" 고 적혀 있었다. 이제 거짓이다: cal_report_hours 에 fk_crh_cat 이 있다
-    //     (user_id, cat_no) → cal_category, ON DELETE/UPDATE RESTRICT.
-    //     이유는 cat_no 가 MAX()+1 발번이라 **번호가 재사용되기** 때문이다 — FK 가 없으면
-    //     '남은 과거 기록' 은 남는 것이 아니라 같은 번호를 받은 다른 과제의 공수로 흡수된다.
-    //     · 현 동작은 그대로다: 복합 FK 는 MATCH SIMPLE 이라 cat_no 가 NULL 인 행은 검사 면제다.
-    //     · 앞으로 이 필드를 실제로 채우려면 규칙이 하나 붙는다 —
-    //       **과제를 지우기 전에 그 과제를 가리키는 보고 공수의 cat_no 를 먼저 비울 것.**
-    //       안 그러면 과제 삭제가 1451 로 막힌다(그게 이 가드의 목적이다).
+    // 일간보고 과제별 줄 하나. cal_report_hours 의 한 행이 된다(구조 22, docs/DB-V22-REPORT-HOURS.md).
+    //   CatUid = 앱 과제 id 원문(cal_category.uid, 개인 c-..., 공식 db-<uid>). null = 캘린더 과제와 이어지지 않은 블록.
+    //   ProjectUid = 공식 과제 id(project.uid). 개인 과제는 null. Body = 그 과제의 그날 내용(없으면 '').
+    //   과제는 id 로 찾는다. TaskName 은 보낸 이름 그대로의 기록(화면 표시)이다.
     internal sealed class ReportHourLine
     {
         public string TaskName = "";
-        public int? CatNo;
+        public string? CatUid;
+        public string? ProjectUid;
         public decimal Hours;
+        public string Body = "";
     }
 
     //  주간 과제투입시간 한 줄(cal_report_weekly_hours, 결정 14). 맨먼스 집계의 원천이다.
@@ -34,6 +27,7 @@ namespace TaskCalendarWidget
     internal sealed class WeeklyHourLine
     {
         public string TaskName = "";
+        public string? CatUid;       // 앱 과제 id 원문(구조 22). null = 캘린더 과제와 이어지지 않은 줄
         public string? ProjectUid;
         public decimal Hours;
     }
@@ -67,13 +61,89 @@ namespace TaskCalendarWidget
     {
         private readonly Action<string> _log;
 
-        // 공수 한 줄이 DB 에 들어갈 수 있는 값인가 — 정본 제약 `chk_crh_hours CHECK (hours > 0 AND hours <= 24)`
-        //   와 같은 판정이다. 범위 밖 줄 하나가 3819 를 내면 **그 날 보고 저장 트랜잭션 전체**가 롤백되고,
-        //   전송은 이미 나간 뒤라 가장 나쁜 실패가 된다 — 그래서 줄 하나를 버린다.
-        //   ★ 2026-09-11 적대 검토(R5) — 같은 판정이 두 곳(들어오는 자리 MainWindow.ParseHoursJson,
+        // 일간 공수 한 줄이 DB 에 들어갈 수 있는 값인가: 정본 제약 `chk_crh_hours CHECK (hours >= 0 AND hours <= 24)`
+        //   와 같은 판정이다(구조 22 에서 0 을 허용했다. 내용이 있는 0시간 블록도 줄로 남긴다).
+        //   범위 밖 줄 하나가 3819 를 내면 **그 날 보고 저장 트랜잭션 전체**가 롤백되고,
+        //   전송은 이미 나간 뒤라 가장 나쁜 실패가 된다. 그래서 줄 하나를 버린다.
+        //   ★ 2026-09-11 적대 검토(R5): 같은 판정이 두 곳(들어오는 자리 MainWindow.ParseHoursJson,
         //     저장 직전의 마지막 관문)에 **숫자까지 두 벌** 적혀 있었다. 한쪽만 고치면 두 관문이 갈린다.
-        //     판정은 여기 한 줄이고, 두 곳은 이것을 부른다(문구·로그는 각자 자기 자리의 말로 남긴다).
-        internal static bool HoursInDomain(decimal h) => h > 0m && h <= 24m;
+        //     판정은 여기 한 줄이고, 두 곳은 이것을 부른다(문구와 로그는 각자 자기 자리의 말로 남긴다).
+        //   ★ 0시간 줄은 내용(body)이 있을 때만 남긴다(DailyLineKept). 주간(WeeklyHoursInDomain)은 0 을 그대로 막는다.
+        internal static bool HoursInDomain(decimal h) => h >= 0m && h <= 24m;
+
+        //  일간 줄 하나를 남길 것인가: 이름이 있고, 시간이 범위 안이고, 0시간이면 내용이 있어야 한다(빈 0시간 블록은 기록할 것이 없다).
+        internal static bool DailyLineKept(string? name, decimal h, string? body) =>
+            !string.IsNullOrWhiteSpace(name) && HoursInDomain(h) && (h != 0m || !string.IsNullOrWhiteSpace(body));
+
+        //  앱 과제 id(cal_category.uid 와 같은 칸 정의, VARCHAR(80)). 비었거나 너무 길면 null(캘린더 과제와 이어지지 않은 줄).
+        internal static string? CatUidOrNull(string? s)
+        {
+            s = (s ?? "").Trim();
+            return s.Length == 0 || s.Length > 80 ? null : s;
+        }
+
+        //  공식 과제 id 를 정한다: 받은 값이 uuid 꼴이면 그것, 아니면 과제 id 가 'db-<uuid>' 일 때 그 uuid, 그 밖은 null(개인 과제).
+        internal static string? ProjectUidFor(string? catUid, string? projectUid)
+        {
+            string p = (projectUid ?? "").Trim();
+            if (ProjectUidOk(p)) return p;
+            if (catUid != null && catUid.StartsWith("db-", StringComparison.Ordinal) && ProjectUidOk(catUid.Substring(3))) return catUid.Substring(3);
+            return null;
+        }
+
+        //  같은 날 같은 과제 id 블록을 한 줄로 합친다(구조 22: UNIQUE 는 두지 않고 앱이 합친다). 웹도 합쳐 보내지만 마지막 관문에서 한 번 더 본다.
+        //    시간은 더하고(24 를 넘으면 24 로 내리고 로그), 내용은 줄바꿈으로 잇는다. id 가 없는 줄은 합치지 않는다. 순서는 처음 나온 자리.
+        internal static List<ReportHourLine> MergeDailyLines(IReadOnlyList<ReportHourLine>? lines, Action<string>? log = null)
+        {
+            var outp = new List<ReportHourLine>();
+            if (lines == null) return outp;
+            var byCat = new Dictionary<string, ReportHourLine>(StringComparer.Ordinal);
+            foreach (var h in lines)
+            {
+                if (h == null) continue;
+                string name = (h.TaskName ?? "").Trim();
+                if (name.Length > 200) name = name.Substring(0, 200);
+                string body = h.Body ?? "";
+                if (!HoursInDomain(h.Hours)) continue;          // CHECK 위반을 미리 거른다(트랜잭션 전체를 죽이지 않게)
+                if (!DailyLineKept(name, h.Hours, body)) continue;   // 이름 없는 줄, 내용 없는 0시간 줄은 기록할 대상이 아니다
+                string? cat = CatUidOrNull(h.CatUid);
+                if (cat != null && byCat.TryGetValue(cat, out var first))
+                {
+                    decimal sum = first.Hours + h.Hours;
+                    if (sum > 24m) { log?.Invoke("보고 시간줄: 같은 과제 블록을 합친 시간이 24 를 넘어 24 로 내렸다: " + first.TaskName); sum = 24m; }
+                    first.Hours = sum;
+                    if (body.Trim().Length > 0) first.Body = first.Body.Trim().Length > 0 ? first.Body + "\n" + body : body;
+                    continue;
+                }
+                var line = new ReportHourLine { TaskName = name, CatUid = cat, ProjectUid = ProjectUidFor(cat, h.ProjectUid), Hours = h.Hours, Body = body };
+                if (cat != null) byCat[cat] = line;
+                outp.Add(line);
+            }
+            return outp;
+        }
+
+        //  줄로 다시 만든 회사 글(웹 atCompose 와 같은 꼴): 메모, 그다음 `[과제] : 시간` 과 내용, 조각 사이 빈 줄 하나.
+        //    저장 뒤 보낸 글(content)과 견주어 다르면 로그만 남긴다(content 는 보낸 원본이라 고치지 않는다).
+        internal static string ComposeDaily(string? memo, IReadOnlyList<ReportHourLine> lines)
+        {
+            var parts = new List<string>();
+            string m = NormText(memo);
+            if (m.Trim().Length > 0) parts.Add(m);
+            foreach (var l in lines)
+            {
+                string b = NormText(l.Body);
+                parts.Add("[" + l.TaskName + "] : " + decimal.Round(l.Hours, 2).ToString("0.##", CultureInfo.InvariantCulture) + (b.Trim().Length > 0 ? "\n" + b : ""));
+            }
+            return string.Join("\n\n", parts);
+        }
+
+        //  견주기용 정리: &nbsp; 와 U+00A0 은 보통 공백, 줄바꿈은 \n, 앞의 빈 줄과 끝 공백은 뺀다(웹 atDecode, atBodyNorm 과 같다).
+        internal static string NormText(string? s)
+        {
+            string t = (s ?? "").Replace("&nbsp;", " ").Replace("&NBSP;", " ").Replace(' ', ' ').Replace("\r\n", "\n").Replace('\r', '\n');
+            t = System.Text.RegularExpressions.Regex.Replace(t, "^(?:[ \\t]*\\n)+", "");
+            return t.TrimEnd();
+        }
 
         //  주간 과제투입시간의 허용 범위(chk_crwh_hours: 0 초과 168 이하). 0 은 '기록할 것이 없다' 라 남기지 않는다(일간과 같다).
         //  판정은 이 한 곳에만 둔다. 들어오는 자리(MainWindow.ParseWeeklyHoursJson)와 저장 직전이 같은 함수를 쓴다.
@@ -131,9 +201,11 @@ namespace TaskCalendarWidget
         //   cal_report_daily 1행 + cal_report_hours N행을 **한 트랜잭션**으로 쓴다.
         //   시간줄은 그 날짜를 DELETE 후 재삽입한다 — 재전송 시 줄 구성 자체가 바뀔 수 있어서
         //   행 단위 UPSERT 로는 '사라진 줄'이 남는다.
+        //   구조 22: memo(자유 메모)는 NULL 을 쓰지 않는다(없으면 ''). memo 가 NULL 이 아닌 날이 '새 보고'이고, 다시 열 때 글 해석 없이 줄을 쓴다.
+        //     줄은 과제 id(cat_uid), 공식 과제 id(project_uid), 시간, 내용(body, 없으면 '')을 싣는다. 같은 과제 id 블록은 한 줄로 합친다.
         public async Task<bool> SaveDailyAsync(
             string? loginId, int y, int m, int d,
-            string? status, int overtime, string? content,
+            string? status, int overtime, string? content, string? memo,
             IReadOnlyList<ReportHourLine>? hours)
         {
             LastFailure = null;
@@ -162,15 +234,16 @@ namespace TaskCalendarWidget
                 {
                     cmd.Transaction = tx;
                     cmd.CommandText =
-                        "INSERT INTO cal_report_daily (user_id, work_date, status, overtime, content, sent_at) " +
-                        "VALUES (@u, @dt, @st, @ot, @c, @at) " +
+                        "INSERT INTO cal_report_daily (user_id, work_date, status, overtime, content, memo, sent_at) " +
+                        "VALUES (@u, @dt, @st, @ot, @c, @mm, @at) " +
                         "ON DUPLICATE KEY UPDATE status=VALUES(status), overtime=VALUES(overtime), " +
-                        "content=VALUES(content), sent_at=VALUES(sent_at)";
+                        "content=VALUES(content), memo=VALUES(memo), sent_at=VALUES(sent_at)";
                     cmd.Parameters.AddWithValue("@u", userId);
                     cmd.Parameters.AddWithValue("@dt", date.Value);
                     cmd.Parameters.AddWithValue("@st", Clamp2(status));
                     cmd.Parameters.AddWithValue("@ot", overtime);
                     cmd.Parameters.AddWithValue("@c", content);
+                    cmd.Parameters.AddWithValue("@mm", memo ?? "");   // NULL 을 쓰지 않는다(NULL = 옛 보고라는 표시)
                     cmd.Parameters.AddWithValue("@at", DateTime.UtcNow);
                     await cmd.ExecuteNonQueryAsync(cts.Token);
                 }
@@ -185,50 +258,45 @@ namespace TaskCalendarWidget
                     await del.ExecuteNonQueryAsync(cts.Token);
                 }
 
+                // ★ 저장 직전의 **마지막 관문**. 들어오는 자리(MainWindow.ParseHoursJson)가 이미 걸렀지만 여기서 한 번 더 거르고
+                //   같은 과제 id 블록을 합친다. 판정은 HoursInDomain, DailyLineKept 한 곳에만 있다(2026-09-11 R5).
+                var lines = MergeDailyLines(hours, _log);
                 int written = 0;
-                if (hours != null && hours.Count > 0)
+                if (lines.Count > 0)
                 {
                     await using var ins = conn.CreateCommand();
                     ins.Transaction = tx;
-                    var sb = new StringBuilder("INSERT INTO cal_report_hours (user_id, work_date, line_no, task_name, cat_no, hours) VALUES ");
-                    int lineNo = 0;
-                    for (int i = 0; i < hours.Count; i++)
+                    var sb = new StringBuilder("INSERT INTO cal_report_hours (user_id, work_date, line_no, task_name, cat_uid, project_uid, hours, body) VALUES ");
+                    for (int lineNo = 0; lineNo < lines.Count; lineNo++)
                     {
-                        var h = hours[i];
-                        if (h == null) continue;
-                        string name = (h.TaskName ?? "").Trim();
-                        if (name.Length == 0) continue;                 // 이름 없는 줄은 기록할 대상이 아니다
-                        if (name.Length > 200) name = name.Substring(0, 200);   // 컬럼 폭에 맞춰 자른다(예외로 전송을 깨지 않는다)
-                        // ★ 저장 직전의 **마지막 관문**. 들어오는 자리(MainWindow.ParseHoursJson)가 이미 걸렀지만,
-                        //   여기서도 같은 판정을 한 번 더 한다 — 다만 판정 자체는 HoursInDomain 한 곳에만 있다
-                        //   (2026-09-11 R5. 전에는 `<= 0` 과 `> 24` 가 여기에도 숫자로 두 줄 적혀 있었다).
-                        //   의미상으로도 0 은 '기록할 것이 없다' 이지 '0시간을 일했다' 가 아니다.
-                        if (!HoursInDomain(h.Hours)) continue;          // CHECK 위반을 미리 거른다 — 트랜잭션 전체를 죽이지 않게
-
+                        var h = lines[lineNo];
                         if (lineNo > 0) sb.Append(',');
                         sb.Append("(@u, @dt, @l").Append(lineNo)
                           .Append(", @n").Append(lineNo)
                           .Append(", @k").Append(lineNo)
-                          .Append(", @h").Append(lineNo).Append(')');
+                          .Append(", @p").Append(lineNo)
+                          .Append(", @h").Append(lineNo)
+                          .Append(", @b").Append(lineNo).Append(')');
                         ins.Parameters.AddWithValue("@l" + lineNo, lineNo);
-                        ins.Parameters.AddWithValue("@n" + lineNo, name);
-                        ins.Parameters.AddWithValue("@k" + lineNo, (object?)h.CatNo ?? DBNull.Value);
+                        ins.Parameters.AddWithValue("@n" + lineNo, h.TaskName);
+                        ins.Parameters.AddWithValue("@k" + lineNo, (object?)h.CatUid ?? DBNull.Value);
+                        ins.Parameters.AddWithValue("@p" + lineNo, (object?)h.ProjectUid ?? DBNull.Value);
                         ins.Parameters.AddWithValue("@h" + lineNo, decimal.Round(h.Hours, 2));
-                        lineNo++;
+                        ins.Parameters.AddWithValue("@b" + lineNo, h.Body ?? "");   // NULL 을 쓰지 않는다
                     }
-                    if (lineNo > 0)
-                    {
-                        ins.Parameters.AddWithValue("@u", userId);
-                        ins.Parameters.AddWithValue("@dt", date.Value);
-                        ins.CommandText = sb.ToString();
-                        await ins.ExecuteNonQueryAsync(cts.Token);
-                        written = lineNo;
-                    }
+                    ins.Parameters.AddWithValue("@u", userId);
+                    ins.Parameters.AddWithValue("@dt", date.Value);
+                    ins.CommandText = sb.ToString();
+                    await ins.ExecuteNonQueryAsync(cts.Token);
+                    written = lines.Count;
                 }
 
                 await tx.CommitAsync(cts.Token);
                 _log("보고 기록 저장: 일간 " + ds +
                      " (user_id=" + userId + " · 시간줄 " + written + "건)");
+                //  줄로 다시 만든 글과 보낸 글(content)이 다르면 로그만 남긴다(content 는 보낸 원본 기록이라 고치지 않는다).
+                if (!string.Equals(ComposeDaily(memo, lines), NormText(content), StringComparison.Ordinal))
+                    _log("보고 기록 확인: 일간 " + ds + " 줄로 다시 만든 글이 보낸 글과 다르다(기록은 그대로 둔다)");
                 return true;
             }
             catch (Exception ex)
@@ -305,7 +373,7 @@ namespace TaskCalendarWidget
                     }
                     await using var ins = conn.CreateCommand();
                     ins.Transaction = tx;
-                    var sb = new StringBuilder("INSERT INTO cal_report_weekly_hours (user_id, period_start, line_no, task_name, project_uid, hours) VALUES ");
+                    var sb = new StringBuilder("INSERT INTO cal_report_weekly_hours (user_id, period_start, line_no, task_name, cat_uid, project_uid, hours) VALUES ");
                     int lineNo = 0;
                     foreach (var h in hours)
                     {
@@ -314,9 +382,10 @@ namespace TaskCalendarWidget
                         if (name.Length == 0 || name.Length > 200) continue;      // 칸 폭 밖은 들어오는 자리에서 이미 걸렀다. 여기서 한 번 더(CHECK 와 1406 이 트랜잭션 전체를 죽이지 않게)
                         if (!WeeklyHoursInDomain(h.Hours)) continue;                // 0 시간과 범위 밖은 남기지 않는다(chk_crwh_hours)
                         if (lineNo > 0) sb.Append(',');
-                        sb.Append("(@u, @s, @l").Append(lineNo).Append(", @n").Append(lineNo).Append(", @p").Append(lineNo).Append(", @h").Append(lineNo).Append(')');
+                        sb.Append("(@u, @s, @l").Append(lineNo).Append(", @n").Append(lineNo).Append(", @k").Append(lineNo).Append(", @p").Append(lineNo).Append(", @h").Append(lineNo).Append(')');
                         ins.Parameters.AddWithValue("@l" + lineNo, lineNo);
                         ins.Parameters.AddWithValue("@n" + lineNo, name);
+                        ins.Parameters.AddWithValue("@k" + lineNo, (object?)CatUidOrNull(h.CatUid) ?? DBNull.Value);   // 과제 id(구조 22). 공식 과제 이관의 열쇠
                         ins.Parameters.AddWithValue("@p" + lineNo, ProjectUidOk(h.ProjectUid) ? h.ProjectUid : (object)DBNull.Value);
                         ins.Parameters.AddWithValue("@h" + lineNo, decimal.Round(h.Hours, 2));
                         lineNo++;
@@ -346,15 +415,19 @@ namespace TaskCalendarWidget
         }
 
         // ================================================================================
-        //  공개 API 3: 일간 보고 목록 읽기 (ATTENDANCE-PLAN §2.2, §3.2)
+        //  공개 API 3: 일간 보고 목록 읽기 (ATTENDANCE-PLAN §2.2, §3.2, 구조 22)
         // ================================================================================
         //   근태 달력과 근태 창의 "보고한 날짜" 출처가 쓴다. 이 앱으로 보낸 보고만 있다(회사 사이트에서 직접 쓴 보고는 없다).
         //   사람(loginId)은 호스트가 세션에서 읽어 넘긴다. 기간은 from 이상 to 이하, ListMaxDays 일까지(달력 한 달, 출처 60일이면 넉넉하다).
         //   반환: [{date:'YYYY-MM-DD', status, overtime, content, sentAt:'yyyy-MM-ddTHH:mm:ss.fffZ'}] (날짜 순) / 실패나 잘못된 인자는 null.
+        //   detail(주간 [일간 불러오기], 근태 [이전 보고], 보고한 날 다시 열기): 행마다 memo 와 lines 를 더 싣는다.
+        //     memo = null 이면 옛 보고(구조 22 전)라 웹이 content 를 해석한다. 문자열이면 새 보고이고 lines 가 그날 블록이다(0개일 수 있다).
+        //     lines = [{catUid, projectUid, name, hours, body}] (line_no 순). 옛 보고는 늘 빈 배열이다.
+        //     부모와 줄은 한 트랜잭션(REPEATABLE-READ, 같은 스냅숏)에서 읽는다. 따로 읽으면 사이에 저장이 끼어 부모와 줄이 어긋날 수 있다.
         //   ★ sent_at 은 UTC 로 쓴다(쓰기 프리앰블 time_zone='+00:00', DateTime.UtcNow). 그래서 읽을 때 Z 를 붙인다.
         internal const int ListMaxDays = 400;
 
-        public async Task<List<Dictionary<string, object?>>?> ListDailyAsync(string? loginId, DateTime from, DateTime to)
+        public async Task<List<Dictionary<string, object?>>?> ListDailyAsync(string? loginId, DateTime from, DateTime to, bool withLines = false)
         {
             from = from.Date; to = to.Date;
             if (string.IsNullOrEmpty(loginId)) { _log("보고 기록 목록 건너뜀: 로그인 사용자를 모른다"); return null; }
@@ -365,9 +438,12 @@ namespace TaskCalendarWidget
                 await using var conn = await OpenReadAsync(cts.Token);
                 int userId = await ResolveUserIdAsync(conn, loginId, cts.Token);
 
+                //  한 스냅숏: 읽기 프리앰블이 REPEATABLE-READ 라 이 트랜잭션의 첫 읽기에서 굳은 스냅숏을 둘째 읽기도 본다.
+                await using var tx = await conn.BeginTransactionAsync(cts.Token);
                 await using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
                 cmd.CommandText =
-                    "SELECT work_date, status, overtime, content, sent_at FROM cal_report_daily " +
+                    "SELECT work_date, status, overtime, content, sent_at, memo FROM cal_report_daily " +
                     "WHERE user_id=@u AND work_date BETWEEN @f AND @t ORDER BY work_date";
                 cmd.Parameters.AddWithValue("@u", userId);
                 cmd.Parameters.AddWithValue("@f", from);
@@ -378,18 +454,53 @@ namespace TaskCalendarWidget
                     while (await r.ReadAsync(cts.Token))
                     {
                         var sent = r.IsDBNull(4) ? (DateTime?)null : r.GetDateTime(4);
-                        rows.Add(new Dictionary<string, object?>
+                        var row = new Dictionary<string, object?>
                         {
                             ["date"] = r.GetDateTime(0).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                             ["status"] = r.IsDBNull(1) ? "" : r.GetString(1),
                             ["overtime"] = r.IsDBNull(2) ? 0 : Convert.ToInt32(r.GetValue(2), CultureInfo.InvariantCulture),
                             ["content"] = r.IsDBNull(3) ? "" : r.GetString(3),
                             ["sentAt"] = sent == null ? "" : sent.Value.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture),
+                        };
+                        if (withLines)
+                        {
+                            row["memo"] = r.IsDBNull(5) ? null : r.GetString(5);   // NULL = 옛 보고(글 해석). 날짜 단위 판정이다
+                            row["lines"] = new List<Dictionary<string, object?>>();
+                        }
+                        rows.Add(row);
+                    }
+                }
+                if (withLines && rows.Count > 0)
+                {
+                    var byDate = new Dictionary<string, Dictionary<string, object?>>(StringComparer.Ordinal);
+                    foreach (var row in rows) byDate[(string)row["date"]!] = row;
+                    await using var hc = conn.CreateCommand();
+                    hc.Transaction = tx;
+                    hc.CommandText =
+                        "SELECT work_date, line_no, task_name, cat_uid, project_uid, hours, body FROM cal_report_hours " +
+                        "WHERE user_id=@u AND work_date BETWEEN @f AND @t ORDER BY work_date, line_no";
+                    hc.Parameters.AddWithValue("@u", userId);
+                    hc.Parameters.AddWithValue("@f", from);
+                    hc.Parameters.AddWithValue("@t", to);
+                    await using var hr = await hc.ExecuteReaderAsync(cts.Token);
+                    while (await hr.ReadAsync(cts.Token))
+                    {
+                        string k = hr.GetDateTime(0).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                        if (!byDate.TryGetValue(k, out var row) || row["memo"] == null) continue;   // 옛 보고 날짜에는 줄을 붙이지 않는다(규칙은 memo 하나)
+                        ((List<Dictionary<string, object?>>)row["lines"]!).Add(new Dictionary<string, object?>
+                        {
+                            ["catUid"] = hr.IsDBNull(3) ? null : hr.GetString(3),
+                            //  ★ project_uid 는 CHAR(36) 이라 MySqlConnector 가 Guid 로 읽는다. GetString 은 InvalidCast(2026-10-30 실측, 주간과 같다).
+                            ["projectUid"] = hr.IsDBNull(4) ? null : Convert.ToString(hr.GetValue(4), CultureInfo.InvariantCulture),
+                            ["name"] = hr.IsDBNull(2) ? "" : hr.GetString(2),
+                            ["hours"] = hr.IsDBNull(5) ? 0m : hr.GetDecimal(5),
+                            ["body"] = hr.IsDBNull(6) ? "" : hr.GetString(6),
                         });
                     }
                 }
+                await tx.CommitAsync(cts.Token);
                 _log("보고 기록 목록: " + from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " ~ " +
-                     to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " (user_id=" + userId + ", " + rows.Count + "건)");
+                     to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " (user_id=" + userId + ", " + rows.Count + "건" + (withLines ? ", 줄 포함" : "") + ")");
                 return rows;
             }
             catch (Exception ex)
@@ -408,7 +519,7 @@ namespace TaskCalendarWidget
         //   사람은 호스트가 세션에서 읽어 넘긴다(payload 의 me 를 믿지 않는다). 기간은 period_start 기준 from 이상 to 이하,
         //   ListMaxDays 일까지(일간과 같은 상한. 목록 한 해치면 넉넉하다).
         //   반환: [{periodStart, periodEnd, subject, content, endwork, plan, meeting, composedAt, hours?}] (최근 주가 위) / 실패나 잘못된 인자는 null.
-        //   hours = [{name, projectUid, hours}](결정 14, 과제투입시간 줄). 시간 표가 없는 DB 에서는 이 키가 없다.
+        //   hours = [{name, projectUid, hours, catUid}](결정 14, 과제투입시간 줄. catUid 는 구조 22). 시간 표가 없는 DB 에서는 이 키가 없다.
         //   meeting 이 NULL 인 행(구조 20 전에 작성한 주)은 빈 글로 준다.
         public async Task<List<Dictionary<string, object?>>?> ListWeeklyAsync(string? loginId, DateTime from, DateTime to)
         {
@@ -456,7 +567,7 @@ namespace TaskCalendarWidget
                 {
                     await using var hc = conn.CreateCommand();
                     hc.CommandText =
-                        "SELECT period_start, line_no, task_name, project_uid, hours FROM cal_report_weekly_hours " +
+                        "SELECT period_start, line_no, task_name, project_uid, hours, cat_uid FROM cal_report_weekly_hours " +
                         "WHERE user_id=@u AND period_start BETWEEN @f AND @t ORDER BY period_start, line_no";
                     hc.Parameters.AddWithValue("@u", userId);
                     hc.Parameters.AddWithValue("@f", from);
@@ -472,6 +583,7 @@ namespace TaskCalendarWidget
                             //  ★ project_uid 는 CHAR(36) 이라 MySqlConnector 가 Guid 로 읽는다. GetString 은 InvalidCast 로 목록 전체를 실패시킨다(2026-10-30 실측).
                             ["projectUid"] = hr.IsDBNull(3) ? "" : Convert.ToString(hr.GetValue(3), CultureInfo.InvariantCulture) ?? "",
                             ["hours"] = hr.IsDBNull(4) ? 0m : hr.GetDecimal(4),
+                            ["catUid"] = hr.IsDBNull(5) ? "" : hr.GetString(5),   // 과제 id(구조 22). 이어지지 않은 줄은 ''
                         });
                     }
                 }
@@ -492,6 +604,245 @@ namespace TaskCalendarWidget
                 DbErrors.Observe(ex, _log);   // 연결 끊김 알림과 실패 분류(일간 목록과 같다)
                 return null;
             }
+        }
+
+        // ================================================================================
+        //  공개 API 5: 공식 과제로 연결할 때 공수 옮기기 (구조 22, docs/DB-V22-REPORT-HOURS.md 앱 변경 6)
+        // ================================================================================
+        //   이 사람의 cal_report_hours 와 cal_report_weekly_hours 에서 **cat_uid 가 옛 개인 과제 id 인 줄만** 공식 과제로 옮긴다.
+        //   과제 이름은 비교하지 않는다(같은 이름의 다른 공식 과제 줄을 끌고 오지 않는다). 옮긴 줄은 cat_uid = 'db-<uid>',
+        //   project_uid = uid, task_name = 공식 이름. 공식 이름은 여기서 project 표를 uid 로 읽는다(웹이 보낸 이름을 믿지 않는다).
+        //   같은 날(주)에 그 공식 과제 줄이 이미 있으면 시간을 더해 가장 작은 line_no 한 줄로 남기고 나머지는 지운다.
+        //     내용(body)은 줄 순서대로 줄바꿈으로 잇는다(NULL 과 빈 글은 건너뛴다. CONCAT_WS 와 COALESCE 를 쓴 것과 같은 결과로, 통째로 NULL 이 되지 않는다).
+        //   합친 시간이 하루 24, 한 주 168 을 넘으면 DB 제약에 걸려 전체가 실패하므로 미리 보고 문구로 거절한다(아무것도 바꾸지 않는다).
+        //   잠금 순서는 일간 저장과 같다: 일간 부모 FOR UPDATE, 일간 줄, 주간 부모, 주간 줄(다르면 교착).
+        //   한 트랜잭션이고 연결은 DbGate.OpenAsync 로 열며 커밋 직전에 구조 번호를 다시 본다. content 와 주간 글은 바꾸지 않는다.
+        //   같은 명령을 다시 보내도 결과가 같다(옮길 줄이 없으면 그냥 성공). 옛 보고(memo NULL)는 줄이 없으므로 대상이 아니다.
+        //   반환: (ok, 문구, 옮긴 일간 줄 수, 옮긴 주간 줄 수). 실패면 ok=false 이고 문구는 사용자에게 보일 한국어다.
+        internal const string RelinkFailMsg = "공수를 옮기지 못했습니다. 원래 과제는 그대로 두었습니다.";
+
+        public async Task<(bool ok, string msg, int daily, int weekly)> RelinkHoursAsync(string? loginId, string? oldCatUid, string? projectUid)
+        {
+            LastFailure = null;
+            string oldCat = (oldCatUid ?? "").Trim();
+            string uid = (projectUid ?? "").Trim();
+            if (string.IsNullOrEmpty(loginId)) { _log("공수 옮기기 건너뜀: 로그인 사용자를 모른다"); return (false, "로그인이 필요합니다.", 0, 0); }
+            if (CatUidOrNull(oldCat) == null || oldCat.StartsWith("db-", StringComparison.Ordinal) || !ProjectUidOk(uid))
+            { _log("공수 옮기기 거부: 과제 id 가 올바르지 않다"); return (false, "연결할 과제가 올바르지 않습니다.", 0, 0); }
+            string newCat = "db-" + uid;
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                var ct = cts.Token;
+                await using var conn = await OpenWriteAsync(ct);   // DbGate.OpenAsync 로 연다(구조 번호 판정)
+                int userId = await ResolveUserIdAsync(conn, loginId!, ct);
+                await using var tx = await conn.BeginTransactionAsync(ct);
+
+                //  공식 이름(카탈로그와 같은 규칙: 통상명칭, 없으면 사업명). 없는 과제면 거절한다.
+                string? official;
+                await using (var c0 = conn.CreateCommand())
+                {
+                    c0.Transaction = tx;
+                    c0.CommandText = "SELECT COALESCE(NULLIF(TRIM(common_name), ''), NULLIF(TRIM(project_name), ''), '(이름 없음)') FROM project WHERE uid=@p";
+                    c0.Parameters.AddWithValue("@p", uid);
+                    official = Convert.ToString(await c0.ExecuteScalarAsync(ct), CultureInfo.InvariantCulture);
+                }
+                if (string.IsNullOrEmpty(official))
+                {
+                    await tx.RollbackAsync(ct);
+                    return (false, "공식 과제를 찾을 수 없습니다. 원래 과제는 그대로 두었습니다.", 0, 0);
+                }
+                if (official.Length > 200) official = official.Substring(0, 200);
+
+                //  1) 일간 부모 잠금(옛 과제 줄이 있는 날만, 날짜 순). 2) 그날들의 일간 줄 잠금과 읽기(옛 과제와 대상 공식 과제 줄만).
+                var days = await LockParentsAsync(conn, tx,
+                    "SELECT work_date FROM cal_report_daily WHERE user_id=@u AND work_date IN " +
+                    "(SELECT work_date FROM cal_report_hours WHERE user_id=@u AND cat_uid=@o) ORDER BY work_date FOR UPDATE",
+                    userId, oldCat, ct);
+                var dRows = days.Count == 0 ? new List<RelinkRow>() : await LockRowsAsync(conn, tx,
+                    "SELECT work_date, line_no, cat_uid, hours, body FROM cal_report_hours WHERE user_id=@u AND cat_uid IN (@o, @n) " +
+                    "AND work_date IN (" + DateList(days) + ") ORDER BY work_date, line_no FOR UPDATE",
+                    userId, oldCat, newCat, true, ct);
+                //  3) 주간 부모 잠금, 4) 주간 줄 잠금과 읽기.
+                var weeks = await LockParentsAsync(conn, tx,
+                    "SELECT period_start FROM cal_report_weekly WHERE user_id=@u AND period_start IN " +
+                    "(SELECT period_start FROM cal_report_weekly_hours WHERE user_id=@u AND cat_uid=@o) ORDER BY period_start FOR UPDATE",
+                    userId, oldCat, ct);
+                var wRows = weeks.Count == 0 ? new List<RelinkRow>() : await LockRowsAsync(conn, tx,
+                    "SELECT period_start, line_no, cat_uid, hours, NULL FROM cal_report_weekly_hours WHERE user_id=@u AND cat_uid IN (@o, @n) " +
+                    "AND period_start IN (" + DateList(weeks) + ") ORDER BY period_start, line_no FOR UPDATE",
+                    userId, oldCat, newCat, false, ct);
+
+                //  미리 검사: 합친 시간이 하루 24, 한 주 168 을 넘으면 거절한다(아직 아무것도 바꾸지 않았다).
+                string? overDay = RelinkOver(dRows, oldCat, 24m), overWeek = RelinkOver(wRows, oldCat, 168m);
+                if (overDay != null || overWeek != null)
+                {
+                    await tx.RollbackAsync(ct);
+                    string why = overDay != null ? "하루 24시간을 넘는 날(" + overDay + ")이 있어" : "한 주 168시간을 넘는 주(" + overWeek + ")가 있어";
+                    _log("공수 옮기기 거절: 합친 시간이 " + why + " user_id=" + userId);
+                    return (false, "합친 시간이 " + why + " 연결하지 않았습니다. 원래 과제는 그대로 두었습니다.", 0, 0);
+                }
+
+                int dMoved = await RelinkApplyAsync(conn, tx, "cal_report_hours", "work_date", true, dRows, userId, oldCat, newCat, uid, official, ct);
+                int wMoved = await RelinkApplyAsync(conn, tx, "cal_report_weekly_hours", "period_start", false, wRows, userId, oldCat, newCat, uid, official, ct);
+
+                //  커밋 직전 관문 재확인(CalendarWriteDb 와 같다). 막혔으면 통째로 롤백한다.
+                var gateMeta = await DbGate.ReadMetaAsync(conn, tx, ct);
+                if (DbGate.Observe(gateMeta) != GateVerdict.Ok)
+                {
+                    try { await tx.RollbackAsync(CancellationToken.None); } catch { /* 연결을 닫으면 서버가 어차피 롤백한다 */ }
+                    _log("공수 옮기기 중단(버전 관문, 커밋 직전): " + (DbGate.Last?.State ?? "unknown") + ", 롤백");
+                    return (false, RelinkFailMsg, 0, 0);
+                }
+                await tx.CommitAsync(ct);
+                _log("공수 옮기기: user_id=" + userId + " " + oldCat + " -> " + newCat + " (일간 줄 " + dMoved + "건, 주간 줄 " + wMoved + "건)");
+                return (true, "", dMoved, wMoved);
+            }
+            catch (Exception ex)
+            {
+                _log("공수 옮기기 실패: " + ex.Message);
+                LastFailure = DbErrors.Observe(ex, _log).detail;
+                return (false, RelinkFailMsg, 0, 0);
+            }
+        }
+
+        //  공수 옮기기가 읽은 줄 하나(일간은 날짜, 주간은 주 시작일이 Key).
+        internal sealed class RelinkRow
+        {
+            public string Key = "";
+            public int LineNo;
+            public string CatUid = "";
+            public decimal Hours;
+            public string? Body;
+        }
+
+        //  값은 DB 가 돌려준 DATE 뿐이다(사용자 글이 섞이지 않는다). 날짜 꼴로만 적는다.
+        private static string DateList(List<DateTime> ds)
+        {
+            var parts = new List<string>(ds.Count);
+            foreach (var d in ds) parts.Add("'" + d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + "'");
+            return string.Join(",", parts);
+        }
+
+        private static async Task<List<DateTime>> LockParentsAsync(MySqlConnection conn, MySqlTransaction tx, string sql, int userId, string oldCat, CancellationToken ct)
+        {
+            var list = new List<DateTime>();
+            await using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = sql;
+            cmd.Parameters.AddWithValue("@u", userId);
+            cmd.Parameters.AddWithValue("@o", oldCat);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct)) list.Add(r.GetDateTime(0).Date);
+            return list;
+        }
+
+        private static async Task<List<RelinkRow>> LockRowsAsync(MySqlConnection conn, MySqlTransaction tx, string sql, int userId, string oldCat, string newCat, bool hasBody, CancellationToken ct)
+        {
+            var list = new List<RelinkRow>();
+            await using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = sql;
+            cmd.Parameters.AddWithValue("@u", userId);
+            cmd.Parameters.AddWithValue("@o", oldCat);
+            cmd.Parameters.AddWithValue("@n", newCat);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                list.Add(new RelinkRow
+                {
+                    Key = r.GetDateTime(0).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    LineNo = Convert.ToInt32(r.GetValue(1), CultureInfo.InvariantCulture),
+                    CatUid = r.GetString(2),
+                    Hours = r.GetDecimal(3),
+                    Body = hasBody && !r.IsDBNull(4) ? r.GetString(4) : null,
+                });
+            return list;
+        }
+
+        //  옛 과제 줄이 있는 날(주) 가운데 옛 과제와 대상 공식 과제 줄의 합이 상한을 넘는 첫 열쇠. 없으면 null.
+        internal static string? RelinkOver(List<RelinkRow> rows, string oldCat, decimal max)
+        {
+            var sum = new SortedDictionary<string, decimal>(StringComparer.Ordinal);
+            var hasOld = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var x in rows)
+            {
+                sum[x.Key] = (sum.TryGetValue(x.Key, out var v) ? v : 0m) + x.Hours;
+                if (x.CatUid == oldCat) hasOld.Add(x.Key);
+            }
+            foreach (var kv in sum) if (hasOld.Contains(kv.Key) && kv.Value > max) return kv.Key;
+            return null;
+        }
+
+        //  옮기기 계획 한 묶음(한 날 또는 한 주). 남길 줄(가장 작은 line_no), 합친 시간, 이은 내용(주간은 null), 지울 줄, 옮긴 옛 과제 줄 수.
+        internal sealed class RelinkStep
+        {
+            public string Key = "";
+            public int KeepLine;
+            public decimal Hours;
+            public string? Body;
+            public List<int> DropLines = new List<int>();
+            public int Olds;
+        }
+
+        //  날(주)마다: 남길 줄 = 가장 작은 line_no. 그 줄을 공식 과제로 바꾸고 시간을 합치고(일간은 내용도 줄 순서대로 잇고) 나머지 줄은 지운다.
+        //    옛 과제 줄이 없는 날은 건드리지 않는다(대상 공식 과제 줄만 있는 날). 순수 함수라 시험이 C# 그대로 돌린다(tests/report-hours-v22).
+        internal static List<RelinkStep> RelinkPlan(List<RelinkRow> rows, string oldCat, bool hasBody)
+        {
+            var plan = new List<RelinkStep>();
+            var groups = new SortedDictionary<string, List<RelinkRow>>(StringComparer.Ordinal);
+            foreach (var x in rows) { if (!groups.TryGetValue(x.Key, out var g)) groups[x.Key] = g = new List<RelinkRow>(); g.Add(x); }
+            foreach (var kv in groups)
+            {
+                var g = kv.Value;
+                int olds = 0; foreach (var x in g) if (x.CatUid == oldCat) olds++;
+                if (olds == 0) continue;
+                g.Sort((a, b) => a.LineNo.CompareTo(b.LineNo));
+                var step = new RelinkStep { Key = kv.Key, KeepLine = g[0].LineNo, Olds = olds };
+                var bodies = new List<string>();
+                foreach (var x in g) { step.Hours += x.Hours; if (x.Body != null && x.Body.Trim().Length > 0) bodies.Add(x.Body); }
+                step.Hours = decimal.Round(step.Hours, 2);
+                step.Body = hasBody ? string.Join("\n", bodies) : null;
+                for (int i = 1; i < g.Count; i++) step.DropLines.Add(g[i].LineNo);
+                plan.Add(step);
+            }
+            return plan;
+        }
+
+        //  계획대로 쓴다. 돌려주는 값 = 옮긴 옛 과제 줄 수. 표와 열 이름은 이 파일의 상수 인자에서만 온다.
+        private static async Task<int> RelinkApplyAsync(MySqlConnection conn, MySqlTransaction tx, string table, string keyCol, bool hasBody,
+            List<RelinkRow> rows, int userId, string oldCat, string newCat, string uid, string official, CancellationToken ct)
+        {
+            int moved = 0;
+            foreach (var st in RelinkPlan(rows, oldCat, hasBody))
+            {
+                moved += st.Olds;
+                await using (var up = conn.CreateCommand())
+                {
+                    up.Transaction = tx;
+                    up.CommandText = "UPDATE " + table + " SET cat_uid=@n, project_uid=@p, task_name=@t, hours=@h" + (hasBody ? ", body=@b" : "") +
+                                     " WHERE user_id=@u AND " + keyCol + "=@k AND line_no=@l";
+                    up.Parameters.AddWithValue("@n", newCat);
+                    up.Parameters.AddWithValue("@p", uid);
+                    up.Parameters.AddWithValue("@t", official);
+                    up.Parameters.AddWithValue("@h", st.Hours);
+                    if (hasBody) up.Parameters.AddWithValue("@b", st.Body ?? "");
+                    up.Parameters.AddWithValue("@u", userId);
+                    up.Parameters.AddWithValue("@k", st.Key);
+                    up.Parameters.AddWithValue("@l", st.KeepLine);
+                    await up.ExecuteNonQueryAsync(ct);
+                }
+                foreach (int ln in st.DropLines)
+                {
+                    await using var del = conn.CreateCommand();
+                    del.Transaction = tx;
+                    del.CommandText = "DELETE FROM " + table + " WHERE user_id=@u AND " + keyCol + "=@k AND line_no=@l";
+                    del.Parameters.AddWithValue("@u", userId);
+                    del.Parameters.AddWithValue("@k", st.Key);
+                    del.Parameters.AddWithValue("@l", ln);
+                    await del.ExecuteNonQueryAsync(ct);
+                }
+            }
+            return moved;
         }
 
         //  웹이 보내는 날짜 'YYYY-MM-DD' 를 엄격하게 읽는다(근태 창의 날짜 이동, 목록 기간). 그 밖의 모양은 false.

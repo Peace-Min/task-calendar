@@ -23,7 +23,8 @@ const mainWindow = R('widget/MainWindow.xaml.cs');
 const calDb = R('widget/CalendarDb.cs');
 const calWrite = R('widget/CalendarWriteDb.cs');
 const gateCs = R('widget/DbGate.cs');
-const xmlToDb = R('db/deploy/xml-to-db/Program.cs');
+//  XML 이관 도구(db/deploy/xml-to-db)는 구조 22(docs/DB-V22-REPORT-HOURS.md)에서 지웠다. 그 검사는 없다.
+const xmlToDb = null;
 const struct = R('db/deploy/schema-structure.sql');
 const cal = R('db/deploy/schema-calendar.sql');
 const frag = R('db/deploy/migrations/v15-shared-rooms.sql');
@@ -143,10 +144,10 @@ checks.calendarNoRooms = (cdb, cwd, x2d) => {
     assert.ok(!/cal_room/.test(code), `${name} 의 코드가 아직 cal_room 을 다룬다`);
     assert.ok(!/"rooms"/.test(code), `${name} 의 코드가 아직 state 의 "rooms" 를 다룬다`);
   }
-  //  XML 이관 도구는 <rooms> 를 세기만 한다(옮기지 않는다는 안내용). cal_room 에 쓰지 않는다.
+  //  XML 이관 도구(xml-to-db)는 구조 22 에서 지웠다(x2d 는 null). 시험이 그 원문을 넘기면 같은 검사를 한다.
+  if (x2d === null) return;
   const x = stripCsComments(x2d);
   assert.ok(!/cal_room/.test(x), 'xml-to-db/Program.cs 의 코드가 아직 cal_room 을 다룬다');
-  assert.ok(!/INSERT INTO cal_room|rooms\[i\]/.test(x), 'xml-to-db 가 아직 회의실을 옮긴다');
 };
 //  정본과 권한
 checks.canon = (st, cl, gate, grants) => {

@@ -187,11 +187,13 @@ if($Port -lt 1 -or $Port -gt 65535){ Die "-Port 범위가 아닙니다: $Port" }
 #  ※ 2026-10-30 주간 과제투입시간(구조 번호 20, 결정 14)으로 cal_report_weekly_hours 가 늘어 17 → 18 이 됐다(docs/ATTENDANCE-PLAN.md §14.4).
 #  ※ 2026-11-02 과제 일정 반복(구조 번호 20 그대로)으로 cal_project_event_except 가 늘어 18 → 19 가 됐다(docs/PC-RECUR.md).
 #  ※ 2026-11-04 과제 탭 다른 과제 보기(구조 번호 21)로 cal_project_watch 가 늘어 19 → 20 이 됐다(docs/PC-WATCH.md).
+#  ※ 2026-11-06 일간보고 과제별 줄(구조 번호 22)로 안 쓰는 표 셋(cal_task_hours, cal_user_pref, cal_migration_log)이 빠져
+#    20 → 17 이 됐다(docs/DB-V22-REPORT-HOURS.md). 옛 DB 의 실물은 schema-calendar.sql 의 DROP 목록이 지운다(재생성하지 않는다).
 $DESIGN_TABLES = @(
   'cal_category','cal_entry','cal_entry_except',
-  'cal_todo','cal_todo_day_note','cal_task_hours',
+  'cal_todo','cal_todo_day_note',
   'cal_attendance','cal_report_daily','cal_report_hours','cal_report_weekly','cal_report_weekly_hours',
-  'cal_user_pref','cal_user_rev','cal_migration_log','cal_schema_meta',
+  'cal_user_rev','cal_schema_meta',
   'cal_project_event','cal_project_event_except','cal_project_change','cal_project_watch',
   'project_schedule_image'
 )
@@ -884,7 +886,7 @@ try {
       if($i -gt 0){ $actMap["$r".Substring(0,$i)] = "$r".Substring($i+1) }
     }
     # cal_* 는 '정확히 일치'를 요구한다. 동사가 하나 더 붙어 있는 것도 실패다 —
-    # cal_user_rev/cal_user_pref/cal_migration_log 의 DELETE 금지가 바로 이 검사로 지켜진다.
+    # cal_user_rev, cal_report_daily 의 DELETE 금지가 바로 이 검사로 지켜진다.
     foreach($t in $calGranted){
       if(-not $actMap.ContainsKey($t)){ $fail += "GRANT 누락: $t 에 권한이 한 줄도 없습니다 (기대 $($expGrants[$t]))"; continue }
       if($actMap[$t] -ne $expGrants[$t]){ $fail += "GRANT 불일치: $t — 기대 [$($expGrants[$t])] / 실제 [$($actMap[$t])]" }
@@ -897,7 +899,7 @@ try {
       if($lack.Count -gt 0){ $fail += "GRANT 누락: $t 에 $($lack -join ',') 이(가) 없습니다" }
     }
     # ★ DB 단위 권한이 있으면 위의 '표별 정확 일치' 는 아무 의미가 없다 — DELETE 를 일부러 빼 둔
-    #   cal_user_rev·cal_user_pref·cal_migration_log·cal_schema_meta 도 DB 단위 DELETE 로 지워진다.
+    #   cal_user_rev, cal_report_daily, cal_schema_meta 도 DB 단위 DELETE 로 지워진다.
     #   (옛날에는 여기 '권한 0줄이어야 하는 표(cal_audit_trash)' 검사가 함께 있었다. 그 표가
     #    폐지되면서 검사도 없어졌다 — 지금 cal_* 는 전부 권한이 붙는 것이 정상이다)
     $schemaPriv = Q "SELECT COUNT(*) FROM information_schema.SCHEMA_PRIVILEGES WHERE TABLE_SCHEMA='$DbName' AND GRANTEE = $granteeExpr;"
@@ -1072,7 +1074,7 @@ try {
 
   Ok "게이트 전 항목 통과 — 캘린더 테이블 구축 완료."
   Write-Host ""
-  Write-Host "다음: data.xml → DB 1회성 이관 도구를 돌린 뒤(설계 §8 — cal_migration_log 가 재실행을 막습니다) 앱을 DB 모드로 전환하세요."
+  Write-Host "다음: 앱을 DB 모드로 전환하세요. 옛 data.xml 은 앱의 XML 가져오기로 옮깁니다(가져온 파일은 이름이 바뀌어 다시 가져오지 않습니다)."
 } finally {
   Cleanup
   if(-not $script:dying){ try{ Read-Host "엔터를 누르면 종료" }catch{} }

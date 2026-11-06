@@ -172,7 +172,7 @@ const checks = {
     const canon = csMember(s.wdb, 'private static string Canon(string stateJson)');
     const save = csMember(s.wdb, 'public async Task<CalendarSaveResult> SaveAsync(');
     for (const [fn, call] of [['CategoryParams', 'CategoryParams(c, i)'], ['EntryParams', 'EntryParams(e, i, cno)'],
-                              ['TodoParams', 'TodoParams(t, i, cno)'], ['PrefParams', 'PrefParams(st)']]) {
+                              ['TodoParams', 'TodoParams(t, i, cno)']]) {   // 서식 설정 행(PrefParams)은 구조 22 에서 표와 함께 없앴다
       assert.ok(save.includes(call), `저장 경로가 ${fn} 를 쓰지 않는다 — 차이 판정과 저장이 다른 값을 본다`);
       assert.ok(canon.includes(fn + '('), `차이 판정이 ${fn} 를 쓰지 않는다`);
     }
@@ -283,8 +283,9 @@ const checks = {
                        'public async Task<string?> LoadTrashJsonAsync(string loginId)', 'public async Task<string?> LoadOrgTitleJsonAsync(string loginId)'])
       assert.ok(/DbErrors\.Observe\(\w+, _log\);/.test(csMember(s.pdb, sig)), `${sig} 의 실패가 분류기에 닿지 않는다`);
     assert.ok(/DbErrors\.Observe\(ex, _log\);/.test(csMember(s.cdb, 'public async Task<string?> LoadPeerScheduleJsonAsync(')), '타인 일정 조회 실패가 분류기에 닿지 않는다');
-    //  2026-10-29 주간 목록 읽기(ListWeeklyAsync, 결정 13)가 더해져 넷이다.
-    assert.ok((stripCs(s.rdb).match(/DbErrors\.Observe\(ex, _log\)/g) || []).length === 4, '보고 기록 저장 실패(일간, 주간)와 일간, 주간 목록 읽기 실패가 분류기에 닿지 않는다');
+    //  2026-10-29 주간 목록 읽기(ListWeeklyAsync, 결정 13)가 더해져 넷, 2026-11-06 공식 과제 연결 공수 옮기기(RelinkHoursAsync, 구조 22)가 더해져 다섯이다.
+    assert.ok((stripCs(s.rdb).match(/DbErrors\.Observe\(ex, _log\)/g) || []).length === 5, '보고 기록 저장 실패(일간, 주간), 일간, 주간 목록 읽기 실패, 공수 옮기기 실패가 분류기에 닿지 않는다');
+    assert.ok(/DbErrors\.Observe\(ex, _log\)/.test(csMember(s.rdb, 'public async Task<(bool ok, string msg, int daily, int weekly)> RelinkHoursAsync(')), '공수 옮기기 실패가 분류기에 닿지 않는다');
     assert.ok(/DbErrors\.Observe\(ex, _log\)/.test(csMember(s.rdb, 'public async Task<List<Dictionary<string, object?>>?> ListWeeklyAsync(')), '주간 목록 읽기 실패가 분류기에 닿지 않는다');
     assert.ok(/DbErrors\.Observe\(ex, _log\)/.test(csMember(s.rdb, 'public async Task<List<Dictionary<string, object?>>?> ListDailyAsync(')), '일간 목록 읽기 실패가 분류기에 닿지 않는다');
   },
@@ -293,7 +294,7 @@ const checks = {
   reportRetry(s) {
     //  결정 9: 일간은 재시도하지 않는다. 저장을 기다려 결과를 돌려주고, 실패 알림(__reportRecordFailed)도 일간으로는 나가지 않는다.
     const daily = csMember(s.main, 'async Task<bool> INetcusHost.SaveDailyReport(');
-    assert.ok(/ok = await Task\.Run\(\(\) => db\.SaveDailyAsync\(loginId, y, m, d, st, ot, content, hours\)\);/.test(daily), '일간 보고 기록 저장을 기다리지 않는다(결정 9)');
+    assert.ok(/ok = await Task\.Run\(\(\) => db\.SaveDailyAsync\(loginId, y, m, d, st, ot, content, memo \?\? "", hours\)\);/.test(daily), '일간 보고 기록 저장을 기다리지 않는다(결정 9)');
     assert.ok(!/SaveReportRecordWithRetryAsync|__reportRecordFailed/.test(stripCs(daily)), '일간 보고 기록이 아직 백그라운드 재시도로 간다(결정 9 위반)');
     assert.ok(!/SaveReportRecordWithRetryAsync\("daily"/.test(stripCs(s.main)), '일간 재시도 호출이 남아 있다');
     const weekly = csMember(s.main, 'void INetcusHost.SaveWeeklyReport(');
@@ -505,8 +506,8 @@ test('변이㉒: 재시도 간격을 바꾸면 S10⑩ 이 실패한다', () => {
 });
 
 test('변이㉒b: 일간을 옛 백그라운드 재시도로 되돌리면 S10⑩ 이 실패한다(결정 9)', () => {
-  const bad = mutate(src.main, 'try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours)); }',
-    'try { _ = Task.Run(() => SaveReportRecordWithRetryAsync("daily", "", db, () => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours))); ok = true; }');
+  const bad = mutate(src.main, 'try { ok = await Task.Run(() => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours)); }',
+    'try { _ = Task.Run(() => SaveReportRecordWithRetryAsync("daily", "", db, () => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours))); ok = true; }');
   assert.throws(() => checks.reportRetry(with_('main', bad)), /기다리지 않는다|백그라운드 재시도/);
 });
 

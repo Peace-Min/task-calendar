@@ -4,7 +4,7 @@
 //   2026-09-09 전면 검수에서 나온 결함 다섯은 전부 **같은 모양**이었다 —
 //   "장치 A 는 이렇게 지키자고 하는데 장치 B 가 반대로 하고 있다".
 //     · GRANT 는 보고 이력을 못 지우게 하는데 FK 가 CASCADE 로 지웠다.
-//     · cal_task_hours 는 과제 참조를 RESTRICT 로 잠갔는데 쌍둥이 cal_report_hours 는 안 잠갔다.
+//     · cal_task_hours 는 과제 참조를 RESTRICT 로 잠갔는데 쌍둥이 cal_report_hours 는 안 잠갔다(구조 22 에서 둘 다 바뀌었다. 계약⑤ 참조).
 //     · cal_attendance 는 근태 코드를 CHECK 로 잠갔는데 cal_report_daily 는 안 잠갔다.
 //     · 모든 DB 접근 코드가 프리앰블을 거는데 ProjectDb 만 안 걸어 감사 시각이 KST 로 적혔다.
 //     · 정본 SQL 이 시딩하는 schema_version 과 마이그레이션이 올리는 값이 갈릴 수 있었다.
@@ -136,8 +136,9 @@ function ownerFkClauses(sql) {
 }
 function checkOwnerFkRestrict(sql) {
   const clauses = ownerFkClauses(sql);
-  assert.ok(clauses.length >= 10,
-    'app_user 를 가리키는 FK 를 ' + clauses.length + '개만 찾았다 — 2026-09-09 실측은 11개, 2026-10-21 cal_room 폐지로 10개다. ' +
+  assert.ok(clauses.length >= 9,
+    'app_user 를 가리키는 FK 를 ' + clauses.length + '개만 찾았다: 2026-09-09 실측은 11개, 2026-10-21 cal_room 폐지로 10개, ' +
+    '구조 21 까지 보기만 목록과 그림 표로 12개, 2026-11-06 구조 22 의 표 셋(cal_task_hours, cal_user_pref, cal_migration_log) 삭제로 9개다. ' +
     '못 찾았으면 판정한 것이 아니다(정규식이 빗나갔거나 표가 사라졌다).');
   const cascades = clauses.filter((c) => /ON\s+DELETE\s+CASCADE/i.test(c));
   assert.strictEqual(cascades.length, 0,
@@ -187,33 +188,43 @@ function checkHoursPair(sql, cs) {
   const m = /CONSTRAINT\s+chk_crh_hours\s+CHECK\s*\(([^)]*)\)/i.exec(sql);
   assert.ok(m, 'chk_crh_hours 를 찾지 못했다 — cal_report_hours 의 공수 범위가 잠기지 않았다(판정 불가)');
   const body = m[1];
-  assert.ok(/hours\s*>\s*0/i.test(body),
-    "chk_crh_hours 가 'hours > 0' 을 담지 않는다 — 0 은 '기록할 것이 없다' 이지 '0시간을 일했다' 가 아니다");
+  //  ★ 2026-11-06 구조 22(docs/DB-V22-REPORT-HOURS.md): 0 이상으로 넓혔다. 내용이 있는 0시간 블록도 줄로 남긴다
+  //    (앱은 0시간 줄을 body 가 비어 있지 않을 때만 쓴다). 음수는 여전히 막는다.
+  assert.ok(/hours\s*>=\s*0\b/i.test(body),
+    "chk_crh_hours 가 'hours >= 0' 을 담지 않는다: 구조 22 부터 내용이 있는 0시간 블록도 줄로 남는다(음수는 막는다)");
   assert.ok(/hours\s*<=\s*24/i.test(body),
     "chk_crh_hours 가 'hours <= 24' 를 담지 않는다 — 상한이 없으면 파서가 잘못 읽은 240 이 회사 보고 집계로 나간다");
 
   //  ★ 2026-09-11 적대 검토(R5) — 앱 쪽 필터는 ReportDb.HoursInDomain **한 줄**이다. 전에는
   //    `h.Hours <= 0` 과 `h.Hours > 24` 가 여기에, 그리고 MainWindow.ParseHoursJson 에 또 한 벌
   //    적혀 있어 한쪽만 고치면 두 관문이 갈렸다. 그래서 정본과 짝지어 볼 대상도 그 한 줄이다.
-  assert.ok(/internal static bool HoursInDomain\(decimal h\) => h > 0m && h <= 24m;/.test(cs),
-    'ReportDb 의 공수 도메인 판정(HoursInDomain)이 정본 CHECK(`hours > 0 AND hours <= 24`)와 다르다 — ' +
+  assert.ok(/internal static bool HoursInDomain\(decimal h\) => h >= 0m && h <= 24m;/.test(cs),
+    'ReportDb 의 공수 도메인 판정(HoursInDomain)이 정본 CHECK(`hours >= 0 AND hours <= 24`)와 다르다: ' +
     '범위 밖 줄이 통과하면 그 한 줄이 3819 를 내고 **그 날 보고 저장 트랜잭션 전체가 죽는다** ' +
     '(전송은 이미 나간 뒤라 가장 나쁜 실패다).');
   assert.ok(/if \(!HoursInDomain\(h\.Hours\)\) continue;/.test(cs),
     'ReportDb 의 저장 직전 관문이 HoursInDomain 으로 거르지 않는다 — 판정이 있어도 부르지 않으면 장식이다.');
 }
 
-//  계약⑤ — cat_no 가드. 번호 재사용(MAX()+1 발번) 때문에 참조가 없으면 과거 공수가
-//    같은 번호를 받은 다른 과제로 흡수된다. 오늘은 cat_no 가 항상 NULL 이라 무동작이지만,
-//    이 FK 는 '나중에 채우는 사람' 을 향한 가드다.
+//  계약⑤: 과제 참조. 2026-09-09 부터 구조 21 까지는 cat_no(번호, MAX()+1 발번이라 재사용된다)에 RESTRICT FK(fk_crh_cat)를 걸었다.
+//    2026-11-06 구조 22(docs/DB-V22-REPORT-HOURS.md)가 뒤집었다: 과제는 문자열 id(cat_uid = cal_category.uid 원문)로 찾고
+//    FK 를 걸지 않는다. id 는 재사용되지 않으니 흡수 문제가 없고, 과제를 지워도 보고 줄은 남아야 한다(RESTRICT 는 과제 삭제의 걸림돌이었다).
+//    그래서 지금의 계약: cal_report_hours 에 cat_no 와 과제(cal_category) FK 가 없고, cat_uid 는 cal_category.uid 와 같은 정의(VARCHAR(80) _bin)다.
+function crhBody(sql) {
+  const m = /CREATE TABLE cal_report_hours \(([\s\S]*?)\n\) ENGINE/.exec(sql);
+  assert.ok(m, 'cal_report_hours 정의를 찾지 못했다(판정 불가)');
+  return m[1];
+}
 function checkCatNoFk(sql) {
-  assert.ok(/CONSTRAINT\s+fk_crh_cat\s+FOREIGN\s+KEY\s*\(\s*user_id\s*,\s*cat_no\s*\)\s*REFERENCES\s+cal_category/i.test(sql),
-    'fk_crh_cat 이 없다 — cal_report_hours.cat_no 가 cal_category 를 가리키지 않는다. ' +
-    'cat_no 는 MAX()+1 발번이라 번호가 재사용되므로, 참조가 없으면 이미 회사로 나간 공수가 ' +
-    '나중에 같은 번호를 받은 다른 과제의 것으로 조용히 흡수된다(쌍둥이 cal_task_hours 는 ' +
-    '2026-08-24 에 같은 문제를 RESTRICT 로 풀었다).');
-  assert.ok(/CONSTRAINT\s+fk_crh_cat[\s\S]{0,200}?ON\s+DELETE\s+RESTRICT/i.test(sql),
-    'fk_crh_cat 이 RESTRICT 가 아니다 — CASCADE 는 침묵 삭제와 같은 말인데 이 값은 회사로 나간 보고 숫자다');
+  const body = crhBody(sql);
+  assert.ok(!/REFERENCES\s+cal_category\b/i.test(body),
+    'cal_report_hours 가 cal_category 를 FK 로 가리킨다: 구조 22 부터 과제 참조는 cat_uid 글자이고 FK 가 없다(과제를 지워도 보고 줄은 남는다)');
+  assert.ok(!/^\s*cat_no\s/m.test(body), 'cal_report_hours 에 cat_no 가 다시 생겼다(구조 22 에서 지웠다)');
+  const cat = /^\s*cat_uid\s+(VARCHAR\(\d+\)\s+CHARACTER SET \w+ COLLATE \w+)\s+NULL\b/m.exec(body);
+  const uid = /CREATE TABLE cal_category \([\s\S]*?^\s*uid\s+(VARCHAR\(\d+\)\s+CHARACTER SET \w+ COLLATE \w+)\s+NOT NULL/m.exec(sql);
+  assert.ok(cat && uid, 'cal_report_hours.cat_uid 나 cal_category.uid 정의를 찾지 못했다(판정 불가)');
+  assert.strictEqual(cat[1].replace(/\s+/g, ' '), uid[1].replace(/\s+/g, ' '),
+    'cal_report_hours.cat_uid 가 cal_category.uid 와 같은 형, 콜레이션이 아니다: id 대조가 대소문자나 길이에서 갈린다');
 }
 
 //  계약⑥: 정본이 시딩하는 구조 번호와 마이그레이션 최댓값이 같다.
@@ -275,7 +286,7 @@ test('계약④: 공수 상한(정본 CHECK)과 0시간 필터(ReportDb)가 짝�
   checkHoursPair(canonSql, reportCode);
 });
 
-test('계약⑤: cal_report_hours.cat_no 에 제한 외래키 fk_crh_cat 이 있다', () => {
+test('계약⑤: cal_report_hours 는 과제를 FK 없이 cat_uid(cal_category.uid 와 같은 정의)로 가리킨다(구조 22, cat_no 와 fk_crh_cat 없음)', () => {
   checkCatNoFk(canonSql);
 });
 
@@ -325,8 +336,9 @@ test('변이③b: chk_crd_status 를 통째로 지우면 계약③ 이 실패한
   assert.throws(() => checkReportChecks(bad), /chk_crd_status 가 없다/);
 });
 
-test('변이④: 공수 도메인을 `>= 0` 으로 되돌리면 계약④ 가 실패한다(0시간 줄이 통과한다)', () => {
-  const bad = reportCode.replace('h > 0m && h <= 24m', 'h >= 0m');
+test('변이④: 앱의 공수 도메인만 `> 0` 으로 되돌리면 계약④ 가 실패한다(정본과 갈린다)', () => {
+  //  구조 22 부터 정본과 앱이 0 이상이다. 앱만 예전(0 초과)으로 되돌린 사본을 잡는다.
+  const bad = reportCode.replace('h >= 0m && h <= 24m', 'h > 0m && h <= 24m');
   assert.notStrictEqual(bad, reportCode, '변이가 원본을 바꾸지 못했다 — 도메인 판정의 표현이 바뀌었다');
   assert.throws(() => checkHoursPair(canonSql, bad), /공수 도메인 판정\(HoursInDomain\)이 정본 CHECK/);
 });
@@ -338,15 +350,20 @@ test('변이④b: chk_crh_hours 의 상한(<= 24)을 지우면 계약④ 가 실
   //    "계약이 없어도 통과한다"를 증명하는 대신 아무것도 증명하지 못한다. 실제로 그렇게 잡혔다.
   const m = /CONSTRAINT\s+chk_crh_hours\s+CHECK\s*\([^)]*\)/i.exec(canonSql);
   assert.ok(m, '변이 대상(chk_crh_hours)을 찾지 못했다');
-  const bad = canonSql.replace(m[0], 'CONSTRAINT chk_crh_hours CHECK (hours > 0)');
+  const bad = canonSql.replace(m[0], 'CONSTRAINT chk_crh_hours CHECK (hours >= 0)');
   assert.notStrictEqual(bad, canonSql, '변이가 원본을 바꾸지 못했다 — chk_crh_hours 의 표현이 바뀌었다');
   assert.throws(() => checkHoursPair(bad, reportCode), /hours <= 24/);
 });
 
-test('변이⑤: fk_crh_cat 선언을 지우면 계약⑤ 가 실패한다', () => {
-  const bad = canonSql.replace(/CONSTRAINT\s+fk_crh_cat\s+FOREIGN\s+KEY[^;]*?RESTRICT\s*,/i, '');
-  assert.notStrictEqual(bad, canonSql, '변이가 원본을 바꾸지 못했다 — fk_crh_cat 의 선언 형태가 바뀌었다');
-  assert.throws(() => checkCatNoFk(bad), /fk_crh_cat 이 없다/);
+test('변이⑤: 과제 FK(fk_crh_cat)를 되살리거나 cat_uid 콜레이션을 바꾸면 계약⑤ 가 실패한다', () => {
+  const anchor = '  CONSTRAINT chk_crh_hours CHECK';
+  assert.ok(canonSql.includes(anchor), '변이 준비 실패: chk_crh_hours 줄을 찾지 못했다');
+  const fk = canonSql.replace(anchor, '  CONSTRAINT fk_crh_cat FOREIGN KEY (user_id, cat_uid) REFERENCES cal_category (user_id, uid) ON DELETE RESTRICT ON UPDATE RESTRICT,\n' + anchor);
+  assert.throws(() => checkCatNoFk(fk), /cal_category 를 FK 로 가리킨다/);
+  const coll = canonSql.replace('cat_uid VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL', 'cat_uid VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL');
+  assert.notStrictEqual(coll, canonSql, '변이가 원본을 바꾸지 못했다: cat_uid 의 선언 형태가 바뀌었다');
+  assert.throws(() => checkCatNoFk(coll), /같은 형, 콜레이션이 아니다/);
+  assert.doesNotThrow(() => checkCatNoFk(canonSql), '원본은 통과해야 한다');
 });
 
 test('변이⑥: 정본 시딩 값만 바꾸면 계약⑥ 이 실패한다(마이그레이션과 갈라짐)', () => {

@@ -93,6 +93,7 @@ tests/
 ├─ canon-schema.mjs           정본 파서 헬퍼 — `db/deploy/schema-calendar.sql` 에서 판번호·허용 코드 목록을 읽는다(러너 미수집)
 ├─ ps-guard-lib.mjs           배포 스크립트(db/deploy/*.ps1) 소스 검사 공용 기계 — restore/backup-guards 가 공유(러너 미수집)
 ├─ release-sql-sim.mjs        배포 SQL(release-v<버전>.sql) 흉내 실행기. DB 없이 상태 전이와 실패 뒤 재실행을 본다(release-sql.test.mjs 전용, 러너 미수집)
+├─ db-v22.test.mjs            DB 구조 22(docs/DB-V22-REPORT-HOURS.md): 권한 파일, 스크립트 명부, 판 번호, 지운 도구, 리허설 스크립트(tools/db-rehearsal/rehearse-v22.mjs)의 안전과 순수 함수
 ├─ schema-integrity.test.mjs  접속 프리앰블·소유자 FK·보고 표 CHECK·공수 상한·cat_no FK·판본 정합 계약 + 변이
 ├─ *.test.mjs                 기본 스위트 — 러너가 이름순으로 자동 수집한다(목록은 파일 시스템이 정본)
 ├─ ── 아래는 ★ 별도 실행 전용(`.mjs`라 자동수집에서 빠진다. 개명 금지) ──
@@ -123,8 +124,6 @@ tests/
 ├─ loop-weekly-edit.mjs     **실제 위젯**(CDP): 주간 보고서 글 편집(WEEKLY-EDIT): 이번 주 시간, X, 회사 폼 순서 글 편집, 닫고 열기,
 │                            주 바꾸기, reloadState 뒤 유지, 채우기 가로채기(실제 채우기 없음), 가짜 net 캐시로 출처 바꾸기: 2099 잔재 0
 ├─ calendar-adapter.mjs       MySQL + .NET SDK(복제본) — DB 읽기 계층 대조(어댑터 계약 G)
-├─ migrate-tool.mjs           이관 도구(`db/deploy/xml-to-db`) 왕복 대조
-├─ dryrun-xml-to-db.mjs       이관 예행연습 — 실제 `data.xml`을 읽어 이관 전 필수 조치를 찾아낸다
 ├─ fixtures/
 │  ├─ mock-pjm-daily.html     netcus 일간보고 폼 모의(pjm_work_view.jsp) — 필드명 실제와 동일
 │  └─ mock-pjm-weekly.html    netcus 주간보고 폼 모의(pjm_write.jsp) — 필드명 실제와 동일
@@ -661,7 +660,7 @@ v0.12.0에서 나온 결함이 **대부분 레이아웃**이었고 전부 수작
 
 ### 의도적으로 남긴 것 (이유와 함께)
 - [ ] **시험 러너가 비밀번호를 `-p<비번>`으로 명령줄에 싣는다.** `loop-calendar-write`,
-      `loop-org-compat`, `calendar-adapter`, `dryrun-xml-to-db`, `migrate-tool`, `seed-dummy`.
+      `loop-org-compat`, `calendar-adapter`, `seed-dummy`(`dryrun-xml-to-db`, `migrate-tool` 은 2026-11-06 구조 22 에서 도구와 함께 지웠다).
       Windows는 같은 사용자 권한이면 다른 프로세스의 명령줄을 읽는다. **다만 이건 외부망
       개발 PC의 시험 하네스이고 대상은 개발용 DB다**(배포 스크립트는 이미 `.cnf`를 쓴다.
       `backup-taskmgr.ps1`과 `restore-taskmgr.ps1` 모두 `--defaults-extra-file` 전용).

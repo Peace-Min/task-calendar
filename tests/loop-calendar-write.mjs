@@ -317,13 +317,16 @@ function assertTestUser(u, what) {
 }
 function wipe(u) {
   assertTestUser(u, '정리(wipe)');
-  for (const t of ['cal_entry_except','cal_todo_day_note','cal_task_hours',
-                   'cal_attendance','cal_entry','cal_todo','cal_category','cal_user_pref'])
+  //  (cal_task_hours, cal_user_pref 는 구조 22 에서 없앴다. 보고 표는 전량 교체 시험이 심은 것만 그 자리에서 지운다)
+  for (const t of ['cal_entry_except','cal_todo_day_note',
+                   'cal_attendance','cal_entry','cal_todo','cal_category'])
     sql(`DELETE FROM ${t} WHERE user_id=${u}`, { readOnly: false, what: `정리(${t})` });
 }
 function dropUser(u) {
   assertTestUser(u, '시험 사용자 삭제');
   wipe(u);
+  //  전량 교체 시험이 중간에 멈춰 보고 표식이 남았으면 app_user 삭제가 FK(RESTRICT)로 막힌다. 블록 줄은 CASCADE
+  sql(`DELETE FROM cal_report_daily WHERE user_id=${u}`, { readOnly: false, what: '보고 표식 정리' });
   sql(`DELETE FROM cal_user_rev WHERE user_id=${u}`, { readOnly: false, what: 'rev 정리' });
   sql(`DELETE FROM app_user WHERE user_id=${u}`, { readOnly: false, what: '시험 사용자 삭제' });
 }
@@ -335,6 +338,11 @@ const NAMES = ['알파(A1)', '델타 Batch-IV', '휴가', '기타', '한글 과�
 function withLegacy(state, round) {
   const s = JSON.parse(JSON.stringify(state));
   s.gitAuthor = '옛작성자'; s.svnAuthor = '옛svn'; s.gitCommitBody = true;
+  //  구조 22 에서 없앤 키도 옛 웹(0.25.x)처럼 섞는다. 저장은 읽지 않아야 한다(표가 없다)
+  s.taskHours = { '2026-06-15': { [s.categories[0] ? s.categories[0].id : 'c-x']: 2.5 } };
+  s.reportMarker = '-'; s.reportMarkerCustom = ''; s.reportIndent = 2;
+  s.reportFormatPrefs = { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 3 } };
+  s.reportFont = { family: 'Malgun Gothic', size: 12 }; s.reportSource = 'cal'; s.lsMigrated = true;
   for (const c of s.categories) { c.gitRepo = 'D:\\repos\\x'; c.svnRepo = ''; c.usesRepo = true; }
   s.entries.forEach((e, i) => {
     e.source = i === 0 ? 'git' : '';
@@ -373,22 +381,17 @@ function makeState(prev, round) {
       dayNotes: rnd() < 0.5 ? { '2026-05-01': '그날 메모' } : {},
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
 
-  const taskHours = {}, attendance = {};
-  if (cats.length && rnd() < 0.8) taskHours['2026-06-15'] = { [cats[0].id]: Math.round(rnd() * 800) / 100 || 1 };
+  const attendance = {};
   if (rnd() < 0.8) attendance['2026-06-15'] = { status: pick(['1','12','11']), overtime: rint(0, 5) };   // '8'(결근)은 CHECK 에 없다 — 읽기 경로가 생길 때 확장 예정(schema-calendar.sql 주석)
 
-  return {
-    categories: cats, entries, todos,
-    reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
-    reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 },
-                         weekly: { marker: '·', markerCustom: '', indent: 3 } },
-    reportSource: 'cal', taskHours, attendance, lsMigrated: true,
-    reportFont: { family: pick(['Malgun Gothic','Gulim','']), size: rint(10, 16) },   // chk_cal_user_pref_font_family 허용값
-  };
+  //  구조 22(2026-11-06): 부팅 state 는 categories, entries, todos, attendance 넷이다.
+  //  작성 중 시간(taskHours)과 보고서 서식(report*), 글꼴(reportFont)은 없다(글꼴은 localStorage tc_rptFont:<계정>).
+  return { categories: cats, entries, todos, attendance };
 }
 
 /* ── 왕복 비교 — 저장 후 다시 읽은 state 가 보낸 것과 같은가 ───────────── */
-const IGNORE_TOP = new Set(['reportSource', 'lsMigrated']);   // 읽기가 상수로 채우는 값
+//  구조 22 에서 없앤 최상위 키. 옛 웹처럼 섞어 보내도 저장이 버리고, 다시 읽은 state 에 없어야 한다
+const GONE_V22 = ['taskHours', 'reportMarker', 'reportMarkerCustom', 'reportIndent', 'reportFormatPrefs', 'reportFont'];
 function normEntry(e) {
   //  ★ 아무 키도 빼지 않는다. 다시 읽은 일정에 없앤 commits, source 가 있으면 그대로 차이로 드러난다(구조 18).
   const { updatedAt, createdAt, ...rest } = e;                 // 시각만 서버가 정한다
@@ -405,11 +408,11 @@ function compare(sent, got) {
   cmp('categories', sent.categories.map(normCat), (got.categories || []).map(normCat));
   cmp('entries', sent.entries.map(normEntry), (got.entries || []).map(normEntry));
   cmp('todos', sent.todos.map(normTodo), (got.todos || []).map(normTodo));
-  for (const k of ['reportMarker','reportMarkerCustom','reportIndent',
-                   'reportFormatPrefs','taskHours','attendance','reportFont'])
-    if (!IGNORE_TOP.has(k)) cmp(k, sent[k], got[k]);
-  //  없앤 최상위 키(2026-10-26 Git, SVN 삭제)는 다시 읽은 state 에 없어야 한다
-  for (const k of ['gitAuthor', 'svnAuthor', 'gitCommitBody'])
+  cmp('attendance', sent.attendance, got.attendance);
+  //  최상위 키는 정확히 넷(구조 22)
+  cmp('최상위 키', ['categories', 'entries', 'todos', 'attendance'], Object.keys(got));
+  //  없앤 최상위 키(2026-10-26 Git, SVN 삭제, 2026-11-06 구조 22)는 다시 읽은 state 에 없어야 한다
+  for (const k of ['gitAuthor', 'svnAuthor', 'gitCommitBody', ...GONE_V22])
     if (Object.prototype.hasOwnProperty.call(got, k)) diffs.push(`${k}: 없앤 키가 다시 읽은 state 에 있다`);
   return diffs;
 }
@@ -473,11 +476,9 @@ try {
   if (s2.entries[0]) { s2.entries[0].title = '연속-수정'; s2.entries[0].memo = '2회차'; }
   if (s2.todos[0]) s2.todos[0].text = '연속-할일';
   s2.categories[0].name = '연속-과제';
-  s2.reportIndent = 4;                              //  설정 행도 UPDATE 로 지나가게 한다(옛 gitAuthor 자리)
-  for (const d of Object.keys(s2.attendance)) s2.attendance[d].overtime = 7;
-  for (const d of Object.keys(s2.taskHours)) for (const c of Object.keys(s2.taskHours[d])) s2.taskHours[d][c] = 3.25;
+  for (const d of Object.keys(s2.attendance)) s2.attendance[d].overtime = 7;   //  (설정 행 cal_user_pref 는 구조 22 에서 없앴다)
   const s3 = JSON.parse(JSON.stringify(s2));        // 2) 삭제까지(낡은 토큰이면 여기서 터진다)
-  s3.todos = []; s3.taskHours = {}; s3.attendance = {};
+  s3.todos = []; s3.attendance = {};
   if (s3.entries.length) s3.entries.pop();
 
   const chain = run({ op: 'saveChain', loginId: LOGIN, state: {},
@@ -546,9 +547,13 @@ try {
     ok('바탕 상태 저장', r0.ok === true, r0.msg || r0.error || '');
 
     //  ② 지우면 안 되는 것에 표식을 남긴다 — 전량 교체가 건드리면 바로 드러난다.
+    //     옛 표식 cal_migration_log 는 구조 22 에서 없앴다. 지금 표식은 보낸 보고(cal_report_daily 와 그날 블록 줄).
+    //     블록 줄의 cat_uid 는 바탕 상태의 과제 id 다. 과제가 지워져도 보고 줄은 남아야 한다(FK 없음, 구조 22)
     const revBefore = Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`));
-    sql(`INSERT IGNORE INTO cal_migration_log (user_id, source_host, migrated_at) VALUES (${U}, 'LOOPTEST', '2026-01-01 00:00:00.000')`,
-        { readOnly: false, what: '이관 마커 심기' });
+    const markCat = (base.categories[0] || { id: 'c-none' }).id;
+    sql(`INSERT INTO cal_report_daily (user_id, work_date, status, overtime, content, memo, sent_at) VALUES (${U}, '2026-01-01', '', 0, 'LOOPTEST', '', '2026-01-01 00:00:00.000');
+         INSERT INTO cal_report_hours (user_id, work_date, line_no, task_name, cat_uid, project_uid, hours, body) VALUES (${U}, '2026-01-01', 0, 'LOOPTEST', '${markCat}', NULL, 1.5, '내용')`,
+        { readOnly: false, what: '보고 표식 심기' });
 
     //  ③ 전혀 다른 내용으로 전량 교체(= 가져오기 '교체').
     const imported = makeState(null, 91);
@@ -575,23 +580,24 @@ try {
     //  ⑤ 지우면 안 되는 것들이 그대로다.
     ok('rev 는 줄지 않고 늘었다(단조증가)',
        Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`)) > revBefore);
-    ok('이관 마커가 살아 있다',
-       Number(one(`SELECT COUNT(*) FROM cal_migration_log WHERE user_id=${U}`)) === 1);
+    ok('보낸 보고(일간 행과 블록 줄, cat_uid 그대로)가 살아 있다',
+       one(`SELECT CONCAT((SELECT COUNT(*) FROM cal_report_daily WHERE user_id=${U}), '/',
+            (SELECT COUNT(*) FROM cal_report_hours WHERE user_id=${U} AND cat_uid='${markCat}'))`) === '1/1');
 
-    sql(`DELETE FROM cal_migration_log WHERE user_id=${U}`, { readOnly: false, what: '마커 정리' });
+    sql(`DELETE FROM cal_report_daily WHERE user_id=${U} AND work_date='2026-01-01'`, { readOnly: false, what: '보고 표식 정리(블록 줄은 CASCADE)' });
     wipe(U);
   }
 
   // ── 전량 삭제 — 빈 state 를 저장하면 다 지워지는가 ──────────────────────
   console.log('\n[삭제] 빈 state 저장');
   const empty = makeState(null, 0); empty.categories = []; empty.entries = []; empty.todos = [];
-  empty.taskHours = {}; empty.attendance = {};
+  empty.attendance = {};
   const delRes = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(empty) });
   ok('빈 state 저장 성공', delRes.ok === true, delRes.msg || '');
   const left = Number(one(`SELECT (SELECT COUNT(*) FROM cal_entry WHERE user_id=${U})
     + (SELECT COUNT(*) FROM cal_todo WHERE user_id=${U}) + (SELECT COUNT(*) FROM cal_category WHERE user_id=${U})
     + (SELECT COUNT(*) FROM cal_entry_except WHERE user_id=${U}) + (SELECT COUNT(*) FROM cal_todo_day_note WHERE user_id=${U})
-    + (SELECT COUNT(*) FROM cal_task_hours WHERE user_id=${U}) + (SELECT COUNT(*) FROM cal_attendance WHERE user_id=${U})`));
+    + (SELECT COUNT(*) FROM cal_attendance WHERE user_id=${U})`));
   ok('전부 지워졌다(자식 포함)', left === 0, `${left}행 남음`);
 
   // ── ★★ 진짜 병렬 쓰기 — 같은 계정에 N개를 **동시에** 던진다 ────────────────

@@ -131,13 +131,14 @@ const checks = {
 
   // ⑤ 웹→호스트 경계가 hours 를 실어 나른다
   hoursCrossesBoundary(app, cs) {
-    // 웹: 근태 화면의 보내기가 블록의 시간으로 hours 를 만든다(본문 되파싱이 아니다). 0 초과만, 블록과 같은 과제명으로.
+    // 웹: 근태 화면의 보내기가 블록으로 hours(과제별 줄)를 만든다(본문 되파싱이 아니다). 구조 22: 0시간은 내용이 있을 때만, 블록과 같은 과제명과 id 로.
     assert.ok(/hours: atHoursPayload\(c\.blocks\)/.test(extractFunction(app, 'atBuildSubmit')),
       '근태 보내기 payload 가 hours 를 블록에서 만들지 않는다 — 호스트가 본문을 되파싱하게 되거나 본문과 보고 기록이 갈린다');
-    assert.ok(/b\.hours > 0/.test(extractFunction(app, 'atHoursPayload')) && /atCompose\(c\.blocks, c\.memo\)/.test(extractFunction(app, 'atBuildSubmit')),
+    assert.ok(/atHoursOk\(b\.hours\)/.test(extractFunction(app, 'atHoursPayload')) && /if\(h === 0 && !body\.trim\(\)\) continue;/.test(extractFunction(app, 'atHoursPayload'))
+      && /atCompose\(c\.blocks, c\.memo\)/.test(extractFunction(app, 'atBuildSubmit')),
       'hours 와 본문이 같은 블록에서 나오지 않는다 — 머리 줄과 hours 가 갈린다');
-    assert.ok(/getTaskHours\(date, r\.key\)/.test(extractFunction(app, 'reportDailyHours')),
-      'reportDailyHours 가 getTaskHours 에서 값을 가져오지 않는다 — 이미 아는 값을 다시 파싱하는 셈이다');
+    assert.ok(/memo: atBodyNorm\(c\.memo\)/.test(extractFunction(app, 'atBuildSubmit')) && /memo: typeof p\.memo === 'string' \? p\.memo : ''/.test(app),
+      '근태 보내기가 자유 메모(memo)를 기록용으로 넘기지 않는다(구조 22)');
     assert.ok(/hours: p\.hours \|\| \[\]/.test(app),
       '어댑터가 hours 를 호스트로 넘기지 않는다');
     // 호스트: 받아서 SubmitDaily 로 넘긴다
@@ -191,7 +192,7 @@ const checks = {
     const hook = mainCs.slice(i, i + 1600);
     assert.ok(/SafeReportStatus\(status\)/.test(hook) && /SafeOvertime\(overtime\)/.test(hook),
       '저장 훅이 재검증을 부르지 않는다 — 웹이 보낸 값이 그대로 DB 로 간다');
-    assert.ok(/SaveDailyAsync\(loginId, y, m, d, st, ot, content, hours\)/.test(hook),
+    assert.ok(/SaveDailyAsync\(loginId, y, m, d, st, ot, content, memo \?\? "", hours\)/.test(hook),
       '재검증한 값(st·ot)이 아니라 원본을 저장한다 — 검증이 장식이 된다');
 
     // (d) 공수 줄은 CHECK 범위 밖이면 **버린다**(줄 하나 때문에 그 날 기록 전체를 잃지 않게).
@@ -200,10 +201,11 @@ const checks = {
     //       한쪽만 고치면 두 관문이 조용히 갈렸다. 그래서 여기서 보는 것은 셋이다:
     //         ① 그 한 줄이 정본 범위와 글자까지 같은가 · ② 두 자리가 그것을 부르는가 ·
     //         ③ 범위 숫자를 **다시 적어 둔 자리**가 없는가(있으면 그곳이 곧 갈라질 자리다).
-    const h = /CONSTRAINT\s+chk_crh_hours\s+CHECK\s*\(\s*hours\s*>\s*(\d+)\s+AND\s+hours\s*<=\s*(\d+)\s*\)/i.exec(canonText);
+    //     구조 22: 일간은 0 을 허용한다(`hours >= 0`). 연산자까지 정본에서 읽어 같은지 본다.
+    const h = /CONSTRAINT\s+chk_crh_hours\s+CHECK\s*\(\s*hours\s*(>=?)\s*(\d+)\s+AND\s+hours\s*<=\s*(\d+)\s*\)/i.exec(canonText);
     assert.ok(h, '정본에서 chk_crh_hours 의 범위를 읽지 못했다(판정 불가 ≠ 통과)');
-    assert.ok(new RegExp('internal static bool HoursInDomain\\(decimal h\\) => h > ' + h[1] + 'm && h <= ' + h[2] + 'm;').test(rdb),
-      `공수 도메인 판정(ReportDb.HoursInDomain)이 정본 범위(${h[1]} 초과 ~ ${h[2]} 이하)와 글자까지 같지 않다 — 범위 밖 줄 하나가 그 날 저장 전체를 롤백시킨다`);
+    assert.ok(new RegExp('internal static bool HoursInDomain\\(decimal h\\) => h ' + h[1] + ' ' + h[2] + 'm && h <= ' + h[3] + 'm;').test(rdb),
+      `공수 도메인 판정(ReportDb.HoursInDomain)이 정본 범위(${h[1]} ${h[2]} ~ ${h[3]} 이하)와 글자까지 같지 않다 — 범위 밖 줄 하나가 그 날 저장 전체를 롤백시킨다`);
     assert.ok(/if \(!ReportDb\.HoursInDomain\(h\)\)/.test(mainCs),
       'ParseHoursJson 이 정본 범위 밖 줄을 버리지 않는다(HoursInDomain 을 부르지 않는다) — 그 한 줄이 그 날 저장 전체를 롤백시킨다');
     assert.ok(/if \(!HoursInDomain\(h\.Hours\)\) continue;/.test(rdb),
@@ -277,14 +279,14 @@ test('변이①: 저장 호출을 vr==1 밖으로 빼면 배선① 이 실패한
   //    줄바꿈은 정규식으로만 다루고, 들여쓰기는 원본에서 그대로 떠 온다.
   const m = /([ \t]*)else if \(vr == 1\)/.exec(netcus);
   assert.ok(m, 'vr == 1 분기를 찾지 못했다');
-  const inject = m[1] + '_host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.HoursJson);\r\n' + m[0];
+  const inject = m[1] + '_host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.Memo, req.HoursJson);\r\n' + m[0];
   const bad = netcus.slice(0, m.index) + inject + netcus.slice(m.index + m[0].length);
   assert.notStrictEqual(bad, netcus, '변이가 원본을 바꾸지 못했다');
   assert.throws(() => checks.dailySaveInsideVerified(bad), /vr==1 분기보다 앞에 있다|분기 밖에 있다/);
 });
 
 test('변이②: 저장 호출을 지우면 배선① 이 실패한다(배선 끊김)', () => {
-  const bad = mutate('_host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.HoursJson);',
+  const bad = mutate('_host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.Memo, req.HoursJson);',
     '// 지워짐', netcus);
   assert.throws(() => checks.dailySaveInsideVerified(bad), /배선이 끊겼다/);
 });
@@ -350,14 +352,14 @@ test('변이⑧: 호스트의 근태 코드 집합에서 하나를 빼면 배선
 });
 
 test('변이⑨: 재검증한 값 대신 원본을 저장하면 배선⑨ 가 실패한다(검증이 장식이 된다)', () => {
-  const bad = mutate('SaveDailyAsync(loginId, y, m, d, st, ot, content, hours)',
-    'SaveDailyAsync(loginId, y, m, d, status, overtime, content, hours)', mainwin);
+  const bad = mutate('SaveDailyAsync(loginId, y, m, d, st, ot, content, memo ?? "", hours)',
+    'SaveDailyAsync(loginId, y, m, d, status, overtime, content, memo ?? "", hours)', mainwin);
   assert.throws(() => checks.revalidatesCheckDomains(bad, reportdb, canonSql(), canonStatusCodes('chk_crd_status')),
     /재검증한 값\(st·ot\)이 아니라 원본을 저장한다/);
 });
 
-test('변이⑩: 공수 도메인을 옛 `h >= 0` 으로 되돌리면 배선⑨ 가 실패한다(0·24 초과가 통과한다)', () => {
-  const bad = mutate('h > 0m && h <= 24m', 'h >= 0m', reportdb);
+test('변이⑩: 일간 공수 도메인에서 상한(24)을 빼면 배선⑨ 가 실패한다(24 초과가 통과한다)', () => {
+  const bad = mutate('h >= 0m && h <= 24m', 'h >= 0m', reportdb);
   assert.throws(() => checks.revalidatesCheckDomains(mainwin, bad, canonSql(), canonStatusCodes('chk_crd_status')),
     /정본 범위[\s\S]*글자까지 같지 않다/);
   assert.doesNotThrow(() => checks.revalidatesCheckDomains(mainwin, reportdb, canonSql(), canonStatusCodes('chk_crd_status')));
@@ -428,7 +430,7 @@ test('변이⑫: 항목 단위 skipEmpty continue 를 되살리면 배선⑩ 이
 });
 
 test('변이⑬: 과제 행 필터를 지우면 배선⑩ 이 실패한다(옵션이 아무 일도 안 한다)', () => {
-  const bad = mutate('if(skipEmpty) rows = rows.filter(r => (Array.isArray(r.titles) && r.titles.length > 0) || rowHasHours(r));',
+  const bad = mutate('if(skipEmpty) rows = rows.filter(r => Array.isArray(r.titles) && r.titles.length > 0);',
     '/* 행 필터 삭제 */', src);
   assert.throws(() => skipEmptyRowFilterOnly(bad), /행 필터/);
   assert.doesNotThrow(() => skipEmptyRowFilterOnly(src), '대조군: 현재 소스는 그대로 통과해야 한다');
@@ -455,6 +457,6 @@ test('지운 보고서 창: 단추, 창, 일간 주간 작성, 글 편집, 묶�
 });
 
 test('변이⑤c: 근태 보내기가 hours 를 안 실으면 배선⑤ 가 실패한다', () => {
-  const bad = mutate('hours: atHoursPayload(c.blocks), dryRun: false', 'dryRun: false', src);
+  const bad = mutate('hours: atHoursPayload(c.blocks), memo: atBodyNorm(c.memo), dryRun: false', 'memo: atBodyNorm(c.memo), dryRun: false', src);
   assert.throws(() => checks.hoursCrossesBoundary(bad, mainwin), /hours 를 블록에서 만들지 않는다/);
 });

@@ -94,16 +94,11 @@ test('보고서 전송 모드 배지·설정 라디오가 흔적 없이 사라�
   assert.ok(!/input\[name="ncMode"\]/.test(s) && !/name="ncMode"/.test(s), '설정의 전송 모드 라디오(또는 그 배선)가 남아 있다');
 });
 
-test("머리기호 '직접': 입력(input)은 저장을 부르지 않는다 — 저장은 change 에서 한 번만", () => {
+test('서식 칸(머리기호, 직접, 들여쓰기)은 숨긴 요소라 배선하지 않고 서식은 고정값이다(구조 22: 서식 저장 없음)', () => {
   const s = loadAppSource();
-  const at = s.indexOf("$('#rptMarkerCustom').addEventListener('input'");
-  assert.ok(at > 0, '#rptMarkerCustom 의 input 배선을 찾지 못했다');
-  const inputLine = s.slice(at, s.indexOf('\n', at));
-  assert.ok(!/\bsave\(\)/.test(inputLine), '글자마다 save() — 타이핑이 그대로 저장 왕복 폭주가 된다');
-  assert.ok(/setTimeout\(/.test(inputLine), '미리보기 재빌드는 디바운스로 미뤄야 한다(글자마다 전체 재빌드 금지)');
-  const at2 = s.indexOf("$('#rptMarkerCustom').addEventListener('change'");
-  assert.ok(at2 > 0, '저장 지점(change 배선)이 없다 — 입력한 값이 영영 저장되지 않는다');
-  assert.ok(/\bsave\(\)/.test(s.slice(at2, s.indexOf('\n', at2))), '대조군: change 에서는 저장한다');
+  assert.ok(!/\$\('#rptMarker(Custom)?'\)\.addEventListener|\$\('#rptInd(Minus|Plus)'\)\.addEventListener/.test(s), '숨긴 서식 칸에 처리기가 남았다(저장할 곳이 없다)');
+  assert.ok(/function currentReportFormatPref\(\)\{ return defaultReportFormatPref\(\); \}/.test(s), '서식이 고정값(defaultReportFormatPref)이 아니다');
+  assert.ok(!/updateCurrentReportFormatPref|normalizeReportFormatPrefs|state\.reportFormatPrefs/.test(s), '옛 서식 저장 경로가 남았다');
 });
 
 test('사용자 정보: 권한 두 줄 지우기는 재진입 가드보다 앞에 있다(직전 권한 노출 방지)', () => {
@@ -488,35 +483,6 @@ if (!JSDOM) {
 
     // 공수는 내용이다 — 일간 헤더 '[과제] : n'·주간 content 줄이 이 행에서 나오므로,
     // 제목이 하나도 없어도 (날짜×과제) 공수가 있으면 그 과제는 skipEmpty ON 에서도 남아야 한다.
-    test('skipEmpty ON: 제목이 없어도 (날짜×과제) 공수가 있으면 과제 행 유지', () => {
-      seed({
-        categories: [
-          { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', createdAt: CA },
-          { id: 'c-empty', name: '빈과제', color: '#2e9e6b', desc: '', createdAt: CA },
-          { id: 'c-hours', name: '공수만과제', color: '#c2703a', desc: '', createdAt: CA },
-        ],
-        entries: [],
-        todos: [
-          { id: 't1', text: '작업', done: false, categoryId: 'c-full', due: '2026-07-15', endDate: '', prio: 'normal', completedAt: '', note: '설명있음', dayNotes: {}, createdAt: CA, updatedAt: CA },
-        ],
-        rooms: [],
-        // getTaskHours 가 읽는 저장소 그대로: state.taskHours[YYYY-MM-DD][catId] = 시간(소수 허용)
-        taskHours: { '2026-07-15': { 'c-hours': 3.5 } },
-      });
-      assert.strictEqual(evJSON("getTaskHours('2026-07-15','c-hours')"), 3.5, '사전조건: 시드한 (날짜×과제) 공수가 읽힌다');
-      const on = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, desc: true, skipEmpty: true }).rows;
-      const names = on.map(r => r.name);
-      assert.ok(names.includes('공수만과제'), '공수만 있는 과제 행은 유지(보고할 공수가 있다)');
-      assert.ok(!names.includes('빈과제'), '항목도 공수도 없는 과제만 제외');
-      assert.deepStrictEqual(on.find(r => r.name === '공수만과제').titles, [], '공수만 있는 행의 제목은 비어 있다');
-      // 기간 보고에서도 같다 — 범위 안 어느 하루라도 공수가 있으면 남는다.
-      const wk = collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, desc: true, skipEmpty: true }).rows.map(r => r.name);
-      assert.ok(wk.includes('공수만과제'), '주간 범위에서도 범위 내 공수가 있으면 유지');
-      assert.ok(!wk.includes('빈과제'), '주간 범위에서도 빈 과제는 제외');
-      // 범위 밖(공수 없는 주)이면 다시 빠진다 — 범위 합산이 실제로 from..to 만 본다는 뜻.
-      const other = collectDN('2026-07-20', '2026-07-26', { event: true, todo: true, desc: true, skipEmpty: true }).rows.map(r => r.name);
-      assert.ok(!other.includes('공수만과제'), '범위 밖 공수는 세지 않는다');
-    });
 
     test('reportSubIndent: 설명 들여쓰기가 마커 표시폭만큼(한글=2칸) — 제목 텍스트 아래 정렬', () => {
       assert.strictEqual(evJSON("reportSubIndent('가. ', ' ')"), '    ', '가(2)+.(1)+공백(1)=4칸');
@@ -676,11 +642,6 @@ if (!JSDOM) {
       assert.ok(!on.includes('Empty'), '항목도 공수도 없는 과제 행 제외');
       assert.ok(!on.includes('HoursOnly'), '일정 공수만 있는 과제도 제외 — 그 시간은 보고서에 나가지 않는다');
       assert.ok(on.includes('Alpha'), '내용 있는 과제는 유지');
-      // 대조군 — 같은 행이라도 (날짜×과제) 공수표에 값이 있으면 남는다(그 값은 '[과제] : n' 으로 실제 나간다).
-      ev("setTaskHours('2026-07-09','cz',2);");
-      assert.ok(namesOf(true).includes('HoursOnly'), '공수표에 값이 있으면 유지');
-      ev("setTaskHours('2026-07-09','cz',0);");
-      assert.ok(!namesOf(true).includes('HoursOnly'), '공수표를 비우면 다시 빠진다');
       r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, desc: true, skipEmpty: false });
       row = rowOf(r, 'HoursOnly');
       assert.deepStrictEqual(row.titles, [], '제목이 빈 문자열인 일정은 제목 목록에 안 들어간다(pushTitle 계약)');
@@ -871,7 +832,9 @@ if (!JSDOM) {
     });
 
     // ── 보고서 서식(머리기호/들여쓰기) — prefs 영속 + buildReportText/buildReport WYSIWYG(결정6: 데이터 불변) ──
-    const fmtState = (marker, custom, indent) => ({
+    //  구조 22: 서식은 state 에 없고 고정값이다. 일정 글 만들기(reportRowBodyText)의 머리기호, 들여쓰기 처리는 서식을 직접 넘겨 본다(FMT).
+    let FMT = { marker: '-', custom: '', indent: 2 };
+    const fmtState = (marker, custom, indent) => (FMT = { marker, custom, indent }, {
       categories: [
         { id: 'ca', name: '에이', color: '#3e5be0', desc: '', createdAt: CA },
         { id: 'cb', name: '비이', color: '#2e9e6b', desc: '', createdAt: CA },
@@ -884,14 +847,13 @@ if (!JSDOM) {
         { id: 'b2', date: '2026-07-06', title: '에코', categoryId: 'cb', allDay: true, startTime: '', endTime: '', location: '', memo: '', hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
       ],
       todos: [], rooms: [],
-      reportMarker: marker, reportMarkerCustom: custom, reportIndent: indent,
     });
     const setRptRange = (f, t) => ev(`reportMode='custom'; $('#rptFrom').value=${JSON.stringify(f)}; $('#rptTo').value=${JSON.stringify(t)};`);
     //  2026-11-03: 취합(buildReportText)은 달력의 일정과 할 일을 모으지 않는다(캘린더 기록 = 이 앱 주간보고 DB). 일정 글 만들기(collectReportData + reportRowBodyText)는
     //  근태 일간 가져오기가 그대로 쓰므로, 옛 buildReportText 가 하던 일을 이 도우미로 직접 부른다(머리기호, 들여쓰기, 설명, 단위 U+00A0).
     const calText = (src, unit) => ev(`(function(){ var f=$('#rptFrom').value, t=$('#rptTo').value;
       var rows=collectReportData(f, t, ${JSON.stringify(src || { event: true, todo: true, desc: true })}).rows;
-      var mk=reportMarkerSpec(), fm=currentReportFormatPref(), ind=Math.max(0, Math.min(6, fm.indent!=null ? fm.indent : 2));
+      var mk=reportMarkerSpecFor(${JSON.stringify(FMT.marker)}, ${JSON.stringify(FMT.custom)}), ind=${JSON.stringify(FMT.indent)};
       return rows.map(function(r){ var b=reportRowBodyText(r, ${JSON.stringify(unit || '\u00a0')}, mk, ind); return '['+r.name+']'+(b ? '\\n'+b : ''); }).join('\\n\\n')+'\\n'; })()`);
 
     // F2 — 라인 텍스트 빌더(카드×마커×들여쓰기): (indent*2 스페이스)+prefix+제목, 번호 카드별 리셋
@@ -924,31 +886,6 @@ if (!JSDOM) {
       assert.ok(lines.includes('▶ 알파'));
       assert.ok(lines.includes('▶ 델타'));
     });
-    test('reportFormatPrefs: 일간/주간 서식은 서로 독립 적용', () => {
-      const st = fmtState('-', '', 0);
-      st.reportFormatPrefs = {
-        daily: { marker: '-', markerCustom: '', indent: 0 },
-        weekly: { marker: '1.', markerCustom: '', indent: 2 },
-      };
-      seed(st);
-      setRptRange('2026-07-01', '2026-07-31');
-
-      ev("reportMode='daily'");
-      const dailyLines = calText().split('\n');
-      assert.ok(dailyLines.some(l => l.startsWith('- ')), 'daily uses hyphen with indent 0');
-      assert.ok(!dailyLines.some(l => l.startsWith('1. ')), 'daily does not leak weekly numbering');
-
-      ev("reportMode='weekly'");
-      const weeklyLines = calText().split('\n');
-      const P = ' '.repeat(4);
-      assert.ok(weeklyLines.some(l => l.startsWith(P + '1. ')), 'weekly uses its own indent+number marker');
-      assert.ok(!weeklyLines.some(l => l.startsWith('- ')), 'weekly does not leak daily hyphen');
-
-      ev("$('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31';");
-      const customLines = calText().split('\n');
-      assert.ok(customLines.some(l => l.startsWith(P + '1. ')), 'custom range uses weekly formatting, not daily');
-      assert.ok(!customLines.some(l => l.startsWith('- ')), 'custom range does not overwrite daily formatting');
-    });
 
     test('일정 글 만들기: 설명 포함 시 제목 아래 설명 라인 출력', () => {
       const st = fmtState('-', '', 1);
@@ -964,39 +901,16 @@ if (!JSDOM) {
       assert.ok(lines.includes('detail two'));
     });
 
-    // F3 — XML 왕복: prefs 보존 + <prefs> 부재 시 기본값 + 데이터 무손실
-    test('prefs roundtrip: reportMarker/custom/indent 보존', () => {
+    // F3 XML 왕복: 구조 22 부터 <prefs>(서식, 글꼴)를 쓰지 않고, 옛 XML 의 <prefs> 는 읽지 않는다(데이터 무손실)
+    test('XML: <prefs> 를 쓰지 않고 옛 <prefs>, <taskHours> 는 읽지 않는다(구조 22)', () => {
       seed(fmtState('가.', '▶', 5));
-      const p = evJSON('fromXML(toXML())');
-      assert.strictEqual(p.reportMarker, '가.');
-      assert.strictEqual(p.reportMarkerCustom, '▶');
-      assert.strictEqual(p.reportIndent, 5);
-    });
-    test('prefs roundtrip: 일간/주간 reportFormatPrefs 보존', () => {
-      const st = fmtState('-', '', 1);
-      st.reportFormatPrefs = {
-        daily: { marker: '-', markerCustom: '', indent: 1 },
-        weekly: { marker: 'A.', markerCustom: '▶', indent: 4 },
-      };
-      seed(st);
       const xml = ev('toXML()');
-      assert.ok(/reportMarker_daily="-"/.test(xml), 'daily marker 기록');
-      assert.ok(/reportIndent_weekly="4"/.test(xml), 'weekly indent 기록');
-      assert.ok(/reportMarkerCustom_weekly="▶"/.test(xml), 'weekly custom 기록');
-      const p = evJSON('fromXML(' + JSON.stringify(xml) + ')');
-      assert.deepStrictEqual(p.reportFormatPrefs.daily, { marker: '-', markerCustom: '', indent: 1 });
-      assert.deepStrictEqual(p.reportFormatPrefs.weekly, { marker: 'A.', markerCustom: '▶', indent: 4 });
-    });
-    test('prefs roundtrip: custom 비면 속성 미기록·기본 복원(indent 경계 0)', () => {
-      seed(fmtState('A.', '', 0));
-      const xml = ev('toXML()');
-      assert.ok(/reportMarker="A\."/.test(xml), 'reportMarker 기록');
-      assert.ok(/reportIndent="0"/.test(xml), 'reportIndent=0도 기록');
-      assert.ok(!/reportMarkerCustom/.test(xml), 'custom 비면 속성 없음');
-      const p = evJSON('fromXML(' + JSON.stringify(xml) + ')');
-      assert.strictEqual(p.reportMarker, 'A.');
-      assert.strictEqual(p.reportMarkerCustom, '');
-      assert.strictEqual(p.reportIndent, 0);
+      assert.ok(!/<prefs\b/.test(xml) && !/<taskHours\b/.test(xml), 'XML 에 <prefs> 나 <taskHours> 가 남았다');
+      const old = xml.replace('</taskCalendar>', '<prefs reportMarker="1." reportIndent="5" fontFamily="Gulim" fontSize="12"/><taskHours><day date="2026-07-02"><t cat="ca" h="3"/></day></taskHours></taskCalendar>');
+      assert.notStrictEqual(old, xml, '시험용 옛 XML 을 만들지 못했다');
+      const p = evJSON('fromXML(' + JSON.stringify(old) + ')');
+      assert.deepStrictEqual(Object.keys(p).sort(), ['attendance', 'categories', 'entries', 'todos'], 'fromXML 이 서식, 글꼴, 작성 중 시간을 돌려준다');
+      assert.strictEqual(p.entries.length, 5, '데이터가 사라졌다');
     });
     // ── 기간 취합(custom) 전용 보고서 폰트 — 정규화 / <prefs> 왕복 / 복사용 HTML 트윈 ──────────
     test('normalizeReportFont: 화이트리스트 폰트·10~16pt만 통과, 그 외는 기본(""/0)', () => {
@@ -1039,11 +953,11 @@ if (!JSDOM) {
 
     // 배율이 DOM까지 실제로 도달하는지 — syncReportFontUI가 #rptOut에 인라인으로 심고, 기본이면 지운다.
     test('reportFont: syncReportFontUI가 #rptOut에 --m-scale을 심고 기본에서는 제거한다(기간 취합)', () => {
-      ev("reportMode = 'custom'; state.reportFont = {family:'', size:16}; syncReportFontUI();");
+      ev("reportMode = 'custom'; reportFontSet({family:'', size:16}); syncReportFontUI();");
       assert.strictEqual(ev("$('#rptOut').style.getPropertyValue('--m-scale')").trim(),
         evJSON("reportFontCss({family:'',size:16})").scale);
       assert.strictEqual(ev("$('#rptOut').style.fontSize"), '16pt');
-      ev("state.reportFont = {family:'', size:0}; syncReportFontUI();");
+      ev("reportFontSet({family:'', size:0}); syncReportFontUI();");
       assert.strictEqual(ev("$('#rptOut').style.getPropertyValue('--m-scale')").trim(), '',
         '기본으로 돌아오면 인라인 배율은 지워져야 한다(CSS 기본값 1로 복귀)');
       assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
@@ -1051,7 +965,7 @@ if (!JSDOM) {
 
     // 글꼴·크기는 기간 취합 전용(2026-09-18 사용자 결정) — 일간·주간에서는 저장값이 있어도 미리보기에 입히지 않고, 행 자체가 숨는다.
     test('reportFont: 일간·주간에서는 저장값이 있어도 #rptOut 에 입히지 않는다(기간 취합 전용)', () => {
-      ev("reportMode = 'daily'; state.reportFont = {family:'Gulim', size:16}; syncReportFontUI();");
+      ev("reportMode = 'daily'; reportFontSet({family:'Gulim', size:16}); syncReportFontUI();");
       assert.strictEqual(ev("$('#rptOut').style.fontSize"), '', '일간에서 글꼴 크기가 미리보기에 입혀졌다');
       assert.strictEqual(ev("$('#rptOut').style.getPropertyValue('--m-scale')").trim(), '');
       assert.strictEqual(ev("$('#rptFontSize').value"), '16', '콤보는 저장값을 그대로 보여야 한다(값이 사라지면 안 된다)');
@@ -1059,7 +973,7 @@ if (!JSDOM) {
       assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
       ev("reportMode = 'custom'; syncReportFontUI();");
       assert.strictEqual(ev("$('#rptOut').style.fontSize"), '16pt', '기간 취합에서는 입혀야 한다');
-      ev("state.reportFont = {family:'', size:0}; reportMode = 'daily'; syncReportFontUI();");
+      ev("reportFontSet({family:'', size:0}); reportMode = 'daily'; syncReportFontUI();");
     });
     test('reportFont: #rptFontRow 는 근태 [취합] 화면 안에 있고 기간 취합(custom)에서 숨지 않는다', () => {
       const inSum = ev("(function(){ var r = document.getElementById('rptFontRow'); return !!(r && r.closest('.as-view')); })()");
@@ -1069,27 +983,16 @@ if (!JSDOM) {
       ev("reportMode = 'daily'");
     });
 
-    test('reportFont roundtrip: <prefs fontFamily/fontSize> 보존 + 기본이면 속성 미기록(기존 파일 byte 동일)', () => {
-      // 기본값 — 속성이 하나도 붙지 않아야 구버전 파일과 byte 동일
+    test('reportFont: 글꼴은 XML 이 아니라 계정별 localStorage(tc_rptFont:<계정>)에 있다(구조 22, 옛 값은 옮기지 않는다)', () => {
       seed(fmtState('-', '', 2));
-      let xml = ev('toXML()');
-      assert.ok(!/fontFamily/.test(xml), '기본 폰트면 fontFamily 속성 없음');
-      assert.ok(!/fontSize/.test(xml), '기본 크기면 fontSize 속성 없음');
-      assert.deepStrictEqual(evJSON('fromXML(' + JSON.stringify(xml) + ').reportFont'), { family: '', size: 0 }, '속성 부재 → 기본');
-
-      // 값 설정 — 왕복 동일 + 앱 자체 검증기도 통과
-      const st = fmtState('-', '', 2);
-      st.reportFont = { family: 'Batang', size: 14 };
-      seed(st);
-      xml = ev('toXML()');
-      assert.ok(/fontFamily="Batang"/.test(xml), 'fontFamily 기록');
-      assert.ok(/fontSize="14"/.test(xml), 'fontSize 기록');
-      assert.deepStrictEqual(evJSON('fromXML(' + JSON.stringify(xml) + ').reportFont'), { family: 'Batang', size: 14 });
-      assert.strictEqual(evJSON('xmlRoundTrip()').ok, true, '앱 자체 검증기도 폰트 포함 무손실');
-
-      // 손상/외부편집 값은 파싱에서 기본으로 떨어진다(저장 경로와 동일 검증)
-      const bad = xml.replace('fontFamily="Batang"', 'fontFamily="Comic Sans MS"').replace('fontSize="14"', 'fontSize="99"');
-      assert.deepStrictEqual(evJSON('fromXML(' + JSON.stringify(bad) + ').reportFont'), { family: '', size: 0 }, '미등록 폰트·범위 밖 크기 → 기본');
+      ev("reportFontSet({family:'Batang', size:14})");
+      const xml = ev('toXML()');
+      assert.ok(!/fontFamily|fontSize/.test(xml), 'XML 에 글꼴이 남았다');
+      assert.deepStrictEqual(evJSON('reportFontGet()'), { family: 'Batang', size: 14 });
+      assert.ok(String(ev('rptFontKey()')).startsWith('tc_rptFont:'), '글꼴 키가 tc_rptFont: 가 아니다');
+      assert.strictEqual(ev('localStorage.getItem(rptFontKey())'), JSON.stringify({ family: 'Batang', size: 14 }));
+      ev("reportFontSet({family:'', size:0})");
+      assert.strictEqual(ev('localStorage.getItem(rptFontKey())'), null, '기본이면 키를 지운다');
     });
 
     test('buildReportHtml: 평문과 내용 동일(줄 수 보존·HTML 이스케이프) + 폰트 있을 때만 서식', () => {
@@ -1135,9 +1038,8 @@ if (!JSDOM) {
 
     //  글꼴과 크기는 기간 취합(취합 화면) 전용이다. 일간 서식 쪽(atDailyFmt 가 잠깐 reportMode='daily')에서 입히지 않는 것은 위 syncReportFontUI 시험이 본다.
     test('reportFont: 기간 취합에서는 저장값 서식이 미리보기에 입혀지고 기본값이면 걷힌다', () => {
-      const st = fmtState('-', '', 2);
-      st.reportFont = { family: 'Gulim', size: 13 };
-      seed(st);
+      seed(fmtState('-', '', 2));
+      ev("reportFontSet({ family: 'Gulim', size: 13 })");
       ev("reportMode='custom'; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; buildReport();");
       assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', '글꼴 행이 숨었다');
       assert.ok(ev("$('#rptOut').style.fontFamily").includes('Gulim'), '미리보기 폰트가 입혀지지 않았다');
@@ -1146,7 +1048,7 @@ if (!JSDOM) {
       assert.strictEqual(ev("$('#rptFontFamily').value"), 'Gulim', '폰트 셀렉트 동기');
       assert.strictEqual(ev("$('#rptFontSize').value"), '13', '크기 셀렉트 동기');
       // 기본값이면 인라인 스타일을 걷어낸다
-      ev("state.reportFont={family:'',size:0}; buildReport();");
+      ev("reportFontSet({family:'',size:0}); buildReport();");
       assert.strictEqual(ev("$('#rptOut').style.fontFamily"), '', '기본 폰트면 인라인 스타일 해제');
       assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
       ev("reportMode='daily'");   // 상태 원복(다른 테스트 보호)
@@ -1154,9 +1056,8 @@ if (!JSDOM) {
 
     //  글꼴 행은 내용 출처(캘린더 기록, 인트라넷 주간)와 무관하게 남는다. 출처를 바꿔도 행이 사라지거나 서식이 풀리면 안 된다.
     test('reportFont: 글꼴 행과 미리보기 서식은 내용 출처(캘린더 기록, 인트라넷 주간)와 무관하게 남는다', () => {
-      const st = fmtState('-', '', 2);
-      st.reportFont = { family: 'Gulim', size: 13 };
-      seed(st);
+      seed(fmtState('-', '', 2));
+      ev("reportFontSet({ family: 'Gulim', size: 13 })");
       for(const src of ['cal', 'week']){
         ev(`reportMode='custom'; state.reportSource=${JSON.stringify(src)}; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; buildReport();`);
         assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', `${src}: 글꼴 행이 숨었다`);
@@ -1164,7 +1065,7 @@ if (!JSDOM) {
         assert.strictEqual(ev("$('#rptFontSize').value"), '13', `${src}: 크기 셀렉트 동기`);
         assert.ok(ev("$('#rptOut').style.fontFamily").includes('Gulim'), `${src}: 미리보기 폰트`);
       }
-      ev("state.reportSource='cal'; state.reportFont={family:'',size:0}; reportMode='daily'");   // 상태 원복
+      ev("state.reportSource='cal'; reportFontSet({family:'',size:0}); reportMode='daily'");   // 상태 원복
     });
 
     //  폰트는 표시+복사 전용이라는 계약 — 평문 복사는 폰트에 1바이트도 반응하면 안 된다.
@@ -1178,54 +1079,30 @@ if (!JSDOM) {
       // 공허한 비교(양쪽 다 빈 문자열) 방지 — 기준값이 실제 내용을 담고 있어야 한다
       assert.ok(plain.includes('폰트 무관 확인') && sendLike.includes('폰트 무관 확인'), '기준 텍스트가 비어 있지 않음');
 
-      ev("state.reportFont={family:'Batang',size:16}; buildReport();");   // 폰트 설정 후 동일 경로 재계산
+      ev("reportFontSet({family:'Batang',size:16}); buildReport();");   // 폰트 설정 후 동일 경로 재계산
       assert.strictEqual(ev('buildReportText()'), plain, '평문 복사 바이트 동일');
       assert.strictEqual(ev("buildReportText('&nbsp;')"), sendLike, '&nbsp; 들여쓰기 글 바이트 동일');
       // HTML 트윈에만 서식이 붙는다 — 같은 평문에서 파생됐음을 함께 확인
-      const html = ev("buildReportHtml(buildReportText(), normalizeReportFont(state.reportFont))");
+      const html = ev("buildReportHtml(buildReportText(), reportFontGet())");
       assert.ok(/font-family/.test(html) && /font-size:16pt/.test(html), 'HTML 트윈에는 폰트 적용');
       assert.strictEqual((html.match(/<br>/g) || []).length, plain.split('\n').length - 1, '라인 수 불변');
-      ev("state.reportFont={family:'',size:0}; reportMode='daily'; clearNetcusWeeklyMerge();");   // 상태 원복
+      ev("reportFontSet({family:'',size:0}); reportMode='daily'; clearNetcusWeeklyMerge();");   // 상태 원복
     });
 
-    test('prefs 부재 XML → 기본값(-,"",2) + entries/todos 무손실(가산적)', () => {
+    test('<prefs> 없는 XML → entries/todos 무손실(가산적), 서식 키는 없다', () => {
       seed(roundtripState);   // 4 엔트리 + 2 todos
       let xml = ev('toXML()');
       xml = xml.replace(/<prefs\b[^>]*\/>/, '');
       assert.ok(!/<prefs/.test(xml), 'prefs 요소 제거됨');
       const p = evJSON('fromXML(' + JSON.stringify(xml) + ')');
-      assert.strictEqual(p.reportMarker, '-');
-      assert.strictEqual(p.reportMarkerCustom, '');
-      assert.strictEqual(p.reportIndent, 2);
+      assert.ok(!('reportMarker' in p) && !('reportIndent' in p), '서식 키가 되살아났다');
       // 데이터 무손실
       assert.strictEqual(p.entries.length, 4);
       const byId = Object.fromEntries(p.entries.map(e => [e.id, e]));
       assert.strictEqual(byId['e-2'].memo, '본문 첫 줄\n- 둘째 줄(줄바꿈 보존)');
       assert.strictEqual(p.todos.length, 2);
     });
-    test('prefs 범위/길이 방어: reportIndent clamp 0..6, 9자 custom 무시', () => {
-      seed(fmtState('1.', '', 2));
-      let xml = ev('toXML()');
-      xml = xml.replace(/reportIndent="\d+"/, 'reportIndent="99"').replace('<prefs', '<prefs reportMarkerCustom="123456789"');
-      const p = evJSON('fromXML(' + JSON.stringify(xml) + ')');
-      assert.strictEqual(p.reportIndent, 6, 'clamp 상한 6');
-      assert.strictEqual(p.reportMarkerCustom, '', 'len>8 custom은 무시→기본 빈값');
-    });
 
-    // ── Item1 — 과제별 시간(tc_taskHours) 저장/정리. 기간 취합 글에는 시간이 붙지 않는다(시간은 근태 일간 화면의 블록이 정한다) ──
-    test('Item1: setTaskHours/getTaskHours 왕복·정리(6.50→6.5, 음수→null, 24 초과→24) · 일정 글 머리에는 시간이 붙지 않는다', () => {
-      seed(reportState);
-      ev("reportMode='custom'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12';");
-      ev("setTaskHours('2026-07-09','c-1',6.5);");
-      assert.strictEqual(ev("getTaskHours('2026-07-09','c-1')"), 6.5, 'getTaskHours 반환값');
-      ev("setTaskHours('2026-07-09','c-1',-3);"); assert.strictEqual(ev("getTaskHours('2026-07-09','c-1')"), null, '음수 → 미입력(null)');
-      ev("setTaskHours('2026-07-09','c-1',30);"); assert.strictEqual(ev("getTaskHours('2026-07-09','c-1')"), 24, '24 초과 → 24 클램프');
-      // 기간 취합은 시간 안 붙음(시간은 근태 일간 화면의 블록이 정한다) — 같은 시간 저장돼 있어도 헤더엔 없음
-      ev("setTaskHours('2026-07-09','c-1',6.5);");
-      assert.ok(!/\]\s*:\s*\d/.test(calText()), '일정 글 머리에 시간 없음');
-      // 정리(테스트 간 localStorage 격리)
-      ev("setTaskHours('2026-07-09','c-1',0); reportMode='daily';");
-    });
     // 세그 활성 표시는 '지금 출처'만 말한다 — disabled(읽기 잠금)와 AND 하면 켜진 칸이 하나도 없는 화면이 된다.
     test('report UI: 출처 세그 활성 표시는 잠금(disabled) 여부와 무관하다', () => {
       seed(reportState);
@@ -1255,23 +1132,6 @@ if (!JSDOM) {
       assert.strictEqual(ev("document.getElementById('usViewScope').textContent"), '확인 중…', '열람 범위 줄');
     });
 
-    // 2026-09-18 사용자 지적: 포함 항목 0개면 들여쓰기 ± 가 표시에 안 먹고, 다시 켜면 값이 튀었다 — 컨트롤 동기화가 본문 가드 뒤에 있던 결함.
-    test('report UI: 서식 컨트롤(들여쓰기·머리기호)은 기간 가드 화면에서도 저장값을 즉시 반영한다', () => {
-      seed(reportState);
-      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; updateCurrentReportFormatPref({ indent: 2, marker: '-', markerCustom: '' }); buildReport();");
-      assert.strictEqual(ev("$('#rptIndVal').textContent"), '2단', '전제');
-      ev("$('#rptFrom').value=''; $('#rptTo').value=''; buildReport();");
-      assert.ok(/기간을 선택하세요/.test(ev("$('#rptSummary').textContent")), '전제: 기간 가드 화면');
-      ev("$('#rptIndPlus').click()");
-      assert.strictEqual(ev("$('#rptIndVal').textContent"), '3단', '가드 화면에서 + 를 누르면 표시가 바로 3단이어야 한다');
-      assert.strictEqual(evJSON('currentReportFormatPref()').indent, 3, '저장값도 3');
-      ev("$('#rptMarker').value='1.'; $('#rptMarker').dispatchEvent(new Event('change',{bubbles:true}));");
-      assert.strictEqual(evJSON('currentReportFormatPref()').marker, '1.');
-      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; buildReport();");
-      assert.strictEqual(ev("$('#rptIndVal').textContent"), '3단', '기간을 다시 넣어도 값이 튀지 않는다(표시 = 저장값)');
-      assert.strictEqual(ev("$('#rptMarker').value"), '1.');
-      ev("updateCurrentReportFormatPref({ indent: 2, marker: '-', markerCustom: '' }); buildReport();");
-    });
 
     // ── netcus 주간 병합(인트라넷 주간 출처) 함수 ─────
     test('report UI(netcus): 파서·전송 글·주간 미리 보기 함수 전역 도달', () => {
@@ -1620,7 +1480,7 @@ if (!JSDOM) {
         { id: 'cb', name: '과제나', color: '#2e9e6b', desc: '', createdAt: CA },
       ],
       entries: [], todos: [], rooms: [],
-      taskHours: {}, attendance: {},
+      attendance: {},
     }, extra || {});
     // 구 저장소 셋업 + 세션 가드 해제(같은 realm에서 여러 번 이관을 시뮬레이션하기 위함)
     const setLegacy = (th, at) => ev(
@@ -1629,69 +1489,36 @@ if (!JSDOM) {
       '');
     const clearLegacy = () => ev("localStorage.removeItem('tc_taskHours'); localStorage.removeItem('tc_attendance');");
 
-    test('taskHours/attendance: XML 왕복 — 값 무손실(localStorage 아닌 data.xml에 영속)', () => {
+    test('attendance: XML 왕복, 값 무손실(작성 중 시간 <taskHours> 는 구조 22 에서 없앴다)', () => {
       seed(THS({
-        taskHours: { '2026-07-13': { ca: 6.5, cb: 1.25 }, '2026-07-14': { cb: 8 } },
         attendance: { '2026-07-13': { status: '2', overtime: 3 }, '2026-07-14': { status: '1', overtime: 0 } },
       }));
       const xml = ev('toXML()');
-      assert.ok(/<taskHours>/.test(xml), '<taskHours> 컬렉션 기록');
-      assert.ok(/<t cat="ca" h="6.5"\/>/.test(xml), 'h는 정규화된 숫자 문자열로 기록');
+      assert.ok(!/<taskHours/.test(xml), '<taskHours> 가 남았다');
       assert.ok(/<attendance>/.test(xml), '<attendance> 컬렉션 기록');
 
       const p = evJSON('fromXML(toXML())');
-      assert.deepStrictEqual(p.taskHours, { '2026-07-13': { ca: 6.5, cb: 1.25 }, '2026-07-14': { cb: 8 } });
+      assert.ok(!('taskHours' in p), 'fromXML 이 taskHours 를 돌려준다');
       assert.deepStrictEqual(p.attendance, { '2026-07-13': { status: '2', overtime: 3 }, '2026-07-14': { status: '1', overtime: 0 } });
 
-      assert.strictEqual(evJSON('xmlRoundTrip()').ok, true, '앱 자체 검증기도 시간·근태 포함 무손실');
+      assert.strictEqual(evJSON('xmlRoundTrip()').ok, true, '앱 자체 검증기도 근태 포함 무손실');
     });
 
-    test('taskHours/attendance: 비어 있으면 요소 자체 미기록(기존 파일 byte 동일)', () => {
+    test('attendance: 비어 있으면 요소 자체 미기록(기존 파일 byte 동일)', () => {
       seed(THS({}));
       const xml = ev('toXML()');
-      assert.ok(!/<taskHours/.test(xml), '빈 taskHours는 요소 미생성');
       assert.ok(!/<attendance/.test(xml), '빈 attendance는 요소 미생성');
       //  마커(lsMigrated)를 보던 세 줄은 2026-09-01 에 걷어냈다 — 자동이관과 함께 사라진 값이다.
       assert.ok(!/lsMigrated/.test(xml), '없앤 마커가 되살아났다');
       // 구버전 XML(요소 부재) → 빈 맵
       const oldXml = '<?xml version="1.0" encoding="UTF-8"?>\n<taskCalendar version="1" gitAuthor="" svnAuthor=""><categories></categories><entries></entries></taskCalendar>';
       const p = evJSON('fromXML(' + JSON.stringify(oldXml) + ')');
-      assert.deepStrictEqual(p.taskHours, {}, '요소 부재 → {}');
       assert.deepStrictEqual(p.attendance, {}, '요소 부재 → {}');
       //  ★ 옛 XML 에 lsMigrated 속성이 남아 있어도 **읽지 않는다** — 키 자체가 생기면 안 된다.
       assert.ok(!('lsMigrated' in p), '없앤 마커 키가 되살아났다');
     });
 
-    test('getTaskHours 미입력=null 계약: 부재·저장된 0 모두 null, 빈칸/0 저장은 키 제거', () => {
-      seed(THS());
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), null, '없는 (날짜×과제) → null(0 아님)');
-      assert.strictEqual(evJSON("getTaskHours('bad-date','ca')"), null, '잘못된 날짜 → null');
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','')"), null, '과제 없음 → null');
-      // 저장된 0(손상/외부편집)도 null
-      seed(THS({ taskHours: { '2026-07-13': { ca: 0 } } }));
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), null, '저장된 0 → null(미입력)');
-      // 빈칸 저장 = 키 제거 + 빈 날 정리
-      seed(THS({ taskHours: { '2026-07-13': { ca: 6.5 } } }));
-      ev("setTaskHours('2026-07-13','ca','')");
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), null);
-      assert.deepStrictEqual(evJSON('state.taskHours'), {}, '마지막 과제 제거 시 그 날짜도 삭제');
-      // 0 저장 = 그 과제만 제거(다른 과제는 유지)
-      seed(THS({ taskHours: { '2026-07-13': { ca: 6.5, cb: 2 } } }));
-      ev("setTaskHours('2026-07-13','ca',0)");
-      assert.deepStrictEqual(evJSON('state.taskHours'), { '2026-07-13': { cb: 2 } }, '0 → 그 키만 제거');
-    });
 
-    test('setTaskHours 정규화: 24h 상한 클램프 + 소수 둘째자리 반올림', () => {
-      seed(THS());
-      ev("setTaskHours('2026-07-13','ca','30')");
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), 24, '24h 상한');
-      ev("setTaskHours('2026-07-13','cb','6.567')");
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','cb')"), 6.57, '소수 둘째자리 반올림');
-      ev("setTaskHours('2026-07-14','ca','abc')");
-      assert.strictEqual(evJSON("getTaskHours('2026-07-14','ca')"), null, '숫자 아님 → 미입력');
-      ev("setTaskHours('2026-07-14','ca',-3)");
-      assert.strictEqual(evJSON("getTaskHours('2026-07-14','ca')"), null, '음수 → 미입력');
-    });
 
     // ★ 미기록=null 계약 — 미기록을 '1'(정근)로 흡수하면 netcus에 직접 적어 둔 휴가·병가가 전송으로 덮인다.
     test('setAttendance: 검증 규약 유지(status 화이트리스트·overtime 0..11) + 미기록=null', () => {
@@ -1756,12 +1583,10 @@ if (!JSDOM) {
       categories: [{ id: 'cz', name: '파일과제', color: '#3e5be0', desc: '', createdAt: CA }],
       entries: [{ id: 'ez', date: '2026-07-14', categoryId: 'cz', title: '파일 기록', allDay: true }],
       todos: [], rooms: [],
-      taskHours: { '2026-07-13': { cz: 6.5 } },
       attendance: { '2026-07-14': { status: '2', overtime: 5 } },
     };
     const importReplacesAll = (h) => {
       h.seed(THS({ entries: [{ id: 'ea', date: '2026-07-13', categoryId: 'ca', title: '내 기록', allDay: true }],
-                   taskHours: { '2026-07-13': { ca: 8 } },
                    attendance: { '2026-07-13': { status: '6', overtime: 0 } } }));
       h.ev('pendingImport = ' + JSON.stringify(IMPORT_FILE) + ';');
       h.ev('applyImport()');
@@ -1770,8 +1595,7 @@ if (!JSDOM) {
         '교체 뒤 과제가 파일 내용과 다르다(기존 과제가 남았다 = 병합)');
       assert.deepStrictEqual(h.evJSON('state.entries.map(function(e){return e.id;})'), ['ez'],
         '교체 뒤 기록이 파일 내용과 다르다(기존 기록이 남았다 = 병합)');
-      assert.deepStrictEqual(h.evJSON('state.taskHours'), IMPORT_FILE.taskHours,
-        '교체 뒤 과제별 시간이 파일 내용과 다르다(기존 값이 남았다 = 병합)');
+      assert.ok(!('taskHours' in h.evJSON('state')), '교체 뒤 state 에 작성 중 시간이 생겼다(구조 22 에서 없앴다)');
       assert.deepStrictEqual(h.evJSON('state.attendance'), IMPORT_FILE.attendance,
         '교체 뒤 근태가 파일 내용과 다르다(기존 근태가 남았다 = 병합)');
       assert.strictEqual(h.ev('pendingImport'), null, '교체 뒤 pendingImport 가 비워지지 않았다');
@@ -1787,17 +1611,10 @@ if (!JSDOM) {
       assert.strictEqual(ev('applyImport.length'), 1, 'applyImport 가 opt 하나가 아닌 인자를 받는다(모드 인자가 되살아났다)');
     });
 
-    test('가져오기 = 교체 하나: 기존 과제, 기록, 시간, 근태는 남지 않고 state 가 파일 내용과 같다', () => {
+    test('가져오기 = 교체 하나: 기존 과제, 기록, 근태는 남지 않고 state 가 파일 내용과 같다', () => {
       importReplacesAll({ ev, evJSON, seed });
     });
 
-    test('과제 삭제: 그 과제의 (날짜×과제) 시간도 동반 정리, 다른 과제 시간은 보존', () => {
-      seed(THS({ taskHours: { '2026-07-13': { ca: 6.5, cb: 2 }, '2026-07-14': { ca: 3 } } }));
-      ev("deleteCategory('ca')");
-      assert.deepStrictEqual(evJSON('state.taskHours'), { '2026-07-13': { cb: 2 } },
-        'ca 시간 제거 + ca만 있던 07-14는 날짜째 삭제, cb 시간은 보존');
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','cb')"), 2);
-    });
 
     // ── Excel 추출 버튼(P4) — 실제 렌더 경로에서의 상태 배선 ───────────
     // 순수 함수 단위는 xlsx-export.test.mjs에서 본다. 여기서는 'renderOfficialList가 실제로 버튼을 갱신하는지'
@@ -2748,38 +2565,6 @@ if (!JSDOM) {
         });
     });
 
-    // ── 변이⑥-b skipEmpty 가 공수를 내용으로 세지 않으면(옛 '제목만' 필터로 퇴행) 공수만 있는 과제가 사라진다 ──
-    const hoursOnlyState = () => ({
-      categories: [
-        { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', createdAt: CA },
-        { id: 'c-hours', name: '공수만과제', color: '#c2703a', desc: '', createdAt: CA },
-      ],
-      entries: [],
-      todos: [
-        { id: 't1', text: '작업', done: false, categoryId: 'c-full', due: '2026-07-15', endDate: '', prio: 'normal', completedAt: '', note: '', dayNotes: {}, createdAt: CA, updatedAt: CA },
-      ],
-      rooms: [],
-      taskHours: { '2026-07-15': { 'c-hours': 3.5 } },
-    });
-    test('변이⑥-b: skipEmpty 필터가 공수를 안 보면 공수만 있는 과제가 보고서에서 사라진다', () => {
-      seed(hoursOnlyState());
-      const okNames = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, desc: true, skipEmpty: true }).rows.map(x => x.name);
-      assert.ok(okNames.includes('공수만과제'), '사전조건: 정상 앱은 공수만 있는 과제를 남긴다');
-
-      withMutatedApp(
-        'if(skipEmpty) rows = rows.filter(r => (Array.isArray(r.titles) && r.titles.length > 0) || rowHasHours(r));',
-        'if(skipEmpty) rows = rows.filter(r => (Array.isArray(r.titles) && r.titles.length > 0));',
-        (m) => {
-          m.seed(hoursOnlyState());
-          const r = m.evJSON('collectReportData("2026-07-15","2026-07-15",' +
-            JSON.stringify({ event: true, todo: true, desc: true, skipEmpty: true }) + ')');
-          const names = r.rows.map(x => x.name);
-          assert.ok(names.includes('내용과제'), '변이 앱에서 내용과제 행을 찾지 못했다(보고서 골격이 달라졌다)');
-          assert.ok(!names.includes('공수만과제'),
-            '변이했는데도 공수만 있는 과제가 남는다 — 계약이 공수를 내용으로 세는지 확인하지 못한다');
-        });
-    });
-
     // ── 변이⑥-c skipEmpty 가 '보고에 안 나가는' 일정 공수를 다시 보면 '빈 과제명' 행이 되살아난다 ──
     const eventHoursOnlyState = () => ({
       categories: [
@@ -2803,8 +2588,8 @@ if (!JSDOM) {
       assert.ok(okNames.includes('내용과제'), '사전조건: 내용 있는 과제는 남는다');
 
       withMutatedApp(
-        'const rowHasHours = r => rangeTaskHours(r.key) > 0;',
-        'const rowHasHours = r => rangeTaskHours(r.key) > 0 || (r.entries || []).some(e => e && e.hours != null);',
+        'if(skipEmpty) rows = rows.filter(r => Array.isArray(r.titles) && r.titles.length > 0);',
+        'if(skipEmpty) rows = rows.filter(r => (Array.isArray(r.titles) && r.titles.length > 0) || (r.entries || []).some(e => e && e.hours != null));',
         (m) => {
           m.seed(eventHoursOnlyState());
           const names = m.evJSON('collectReportData("2026-07-15","2026-07-15",' +
@@ -2826,11 +2611,11 @@ if (!JSDOM) {
             '변이(병합)했는데도 교체 계약이 통과한다. 계약이 기존 과제가 남는지 보지 않는다');
         });
       withMutatedApp(
-        '    taskHours: pendingImport.taskHours || {},     // 교체 = 가져온 파일이 통째로 원본',
-        '    taskHours: Object.assign({}, pendingImport.taskHours, state.taskHours),',
+        '    attendance: pendingImport.attendance || {},   // 교체 = 가져온 파일이 통째로 원본',
+        '    attendance: Object.assign({}, pendingImport.attendance, state.attendance),',
         (m) => {
-          assert.throws(() => importReplacesAll(m), /교체 뒤 과제별 시간이 파일 내용과 다르다/,
-            '변이(시간 병합)했는데도 교체 계약이 통과한다. 계약이 기존 시간이 남는지 보지 않는다');
+          assert.throws(() => importReplacesAll(m), /교체 뒤 근태가 파일 내용과 다르다/,
+            '변이(근태 병합)했는데도 교체 계약이 통과한다. 계약이 기존 근태가 남는지 보지 않는다');
         });
     });
   }

@@ -6,23 +6,22 @@
 //   ② 기본 과제는 삭제 버튼이 없고 이름이 잠기며 deleteCategory 가 거부한다. 재연결 대상에 없다.
 //   ③ 기록 폼의 과제 선택 상자에 빈 선택지가 없고 새 기록 기본값이 기타다. 데이터 함수도 빈 값을 기타로 채운다.
 //   ④ 보고서에 __uncat__, gitaCat, '기타 맨 뒤' 가 없다(행동은 app-context, category-order 가 본다. 여기서는 흔적 0).
-//   ⑤ 과제 삭제가 그 과제의 일정, 할 일, 시간을 지우고 참조를 하나도 남기지 않는다. 확인창 숫자가 맞다.
-//   ⑥ 옮기기: 일정, 할 일, 시간이 옮겨지고 겹친 날짜의 시간은 더해지며 24 를 넘지 않는다. 출발 과제는 남는다.
+//   ⑤ 과제 삭제가 그 과제의 일정, 할 일을 지우고 참조를 하나도 남기지 않는다. 확인창 숫자가 맞다.
+//   ⑥ 옮기기: 일정, 할 일이 옮겨진다. 출발 과제는 남는다.
 //   ⑦ XML 가져오기: 과제 없는 기록, 없는 과제를 가리키는 기록이 기타로 간다. 파일에 '기타' 가 있으면 그것을 쓴다.
-//      없는 과제의 시간은 버린다.
+//   (작성 중 시간(과제별 시간)은 구조 22 에서 없앴다. 삭제, 옮기기, 가져오기, 공식 과제 빼기가 시간을 다루던 계약은 함께 없앴다.)
 //   ⑧ 빈 캘린더 판정: 기본 과제만 있으면 비어 있다.
 //   ⑨ 실행 취소로 되살린 기록의 과제가 그사이 지워졌으면 기타로 붙는다. 전체 초기화 뒤에도 기본 과제가 있다.
-//   ⑩ 정정 이력 2차(독립 리뷰): 가져오기의 목록에 없는 공식 과제는 기타가 아니라 편입 · 공식 과제 제거가 시간도 걷는다(FK) ·
+//   ⑩ 정정 이력 2차(독립 리뷰): 가져오기의 목록에 없는 공식 과제는 기타가 아니라 편입 · 공식 과제 제거는 묻지 않고 한 번에 저장한다 ·
 //      다시 주입되면 보장 저장 플래그를 새로 정한다 ·
 //      이전 기록 가져오기는 진행 중인 저장을 기다린 뒤 교체한다 · 공백 붙은 ' 기타' 도 기본 과제다 ·
-//      이관 도구(xml-to-db)도 앱 가져오기와 같은 규칙을 따른다(정적).
+//      (이관 도구 xml-to-db 의 같은 규칙 시험은 2026-11-06 구조 22 에서 도구와 함께 없앴다. 남은 것은 폴더가 없다는 확인이다.)
 //
 // 검사 함수를 시험과 변이 시험이 함께 쓴다(같은 함수를 변이된 소스에 돌려 정말 잡는지 증명한다).
 import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
+import { existsSync } from 'node:fs';
 
 const src = loadAppSource();
-//  이관 도구 — 배포자가 data.xml 을 DB 로 대량 이관한다. 앱 가져오기와 같은 과제 정리 규칙을 따라야 한다(정정 이력 2차).
-const TOOL_SRC = readText(new URL('../db/deploy/xml-to-db/Program.cs', import.meta.url));
 
 function mutate(from, to, base) {
   const out = base.replace(from, to);
@@ -99,30 +98,20 @@ const statics = {
   },
   //  ⑤ 삭제, 옮기기의 관문 — 열람 창과 잠금을 첫 쓰기보다 먼저 본다(deleteCategory 는 이름 때문에 offline-web 목록에 못 싣는다)
   gates(app) {
-    for (const [fn, firstWrite] of [['deleteCategory', 'state.entries = '], ['moveCategoryData', 'e.categoryId = toId']]) {
+    for (const [fn, firstWrite] of [['deleteCategory', 'state.entries = '], ['moveCategoryData', 'catMoveRefs(fromId, toId)']]) {
       const b = fnBody(app, fn);
       const p = b.indexOf('PEER'), g = b.indexOf('guardEdit()'), w = b.indexOf(firstWrite);
       assert.ok(p > 0 && g > 0 && w > g && w > p, `${fn} 가 열람 창, 잠금을 첫 쓰기보다 먼저 막지 않는다`);
       assert.strictEqual((b.match(/\bsave\(\)/g) || []).length, 1, `${fn} 의 저장이 한 번이 아니다(한 번의 save 로 나간다 · §4.5, §4.6)`);
     }
     assert.ok(/isDefaultTask\(c\)/.test(fnBody(app, 'deleteCategory')), 'deleteCategory 가 기본 과제를 거르지 않는다(화면 우회 방어 · §4.4)');
-    //  과제의 시간을 걷는 곳은 한 함수(dropCatHours)다 — 삭제와 공식 과제 제거가 같은 정리를 쓴다(정정 이력 2차)
-    for (const fn of ['deleteCategory', 'unsubscribeDbCat'])
-      assert.ok(/dropCatHours\(id\)/.test(fnBody(app, fn)), `${fn} 가 그 과제의 시간을 같은 저장에서 걷지 않는다 — 과제 DELETE 가 FK(1451)로 실패한다`);
+    //  작성 중 시간(과제별 시간)은 구조 22 에서 없앴다. 삭제와 공식 과제 제거가 시간을 다루지 않는다.
+    for (const fn of ['deleteCategory', 'unsubscribeDbCat', 'moveCategoryData'])
+      assert.ok(!/dropCatHours|taskHours/.test(fnBody(app, fn)), `${fn} 가 없앤 작성 중 시간을 다룬다`);
   },
-  //  ⑩ 이관 도구(xml-to-db) — 앱 가져오기(importNormalizeCats)와 같은 규칙. 실 DB 왕복은 tests/migrate-tool.mjs ⑧ 이 본다.
-  toolSameRule(cs) {
-    const code = cs.replace(/\/\/.*$/gm, '');
-    assert.ok(/\("휴가", "#2e9e6b"\), \("기타", "#5b6b7d"\)/.test(code), '이관 도구가 기본 과제 휴가, 기타(앱과 같은 색)를 보장하지 않는다');
-    assert.ok(/T\(c\.Element\("name"\)\)\.Trim\(\) == dn/.test(code) && /A\(c, "source"\) != "db"/.test(code),
-      "이관 도구가 있는 개인 '휴가', '기타'(앞뒤 공백 무시)를 다시 쓰지 않는다 — 기본 과제가 둘 생긴다");
-    assert.ok((code.match(/object\? cno = catNo\[MapCat\(A\([et], "categoryId"\)\)\];/g) || []).length === 2,
-      '이관 도구의 일정, 할 일이 과제 정리(MapCat: 없거나 빈 과제 → 기타)를 거치지 않는다 — cat_no NULL 기록은 보고서에서 사라진다');
-    assert.ok(/return gitaId;/.test(code), 'MapCat 이 기타로 보내지 않는다');
-    assert.ok(/NoteDbRef\(A\(x, "cat"\)\)/.test(code) && /extraCats\.Add\(\(id, true,/.test(code),
-      '이관 도구가 목록에 없는 공식 과제 참조(일정, 할 일, 공수)를 편입하지 않는다 — 앱 가져오기와 규칙이 갈린다');
-    assert.ok(!/미분류/.test(code), "이관 도구가 아직 '미분류' 를 말한다(그 상태는 없다)");
-    assert.ok(!/cno = null|cno = cv; else orphanCat/.test(code), '이관 도구가 예전처럼 없는 과제를 cat_no NULL 로 넣는다');
+  //  ⑩ 이관 도구(xml-to-db)는 구조 22(docs/DB-V22-REPORT-HOURS.md)에서 지웠다. 되살아나면 앱 가져오기와 규칙이 갈린다.
+  toolGone() {
+    assert.ok(!existsSync(new URL('../db/deploy/xml-to-db/', import.meta.url)), 'db/deploy/xml-to-db 가 다시 생겼다(구조 22 에서 지운 관리자 도구)');
   },
 };
 
@@ -139,15 +128,7 @@ test('변이②s: __applyState 가 보장 저장을 바로 부르면 정적① �
 test('변이③s: 미분류 합성 행을 되살리면 정적③ 이 실패한다', () => {
   assert.throws(() => statics.removedTraces(mutate("  const catKey = e => e.categoryId || '';", "  const catKey = e => e.categoryId || '__uncat__';", src)), /__uncat__/);
 });
-test('정적⑤: 이관 도구(xml-to-db)가 앱 가져오기와 같은 과제 정리 규칙을 따른다(기본 과제, 기타로 붙이기, 공식 과제 편입)', () => statics.toolSameRule(TOOL_SRC));
-test('변이⑤s: 이관 도구가 예전처럼 없는 과제를 NULL 로 넣으면 정적⑤ 가 실패한다', () => {
-  const bad = mutate('object? cno = catNo[MapCat(A(e, "categoryId"))];', 'object? cno = null;', TOOL_SRC);
-  assert.throws(() => statics.toolSameRule(bad), /MapCat|NULL/);
-});
-test('변이⑥s: 공식 과제 제거가 시간을 걷지 않으면 정적④ 가 실패한다', () => {
-  assert.throws(() => statics.gates(mutate('  dropCatHours(id);\n  state.categories = state.categories.filter(x => x.id !== id);\n  filterDropCat(id);\n  return true;',
-    '  state.categories = state.categories.filter(x => x.id !== id);\n  filterDropCat(id);\n  return true;', src)), /unsubscribeDbCat/);
-});
+test('정적⑤: 이관 도구(xml-to-db)는 구조 22 에서 지웠다(폴더 없음)', () => statics.toolGone());
 test('변이④s: deleteCategory 의 기본 과제 거르기를 빼면 정적④ 가 실패한다', () => {
   assert.throws(() => statics.gates(mutate('if(!c || isDefaultTask(c) || isOfficialCat(c)) return false;', 'if(!c || isOfficialCat(c)) return false;', src)), /기본 과제/);
 });
@@ -399,7 +380,6 @@ if (!JSDOM) {
         categories: [CAT('c-x', '지울 과제'), CAT('c-k', '남길 과제'), CAT('c-v', '휴가'), CAT('c-e', '기타')],
         entries: [ENT('e-1', 'c-x'), ENT('e-2', 'c-x', { allDay: true }), ENT('e-k', 'c-k')],
         todos: [TODO('t-1', 'c-x'), TODO('t-k', 'c-k')],
-        taskHours: { '2026-10-01': { 'c-x': 3, 'c-k': 2 }, '2026-10-02': { 'c-x': 1 } },
       });
       await withBoot(source, data, async (W) => {
         W.ev('openCatModal();');
@@ -407,18 +387,17 @@ if (!JSDOM) {
         await settle();
         const cf = W.confirms();
         assert.strictEqual(cf.length, 1, '삭제 확인창이 한 번 뜨지 않았다');
-        assert.strictEqual(cf[0][1], "'지울 과제' 과제를 삭제할까요?\n이 과제의 일정 2개, 할 일 1개, 과제별 시간 2일이 함께 삭제되고 되돌릴 수 없습니다.\n남기려면 먼저 '다른 과제와 합치기'를 쓰세요.",
+        assert.strictEqual(cf[0][1], "'지울 과제' 과제를 삭제할까요?\n이 과제의 일정 2개, 할 일 1개가 함께 삭제되고 되돌릴 수 없습니다.\n남기려면 먼저 '다른 과제와 합치기'를 쓰세요.",
           '확인창이 무엇이 몇 개 지워지는지 정확히 말하지 않는다: ' + cf[0][1]);
         assert.deepStrictEqual(W.cats().map((c) => c.id), ['c-k', 'c-v', 'c-e'], '과제가 지워지지 않았다');
         assert.deepStrictEqual(W.evJSON('state.entries.map(function(e){ return e.id; })'), ['e-k'], '그 과제의 일정이 남았다');
         assert.deepStrictEqual(W.evJSON('state.todos.map(function(t){ return t.id; })'), ['t-k'], '그 과제의 할 일이 남았다');
-        assert.deepStrictEqual(W.evJSON('state.taskHours'), { '2026-10-01': { 'c-k': 2 } }, '그 과제의 시간이 남았거나 다른 과제 시간이 지워졌다');
         const saves = W.saves();
         assert.strictEqual(saves.length, 1, '삭제가 한 번의 저장으로 나가지 않았다');
         const p = saves[0];
-        const refs = p.entries.concat(p.todos).filter((r) => r.categoryId === 'c-x').length
-          + Object.values(p.taskHours || {}).filter((d) => d && d['c-x'] !== undefined).length;
-        assert.strictEqual(refs, 0, '지운 과제를 가리키는 일정, 할 일, 시간이 저장 payload 에 남았다 — 호스트에서 과제 DELETE 가 FK(1451)로 실패한다');
+        const refs = p.entries.concat(p.todos).filter((r) => r.categoryId === 'c-x').length;
+        assert.strictEqual(refs, 0, '지운 과제를 가리키는 일정, 할 일이 저장 payload 에 남았다 — 호스트에서 과제 DELETE 가 FK(1451)로 실패한다');
+        assert.ok(!('taskHours' in p), '저장 payload 에 없앤 작성 중 시간이 있다');
         assert.ok(!p.categories.some((c) => c.id === 'c-x'), 'payload 에 지운 과제가 남았다');
       });
     },
@@ -434,7 +413,7 @@ if (!JSDOM) {
         W.ev("state.entries = []; window.__cfAns = 'ok'; window.__cf = [];");
         W.item('c-x', 'del').click();
         await settle();
-        assert.strictEqual(W.confirms()[0][1], "'빈 과제' 과제를 삭제할까요?\n이 과제에는 일정, 할 일, 과제별 시간이 없습니다.");
+        assert.strictEqual(W.confirms()[0][1], "'빈 과제' 과제를 삭제할까요?\n이 과제에는 일정, 할 일이 없습니다.");
         assert.strictEqual(named(W, '빈 과제').length, 0);
       });
     },
@@ -444,7 +423,6 @@ if (!JSDOM) {
         categories: [CAT('c-a', '연차'), CAT('c-b', '프로젝트'), CAT('db-g', '사라진 공식', { source: 'db', dbGone: true }), CAT('c-v', '휴가'), CAT('c-e', '기타')],
         entries: [ENT('e-a1', 'c-a'), ENT('e-a2', 'c-a', { allDay: true }), ENT('e-b', 'c-b')],
         todos: [TODO('t-a', 'c-a'), TODO('t-b', 'c-b')],
-        taskHours: { '2026-10-01': { 'c-a': 5, 'c-v': 3 }, '2026-10-02': { 'c-a': 20, 'c-v': 10 }, '2026-10-03': { 'c-a': 2.5 }, '2026-10-04': { 'c-b': 1 } },
       });
       await withBoot(source, data, async (W) => {
         W.ev('openCatModal();');
@@ -459,11 +437,9 @@ if (!JSDOM) {
         W.ev("$('#cmvRun').click();");
         await settle();
         assert.strictEqual(W.confirms().length, 0, '합치기 창이 확인인데 확인창을 또 띄웠다(D6)');
-        assert.ok(W.toasts().includes("'연차' 과제의 일정 2개, 할 일 1개, 과제별 시간 3일을 '휴가' 과제로 합쳤습니다"), '결과 토스트의 숫자, 문구가 다르다: ' + JSON.stringify(W.toasts()));
+        assert.ok(W.toasts().includes("'연차' 과제의 일정 2개, 할 일 1개를 '휴가' 과제로 합쳤습니다"), '결과 토스트의 숫자, 문구가 다르다: ' + JSON.stringify(W.toasts()));
         assert.deepStrictEqual(W.evJSON("state.entries.map(function(e){ return e.id + ':' + e.categoryId; })"), ['e-a1:c-v', 'e-a2:c-v', 'e-b:c-b'], '일정이 옮겨지지 않았다');
         assert.deepStrictEqual(W.evJSON("state.todos.map(function(t){ return t.id + ':' + t.categoryId; })"), ['t-a:c-v', 't-b:c-b'], '할 일이 옮겨지지 않았다');
-        assert.deepStrictEqual(W.evJSON('state.taskHours'), { '2026-10-01': { 'c-v': 8 }, '2026-10-02': { 'c-v': 24 }, '2026-10-03': { 'c-v': 2.5 }, '2026-10-04': { 'c-b': 1 } },
-          '시간이 옮겨지지 않았거나, 겹친 날을 더하지 않았거나, 하루 24 상한을 넘겼다: ' + W.ev('JSON.stringify(state.taskHours)'));
         assert.strictEqual(named(W, '연차').length, 1, '출발 과제가 사라졌다 — 체크하지 않은 합치기는 지우지 않는다');
         assert.strictEqual(W.saves().length, 1, '합치기가 한 번의 저장으로 나가지 않았다');
         assert.ok(W.ev("$('#catMoveModal').classList.contains('hidden')"), '합친 뒤 창이 닫히지 않았다');
@@ -471,7 +447,7 @@ if (!JSDOM) {
         W.ev("window.__cf = [];");
         W.item('c-a', 'del').click();
         await settle();
-        assert.strictEqual(W.confirms()[0][1], "'연차' 과제를 삭제할까요?\n이 과제에는 일정, 할 일, 과제별 시간이 없습니다.", '옮긴 뒤에도 출발 과제를 가리키는 것이 남았다');
+        assert.strictEqual(W.confirms()[0][1], "'연차' 과제를 삭제할까요?\n이 과제에는 일정, 할 일이 없습니다.", '옮긴 뒤에도 출발 과제를 가리키는 것이 남았다');
       });
     },
     //  ⑥ 잠금 중에는 옮기지 않는다 · 대상이 같거나 없으면 거부
@@ -494,7 +470,6 @@ if (!JSDOM) {
           categories: [CAT('f-g', '기타'), CAT('f-p', '파일 과제'), CAT('db-o', '공식', { source: 'db' })],
           entries: [ENT('e-null', null), ENT('e-gone', 'f-gone'), ENT('e-p', 'f-p'), ENT('e-o', 'db-o')],
           todos: [TODO('t-null', null), TODO('t-gone', 'f-gone2')],
-          taskHours: { '2026-10-01': { 'f-p': 1, 'f-gone': 3 }, '2026-10-02': { 'f-gone': 2 } },
           rooms: [],
         };
         W.ev('pendingImport = ' + JSON.stringify(FILE) + '; applyImport({ quiet: true });');
@@ -504,7 +479,6 @@ if (!JSDOM) {
         assert.deepStrictEqual(W.evJSON("state.entries.map(function(e){ return e.id + ':' + e.categoryId; })"), ['e-null:f-g', 'e-gone:f-g', 'e-p:f-p', 'e-o:db-o'],
           '과제 없는 기록, 없는 과제를 가리키는 기록이 기타로 가지 않았다(또는 멀쩡한 기록이 바뀌었다)');
         assert.deepStrictEqual(W.evJSON("state.todos.map(function(t){ return t.id + ':' + t.categoryId; })"), ['t-null:f-g', 't-gone:f-g'], '할 일이 기타로 가지 않았다');
-        assert.deepStrictEqual(W.evJSON('state.taskHours'), { '2026-10-01': { 'f-p': 1 } }, '없는 과제 키의 과제별 시간을 버리지 않았다(빈 날도 지운다)');
         const sent = W.reqs('replaceAllState');
         assert.strictEqual(sent.length, 1, '가져오기가 전량 교체 한 번으로 나가지 않았다');
         const st = JSON.parse(JSON.stringify(sent[0].params.state));
@@ -521,7 +495,6 @@ if (!JSDOM) {
         const probe = (code) => { W.ev('var __s = JSON.stringify(state);' + code); const v = W.ev('calendarIsEmpty()'); W.ev('state = JSON.parse(__s);'); return v; };
         assert.strictEqual(probe("state.entries.push({ id:'e', date:'2026-10-01', title:'x', categoryId: gitaTaskId() });"), false, '일정이 있는데 비었다고 본다');
         assert.strictEqual(probe("state.todos.push({ id:'t', text:'x', categoryId: gitaTaskId() });"), false, '할 일이 있는데 비었다고 본다');
-        assert.strictEqual(probe("state.taskHours = { '2026-10-01': {} }; state.taskHours['2026-10-01'][gitaTaskId()] = 2;"), false, '과제별 시간이 있는데 비었다고 본다');
         assert.strictEqual(probe("state.categories.push({ id:'c-n', name:'새 과제' });"), false, '사용자가 만든 과제가 있는데 비었다고 본다');
       });
     },
@@ -546,8 +519,7 @@ if (!JSDOM) {
         const ON = 'db-11111111-2222-3333-4444-555555555555', GONE = 'db-99999999-8888-7777-6666-555555555555';
         W.ev('dbCatalog = ' + JSON.stringify([{ id: ON, name: '카탈로그 과제', color: '#3e5be0', source: 'db', section: '' }]) + ';');
         const FILE = { categories: [CAT('f-p', '파일 과제')],
-          entries: [ENT('e-on', ON), ENT('e-gone', GONE), ENT('e-x', 'c-x')], todos: [TODO('t-on', ON)],
-          taskHours: { '2026-10-01': { [ON]: 2, [GONE]: 1.5, 'c-x': 4 } }, rooms: [] };
+          entries: [ENT('e-on', ON), ENT('e-gone', GONE), ENT('e-x', 'c-x')], todos: [TODO('t-on', ON)], rooms: [] };
         W.ev('pendingImport = ' + JSON.stringify(FILE) + '; applyImport({ quiet: true });');
         await settle();
         const cats = W.cats();
@@ -557,25 +529,20 @@ if (!JSDOM) {
         assert.deepStrictEqual(W.evJSON("state.entries.map(function(e){ return e.id + ':' + e.categoryId; })"), ['e-on:' + ON, 'e-gone:' + GONE, 'e-x:' + W.idOf('기타')],
           '공식 과제를 가리키는 기록이 기타로 갔다(또는 개인 과제의 없는 참조가 기타로 가지 않았다)');
         assert.strictEqual(W.ev("todoById('t-on').categoryId"), ON, '공식 과제를 가리키는 할 일이 기타로 갔다');
-        assert.deepStrictEqual(W.evJSON('state.taskHours'), { '2026-10-01': { [ON]: 2, [GONE]: 1.5 } }, '공식 과제의 시간이 버려졌다(또는 없는 개인 과제의 시간이 남았다)');
       });
     },
-    //  ⑩-b 공식 과제 제거(일정, 할 일 0건) — 그 과제의 시간도 같은 저장에서 걷는다. 남기면 호스트의 과제 DELETE 가 FK 로 실패한다.
+    //  ⑩-b 공식 과제 제거(일정, 할 일 0건): 묻지 않고 빼고 한 번에 저장한다(작성 중 시간은 구조 22 에서 없앴다. 보고한 공수는 보고 기록에 남는다).
     async unsubscribeDropsHours(source) {
       const OFF = 'db-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
-      await withBoot(source, WITH_DEFAULTS({ categories: [CAT(OFF, '공식 과제', { source: 'db' }), CAT('c-v', '휴가'), CAT('c-e', '기타')],
-        taskHours: { '2026-10-01': { [OFF]: 3, 'c-e': 1 }, '2026-10-02': { [OFF]: 2 } } }), async (W) => {
+      await withBoot(source, WITH_DEFAULTS({ categories: [CAT(OFF, '공식 과제', { source: 'db' }), CAT('c-v', '휴가'), CAT('c-e', '기타')] }), async (W) => {
         W.ev('openCatModal();');
         W.item(OFF, 'unsub').click();
         await settle();
-        const cf = W.confirms();
-        assert.ok(cf.length === 1 && /과제별 시간 2일이 함께 지워집니다/.test(cf[0][1]), '빼기 확인창이 함께 지워지는 시간을 말하지 않는다(시간이 있을 때만 묻는다, D7): ' + JSON.stringify(cf));
+        assert.strictEqual(W.confirms().length, 0, '데이터 없는 공식 과제를 빼며 물었다(D7)');
         assert.ok(!W.cats().some((c) => c.id === OFF), '공식 과제가 제거되지 않았다');
-        assert.deepStrictEqual(W.evJSON('state.taskHours'), { '2026-10-01': { 'c-e': 1 } }, '제거한 공식 과제의 시간이 state 에 남았다');
         const saves = W.saves();
         assert.strictEqual(saves.length, 1, '제거가 한 번의 저장으로 나가지 않았다');
-        assert.strictEqual(Object.values(saves[0].taskHours || {}).filter((d) => d && d[OFF] !== undefined).length, 0,
-          '제거한 공식 과제의 시간이 저장 payload 에 남았다 — 호스트에서 과제 DELETE 가 FK(1451)로 실패하고 그 뒤 모든 저장이 실패한다');
+        assert.ok(!saves[0].categories.some((c) => c.id === OFF) && !('taskHours' in saves[0]), '저장 payload 에 뺀 과제나 없앤 작성 중 시간이 있다');
       });
     },
     //  (⑩-c 커밋 가져오기 시험은 2026-10-26 Git, SVN 기능과 함께 없앴다.)
@@ -638,16 +605,16 @@ if (!JSDOM) {
   test('행동④: 편집 잠금 중에는 부팅 보장 저장을 보내지 않는다(state 에는 있다)', () => checks.lockedNoBootSave(src));
   test('행동⑤: 기본 과제는 삭제 버튼이 없고 이름이 잠기며 deleteCategory 가 거부한다 · 재연결 대상이 아니다 · 같은 이름 새 과제를 막는다', () => checks.protectedDefaults(src));
   test('행동⑥: 선택 상자에 빈 선택지가 없고 새 기록 기본값은 기타(필터 과제 우선) · 데이터 함수도 빈 값을 기타로 채운다', () => checks.pickersDefaultToGita(src));
-  test('행동⑦: 과제 삭제가 그 과제의 일정, 할 일, 시간을 지운다 · 확인창 숫자 · 저장 payload 에 참조 0 · 저장 한 번', () => checks.deleteRemovesData(src));
+  test('행동⑦: 과제 삭제가 그 과제의 일정, 할 일을 지운다 · 확인창 숫자 · 저장 payload 에 참조 0 · 저장 한 번', () => checks.deleteRemovesData(src));
   test('행동⑧: 데이터 없는 과제의 확인창 문구 · 취소하면 아무것도 바뀌지 않는다', () => checks.deleteEmptyAndCancel(src));
-  test('행동⑨: 합치기(옛 옮기기) — 일정, 할 일, 시간이 옮겨지고 겹친 날은 더해지며 24 를 넘지 않는다 · 출발 과제는 남는다 · 저장 한 번', () => checks.moveSumsHours(src));
+  test('행동⑨: 합치기(옛 옮기기): 일정, 할 일이 옮겨진다, 출발 과제는 남는다, 저장 한 번', () => checks.moveSumsHours(src));
   test('행동⑩: 옮기기는 잠금 중, 같은 과제, 없는 과제를 거부한다', () => checks.moveGuarded(src));
   test("행동⑪: XML 가져오기 — 과제 없는/없는 과제의 기록은 기타로 · 파일의 '기타' 를 쓴다 · 없는 과제의 시간은 버린다", () => checks.importAttachesToGita(src));
   test('행동⑫: 빈 캘린더 판정 — 기본 과제만 있으면 비어 있다', () => checks.emptyWithDefaultsOnly(src));
   test('행동⑬: 실행 취소로 되살린 기록은 지워진 과제 대신 기타로 · 전체 초기화 뒤에도 기본 과제가 있다', () => checks.undoAndClear(src));
 
-  test('행동⑭: 가져오기 — 목록에 없는 공식 과제의 기록과 시간은 기타가 아니라 그 공식 과제로(카탈로그 이름 또는 dbGone 자리표시)', () => checks.importKeepsOfficialRefs(src));
-  test('행동⑮: 공식 과제 제거가 그 과제의 시간도 같은 저장에서 걷는다(FK 1451 방지) · 확인창이 말한다', () => checks.unsubscribeDropsHours(src));
+  test('행동⑭: 가져오기 — 목록에 없는 공식 과제의 기록은 기타가 아니라 그 공식 과제로(카탈로그 이름 또는 dbGone 자리표시)', () => checks.importKeepsOfficialRefs(src));
+  test('행동⑮: 공식 과제 제거는 묻지 않고 한 번에 저장한다(작성 중 시간 없음)', () => checks.unsubscribeDropsHours(src));
   test('행동⑰: 다시 주입되면 보장 저장 플래그를 새로 정한다(쓸데없는 전체 저장 없음)', () => checks.reapplyResetsDirty(src));
   test('행동⑱: 이전 기록 가져오기는 진행 중인 저장을 기다린 뒤 전량 교체로 보낸다', () => checks.legacyWaitsForSave(src));
   test("행동⑲: 앞뒤 공백이 붙은 ' 기타 ', '  휴가' 도 기본 과제로 보고 이름을 바로잡는다(부팅, 가져오기)", () => checks.trimmedNames(src));
@@ -666,13 +633,9 @@ if (!JSDOM) {
       "  state.entries.forEach(e => { if(e.categoryId === id) e.categoryId = null; });\n  (state.todos || []).forEach(t => { if(t.categoryId === id) t.categoryId = null; });", src);
     await assert.rejects(() => checks.deleteRemovesData(bad), /그 과제의 일정이 남았다/);
   });
-  test('변이④: 옮기기가 겹친 날의 시간을 더하지 않고 덮으면 행동⑨ 가 실패한다', async () => {
-    const bad = mutate('const v = Math.round(Math.min(a + b, 24) * 100) / 100;', 'const v = Math.round(Math.min(a, 24) * 100) / 100;', src);
-    await assert.rejects(() => checks.moveSumsHours(bad), /겹친 날을 더하지 않았거나/);
-  });
-  test('변이⑤: 옮기기에 24 상한이 없으면 행동⑨ 가 실패한다', async () => {
-    const bad = mutate('const v = Math.round(Math.min(a + b, 24) * 100) / 100;', 'const v = Math.round((a + b) * 100) / 100;', src);
-    await assert.rejects(() => checks.moveSumsHours(bad), /24 상한/);
+  test('변이④: 합치기가 할 일을 옮기지 않으면 행동⑨ 가 실패한다', async () => {
+    const bad = mutate('  for(const t of (state.todos || [])) if(t && t.categoryId === fromId){ t.categoryId = toId; t.updatedAt = nowIso(); n.todos++; }\n', '', src);
+    await assert.rejects(() => checks.moveSumsHours(bad), /결과 토스트|할 일이 옮겨지지 않았다/);
   });
   test('변이⑥: 과제 선택 상자에 빈 선택지를 되살리면 행동⑥ 이 실패한다', async () => {
     const bad = mutate("  const head = placeholder ? `<option value=\"\">${esc(placeholder)}</option>` : '';",
@@ -698,11 +661,6 @@ if (!JSDOM) {
   test('변이⑫: 가져오기가 공식 과제를 편입하지 않으면 행동⑭ 가 실패한다', async () => {
     const bad = mutate("  for(const id of refs) subscribeDbCat(dbCatalogById(id) || { id, name:'(공식 과제)', color:'#5b6b7d', dbGone:true }, s);\n", '', src);
     await assert.rejects(() => checks.importKeepsOfficialRefs(bad), /편입하지 않았다/);
-  });
-  test('변이⑬: 공식 과제 제거가 시간을 걷지 않으면 행동⑮ 가 실패한다', async () => {
-    const bad = mutate('  dropCatHours(id);\n  state.categories = state.categories.filter(x => x.id !== id);\n  filterDropCat(id);\n  return true;',
-      '  state.categories = state.categories.filter(x => x.id !== id);\n  filterDropCat(id);\n  return true;', src);
-    await assert.rejects(() => checks.unsubscribeDropsHours(bad), /시간이 state 에 남았다/);
   });
   test('변이⑮: 다시 주입될 때 보장 플래그를 남기면(예전 판) 행동⑰ 이 실패한다', async () => {
     const bad = mutate('    if(!PEER) __bootDefaultsDirty = ensureDefaultTasks(state);', '    if(!PEER && ensureDefaultTasks(state)) __bootDefaultsDirty = true;', src);

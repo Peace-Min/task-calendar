@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import * as D from './demo-data.mjs';
 
-export const SCHEMA_VERSION = '21';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
+export const SCHEMA_VERSION = '22';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
 export const LOGIN_RE = /^[A-Za-z0-9._@-]{1,50}$/;
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -34,13 +34,14 @@ export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 //   표를 이름으로 적어 두어야 시험이 정본의 cal_* 명부와 대조할 수 있다). 데모는 주간보고를 채우지 않는다.
 // 과제 반복 일정의 예외일(cal_project_event_except, 구조 20)은 cal_project_event 의 자식이라 그 앞에서 지운다(같은 까닭으로 이름을 적는다).
 // 과제 탭 보기만 목록(cal_project_watch, 구조 21)은 app_user 와 project 의 자식이라 맨 앞에서 지운다. 데모는 채우지 않는다.
+// 구조 22(docs/DB-V22-REPORT-HOURS.md): cal_task_hours, cal_user_pref, cal_migration_log 는 표째 없어져 목록에서 뺐다.
 export const WIPE_TABLES = [
   'project_schedule_image', 'cal_project_watch',
   'cal_project_change', 'cal_project_event_except', 'cal_project_event',
   'cal_report_hours', 'cal_report_daily', 'cal_report_weekly_hours', 'cal_report_weekly',
-  'cal_task_hours', 'cal_todo_day_note', 'cal_todo',
+  'cal_todo_day_note', 'cal_todo',
   'cal_entry_except', 'cal_entry', 'cal_category',
-  'cal_attendance', 'cal_user_pref', 'cal_migration_log',
+  'cal_attendance',
 ];
 // 가드가 있는지 보는 표 전부.
 export const REQUIRED_TABLES = [
@@ -427,8 +428,10 @@ export function attendanceReports(cal, baseDate) {
     for (const h of hs) {
       const c = cal.cats.find((x) => x.key === h.cat);
       const titles = [...new Set(ents.filter((e) => e.cat === h.cat).map((e) => e.title))].slice(0, 3);
-      parts.push(`[${c.name}] : ${fmtH(h.hours)}` + (h.cat === 'leave' ? '' : '\n' + (titles.length ? titles.map((t) => '- ' + t).join('\n') : '- 업무 진행')));
-      lines.push({ name: c.name, catNo: c.no, hours: h.hours });
+      const body = h.cat === 'leave' ? '' : (titles.length ? titles.map((t) => '- ' + t).join('\n') : '- 업무 진행');
+      parts.push(`[${c.name}] : ${fmtH(h.hours)}` + (body ? '\n' + body : ''));
+      //  구조 22: 과제별 줄에 과제 id(cat_uid), 공식 과제 id, 그날 내용(body)을 싣는다(보낸 글 content 와 같은 글자)
+      lines.push({ name: c.name, catNo: c.no, catUid: c.uid, projectUid: c.projectUid, hours: h.hours, body });
     }
     const a = attend.get(date) || { status: '1', overtime: 0 };
     daily.push({ date, status: a.status, overtime: a.overtime, content: parts.join('\n\n'), lines, sentAt: date + ' 09:30:00.000' });
@@ -447,7 +450,7 @@ export function attendanceReports(cal, baseDate) {
     const byCat = new Map();
     for (const h of cal.hours) if (h.date >= start && h.date <= end) byCat.set(h.cat, (byCat.get(h.cat) || 0) + h.hours);
     const cats = cal.cats.filter((c) => byCat.has(c.key));
-    const hoursRows = cats.map((c) => ({ name: c.name, projectUid: c.projectUid, hours: byCat.get(c.key) }));
+    const hoursRows = cats.map((c) => ({ name: c.name, catUid: c.uid, projectUid: c.projectUid, hours: byCat.get(c.key) }));
     const total = hoursRows.reduce((a, x) => a + x.hours, 0);
     const content = hoursRows.map((x) => `[${x.name}] : ${fmtH(x.hours)}`).join('\n') + '\n-----\n합계 : ' + fmtH(total);
     const prog = [], plan = [];
@@ -585,10 +588,7 @@ export function buildDemoSql({ myLogin, baseDate }) {
       cal.todos.map((t) => `  (${u}, ${t.no}, ${sqlStr(t.uid)}, ${no(t.cat)}, ${sqlStr(t.text)}, ${sqlStr(t.note)}, ${lit(t.due)}, ${lit(t.endDate)}, ${t.done}, '${t.prio}', ${lit(t.completedAt)}, ${t.sort}, @now, @now)`).join(',\n') + ';');
     const notes = cal.todos.flatMap((t) => t.notes.map(([d, s]) => `  (${u}, ${t.no}, ${sqlStr(d)}, ${sqlStr(s)})`));
     if (notes.length) push('INSERT INTO cal_todo_day_note (user_id, todo_no, note_date, note_text) VALUES', notes.join(',\n') + ';');
-    if (cal.hours.length) {
-      push('INSERT INTO cal_task_hours (user_id, work_date, cat_no, hours, updated_at) VALUES',
-        cal.hours.map((h) => `  (${u}, ${sqlStr(h.date)}, ${no(h.cat)}, ${h.hours.toFixed(2)}, @now)`).join(',\n') + ';');
-    }
+    //  과제별 시간(cal.hours)은 아래 근태와 보낸 보고를 만드는 재료로만 쓴다(구조 22 에서 cal_task_hours 를 지웠다).
     expect[person.who] = { cats: cal.cats.length, entries: cal.entries.length, todos: cal.todos.length, notes: notes.length, hours: cal.hours.length };
   }
 
@@ -608,17 +608,18 @@ export function buildDemoSql({ myLogin, baseDate }) {
   push('', '-- 근태와 보낸 보고(녹화 계정)');
   push('INSERT INTO cal_attendance (user_id, work_date, status, overtime, updated_at) VALUES',
     ar.attendRows.map((a) => `  (${um}, ${sqlStr(a.date)}, ${sqlStr(a.status)}, ${a.overtime}, @now)`).join(',\n') + ';');
-  push('INSERT INTO cal_report_daily (user_id, work_date, status, overtime, content, sent_at) VALUES',
-    ar.daily.map((r) => `  (${um}, ${sqlStr(r.date)}, ${sqlStr(r.status)}, ${r.overtime}, ${sqlMulti(r.content)}, ${sqlStr(r.sentAt)})`).join(',\n') + ';');
-  push('INSERT INTO cal_report_hours (user_id, work_date, line_no, task_name, cat_no, hours) VALUES',
-    ar.daily.flatMap((r) => r.lines.map((l, i) => `  (${um}, ${sqlStr(r.date)}, ${i}, ${sqlStr(l.name)}, ${l.catNo}, ${l.hours.toFixed(2)})`)).join(',\n') + ';');
+  //  구조 22: 새 보고 모양(memo 는 빈 글, 과제별 줄에 과제 id 와 그날 내용). memo 가 NULL 이 아니면 앱은 줄을 읽는다.
+  push('INSERT INTO cal_report_daily (user_id, work_date, status, overtime, content, memo, sent_at) VALUES',
+    ar.daily.map((r) => `  (${um}, ${sqlStr(r.date)}, ${sqlStr(r.status)}, ${r.overtime}, ${sqlMulti(r.content)}, '', ${sqlStr(r.sentAt)})`).join(',\n') + ';');
+  push('INSERT INTO cal_report_hours (user_id, work_date, line_no, task_name, cat_uid, project_uid, hours, body) VALUES',
+    ar.daily.flatMap((r) => r.lines.map((l, i) => `  (${um}, ${sqlStr(r.date)}, ${i}, ${sqlStr(l.name)}, ${sqlStr(l.catUid)}, ${lit(l.projectUid)}, ${l.hours.toFixed(2)}, ${sqlMulti(l.body)})`)).join(',\n') + ';');
   if (ar.weekly.length) {
     push('INSERT INTO cal_report_weekly (user_id, period_start, period_end, subject, content, endwork, plan, meeting, composed_at) VALUES',
       ar.weekly.map((w) => `  (${um}, ${sqlStr(w.start)}, ${sqlStr(w.end)}, ${sqlStr(w.subject)}, ${sqlMulti(w.content)}, ${sqlMulti(w.endwork)}, ${sqlMulti(w.plan)}, ${sqlMulti(w.meeting)}, ${sqlStr(w.composedAt)})`).join(',\n') + ';');
-    push('INSERT INTO cal_report_weekly_hours (user_id, period_start, line_no, task_name, project_uid, hours) VALUES',
-      ar.weekly.flatMap((w) => w.hours.map((h, i) => `  (${um}, ${sqlStr(w.start)}, ${i}, ${sqlStr(h.name)}, ${lit(h.projectUid)}, ${h.hours.toFixed(2)})`)).join(',\n') + ';');
+    push('INSERT INTO cal_report_weekly_hours (user_id, period_start, line_no, task_name, cat_uid, project_uid, hours) VALUES',
+      ar.weekly.flatMap((w) => w.hours.map((h, i) => `  (${um}, ${sqlStr(w.start)}, ${i}, ${sqlStr(h.name)}, ${sqlStr(h.catUid)}, ${lit(h.projectUid)}, ${h.hours.toFixed(2)})`)).join(',\n') + ';');
   }
-  const extra = { events: pe.rows.length, changes: pe.changes.length, attend: ar.attendRows.length, daily: ar.daily.length, weekly: ar.weekly.length };
+  const extra = { events: pe.rows.length, changes: pe.changes.length, attend: ar.attendRows.length, daily: ar.daily.length, dailyLines: ar.daily.reduce((a, r) => a + r.lines.length, 0), weekly: ar.weekly.length };
 
   const tot = (k) => Object.values(expect).reduce((a, x) => a + x[k], 0);
   push(
@@ -639,11 +640,11 @@ export function buildDemoSql({ myLogin, baseDate }) {
     guard(`(SELECT COUNT(*) FROM customer) = ${D.CUSTOMERS.length} AND (SELECT COUNT(*) FROM customer WHERE name NOT LIKE '(예시)%') = 0`, '발주처가 데모 목록과 다르다'),
     guard(`(SELECT COUNT(*) FROM project) = ${projects.length} AND (SELECT COUNT(*) FROM project WHERE common_name NOT LIKE '(예시)%' OR project_name NOT LIKE '(예시)%') = 0`, '공식 과제가 데모 목록과 다르다'),
     guard(`(SELECT COUNT(*) FROM cal_category) = ${tot('cats')} AND (SELECT COUNT(*) FROM cal_entry) = ${tot('entries')}`, '과제나 일정 행 수가 기대와 다르다'),
-    guard(`(SELECT COUNT(*) FROM cal_todo) = ${tot('todos')} AND (SELECT COUNT(*) FROM cal_task_hours) = ${tot('hours')}`, '할 일이나 과제별 시간 행 수가 기대와 다르다'),
+    guard(`(SELECT COUNT(*) FROM cal_todo) = ${tot('todos')}`, '할 일 행 수가 기대와 다르다'),
     guard("(SELECT COUNT(*) FROM cal_category c LEFT JOIN project p ON p.uid = c.project_uid WHERE c.source = 'db' AND p.id IS NULL) = 0", '공식 과제를 가리키지 않는 내 과제가 있다'),
     guard("(SELECT COUNT(*) FROM cal_category WHERE source = 'local' AND name IN ('휴가','기타')) = 8", '기본 과제(휴가, 기타)가 네 사람에게 하나씩 있지 않다'),
     guard(`(SELECT COUNT(*) FROM cal_project_event) = ${extra.events} AND (SELECT COUNT(*) FROM cal_project_change) = ${extra.changes}`, '과제 공용 일정 행 수가 기대와 다르다'),
-    guard(`(SELECT COUNT(*) FROM cal_attendance) = ${extra.attend} AND (SELECT COUNT(*) FROM cal_report_daily) = ${extra.daily} AND (SELECT COUNT(*) FROM cal_report_weekly) = ${extra.weekly}`, '근태나 보낸 보고 행 수가 기대와 다르다'),
+    guard(`(SELECT COUNT(*) FROM cal_attendance) = ${extra.attend} AND (SELECT COUNT(*) FROM cal_report_daily) = ${extra.daily} AND (SELECT COUNT(*) FROM cal_report_hours) = ${extra.dailyLines} AND (SELECT COUNT(*) FROM cal_report_weekly) = ${extra.weekly}`, '근태나 보낸 보고 행 수가 기대와 다르다'),
     guard('(SELECT COUNT(*) FROM app_user u LEFT JOIN cal_user_rev r ON r.user_id = u.user_id WHERE r.user_id IS NULL) = 0', 'cal_user_rev 행이 없는 사람이 있다'),
     guard(`(SELECT v FROM cal_schema_meta WHERE k = 'db_structure_version') <=> '${SCHEMA_VERSION}'`, '구조 번호가 바뀌었다'),
     'COMMIT;',

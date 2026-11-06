@@ -7,6 +7,48 @@
 
 ---
 
+## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 과제 옆 숫자를 일정과 할 일 두 칸으로
+
+기획과 구현 기록 [docs/CAT-COUNTS-SPLIT.md](docs/CAT-COUNTS-SPLIT.md)(결정 1~8, 시안 `dist/proto/cat-counts-v1.html`). DB 구조 그대로. 계약 개정: 보기 팝업 과제 목록의 숫자와 정렬, 내 과제 목록의 숫자 칸.
+
+- **결함**: 보기 팝업은 `filterCatCounts`(일정만), 내 과제 목록은 `catUsageCount`(일정과 할 일 합계)라 같은 과제의 숫자가 두 곳에서 달랐고, 할 일만 있는 과제는 팝업에서 0건 묶음(구분선 아래)으로 내려갔다.
+- **셈 하나**: `catUsageMap`(과제 id 마다 `{ ev, td }`, 할 일은 끝낸 것까지 전체, 기간 없음), `catUsageSplit(id)`, 합계 `catUsageCount`(빼기 관문과 같은 숫자). `filterCatCounts` 는 걷었다. title 은 `catUsageTip`("과제명, 일정 3개, 할 일 5개").
+- **보기 팝업**: `FB_SRC.rows` 가 두 칸 값을 주면 `fbFill` 이 머리 줄(`.fb-colh` "일정", "할 일")과 두 칸을 그린다. 다른 목록은 한 칸 그대로. 순서는 합계 많은 순, 같으면 가나다순, 둘 다 0이면 구분선 아래 흐리게(`filterSorted`).
+- **내 과제 목록**: `.cat-head` 머리 "기록" 을 "일정", "할 일" 두 칸으로, `.cat-row` grid 에 `var(--cnt-w)` 칸 둘(380px 미만 규칙 포함). 한쪽만 0인 칸은 `--faint-text` 로 "0".
+- **시험**: filter-multi 런타임⑦(두 칸, 할 일만 있는 과제 순서, 둘 다 0 구분선, 두 곳 숫자와 title 일치), 변이 M⑤(일정만 세기), M⑥(끝낸 할 일 빼기), M⑦(과제 관리가 다른 셈). my-tasks-ui, task-add 의 숫자 계약을 두 칸으로.
+
+---
+
+## 🆕 2026-11-06 (다음 판, 번호는 배포 때): DB 구조 22, 일간보고 과제별 줄과 공식 과제 연결 공수 이관, 안 쓰는 표 셋 삭제
+
+기획과 구현 기록 [docs/DB-V22-REPORT-HOURS.md](docs/DB-V22-REPORT-HOURS.md). 배포 판은 0.26.0(v21 과 함께). **DB 구조 21 에서 22**(`DbGate.AppStructureVersion` 22). 이관 조각 `db/deploy/migrations/v22-report-hours.sql`. 표 28개에서 25개.
+
+- **스키마**:
+  - `cal_report_daily`: 칸 `memo`(MEDIUMTEXT NULL, `content` 뒤). NULL 이면 옛 보고(구조 22 이전), 문자열이면 새 보고. 날짜 단위 판정.
+  - `cal_report_hours`: 옛 줄 모두 삭제(`WHERE user_id > 0`). `fk_crh_cat`, `idx_crh_cat`, `cat_no` 삭제. 칸 `cat_uid`(VARCHAR(80) `utf8mb4_bin`), `project_uid`(CHAR(36), `project.uid` 와 같은 콜레이션), `body`(MEDIUMTEXT) 추가. 색인 `ix_crh_project`(project_uid, work_date), `ix_crh_cat`(user_id, cat_uid). `chk_crh_hours` 를 `hours >= 0 AND hours <= 24` 로(지우고 만들기를 두 문장으로). 표 설명 갱신.
+  - `cal_report_weekly_hours`: 칸 `cat_uid`(일간과 같은 정의), 색인 `ix_crwh_cat`. 기존 줄 채우기: 공식은 `CONCAT('db-', project_uid)`, 개인은 이름이 글자까지 같은 개인 과제가 하나뿐일 때만, 그 밖은 NULL.
+  - 표 삭제: `cal_task_hours`, `cal_migration_log`, `cal_user_pref`(검증 통과 뒤 맨 끝). 정본 `schema-calendar.sql` 은 세 표의 CREATE 만 빼고 앞쪽 `DROP TABLE IF EXISTS` 줄은 남겼다. `grants-calendar.sql`, `server-app-account.sql` 의 GRANT 줄 삭제(조각에는 GRANT, REVOKE 없음).
+- **이관 조각 순서**: 옛 일간 줄 삭제, FK, 색인, 칸, CHECK 지우고 만들기, 칸 추가, 색인, 표 설명, 주간 채우기, `information_schema` 검증(다르면 멈춤), 표 셋 DROP, 구조 번호(`v = '21'` 조건). 단계마다 지금 모양을 보고 한 번만 바꾼다.
+- **계약 개정(호스트)**:
+  - 일간 저장 `ReportDb.SaveDailyAsync(..., memo)`: 메모와 과제별 줄(`task_name`, `cat_uid`, `project_uid`, `hours`, `body`)을 한 트랜잭션에. 같은 날 같은 `cat_uid` 블록은 한 줄로 합친다. 0시간 줄은 `body` 가 있을 때만. 줄로 다시 만든 글이 `content` 와 다르면 로그만. `netcusSubmit` payload 에 `memo`, `hours`(줄).
+  - `reportDailyList` 는 `ReportDb.ListDailyAsync(..., withLines)`: detail 요청(불러오기, 이전 보고, 다시 열기)에만 `memo` 와 `lines` 를 한 번의 읽기로 싣는다. 근태 달력 행에는 `memo` 키가 없다.
+  - 일간만 0시간 허용(`HoursInDomain`, `ParseHoursJson`). 주간은 0 초과 그대로.
+  - 주간 저장 줄에 `cat_uid`.
+  - 새 명령 `reportRelink`(메인 창만, `{ catId, projectUid }`, 처리는 `ReportDb.RelinkHoursAsync`): 이 사람의 일간, 주간 줄 가운데 `cat_uid` = 옛 개인 과제 id 인 줄만 공식 과제로(`cat_uid` `db-<uid>`, `project_uid`, 이름은 호스트가 `project` 에서 읽음). 같은 날(주) 같은 과제 줄은 시간을 더해 가장 작은 `line_no` 하나로, 내용은 `CONCAT_WS`. 합이 하루 24, 한 주 168 을 넘으면 미리 거절. 잠금 순서는 일간 부모, 일간 줄, 주간 부모, 주간 줄. 커밋 직전 버전 관문. 옮길 줄이 없으면 그냥 성공. 연결 중에는 일간 보내기를 막고(`RelinkBusyMsg`), 보내는 중에는 연결을 거절한다.
+  - 지운 표를 부르던 곳 정리: `CalendarDb`, `CalendarWriteDb`(작성 중 시간 읽기와 저장 동기화), `ProjectDb`(`UserRecordTables`, 휴지통 영구 삭제, `cal_user_pref` 지우기).
+- **계약 개정(웹)**:
+  - 근태 블록에 `catId`(임시 저장 `tc_attDraft` v2 포함). id 없는 옛 블록은 이름이 글자까지 같은 내 과제가 하나뿐일 때만 잇는다(`atBlocksKnown`). 저장된 보고 되살리기는 `atSavedParts`(새 보고는 메모와 줄, 과제는 id 로만, 옛 보고는 글 해석). 주간 `awDailyCollect` 도 같은 두 길.
+  - `atBlockProblem` 의 "내용이 있는데 0시간" 막기 삭제.
+  - 공식 과제로 연결 `runRelink`: 일정과 할 일 옮기기(`catMoveRefs`, 합치기와 같은 옮기기)와 저장, 과제마다 `reportRelink`, 성공한 과제만 `deleteCategory`. 실패하면 옛 과제를 남기고 알린다.
+  - 없앤 상태: `state.taskHours`, `getTaskHours`, `dropCatHours`, `reportFormatPrefs`, `reportMarker*`, `reportIndent*`, state 의 `reportFont`(옛 저장분과 옛 XML 의 키는 `dropLegacyReportPrefs` 가 걷는다). 근태 캘린더 가져오기의 시간 칸은 0 으로 시작한다. 합치기와 빼기에서 과제별 시간 처리가 빠졌다(빼기 확인 없음).
+  - 보고 글꼴은 계정별 localStorage `tc_rptFont:<계정>`(`reportFontGet`, `reportFontSet`). 옛 값은 옮기지 않는다.
+- **지운 도구**: 관리자 도구 `db/deploy/xml-to-db`(와 시험 `tests/dryrun-xml-to-db.mjs`, `tests/migrate-tool.mjs`). 스크립트 `init-calendar.ps1`, `setup-taskcalendar.ps1` 표 목록, demo, seed 정리.
+- **리허설**: `tools/db-rehearsal/rehearse-v22.mjs` 로 개발 PC MySQL 8.4 에서 처음 돌리기, 다시 돌리기, 중간 끊기 27곳 모두 통과. 새로 깐 DB 와 21 에서 올린 DB 의 `information_schema` 가 같았다. 시드 복사본에서 주간 채우기는 공식 1, 하나뿐인 개인 1을 채우고 같은 이름 둘, 대소문자만 다른 이름, 모르는 과제 줄은 비워 두었다.
+- **시험**: 새 `report-hours-v22`(호스트 정적, C# 프로브로 줄 합치기와 공수 옮기기 계획, 24와 168 판정, 웹 순수와 근태 창, 위젯 메인 창 연결 순서), 새 `db-v22`(스크립트, 권한, 판 번호, 지운 도구, 리허설 스크립트의 순수 함수). release-sql ③r~③r5(21 에서 22, 검증 멈춤, 중간 실패 뒤 재실행, 정본과 글자 대조, 단계 순서)와 변이 R40~R47. 지운 표와 작성 중 시간을 보던 시험 여럿을 새 계약으로. 전체(비 strict) 3612 통과, 0 실패, 0 건너뜀. strict 와 루프는 메인이 이어서 본다.
+- **운영**: 배포 전 폐쇄망 사전 조회와 배포 뒤 관찰 항목은 [docs/DB-RELEASE-OPS.md](docs/DB-RELEASE-OPS.md). Setup 먼저, SQL 은 `db_updating` 닫고 열기. 연 뒤 롤백은 더 높은 구조 번호로.
+
+---
+
 ## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 날짜 패널 일정을 카드로 되돌리고 묶음 머리를 늘 보이게
 
 기획과 구현 기록 [docs/DAY-PANEL-CARDS.md](docs/DAY-PANEL-CARDS.md)(결정 1~10, 시안 `dist/proto/day-panel-v6.html`). DB 구조 그대로. 계약 개정: 날짜 패널 일정 마크업(한 줄 줄 `.dp-er` 걷고 카드 `.card`), 할 일 머리 숫자.

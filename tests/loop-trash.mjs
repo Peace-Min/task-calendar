@@ -17,7 +17,7 @@
  *   C00 sweep + 스냅샷(실행 수 · schema_version · 로그인 계정 권한 · trashGet 이 admin:true 와 목록 다섯)
  *   C01 과제  — 등록 → 편입 → 숨김 → 휴지통 → **화면으로 복구** → 카탈로그 복귀 → 숨김 →
  *               이름 오타(화면: 버튼 안 켜짐 / 호스트: 거부) → 이름 일치 → DB 0행 · 카탈로그 0 · 편입분 dbGone
- *   C02 인력(기록 0)   — 등록 → 퇴사 → 삭제 ok → app_user·cal_user_pref·cal_user_rev 0행
+ *   C02 인력(기록 0)   — 등록 → 퇴사 → 삭제 ok → app_user, cal_project_watch, cal_user_rev 0행(부속 2표, 구조 22)
  *   C03 인력(기록 2)   — 기록을 심고 퇴사 → deletable:false · why 문장 그대로 → 화면 버튼 disabled+title →
  *                        호스트로 우회해도 같은 문장으로 거부 → 행 유지(is_active=0)
  *   C04 코드 3종       — 숨긴 과제가 쓰는 값은 거부 → 그 과제를 지우면 삭제 가능 → 복구 시 sort_order=MAX+10
@@ -511,7 +511,8 @@ function invariants(caseId) {
 /* ────────────────────────────── 5. 정리(시작·종료 양쪽) ────────────────────────────── */
 /*  ★ 2026-09-07 잔재 사고의 교훈: 종료 정리만으로는 부족하다(강제 종료는 어떤 핸들러도 못 받는다).
  *    그래서 **다음 실행이 시작할 때 이전 잔재를 먼저 걷어낸다**. 둘을 합쳐야 닫힌다.
- *  ★ 지우는 순서는 FK 순서다: 자식 캘린더 표 → cal_user_pref/rev → app_user → project → 코드 3종.
+ *  ★ 지우는 순서는 FK 순서다: 자식 캘린더 표 → 부속 2표(cal_project_watch, cal_user_rev) → app_user → project → 코드 3종.
+ *    (cal_task_hours, cal_migration_log, cal_user_pref 는 구조 22 에서 없앴다)
  *    (customer/section_code/status_code 는 project 가 먼저 사라져야 지워진다 — FK RESTRICT.)
  *  ★ 편입분(cal_category, source='db')은 **이름으로** 찾는다. 과제 행이 이미 사라진 잔재에는
  *    project_uid 로 되짚을 근거가 없기 때문이다 — 편입분의 name 은 과제명(zzP…)을 그대로 물려받는다. */
@@ -560,8 +561,8 @@ function sweepZz(reason) {
   const ids = sql(`SELECT user_id FROM app_user WHERE login_id LIKE 'zzU%'`, { what: 'zz 사용자 id' }).map((r) => r[0]);
   const IN = ids.length ? ids.join(',') : '-1';
   const kids = ['cal_entry_except', 'cal_todo_day_note', 'cal_report_hours',
-    'cal_task_hours', 'cal_attendance', 'cal_report_daily', 'cal_report_weekly', 'cal_migration_log',
-    'cal_todo', 'cal_entry', 'cal_category', 'cal_user_pref', 'cal_user_rev'];
+    'cal_attendance', 'cal_report_daily', 'cal_report_weekly',
+    'cal_todo', 'cal_entry', 'cal_category', 'cal_project_watch', 'cal_user_rev'];
   const stmts = kids.map((t) => `DELETE FROM ${t} WHERE user_id IN (${IN})`);
   stmts.push(`DELETE FROM cal_category WHERE source='db' AND name LIKE 'zzP%'`);
   stmts.push(`DELETE FROM app_user WHERE login_id LIKE 'zzU%'`);
@@ -926,7 +927,7 @@ async function main() {
     //     SQL 로 내 것을 지우면 앱 상태와 갈려 다음 저장이 되살린다(잔재의 씨앗). 반대로 남의 것은 앱 경로가 없다.
     if (u0) {
       sql(`DELETE FROM cal_category WHERE user_id=${u0};\n` +
-        `DELETE FROM cal_user_pref WHERE user_id=${u0};\n` +
+        `DELETE FROM cal_project_watch WHERE user_id=${u0};\n` +
         `DELETE FROM cal_user_rev WHERE user_id=${u0};\n` +
         `DELETE FROM app_user WHERE user_id=${u0}`,
         { readOnly: false, idempotent: true, what: 'C01 두 번째 편입자 정리' });
@@ -958,8 +959,10 @@ async function main() {
     okq('C02 삭제 성공', rep.ok === true, rep.msg);
     okq('C02 성공 문구', rep.msg === MSG.done, JSON.stringify(rep.msg));
     okq('C02 app_user 0행', n1(`SELECT COUNT(*) FROM app_user WHERE user_id=${uid}`, 'C02 잔여') === 0);
-    okq('C02 cal_user_pref 0행(부속 표를 같은 트랜잭션에서 지웠다 · §3.1)',
-      n1(`SELECT COUNT(*) FROM cal_user_pref WHERE user_id=${uid}`, 'C02 pref') === 0);
+    okq('C02 cal_project_watch 0행(부속 표를 같은 트랜잭션에서 지웠다, §3.1. 서식 설정 표는 구조 22 에서 없앴다)',
+      n1(`SELECT COUNT(*) FROM cal_project_watch WHERE user_id=${uid}`, 'C02 watch') === 0);
+    okq('C02 구조 22: 없앤 표(cal_user_pref, cal_task_hours, cal_migration_log)가 DB 에 없다',
+      n1(`SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('cal_user_pref','cal_task_hours','cal_migration_log')`, 'C02 없앤 표') === 0);
     okq('C02 cal_user_rev 0행', n1(`SELECT COUNT(*) FROM cal_user_rev WHERE user_id=${uid}`, 'C02 rev') === 0);
   });
 
@@ -967,7 +970,7 @@ async function main() {
   const U2 = NM.user(2);
   await runCase('C03', `인력 기록 있음(${U2}) — 거부되고 퇴사 상태로 남는다`, async () => {
     const uid = await makeUser(U2, { titleId: REAL.titleId });
-    //  기록을 심는다 — 개인 과제 1 + 일정 1 = §3.2 의 9표 합계 2건.
+    //  기록을 심는다 — 개인 과제 1 + 일정 1 = §3.2 의 기록 표(구조 22 에서 7개) 합계 2건.
     //  ★ 앱이 만든 것이 아니라 SQL 로 심는 이유: 이 계정은 **한 번도 로그인하지 않는다**(넷커스 자격이 없다).
     //    앱 경로로는 남의 계정에 기록을 만들 길이 없으므로, 여기서만 정본 스키마를 직접 따른다.
     //  ★ 개인 과제(source='local', project_uid NULL)로 두는 이유: 공식 과제였다면
@@ -1022,7 +1025,7 @@ async function main() {
     //  정리 — FK 순서: 일정 → 과제 → 부속 2표 → 사람.
     sql(`DELETE FROM cal_entry WHERE user_id=${uid};\n` +
         `DELETE FROM cal_category WHERE user_id=${uid};\n` +
-        `DELETE FROM cal_user_pref WHERE user_id=${uid};\n` +
+        `DELETE FROM cal_project_watch WHERE user_id=${uid};\n` +
         `DELETE FROM cal_user_rev WHERE user_id=${uid};\n` +
         `DELETE FROM app_user WHERE user_id=${uid}`,
       { readOnly: false, idempotent: true, what: 'C03 정리' });
@@ -1279,7 +1282,7 @@ async function main() {
 
     //  정리 — FK 순서: 과제 → 부속 2표 → 사람.
     sql(`DELETE FROM cal_category WHERE user_id=${uid};\n` +
-      `DELETE FROM cal_user_pref WHERE user_id=${uid};\n` +
+      `DELETE FROM cal_project_watch WHERE user_id=${uid};\n` +
       `DELETE FROM cal_user_rev WHERE user_id=${uid};\n` +
       `DELETE FROM app_user WHERE user_id=${uid}`,
       { readOnly: false, idempotent: true, what: 'C11 정리' });

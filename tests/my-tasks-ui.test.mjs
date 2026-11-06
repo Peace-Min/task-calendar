@@ -57,7 +57,7 @@ const statics = {
   list(app) {
     useCss(app);
     const m = modalBlock(app);
-    assert.ok(/id="catHead"[^>]*>(?:(?!<\/div>)[\s\S])*<span>과제<\/span><span class="ch-tag"><\/span><span class="ch-count">기록<\/span><span><\/span><\/div>/.test(m), '열 머리글이 과제, (공식 표시 칸, 글자 없음), 기록, 빈 칸이 아니다');
+    assert.ok(/id="catHead"[^>]*>(?:(?!<\/div>)[\s\S])*<span>과제<\/span><span class="ch-tag"><\/span><span class="ch-count">일정<\/span><span class="ch-count">할 일<\/span><span><\/span><\/div>/.test(m), '열 머리글이 과제, (공식 표시 칸, 글자 없음), 일정, 할 일, 빈 칸이 아니다(docs/CAT-COUNTS-SPLIT.md)');
     //  공식, 삭제됨 표시는 이름 뒤가 아니라 고정 칸(.cat-tagcol)에 선다(이름 길이와 상관없이 같은 세로줄, 2026-11-02)
     assert.ok(app.includes('<span class="cat-tagcol">${tag}</span>') && !app.includes('title="${nm}">${nm}</span>${tag}'), '공식 표시가 고정 칸이 아니라 이름 뒤에 붙는다');
     assert.ok(!/건수/.test(noHtmlComments(m)), '「건수」가 남았다');
@@ -78,7 +78,11 @@ const statics = {
     assert.ok(!/#b0612a/i.test(css), '갈색이 남았다');
     const fn = app.slice(app.indexOf('function catRowHtml(c){'), app.indexOf('//  숫자 문구 뒤 조사'));
     assert.ok(/kind === 'official' \? `<span class="cat-tag">/.test(fn), '공식 표가 공식 줄에만 붙지 않는다');
-    assert.ok(/title="기록 \$\{cnt\}개"/.test(fn) && !/\}건/.test(fn), '기록 수 title 이 「기록 N개」가 아니거나 「건」이 붙었다');
+    //  두 칸(일정, 할 일), 칸마다 0 은 흐림, title 은 catUsageTip("과제명, 일정 N개, 할 일 N개") 하나(docs/CAT-COUNTS-SPLIT.md)
+    assert.ok(fn.includes('<span class="cat-count${u.ev ? \'\' : \' zero\'}" title="${esc(catUsageTip(c.name, u))}">${u.ev}</span>')
+      && fn.includes('<span class="cat-count${u.td ? \'\' : \' zero\'}" title="${esc(catUsageTip(c.name, u))}">${u.td}</span>') && !/\}건/.test(fn), '기록 수가 일정, 할 일 두 칸(catUsageTip title)이 아니거나 「건」이 붙었다');
+    assert.ok(app.includes("const catUsageTip = (name, v) => name + ', 일정 ' + v.ev + '개, 할 일 ' + v.td + '개';"), '숫자 title 문구가 "과제명, 일정 N개, 할 일 N개" 가 아니다');
+    assert.ok(/\.cat-head,\.cat-row\{display:grid;grid-template-columns:16px 12px minmax\(0,1fr\) 3\.8em var\(--cnt-w\) var\(--cnt-w\) 30px;/.test(css), '목록 칸이 숫자 두 칸(--cnt-w 둘) 격자가 아니다');
   },
   addButton(app) {
     useCss(app);
@@ -109,7 +113,7 @@ const statics = {
 
 test('정적①: 머리는 제목과 SVG ✕ 뿐(부제, 추가 단추 없음) · ✕ 모양', () => statics.header(src));
 test('정적②: 관리 입구 줄, 푸터, 연결 단추, 구분 열이 없다', () => statics.noAdminNoFoot(src));
-test('정적③: 한 상자 목록 · 열 머리글(과제, 기록) · 공식 표와 기록 수 모양', () => statics.list(src));
+test('정적③: 한 상자 목록 · 열 머리글(과제, 일정, 할 일) · 공식 표와 기록 수 모양', () => statics.list(src));
 test('정적④: [+ 과제 추가] 는 목록 아래 점선 단추이고 sticky 로 아래에 붙는다', () => statics.addButton(src));
 test('정적⑤: 새 문구와 CSS 에 금지 문장부호와 hex 가 없다', () => statics.punct(src));
 test('변이①s: 표를 모든 줄에 붙이면 정적③ 이 실패한다', () => {
@@ -138,11 +142,13 @@ if (!JSDOM) {
   const CAT = (id, name, extra) => Object.assign({ id, name, color: '#3e5be0', desc: '', createdAt: CA }, extra || {});
   const ENT = (id, categoryId) => ({ id, date: '2026-10-01', title: '업무 ' + id, categoryId, allDay: true, startTime: '', endTime: '',
     memo: '', location: '', recur: null, recurExcept: [], endDate: '', createdAt: CA, updatedAt: CA });
+  const TD = (id, categoryId, done) => ({ id, text: '할 일 ' + id, done, categoryId, due: '', endDate: '', prio: 'normal', completedAt: done ? CA : '', note: '', dayNotes: {} });
   const DATA = {
     categories: [CAT('c-p', '프로젝트', { desc: '내 메모' }), CAT('c-q', '메모 없는 일반'), CAT('db-1', '공식 하나', { source: 'db' }),
       CAT('db-2', '공식 둘', { source: 'db' }), CAT('c-v', '휴가'), CAT('c-e', '기타')],
     entries: [ENT('e-p', 'c-p'), ENT('e-p2', 'c-p'), ENT('e-1', 'db-1')],
-    todos: [], rooms: [],
+    //  할 일은 끝낸 것도 센다(docs/CAT-COUNTS-SPLIT.md). 프로젝트 1개(끝냄), 공식 둘 2개(하나는 끝냄)
+    todos: [TD('t-p', 'c-p', true), TD('t-2', 'db-2', false), TD('t-3', 'db-2', true)], rooms: [],
   };
 
   async function withBoot(source, fn) {
@@ -182,13 +188,17 @@ if (!JSDOM) {
         const tags = Object.fromEntries(W.$$('#catList .cat-row').map((r) => [r.dataset.id, r.querySelector('.cat-tag') ? r.querySelector('.cat-tag').textContent : null]));
         assert.deepStrictEqual(tags, { 'c-p': null, 'c-q': null, 'db-1': '공식', 'db-2': '공식', 'c-v': null, 'c-e': null }, '공식 줄에만 「공식」 표가 붙어야 한다: ' + JSON.stringify(tags));
         assert.ok(!W.$('#catList .cat-kind'), '구분 열이 남았다');
-        const cnt = (id) => W.row(id).querySelector('.cat-count');
-        assert.strictEqual(cnt('c-p').textContent, '2'); assert.strictEqual(cnt('c-p').title, '기록 2개');
-        assert.ok(!cnt('c-p').classList.contains('zero'), '0 이 아닌데 흐리다');
-        assert.strictEqual(cnt('db-1').textContent, '1');
-        assert.strictEqual(cnt('c-q').textContent, '0'); assert.ok(cnt('c-q').classList.contains('zero'), '0 이 흐리지 않다'); assert.strictEqual(cnt('c-q').title, '기록 0개');
+        //  줄마다 일정, 할 일 두 칸(docs/CAT-COUNTS-SPLIT.md). 0 은 흐림, title 은 "과제명, 일정 N개, 할 일 N개"
+        const cnts = (id) => [...W.row(id).querySelectorAll('.cat-count')];
+        const nums = (id) => cnts(id).map((c) => c.textContent + (c.classList.contains('zero') ? '-' : ''));
+        assert.deepStrictEqual(nums('c-p'), ['2', '1'], '프로젝트 줄은 일정 2, 할 일 1(끝낸 것 포함)이어야 한다');
+        assert.deepStrictEqual(nums('db-1'), ['1', '0-'], '공식 하나는 일정 1, 할 일 0(흐림)이어야 한다');
+        assert.deepStrictEqual(nums('db-2'), ['0-', '2'], '공식 둘은 일정 0(흐림), 할 일 2 이어야 한다');
+        assert.deepStrictEqual(nums('c-q'), ['0-', '0-'], '0 이 흐리지 않다');
+        for (const c of cnts('c-p')) assert.strictEqual(c.title, '프로젝트, 일정 2개, 할 일 1개');
+        assert.strictEqual(cnts('c-q')[0].title, '메모 없는 일반, 일정 0개, 할 일 0개');
         for (const c of W.$$('#catList .cat-count')) assert.ok(/^\d+$/.test(c.textContent), '기록 수에 숫자 말고 글자가 있다: ' + c.textContent);
-        assert.deepStrictEqual(W.$$('#catHead > span').map((s) => s.textContent), ['', '', '과제', '', '기록', ''], '열 머리글 글자가 다르다');
+        assert.deepStrictEqual(W.$$('#catHead > span').map((s) => s.textContent), ['', '', '과제', '', '일정', '할 일', ''], '열 머리글 글자가 다르다');
         assert.ok(!W.$('#catAdminRow') && !W.$('#btnCatAdmin') && !W.$('#btnRelinkOpen') && !W.$('#categoryModal .modal-foot'), '없앤 관리 줄, 푸터, 연결 단추가 있다');
       });
     },

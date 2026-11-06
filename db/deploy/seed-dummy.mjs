@@ -11,12 +11,12 @@
  *
  * ── 이 도구가 지키는 안전 규칙(운영 DB 에서 잘못 돌면 남의 데이터를 지우는 도구다) ────────
  *   R1 대상 사용자 외에는 단 한 행도 건드리지 않는다 — 모든 DELETE/INSERT 에 user_id 가 있다.
- *   R2 삭제는 FK 순서대로: cal_task_hours → cal_entry → cal_todo → cal_category
+ *   R2 삭제는 FK 순서대로: cal_entry → cal_todo → cal_category(공수 표 cal_task_hours 는 구조 22 에서 없어졌다)
  *      (cal_entry_except 는 CASCADE, cal_todo_day_note 도 CASCADE.  cal_entry_commit 은 구조 18 에서 없어졌다.
  *       cal_category 는 3표가 RESTRICT 로 잡고 있어 **맨 마지막**). cal_attendance 는 FK 가 없다.
  *   R3 cal_user_rev 는 DELETE 하지 않는다 — 단조 증가값이라 되돌리면 앱의 변경 감지가 깨진다.
  *      사용자별 시딩이 끝나면 ODKU 로 **+1 만** 한다.
- *   R4 cal_migration_log · cal_report_* · cal_user_pref 에는 쓰지 않는다(옛 cal_room 은 2026-10-21 에 없어졌다).
+ *   R4 cal_report_* 에는 쓰지 않는다(옛 cal_room 은 2026-10-21, cal_migration_log 와 cal_user_pref 는 구조 22 에서 없어졌다).
  *      ★ 단 검증 V13('총 행수 불변')은 COUNT(*) 로 **읽는다** — 그 읽기가 없으면 '건드리지
  *        않았다' 를 증명할 방법이 없다. 읽기만 하고 절대 쓰지 않는다.
  *   R5 project · app_user · org_unit 등 조직·과제 원본 표는 SELECT 만 한다.
@@ -269,12 +269,6 @@ function I(v) {
   if (v === null || v === undefined) return 'NULL';
   if (!Number.isInteger(v)) throw new Error('정수가 아닌 값을 정수 자리에 넣으려 했습니다: ' + v);
   return String(v);
-}
-/** 고정소수 리터럴(cal_task_hours.hours 전용) */
-function F(v) {
-  if (v === null || v === undefined) return 'NULL';
-  if (!Number.isFinite(v)) throw new Error('숫자가 아닌 값을 소수 자리에 넣으려 했습니다: ' + v);
-  return v.toFixed(2);
 }
 
 /* ══════════════════════════ 3. 대상 사용자 산정 ══════════════════════════ */
@@ -719,30 +713,7 @@ function buildUserData(user, projects, seed) {
     }
   }
 
-  /* ── 6-4. 공수(cal_task_hours) ─────────────────────────────────── */
-  // 하루 합계가 8.0 을 넘지 않게 한다 — 넘으면 그 숫자가 회사 보고로 나갈 때 말이 안 된다.
-  const hourDays = shuffled(WEEKDAYS).slice(0, 26 + rint(9)).sort((a, b) => a.ms - b.ms);
-  const taskHours = [];
-  for (const d of hourDays) {
-    const howMany = Math.min(cats.length, 2 + rint(2));      // 2~3개 과제에 배분
-    const picked = shuffled(cats).slice(0, howMany);
-    let left = pickWeighted([[2, 4], [3, 6], [3, 7], [4, 8]]);  // 그날 총 공수(시간)
-    picked.forEach((c, i) => {
-      const last = i === picked.length - 1;
-      let h;
-      if (last) h = left;
-      else {
-        const maxHere = left - 0.5 * (picked.length - 1 - i);
-        const units = Math.max(1, Math.floor(maxHere * 2) - 1);
-        h = (1 + rint(Math.max(1, units))) * 0.5;
-        if (h > maxHere) h = maxHere;
-      }
-      h = Math.round(h * 2) / 2;
-      if (h <= 0) return;
-      left = Math.round((left - h) * 2) / 2;
-      taskHours.push({ date: d.s, catNo: c.catNo, hours: h, updatedAt: fmtDt(d.ms + 10 * 3600000) });
-    });
-  }
+  /* ── 6-4. 공수: 구조 22(docs/DB-V22-REPORT-HOURS.md)에서 cal_task_hours 를 지워 만들지 않는다 ── */
 
   /* ── 6-5. 근태 ─────────────────────────────────────────────────── */
   // 평일의 ~60%만 행을 만든다. 나머지는 **행 자체를 만들지 않는다**(= 미기록).
@@ -757,7 +728,7 @@ function buildUserData(user, projects, seed) {
     });
   }
 
-  return { cats, entries, todos, taskHours, attendance };
+  return { cats, entries, todos, attendance };
 }
 
 /* ══════════════════════════ 7. SQL 조립 ══════════════════════════ */
@@ -774,12 +745,11 @@ function insertChunks(out, table, cols, valueRows) {
 
 //  한 사람의 캘린더 데이터를 지우는 문장들 — 삽입과 **같은 목록**을 쓴다.
 //  ★ 여기 한 곳만 두는 이유: 지우는 표와 넣는 표가 갈라지면 --purge 뒤에 찌꺼기가 남는다.
-//  ★ R2 FK 순서. cal_category 는 cal_entry·cal_todo·cal_task_hours 가 RESTRICT 로 잡고 있어 맨 마지막.
+//  ★ R2 FK 순서. cal_category 는 cal_entry·cal_todo 가 RESTRICT 로 잡고 있어 맨 마지막.
 //  ★ cal_user_rev 는 여기 없다 — 단조 증가라 DELETE 하지 않는다(bump 만 한다).
-//  ★ cal_report_* · cal_migration_log · cal_user_pref 도 없다 — 이 도구가 만든 것이 아니다.
+//  ★ cal_report_* 도 없다. 이 도구가 만든 것이 아니다.
 function deleteStatements(uid) {
   return [
-    'DELETE FROM cal_task_hours WHERE user_id = ' + uid + ';',
     'DELETE FROM cal_entry      WHERE user_id = ' + uid + ';',   // except 는 CASCADE
     'DELETE FROM cal_todo       WHERE user_id = ' + uid + ';',   // day_note 는 CASCADE
     'DELETE FROM cal_category   WHERE user_id = ' + uid + ';',
@@ -833,9 +803,6 @@ function buildUserSql(userId, data) {
   for (const t of data.todos) for (const dn of t.dayNotes) dayNoteRows.push([uid, I(t.todoNo), q(dn.date), q(dn.text)]);
   insertChunks(out, 'cal_todo_day_note', ['user_id', 'todo_no', 'note_date', 'note_text'], dayNoteRows);
 
-  insertChunks(out, 'cal_task_hours', ['user_id', 'work_date', 'cat_no', 'hours', 'updated_at'],
-    data.taskHours.map((h) => [uid, q(h.date), I(h.catNo), F(h.hours), q(h.updatedAt)]));
-
   insertChunks(out, 'cal_attendance', ['user_id', 'work_date', 'status', 'overtime', 'updated_at'],
     data.attendance.map((a) => [uid, q(a.date), q(a.status), I(a.overtime), q(a.updatedAt)]));
 
@@ -858,7 +825,7 @@ function countRows(data) {
     cal_category: data.cats.length, cal_entry: data.entries.length,
     cal_entry_except: excepts,
     cal_todo: data.todos.length, cal_todo_day_note: dayNotes,
-    cal_task_hours: data.taskHours.length, cal_attendance: data.attendance.length,
+    cal_attendance: data.attendance.length,
   };
 }
 
@@ -873,11 +840,10 @@ const V_LABELS = {
   V6: 'all_day 와 시각의 정합(종일=시각 NULL · 시간지정=둘 다 있고 end>start)',
   V7: 'end_date 가 있으면 entry_date 이상',
   V8: 'recur_* 는 반복 일정에서만 채워져 있다',
-  V9: '(user_id, work_date) 공수 합계 8.0 초과 0건',
   V10: 'cal_attendance.status 가 유효 코드 집합에 속한다(NULL 없음)',
   V11: '대상이 아닌 사용자의 cal_entry 행수 불변',
   V12: 'cal_user_rev — 대상은 증가, 그 외는 불변',
-  V13: '보호 대상 표(cal_report_* · cal_migration_log · cal_user_pref) 총 행수 불변',
+  V13: '보호 대상 표(cal_report_*) 총 행수 불변',
 };
 
 const results = [];   // {id, ok, detail}
@@ -951,11 +917,7 @@ function verifyContent(ids) {
     '        AND (recur_interval IS NULL OR recur_count IS NULL)));', 'V8')[0] || 0);
   bad8 ? badV('V8', bad8 + '건') : okV('V8');
 
-  // V9
-  const bad9 = mustQuery('SELECT user_id, work_date, SUM(hours) s FROM cal_task_hours WHERE user_id IN ' + L +
-    ' GROUP BY user_id, work_date HAVING s > 8.00 ORDER BY s DESC LIMIT 5;', 'V9');
-  bad9.length ? badV('V9', bad9.length + '건 초과 — 예: ' +
-    bad9.map((c) => 'user_id=' + c[0] + ' ' + c[1] + ' ' + c[2] + 'h').join(', ')) : okV('V9');
+  // V9: 공수(cal_task_hours) 합계 검사였다. 구조 22 에서 그 표를 지워 없앴다(번호는 비워 둔다).
 
   // V10
   const codes = ATTEND_CODES.map((c) => q(c)).join(',');
@@ -965,8 +927,7 @@ function verifyContent(ids) {
 }
 
 //  cal_report_weekly_hours: 주간 과제투입시간(구조 20, 2026-10-30 결정 14). 보고 기록이라 다른 cal_report_* 와 같이 지킨다.
-const PROTECTED_TABLES = ['cal_report_daily', 'cal_report_weekly', 'cal_report_hours', 'cal_report_weekly_hours',
-  'cal_migration_log', 'cal_user_pref'];
+const PROTECTED_TABLES = ['cal_report_daily', 'cal_report_weekly', 'cal_report_hours', 'cal_report_weekly_hours'];
 
 /** 시딩 전후 대조용 스냅샷. ★ 보호 대상 표는 COUNT(*) 로 '읽기만' 한다(R4 의 예외 — V13 의 근거). */
 function snapshot() {
@@ -1053,7 +1014,6 @@ function main() {
         'SELECT (SELECT COUNT(*) FROM cal_category   WHERE user_id IN ' + L + ')' +
         '     + (SELECT COUNT(*) FROM cal_entry      WHERE user_id IN ' + L + ')' +
         '     + (SELECT COUNT(*) FROM cal_todo       WHERE user_id IN ' + L + ')' +
-        '     + (SELECT COUNT(*) FROM cal_task_hours WHERE user_id IN ' + L + ')' +
         '     + (SELECT COUNT(*) FROM cal_attendance WHERE user_id IN ' + L + ');', '삭제 전 행수');
       return Number(r[0][0]);
     };
@@ -1127,7 +1087,6 @@ function main() {
       '  SELECT user_id FROM cal_category   WHERE user_id IN ' + L +
       '  UNION SELECT user_id FROM cal_entry      WHERE user_id IN ' + L +
       '  UNION SELECT user_id FROM cal_todo       WHERE user_id IN ' + L +
-      '  UNION SELECT user_id FROM cal_task_hours WHERE user_id IN ' + L +
       '  UNION SELECT user_id FROM cal_attendance WHERE user_id IN ' + L +
       ') t;', '기존 데이터 확인');
     for (const c of r) hasData.add(Number(c[0]));
