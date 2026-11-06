@@ -286,7 +286,7 @@ if (!JSDOM) {
   const PMETA = { schemaVersion: '21', expectedSchema: '21', schemaMismatch: false, gate: 'ok', rev: 1, canWrite: true, userId: 7 };
   const PDATA = () => ({ categories: [{ id: 'c-1', name: '휴가', color: '#9aa2b3' }, { id: 'db-' + P1, name: '장비 개발', color: '#3e5be0' }], entries: [], todos: [], rooms: [] });
   const MINE = [{ projectUid: P1, name: '장비 개발', color: '#3e5be0', active: true, writable: true, mine: true, members: 6 }];
-  const WATCH = [{ projectUid: B1, name: '함대공 훈련장비', customer: 'D사', status: '진행중', statusId: 1, sectionId: 1, members: 2, hidden: false }];
+  const WATCH = [{ projectUid: B1, name: '하늘 훈련장비', customer: 'D사', status: '진행중', statusId: 1, sectionId: 1, members: 2, hidden: false }];
   const MEMBERS = [
     { loginId: 'u1', name: '김하늘', title: '책임', orgUnit: '개발1팀', canViewSchedule: true },
     { loginId: 'u2', name: '박서준', title: '선임', orgUnit: '개발1팀', canViewSchedule: true },

@@ -224,7 +224,7 @@ if (!JSDOM) {
     { projectUid: P3, name: '구형 유지', color: '#8a5cc8', active: false, writable: false, mine: true, members: 2 },
   ];
   const WATCH = [
-    { projectUid: B1, name: '함대공 훈련장비', customer: 'D사', status: '진행중', statusId: 1, sectionId: 1, members: 2, hidden: false },
+    { projectUid: B1, name: '하늘 훈련장비', customer: 'D사', status: '진행중', statusId: 1, sectionId: 1, members: 2, hidden: false },
     { projectUid: B2, name: '숨겨진 표본', customer: 'E사', status: '진행중', statusId: 1, sectionId: 1, members: 0, hidden: true },
   ];
   function fakeClock() {

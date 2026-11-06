@@ -231,7 +231,7 @@ const cleanup = () => {
   sql(`DELETE FROM cal_report_weekly WHERE ${wscope}`, { readOnly: false, idempotent: true, what: '정리(weekly)' });
 };
 
-const NAMES = ['표적기(ADD)', 'LSAM-II RMSS', '울산급 Batch-IV 개발벤치 및 DAS', '휴가', '기타',
+const NAMES = ['알파(A1)', '감마-II RMS', '델타 Batch-IV 개발벤치 및 장비', '휴가', '기타',
                '  앞뒤 공백  ', '전각：콜론', 'A'.repeat(250), ''];
 /* ── 근태코드 — **정본에서 읽는다**(목록을 여기 박지 않는다) ─────────────
  *   왜 박으면 안 되나(2026-09-09 실제 사고):
@@ -326,10 +326,10 @@ function weeklyRound(i) {
   const s = `${YEAR}-${String(mon).padStart(2, '0')}-${String(d1).padStart(2, '0')}`;
   const e = `${YEAR}-${String(mon).padStart(2, '0')}-${String(d1 + 6).padStart(2, '0')}`;
   const a = run({ kind: 'weekly', loginId: LID, sdate: s, edate: e, subject: `${mon}월 주간`,
-                  content: '[표적기(ADD)] : 30', endwork: '진행A', plan: '계획A' });
+                  content: '[알파(A1)] : 30', endwork: '진행A', plan: '계획A' });
   ok(`W${i} 주간 저장 성공`, a.ok === true, a.logs.join(' / '));
   const b = run({ kind: 'weekly', loginId: LID, sdate: s, edate: e, subject: `${mon}월 주간(재작성)`,
-                  content: '[표적기(ADD)] : 35', endwork: '진행B', plan: '계획B' });
+                  content: '[알파(A1)] : 35', endwork: '진행B', plan: '계획B' });
   ok(`W${i} 재작성 저장 성공`, b.ok === true, b.logs.join(' / '));
   const n = Number(one(`SELECT COUNT(*) FROM cal_report_weekly WHERE user_id=${UID} AND period_start='${s}'`));
   ok(`W${i} 같은 기간은 1행이다(덮어쓰기)`, n === 1, `행 ${n}개`);

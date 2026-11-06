@@ -8,6 +8,10 @@
 //       계정별 저장과 5줄 표 읽기, 열기와 초점으로는 글을 고치지 않는다, 숨기기와 화면 전환 정리, 보내는 중 잠금.
 //       2차(2026-11-06): 가져오기 [서식] 줄이 없고 캘린더 불러오기는 제목 1수준, 설명 2수준(문단 모양 표, 번호), 표를 바꾸면 패널 카드도 새 모양,
 //       이전 보고 출처는 그대로. 변이 셋(설명 1수준, 카드 다시 그리기 빼기, 예전 보고서 서식 함수)을 같은 검사가 잡는다.
+//   3차(2026-11-06, 결정 10~15): 수준은 표와 꼭 맞는 줄만. 판정 셋(본문 0, 수준 1~7, 표와 다른 줄 WA.OTHER = 수준 칸 빈칸).
+//       check3 이 기획 시험 목록(사용자 글, 먼 줄 불변, 붙여넣기, 표 바꿈 넷, 다른 줄 수준 키, Enter 는 문단 모양만 등)을 돌리고,
+//       변이 넷(기호 우선 infer, 0칸 다른 줄을 항목으로, 표 바꿈이 다른 줄도 그림, 다른 줄 Enter 머리 이어 쓰기)을 같은 검사가 잡는다.
+//       옛 시험 가운데 새 계약과 어긋난 것(M2 기호 우선, L2 늘 읽는 번호, 본문 Enter 들여쓰기 잇기, 이어 쓰기 줄 Tab 은 자식 등)은 새 계약으로 고쳐 두었다.
 // 생략 규약: jsdom 이 없으면 (B)는 등록되지 않고 skip(판정 없음)으로 계수된다.
 import vm from 'node:vm';
 import { test, skip, assert, loadAppSource, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
@@ -71,7 +75,7 @@ test('(U) 시안 핵심 시험: level inference', () => {
   B('infer 기호형 sample',lvl('- a\n  * b\n    - c\n      * d\n        - e\n          * f\n            - g\n본문\n  이어',SYM),[1,2,3,4,5,6,7,0,0]);
   B('infer 보고서형',lvl('□ a\n  ○ b\n    - c\n      · d\n        * e\n          ▪ f\n            ◦ g',REP),[1,2,3,4,5,6,7]);
   B('infer 번호형',lvl('1. a\n  가. b\n    1) c\n      가) d\n        (1) e\n2. f\n  나. g',NUM),[1,2,3,4,5,1,2]);
-  B('infer 번호형 numbers parsed',WA.parse('  12) x\n  다. y\n(3) z',NUM).P.map(p=>[p.kind,p.num]),[['1)',12],['가.',3],['(1)',3]]);
+  B('infer 번호형 numbers parsed',WA.parse('    12) x\n  다. y\n        (3) z',NUM).P.map(p=>[p.kind,p.num]),[['1)',12],['가.',3],['(1)',3]]);
   B('1.5시간 not a marker',lvl('1.5시간\n가.나\n-5도\n(1)x',NUM),[0,0,0,0]);
   B('1.5시간 not marker under 기호형',lvl('1.5시간 투입',SYM),[0]);
   B('same indent, marker decides',lvl('- a\n* b',[{mk:'-',indent:0},{mk:'*',indent:0},{mk:'○',indent:2},{mk:'·',indent:4},{mk:'*',indent:6}]),[1,2]);
@@ -91,7 +95,8 @@ test('(U) 시안 핵심 시험: increase / decrease', () => {
   T('decrease 본문 no-op','abc|',sh(SYM,-1),null);
   T('increase 본문 becomes 1수준','abc|',sh(SYM,1),'- abc|');
   T('increase empty line starts item','- a\n|',sh(SYM,1),'- a\n- |');
-  T('increase continuation becomes child','- a\n  b|',sh(SYM,1),'- a\n  * b|');
+  //  3차(결정 12): 표와 꼭 맞지 않는 줄(이어 쓰기 줄 포함)은 늘 본문에서 시작한다. 올리면 1수준
+  T('increase continuation starts from 본문 (3차)','- a\n  b|',sh(SYM,1),'- a\n- b|');
   T('increase multi','[- a\n- b\n  * c]',sh(SYM,1),'[  * a\n  * b\n    - c]');
   T('decrease multi, continuation follows','- x\n[  * a\n    이어\n  * b]',sh(SYM,-1),'- x\n[- a\n  이어\n- b]');
   T('multi end at line start excludes next','[- a\n]- b',sh(SYM,1),'[  * a\n]- b');
@@ -122,7 +127,7 @@ test('(U) 시안 핵심 시험: Enter', () => {
   T('enter (1) -> (2)','        (1) a|',en(NUM),'        (1) a\n        (2) |');
   T('enter mid-line splits','- ab|cd',en(SYM),'- ab\n- |cd');
   T('enter mid-line drops spaces after caret','- ab| cd',en(SYM),'- ab\n- |cd');
-  T('enter on 본문 keeps indent','  이어|',en(SYM),'  이어\n  |');
+  T('enter on indented 본문 makes 0칸 empty line (3차 결정 15)','  이어|',en(SYM),'  이어\n|');
   T('enter 1.5시간 plain','1.5시간|',en(NUM),'1.5시간\n|');
   // M3: caret in item head inserts empty same-level item above (was: split inside leading ws)
   T('enter caret inside leading ws -> empty item above','  |  - x',en(SYM),'    - \n  |  - x');
@@ -165,14 +170,16 @@ test('(U) 시안 핵심 시험: review 2', () => {
   T('M1 enter after heading starts at 1','1. a\n회의\n1. x|',en(NUM),'1. a\n회의\n1. x\n2. |');
   T('M1 1.5시간 at 0 indent is a heading','1. a\n1.5시간 소요\n2. b|',rn(NUM),'1. a\n1.5시간 소요\n1. b|');
   // M2: marker-first inference
-  B('M2 numbered marker unique wins regardless of indent',lvl('가. x\n      1. y\n(1) z',NUM),[2,1,5]);
-  B('M2 symbol unique wins (보고서형 - at 0 is 3수준)',lvl('- x\n○ y\n        □ z',REP),[3,2,1]);
+  //  3차(결정 10~12): 기호만 맞고 칸 수가 다르면 항목이 아니다. 0칸이면 본문(0), 들여 썼으면 표와 다른 줄(OTHER)
+  B('M2->3차 numbered marker with wrong indent is not an item',lvl('가. x\n      1. y\n(1) z',NUM),[0,WA.OTHER,0]);
+  B('M2->3차 symbol with wrong indent is not an item (보고서형)',lvl('- x\n○ y\n        □ z',REP),[0,0,WA.OTHER]);
   B('M2 symbol on several levels uses indent',lvl('- a\n    - b\n        - c\n  * d\n      * e',SYM),[1,3,5,2,4]);
-  B('M2 unknown symbol uses indent',lvl('• a\n  • b\n    • c',SYM),[1,2,3]);
+  B('M2->3차 symbol not in table: 본문 at 0칸, 표와 다른 줄 when indented',lvl('• a\n  • b\n    • c',SYM),[0,WA.OTHER,WA.OTHER]);
   B('M2 U+3000 and NBSP read as whitespace',WA.parse('　* a\n  * b',SYM).P.map(p=>[p.item,p.level,p.ws.length]),[[true,2,1],[true,2,2]]);
   B('M2 U+3000 counts two columns',lvl('- a\n　　- b',SYM),[1,3]);
-  B('M2 foreign numbered line keeps own format on renumber',WA.applyOp('1. a\n  나. b\n  1) c\n  1) d',WA.renumber('1. a\n  나. b\n  1) c\n  1) d',0,0,[{mk:'1.',indent:0},{mk:'-',indent:2},{mk:'1)',indent:4},{mk:'*',indent:6},{mk:'-',indent:8}])),'1. a\n  가. b\n  1) c\n  2) d');
-  { const t=[{mk:'가.',indent:0},{mk:'-',indent:2},{mk:'1)',indent:4},{mk:'*',indent:6},{mk:'-',indent:8}]; const v='1. a\n2. b|\n3. c'; const s=v.indexOf('|'); const w=v.replace('|',''); const op=WA.enter(w,s,s,t); B('M2 enter on foreign 1. line under 가. table keeps 1. and sequences',WA.applyOp(w,op),'1. a\n2. b\n3. \n4. c'); }
+  //  3차: 표와 다른 번호 줄은 번호를 다시 매기지 않는다(먼 줄 불변). 표에 없는 형식(나.)은 글이다
+  B('M2->3차 foreign numbered lines are left alone on renumber',WA.renumber('1. a\n  나. b\n  1) c\n  1) d',0,0,[{mk:'1.',indent:0},{mk:'-',indent:2},{mk:'1)',indent:4},{mk:'*',indent:6},{mk:'-',indent:8}]),null);
+  { const t=[{mk:'가.',indent:0},{mk:'-',indent:2},{mk:'1)',indent:4},{mk:'*',indent:6},{mk:'-',indent:8}]; const v='1. a\n2. b|\n3. c'; const s=v.indexOf('|'); const w=v.replace('|',''); const op=WA.enter(w,s,s,t); B('M2->3차 enter on 본문 "2. b" (1. not in table) is a 0칸 empty line, no renumber',WA.applyOp(w,op),'1. a\n2. b\n\n3. c'); }
   // M2: paste normalisation
   B('M2 normPaste tab/ideographic/nbsp',WA.normPaste('\t- a\n　* b\n  - c\r\nx\ty'),'  - a\n  * b\n  - c\nx\ty');
   B('M2 normPaste mixed leading',WA.normPaste('　\t z'),'     z');
@@ -181,19 +188,21 @@ test('(U) 시안 핵심 시험: review 2', () => {
   // L2: BASE_NUMS only when the table has a numbered format
   B('L2 symbol-only table: "1. 일정" not an item',lvl('1. 일정\n가. 회의\n(1) x',SYM),[0,0,0]);
   B('L2 보고서형 (no numbers): not an item',lvl('1. 일정',REP),[0]);
-  B('L2 table with a numbered format reads base numbers',lvl('1. 일정\n가. 회의',[{mk:'-',indent:0},{mk:'*',indent:2},{mk:'A.',indent:4},{mk:'*',indent:6},{mk:'-',indent:8}]),[1,1]);
+  //  3차(결정 13): 시험 184 뒤집기. 표에 A. 만 있으면 1. 가. 는 글이다(늘 읽던 번호 형식을 걷었다)
+  B('L2->3차 table with only A. does not read 1. or 가.',lvl('1. 일정\n가. 회의\n    A. 셋',[{mk:'-',indent:0},{mk:'*',indent:2},{mk:'A.',indent:4},{mk:'*',indent:6},{mk:'-',indent:8}]),[0,0,3]);
   T('L2 enter on "1. 일정" under symbol table is plain','1. 일정|',en(SYM),'1. 일정\n|');
   // M3: Enter edge cases
   T('M3 caret at line start of item inserts above','- a\n|- b',en(SYM),'- a\n- \n|- b');
   T('M3 caret after marker before gap inserts above','- a\n-| b',en(SYM),'- a\n- \n- |b');
   T('M3 numbered head insert renumbers original','1. a\n2|. b\n3. c',en(NUM),'1. a\n2. \n3. |b\n4. c');
   T('M3 numbered head insert caret in ws stays','  가. a\n  |나. b',en([{mk:'1.',indent:0},{mk:'가.',indent:2},{mk:'1)',indent:4},{mk:'가)',indent:6},{mk:'(1)',indent:8}]),'  가. a\n  나. \n  |다. b');
-  T('whitespace-only line: Enter keeps indent','- a\n  |\n- b',en(SYM),'- a\n  \n  |\n- b');
-  T('whitespace-only line caret mid ws','- a\n  |  ',en(SYM),'- a\n  \n  |  ');
+  //  3차(결정 15): 본문 줄(빈칸만 있는 줄 포함)의 Enter 는 0칸 빈 줄. 커서 앞뒤 빈칸은 걷는다
+  T('whitespace-only line: Enter makes 0칸 line','- a\n  |\n- b',en(SYM),'- a\n\n|\n- b');
+  T('whitespace-only line caret mid ws','- a\n  |  ',en(SYM),'- a\n\n|');
   T('M3 empty line Enter still adds line','- a\n|',en(SYM),'- a\n\n|');
   T('M3 mid text trims trailing spaces before caret','- ab  |cd',en(SYM),'- ab\n- |cd');
   T('M3 mid text trims both sides','- ab  |  cd',en(SYM),'- ab\n- |cd');
-  T('M3 body line mid text trims','  이어  |다음',en(SYM),'  이어\n  |다음');
+  T('M3 body line mid text trims, rest goes to 0칸','  이어  |다음',en(SYM),'  이어\n|다음');
   T('M3 trim never eats into head','- |ab',en(SYM),'- \n- |ab');
   T('M3 shift+enter also trims before caret','- ab  |cd',ce(SYM),'- ab\n|cd');
   // M4: Backspace at end of head removes marker -> continuation line
@@ -224,8 +233,11 @@ test('(U) 시안 핵심 시험: 7 levels', () => {
   // unordered indents: 5수준 at 2 with its own marker
   B('unordered table valid',WA.conflicts(UN),[]);
   B('unordered infer: unique • is 5 at indent 2',lvl('- a\n  • b\n    * c\n        - d\n            * e\n                * f\n                    - g',UN),[1,5,2,3,4,6,7]);
-  B('unordered infer: shared * nearest among * levels only',lvl('   * x\n              * y\n                 * z',UN),[2,4,6]);
-  B('unordered infer: shared - nearest among - levels',lvl('  - x\n      - y\n                   - z',UN),[1,3,7]);
+  //  3차(결정 12): 칸 수가 표와 다른 줄은 가까운 수준으로 짐작하지 않는다. 표와 다른 줄이고, 수준 키는 본문에서 시작
+  B('unordered 3차: shared * at other indents are 표와 다른 줄',lvl('   * x\n              * y\n                 * z',UN),[WA.OTHER,WA.OTHER,WA.OTHER]);
+  B('unordered 3차: shared - at other indents are 표와 다른 줄',lvl('  - x\n      - y\n                   - z',UN),[WA.OTHER,WA.OTHER,WA.OTHER]);
+  T('unordered 3차: Tab on 표와 다른 줄 gives 1수준','   * x\n              * y|',sh(UN,1),'   * x\n- y|');
+  T('unordered 3차: Alt+4 on 표와 다른 줄','  - x|\n      - y',set(UN,4),'            * x|\n      - y');
   B('unordered reshape round trip',rs(rs(sample,SYM,UN),UN,SYM),sample);
   B('unordered reshape renders 5수준 shallow',rs('- a\n  * b\n    - c\n      * d\n        - e',SYM,UN),'- a\n    * b\n        - c\n            * d\n  • e');
   T('unordered set level 5','- a\n- b|',set(UN,5),'- a\n  • b|');
@@ -250,6 +262,96 @@ test('(U) 시안 핵심 시험: 7 levels', () => {
   B('fitTable rejects junk',[WA.fitTable(null),WA.fitTable([]),WA.fitTable([{mk:'',indent:0}]),WA.fitTable([{mk:'-',indent:21}]),WA.fitTable(SYM.concat(SYM))],[null,null,null,null,null]);
   B('fitTable repairs saved duplicate',WA.fitTable([{mk:'-',indent:0},{mk:'-',indent:0}]).slice(0,2),[{mk:'-',indent:0},{mk:'-',indent:1}]);
 });
+
+// ── 3차(2026-11-06, docs/WRITING-ASSIST.md 결정 10~15): 수준은 표와 꼭 맞는 줄만 ──
+//  판정 셋: 0 본문(0칸 줄, 빈 줄), 1~7 수준(앞 칸 수와 머리기호가 표와 꼭 맞는 줄), WA.OTHER 표와 다른 줄(들여 쓴 다른 줄, 수준 칸 빈칸).
+//  앱이 고치는 것은 수준 줄뿐이고, 본문 줄과 표와 다른 줄은 수준 키를 누를 때만 바뀐다(늘 본문에서 시작).
+//  사용자 표 U = 1수준 '-' 0칸, 2수준 '1.' 2칸, 나머지 기본(- 4, * 6, - 8, * 10, - 12).
+function check3(W) {
+  const sym = W.preset('sym'), num = W.preset('num'), U = W.setMarker(sym, 1, '1.'), O = W.OTHER;
+  const run = (name, src, fn, exp) => { const { v, s, e } = split(src); const op = fn(v, s, e); const got = op ? show(W.applyOp(v, op), op.selS, op.selE) : null; assert.strictEqual(got, exp, name + '\n got ' + JSON.stringify(got) + '\n exp ' + JSON.stringify(exp)); };
+  const eq = (name, got, exp) => assert.strictEqual(JSON.stringify(got), JSON.stringify(exp), name + ' got ' + JSON.stringify(got));
+  const shown = (v, t) => { let pos = 0; return v.split('\n').map((l) => { const r = W.levelAt(v, pos, pos, t); pos += l.length + 1; return r; }); };
+  const reshape = (v, a, b) => { const op = W.reshape(v, a, b, 0, 0); return op ? W.applyOp(v, op) : v; };
+  const kE = (t) => (v, s, e) => W.enter(v, s, e, t), kS = (t, d) => (v, s, e) => W.shiftLevel(v, s, e, t, d), kL = (t, L) => (v, s, e) => W.setLevel(v, s, e, t, L);
+  //  사용자 글 그대로(2026-11-06 사용자 화면)
+  const doc = '1.구현\n- 기능개발\n  1.  UI/UX 구현\n  2.  보완\n  3.\n2. 기획';
+  eq('사용자 글 수준 칸(levelAt)', shown(doc, U), [0, 1, 2, 2, O, 0]);
+  eq('사용자 글 판정(parse level)', W.parse(doc, U).P.map((p) => p.level), [0, 1, 2, 2, 0, 0]);
+  run('2. 기획| Enter 는 0칸 빈 본문 줄(번호 이어 쓰기 없음)', doc + '|', kE(U), doc + '\n|');
+  //  먼 줄 번호 불변
+  const far = '1. 구현\n- 개발\n2. 회의\n- 회의록\n3. 기타';
+  run('renumber 가 본문 번호 줄을 고치지 않는다', far + '|', (v, s, e) => W.renumber(v, s, e, U), null);
+  run('맨 윗줄 Enter 에 아래 본문 번호 그대로', '- 개발|\n1. 구현\n2. 회의\n- 회의록\n3. 기타', kE(U), '- 개발\n- |\n1. 구현\n2. 회의\n- 회의록\n3. 기타');
+  run('다른 수준과 차례 안 나눔(- 다음 가. 회의)', '- a\n- b\n가. 회의|', (v, s, e) => W.renumber(v, s, e, U), null);
+  run('다른 수준과 차례 안 나눔(- 다음 2. 회의)', '- a\n2. 회의|', (v, s, e) => W.renumber(v, s, e, U), null);
+  run('본문 번호 줄은 차례 경계(아래 표 번호는 1부터)', '- a\n  1. x\n2. 회의\n- b\n  3. y|', (v, s, e) => W.renumber(v, s, e, U), '- a\n  1. x\n2. 회의\n- b\n  1. y|');
+  //  이전 보고 붙여넣기: 한 글자도 안 바뀜
+  const prev = '1. 구현\n- 기능개발\n  1.  UI/UX 구현\n  2.  보완\n    * 손으로 쓴 세부\n2. 기획\n3.기타';
+  { const v = '- 기존\n'; const op = W.pasteOp(v, v.length, v.length, prev, U); eq('이전 보고 붙여넣기 그대로', W.applyOp(v, op), v + prev); }
+  //  표 바꿈 네 가지: 수준 줄만 다시 그리고 본문 번호 줄과 표와 다른 줄은 그대로
+  const D = '1. 구현\n- 기능개발\n  1. UI\n  2. 보완\n    * 손 세부\n  - 다른 줄\n2. 기획';
+  eq('D 판정', W.parse(D, U).P.map((p) => p.level), [0, 1, 2, 2, O, O, 0]);
+  eq('표 바꿈: 1수준 기호 - -> □', reshape(D, U, W.setMarker(U, 0, '□')), '1. 구현\n□ 기능개발\n  1. UI\n  2. 보완\n    * 손 세부\n  - 다른 줄\n2. 기획');
+  eq('표 바꿈: 2수준 형식 1. -> 가.', reshape(D, U, W.setMarker(U, 1, '가.')), '1. 구현\n- 기능개발\n  가. UI\n  나. 보완\n    * 손 세부\n  - 다른 줄\n2. 기획');
+  eq('표 바꿈: 2수준을 기호 * 로', reshape(D, U, W.setMarker(U, 1, '*')), '1. 구현\n- 기능개발\n  * UI\n  * 보완\n    * 손 세부\n  - 다른 줄\n2. 기획');
+  { const t = U.map((r) => ({ ...r })); t[0].indent = 1; eq('표 바꿈: 1수준 칸 수 0 -> 1', reshape(D, U, t), '1. 구현\n - 기능개발\n  1. UI\n  2. 보완\n    * 손 세부\n  - 다른 줄\n2. 기획'); }
+  //  표와 다른 줄과 앞 칸만 있는 글: 수준 키는 늘 본문에서 시작(Alt+→, Tab = 1수준, Alt+N = 그 수준, Alt+←, Alt+0 = 0칸 본문)
+  for (const src of [' - 세부|', '   * 세부|', ' 세부|']) {
+    eq('수준 칸 빈칸: ' + src, W.levelAt(src.replace('|', ''), 1, 1, sym), O);
+    run('Alt+→ ' + src, src, kS(sym, 1), '- 세부|');
+    run('Alt+2 ' + src, src, kL(sym, 2), '  * 세부|');
+    run('Alt+← ' + src, src, kS(sym, -1), '세부|');
+    run('Alt+0 ' + src, src, kL(sym, 0), '세부|');
+  }
+  run('표와 다른 번호 줄에서 Tab 은 1수준', '- a\n    1. 가|', kS(U, 1), '- a\n- 가|');
+  run('표와 다른 번호 줄에서 Alt+2 는 표 모양', '- a\n    1. 가|', kL(U, 2), '- a\n  1. 가|');
+  //  본문 번호 줄: Backspace, Alt+0, Alt+← 는 하지 않는다(글 그대로)
+  run('본문 번호 줄 Backspace 는 기본 동작', '- a\n2. |기획', (v, s, e) => W.unmark(v, s, e, U), null);
+  run('본문 번호 줄 Alt+0 은 그대로', '- a\n2. 기|획', kL(U, 0), null);
+  run('본문 번호 줄 Alt+← 는 그대로', '- a\n2. 기|획', kS(U, -1), null);
+  //  0칸 * 참고 = 본문
+  eq('0칸 * 참고 는 본문', shown('- a\n* 참고', sym), [1, 0]);
+  run('0칸 * 참고 Enter 는 빈 줄', '* 참고|', kE(sym), '* 참고\n|');
+  //  탭과 전각 공백은 두 칸, 줄 바꿈 없는 공백은 한 칸
+  eq('탭, 전각 공백 2칸', W.parse('\t1. a\n　1. b\n\t- c\n 1. d\n  * e', U).P.map((p) => p.level), [2, 2, O, O, O]);
+  eq('전각 공백 2칸이면 기호형 2수준', W.parse('　* a\n　　- b', sym).P.map((p) => p.level), [2, 3]);
+  //  한계 고정: 번호형 기본 표(1수준 1. 0칸)에서는 0칸 1. 구현 이 1수준 항목
+  eq('번호형 기본 표 0칸 1. 구현 은 1수준(한계)', shown('1. 구현\n2. 회의', num), [1, 1]);
+  run('번호형 기본 표 Enter 는 다음 번호(한계)', '1. 구현|', kE(num), '1. 구현\n2. |');
+  //  Enter 는 문단 모양만(결정 15)
+  run('다른 줄 Enter(1) 이 표에 없음)', '- a\n  1) 가|', kE(U), '- a\n  1) 가\n|');
+  run('다른 줄 Enter(번호형 표의 1) 을 2칸에)', '1. a\n  1) 가|', kE(num), '1. a\n  1) 가\n|');
+  run('본문 3. 회의 Enter', '- a\n3. 회의|', kE(U), '- a\n3. 회의\n|');
+  run('표 줄 Enter 는 표 모양(번호)', '- a\n  1. 가|', kE(U), '- a\n  1. 가\n  2. |');
+  run('표 줄 Enter 는 표 모양(탭 들여쓰기도 표 칸 수로)', '- a\n\t* b|', kE(sym), '- a\n\t* b\n  * |');
+  run('표 줄 Enter 는 표 모양(빈칸 둘 뒤 기호도 빈칸 하나)', '- a\n  1.  UI|', kE(U), '- a\n  1.  UI\n  2. |');
+  run('앞 한 칸 - 세부 끝 Enter 는 0칸 빈 줄', ' - 세부|', kE(sym), ' - 세부\n|');
+  eq('그 새 줄 수준 칸은 본문', W.levelAt(' - 세부\n', 6, 6, sym), 0);
+  run('표와 다른 줄 Enter 는 아래 표 번호를 다시 세지 않는다', '- a\n    1. 손|\n  3. b', kE(U), '- a\n    1. 손\n|\n  3. b');
+  //  근태 가져오기(WA.compose)는 도구가 만드는 글이라 그대로
+  eq('compose 번호형', W.compose([{ level: 1, body: 'a' }, { level: 2, body: 'b' }, { level: 2, body: 'c' }, { level: 1, body: 'd' }], num), '1. a\n  가. b\n  나. c\n2. d');
+  eq('compose 사용자 표', W.compose([{ level: 1, body: 'a' }, { level: 2, body: 'b' }], U), '- a\n  1. b');
+}
+test('(U) 3차: 표와 꼭 맞는 줄만 수준(사용자 글, 먼 줄 불변, 붙여넣기, 표 바꿈 넷, 다른 줄 수준 키, 본문 번호 줄, 칸 세기, Enter 는 문단 모양만)', () => { check3(WA); });
+//  변이: 옛 동작으로 되돌리면 같은 검사가 잡는다
+const WA_MUT = [
+  ['수준을 기호 우선으로 읽으면(옛 infer)', "for(let L = 1; L <= T.length; L++){ const r = T[L - 1]; if(r.indent === w && sameMk(p, r)) return L; }",
+    "const hit = []; for(let L = 1; L <= T.length; L++) if(sameMk(p, T[L - 1])) hit.push(L); if(hit.length === 1) return hit[0]; for(const L of hit) if(T[L - 1].indent === w) return L;"],
+  ['0칸 다른 줄을 항목으로 읽으면', "else { p.mk = ''; p.kind = ''; p.num = 0; p.gap = ''; p.body = raw; }",
+    "else { p.item = true; p.level = Math.max(1, T.findIndex(r => sameMk(p, r)) + 1); }"],
+  ['표 바꿈이 다른 줄도 다시 그리면', "else if(p.level === OTHER) col = -1;", "else if(p.level === OTHER){ p.level = 1; p.mode = 'render'; col = p.pre; }"],
+  ['다른 줄 Enter 가 줄 머리를 이어 쓰면', "    if(p.item){\n      const r = T[p.level - 1]", "    if(p.item || p.level === OTHER){\n      const r = T[Math.max(1, p.level) - 1]"],
+];
+for (const [name, find, repl] of WA_MUT) {
+  test('변이: ' + name + ' 3차 시험이 잡는다', () => {
+    const a = app.indexOf(CORE_A), b = app.indexOf(CORE_B), core = app.slice(a, b), i = core.indexOf(find);
+    assert.ok(i > 0 && i === core.lastIndexOf(find), '변이 앵커가 없거나 여럿이다: ' + find.slice(0, 60));
+    const ctx = {}; vm.createContext(ctx);
+    vm.runInContext(core.slice(0, i) + repl + core.slice(i + find.length) + '\nglobalThis.WA = WA;', ctx);
+    assert.throws(() => check3(ctx.WA), assert.AssertionError);
+  });
+}
 
 // ══ (B) jsdom 근태 창 ═════════════════════════════════════════════════
 const jsdomMod = await importOptional('jsdom');
@@ -382,11 +484,11 @@ if (!JSDOM) {
       const memo = X.$('#atBlocks textarea[data-memo]');
       assert.strictEqual(memo.value, '* 외근');
       caret(memo, memo.value.length); key(X, memo, 'Tab', { code: 'Tab' });
-      //  '* 외근' 은 * 를 쓰는 수준(2, 4, 6) 가운데 칸 수가 가장 가까운 2수준으로 읽힌다. Tab 은 3수준
-      assert.deepStrictEqual([memo.value, X.ev('ATE.memo')], ['    - 외근', '    - 외근'], '자유 메모에서 Tab 이 수준을 올리지 않았거나 ATE.memo 가 따라오지 않았다');
+      //  3차: 0칸 '* 외근' 은 표(2수준 * 2칸)와 다른 0칸 줄이라 본문이다(수준 칸 0). Tab 은 본문에서 1수준(글은 그대로 두고 머리를 붙인다)
+      assert.deepStrictEqual([memo.value, X.ev('ATE.memo')], ['- * 외근', '- * 외근'], '자유 메모에서 Tab 이 수준을 올리지 않았거나 ATE.memo 가 따라오지 않았다');
       X.ev('atDraftFlushNow()');
       const d = JSON.parse(X.ev('localStorage.getItem(attDraftKey(ATE.date))'));
-      assert.deepStrictEqual([d.blocks[0].text, d.memo], ['- 한 일\n    - 두 일', '    - 외근'], '임시 저장에 고친 글이 없다');
+      assert.deepStrictEqual([d.blocks[0].text, d.memo], ['- 한 일\n    - 두 일', '- * 외근'], '임시 저장에 고친 글이 없다');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });
@@ -448,9 +550,9 @@ if (!JSDOM) {
       const before = [memo.value, ta.value, b1.value];
       const sym = pop(X).querySelector('.wa-sym[data-r="0"]');
       sym.focus(); change(X, sym, '1.');
-      //  자유 메모도 보이는 본문이라 새 표대로 다시 쓴다('* 외근' = 2수준이라 2칸)
-      assert.deepStrictEqual([ta.value, b1.value, memo.value], ['1. 한 일\n2. 두 일', '1. 회신\n  * 세부', '  * 외근'], '보이는 일간 본문을 새 표대로 다시 쓰지 않았다');
-      assert.strictEqual(X.ev('ATE.memo'), '  * 외근');
+      //  자유 메모도 보이는 본문이지만 '* 외근'(0칸)은 표와 다른 본문 줄이라 그대로 둔다(3차 결정 14)
+      assert.deepStrictEqual([ta.value, b1.value, memo.value], ['1. 한 일\n2. 두 일', '1. 회신\n  * 세부', '* 외근'], '보이는 일간 본문을 새 표대로 다시 쓰지 않았다');
+      assert.strictEqual(X.ev('ATE.memo'), '* 외근');
       assert.deepStrictEqual(X.evJSON('ATE.blocks.map(function(b){ return b.text; })'), ['1. 한 일\n2. 두 일', '1. 회신\n  * 세부'], 'ATE 가 다시 쓴 글을 따라오지 않았다');
       assert.strictEqual(X.doc.activeElement, sym, '표를 바꾼 뒤 초점이 문단 모양 창에 남지 않았다');
       assert.strictEqual(X.ev("localStorage.getItem('tc_attOutline:7')"), JSON.stringify({ v: 1, rows: [{ mk: '1.', indent: 0 }, ...SYM.slice(1)] }),'계정 키에 { v:1, rows } 로 저장하지 않았다');
@@ -562,6 +664,27 @@ if (!JSDOM) {
       X.ev('AWE.sending = false; awSetBusy(false)');
       caret(X.$('#awProg'), 0);
       assert.deepStrictEqual([X.$('#awEd .wa-b').disabled, lvOf(X, '#awEd').disabled], [false, false]);
+      assert.deepStrictEqual(X.errors, []);
+    } finally { X.close(); }
+  });
+
+  test('(B) 3차: 표와 다른 줄은 수준 칸이 빈칸, 0칸 번호 줄은 본문, Enter 는 0칸 빈 줄, Alt+→ 는 1수준', () => {
+    const X = boot();
+    try {
+      openDay(X);
+      const ta = blk(X, 0), at = (pos) => { caret(ta, pos); X.ev('waRefresh()'); };   // jsdom 은 같은 칸 안 커서 이동에 selectionchange 를 내지 않는다
+      setVal(X, ta, '- a\n - 세부\n2. 기획');
+      at(2);
+      assert.strictEqual(lvOf(X, '#atEd').value, '1');
+      at(9);
+      assert.strictEqual(lvOf(X, '#atEd').value, '', '표와 다른 줄인데 수준 칸이 비지 않았다');
+      at(ta.value.length);
+      assert.strictEqual(lvOf(X, '#atEd').value, '0', '0칸 번호 줄이 본문이 아니다');
+      caret(ta, 9); key(X, ta, 'Enter');
+      assert.deepStrictEqual([ta.value, ta.selectionStart, lvOf(X, '#atEd').value], ['- a\n - 세부\n\n2. 기획', 10, '0'], '표와 다른 줄 Enter 가 0칸 빈 본문 줄이 아니다');
+      caret(ta, 9); key(X, ta, 'ArrowRight', { code: 'ArrowRight', altKey: true });
+      assert.strictEqual(ta.value, '- a\n- 세부\n\n2. 기획', '표와 다른 줄 Alt+→ 가 1수준이 아니다');
+      assert.strictEqual(X.ev('ATE.blocks[0].text'), ta.value);
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });

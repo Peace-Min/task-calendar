@@ -132,9 +132,9 @@ if (!JSDOM) {
   test('(U) 조립: 진행사항과 차주계획은 칸의 글 그대로(앞 빈 줄과 끝 공백만 정리), 과제투입시간은 목록 그대로 ----- 와 합계, 막는 것은 과제 0개뿐', () => {
     const X = bootBrowser();
     try {
-      const s = { subj: '10월 다섯째주', prog: '\n  [표적기](~\'28/12)\n  - 담당자 배치표  \n\n', plan: '', hrs: ['알파', '베타'], hours: { '알파': 12, '베타': 2.5, '감마': 9 }, meet: '\n- 주간회의\n\n' };
+      const s = { subj: '10월 다섯째주', prog: '\n  [포털 장비](~\'28/12)\n  - 담당자 배치표  \n\n', plan: '', hrs: ['알파', '베타'], hours: { '알파': 12, '베타': 2.5, '감마': 9 }, meet: '\n- 주간회의\n\n' };
       const c = X.evJSON(`awCompose(${JSON.stringify(s)})`);
-      assert.strictEqual(c.endwork, "  [표적기](~'28/12)\n  - 담당자 배치표", '진행사항이 글 그대로가 아니다');
+      assert.strictEqual(c.endwork, "  [포털 장비](~'28/12)\n  - 담당자 배치표", '진행사항이 글 그대로가 아니다');
       assert.strictEqual(c.planwork, '', '빈 차주계획은 빈 글이다(블록 표시 - 를 넣지 않는다)');
       assert.strictEqual(c.content, '[알파] : 12\n[베타] : 2.5\n-----\n합계 : 14.5', '과제투입시간이 목록의 과제만 따르지 않거나 끝 줄이 다르다');
       assert.strictEqual(c.resultwork, '- 주간회의');

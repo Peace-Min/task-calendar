@@ -7,6 +7,18 @@
 
 ---
 
+## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 작성 보조 수준 판정을 표와 꼭 맞는 줄만으로
+
+기획과 구현 기록 [docs/WRITING-ASSIST.md](docs/WRITING-ASSIST.md) "3차"(결정 10~15). DB 구조 그대로. 계약 개정: wa-core 의 줄 판정, Enter, 수준 칸.
+
+- **결함**: 사용자 표(1수준 `-` 0칸, 2수준 `1.` 2칸)에서 본문에 직접 쓴 `2. 기획` 이 2수준으로 읽혀 Enter, 붙여넣기, 지우기, 표 바꾸기 때 커서와 먼 줄의 번호와 기호가 바뀌었다. 원인은 기호 우선 수준 짐작(`infer`), 늘 읽던 번호 형식(`BASE_NUMS`), 짐작한 수준으로 글 전체를 다시 쓰기.
+- **판정 셋**(`parse`): 0 본문, 1~7 수준(`fitLevel`: 앞 칸 수와 머리기호가 표와 꼭 맞는 줄), `WA.OTHER` 표와 다른 줄(들여 쓴 다른 줄). 번호 형식은 표에 든 것만 읽는다. `infer`, `BASE_NUMS` 는 걷었다.
+- **동작**: 번호 다시 매기기, 붙여넣기, 표 바꿈(`reshape`)은 수준 줄만 고친다. 수준 줄이 아니면 수준 키는 늘 본문에서 시작(Tab, Alt+→ 는 1수준). Enter 는 문단 모양만 따른다: 수준 줄은 표 모양 새 항목, 본문 줄과 표와 다른 줄은 0칸 빈 줄(번호 다시 세지 않음).
+- **화면**: `waRefresh` 수준 칸은 `levelAt` 이 `WA.OTHER` 면 빈칸.
+- **시험**: writing-assist 에 3차 계약(`check3`, 사용자 글 그대로), 변이 4, jsdom 1. 옛 시험 가운데 새 계약과 어긋난 것은 새 계약으로 고쳤다(목록은 기획 문서 구현 기록).
+
+---
+
 ## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 주간보고 임시저장까지 하고 [인트라넷에서 확인]
 
 기획과 구현 기록 [docs/WEEKLY-UPSERT.md](docs/WEEKLY-UPSERT.md) 맨 끝 절. DB 구조 그대로. 계약 개정: 주간 채우기의 인계 문서와 성공 문구, 근태 창 허용 목록(열).
@@ -754,7 +766,7 @@ eval-loop 종합 7/10(인프라는 상용 수준 '거의 다 옴' — 새 시스
 - ATTEND_STATUS 상수 + getAttendance/setAttendance. 향후 netcus 자동작성 시 status/overtime로 그대로 전송.
 - 검증(preview_eval): 단일일 콤보 표시·기본값·변경 저장·재렌더 보존·주간 미표시·콘솔에러0.
 
-> netcus 연동 계약(분석 완료): 로그인 `document.form.{id,pass}` + `goLogin()`; 일간 입력 `pjm_work_view.jsp?y&m&d&id`의 `document.form.{status,overtime,content}` 설정 후 `Bmodify()`(→ go=write POST). 과제명: 표적기(ADD)·LAMD 다기능콘솔·LSAM-II RMSS·지상용CIWS-II·기타·휴가.
+> netcus 연동 계약(분석 완료): 로그인 `document.form.{id,pass}` + `goLogin()`; 일간 입력 `pjm_work_view.jsp?y&m&d&id`의 `document.form.{status,overtime,content}` 설정 후 `Bmodify()`(→ go=write POST). 과제명: 알파·베타·감마·델타·기타·휴가(예시 이름).
 
 ---
 
@@ -974,10 +986,10 @@ v0.1 기준을 사용자 확인으로 확정: **첫 배포 = `a22bfe3`(2026-06-1
 사용자 제공 표준 양식에 맞춰 `buildReport()` 재작성. 이전(과제→날짜→항목, 메모/커밋 불릿, Markdown/평문 토글)에서 **사내 주간보고 골격**으로 전환:
 
 ```
-[표적기(ADD)] : 0
-- ADD 요구사항 구현 중
+[알파] : 0
+- 요구사항 구현 중
 
-[LAMD 다기능콘솔] : 0
+[베타] : 0
 
 [기타] : 0
 - 팀 주간회의

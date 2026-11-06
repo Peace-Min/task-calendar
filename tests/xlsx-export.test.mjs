@@ -80,8 +80,8 @@ test('추출 필터 요약: 끈 상태는 "뺀 상태=이름/이름"으로 적�
 
 test('추출 필터 요약: 복합(검색+구분+상태+발주처): 구분, 발주처, 뺀 상태, 검색 순서', () => {
   assert.strictEqual(
-    X.offExportFilterSummary(NOF({ q: '레이더', qRaw: '레이더', customer: '방위사업청', section: '일반계약', stOff: new Set(['2']), stOffNames: ['종료'] })),
-    '필터: 구분=일반계약, 발주처=방위사업청, 뺀 상태=종료, 검색="레이더"');
+    X.offExportFilterSummary(NOF({ q: '레이더', qRaw: '레이더', customer: '데마시아청', section: '일반계약', stOff: new Set(['2']), stOffNames: ['종료'] })),
+    '필터: 구분=일반계약, 발주처=데마시아청, 뺀 상태=종료, 검색="레이더"');
 });
 
 test('추출 필터 요약: 검색어는 정규화본(q)이 아니라 사용자가 친 원문(qRaw)을 남긴다', () => {
@@ -143,7 +143,7 @@ test('추출 부제: 건수 방어 — 숫자가 아니면 0으로(NaN이 파일
 
 test('추출 행 매핑: null/빈 계약명·통상명칭·상태는 빈 문자열("null" 금지)', () => {
   const r = X.offExportRow({
-    section: '일반계약', customer: '방위사업청', projectName: '  레이더 성능개량  ',
+    section: '일반계약', customer: '데마시아청', projectName: '  레이더 성능개량  ',
     contractName: null, commonName: undefined, status: '',
     startDate: '2026-01-01', endDate: '2026-12-31',
   });
@@ -717,10 +717,10 @@ test('XlsxWriter: 임시 파일에 쓰고 성공 시에만 목적지로 이동(�
 test('발주처 시트: 활성 발주처를 이름순으로 뽑는다(마스터 우선)', () => {
   const ctx = makeExportCtx({
     HOST: true, document: { getElementById: () => null },
-    dbCustomers: [{ id: 3, name: 'LIG넥스원' }, { id: 1, name: '방위사업청' }, { id: 2, name: '국방과학연구소' }],
-    dbCatalog: [{ customer: '한화시스템' }],   // 마스터가 있으면 카탈로그는 무시
+    dbCustomers: [{ id: 3, name: 'ZD전자' }, { id: 1, name: '데마시아청' }, { id: 2, name: '노크사스연구소' }],
+    dbCatalog: [{ customer: '필트오버시스템' }],   // 마스터가 있으면 카탈로그는 무시
   });
-  assert.deepStrictEqual(ctx.offCustomerExportList(), ['국방과학연구소', '방위사업청', 'LIG넥스원']);
+  assert.deepStrictEqual(ctx.offCustomerExportList(), ['노크사스연구소', '데마시아청', 'ZD전자']);
 });
 
 test('발주처 시트: 마스터가 비면 카탈로그에서 실제 쓰인 발주처로 폴백(빈 시트 방지)', () => {
@@ -735,9 +735,9 @@ test('발주처 시트: 마스터가 비면 카탈로그에서 실제 쓰인 발
 test('발주처 시트: 중복·공백은 정리하고 이름순 정렬', () => {
   const ctx = makeExportCtx({
     HOST: true, document: { getElementById: () => null },
-    dbCustomers: [{ id: 1, name: ' 방위사업청 ' }, { id: 1, name: '방위사업청' }, { id: 4, name: '' }, { id: 5, name: '  ' }, { id: 3, name: 'LIG넥스원' }],
+    dbCustomers: [{ id: 1, name: ' 데마시아청 ' }, { id: 1, name: '데마시아청' }, { id: 4, name: '' }, { id: 5, name: '  ' }, { id: 3, name: 'ZD전자' }],
   });
-  assert.deepStrictEqual(ctx.offCustomerExportList(), ['방위사업청', 'LIG넥스원']);
+  assert.deepStrictEqual(ctx.offCustomerExportList(), ['데마시아청', 'ZD전자']);
 });
 
 // 시트2 호스트 컬럼 계약(드리프트 가드) — 2열(No·발주처), 웹은 customers 문자열 배열을 보낸다.

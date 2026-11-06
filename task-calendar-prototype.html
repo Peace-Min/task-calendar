@@ -23341,7 +23341,8 @@ const WA = (function(){
     'A.': ['', 'A', '.'], 'a.': ['', 'a', '.'], '①': ['', 'c', '']
   };
   const NUMS = Object.keys(FMT);
-  const BASE_NUMS = ['1.', '1)', '(1)', '가.', '가)', '(가)'];   // 표에 없어도 늘 번호로 읽는 형식(나머지는 표에 들어 있을 때만: "A. " 같은 글 오인 방지)
+  //  줄의 판정은 셋: 본문(0), 수준(1~7, 표와 꼭 맞는 줄), 표와 다른 줄(OTHER, 들여 쓴 줄에 기호가 있으나 표와 안 맞음. 수준 칸은 빈칸)
+  const OTHER = -1;
   const isNum = f => Object.prototype.hasOwnProperty.call(FMT, f);
   const SYM_DEF = ['-', '*', '·', '•', '□', '■', '○', '●', '◦', '▪', '◆', '◇', '※'];
   const LEVELS = 7, IND_MAX = 20;   // 수준 수는 7로 고정(더하고 빼는 화면 없음), 들여쓰기는 0~20칸
@@ -23410,10 +23411,9 @@ const WA = (function(){
     const s = SEQ[d[1]];
     return d[0] + (s ? s[(n - 1) % s.length] : String(n)) + d[2];
   }
-  //  rest 앞의 번호를 읽는다. 읽을 형식 = 늘 읽는 형식 + 표에 든 형식. 앞 글자가 긴 형식부터
-  //  표에 번호 형식이 하나도 없으면 늘 읽는 형식도 쓰지 않는다("1. 일정" 같은 글을 항목으로 읽지 않는다)
+  //  rest 앞의 번호를 읽는다. 읽을 형식 = 표에 든 형식만(결정 13: 표에 없는 번호 형식은 글의 일부). 앞 글자가 긴 형식부터
   function numFmtsOf(T){
-    const a = T.some(r => isNum(r.mk)) ? BASE_NUMS.slice() : [];
+    const a = [];
     T.forEach(r => { if(isNum(r.mk) && a.indexOf(r.mk) < 0) a.push(r.mk); });
     return a.sort((x, y) => FMT[y][0].length - FMT[x][0].length);
   }
@@ -23440,7 +23440,7 @@ const WA = (function(){
   function parseLine(raw, syms, fmts){
     const ws = leadWs(raw), rest = raw.slice(ws.length);
     let mk = '', kind = '', num = 0;
-    const m = readNum(rest, fmts || BASE_NUMS);
+    const m = readNum(rest, fmts || []);
     if(m){
       mk = m.mk; kind = m.kind; num = m.num;
     } else {
@@ -23452,29 +23452,32 @@ const WA = (function(){
     }
     return { raw, ws, mk: '', kind: '', num: 0, gap: '', body: rest, item: false, level: 0, mode: 'raw' };
   }
-  //  수준 = 기호(번호 형식)가 맞는 수준이 하나뿐이면 앞 칸 수와 상관없이 그 수준.
-  //  맞는 수준이 여럿이면 그 가운데서, 하나도 없으면 모든 수준에서 앞 칸 수가 가장 가까운 수준(같으면 바깥 수준).
-  function infer(p, T){
-    const all = [], hit = [];
-    for(let L = 1; L <= T.length; L++){
-      const r = T[L - 1];
-      all.push(L);
-      if(isNum(r.mk) ? p.kind === r.mk : (p.kind === 'sym' && p.mk === r.mk)) hit.push(L);
-    }
-    if(hit.length === 1) return hit[0];
+  const sameMk = (p, r) => isNum(r.mk) ? p.kind === r.mk : (p.kind === 'sym' && p.mk === r.mk);
+  //  수준 = 앞 칸 수(탭과 전각 공백은 두 칸)와 머리기호(번호는 형식)가 꼭 맞는 표의 수준(결정 10). 없으면 0.
+  //  표 규칙(같은 기호는 같은 칸 수를 못 씀) 덕에 맞는 수준은 많아야 하나다
+  function fitLevel(p, T){
     const w = wsWidth(p.ws);
-    let best = 1, bd = Infinity;
-    (hit.length ? hit : all).forEach(L => { const d = Math.abs(w - T[L - 1].indent); if(d < bd){ bd = d; best = L; } });
-    return best;
+    for(let L = 1; L <= T.length; L++){ const r = T[L - 1]; if(r.indent === w && sameMk(p, r)) return L; }
+    return 0;
   }
+  //  줄마다 level: 0 본문, 1~7 수준(item=true), OTHER 표와 다른 줄(머리는 읽어 두지만 항목이 아니다. 앱이 고치지 않는다)
+  //  0칸에서 표와 다른 줄(직접 쓴 "1. 구현", "가. 회의", "* 참고")은 본문이다(결정 11)
   function parse(v, T){
     const syms = symsOf(T), fmts = numFmtsOf(T), lines = v.split('\n'), starts = [];
     let pos = 0;
     const P = lines.map(raw => {
       starts.push(pos); pos += raw.length + 1;
       const p = parseLine(raw, syms, fmts);
-      if(p.item) p.level = infer(p, T);
-      p.pre = p.item ? p.ws.length + p.mk.length + p.gap.length : p.ws.length;
+      if(p.item){
+        const L = fitLevel(p, T);
+        if(L) p.level = L;
+        else {
+          p.item = false;
+          if(p.ws) p.level = OTHER;
+          else { p.mk = ''; p.kind = ''; p.num = 0; p.gap = ''; p.body = raw; }
+        }
+      }
+      p.pre = (p.item || p.level === OTHER) ? p.ws.length + p.mk.length + p.gap.length : p.ws.length;
       return p;
     });
     return { v, P, starts };
@@ -23491,6 +23494,7 @@ const WA = (function(){
     if(p.item || !p.ws) return 0;
     for(let j = i - 1; j >= 0; j--){
       if(P[j].level > 0) return P[j].level;
+      if(P[j].level === OTHER) return 0;   // 표와 다른 줄 아래의 들여 쓴 글은 어느 항목에도 딸리지 않는다
       if(P[j].raw.trim() !== '' && !P[j].ws) return 0;
     }
     return 0;
@@ -23522,9 +23526,10 @@ const WA = (function(){
         if(b.trim() !== ''){ col = 0; cnt.fill(0); }
         npre.push(0); s = b;
       } else {
-        //  앞 칸 없이 쓴 본문 줄(소제목 등) 아래에서는 번호를 1부터 다시 센다. 빈 줄은 그대로 이어 센다
+        //  본문 줄과 표와 다른 줄은 글자 그대로 둔다(번호도 고치지 않는다).
+        //  앞 칸 없이 쓴 본문 줄(소제목, 직접 쓴 "2. 기획" 등) 아래에서는 번호를 1부터 다시 센다. 빈 줄, 들여 쓴 줄로는 끊기지 않는다
         if(p.raw.trim() !== '' && !p.ws){ col = 0; cnt.fill(0); }
-        npre.push(p.ws.length); s = p.raw;
+        npre.push(p.pre != null ? p.pre : p.ws.length); s = p.raw;
       }
       out.push(s);
     });
@@ -23536,6 +23541,7 @@ const WA = (function(){
   function mapPos(M, F, pos, keep0){
     const i = lineIdx(M, pos), p = M.P[i], c = pos - M.starts[i], rel = c - p.pre;
     const ns = F.starts[i];
+    if(p.mode === 'raw' && p.level <= 0) return ns + c;   // 본문 줄, 표와 다른 줄은 글자가 그대로다
     if(keep0 && c === 0) return ns;   // 줄 맨 앞에서 시작하는 선택은 줄 맨 앞을 지킨다
     if(rel >= 0) return ns + F.npre[i] + rel;
     if(p.mode === 'raw' && c <= p.ws.length) return ns + c;
@@ -23577,9 +23583,11 @@ const WA = (function(){
           if(nl === 0){ p.level = 0; p.mode = 'body0'; }
           else { p.level = nl; p.mode = 'render'; }
         } else {
-          const par = contParent(M.P, i);
-          if(multi && par > 0){ p.mode = 'cont'; continue; }   // 여러 줄이면 이어 쓰기 줄은 제 항목을 따라간다
-          if(dir > 0 && par < T.length){ p.level = par + 1; p.mode = 'render'; changed = true; }
+          //  여러 줄이면 이어 쓰기 줄(앞 칸만 있는 글)은 제 항목을 따라간다
+          if(multi && p.level === 0 && contParent(M.P, i) > 0){ p.mode = 'cont'; continue; }
+          //  본문, 이어 쓰기 줄, 표와 다른 줄은 늘 본문에서 시작한다(결정 12): 올리면 1수준, 내리면 0칸 본문(앞 칸과 머리기호를 걷음)
+          if(dir > 0){ p.level = 1; p.mode = 'render'; changed = true; }
+          else if(p.ws){ p.level = 0; p.mode = 'body0'; changed = true; }
         }
       }
       return changed;
@@ -23600,40 +23608,45 @@ const WA = (function(){
     });
   }
   //  커서 줄(여러 줄이면 고른 줄 모두)의 수준. 섞여 있으면 null.
+  //  표와 꼭 맞는 줄은 그 수준, 0칸 줄과 빈 줄은 본문(0), 들여 쓴 다른 줄(표와 다른 기호 줄, 앞 칸만 있는 글)은 OTHER(수준 칸 빈칸)
+  function shown(p){ return p.level > 0 ? p.level : (p.level === OTHER || (p.ws && p.raw.trim() !== '')) ? OTHER : 0; }
   function levelAt(v, s, e, T){
     const M = parse(v, T), [a, b] = rangeIdx(M, s, e), multi = b > a;
     let lv = null;
     for(let i = a; i <= b; i++){
       const p = M.P[i];
       if(multi && p.raw.trim() === '') continue;
-      if(lv === null) lv = p.level; else if(lv !== p.level) return null;
+      const l = shown(p);
+      if(lv === null) lv = l; else if(lv !== l) return null;
     }
     return lv === null ? 0 : lv;
   }
   function trimSp(v, e){ const m = /^ +/.exec(v.slice(e)); return m ? e + m[0].length : e; }
-  //  Enter: 같은 수준의 새 항목(다음 번호 또는 같은 기호). 빈 항목이면 한 수준 바깥으로, 1수준이면 빈 본문 줄로.
   //  줄을 나눌 때 커서 앞 빈칸을 윗줄 끝에서 지운다(머리나 앞 칸 안으로는 들어가지 않는다)
   function trimBack(v, s, ls, min){ let a = s; while(a > ls + min && v[a - 1] === ' ') a--; return a; }
-  //  Enter = 줄바꿈만. 수준은 절대 바꾸지 않는다(2026-11-05 사용자 결정). 항목 줄이면 같은 수준의 새 항목(다음 번호 또는 같은 기호),
+  //  Enter = 줄바꿈만, 모양은 문단 모양만 따른다(결정 15). 수준은 절대 바꾸지 않는다(2026-11-05 사용자 결정).
+  //  수준 줄(표와 꼭 맞는 줄)이면 그 수준의 표 모양(들여쓰기, 머리기호, 번호형이면 다음 번호, 뒤 빈칸 하나)으로 새 항목.
   //  빈 항목에서 쳐도 같은 수준 빈 항목이 하나 더 생긴다. 수준 바꾸기는 Tab, Alt+←/→, Alt+0~7 만 한다.
   //  커서가 항목 머리(앞 칸, 기호, 뒤 빈칸) 안이면 같은 수준 빈 항목을 위에 넣고 커서는 그 줄 그 자리에 둔다.
-  //  본문 줄(빈칸만 있는 줄 포함)은 들여쓰기만 잇는다.
+  //  본문 줄과 표와 다른 줄(수준 칸이 빈 줄)은 0칸 빈 본문 줄만 만든다(줄의 기호, 번호, 들여쓰기를 따라 하지 않고 번호도 다시 세지 않는다)
   function enter(v, s, e, T){
     if(e < s){ const t = s; s = e; e = t; }
     const M = parse(v, T), i = lineIdx(M, s), p = M.P[i], ls = M.starts[i], c = s - ls;
-    if(s === e && p.item && c < p.pre){
-      const head = p.ws + (p.kind === 'sym' ? p.mk : markerText(p.kind, p.num)) + p.gap + '\n';
-      return finalize(v, v.slice(0, ls) + head + v.slice(ls), T, s + head.length);
+    if(p.item){
+      const r = T[p.level - 1], ind = ' '.repeat(r.indent);
+      if(s === e && c < p.pre){
+        const head = ind + markerText(r.mk, p.num) + ' \n';
+        return finalize(v, v.slice(0, ls) + head + v.slice(ls), T, s + head.length);
+      }
+      if(c >= p.pre){
+        const a = trimBack(v, s, ls, p.pre);
+        const head = '\n' + ind + markerText(r.mk, p.num + 1) + ' ';
+        return finalize(v, v.slice(0, a) + head + v.slice(trimSp(v, e)), T, a + head.length);
+      }
     }
-    if(p.item && c >= p.pre){
-      const a = trimBack(v, s, ls, p.pre);
-      const head = '\n' + p.ws + (p.kind === 'sym' ? p.mk : markerText(p.kind, p.num + 1)) + p.gap;
-      return finalize(v, v.slice(0, a) + head + v.slice(trimSp(v, e)), T, a + head.length);
-    }
-    //  본문 줄: 들여쓰기만 잇는다
-    const inText = c > p.ws.length, a = inText ? trimBack(v, s, ls, p.ws.length) : s;
-    const head = '\n' + leadWs(v.slice(ls, a));
-    return finalize(v, v.slice(0, a) + head + v.slice(inText ? trimSp(v, e) : e), T, a + head.length);
+    //  본문 줄, 표와 다른 줄: 0칸 빈 줄. 커서 앞뒤 빈칸은 걷고 커서 뒤 글은 새 줄 맨 앞으로. 다른 줄은 손대지 않는다
+    const a = trimBack(v, s, ls, 0), v2 = v.slice(0, a) + '\n' + v.slice(trimSp(v, e));
+    return diffOp(v, v2, a + 1, a + 1);
   }
   //  Shift+Enter: 본문 줄. 기호도 들여쓰기도 없이 맨 앞에서 시작한다(2026-11-05 사용자 결정)
   function contEnter(v, s, e, T){
@@ -23662,13 +23675,14 @@ const WA = (function(){
     return finalize(v, v.slice(0, s) + t + v.slice(e), T, s + t.length);
   }
   function renumber(v, s, e, T){ return transform(v, T, s, e, null); }
-  //  표가 바뀌면 항목 줄을 새 표대로 다시 그린다. 옛 표로 수준을 읽는다.
+  //  표가 바뀌면 항목 줄(옛 표와 꼭 맞던 줄)만 새 표대로 다시 그린다. 본문 줄과 표와 다른 줄은 그대로.
   //  옛 항목 글 첫 칸에 꼭 맞춘 본문 줄은 새 글 첫 칸으로 옮긴다.
   function reshape(v, oldT, newT, s, e){
     const M = parse(v, oldT);
     let col = 0;
     M.P.forEach(p => {
       if(p.level > 0){ p.mode = 'render'; col = p.pre; }
+      else if(p.level === OTHER) col = -1;   // 표와 다른 줄은 그대로(결정 14), 그 아래 글도 따라 옮기지 않는다
       else if(p.raw.trim() !== ''){
         if(p.ws && p.ws.length === col) p.mode = 'cont';
         else if(!p.ws) col = 0;
@@ -23682,7 +23696,7 @@ const WA = (function(){
   function applyOp(v, op){ return v.slice(0, op.from) + op.text + v.slice(op.to); }
   //  [{ level, body }] 를 표대로 그린 글. 번호형이면 같은 수준 형제끼리 차례(finish 와 같은 규칙). 근태 가져오기가 쓴다
   function compose(items, T){ return finish(items.map(x => ({ level: x.level, mode: 'render', body: String(x.body) })), T).text; }
-  return { LEVELS, compose, IND_MAX, NUMS, PRESETS, preset, sameTable, isNum, markerText, parse, levelAt, shiftLevel, setLevel, enter, contEnter, unmark, pasteOp, normPaste, indentBlocked, conflicts, freeIndent, setMarker, fitTable, renumber, reshape, applyOp, lineStartAt };
+  return { LEVELS, OTHER, compose, IND_MAX, NUMS, PRESETS, preset, sameTable, isNum, markerText, parse, levelAt, shiftLevel, setLevel, enter, contEnter, unmark, pasteOp, normPaste, indentBlocked, conflicts, freeIndent, setMarker, fitTable, renumber, reshape, applyOp, lineStartAt };
 })();
 /* ----- wa-core 끝 ----- */
 /* ----- 작성 보조 화면 배선(wa*). 도구 줄은 일간, 주간 편집 머리에 하나씩(waToolsHtml 한 벌을 두 자리에 넣는다), 문단 모양 창은 하나(#waPop, body 끝) ----- */
@@ -23775,7 +23789,7 @@ function waMarkTarget(ta){
   WAS.mark = el;
 }
 function waSetDis(el, d){ if(el && el.disabled !== d) el.disabled = d; }
-//  도구 줄 상태: 보이는 편집 화면의 도구만 켠다. 보내는 중이면 끈다. 수준 칸은 커서 줄 수준(섞여 있으면 빈칸), 고칠 본문이 없으면 꺼진 "수준"
+//  도구 줄 상태: 보이는 편집 화면의 도구만 켠다. 보내는 중이면 끈다. 수준 칸은 커서 줄 수준(섞여 있거나 표와 다른 줄이면 빈칸), 고칠 본문이 없으면 꺼진 "수준"
 function waRefresh(){
   const ed = waEd(), ta = waTarget();
   if(WAS.pop && !WAS.pop.classList.contains('hidden') && (!ed || waBusy(ed))) waClosePop(false);
@@ -23785,7 +23799,7 @@ function waRefresh(){
     const lv = box.querySelector('.wa-lv'), b = box.querySelector('.wa-b');
     waSetDis(b, off); waSetDis(lv, off || !ta);
     let want = '';
-    if(!off && ta){ const l = WA.levelAt(ta.value, ta.selectionStart, ta.selectionEnd, waT()); want = l === null ? '' : String(l); }
+    if(!off && ta){ const l = WA.levelAt(ta.value, ta.selectionStart, ta.selectionEnd, waT()); want = (l === null || l < 0) ? '' : String(l); }
     if(lv && lv.value !== want) lv.value = want;
   });
 }

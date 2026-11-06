@@ -109,7 +109,7 @@ if (!JSDOM) {
     { projectUid: P3, name: '구형 유지', color: '#8a5cc8', active: false, writable: false, mine: true, members: 2 },
   ];
   const WATCH = [
-    { projectUid: B1, name: '함대공 훈련장비', customer: 'D사', status: '진행중', statusId: 1, sectionId: 1, members: 2, hidden: false },
+    { projectUid: B1, name: '하늘 훈련장비', customer: 'D사', status: '진행중', statusId: 1, sectionId: 1, members: 2, hidden: false },
     { projectUid: B2, name: '숨겨진 표본', customer: 'E사', status: '진행중', statusId: 1, sectionId: 1, members: 0, hidden: true },
   ];
   const EV = (n, projectUid, o = {}) => Object.assign({ eventUid: U(n), projectUid, title: '일정 ' + n, startDate: today(), endDate: today(), startTime: null, endTime: null,
@@ -195,7 +195,7 @@ if (!JSDOM) {
     //  날짜 팝업 과제 머리
     W.ev(`pcOpenDayList(todayYmd(), document.querySelector('#pcView .pc-day[data-date="' + todayYmd() + '"]'))`); await settle();
     const heads = W.qa('.pc-dl-g .pc-dl-gh').map((h) => [h.querySelector('.pc-dl-nm').textContent, !!h.querySelector('i.pc-ring'), (h.querySelector('.pc-dl-ro') || {}).textContent || '']);
-    assert.deepStrictEqual(heads, [['장비 개발', false, ''], ['함대공 훈련장비', true, '관심 과제']], '날짜 팝업 과제 머리의 빈 동그라미나 이름표가 틀렸다');
+    assert.deepStrictEqual(heads, [['장비 개발', false, ''], ['하늘 훈련장비', true, '관심 과제']], '날짜 팝업 과제 머리의 빈 동그라미나 이름표가 틀렸다');
     W.ev('pcClosePop(true)');
     //  상세 창 머리
     W.ev(`pcOpenDetail("${U(2)}")`); await settle();
@@ -205,7 +205,7 @@ if (!JSDOM) {
     await W.click('#pcView [data-act="view"][data-v="week"]');
     await loadReply(W, evs);
     const names = W.qa('#pcView .pc-wname').map((n) => [n.querySelector('.pc-wpn').textContent, !!n.querySelector('.pc-ring'), (n.querySelector('.pc-state') || {}).textContent || '']);
-    assert.deepStrictEqual(names, [['장비 개발', false, ''], ['구형 유지', false, '숨긴 과제, 읽기 전용'], ['함대공 훈련장비', true, '관심 과제']], '주간 과제 줄의 빈 동그라미나 이름표가 틀렸다');
+    assert.deepStrictEqual(names, [['장비 개발', false, ''], ['구형 유지', false, '숨긴 과제, 읽기 전용'], ['하늘 훈련장비', true, '관심 과제']], '주간 과제 줄의 빈 동그라미나 이름표가 틀렸다');
   }));
 
   test('탭②: 탭은 목록만 바꾼다(달력은 두 탭 체크의 합), 좌우 키로 옮기며 연다, 고른 탭을 기억하고 다시 들어오면 그 탭', () => withBoot({}, async (W) => {

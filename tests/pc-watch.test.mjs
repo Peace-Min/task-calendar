@@ -270,15 +270,15 @@ if (!JSDOM) {
   ];
   //  보기만 과제(B1 보임, B2 숨겨짐)
   const WATCH = [
-    { projectUid: B1, name: '함대공 훈련장비', customer: 'D사', status: '진행중', statusId: 1, sectionId: 1, members: 2, hidden: false },
+    { projectUid: B1, name: '하늘 훈련장비', customer: 'D사', status: '진행중', statusId: 1, sectionId: 1, members: 2, hidden: false },
     { projectUid: B2, name: '숨겨진 표본', customer: 'E사', status: '진행중', statusId: 1, sectionId: 1, members: 0, hidden: true },
   ];
   //  공식 과제 목록(__applyProjects 행): P1 은 내 과제, B1 은 보기만, C1 은 일정 없음, D1 은 종료, E1 은 두 달 넘게 조용함
   const ROW = (uid, name, o = {}) => Object.assign({ uid, project_name: name + ' 사업', common_name: name, contract_name: name + ' 계약', customer: 'D사', section: '개발',
     status: '진행중', customerId: 1, sectionId: 1, statusId: 1, start_date: '2026-01-01', end_date: '2027-12-31', dev_end_date: '', note: '' }, o);
   const CATALOG = [
-    ROW(P1, '장비 개발'), ROW(B1, '함대공 훈련장비'), ROW(C1, '해양 부이 통신'),
-    ROW(D1, '종료 과제', { status: '종료', statusId: 2 }), ROW(E1, '표적기'),
+    ROW(P1, '장비 개발'), ROW(B1, '하늘 훈련장비'), ROW(C1, '해양 부이 통신'),
+    ROW(D1, '종료 과제', { status: '종료', statusId: 2 }), ROW(E1, '포털 장비'),
   ];
   const CAT = [
     { projectUid: P1, lastActivity: ago(0), memberIds: ['u1', 'u2', 'u3', 'u4', 'u5', 'u6'] },
@@ -384,7 +384,7 @@ if (!JSDOM) {
     assert.ok(W.q('#caList .ca-g'), '기본 순서(과제 추가 창과 같은 DB 순서)인데 구분 묶음이 없다(§7.3)');
     //  기본: 일정 없는 과제 숨김 켬, 종료 상태는 끔(진행, 선진행만), DB 순서(구분, No, 그다음 이름)
     assert.strictEqual(W.el('caOnlyAct').checked, true, '"일정 없는 과제 숨김"이 처음 켜져 있지 않다');
-    assert.deepStrictEqual(rowNames(W), ['장비 개발', '표적기', '함대공 훈련장비'], '처음 목록이 DB 순서(일정 없는 과제와 종료 과제 제외)가 아니다');
+    assert.deepStrictEqual(rowNames(W), ['장비 개발', '포털 장비', '하늘 훈련장비'], '처음 목록이 DB 순서(일정 없는 과제와 종료 과제 제외)가 아니다');
     assert.strictEqual(W.el('caCount').textContent, '3 / 5건');
     //  상태 체크: 종료만 꺼져 있고, 공용 기억(tc_projStatusOff)은 바뀌지 않는다
     assert.deepStrictEqual(Object.fromEntries(W.qa('#caStChecks [data-offst]').map((i) => [i.dataset.offst, i.checked])), { 1: true, 2: false });
@@ -397,18 +397,18 @@ if (!JSDOM) {
     const by = (name) => rowsOf(W).find((r) => r.querySelector('.cat-nm').dataset.full === name);
     assert.strictEqual(by('장비 개발').querySelector('.ca-c-rec').textContent, '오늘');
     assert.ok(by('장비 개발').querySelector('.ca-hot'), '오늘 활동이 강조(ca-hot)되지 않았다');
-    assert.strictEqual(by('함대공 훈련장비').querySelector('.ca-c-rec').textContent, '2일 전');
-    assert.ok(by('함대공 훈련장비').querySelector('.ca-hot'), '이틀 안 활동이 강조되지 않았다');
-    assert.strictEqual(by('표적기').querySelector('.ca-c-rec').textContent, '2달 전');
-    assert.ok(!by('표적기').querySelector('.ca-hot') && by('표적기').classList.contains('ca-quiet'), '두 달 넘은 줄이 흐려지지 않았다');
-    assert.ok(!by('함대공 훈련장비').classList.contains('ca-quiet'));
-    assert.strictEqual(by('함대공 훈련장비').querySelector('.ca-mbc').textContent, '2명');
+    assert.strictEqual(by('하늘 훈련장비').querySelector('.ca-c-rec').textContent, '2일 전');
+    assert.ok(by('하늘 훈련장비').querySelector('.ca-hot'), '이틀 안 활동이 강조되지 않았다');
+    assert.strictEqual(by('포털 장비').querySelector('.ca-c-rec').textContent, '2달 전');
+    assert.ok(!by('포털 장비').querySelector('.ca-hot') && by('포털 장비').classList.contains('ca-quiet'), '두 달 넘은 줄이 흐려지지 않았다');
+    assert.ok(!by('하늘 훈련장비').classList.contains('ca-quiet'));
+    assert.strictEqual(by('하늘 훈련장비').querySelector('.ca-mbc').textContent, '2명');
     assert.strictEqual(by('장비 개발').querySelector('.ca-act').textContent.trim(), '내 과제', '내 과제 줄의 동작이 "내 과제"(흐림)가 아니다');
     assert.ok(!by('장비 개발').querySelector('.ca-act button'), '내 과제 줄에 누르는 단추가 있다');
     assert.ok(by('장비 개발').classList.contains('have'), '내 과제 줄이 흐려지지 않는다');
-    assert.strictEqual(by('함대공 훈련장비').querySelector('.ca-act button').textContent, '✓ 관심 과제', '이미 관심 과제인 과제가 "✓ 관심 과제"가 아니다');
-    assert.strictEqual(by('함대공 훈련장비').querySelector('.ca-act button').title, '누르면 관심 과제에서 뺍니다');
-    assert.strictEqual(by('표적기').querySelector('.ca-act button').textContent, '추가');
+    assert.strictEqual(by('하늘 훈련장비').querySelector('.ca-act button').textContent, '✓ 관심 과제', '이미 관심 과제인 과제가 "✓ 관심 과제"가 아니다');
+    assert.strictEqual(by('하늘 훈련장비').querySelector('.ca-act button').title, '누르면 관심 과제에서 뺍니다');
+    assert.strictEqual(by('포털 장비').querySelector('.ca-act button').textContent, '추가');
     //  순수 계산
     const P = (c) => W.ev(c);
     assert.deepStrictEqual([0, 1, 6, 7, 29, 30, 364, 365].map((d) => P(`caAgoText(${d})`)), ['오늘', '1일 전', '6일 전', '1주 전', '4주 전', '1달 전', '12달 전', '1년 넘음']);
@@ -416,7 +416,7 @@ if (!JSDOM) {
     assert.strictEqual(P('caActDays(new Date(2026, 10, 1, 23, 30).toISOString(), new Date(2026, 10, 4, 0, 10).getTime())'), 3, '날짜 기준(자정 경계)으로 셈하지 않는다');
     assert.strictEqual(P('caActDays("garbage")'), null);
     //  펼침: 계약명, 계약기간, 사업명, 개발 기간
-    await W.click(by('함대공 훈련장비'));
+    await W.click(by('하늘 훈련장비'));
     const x = W.q('#caList .ca-x:not([hidden])');
     assert.ok(x, '줄을 눌러도 펼침이 열리지 않는다');
     for (const t of ['계약명', '계약기간', '사업명', '개발 기간']) assert.ok([...x.querySelectorAll('dt')].some((d) => d.textContent === t), `펼침에 ${t} 가 없다`);
@@ -433,7 +433,7 @@ if (!JSDOM) {
     //  No 는 구분 안 번호(과제 추가 창과 같은 값), 기본 순서는 이름순이 아니라 DB 순서(No 먼저, 없으면 이름)
     W.ev(`dbCatalogById("db-${E1}").sortNo = 1; dbCatalogById("db-${B1}").sortNo = 2; renderCaList();`); await settle();
     await W.change(W.el('caOnlyAct'), false);
-    assert.deepStrictEqual(rowNames(W), ['표적기', '함대공 훈련장비', '장비 개발', '해양 부이 통신'], '숨김을 끄면 일정 없는 과제도 DB 순서 자리에 나와야 한다(종료는 아직 꺼짐)');
+    assert.deepStrictEqual(rowNames(W), ['포털 장비', '하늘 훈련장비', '장비 개발', '해양 부이 통신'], '숨김을 끄면 일정 없는 과제도 DB 순서 자리에 나와야 한다(종료는 아직 꺼짐)');
     assert.deepStrictEqual(rowsOf(W).map((r) => r.querySelector('.ca-c-no').textContent), ['1', '2', '', ''], 'No 열이 구분 안 번호가 아니다');
     assert.ok(/일정 없음/.test(rowsOf(W)[3].querySelector('.ca-c-rec').textContent));
     //  최근 활동 열 머리: button, aria-sort. 누를 때마다 최근 순(▼) → 오래된 순(▲) → 기본 순서. 정렬 중에는 구분 묶음을 풀고, 일정 없는 과제는 어느 방향이든 끝
@@ -442,16 +442,16 @@ if (!JSDOM) {
     await W.click(hb());
     assert.strictEqual(hc().getAttribute('aria-sort'), 'descending'); assert.ok(/▼/.test(hb().textContent));
     assert.ok(!W.q('#caList .ca-g'), '정렬 중인데 구분 묶음이 남았다');
-    assert.deepStrictEqual(rowNames(W), ['장비 개발', '함대공 훈련장비', '표적기', '해양 부이 통신'], '최근 순이 아니다');
+    assert.deepStrictEqual(rowNames(W), ['장비 개발', '하늘 훈련장비', '포털 장비', '해양 부이 통신'], '최근 순이 아니다');
     assert.deepStrictEqual(rowsOf(W).map((r) => r.querySelector('.ca-c-no').textContent), ['', '2', '1', ''], '정렬해도 No 는 그 과제의 값 그대로여야 한다');
     assert.strictEqual(W.doc.activeElement, hb(), '정렬 뒤 포커스가 열 머리가 아니다');
     await W.click(hb());
     assert.strictEqual(hc().getAttribute('aria-sort'), 'ascending'); assert.ok(/▲/.test(hb().textContent));
-    assert.deepStrictEqual(rowNames(W), ['표적기', '함대공 훈련장비', '장비 개발', '해양 부이 통신'], '오래된 순이 아니다(일정 없는 과제는 끝)');
+    assert.deepStrictEqual(rowNames(W), ['포털 장비', '하늘 훈련장비', '장비 개발', '해양 부이 통신'], '오래된 순이 아니다(일정 없는 과제는 끝)');
     await W.click(hb());
     assert.strictEqual(hc().getAttribute('aria-sort'), 'none');
     assert.ok(W.q('#caList .ca-g'), '세 번째 누름에 기본 순서(구분 묶음)로 돌아가지 않았다');
-    assert.deepStrictEqual(rowNames(W), ['표적기', '함대공 훈련장비', '장비 개발', '해양 부이 통신']);
+    assert.deepStrictEqual(rowNames(W), ['포털 장비', '하늘 훈련장비', '장비 개발', '해양 부이 통신']);
     //  기억하지 않는다(창을 다시 열면 기본 순서)
     await W.click(hb());
     W.ev('closeModal("#catAddModal")'); await settle(); W.clock.advance(400); await settle();
@@ -466,19 +466,19 @@ if (!JSDOM) {
   test('보기만R④: 참여자 수 단추는 과제 탭의 참여자 명단 창(#pcMembersModal)을 창 위에 연다, 사람으로 걸렸으면 그 줄을 강조한다', () => withBoot({}, async (W) => {
     await enter(W);
     await openWatchWin(W);
-    const row = rowsOf(W).find((r) => r.querySelector('.cat-nm').dataset.full === '함대공 훈련장비');
+    const row = rowsOf(W).find((r) => r.querySelector('.cat-nm').dataset.full === '하늘 훈련장비');
     await W.click(row.querySelector('.ca-mbc'));
     assert.ok(!W.el('pcMembersModal').classList.contains('hidden'), '명단 창이 열리지 않았다');
     assert.ok(!W.el('catAddModal').classList.contains('hidden'), '명단을 열었더니 관심 과제 추가 창이 닫혔다(창 위에 창이어야 한다)');
     assert.strictEqual(W.cmds('projectCalendarMembers').at(-1).projectUid, B1);
-    assert.strictEqual(W.el('pcmHead').textContent, '함대공 훈련장비 참여자 2명');
+    assert.strictEqual(W.el('pcmHead').textContent, '하늘 훈련장비 참여자 2명');
     await W.reply('projectCalendarMembers', { ok: true, data: { projectUid: B1, total: 2, groups: [{ org: '개발1팀', users: [{ name: '김하늘', org: '개발1팀', title: '책임', me: false }, { name: '박서준', org: '개발1팀', title: '선임', me: false }] }] } });
     assert.deepStrictEqual(W.qa('#pcmBox .pcm-row').map((r) => r.querySelector('.pcm-nm').textContent), ['김하늘', '박서준']);
     assert.strictEqual(W.qa('#pcmBox .pcm-row.hit').length, 0, '아무 사람도 고르지 않았는데 강조된 줄이 있다');
     //  닫고, 사람을 골라(CAW.who) 다시 열면 그 사람 줄이 강조된다
     W.ev('closeModal("#pcMembersModal")'); await settle(); W.clock.advance(400); await settle();
     W.ev('CAW.who = new Map([["u2", "박서준"]]); caWatchSyncChrome(); renderCaList(true);'); await settle();
-    await W.click(W.qa('#caList .ca-r').find((r) => r.querySelector('.cat-nm').dataset.full === '함대공 훈련장비').querySelector('.ca-mbc'));
+    await W.click(W.qa('#caList .ca-r').find((r) => r.querySelector('.cat-nm').dataset.full === '하늘 훈련장비').querySelector('.ca-mbc'));
     await W.reply('projectCalendarMembers', { ok: true, data: { projectUid: B1, total: 2, groups: [{ org: '개발1팀', users: [{ name: '김하늘', org: '개발1팀', title: '책임', me: false }, { name: '박서준', org: '개발1팀', title: '선임', me: false }] }] } });
     assert.deepStrictEqual(W.qa('#pcmBox .pcm-row.hit .pcm-nm').map((x) => x.textContent), ['박서준'], '고른 사람의 줄만 강조돼야 한다');
   }));
@@ -487,9 +487,9 @@ if (!JSDOM) {
     await enter(W);
     await openWatchWin(W);
     await W.type(W.el('caSearch'), '김하늘');
-    assert.deepStrictEqual(rowNames(W), ['장비 개발', '함대공 훈련장비'], '참여자 이름으로 과제가 걸러지지 않는다');
+    assert.deepStrictEqual(rowNames(W), ['장비 개발', '하늘 훈련장비'], '참여자 이름으로 과제가 걸러지지 않는다');
     const hit = (n) => rowsOf(W).find((r) => r.querySelector('.cat-nm').dataset.full === n).querySelector('.ca-hitn');
-    assert.strictEqual(hit('함대공 훈련장비').textContent, '김하늘 포함');
+    assert.strictEqual(hit('하늘 훈련장비').textContent, '김하늘 포함');
     await W.type(W.el('caSearch'), '책');   // 이름이 아니라 직급은 찾지 않는다(과제 이름에도 없다)
     assert.deepStrictEqual(rowNames(W), []);
     await W.type(W.el('caSearch'), '개발');
@@ -541,7 +541,7 @@ if (!JSDOM) {
     await W.click(ck('u1'));
     assert.strictEqual(W.el('caWhoT').textContent, '김하늘');
     assert.ok(W.el('caWho').classList.contains('act'));
-    assert.deepStrictEqual(rowNames(W), ['장비 개발', '함대공 훈련장비'], '고른 사람이 참여한 과제만 남아야 한다');
+    assert.deepStrictEqual(rowNames(W), ['장비 개발', '하늘 훈련장비'], '고른 사람이 참여한 과제만 남아야 한다');
     assert.ok(W.qa('#caList .ca-hitn').every((x) => /김하늘/.test(x.textContent)), '참여자 칸에 고른 사람 포함 글자가 없다');
     assert.deepStrictEqual(nodes().filter((b) => b.querySelector('.pk-dotsel')).map((b) => b.dataset.unit), ['개발본부', '개발1팀'], '고른 사람이 있는 노드에 점이 없다');
     assert.ok(all().indeterminate && !all().checked, '일부만 고른 조직의 "전원"이 반쯤이 아니다');
@@ -555,7 +555,7 @@ if (!JSDOM) {
     assert.ok(W.q('#caWhoPop .pk-tree'), '찾는 동안 트리가 사라졌다');
     await W.click(ck('u3'));
     assert.strictEqual(W.el('caWhoT').textContent, '김하늘 외 1');
-    assert.deepStrictEqual(rowNames(W), ['장비 개발', '표적기', '함대공 훈련장비'], '한 명이라도 참여한 과제가 남아야 한다(합집합)');
+    assert.deepStrictEqual(rowNames(W), ['장비 개발', '포털 장비', '하늘 훈련장비'], '한 명이라도 참여한 과제가 남아야 한다(합집합)');
     await W.type(W.ev('CAWP.q'), '');
     //  트리에서 다른 조직: 경로, 하위 조직 줄, 전원(하위 조직 포함)
     await W.click(W.q('#caWhoPop .pk-node[data-unit="기획본부"]'));
@@ -609,7 +609,7 @@ if (!JSDOM) {
   test('보기만R⑦: [보기]는 호스트에 넣고 "✓ 보는 중"이 되며 아래에 개수를 보인다, 다시 누르면 빼고, 내 과제로는 넣지 않는다', () => withBoot({}, async (W) => {
     await enter(W);
     await openWatchWin(W);
-    const row = () => rowsOf(W).find((r) => r.querySelector('.cat-nm').dataset.full === '표적기');
+    const row = () => rowsOf(W).find((r) => r.querySelector('.cat-nm').dataset.full === '포털 장비');
     const nCats = W.ev('state.categories.length');
     await W.click(row().querySelector('[data-cawatch]'));
     const req = W.last('pcWatchAdd');
@@ -748,12 +748,12 @@ if (!JSDOM) {
     const before = ids();
     assert.ok(!before.includes(B1) && !before.includes(B2));
     await openWatchWin(W);
-    await W.click(rowsOf(W).find((r) => r.querySelector('.cat-nm').dataset.full === '표적기').querySelector('[data-cawatch]'));
+    await W.click(rowsOf(W).find((r) => r.querySelector('.cat-nm').dataset.full === '포털 장비').querySelector('[data-cawatch]'));
     await W.reply('pcWatchAdd', { ok: true, data: { projectUid: E1, added: true, count: 3 } });
     assert.strictEqual(ids(), before, '보기만 과제가 내 과제 목록(근태, 취합, 필터가 읽는 state.categories)에 섞였다');
     //  개인 달력의 과제 필터와 근태 과제 선택이 쓰는 목록에도 없다
     const names = W.ev('JSON.stringify(state.categories.map(c => c.name))');
-    for (const n of ['함대공 훈련장비', '표적기', '숨겨진 표본']) assert.ok(!names.includes(n), `${n} 이 개인 과제 목록에 있다`);
+    for (const n of ['하늘 훈련장비', '포털 장비', '숨겨진 표본']) assert.ok(!names.includes(n), `${n} 이 개인 과제 목록에 있다`);
     assert.ok(!W.ev('typeof atTaskList === "function" ? JSON.stringify(atTaskList()).includes("' + B1 + '") : false'), '근태 과제 목록에 보기만 과제가 있다');
     assert.strictEqual(W.cmds('saveState').filter((p) => /db-b/.test(JSON.stringify(p))).length, 0, '보기만 과제가 개인 저장에 실렸다');
   }));
@@ -843,7 +843,7 @@ if (!JSDOM) {
     try {
       await enter(W);
       await openWatchWin(W);
-      await W.click(rowsOf(W).find((r) => r.querySelector('.cat-nm').dataset.full === '표적기').querySelector('[data-cawatch]'));
+      await W.click(rowsOf(W).find((r) => r.querySelector('.cat-nm').dataset.full === '포털 장비').querySelector('[data-cawatch]'));
       await W.reply('pcWatchAdd', { ok: true, data: { projectUid: E1, added: true, count: 3 } });
       assert.ok(W.ev('state.categories.some(c => c.id === "db-' + E1 + '")'), '변이가 내 과제에 섞지 못했다(시험이 잡을 차이가 없다)');
     } finally { W.close(); }

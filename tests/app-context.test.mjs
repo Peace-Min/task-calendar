@@ -1813,7 +1813,7 @@ if (!JSDOM) {
       seedCatalog([]);
       assert.strictEqual(ev("document.getElementById('offExport').disabled"), true, '0건인데 활성이면 빈 파일이 나온다');
       seedCatalog([
-        { id: 'db-1', name: '레이더', color: '#3e5be0', source: 'db', customer: '방위사업청', section: '일반계약',
+        { id: 'db-1', name: '레이더', color: '#3e5be0', source: 'db', customer: '데마시아청', section: '일반계약',
           status: '진행중', startDate: '2026-01-01', endDate: '2026-12-31', devEndDate: '2026-09-30',
           projectName: '레이더 성능개량', contractName: '', commonName: '레이더' },
       ]);
@@ -1921,7 +1921,7 @@ if (!JSDOM) {
     test('편입분 메타 하위호환: 8개 속성이 든 옛 XML도 에러 없이 파싱되고 name/color/source 복원', () => {
       const oldXml = '<?xml version="1.0" encoding="UTF-8"?><taskCalendar version="1"><categories>' +
         '<category id="db-old" color="#c2770a" createdAt="2026-01-01T00:00:00.000Z" source="db" dbGone="1"' +
-        ' customer="방위사업청" section="일반계약" status="진행중" startDate="2026-01-01" endDate="2026-12-31"' +
+        ' customer="데마시아청" section="일반계약" status="진행중" startDate="2026-01-01" endDate="2026-12-31"' +
         ' projectName="옛 사업명" contractName="옛 계약명" commonName="옛 통상명칭">' +
         '<name>옛 이름</name><description></description></category>' +
         '</categories><entries></entries><todos></todos></taskCalendar>';
@@ -2001,9 +2001,9 @@ if (!JSDOM) {
                   { id: 'e2', title: 'b', date: '2026-07-21', categoryId: 'p1' }],
       }));
       applyRows([
-        DBROW('u1', { customer: '방위사업청', customerId: 2, project_name: '함정 레이더 성능개량', contract_name: '저장장치', common_name: '레이더 성능개량', status: '진행중', statusId: 1 }),
-        DBROW('u2', { customer: '방위사업청', customerId: 2, project_name: '함정 레이더 성능개량', contract_name: '처리장치', common_name: '레이더 성능개량', status: '진행중', statusId: 1 }),
-        DBROW('u3', { section: '선진행', sectionId: 2, customer: '국방과학연구소', customerId: 3, project_name: '위성 통신 체계', contract_name: '', common_name: '위성통신', status: '', statusId: null, start_date: null, end_date: null }),
+        DBROW('u1', { customer: '데마시아청', customerId: 2, project_name: '함정 레이더 성능개량', contract_name: '저장장치', common_name: '레이더 성능개량', status: '진행중', statusId: 1 }),
+        DBROW('u2', { customer: '데마시아청', customerId: 2, project_name: '함정 레이더 성능개량', contract_name: '처리장치', common_name: '레이더 성능개량', status: '진행중', statusId: 1 }),
+        DBROW('u3', { section: '선진행', sectionId: 2, customer: '노크사스연구소', customerId: 3, project_name: '위성 통신 체계', contract_name: '', common_name: '위성통신', status: '', statusId: null, start_date: null, end_date: null }),
       ]);
       ev('rlPick.clear(); rlpFor = null; rlpCollapsed.clear();');
     };
@@ -2044,7 +2044,7 @@ if (!JSDOM) {
                     "return JSON.stringify({nm:(r.querySelector('.rl-picked-nm')||{}).textContent, meta:(r.querySelector('.rl-picked-meta')||{}).textContent, clear:!!r.querySelector('[data-rlclear]')});})()");
       const b = JSON.parse(p1);
       assert.strictEqual(b.nm, '레이더 성능개량', '배지 주 라벨이 통상명칭이 아니다');
-      assert.strictEqual(b.meta, '방위사업청, 처리장치', '배지 보조가 발주처·계약명이 아니다(=올바른 대상 u2 확인)');
+      assert.strictEqual(b.meta, '데마시아청, 처리장치', '배지 보조가 발주처·계약명이 아니다(=올바른 대상 u2 확인)');
       assert.ok(b.clear, '해제 버튼이 없다');
       assert.strictEqual(ev("document.getElementById('rlRun').disabled"), false, '선택 후 실행이 활성화되지 않는다');
     });
@@ -2443,7 +2443,7 @@ if (!JSDOM) {
       assert.ok(/2026-01-01 ~ 2026-12-31/.test(t), '계약기간(offPeriod)이 행에 없다');
       for (const lb of ['발주처', '사업', '계약', '기간'])
         assert.ok(t.includes(lb), `레이블 '${lb}'가 없다 — 값만 흘리면 무슨 값인지 모른다: ` + t);
-      assert.ok(/방위사업청/.test(t) && /함정 레이더 성능개량/.test(t) && /저장장치/.test(t), '발주처·사업명·계약명이 유실됐다');
+      assert.ok(/데마시아청/.test(t) && /함정 레이더 성능개량/.test(t) && /저장장치/.test(t), '발주처·사업명·계약명이 유실됐다');
       assert.ok(/진행중/.test(t), '상태가 유실됐다');
       // 구조 — 1행(주라벨+구분 배지+상태 칩) / 2행(레이블 필드)
       const has = s => ev("!!document.querySelector('#rlpList .off-row[data-rlpid=\"db-u1\"] " + s + "')");

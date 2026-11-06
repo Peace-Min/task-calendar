@@ -329,7 +329,7 @@ function dropUser(u) {
 }
 
 /* ── 무작위 state 생성 ─────────────────────────────────────────────────── */
-const NAMES = ['표적기(ADD)', '울산급 Batch-IV', '휴가', '기타', '한글 과제 名'];
+const NAMES = ['알파(A1)', '델타 Batch-IV', '휴가', '기타', '한글 과제 名'];
 //  옛 웹이 보내던 Git, SVN 키를 섞는다(2026-10-26 구조 18). 저장은 이 키를 읽지 않고 버려야 하고, 다시 읽은 state 에도 없어야 한다.
 //  ★ 보낸 state 의 깊은 사본에만 붙인다. 왕복 비교의 기준은 섞기 전 state 다.
 function withLegacy(state, round) {
