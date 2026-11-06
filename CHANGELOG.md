@@ -7,6 +7,17 @@
 
 ---
 
+## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 근태 가져오기 서식을 문단 모양으로 합침
+
+기획 [docs/WRITING-ASSIST.md](docs/WRITING-ASSIST.md) "2차", 시안 `dist/proto/at-import-fmt-v1.html`(저장소 밖). DB 구조 그대로.
+
+- **걷음**: 가져오기 패널 `#atOpts` 의 [서식] 줄(`#atOMk`, `#atOInd`, `.at-fmt`), `AT_FMT_PREFIX`, `atFmtKeyOf`, `atFmtLoad`, `atFmt`, `atFmtSave`, `atFmtRender`, `ATE.fmt` 와 그 change 처리. 예전 `tc_attFmt:<계정>` 값은 읽지 않는다(지우지도 않는다). payload `source.fmt` 와 보고서 창 쪽(`#rptMarker`, `reportMarkerSpecFor`, `reportRowBodyText`)은 그대로.
+- **캘린더 불러오기**: `atCalLines`/`atCalBody` 가 제목을 1수준, 설명(설명 포함일 때)을 2수준으로 두고 `WA.compose(items, waT())` 로 그린다. `WA.compose` 는 wa-core 의 `finish`(수준 키와 같은 번호 규칙: 같은 수준 형제끼리 차례)를 그대로 쓰는 새 공개 함수. 계정은 `waT()` 와 같다.
+- **패널 카드**: 캘린더 카드의 남긴 기록은 불러올 모양 그대로(제목 줄 뒤 종류 표시, 설명은 제 줄), 뺀 기록은 전과 같이 줄 그어 보인다. 문단 모양을 바꾸거나 창 안 Ctrl+Z 로 되돌리면 `waImportRedraw` 가 카드를 다시 그린다. 이전 보고 출처는 그대로.
+- **시험**: writing-assist 에 가져오기 계약 1건과 변이 3건(설명 1수준, 카드 다시 그리기 빼기, 예전 보고서 서식 함수). attendance-web 의 처음 블록 시험과 가져오기 서식 시험을 새 계약으로 고쳤다.
+
+---
+
 ## 🆕 2026-11-05 (다음 판, 번호는 배포 때): 근태 본문 수준과 문단 모양(이슈 #19)
 
 기획 [docs/WRITING-ASSIST.md](docs/WRITING-ASSIST.md), 시안 `dist/proto/writing-assist-v3.html`(저장소 밖). DB 구조 그대로.

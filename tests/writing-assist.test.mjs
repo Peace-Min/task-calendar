@@ -6,6 +6,8 @@
 //   (B) jsdom 근태 창(?win=attend): 일간 본문과 자유 메모, 주간 세 칸에서 키(Tab, Alt+화살표, Alt+0~7, Enter, Shift+Enter, Backspace, 붙여넣기, 한글 조합),
 //       고친 뒤 ATE, AWE 가 따라온다, 문단 모양 창(7줄, 막힌 칸 수, 보이는 보고만 다시 쓰기, 창 안 Ctrl+Z, Esc 는 창만 닫기),
 //       계정별 저장과 5줄 표 읽기, 열기와 초점으로는 글을 고치지 않는다, 숨기기와 화면 전환 정리, 보내는 중 잠금.
+//       2차(2026-11-06): 가져오기 [서식] 줄이 없고 캘린더 불러오기는 제목 1수준, 설명 2수준(문단 모양 표, 번호), 표를 바꾸면 패널 카드도 새 모양,
+//       이전 보고 출처는 그대로. 변이 셋(설명 1수준, 카드 다시 그리기 빼기, 예전 보고서 서식 함수)을 같은 검사가 잡는다.
 // 생략 규약: jsdom 이 없으면 (B)는 등록되지 않고 skip(판정 없음)으로 계수된다.
 import vm from 'node:vm';
 import { test, skip, assert, loadAppSource, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
@@ -258,11 +260,11 @@ if (!JSDOM) {
 } else {
   const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms));
   const ATTEND_URL = 'https://tcapp.local/index.html?win=attend';
-  function boot(pre) {
+  function boot(pre, src = app) {
     const posted = [], errors = [];
     const vc = new jsdomMod.VirtualConsole();
     vc.on('jsdomError', (e) => { const s = String(e && (e.stack || e.message) || e); if (!/Not implemented/.test(s)) errors.push(s); });
-    const dom = new JSDOM(app, {
+    const dom = new JSDOM(src, {
       runScripts: 'dangerously', pretendToBeVisual: true, url: ATTEND_URL, virtualConsole: vc,
       beforeParse(win) {
         win.chrome = { webview: { postMessage(m) { let o = null; try { o = JSON.parse(m); } catch (_) {} posted.push(o || { raw: String(m) }); }, addEventListener() {}, removeEventListener() {} } };
@@ -563,4 +565,66 @@ if (!JSDOM) {
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });
+
+  // ── 2차(2026-11-06): 가져오기 서식을 문단 모양으로 합침 ──
+  //  캘린더 출처 payload(그날 보고 없음). 알파 = 일정(설명 하나), 할 일(설명 없음), 베타 = 할 일(설명 하나)
+  const IMP_SRC = { rows: [
+    { key: 'c-a', name: '알파', color: '#3e5be0', titles: ['설계 검토', '시험 정리'], titleMeta: [{ kind: 'event', details: ['범위 확정'] }, { kind: 'todo', details: [] }] },
+    { key: 'c-b', name: '베타', color: '#2e9e6b', titles: ['업체 회신'], titleMeta: [{ kind: 'todo', details: ['견적 비교'] }] },
+  ], hours: { 'c-a': 2, 'c-b': 1 }, fmt: { mkSpec: { kind: 'const', ch: '*' }, indent: 3 } };
+  const PREV = '[알파] : 3\n- 옛 줄\n  * 옛 설명';
+  function openImport(X, uid = 7) {
+    X.ev('hostRequest = function(cmd, p){ __calls.push(cmd); return Promise.resolve(cmd === "reportDailyList" ? { ok: true, rows: [{ date: p.from, content: ' + JSON.stringify(PREV) + ', status: "1", overtime: 0 }] } : { ok: true, rows: [] }); };');
+    X.ev('__attendWinOpen(' + JSON.stringify({ v: 1, date: X.ev('todayYmd()'), me: { userId: uid, loginId: 'u' + uid, name: '시험자' }, saved: null, source: IMP_SRC, projects: PROJ }) + ')');
+  }
+  const cardLines = (X, i) => [...X.doc.querySelectorAll('#atCards .at-card')[i].querySelectorAll('.at-recs li')].map((li) => li.textContent);
+  const bodies = (X) => X.evJSON('ATE.blocks.map(function(b){ return b.text; })');
+  async function checkImport(X) {
+    openImport(X);
+    //  서식 줄이 없다(서식은 문단 모양 하나)
+    assert.ok(!X.$('#atOMk') && !X.$('#atOInd'), '가져오기 서식 칸이 남아 있다');
+    assert.ok(![...X.doc.querySelectorAll('#atOpts .at-lb')].some((e) => e.textContent === '서식'), '[서식] 줄이 남아 있다');
+    //  기본 표(1수준 '-' 0칸, 2수준 '*' 2칸): 제목은 1수준, 설명은 2수준. payload 의 보고서 일간 서식(source.fmt)은 쓰지 않는다
+    assert.deepStrictEqual(bodies(X), ['- 설계 검토\n  * 범위 확정\n- 시험 정리', '- 업체 회신\n  * 견적 비교'], '처음 블록이 문단 모양 기본 표(제목 1수준, 설명 2수준)가 아니다');
+    assert.deepStrictEqual(cardLines(X, 0), ['- 설계 검토 일정', '  * 범위 확정', '- 시험 정리 할 일'], '패널 카드가 불러올 모양이 아니다');
+    //  문단 모양 1수준을 '1.' 로: 패널 카드를 다시 그린다(번호는 같은 수준 형제끼리)
+    caret(blk(X, 0), 0);
+    X.$('#atEd .wa-b').click();
+    change(X, pop(X).querySelector('.wa-sym[data-r="0"]'), '1.');
+    assert.deepStrictEqual(cardLines(X, 0), ['1. 설계 검토 일정', '  * 범위 확정', '2. 시험 정리 할 일'], '문단 모양을 바꿨는데 패널 카드가 새 모양이 아니다');
+    assert.deepStrictEqual(cardLines(X, 1), ['1. 업체 회신 할 일', '  * 견적 비교'], '과제마다 번호를 1부터 세지 않았다');
+    X.$('#atLoad').click();
+    assert.deepStrictEqual(bodies(X), ['1. 설계 검토\n  * 범위 확정\n2. 시험 정리', '1. 업체 회신\n  * 견적 비교'], '불러온 글이 문단 모양 표(1수준 1. 2.)가 아니다');
+    //  설명 포함을 끄면 1수준만
+    const d = X.$('#atODesc'); d.checked = false; d.dispatchEvent(new X.w.Event('change', { bubbles: true }));
+    assert.deepStrictEqual(cardLines(X, 0), ['1. 설계 검토 일정', '2. 시험 정리 할 일']);
+    X.$('#atLoad').click();
+    assert.deepStrictEqual(bodies(X)[0], '1. 설계 검토\n2. 시험 정리', '설명 포함을 끄고 불러왔는데 설명이 남았다');
+    //  이전 보고 출처는 그날 보낸 글 그대로(문단 모양을 입히지 않는다)
+    X.$('#atEd [data-atsrc="prev"]').click();
+    await tick(30);
+    assert.deepStrictEqual(cardLines(X, 0), ['- 옛 줄', '  * 옛 설명'], '이전 보고 카드에 문단 모양을 입혔다');
+    X.$('#atLoad').click();
+    assert.deepStrictEqual(bodies(X)[0], '- 옛 줄\n  * 옛 설명', '이전 보고를 그대로 불러오지 않았다');
+    assert.deepStrictEqual(X.errors, []);
+  }
+  test('(B) 가져오기 서식은 문단 모양 하나: [서식] 줄 없음, 제목 1수준 설명 2수준, 문단 모양을 바꾸면 카드와 불러온 글이 새 모양(번호), 이전 보고는 그대로', async () => {
+    const X = boot((w) => w.localStorage.setItem('tc_attFmt:7', JSON.stringify({ v: 1, mk: '(1)', custom: '', indent: 3 })));   // 예전 가져오기 서식 값은 읽지 않는다
+    try { await checkImport(X); } finally { X.close(); }
+  });
+  //  변이: 같은 검사가 잡는다
+  const IMP_MUT = [
+    ['설명을 1수준으로 넣으면', 'items.push({ level: 2, body: one(d) })', 'items.push({ level: 1, body: one(d) })'],
+    ['문단 모양을 바꾼 뒤 패널 카드를 다시 그리지 않으면', '  waRefresh(); waImportRedraw();\n}\n//  가져오기 패널의', '  waRefresh();\n}\n//  가져오기 패널의'],
+    ['캘린더 블록이 예전처럼 보고서 서식 함수를 쓰면', "function atCalBody(row){ return atCalLines(row).map(g => g.join('\\n')).join('\\n'); }",
+      "function atCalBody(row){ const f = (ATE.p.source.fmt); return reportRowBodyText({ titles: row.kept.map(x => x.text), titleMeta: row.kept.map(x => ({ details: ATE.opt.desc ? x.details : [] })) }, ' ', f.mkSpec, f.indent); }"],
+  ];
+  for (const [name, find, repl] of IMP_MUT) {
+    test('변이: ' + name + ' 가져오기 시험이 잡는다', async () => {
+      const a = app.indexOf(find);
+      assert.ok(a > 0 && a === app.lastIndexOf(find), '변이 앵커가 없거나 여럿이다: ' + find.slice(0, 60));
+      const X = boot(null, app.slice(0, a) + repl + app.slice(a + find.length));
+      try { await assert.rejects(() => checkImport(X), assert.AssertionError); } finally { X.close(); }
+    });
+  }
 }

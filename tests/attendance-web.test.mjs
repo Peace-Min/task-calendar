@@ -237,18 +237,20 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(B) 날짜를 누르면 보고 화면, 처음은 캘린더 기본 불러오기 블록(공수표 시간, 본문은 기존 보고서 함수, 기록 없는 과제 제외), 과제명은 잠김', () => {
+  test('(B) 날짜를 누르면 보고 화면, 처음은 캘린더 기본 불러오기 블록(공수표 시간, 본문은 문단 모양 기본 표로 제목 1수준과 설명 2수준, 기록 없는 과제 제외), 과제명은 잠김', () => {
     const X = bootBrowser();
     try {
       X.ev("pcSetTab('attend')");
       X.$(`#atGrid .at-day[data-date="${X.T}"]`).click();
       assert.ok(shown(X, '#atEd') && !shown(X, '#atMonth'), '보고 화면으로 바뀌지 않았다');
       assert.ok(!X.$('#atText'), '한 칸 글(#atText)이 남아 있다');
+      //  2026-11-06(가져오기 서식을 문단 모양으로 합침): 제목은 1수준, 설명은 2수준. 문단 모양 기본 표는 1수준 '-' 0칸, 2수준 '*' 2칸
       const ref = X.evJSON(`(function(){ var rows = collectReportData(${JSON.stringify(X.T)}, ${JSON.stringify(X.T)}, {event:true,todo:true,desc:true}).rows;
-        return rows.filter(function(r){ return r.titles.length || getTaskHours(${JSON.stringify(X.T)}, r.key) > 0; }).map(function(r){ return reportRowBodyText(r, ' ', reportMarkerSpec(), 2); }); })()`);
+        return rows.filter(function(r){ return r.titles.length || getTaskHours(${JSON.stringify(X.T)}, r.key) > 0; }).map(function(r){
+          return r.titles.map(function(t, i){ return ['- ' + t].concat(reportMetaDetails(r.titleMeta[i]).map(function(d){ return '  * ' + d; })).join('\\n'); }).join('\\n'); }); })()`);
       const b = blk(X);
       assert.deepStrictEqual(b.map((x) => [x.name, x.hours]), [['알파', 2], ['베타', 0], ['감마', 1]], '블록이 캘린더 기록 있는 과제와 공수표 시간이 아니다');
-      assert.deepStrictEqual(b.map((x) => x.text), ref, '블록 내용이 기존 보고서 본문 함수로 만든 것과 다르다');
+      assert.deepStrictEqual(b.map((x) => x.text), ref, '블록 내용이 문단 모양 기본 표(제목 1수준 "- ", 설명 2수준 "  * ")가 아니다');
       assert.ok(b[0].text.includes('로그인 화면 리뷰') && b[0].text.includes('UI 확인') && b[2].text === '');
       //  화면: 과제명은 표시(잠금, 입력 칸 아님), 시간은 숫자 칸(0~24, 0.5), 내용은 글 칸, 자유 메모가 맨 위
       const h0 = X.$('#atBlocks .at-blk[data-bi="0"] .at-bh');
@@ -302,23 +304,21 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(B) 가져오기 서식: 처음은 보고서 일간 서식, 머리기호와 들여쓰기를 고르면 블록 내용에 쓰고 이 PC에 기억한다(보고서 설정은 그대로)', () => {
+  test('(B) 가져오기 서식은 문단 모양 하나: [서식] 줄이 없고, 불러온 제목은 1수준, 설명은 2수준, 표를 바꾸면 그 모양으로 불러온다(보고서 설정은 그대로, 예전 저장값은 읽지 않는다)', () => {
     const X = bootBrowser();
     try {
+      X.ev("localStorage.setItem('tc_attFmt:' + rptDraftWho(), JSON.stringify({ v: 1, mk: '(1)', custom: '', indent: 3 }))");   // 예전 가져오기 서식 값(읽지 않는다)
       openB(X);
-      assert.strictEqual(X.$('#atOMk').value, X.ev('atFmtKeyOf(atDailyFmt().mkSpec)'), '처음 머리기호가 보고서 일간 서식이 아니다');
-      assert.strictEqual(X.$('#atOInd').value, String(X.ev('atDailyFmt().indent')), '처음 들여쓰기가 보고서 일간 서식이 아니다');
-      assert.strictEqual(X.$('#atOMk').options.length, X.$('#rptMarker').options.length, '머리기호 목록이 보고서 창과 다르다');
+      assert.ok(!X.$('#atOMk') && !X.$('#atOInd'), '가져오기 서식 칸이 남아 있다');
+      assert.ok(![...X.$('#atOpts').querySelectorAll('.at-lb')].some((e) => e.textContent === '서식'), '[서식] 줄 이름이 남아 있다');
+      assert.strictEqual(X.ev("typeof atFmt + typeof atFmtLoad + typeof AT_FMT_PREFIX"), 'undefinedundefinedundefined', '가져오기 서식 함수와 열쇠가 남아 있다');
+      assert.ok(/^- 로그인 화면 리뷰\n {2}\* UI 확인$/m.test(blk(X)[0].text), '예전 가져오기 서식 값을 읽었거나 기본 표 모양이 아니다: ' + blk(X)[0].text);
       const before = X.ev('JSON.stringify(atDailyFmt())');
-      input(X, '#atOMk', '1.'); input(X, '#atOInd', '0');
+      X.ev("WAS.T = null; localStorage.setItem(WA_KEY_PREFIX + atWho(), JSON.stringify({ v: 1, rows: [{ mk: '1.', indent: 0 }, { mk: '-', indent: 3 }] }))");
       X.$('#atLoad').click();
       const t = blk(X)[0].text;
-      assert.ok(/^1\. /m.test(t) && /^2\. /m.test(t), '고른 머리기호(1. 2.)와 들여쓰기 0단으로 불러오지 않았다: ' + t);
-      const saved = JSON.parse(X.ev('localStorage.getItem(AT_FMT_PREFIX + atWho())'));
-      assert.deepStrictEqual([saved.mk, saved.indent], ['1.', 0], '고른 서식을 기억하지 않았다');
+      assert.strictEqual(t, '1. 로그인 화면 리뷰\n   - UI 확인\n2. 보고서 정리\n   - 세부 메모','문단 모양 표(1수준 1., 2수준 - 3칸)로 불러오지 않았다');
       assert.strictEqual(X.ev('JSON.stringify(atDailyFmt())'), before, '보고서 창 서식 설정이 바뀌었다');
-      X.ev(`atShowEditor(atBuildPayload(addDays(todayYmd(), 3), null, false))`);
-      assert.deepStrictEqual([X.$('#atOMk').value, X.$('#atOInd').value], ['1.', '0'], '다시 열었는데 고른 서식이 아니다');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });
