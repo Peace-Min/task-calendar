@@ -20,6 +20,7 @@
   --mine-bar:#5a6886; --mine-bg:#eceff5; --mine-text:#394357; --mine-sep:#cfd5e1;
   /* 시간 겹침(O5) — 앰버. 배지 글자 / 배지 바탕 5.81:1 · 칸 점 / 패널 3.50:1 · 일요일 칸 3.07:1(비텍스트 3:1) */
   --ovl-bg:#fbefd0; --ovl-ink:#7a5600; --ovl-dot:#b97d00;
+  --tag-mix:35%;   /* 날짜 패널 과제 꼬리표 글자 = 과제 색 35% + --text(docs/DAY-PANEL-CARDS.md 결정 4). 어떤 과제 색이든 꼬리표 바탕 위 4.5:1 이상(시험이 테마마다 잰다) */
   --titlebar:#222a3d;             /* 호스트바 중립 다크 — accent는 액션·선택 전용 */
   --cap-close:#c42b1c; --cap-close-down:#b1271a;   /* 창 닫기 버튼 hover, 누름(Windows 11 과 같은 빨강, 테마와 무관하게 흰 글리프) */
   --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd;
@@ -461,7 +462,7 @@ body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 �
 .tabs .tab:hover,.rpt-presets[role=tablist] .btn:hover{background:var(--hover-bg);color:var(--text);border-color:transparent;border-bottom-color:transparent}
 .tabs .tab.on,.rpt-presets[role=tablist] .btn.active{color:var(--accent-2);font-weight:600;border-bottom-color:var(--accent)}
 .tabs .tab:focus-visible,.rpt-presets[role=tablist] .btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.dp-body{flex:1;min-height:0;overflow-y:auto;scrollbar-gutter:stable}
+.dp-body{flex:1;min-height:0;overflow-y:auto;scrollbar-gutter:stable;--dp-gh:32px;scroll-padding-top:calc(var(--dp-gh) * 2);scroll-padding-bottom:var(--dp-gh)}   /* 붙은 머리(위 둘, 아래 하나) 뒤에 키보드 포커스가 숨지 않게(docs/DAY-PANEL-CARDS.md 결정 10) */
 .dp-pad{padding:var(--sp-3)}
 /* 좌측 캘린더 / 우측 기록 사이 너비 조절 분할바 */
 .splitter{flex:none;width:7px;cursor:col-resize;background:var(--line);position:relative;touch-action:none;transition:background .12s}
@@ -479,41 +480,33 @@ body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 �
 .dp-dow.sun{color:var(--sun)} .dp-dow.sat{color:var(--sat)}
 .dp-hol{font-size:var(--fs-meta);font-weight:400;color:var(--sun);margin-left:8px}
 .dp-list{padding:12px 16px;display:flex;flex-direction:column;gap:8px}
-/* 일정 n, 할 일 n 두 묶음: 늘 같은 자리. 비면 "없음", 끈 종류는 "보기에서 숨김" */
-.dp-grp + .dp-grp{border-top:1px solid var(--line)}
-.dp-grp-h{margin:0;padding:12px 16px 4px;font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
+/* 일정 n, 할 일 n 두 묶음: 늘 같은 자리. 비면 "없음", 끈 종류는 "보기에서 숨김".
+   머리는 본문 안에서 늘 보인다(docs/DAY-PANEL-CARDS.md 결정 5): 일정 머리는 위에, 할 일 머리는 그 밑이나 본문 아래에 붙는다.
+   묶음 상자는 display:contents 라 머리가 자기 묶음 밖(본문 전체)에서도 붙는다. 아래에 붙은 할 일 머리(.stuck)는 위에 옅은 그림자 */
+.dp-grp{display:contents}
+.dp-grp-h{position:sticky;z-index:2;box-sizing:border-box;height:var(--dp-gh);display:flex;align-items:center;margin:0;padding:0 16px;font-size:var(--fs-meta);font-weight:700;color:var(--muted);background:var(--panel)}
+.dp-grp[data-grp="ev"] > .dp-grp-h{top:0;border-bottom:1px solid var(--line)}
+.dp-grp[data-grp="td"] > .dp-grp-h{top:var(--dp-gh);bottom:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.dp-grp-h.stuck{box-shadow:0 -4px 8px -2px var(--seg-sh)}
 .dp-grp-n{display:inline-block;margin-left:2px;padding:0 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent-2);font-size:var(--fs-micro);font-weight:600}
-.dp-grp-none{padding:2px 16px 12px;font-size:var(--fs-meta);color:var(--faint-text)}
+.dp-grp-none{padding:8px 16px 12px;font-size:var(--fs-meta);color:var(--faint-text)}
 .dp-grp .dp-list{padding:6px 16px 12px}
+.dp-grp .dp-list.dp-cards,.dp-sec .dp-list.dp-cards{gap:4px;padding:4px 10px}   /* 카드 바깥 여백 4(결정 2) */
 .dp-todos{padding:0 16px 8px}
 .dp-todos .todo-row:first-child{border-top:none}
-/* 묶음 접기, 더 보기, 일정 한 줄 줄(docs/PC-WATCH-2.md §5) */
-.dp-fold{display:inline-flex;align-items:center;gap:4px;border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;border-radius:var(--r-sm)}
+/* 묶음 머리 단추(접기, 붙었으면 그 묶음 처음으로)와 더 보기(docs/PC-WATCH-2.md §5, docs/DAY-PANEL-CARDS.md) */
+.dp-fold{display:flex;align-items:center;gap:4px;width:100%;height:100%;border:0;background:none;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer;border-radius:var(--r-sm)}
 .dp-fold:hover{color:var(--text)}
-.dp-fold:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.dp-fold:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .dp-tw{width:12px;font-size:var(--fs-micro);color:var(--faint-text)}
-.dp-grp.folded .dp-grp-h{padding-bottom:12px}
-.dp-grp .dp-list.dp-rows,.dp-sec .dp-list.dp-rows{gap:2px;padding-left:10px;padding-right:10px}
-.dp-er{border-radius:var(--r-sm)}
-.dp-er-b{display:flex;align-items:center;gap:6px;width:100%;min-height:28px;padding:4px 6px;border:0;background:none;font:inherit;font-size:var(--fs-body);color:var(--text);text-align:left;cursor:pointer;border-radius:var(--r-sm)}
-.dp-er-b:hover{background:var(--hover-bg)}
-.dp-er-b:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.dp-er-bar{width:3px;align-self:stretch;border-radius:2px;background:var(--c);flex:none}
-.dp-er-tm{flex:none;min-width:34px;font-size:var(--fs-meta);color:var(--muted);font-variant-numeric:tabular-nums}
-.dp-er-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dp-er-ovl{flex:none;display:inline-flex;color:var(--ovl-ink)}
-.dp-er-ovl .ic{width:12px;height:12px}
-.dp-er.open .dp-er-t{white-space:normal;overflow-wrap:anywhere;font-weight:600}
-.dp-er.open .dp-er-b,.dp-todos .todo-row.open{background:var(--accent-soft)}   /* 펼친 줄만 옅은 강조 바탕(§7.1). 상세까지 칠하면 다시 상자처럼 보인다(2026-11-05 실제 위젯 점검) */
-.dp-er.flash{animation:flashAnim 1.2s ease-out 2}
+.dp-todos .todo-row.open{background:var(--accent-soft)}   /* 펼친 할 일 줄만 옅은 강조 바탕(§7.1). 상세까지 칠하면 다시 상자처럼 보인다(2026-11-05 실제 위젯 점검) */
 .dp-todos .todo-text[data-dp]{cursor:pointer}
 .dp-todos .todo-text[data-dp]:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-radius:2px}
-/* 펼친 줄 아래 들여쓴 상세(상자 없음, docs/PC-WATCH-2.md §7.1): 일정(.dp-edet)과 할 일(.dp-tdet)이 같은 모양. 있는 줄만 나온다 */
+/* 할 일 줄 아래 들여쓴 상세(.dp-tdet, 상자 없음, docs/PC-WATCH-2.md §7.1). 있는 줄만 나온다. 일정은 카드라 이 상세를 쓰지 않는다(DAY-PANEL-CARDS) */
 .dp-det{display:flex;flex-direction:column;gap:2px;margin:2px 0 6px 15px;padding:2px 6px 2px 8px;border-left:1px solid var(--line);font-size:var(--fs-meta);color:var(--muted);line-height:1.5}
 .dp-todos .dp-det{margin-left:24px}
 .dp-det-ln{display:flex;align-items:flex-start;gap:6px;min-width:0;overflow-wrap:anywhere}
 .dp-det-ln .ic{width:12px;height:12px;flex:none;margin-top:3px}
-.dp-det-ovl{color:var(--ovl-ink)}
 .dp-det-dot{flex:none;width:8px;height:8px;border-radius:50%;margin:5px 2px 0}
 .dp-det-memo{color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
 .dp-det-ac{display:flex;gap:12px;margin-top:2px}
@@ -564,27 +557,28 @@ body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 �
 }
 .dp-empty{--empty-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4.5' width='18' height='16' rx='2.5'/%3E%3Cpath d='M3 9.5h18M8 2.5v4M16 2.5v4'/%3E%3C/svg%3E")}
 .nd-empty{--empty-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h9M4 12h9M4 17h6'/%3E%3Cpath d='M16.5 6.8l1.7 1.7 3.2-3.2'/%3E%3C/svg%3E")}
+/* 날짜 패널 일정 카드(docs/DAY-PANEL-CARDS.md 결정 2): 안쪽 5/8, 줄 간격 2(gap). 글자 크기는 11/4 카드 그대로 */
 .card{
+  display:flex;flex-direction:column;gap:2px;
   border:1px solid var(--line);border-left:4px solid var(--c,#8a93a6);
-  border-radius:var(--r-md);padding:8px 12px;background:var(--panel);
+  border-radius:var(--r-sm);padding:5px 8px;background:var(--panel);
 }
-.card-top{display:flex;align-items:center;gap:7px;margin-bottom:3px;flex-wrap:wrap}
+.card-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+/* 과제 꼬리표 글자(결정 4): 과제 색과 본문 글자색(--text, 어두운 테마는 밝은 쪽)을 섞어 꼬리표 바탕(tint) 위 4.5:1 이상. 섞는 몫은 테마 토큰 --tag-mix */
+.card .cat-tag{color:color-mix(in srgb,var(--c) var(--tag-mix),var(--text))}
 .card-time{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
 .badge{font-size:var(--fs-micro);font-weight:600;padding:2px 8px;border-radius:999px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card-title{font-size:var(--fs-emph);font-weight:600;word-break:keep-all;overflow-wrap:anywhere}
 /* 시간·장소 강조행 — 회의 등 '몇 시·어디'가 한눈에 */
-.card-when{display:flex;flex-wrap:wrap;gap:4px 14px;margin:5px 0 1px;font-size:var(--fs-emph);font-weight:600;color:var(--text)}
+.card-when{display:flex;flex-wrap:wrap;gap:2px 14px;font-size:var(--fs-emph);font-weight:600;color:var(--text)}
 .card-when .cw-time,.card-when .cw-loc{display:inline-flex;align-items:center;gap:4px;min-width:0}
 .card-when .cw-loc{word-break:keep-all;overflow-wrap:anywhere}
 .card-when .ic{width:15px;height:15px;color:var(--accent);flex:none}
-.card-memo{
-  font-size:var(--fs-body);color:var(--muted);margin-top:4px;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;line-height:1.5;
-  max-height:72px;overflow:hidden;
-}
+.card-memo{font-size:var(--fs-body);color:var(--muted);white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;line-height:1.5}   /* 메모는 전부(결정 3, 줄 자르기 없음) */
 /*  메모 링크(linkifyHtml). --accent-2 = 라이트는 진한 파랑, 다크는 밝은 파랑이라 두 테마 모두 본문 위에서 읽힌다 */
 .memo-link{color:var(--accent-2);text-decoration:underline;text-underline-offset:2px;cursor:pointer;overflow-wrap:anywhere}
 .memo-link:hover{text-decoration-thickness:2px}
-.card-actions{display:flex;gap:12px;margin-top:8px}
+.card-actions{display:flex;gap:12px;margin-top:2px}
 .link{border:none;background:none;color:var(--accent-2);font-size:var(--fs-meta);cursor:pointer;display:inline-flex;align-items:center;min-height:24px;padding:3px 6px;margin:-3px -6px;vertical-align:middle}
 .link:hover{text-decoration:underline}
 .link.danger{color:var(--danger-text)}
@@ -1245,7 +1239,7 @@ mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px;padding:0
 
 /* ---------- 기간·반복 보조 스타일 ---------- */
 .s-badge{font-size:var(--fs-micro);padding:1px 6px;border-radius:var(--r-sm);background:var(--accent-soft);color:var(--accent-2);margin-left:6px;white-space:nowrap}
-.card-span,.card-recur{font-size:var(--fs-meta);color:var(--muted);margin:2px 0}
+.card-span,.card-recur{font-size:var(--fs-meta);color:var(--muted)}
 
 /* ---------- 보고서 모달이 쓰던 공용 조각(과제 내보내기 창이 아직 쓴다) + 취합 화면의 서식 ---------- */
 .rpt-presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
@@ -1832,7 +1826,7 @@ body.vg-on #peerWin{ filter:saturate(.6) blur(1.5px) }
 /* 좁은 폭 — 팝오버가 화면 폭을 넘지 않게(좌우 8px). 자리는 JS 가 잰다. */
 @media (max-width:440px){ .pk-pop{ width:calc(100vw - 16px) } }
 /* 좁은 폭 터치 하한: 팝오버의 작은 글자 단추(전체 지우기, 조직도로, 이동 경로)도 .ta-tog 처럼 32px 로 */
-@media (max-width:440px){ .pk-pop :is(.pk-more,.pk-crumb button){ min-height:32px; display:inline-flex; align-items:center } }
+@media (max-width:440px){ :is(.pk-pop,.fb-pop-who) :is(.pk-more,.pk-crumb button){ min-height:32px; display:inline-flex; align-items:center } }   /* 참여자 팝업(#caWhoPop)도 같은 조직도를 쓴다(2026-11-06 loop-ui-visual V7) */
 #peerBanner{ display:none }
 body[data-peer] #peerBanner{
   display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap;
@@ -1883,13 +1877,10 @@ body[data-peer] .chip.chip-mine .cdot{ display:none }
 body[data-peer] .card.card-mine{ background:var(--mine-bg); border-left-color:var(--mine-bar) }
 body[data-peer] .card.card-mine .card-title{ color:var(--mine-text) }
 body[data-peer] .card.card-mine .card-actions{ display:none !important }
-body[data-peer] .dp-er-mine .dp-er-bar{ background:var(--mine-bar) }
-body[data-peer] .dp-er-mine .dp-er-t{ color:var(--mine-text) }
 /*  ★ S9 — 나란히 보기에서는 겹 토글이 뜻이 없다(오른쪽 달력이 곧 내 일정). 그래서 「끈 상태」 규칙에서 빼낸다 —
       안 빼면 겹을 꺼 둔 사람이 나란히 보기로 바꿨을 때 오른쪽 달력·상세 시트의 내 것이 통째로 안 보인다. */
 body[data-peer]:not([data-peer-overlay]):not([data-peer-layout="side"]) .chip-mine,
 body[data-peer]:not([data-peer-overlay]):not([data-peer-layout="side"]) .card-mine,
-body[data-peer]:not([data-peer-overlay]):not([data-peer-layout="side"]) .dp-er-mine,
 body[data-peer]:not([data-peer-overlay]):not([data-peer-layout="side"]) .mine-sep,
 body[data-peer]:not([data-peer-overlay]):not([data-peer-layout="side"]) .ovl-dot{ display:none }
 /*  O5 — 시간 겹침. 카드 배지(겹친 상대 시간 함께) + 격자 날짜 옆 작은 점. 앰버 한 벌(--ovl-*). */
@@ -1927,7 +1918,7 @@ body[data-peer][data-peer-layout="side"] .day-panel{ position:fixed; left:0; rig
   border-left:none; border-top:1px solid var(--line-2); border-radius:14px 14px 0 0;
   box-shadow:0 -6px 22px rgba(20,28,55,.20); z-index:30; transform:translateY(100%); transition:transform .26s ease }
 body[data-peer][data-peer-layout="side"].sheet-open .day-panel{ transform:translateY(0) }
-body[data-peer][data-peer-layout="side"] .dp-sheet-handle{ display:flex; justify-content:center; align-items:center; padding:8px 0 2px; flex:none;
+body[data-peer][data-peer-layout="side"] .dp-sheet-handle{ display:flex; justify-content:center; align-items:center; padding:10px 0; flex:none;
   border:none; background:none; cursor:pointer; width:100% }
 body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; height:4px; border-radius:2px; background:var(--line-2) }
 /*  S10 — 달력 하나가 420px 아래로 좁아지면(열람 창 폭 ≤860px = 반쪽 430px 언저리) 위아래로 쌓는다(위 = 그 사람 · 아래 = 나).
@@ -2226,7 +2217,7 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
     border-left:none;border-top:1px solid var(--line-2);border-radius:14px 14px 0 0;
     box-shadow:0 -6px 22px rgba(20,28,55,.20);z-index:30;transform:translateY(100%);transition:transform .26s ease}
   body.sheet-open .day-panel{transform:translateY(0)}
-  .dp-sheet-handle{display:flex;justify-content:center;align-items:center;padding:8px 0 2px;flex:none;border:none;background:none;cursor:pointer;width:100%}
+  .dp-sheet-handle{display:flex;justify-content:center;align-items:center;padding:10px 0;flex:none;border:none;background:none;cursor:pointer;width:100%}   /* 높이 24px(좁은 폭 터치 하한, 14px 이던 것, 2026-11-06 loop-ui-visual V7) */
   .dp-sheet-handle .grab{width:38px;height:4px;border-radius:2px;background:var(--line-2)}
 }
 /* Batch D의 헤더 '보고서' 버튼이 들어가면서 521–639px 구간에서만 헤더가 두 줄로 접혔다(측정).
@@ -2371,7 +2362,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
    "고칠 수 있는 칸"으로 보인다 — 테마마다 자기 패널보다 한 단계 어두운 값을 직접 준다(2026-09-10).
    --danger-line 도 같은 이유로 각 테마의 색조에 맞춘다(라이트 분홍 테두리가 초록·크림 위에서 튄다). */
 :root[data-theme="forest"]{ --bg:#eef4ef; --panel:#ffffff; --line:#d9e6dc; --line-2:#c3d6c8; --text:#1d2a22; --muted:#54665b; --accent:#2e9e6b; --accent-2:#1f7a50; --accent-soft:#e2f1e8; --accent-fill:#1f7a50; --ctl-border:#84958a; --dim-bg:#f2f7f3; --danger-line:#e6c6c8; --mine-bar:#5a6886; --mine-bg:#eceff5; --mine-text:#394357; --mine-sep:#cfd8d2; --ovl-bg:#fbefd0; --ovl-ink:#7a5600; --ovl-dot:#b97d00; }   /* --accent는 흰 글자에서 3.38:1(AA 미달) → 채움만 --accent-2급으로(5.31:1). 컨트롤 경계 3.16:1 */
-:root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#75664f; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; --sun:#b3353a; --wknd-sun-bg:#f5e5dc; --wknd-sat-bg:#ebe9e5; --dim-bg:#f4ecdd; --faint-text:#5f6779; --danger-line:#e0c6b4; --mine-bar:#5f6a84; --mine-bg:#e9e8e8; --mine-text:#3a4254; --mine-sep:#d8ccb6; --ovl-bg:#f5e4bd; --ovl-ink:#6e4c05; --ovl-dot:#a8720a; }   /* accent는 흰 글자 4.52:1로 AA 충족 → 채움 리맵 불필요. 컨트롤 경계는 세피아 패널 대비 3.08:1.
+:root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#75664f; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; --sun:#b3353a; --wknd-sun-bg:#f5e5dc; --wknd-sat-bg:#ebe9e5; --dim-bg:#f4ecdd; --faint-text:#5f6779; --danger-line:#e0c6b4; --mine-bar:#5f6a84; --mine-bg:#e9e8e8; --mine-text:#3a4254; --mine-sep:#d8ccb6; --ovl-bg:#f5e4bd; --ovl-ink:#6e4c05; --ovl-dot:#a8720a; --tag-mix:25%; }   /* accent는 흰 글자 4.52:1로 AA 충족 → 채움 리맵 불필요. 컨트롤 경계는 세피아 패널 대비 3.08:1.
    --muted 재맵(2026-09-18): #7a6a52 는 --dim-bg(#f4ecdd) 위의 흐린 글자(.rl-hrow 의 span.rl-h)에서 4.46:1 로 AA(4.5) 를 아슬하게 밑돌았다 — loop-ui-visual V8 이 기준선 근처로 잡던 그 한 건이다. 색상각(R:G:B = 122:106:82)을 그대로 두고 밝기만 4% 낮춘 #75664f 로 옮겼다: --dim-bg 4.75:1 · --panel(#fbf6ec) 5.17:1 · --bg(#f3ead9) 4.66:1 — 세 바탕 모두 AA 충족이다. 찬 --faint-text 를 재활용하지 않은 이유는 그 색이 크림 위에서 회청색으로 떠 세피아의 온기를 깨기 때문이다.
    --faint-text 재맵(2026-09-10): --dim-bg 를 세피아 크림(#f4ecdd)으로 두자 :root 의 #6c7488 이 다른 달 날짜(.cal-c.dim .num)에서 3.98:1 로 AA 미달 → #5f6779 (4.83:1). loop-ui-visual 이 잡았다.
    --sun 재맵: 크림색 패널·배경에서 #c43a3f는 요일머리 4.37:1·주말 숫자 4.27:1로 AA 미달 → 같은 색상각을 유지한 채 한 단계만 어둡게(5.04:1·4.91:1). --sat(#4b62a0)는 4.87~4.95:1로 충족해 그대로 둔다.
@@ -12686,12 +12677,13 @@ function dayHeadHtml(){
 function dayTodosList(ds){
   return (state.todos || []).filter(t => viewTodoPass(t) && todoCoversDate(t, ds)).sort(todoZoneCmp);
 }
-/* ---------- 묶음 접기(docs/PC-WATCH-2.md §5, PERSONAL-PANEL 2.1 의 연장) ----------
+/* ---------- 묶음 접기와 일정 카드(docs/PC-WATCH-2.md §5, docs/DAY-PANEL-CARDS.md) ----------
    묶음 머리를 누르면 접힌다(▾ ▸, 계정별 이 PC 에 기억. 열람 창은 기억하지 않는다). 묶음마다 5개까지, 넘으면 "n개 더 보기", 펼친 뒤 "줄이기".
-   일정은 한 줄 줄(색 띠, 시간 또는 종일, 제목 말줄임). 누르면 줄 아래에 상자 없이 들여쓴 상세(dpEvDetHtml: 시각 범위, 장소, 기간, 반복, 겹침, 메모 중 있는 것과
-   [수정] [삭제])를 펼친다. 할 일도 제목을 누르면 같은 들여쓴 상세(dpTdDetHtml: 기한, 과제, 설명과 [수정] [삭제])다(§7.1).
-   일정과 할 일 펼침은 합쳐서 한 번에 하나(DP.open 열쇠 하나: 일정 'id|날짜', 할 일 't:id'). 열람 창(PEER)은 상세만 보이고 [수정] [삭제]가 없다.
-   날짜를 바꾸면 더 보기와 펼친 줄은 처음으로. 달력 칩에서 온 강조(flash)는 그 줄을 펼치고 5개 밖이면 더 보기를 연다. */
+   일정은 카드(cardHtml: 과제 꼬리표, 제목, 시각과 장소, 여러 날 기간 n일째 / n일, 반복, 메모 전부, [수정] [삭제], 시간 겹침 배지)다.
+   11/5 의 한 줄 줄과 줄 펼침 상세는 시인성이 떨어져 11/6 카드로 되돌렸다(DAY-PANEL-CARDS 결정 1). 열람 창(PEER)은 [수정] [삭제]가 없다.
+   할 일은 제목을 누르면 들여쓴 상세(dpTdDetHtml: 기한, 과제, 설명과 [수정] [삭제])다(§7.1, DP.open 열쇠 't:id').
+   묶음 머리는 본문 안에서 늘 보인다(sticky, 결정 5). 붙어 있는 머리를 누르면 접지 않고 그 묶음 처음으로 스크롤하고, 제자리일 때만 접는다(결정 6).
+   날짜를 바꾸면 더 보기와 펼친 줄은 처음으로. 달력 칩에서 온 강조(flash)는 그 카드를 강조하고 5개 밖이거나 접혀 있으면 더 보기와 묶음을 연다. */
 const DP_LIMIT = 5;
 const DP = { date: '', more: new Set(), open: '', fold: null, foldWho: null };
 function dpFoldKey(){ return 'tc_dpfold:' + rptDraftWho(); }
@@ -12710,7 +12702,6 @@ function dpFoldSave(){
   try{ const k = dpFoldKey(); if(DP.fold && DP.fold.size) localStorage.setItem(k, JSON.stringify([...DP.fold])); else localStorage.removeItem(k); }catch(_){}
 }
 function dpSync(){ if(DP.date !== selectedDate){ DP.date = selectedDate; DP.more.clear(); DP.open = ''; } }
-function dpEvKey(e){ return e.id + '|' + (e._occStart || e.date); }
 function dpTdKey(t){ return 't:' + t.id; }
 function dpLimit(k, items){ return DP.more.has(k) ? items : items.slice(0, DP_LIMIT); }
 function dpMoreHtml(k, total){
@@ -12718,32 +12709,10 @@ function dpMoreHtml(k, total){
   return DP.more.has(k) ? `<button type="button" class="dp-more" data-dp="less" data-k="${k}">줄이기</button>`
     : `<button type="button" class="dp-more" data-dp="more" data-k="${k}">${total - DP_LIMIT}개 더 보기</button>`;
 }
-//  상세 한 줄(아이콘 + 글). 들여쓴 상세(일정, 할 일)가 같이 쓴다
+//  상세 한 줄(아이콘 + 글). 할 일 들여쓴 상세가 쓴다
 function dpDetLn(ic, html, cls, tip){ return `<div class="dp-det-ln${cls ? ' ' + cls : ''}"${tip ? ` title="${esc(tip)}"` : ''}>${ic}<span>${html}</span></div>`; }
 //  [수정] [삭제] 글자 단추. 열람 창(PEER)은 없다(읽기 전용)
 function dpDetAcHtml(){ return PEER ? '' : '<div class="dp-det-ac"><button type="button" class="link" data-act="edit">수정</button><button type="button" class="link danger" data-act="del">삭제</button></div>'; }
-//  일정 줄 아래 들여쓴 상세(§7.1): 시각 범위, 장소, 기간(n일째 / n일), 반복, 시간 겹침(열람 창, 한 줄), 메모 중 있는 것만.
-//  분류 꼬리표와 줄에 이미 있는 시각(시작 시각, 종일)은 다시 쓰지 않는다. [수정] [삭제]는 data-act 로 날짜 패널 처리(.dp-edet)가 받는다.
-function dpEvDetHtml(e, ov){
-  const occS = e._occStart || e.date, occE = e._occEnd || (e.endDate && e.endDate > e.date ? e.endDate : e.date);
-  let h = '';
-  if(e.startTime && e.endTime) h += dpDetLn(ICON.clock, esc(e.startTime + ' ~ ' + e.endTime));
-  const loc = String(e.location || '').trim();
-  if(loc) h += dpDetLn(ICON.pin, esc(loc));
-  if(occE > occS){
-    const nth = (selectedDate >= occS && selectedDate <= occE) ? ` (${diffDays(occS, selectedDate) + 1}일째 / ${diffDays(occS, occE) + 1}일)` : '';
-    h += dpDetLn(ICON.calendar, esc(fmtShort(occS) + ' ~ ' + fmtShort(occE) + nth));
-  }
-  if(e.recur) h += dpDetLn(ICON.repeat, esc(recurLabel(e)));
-  if(Array.isArray(ov) && ov.length){
-    const rng = o => o.startTime + (o.endTime ? '~' + o.endTime : '');
-    const who = o => o.mine ? '내 일정' : ((__peerWho ? __peerWho + ' 님' : '상대') + ' 일정');
-    h += dpDetLn(ICON.clock, esc('시간 겹침 ' + rng(ov[0]) + ' ' + ov[0].title + (ov.length > 1 ? ' 외 ' + (ov.length - 1) : '')), 'dp-det-ovl',
-      who(ov[0]) + '과 시간이 겹칩니다: ' + ov.map(o => rng(o) + ' ' + o.title).join(', '));
-  }
-  if(e.memo) h += `<div class="dp-det-memo">${linkifyHtml(e.memo)}</div>`;
-  return `<div class="dp-det dp-edet" data-id="${esc(e.id)}" data-occ="${esc(occS)}">${h}${dpDetAcHtml()}</div>`;
-}
 //  할 일 줄 아래 들여쓴 상세(§7.1): 기한(줄에 기간 글자가 없을 때), 과제, 설명(여러 날 할 일은 그날 설명) 중 있는 것과 [수정] [삭제]
 function dpTdDetHtml(t){
   const cat = catById(t.categoryId), period = !!(t.due && t.endDate && t.endDate > t.due);
@@ -12754,24 +12723,43 @@ function dpTdDetHtml(t){
   if(memo.trim()) h += `<div class="dp-det-memo"${period ? ` title="${esc(fmtShort(nd))} 설명"` : ''}>${linkifyHtml(memo)}</div>`;
   return `<div class="dp-det dp-tdet" data-tid="${esc(t.id)}">${h}${dpDetAcHtml()}</div>`;
 }
-//  일정 한 줄. 펼치면 줄 아래에 들여쓴 상세(상자 없음). 시간 겹침(O5)은 줄 끝 작은 시계
-function dpEvRowHtml(e, ov){
-  const c = catById(e.categoryId), col = validColor(c && c.color), k = dpEvKey(e), open = DP.open === k;
-  const ovl = Array.isArray(ov) && ov.length > 0;
-  return `<div class="dp-er${open ? ' open' : ''}${e._mine ? ' dp-er-mine' : ''}${flashTargetId === e.id ? ' flash' : ''}" data-key="${esc(k)}" data-id="${esc(e.id)}" style="--c:${col}">`
-    + `<button type="button" class="dp-er-b" data-dp="ev" aria-expanded="${open}" title="${esc((c ? c.name + ': ' : '') + e.title)}">`
-    + `<i class="dp-er-bar" aria-hidden="true"></i><span class="dp-er-tm">${esc(e.startTime || '종일')}</span><span class="dp-er-t">${esc(e.title)}</span>`
-    + (ovl ? `<span class="dp-er-ovl" role="img" aria-label="시간 겹침">${ICON.clock}</span>` : '') + '</button>'
-    + (open ? dpEvDetHtml(e, ov) : '') + '</div>';
+//  일정 카드(11/4 까지의 모양, docs/DAY-PANEL-CARDS.md 결정 1~4). overlaps = O5 시간 겹침(peerTimeOverlaps 의 한 항목, 열람 창 겹에서만).
+//  꼬리표 바탕은 과제 색 옅게(tint), 글자는 CSS(.card .cat-tag)가 과제 색과 본문 글자색을 섞어 4.5:1 이상으로 맞춘다(결정 4).
+//  메모는 전부(줄 자르기 없음, 링크). 시각, 장소, 기간, 반복 줄의 그림은 읽히지 않는다(svgIc 의 aria-hidden).
+//  [수정] [삭제]는 data-act 로 날짜 패널 처리가 받는다(반복 삭제 확인 포함). 열람 창은 그리지 않는다(읽기 전용, CSS 로도 감춘다).
+function cardHtml(e, overlaps){
+  const c = catById(e.categoryId);
+  const col = validColor(c && c.color);
+  const time = timeLabel(e);
+  const occS = e._occStart || e.date, occE = e._occEnd || (e.endDate && e.endDate > e.date ? e.endDate : e.date);
+  const isRange = occE > occS;
+  const dayOfN = (isRange && selectedDate >= occS && selectedDate <= occE)
+    ? ` (${diffDays(occS, selectedDate) + 1}일째 / ${diffDays(occS, occE) + 1}일)` : '';
+  const rangeLine = isRange ? `<div class="card-span">${ICON.calendar} ${esc(fmtShort(occS) + ' ~ ' + fmtShort(occE) + dayOfN)}</div>` : '';
+  const recurLine = e.recur ? `<div class="card-recur">${ICON.repeat} ${esc(recurLabel(e))}</div>` : '';
+  const loc = String(e.location || '').trim();
+  const whenRow = (time || loc) ? `<div class="card-when">${time ? `<span class="cw-time">${ICON.clock} ${esc(time)}</span>` : ''}${loc ? `<span class="cw-loc">${ICON.pin} ${esc(loc)}</span>` : ''}</div>` : '';
+  //  O5: 겹친 상대의 시간을 배지에 함께 적는다(여럿이면 첫 건과 "외 N", 전부는 title)
+  const ovl = (Array.isArray(overlaps) && overlaps.length) ? overlaps : null;
+  const ovRange = o => o.startTime + (o.endTime ? '~' + o.endTime : '');
+  const ovWho = o => o.mine ? '내 일정' : ((__peerWho ? __peerWho + ' 님' : '상대') + ' 일정');
+  const ovlBadge = ovl
+    ? `<span class="badge ovl-badge" title="${esc(ovWho(ovl[0]) + '과 시간이 겹칩니다: ' + ovl.map(o => ovRange(o) + ' ' + o.title).join(', '))}">${ICON.clock} 시간 겹침 ${esc(ovRange(ovl[0]))}${ovl.length > 1 ? ` 외 ${ovl.length - 1}` : ''}</span>`
+    : '';
+  const top = (c || ovl) ? `<div class="card-top">${c ? `<span class="badge cat-tag" style="background:${tint(col)}" title="${esc(c.name)}">${esc(c.name)}</span>` : ''}${ovlBadge}</div>` : '';
+  return `<div class="card${flashTargetId === e.id ? ' flash' : ''}${e._mine ? ' card-mine' : ''}${ovl ? ' card-ovl' : ''}" data-id="${esc(e.id)}" data-occ="${esc(occS)}" style="--c:${col}">`
+    + top + `<div class="card-title">${esc(e.title)}</div>` + whenRow + rangeLine + recurLine
+    + (e.memo ? `<div class="card-memo">${linkifyHtml(e.memo)}</div>` : '')
+    + (PEER ? '' : '<div class="card-actions"><button type="button" class="link" data-act="edit">수정</button><button type="button" class="link danger" data-act="del">삭제</button></div>')
+    + '</div>';
 }
-//  달력 칩에서 온 강조: 그 일정 줄을 펼치고(5개 밖이면 더 보기), 할 일은 5개 밖이면 더 보기. 접힌 묶음은 편다
+//  달력 칩에서 온 강조: 그 일정 카드는 5개 밖이면 더 보기를 열고, 할 일도 5개 밖이면 더 보기. 접힌 묶음은 편다
 function dpReveal(list, tds){
   if(flashTargetId){
     const e = list.find(x => x.id === flashTargetId);
     if(e){
       const split = peerMineShown(), k = split ? (e._mine ? 'mine' : 'peer') : 'ev';
       const sub = split ? list.filter(x => !!x._mine === !!e._mine) : list;
-      DP.open = dpEvKey(e);
       if(sub.indexOf(e) >= DP_LIMIT) DP.more.add(k);
       if(dpFoldSet().delete('ev')) dpFoldSave();
     }
@@ -12781,34 +12769,90 @@ function dpReveal(list, tds){
     if(i >= 0){ if(i >= DP_LIMIT) DP.more.add('td'); if(dpFoldSet().delete('td')) dpFoldSave(); }
   }
 }
-//  묶음 머리 접기, 더 보기, 줄이기, 일정 줄과 할 일 제목 펼치기(합쳐서 하나만). 다시 그린 뒤 포커스는 누른 자리로
+/*  늘 보이는 묶음 머리(결정 5, 6). 일정 머리는 본문 위에, 할 일 머리는 그 밑(top)이나 본문 아래(bottom)에 붙는다.
+    붙었는지는 머리를 잠깐 제자리(position static)로 두고 잰 자리와 지금 보이는 자리를 견준다(제자리 = 본문 내용 좌표). */
+function dpHeadEl(body, k){ return body.querySelector(`.dp-grp[data-grp="${k}"] > .dp-grp-h`); }
+function dpHeadGeom(body, hdr){
+  const bt = body.getBoundingClientRect().top, st = body.scrollTop;
+  const cur = hdr.getBoundingClientRect().top - bt;
+  const keep = hdr.style.position;
+  hdr.style.position = 'static';
+  const nat = hdr.getBoundingClientRect().top - bt + st;
+  hdr.style.position = keep;
+  return { st, nat, cur };
+}
+//  붙어 있으면(보이는 자리가 제자리와 1px 넘게 다르면) 그 묶음 처음으로 갈 scrollTop, 제자리면 null(= 접는다).
+//  above = 그 머리 위에 붙는 머리 높이(할 일은 일정 머리, 일정은 0). 일정 머리는 제자리가 0 이라 scrollTop 이 1 을 넘으면 붙은 것이다.
+function dpHeadPlan(st, nat, cur, above){
+  if(Math.abs((nat - st) - cur) <= 1) return null;
+  return Math.max(0, nat - above);
+}
+function dpHeadJump(k, body, hdr){
+  const g = dpHeadGeom(body, hdr), eh = k === 'td' ? dpHeadEl(body, 'ev') : null;
+  return dpHeadPlan(g.st, g.nat, g.cur, eh ? eh.getBoundingClientRect().height : 0);
+}
+function dpScrollTo(body, top){
+  let smooth = true;
+  try{ smooth = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(_){}
+  if(typeof body.scrollTo === 'function') body.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
+  else body.scrollTop = top;
+}
+//  붙은 머리 표시: 아래에 붙은 할 일 머리는 위에 옅은 그림자(.stuck), 붙은 머리 단추의 읽히는 이름은 "일정 맨 위로", "할 일로 이동"
+function dpMarkStuck(){
+  const body = $('#dpBody'); if(!body) return;
+  for(const k of ['ev', 'td']){
+    const h = dpHeadEl(body, k), btn = h && h.querySelector('.dp-fold');
+    if(!btn) continue;
+    const g = dpHeadGeom(body, h), d = g.cur - (g.nat - g.st);
+    h.classList.toggle('stuck', d < -1);
+    if(Math.abs(d) > 1) btn.setAttribute('aria-label', k === 'ev' ? '일정 맨 위로' : '할 일로 이동');
+    else btn.removeAttribute('aria-label');
+  }
+}
+let __dpStuckRaf = 0;
+function dpStuckSoon(){ if(__dpStuckRaf) return; __dpStuckRaf = requestAnimationFrame(() => { __dpStuckRaf = 0; dpMarkStuck(); }); }
+//  묶음 머리(붙었으면 그 묶음 처음으로, 제자리면 접기), 더 보기, 줄이기, 할 일 제목 펼치기. 다시 그린 뒤 포커스는 누른 자리로.
+//  접기와 줄이기는 누른 것(머리, 줄이기면 그 자리에 다시 서는 더 보기)이 본문의 같은 높이에 남게 스크롤을 맞춘다(결정 7, 출렁임 없음)
 function dpOnClick(b){
-  const a = b.dataset.dp, k = b.dataset.k || '';
-  let sel = '';
-  if(a === 'fold'){ const f = dpFoldSet(); if(f.has(k)) f.delete(k); else f.add(k); dpFoldSave(); sel = '[data-dp="fold"][data-k="' + k + '"]'; }
-  else if(a === 'more' || a === 'less'){ if(a === 'more') DP.more.add(k); else DP.more.delete(k); sel = '.dp-more[data-k="' + k + '"]'; }
-  else if(a === 'ev'){ const r = b.closest('.dp-er'), key = r ? r.dataset.key : ''; DP.open = DP.open === key ? '' : key; sel = key; }
+  const a = b.dataset.dp, k = b.dataset.k || '', body = $('#dpBody');
+  const at = el => el.getBoundingClientRect().top - body.getBoundingClientRect().top;
+  let sel = '', keep = null;
+  if(a === 'fold'){
+    const hdr = b.closest('.dp-grp-h');
+    if(body && hdr){
+      const to = dpHeadJump(k, body, hdr);
+      if(to !== null){ dpScrollTo(body, to); return; }
+      keep = { sel: `.dp-grp[data-grp="${k}"] > .dp-grp-h`, before: at(hdr) };
+    }
+    const f = dpFoldSet(); if(f.has(k)) f.delete(k); else f.add(k); dpFoldSave(); sel = '[data-dp="fold"][data-k="' + k + '"]';
+  }
+  else if(a === 'more' || a === 'less'){
+    if(a === 'more') DP.more.add(k); else { DP.more.delete(k); if(body) keep = { sel: '.dp-more[data-k="' + k + '"]', before: at(b) }; }
+    sel = '.dp-more[data-k="' + k + '"]';
+  }
   else if(a === 'td'){ const r = b.closest('.todo-row'), key = r ? 't:' + r.dataset.id : ''; if(!key) return; DP.open = DP.open === key ? '' : key; sel = key; }
   else return;
   renderPanel();
-  //  일정 줄은 열쇠(id|날짜), 할 일은 id 로 찾는다(id 에 따옴표가 있어도 되게 선택자에 넣지 않는다)
+  if(keep){ const el = document.querySelector('#dpBody ' + keep.sel); if(el){ body.scrollTop += at(el) - keep.before; dpMarkStuck(); } }
+  //  할 일은 id 로 찾는다(id 에 따옴표가 있어도 되게 선택자에 넣지 않는다)
   let f = null;
-  if(a === 'ev') f = ([...document.querySelectorAll('#dpBody .dp-er')].find(r => r.dataset.key === sel) || {}).firstElementChild || null;
-  else if(a === 'td'){ const r = [...document.querySelectorAll('#dpBody .todo-row')].find(x => 't:' + x.dataset.id === sel); f = r ? r.querySelector('.todo-text') : null; }
+  if(a === 'td'){ const r = [...document.querySelectorAll('#dpBody .todo-row')].find(x => 't:' + x.dataset.id === sel); f = r ? r.querySelector('.todo-text') : null; }
   else f = sel && document.querySelector('#dpBody ' + sel);
   if(f) try{ f.focus({ preventScroll: true }); }catch(_){}
 }
-function dayGrpHtml(key, label, on, n, inner){
+//  묶음 하나. 머리 수는 nTxt(할 일은 남은 개수/전체, 결정 8), 없으면 n. 묶음 상자(.dp-grp)는 display:contents 라 머리가 본문 전체에서 붙는다
+function dayGrpHtml(key, label, on, n, inner, nTxt, nTip){
   const folded = dpFoldSet().has(key);
   return `<section class="dp-grp${folded ? ' folded' : ''}" data-grp="${key}" aria-label="${label}"><h3 class="dp-grp-h">`
-    + `<button type="button" class="dp-fold" data-dp="fold" data-k="${key}" aria-expanded="${!folded}"><span class="dp-tw" aria-hidden="true">${folded ? '▸' : '▾'}</span>${label}${on ? ` <span class="dp-grp-n">${n}</span>` : ''}</button></h3>`
+    + `<button type="button" class="dp-fold" data-dp="fold" data-k="${key}" aria-expanded="${!folded}"><span class="dp-tw" aria-hidden="true">${folded ? '▸' : '▾'}</span>${label}${on ? ` <span class="dp-grp-n"${nTip ? ` title="${esc(nTip)}"` : ''}>${nTxt == null ? n : nTxt}</span>` : ''}</button></h3>`
     + (folded ? '' : (!on ? '<div class="dp-grp-none">보기에서 숨김</div>' : (!n ? '<div class="dp-grp-none">없음</div>' : inner))) + '</section>';
 }
 // 패널 본문(문자열 반환): 선택 날짜의 일정 묶음과 할 일 묶음
 function dayDetailHtml(){
   dpSync();
   const evOn = viewKinds.ev, tdOn = viewKinds.td;
-  const list = evOn ? entriesOn(selectedDate) : [], tds = tdOn ? dayTodosList(selectedDate) : [];
+  //  일정은 종일 먼저, 그다음 시각순(entrySort)으로 세운 뒤 5개(결정 9)
+  const list = evOn ? entriesOn(selectedDate).slice().sort(entrySort) : [], tds = tdOn ? dayTodosList(selectedDate) : [];
   dpReveal(list, tds);
   let evInner = '';
   if(evOn && list.length){
@@ -12816,19 +12860,21 @@ function dayDetailHtml(){
     //  S7: 나란히 보기의 상세 시트도 같은 두 묶음이다(겹 토글이 꺼져 있어도 오른쪽 달력이 곧 내 일정이다).
     if(peerMineShown()){
       const ov = peerTimeOverlaps(list);
-      const row = e => dpEvRowHtml(e, ov[ovlKey(e)]);
+      const card = e => cardHtml(e, ov[ovlKey(e)]);
       const theirs = list.filter(e => !e._mine), mineL = list.filter(e => e._mine);
-      //  두 묶음(상대 일정, 내 일정)도 같은 한 줄 줄과 5개 제한(더 보기 열쇠는 묶음마다 peer, mine)
+      //  두 묶음(상대 일정, 내 일정)도 같은 카드와 5개 제한(더 보기 열쇠는 묶음마다 peer, mine)
       const sec = (cls, title, items, sw) => `<section class="dp-sec dp-sec-${cls}" aria-label="${esc(title)} ${items.length}건">`
         + `<h3 class="dp-sec-h">${sw}<span class="dp-sec-t">${esc(title)}</span> <span class="dp-sec-n">(${items.length})</span></h3>`
-        + (items.length ? `<div class="dp-list dp-rows">${dpLimit(cls, items).map(row).join('')}</div>` + dpMoreHtml(cls, items.length) : '<div class="dp-sec-empty">이 날짜에는 없습니다</div>')
+        + (items.length ? `<div class="dp-list dp-cards">${dpLimit(cls, items).map(card).join('')}</div>` + dpMoreHtml(cls, items.length) : '<div class="dp-sec-empty">이 날짜에는 없습니다</div>')
         + '</section>';
       evInner = sec('peer', (__peerWho ? __peerWho + ' 님' : '상대') + ' 일정', theirs, `<span class="pl-sw pl-sw-peer" aria-hidden="true">${peerSwatchBars()}</span>`)
         + sec('mine', '내 일정', mineL, '<span class="pl-sw pl-sw-peer" aria-hidden="true"><b class="m"></b></span>');
-    } else evInner = `<div class="dp-list dp-rows">${dpLimit('ev', list).map(e => dpEvRowHtml(e)).join('')}</div>` + dpMoreHtml('ev', list.length);
+    } else evInner = `<div class="dp-list dp-cards">${dpLimit('ev', list).map(e => cardHtml(e)).join('')}</div>` + dpMoreHtml('ev', list.length);
   }
   const tdInner = `<div class="dp-todos">${dpLimit('td', tds).map(t => todoRowHtml(t, { panel: true })).join('')}</div>` + dpMoreHtml('td', tds.length);
-  return dayGrpHtml('ev', '일정', evOn, list.length, evInner) + dayGrpHtml('td', '할 일', tdOn, tds.length, tdInner);
+  const left = tds.filter(t => !t.done).length;
+  return dayGrpHtml('ev', '일정', evOn, list.length, evInner)
+    + dayGrpHtml('td', '할 일', tdOn, tds.length, tdInner, tds.length ? `${left}/${tds.length}` : null, tds.length ? `남은 할 일 ${left}개, 전체 ${tds.length}개` : '');
 }
 //  맨 아래 한 줄의 개수(과제는 따르고 기록 종류 끔은 따지지 않는다). 밀린 할 일 팝업의 '기한 없음', '기한 지남' 묶음과 같은 수.
 function todoNoDateCount(){ return (state.todos || []).filter(t => !t.done && !t.due && viewTodoPass(t, true)).length; }
@@ -12850,11 +12896,11 @@ function renderPanel(){
   if(head) head.innerHTML = dayHeadHtml();
   body.innerHTML = dayDetailHtml();
   if(foot) foot.innerHTML = dayFootHtml();
-  if(flashTargetId){   // 일정 칩 클릭 reveal: 그 줄(펼친 상세) 강조, 스크롤
-    const el = $('#dpBody .dp-er.flash');
+  if(flashTargetId){   // 일정 칩 클릭 reveal: 그 카드 강조, 스크롤(붙은 머리에 가리지 않게 본문 scroll-padding)
+    const el = $('#dpBody .card.flash');
     if(el) el.scrollIntoView({block:'nearest'});
     const fid = flashTargetId; flashTargetId = null;
-    setTimeout(() => { const e2 = $(`#dpBody .dp-er[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
+    setTimeout(() => { const e2 = $(`#dpBody .card[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
   }
   if(flashTodoId){   // 할 일 칩 클릭 reveal: 그 행 강조, 스크롤(일정 카드 flash 대칭)
     const el = $('#dpBody .todo-row.flash');
@@ -12862,6 +12908,7 @@ function renderPanel(){
     const fid = flashTodoId; flashTodoId = null;
     setTimeout(() => { const e2 = $(`#dpBody .todo-row[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
   }
+  dpMarkStuck();   // 붙은 머리 표시(그림자, 읽히는 이름)는 다시 그릴 때와 본문 스크롤 때 맞춘다
 }
 function renderDayPanel(){ renderPanel(); }   // 기존 호출부 호환(renderAll/drop 등)
 
@@ -19770,6 +19817,8 @@ function bind(){
     hpost({ cmd: 'openFolder', path: __expOutPath });
   });
   $('#dpSheetClose').addEventListener('click', closeSheet);        // 좁은 폭 하단 시트 닫기 손잡이
+  $('#dpBody').addEventListener('scroll', dpStuckSoon, { passive: true });   // 붙은 묶음 머리 표시(DAY-PANEL-CARDS 결정 5, 6)
+  window.addEventListener('resize', dpStuckSoon);
 
   $('#dpBody').addEventListener('click', ev => {
     //  할 일 상세(들여쓴 상세, §7.1)의 [수정] = [+ 추가] 창의 할 일 수정, [삭제] = 줄 끝 ✕ 와 같다(실행 취소 있음)
@@ -20106,10 +20155,10 @@ function bind(){
   $('#dayPanel').addEventListener('click', async ev => {
     if(ev.target.closest('#btnAddHere')){ openAddOnDate(selectedDate); return; }
     if(ev.target.closest('#dpFoot')){ openTodoAll(); return; }
-    { const dx = ev.target.closest('[data-dp]'); if(dx){ dpOnClick(dx); return; } }   // 묶음 접기, 더 보기, 줄이기, 일정 줄 펼치기
+    { const dx = ev.target.closest('[data-dp]'); if(dx){ dpOnClick(dx); return; } }   // 묶음 머리(붙었으면 이동, 제자리면 접기), 더 보기, 줄이기, 할 일 제목 펼치기
     const act = ev.target.dataset.act;
     if(!act) return;
-    const card = ev.target.closest('.card, .dp-edet');   // 일정 줄 아래 들여쓴 상세(§7.1)도 카드와 같은 data-id, data-occ
+    const card = ev.target.closest('.card');   // 일정 카드의 [수정] [삭제](docs/DAY-PANEL-CARDS.md 결정 1)
     if(!card) return;
     if(PEER && (act === 'edit' || act === 'del')){ peerReadOnly(); return; }   // 카드 버튼은 CSS 로도 감춘다(.card-actions)
     if(act === 'edit') editEntry(card.dataset.id);

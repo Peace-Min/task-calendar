@@ -243,7 +243,7 @@ if (!JSDOM) {
         assert.ok(W.$('#dpHead').textContent.includes('요일') && /\d+월 \d+일/.test(W.$('#dpHead').textContent), '머리에 날짜와 요일이 없다');
         assert.ok(W.$('#dpFoot') && W.$('#dpBody') && !W.$('#dpBody').contains(W.$('#dpFoot')), '맨 아래 고정 줄이 본문 밖에 없다');
         assert.ok(grpText(W, 'ev').startsWith('일정 2 ') && grpText(W, 'ev').includes('일정 eA') && grpText(W, 'ev').includes('일정 eB'), '일정 묶음이 아니다: ' + grpText(W, 'ev'));
-        assert.ok(grpText(W, 'td').startsWith('할 일 4 '), '할 일 묶음 머리가 "할 일 n" 이 아니다: ' + grpText(W, 'td'));
+        assert.ok(grpText(W, 'td').startsWith('할 일 3/4 '), '할 일 묶음 머리가 "할 일 남은 개수/전체" 가 아니다(docs/DAY-PANEL-CARDS.md 결정 8): ' + grpText(W, 'td'));
         //  빈 날: 두 묶음은 같은 자리에 그대로, 각각 "없음"
         const empty = ymdAdd(W.M.T, 1);
         W.ev(`selectDate("${empty}")`);
@@ -255,7 +255,7 @@ if (!JSDOM) {
         setView(W, 'viewSetKind("ev")');
         assert.strictEqual(grpText(W, 'td'), '할 일 보기에서 숨김'); assert.ok(grpText(W, 'ev').startsWith('일정 2 '));
         setView(W, 'viewSetKind("td")');
-        assert.strictEqual(grpText(W, 'ev'), '일정 보기에서 숨김'); assert.ok(grpText(W, 'td').startsWith('할 일 4 '));
+        assert.strictEqual(grpText(W, 'ev'), '일정 보기에서 숨김'); assert.ok(grpText(W, 'td').startsWith('할 일 3/4 '));
         assert.deepStrictEqual(W.$$('#dpBody > .dp-grp').map((g) => g.dataset.grp), ['ev', 'td'], '끈 종류의 묶음이 사라졌다');
       } finally { await end(W); }
     },
@@ -598,7 +598,7 @@ if (!JSDOM) {
         const ev = chipsOf(W, D2).find((c) => c.dataset.id === 'eC');
         click(ev);
         assert.strictEqual(W.ev('selectedDate'), D2);
-        assert.ok(W.$('#dpBody .dp-er.flash') && W.$('#dpBody .dp-er.flash').dataset.id === 'eC' && W.$('#dpBody .dp-er.flash .dp-edet'), '일정 칩이 그 줄을 펼쳐 강조하지 않았다');
+        assert.ok(W.$('#dpBody .card.flash') && W.$('#dpBody .card.flash').dataset.id === 'eC', '일정 칩이 그 카드를 강조하지 않았다');
         //  좁은 창에서도 시트가 뜬다
         Object.defineProperty(W.w, 'innerWidth', { value: 500, configurable: true });
         W.ev('closeSheet()');

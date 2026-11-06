@@ -1,6 +1,6 @@
 # 날짜 패널 일정 카드 되돌리기와 늘 보이는 묶음 머리
 
-상태: 기획 확정(2026-11-06 사용자). 시안 `dist/proto/day-panel-v6.html`(애프터, 여백 "조금 줄임", 메모 "전부"), 그림 `dist/proto/day-panel-v6-shots/`. UI/UX 평가(Opus) 반영.
+상태: 기획 확정(2026-11-06 사용자), 구현(2026-11-06, 맨 끝 구현 기록). 시안 `dist/proto/day-panel-v6.html`(애프터, 여백 "조금 줄임", 메모 "전부"), 그림 `dist/proto/day-panel-v6-shots/`. UI/UX 평가(Opus) 반영.
 
 ## 배경
 - 11/5 PC-WATCH-2 §5, §7.1 에서 개인 탭 오른쪽 날짜 패널의 일정을 카드에서 한 줄(시각, 제목)로 줄이고 누르면 들여쓴 상세가 펼쳐지게 했다. 스트레스 데이터(하루 일정 40건)에서 할 일 묶음이 화면 밖으로 밀리지 않게 하려던 것.
@@ -26,3 +26,12 @@
 
 ## QA
 - 관련 시험, 전체 strict, 실제 위젯(1600, 900, 400, 밝게 어둡게, 평소와 바쁜 날 데이터)에서 머리 누르기 세 경우, 접기 출렁임, 꼬리표 대비, 열람 창.
+
+## 구현 기록(2026-11-06)
+- **바뀐 함수**(`task-calendar-prototype.html`): `cardHtml` 되살림(11/4 모양, 꼬리표는 바탕만 `tint`, 글자는 CSS, 열람 창은 `.card-actions` 를 그리지 않음), `dayDetailHtml`(카드, `.dp-cards`, `entriesOn(...).slice().sort(entrySort)`, 할 일 머리 `남은/전체`), `dayGrpHtml`(머리 숫자 글자와 title 인자), `dpReveal`(펼침 열쇠 없이 더 보기와 묶음 열기만), `dpOnClick`(머리: 붙었으면 이동, 제자리면 접기, 접기와 줄이기 뒤 스크롤 맞춤, 일정 펼침 갈래 걷음), `renderPanel`(강조는 `.card.flash`, 끝에 `dpMarkStuck`). 새 함수 `dpHeadEl`, `dpHeadGeom`, `dpHeadPlan`(순수 판정), `dpHeadJump`, `dpScrollTo`(움직임 줄이기 설정이면 바로), `dpMarkStuck`, `dpStuckSoon`(본문 scroll, 창 resize). 걷은 것: `dpEvRowHtml`, `dpEvDetHtml`, `dpEvKey`, `.dp-er*`, `.dp-rows`, `.dp-det-ovl`, 열람 창 `.dp-er-mine` 규칙. 날짜 패널 클릭 처리는 `.card` 의 `data-act` 만 받는다(삭제의 반복 확인, 수정의 `editEntry` 그대로).
+- **CSS**: `.dp-body` 에 `--dp-gh:32px`, `scroll-padding-top:calc(var(--dp-gh) * 2)`, `scroll-padding-bottom:var(--dp-gh)`. `.dp-grp{display:contents}` 로 머리가 묶음 밖(본문 전체)에서 붙는다. `.dp-grp-h` sticky(높이 32 고정, 바탕 `--panel`), 일정 `top:0`, 할 일 `top:var(--dp-gh);bottom:0`, `.stuck` 그림자는 `--seg-sh`. 카드는 `gap:2px;padding:5px 8px`, 목록 `gap:4px;padding:4px 10px`, 모서리 `--r-sm`(시안과 같게), `.card-memo` 의 높이 자르기 걷음.
+- **꼬리표 대비**: 글자 = `color-mix(in srgb, var(--c) var(--tag-mix), var(--text))`. 새 토큰 `--tag-mix`(기본 35%, 세피아 25%. 세피아 `--text` 가 덜 어두워서). 어두운 테마는 `--text` 가 밝아 저절로 밝은 쪽으로 섞인다. hex 새로 없음. 시험이 테마 토큰으로 계산한 가장 낮은 대비(팔레트 18색과 회색 + RGB 격자 4096색 / 팔레트만): light 4.92 / 7.47, dark 5.86 / 7.01, forest 4.78 / 7.26, sepia 4.85 / 6.23, contrast 6.98 / 10.59. 실제 Edge 에서 잰 값(초록, 주황 과제): light 8.04, 7.58, dark 8.00, 8.31, forest 7.73, 7.30, sepia 6.72, 6.23, contrast 11.39, 10.59.
+- **기획과 다르게 정한 것**: (1) 할 일이 0개면 머리는 "0/0" 대신 "0"(빈 날 모양 그대로). (2) [줄이기] 뒤에는 묶음 머리가 아니라 그 자리에 다시 서는 [n개 더 보기]를 누른 자리에 둔다(시안은 머리를 붙은 자리로 올렸다). [더 보기]는 아래로 늘 뿐이라 맞추지 않는다. (3) 붙음 판정은 시안의 앞 요소 끝 계산 대신 머리를 잠깐 `position:static` 으로 두고 잰 제자리와 보이는 자리를 견준다(묶음 상자가 display:contents 라 앞 요소가 없다). 일정 머리도 같은 식(제자리 0)이라 "scrollTop 이 1 넘으면 붙음" 과 같다. (4) 열람 창 두 묶음의 소제목(상대 일정, 내 일정)은 붙지 않는다. 붙는 것은 일정, 할 일 두 머리뿐이다. (5) 꼬리표 모양은 11/4 의 알약(둥근 끝) 그대로.
+- **시험**: `day-panel-fold` 를 새 계약으로(카드 내용, 정렬 뒤 5개, 남은 개수/전체, 머리 누르기 세 경우와 제자리 접기, 출렁임, sticky CSS, scroll-padding, 테마별 대비, 변이 9). `pc-watch-7`(7.1 일정은 카드, 변이는 기간 줄 빼기), `personal-panel`, `personal-improve`, `range-chip-click`, `memo-link`, `project-calendar-web`, `peer-overlay`, `peer-overlay-redesign`, `peer-side-by-side`, `peer-view-full` 을 카드 계약으로 고쳤다. 루프: `loop-peer-frame`(허용 목록에서 `dp-er-b` 빼고 `memo-link`, 내 겹은 `.card-mine`), `loop-range-chip`, `loop-personal-improve`(강조 `.card.flash`), `loop-ui-visual`(`color(srgb ...)` 계산값 읽기). 루프는 돌리지 않았다.
+- **실제 Chromium(Edge headless, 파일로 연 앱, 바쁜 날 일정 14 할 일 12)**: 1600x900 에서 할 일 머리가 본문 아래에 붙고(그림자, "할 일로 이동"), 누르면 할 일 처음(끝까지 내려도 모자라면 끝까지), 위에 붙은 일정 머리는 맨 위로, 1000x430(본문 90px)에서 위에 붙은 할 일 머리가 할 일 처음으로, 400x800 시트에서도 같다. [줄이기] 앞뒤 단추 자리 541 과 541, 168 과 168.
+- **남은 위험**: 맨 끝까지 내린 상태에서 제자리 할 일 머리를 접으면 본문이 짧아져 브라우저가 scrollTop 을 깎으므로 머리가 아래로 내려온다(접힌 머리는 본문 아래 끝에 선다). 빈 공간을 붙여 막을 수는 있지만 넣지 않았다. 실제 위젯(WebView2)과 밝게 어둡게, 평소 데이터 점검은 메인이 한다.

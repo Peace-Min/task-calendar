@@ -384,9 +384,9 @@ if (!JSDOM) {
       assert.strictEqual(bar.span, '9/16 ~ 9/18', '사흘 이상 내 기간 막대에 기간 글자가 없다');
     });
 
-    //  2026-11-05(docs/PC-WATCH-2.md §5): 두 묶음 안의 일정은 한 줄 줄(.dp-er, 내 것은 .dp-er-mine)이다. 펼친 카드는 그 줄 안에 선다
-    test('(jsdom) R4: 상세 패널 = 두 묶음 「홍길동 님 일정 (3)」 · 「내 일정 (2)」, 줄은 제 묶음에만', () => {
-      const secs = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#dpBody .dp-sec"), function(s){ return [s.querySelector(".dp-sec-h").textContent.replace(/\\s+/g," ").trim(), s.querySelectorAll(".dp-er").length, s.querySelectorAll(".dp-er.dp-er-mine").length]; })');
+    //  2026-11-06(docs/DAY-PANEL-CARDS.md): 두 묶음 안의 일정은 다시 카드(.card, 내 것은 .card-mine)다(11/5 의 한 줄 줄을 되돌림)
+    test('(jsdom) R4: 상세 패널 = 두 묶음(홍길동 님 일정 (3), 내 일정 (2)), 카드는 제 묶음에만', () => {
+      const secs = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#dpBody .dp-sec"), function(s){ return [s.querySelector(".dp-sec-h").textContent.replace(/\\s+/g," ").trim(), s.querySelectorAll(".card").length, s.querySelectorAll(".card.card-mine").length]; })');
       assert.deepStrictEqual(secs, [['홍길동 님 일정 (3)', 3, 0], ['내 일정 (2)', 2, 2]]);
       P.ev('selectedDate = "2026-09-15"; renderAll();');
       const s15 = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#dpBody .dp-sec"), function(s){ return [s.querySelector(".dp-sec-h").textContent.replace(/\\s+/g," ").trim(), !!s.querySelector(".dp-sec-empty")]; })');
@@ -394,13 +394,10 @@ if (!JSDOM) {
       P.ev('selectedDate = "2026-09-08"; renderAll();');
     });
 
-    //  2026-11-05(docs/PC-WATCH-2.md §7.1): 펼침은 카드 상자가 아니라 들여쓴 상세다. 겹침 배지는 상세의 한 줄(.dp-det-ovl, 상대 시간과 제목, 전부는 title)
-    test('(jsdom) R5: 「시간 겹침」 줄은 겹친 두 일정에만 — 상대 시간이 함께 · 종일/다른 시간은 없음(줄에는 작은 시계, 펼친 상세에 겹침 한 줄)', () => {
-      const marks = P.evJSON('Array.prototype.filter.call(document.querySelectorAll("#dpBody .dp-er"), function(r){ return !!r.querySelector(".dp-er-ovl"); }).map(function(r){ return r.dataset.id; }).sort()');
-      assert.deepStrictEqual(marks, ['m-1030', 'p-10'], '겹친 두 줄에만 시계 표시가 있어야 한다');
-      //  줄을 하나씩 펼쳐(한 번에 하나) 카드의 배지를 읽는다
-      const b = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#dpBody .dp-er"), function(r){ return r.dataset.key; }).map(function(k){ DP.open = k; renderPanel(); var c = document.querySelector("#dpBody .dp-er.open .dp-edet"); var x = c.querySelector(".dp-det-ovl"); return [c.dataset.id, x ? x.textContent.trim() : null, x ? x.getAttribute("title") : null]; })');
-      P.ev('DP.open = ""; renderPanel();');
+    //  2026-11-06(docs/DAY-PANEL-CARDS.md): 겹침은 다시 카드의 배지(.ovl-badge, 상대 시간과 함께, 전부는 title)
+    test('(jsdom) R5: 시간 겹침 배지는 겹친 두 카드에만(상대 시간이 함께, 종일과 다른 시간은 없음)', () => {
+      const b = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#dpBody .card"), function(c){ var x = c.querySelector(".ovl-badge"); return [c.dataset.id, x ? x.textContent.trim() : null, x ? x.getAttribute("title") : null]; })');
+      assert.deepStrictEqual(b.filter((x) => x[1]).map((x) => x[0]).sort(), ['m-1030', 'p-10'], '겹친 두 카드에만 배지가 있어야 한다');
       const by = Object.fromEntries(b.map(([id, t, ti]) => [id, { t, ti }]));
       assert.ok(by['p-10'].t && by['p-10'].t.includes('시간 겹침') && by['p-10'].t.includes('10:30~11:30'),
         '상대 카드 배지에 겹친 내 시간이 없다: ' + by['p-10'].t);
@@ -409,7 +406,7 @@ if (!JSDOM) {
       assert.ok(by['m-1030'].ti.includes('홍길동 님 일정과 시간이 겹칩니다'), by['m-1030'].ti);
       for (const id of ['p-all', 'p-14', 'm-all']) assert.strictEqual(by[id].t, null, `${id} 에 겹침 배지가 붙었다`);
       P.ev('selectedDate = "2026-09-09"; renderAll();');
-      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .dp-er-ovl").length'), 0, '맞닿기(9/9)에 겹침 표시가 붙었다');
+      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .ovl-badge").length'), 0, '맞닿기(9/9)에 배지가 붙었다');
       P.ev('selectedDate = "2026-09-08"; renderAll();');
     });
 

@@ -7,6 +7,18 @@
 
 ---
 
+## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 날짜 패널 일정을 카드로 되돌리고 묶음 머리를 늘 보이게
+
+기획과 구현 기록 [docs/DAY-PANEL-CARDS.md](docs/DAY-PANEL-CARDS.md)(결정 1~10, 시안 `dist/proto/day-panel-v6.html`). DB 구조 그대로. 계약 개정: 날짜 패널 일정 마크업(한 줄 줄 `.dp-er` 걷고 카드 `.card`), 할 일 머리 숫자.
+
+- **일정 카드**: 11/5 의 한 줄 일정과 줄 펼침 상세(`dpEvRowHtml`, `dpEvDetHtml`, `dpEvKey`)를 걷고 `cardHtml` 을 되살렸다(과제 꼬리표, 제목, 시각과 장소, 기간 n일째 / n일, 반복, 메모 전부, [수정] [삭제], 시간 겹침 배지). 열람 창은 [수정] [삭제]를 그리지 않는다. 여백은 바깥 4, 안쪽 5/8, 줄 간격 2. 종일 먼저, 시각순으로 세운 뒤 5개.
+- **꼬리표 대비**: 글자는 `color-mix(in srgb, var(--c) var(--tag-mix), var(--text))`, 새 토큰 `--tag-mix`(35%, 세피아 25%). 다섯 테마에서 어떤 과제 색이든 4.5:1 이상(시험이 토큰으로 계산).
+- **늘 보이는 머리**: `.dp-grp{display:contents}`, `.dp-grp-h` sticky(일정 top 0, 할 일 top 머리 높이와 bottom 0), 본문 `scroll-padding`. 붙은 머리를 누르면 그 묶음 처음으로 스크롤(`dpHeadPlan`, `dpHeadJump`), 제자리일 때만 접는다. 붙은 머리의 읽히는 이름과 아래에 붙은 그림자는 `dpMarkStuck`(본문 scroll, 창 resize, 다시 그릴 때). 접기와 [줄이기] 뒤 누른 자리를 지킨다.
+- **할 일 머리**: 남은 개수/전체(예: 9/12, 0개면 0).
+- **시험**: day-panel-fold 를 새 계약으로(카드, 정렬, 남은 개수, 머리 누르기 세 경우와 접기, 출렁임, sticky CSS, 테마별 대비, 변이 9). 한 줄 계약을 지키던 pc-watch-7, personal-panel, personal-improve, range-chip-click, memo-link, project-calendar-web, peer-overlay, peer-overlay-redesign, peer-side-by-side, peer-view-full 을 카드 계약으로. 루프 loop-peer-frame(허용 목록 `dp-er-b` 빼고 `memo-link`), loop-range-chip, loop-personal-improve, loop-ui-visual(`color(srgb ...)` 읽기).
+
+---
+
 ## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 작성 보조 수준 판정을 표와 꼭 맞는 줄만으로
 
 기획과 구현 기록 [docs/WRITING-ASSIST.md](docs/WRITING-ASSIST.md) "3차"(결정 10~15). DB 구조 그대로. 계약 개정: wa-core 의 줄 판정, Enter, 수준 칸.

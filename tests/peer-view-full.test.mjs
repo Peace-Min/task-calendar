@@ -161,7 +161,7 @@ const W = {
       }
     }
     assert.ok(src.includes('id="dpFoot"') && !src.includes('id="dptab-todo"') && !src.includes('id="dpTabs"'), '맨 아래 줄이 없거나 지운 탭 마크업이 남았다');
-    assert.ok(/dayGrpHtml\('td', '할 일', tdOn, tds\.length, tdInner\)/.test(extractFunction(src, 'dayDetailHtml')), '패널 본문에 할 일 묶음이 없다');
+    assert.ok(/dayGrpHtml\('td', '할 일', tdOn, tds\.length, tdInner, /.test(extractFunction(src, 'dayDetailHtml')), '패널 본문에 할 일 묶음이 없다');
     assert.ok(!/PEER/.test(extractFunction(src, 'dayGrpHtml')) && !/PEER/.test(extractFunction(src, 'dayFootHtml')), '할 일 묶음이나 맨 아래 줄이 PEER 에서 갈라진다');
   },
   //  P3 — 편집 수단은 감추고(CSS) 막는다(JS).
@@ -377,14 +377,11 @@ if (!JSDOM) {
       assert.strictEqual(P.ev('!!document.getElementById("btnAddHere")'), false, '열람 창에 [+ 추가] 가 있다');
     });
 
-    //  2026-11-05(docs/PC-WATCH-2.md §5, §7.1): 일정은 한 줄 줄이고 누르면 그 자리에서 들여쓴 상세로 펼친다(열람 창도 같다, [수정] [삭제]는 그리지 않는다)
-    test('R P2/Q3: 패널 일정 줄을 펼치면 상세에 시간·장소·메모가 보이고 수정·삭제는 없다', () => {
-      P.ev('Array.prototype.find.call(document.querySelectorAll("#dpBody .dp-er"), function(r){ return r.dataset.id === "e-t1"; }).querySelector(".dp-er-b").click();');
-      const t = P.ev('document.getElementById("dpBody").textContent');
+    //  2026-11-06(docs/DAY-PANEL-CARDS.md): 일정은 다시 카드(11/5 의 한 줄 줄을 되돌림). 열람 창 카드는 [수정] [삭제]를 그리지 않는다
+    test('R P2/Q3: 패널 일정 카드에 시간, 장소, 메모가 보이고 수정과 삭제는 없다', () => {
+      const t = P.ev('Array.prototype.find.call(document.querySelectorAll("#dpBody .card"), function(c){ return c.dataset.id === "e-t1"; }).textContent');
       for (const s of ['상대: 설계회의', '3층 소회의실', '안건 정리 메모', '09:00']) assert.ok(t.includes(s), `상세 카드에 '${s}' 가 없다`);
-      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .dp-edet").length === 1 && document.querySelectorAll("#dpBody .dp-edet [data-act], #dpBody .card").length === 0'), true,
-        '상세의 수정·삭제가 열람 창에 그려졌거나 카드 상자가 붙었다');
-      P.ev('DP.open = ""; renderPanel();');
+      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .card [data-act], #dpBody .card-actions").length'), 0, '카드의 수정, 삭제가 열람 창에 그려졌다');
     });
 
     test('R P2/Q2: 패널의 할 일 묶음이 그 사람의 할 일을 내 화면과 같은 규칙(그날 할 일, 중요 먼저)으로 읽기 전용으로 그린다', () => {
@@ -393,7 +390,7 @@ if (!JSDOM) {
       P.ev('Array.prototype.forEach.call(document.querySelectorAll("#dpBody .todo-text"), function(x){ if(/보고서 초안/.test(x.textContent)) x.click(); });');
       const t = P.ev(body + '.textContent');
       for (const s of ['상대: 보고서 초안', '초안 비고', '상대: 끝낸 일']) assert.ok(t.includes(s), `패널 할 일 묶음에 '${s}' 가 없다`);
-      assert.ok(/할 일\s*2/.test(P.ev('document.querySelector("#dpBody .dp-grp[data-grp=td] .dp-grp-h").textContent')), '할 일 묶음 머리가 "할 일 2" 가 아니다');
+      assert.ok(/할 일\s*1\/2/.test(P.ev('document.querySelector("#dpBody .dp-grp[data-grp=td] .dp-grp-h").textContent')), '할 일 묶음 머리가 "할 일 1/2"(남은 개수/전체, docs/DAY-PANEL-CARDS.md 결정 8) 가 아니다');
       assert.strictEqual(P.ev(body + '.querySelectorAll(".todo-row").length'), 2);
       //  편집 수단이 없다 — 체크 버튼·삭제·추가·편집 진입(data-act) 전부.
       assert.strictEqual(P.ev('document.querySelector("#dpBody .dp-grp[data-grp=td]").querySelectorAll("[data-act=toggle],[data-act=del],[data-act=star],[data-act=edit]").length'), 0,

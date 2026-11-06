@@ -506,6 +506,13 @@ function isDisabled(e){
 /* 색 파싱/합성/대비 — sRGB 상대휘도(WCAG 2.x) */
 function parseColor(s){
   if(!s) return null;
+  //  color-mix(in srgb, ...) 의 계산값은 color(srgb r g b / a) 로 나온다(0~1). 날짜 패널 과제 꼬리표 글자(.card .cat-tag, docs/DAY-PANEL-CARDS.md 결정 4)
+  var cm = /^color\(srgb\s+([^)]+)\)$/.exec(s.trim());
+  if(cm){
+    var q = cm[1].split(/[\s\/]+/).filter(function(x){ return x.length; }).map(parseFloat);
+    if(q.length < 3 || q.slice(0, 3).some(isNaN)) return null;
+    return { r:q[0]*255, g:q[1]*255, b:q[2]*255, a: q.length > 3 ? q[3] : 1 };
+  }
   var m = /^rgba?\(([^)]+)\)$/.exec(s.trim());
   if(!m) return null;
   var p = m[1].split(/[,\s\/]+/).filter(function(x){ return x.length; }).map(parseFloat);

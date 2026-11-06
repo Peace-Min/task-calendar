@@ -368,7 +368,7 @@ if (!JSDOM) {
         clickAt(W, b, b.__col);
         assert.strictEqual(W.ev('selectedDate'), '2026-10-12', '막대를 누른 칸(10/12)이 아니라 다른 날을 골랐다: ' + W.ev('selectedDate'));
         assert.ok(!W.$('#dpTabs'), '패널에 탭이 있다');   // 탭 전환은 없다(PERSONAL-PANEL §2.1)
-        assert.ok(W.$('#dpBody .dp-er.flash[data-id="e-long"] .dp-edet'), '오른쪽 패널에 그 일정 줄이 펼쳐져 강조되지 않았다');
+        assert.ok(W.$('#dpBody .card.flash[data-id="e-long"]'), '오른쪽 패널에 그 일정 카드가 강조되지 않았다');
         assert.ok(!W.$('.pc-pop, #pcPop'), '목록 창이 열렸다(개인 탭에는 없다)');
         const sel = W.$$('#grid .cell.sel').map((c) => c.dataset.date);
         assert.deepStrictEqual(sel, ['2026-10-12'], '달력 선택 표시가 누른 칸이 아니다');

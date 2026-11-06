@@ -243,10 +243,10 @@ if (!JSDOM) {
       assert.ok(P.ev('window.innerWidth') > 760, '사전조건: 넓은 창(좁은 폭 시트 규칙이 아니라 나란히 보기 규칙을 시험한다)');
       P.ev(`document.querySelector('#grid .cell[data-date="2026-09-08"]').click()`);
       assert.strictEqual(P.ev('document.body.classList.contains("sheet-open")'), true, '왼쪽 칸을 눌렀는데 시트가 안 열린다');
-      //  2026-11-05(docs/PC-WATCH-2.md §5): 두 묶음 안은 한 줄 줄(.dp-er, 내 것 .dp-er-mine). 겹침은 줄 끝 작은 시계(펼친 카드에 배지)
-      const secs = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#dpBody .dp-sec"), function(s){ return [s.querySelector(".dp-sec-h").textContent.replace(/\\s+/g," ").trim(), s.querySelectorAll(".dp-er").length, s.querySelectorAll(".dp-er.dp-er-mine").length]; })');
+      //  2026-11-06(docs/DAY-PANEL-CARDS.md): 두 묶음 안은 다시 카드(.card, 내 것 .card-mine). 겹침은 카드의 배지
+      const secs = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#dpBody .dp-sec"), function(s){ return [s.querySelector(".dp-sec-h").textContent.replace(/\\s+/g," ").trim(), s.querySelectorAll(".card").length, s.querySelectorAll(".card.card-mine").length]; })');
       assert.deepStrictEqual(secs, [['홍길동 님 일정 (3)', 3, 0], ['내 일정 (2)', 2, 2]], 'S7 — 시트의 상세가 겹쳐 보기와 같은 두 묶음이 아니다');
-      assert.ok(q(P, '#dpBody .dp-er-ovl') === 2, 'S7 — 시간 겹침 표시가 두 줄에 없다');
+      assert.ok(q(P, '#dpBody .ovl-badge') === 2, 'S7, 시간 겹침 배지가 두 카드에 없다');
       P.ev('document.getElementById("dpSheetClose").click()');
       assert.strictEqual(P.ev('document.body.classList.contains("sheet-open")'), false, '닫기 손잡이로 안 닫힌다');
       P.ev(`document.querySelector('#gridMine .cell[data-date="2026-09-09"]').click()`);
@@ -303,10 +303,7 @@ if (!JSDOM) {
       assert.strictEqual(display(P, '#gridMine .chip.chip-mine'), 'flex', '「끈 상태」 CSS 가 오른쪽 달력의 내 칩을 감춘다');
       P.ev('selectedDate = "2026-09-08"; renderAll();');
       assert.strictEqual(q(P, '#dpBody .dp-sec'), 2, '겹을 꺼 두었어도 나란히 보기의 상세는 두 묶음이다(S7)');
-      assert.strictEqual(display(P, '#dpBody .dp-er-mine'), 'block', '「끈 상태」 CSS 가 시트의 내 일정 줄을 감춘다');
-      P.ev('document.querySelector("#dpBody .dp-er-mine .dp-er-b").click();');
-      assert.strictEqual(display(P, '#dpBody .dp-er-mine .dp-edet'), 'flex', '「끈 상태」 CSS 가 시트의 내 일정 상세를 감춘다');
-      P.ev('DP.open = ""; renderPanel();');
+      assert.strictEqual(display(P, '#dpBody .card.card-mine'), 'flex', '끈 상태 CSS 가 시트의 내 카드를 감춘다');
       assert.deepStrictEqual(P.evJSON('Array.prototype.map.call(document.querySelectorAll("#gridMine .ovl-dot"), function(d){ return getComputedStyle(d).display === "none"; })'), [false],
         '「끈 상태」 CSS 가 오른쪽 겹침 점을 감춘다');
       // 겹쳐 보기로 돌아오면 원래 값(꺼짐) 그대로

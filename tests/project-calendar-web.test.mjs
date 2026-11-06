@@ -163,7 +163,7 @@ test('정적④: 과제 탭 문구와 주석의 기호 규칙', () => statics.pu
 test('정적⑤: 검토 반영으로 걷은 것(단독 보기, 복사 대응과 배지와 등록됨, 막대 미리보기와 목록 [수정], 누른 줄 강조)이 없다', () => statics.removed(src));
 test('변이S⑤: 이름 단추, 복사 배지, 미리보기, 누른 줄 강조를 되돌리면 정적⑤ 가 잡는다', () => {
   assert.throws(() => statics.removed(mutate("'<span class=\"pc-nm\"><span class=\"pc-name\" data-full=\"' + esc(p.name) + '\" title=\"' + esc(p.name) + '\">' + esc(p.name) + '</span>'","'<span class=\"pc-nm\"><button type=\"button\" class=\"pc-name\" data-act=\"solo\">' + esc(p.name) + '</button>'")), /단독 보기 동작|단추다/);
-  assert.throws(() => statics.removed(mutate('  if(e.memo) h += `<div class="dp-det-memo">${linkifyHtml(e.memo)}</div>`;', '  h += pcCopyBadge(e.id);\n  if(e.memo) h += `<div class="dp-det-memo">${linkifyHtml(e.memo)}</div>`;')), /복사 배지/);
+  assert.throws(() => statics.removed(mutate("    + (e.memo ? `<div class=\"card-memo\">${linkifyHtml(e.memo)}</div>` : '')", "    + pcCopyBadge(e.id) + (e.memo ? `<div class=\"card-memo\">${linkifyHtml(e.memo)}</div>` : '')")), /복사 배지/);
   assert.throws(() => statics.removed(mutate('pcOpenDayList(ds, cell, { hit: bar.dataset.ev, projectUid: rowProj })', 'pcOpenPreview(bar.dataset.ev, bar, null)')), /미리보기|그날 일정 목록/);
   assert.throws(() => statics.removed(mutate(`'<button type="button" class="pc-dl-row" data-act="dlOpen"`, `'<button type="button" class="pc-dl-row' + (hit ? ' hit' : '') + '" data-act="dlOpen"`)), /강조\(hit/);
   assert.throws(() => statics.removed(mutate('.pc-dl-row:hover{', '.pc-dl .pc-dl-row.hit{box-shadow:0 0 0 2px var(--accent)}\n.pc-dl-row:hover{')), /강조 CSS/);
@@ -1095,13 +1095,10 @@ if (!JSDOM) {
     await W.applyState([ent('e-copy-1'), ent('e-copy-2')]);
     await W.tab('personal');
     W.ev(`selectedDate = ${JSON.stringify(today())}; renderAll();`);
-    //  패널 일정은 한 줄 줄(docs/PC-WATCH-2.md §5). 줄을 펼친 상세(§7.1, 카드 상자 없음)에도 배지가 없다
-    const rows = W.qa('#dpBody .dp-er[data-id^="e-copy-"]');
-    assert.strictEqual(rows.length, 2, '개인 탭에 두 사본이 보이지 않는다');
-    rows[0].querySelector('.dp-er-b').click();
-    const cards = W.qa('#dpBody .dp-edet[data-id^="e-copy-"]');
-    assert.strictEqual(cards.length, 1, '줄을 눌렀는데 상세로 펼쳐지지 않았다');
-    assert.ok(W.qa('#dpBody .dp-er[data-id^="e-copy-"]').every((cd) => !/과제 캘린더에서 복사/.test(cd.textContent) && !cd.querySelector('.pc-copy-badge')), '개인 탭 카드에 복사 배지가 있다');
+    //  패널 일정은 카드(docs/DAY-PANEL-CARDS.md, 11/5 의 한 줄 줄을 되돌림). 카드에 배지가 없다
+    const cards = W.qa('#dpBody .card[data-id^="e-copy-"]');
+    assert.strictEqual(cards.length, 2, '개인 탭에 두 사본이 보이지 않는다');
+    assert.ok(cards.every((cd) => !/과제 캘린더에서 복사/.test(cd.textContent) && !cd.querySelector('.pc-copy-badge')), '개인 탭 카드에 복사 배지가 있다');
     assert.strictEqual(W.cmds('projectCalendarBootstrap').length, 1, '개인 탭으로 돌아오며 배지 때문에 과제 목록을 다시 읽었다');
   }));
 

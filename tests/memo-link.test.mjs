@@ -45,9 +45,9 @@ test('(M) linkifyHtml 변이: 끝 문장부호를 안 빼거나 이스케이프�
 });
 
 // ══ (S) 적용 자리와 클릭 ══════════════════════════════════════════════
-//  2026-11-05(docs/PC-WATCH-2.md §7.1): 개인 상세와 할 일 메모는 날짜 패널의 들여쓴 상세(dpEvDetHtml, dpTdDetHtml)로 옮겼다
+//  2026-11-05(docs/PC-WATCH-2.md §7.1): 할 일 메모는 날짜 패널의 들여쓴 상세(dpTdDetHtml). 2026-11-06(docs/DAY-PANEL-CARDS.md): 일정 메모는 다시 카드(cardHtml)에 전부
 test('(S) 세 메모 자리가 linkifyHtml 을 쓴다(개인 상세, 과제 일정 상세, 할 일 메모)', () => {
-  assert.ok(extractFunction(app, 'dpEvDetHtml').includes('<div class="dp-det-memo">${linkifyHtml(e.memo)}</div>'), '개인 상세 메모');
+  assert.ok(extractFunction(app, 'cardHtml').includes('<div class="card-memo">${linkifyHtml(e.memo)}</div>'), '개인 상세 메모');
   assert.ok(app.includes("'<div class=\"pcd-memo\" tabindex=\"0\">' + linkifyHtml(e.memo) + '</div>'"), '과제 일정 상세 메모');
   assert.ok(extractFunction(app, 'dpTdDetHtml').includes('>${linkifyHtml(memo)}</div>'), '할 일 메모');
 });

@@ -1,15 +1,16 @@
 // 관심 과제 2차 수정(docs/PC-WATCH-2.md §7, 2026-11-05 사용자) 계약. 시안 dist/proto/day-panel-v3.html, dist/proto/pc-watch-v12.html.
 //
 // 이 파일이 지키는 것(§7.4):
-//   (S) 정적: 패널 안 할 일 수정 폼(todoEditHtml, editingTodoId)과 그 길이 없다. 일정 펼침은 카드 상자(cardHtml)가 아니라 들여쓴 상세.
+//   (S) 정적: 패널 안 할 일 수정 폼(todoEditHtml, editingTodoId)과 그 길이 없다. 일정은 카드(cardHtml), 할 일은 들여쓴 상세.
+//       (2026-11-06 docs/DAY-PANEL-CARDS.md: 7.1 의 한 줄 일정과 줄 펼침 상세는 카드로 되돌렸다. 카드 자체의 계약은 tests/day-panel-fold.test.mjs)
 //       열람 창(PEER)은 상세의 [수정] [삭제]가 없다. 상태 미지정 글자(과제 추가 창과 관리 창 공통), 정렬 머리 공용 함수(세 상태, aria-sort).
 //       조직도 함수는 P 를 생략하면 사람 고르기(__pk) 그대로(한 명 고르기 불변). 새 글에 금지 기호 없음, 새 CSS 는 토큰만.
 //   (R) jsdom:
-//       7.1 일정 상세는 있는 것만(시각 범위, 장소, 기간 n일째 / n일, 반복, 메모), 분류 꼬리표 없음, 줄의 시각을 다시 쓰지 않음, [수정] [삭제].
-//           할 일 제목을 누르면 같은 들여쓴 상세(기한, 과제, 설명). 일정과 할 일 펼침은 합쳐서 하나.
+//       7.1 일정은 카드(꼬리표, 시각 범위와 장소, 기간 n일째 / n일, 반복, 메모, [수정] [삭제]), 누르면 펼치는 갈래는 없다.
+//           할 일 제목을 누르면 들여쓴 상세(기한, 과제, 설명). 펼침은 할 일끼리 하나.
 //           할 일 [수정] = [+ 추가] 창(openQuickAdd)의 할 일 수정: 제목 "할 일 수정", 종류 단추 숨김, 칸 채움, 저장, 취소, 삭제(실행 취소), 여러 날 할 일의 그날 설명.
 //       7.2 밀린 할 일 팝업의 과제별 소제목(과제 목록 순서, 과제 없음은 끝, 개수, 기한 지남은 가장 오래된 기한), 소제목 접기(기억 안 함), 줄에 과제 색점 없음.
-//   (M) 변이: 일정 펼침에 카드를 되살리거나, 할 일 [수정]이 창을 열지 않거나, 소제목을 빼면 위 시험이 잡는다.
+//   (M) 변이: 카드에서 기간 줄을 빼거나, 할 일 [수정]이 창을 열지 않거나, 소제목을 빼면 위 시험이 잡는다.
 // ★ 회사 사이트에는 아무것도 보내지 않는다(호스트 postMessage 는 버린다).
 import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 
@@ -36,20 +37,18 @@ test('(S) 관심 과제 전용 칸(.ca-wo)은 과제 추가 창에서 숨는다:
   assert.ok(/#catAddModal:not\(\.ca-watch\) \.ca-wo\{display:none !important\}/.test(css), '과제 추가 창에 일정 없는 과제 숨김이 보인다');
   assert.ok(/\n\.check\{display:flex !important/.test(css), '.check 규칙이 바뀌었다(이 시험의 전제를 다시 볼 것)');
 });
-test('(S) 7.1: 펼친 줄만 옅은 바탕이고 상세는 바탕 없이 왼쪽 가는 선으로 들여쓴다(상세까지 칠하면 상자처럼 보인다, 2026-11-05 실제 위젯 점검)', () => {
-  const hi = css.match(/([^}]*)\{background:var\(--accent-soft\)\}[^\n]*펼친 줄만/);
-  assert.ok(hi && hi[1].includes('.dp-er.open .dp-er-b') && hi[1].includes('.todo-row.open') && !hi[1].includes('dp-det') && !/\.dp-er\.open\s*(,|$)/.test(hi[1]), '펼친 바탕이 줄이 아닌 묶음(상세 포함)에 칠해진다');
+test('(S) 7.1: 펼친 할 일 줄만 옅은 바탕이고 상세는 바탕 없이 왼쪽 가는 선으로 들여쓴다(상세까지 칠하면 상자처럼 보인다, 2026-11-05 실제 위젯 점검)', () => {
+  const hi = css.match(/([^}]*)\{background:var\(--accent-soft\)\}[^\n]*펼친 할 일 줄만/);
+  assert.ok(hi && hi[1].includes('.todo-row.open') && !hi[1].includes('dp-det'), '펼친 바탕이 줄이 아닌 묶음(상세 포함)에 칠해진다');
   const det = css.match(/\n\.dp-det\{([^}]*)\}/);
   assert.ok(det && /border-left:1px solid var\(--line\)/.test(det[1]) && !/background/.test(det[1]), '상세가 왼쪽 선 들여쓰기가 아니거나 바탕을 칠한다');
 });
-test('(S) 7.1: 패널 안 할 일 수정 폼과 그 상태(todoEditHtml, editingTodoId, te-, canceledit)가 없고, 일정 펼침은 카드 상자가 아니다', () => {
-  assert.ok(!app.includes('function cardHtml('), '쓰지 않는 일정 카드(cardHtml)가 남았다');
+test('(S) 7.1: 패널 안 할 일 수정 폼과 그 상태(todoEditHtml, editingTodoId, te-, canceledit)가 없고, 일정은 카드(11/6 되돌림, 한 줄 줄과 줄 펼침 없음)', () => {
   for (const gone of ['todoEditHtml', 'editingTodoId', 'class="todo-edit"', '.todo-edit', 'te-text', 'te-daynote', "'canceledit'", 'todo-memo', 'todo-daymemo']) assert.ok(!app.includes(gone), `걷어야 할 패널 수정 폼 흔적 ${gone} 이 남았다`);
-  const row = extractFunction(app, 'dpEvRowHtml');
-  assert.ok(row.includes('dpEvDetHtml(e, ov)') && !row.includes('cardHtml('), '일정 펼침이 들여쓴 상세가 아니다');
-  const det = extractFunction(app, 'dpEvDetHtml');
-  assert.ok(!/badge|c\.name|catById/.test(det), '일정 상세가 분류 꼬리표를 다시 쓴다');
-  assert.ok(/e\.startTime && e\.endTime/.test(det), '시각 범위는 시작과 끝이 다 있을 때만이어야 한다(줄에 이미 있는 시작 시각을 다시 쓰지 않는다)');
+  assert.ok(app.includes('function cardHtml(') && !app.includes('function dpEvRowHtml(') && !app.includes('function dpEvDetHtml('), '일정이 카드가 아니거나 한 줄 줄과 줄 펼침 상세가 남았다(docs/DAY-PANEL-CARDS.md 결정 1)');
+  const card = extractFunction(app, 'cardHtml');
+  assert.ok(/class="badge cat-tag"/.test(card) && /timeLabel\(e\)/.test(card), '카드에 과제 꼬리표나 시각 줄이 없다');
+  assert.ok(!/else if\(a === 'ev'\)/.test(extractFunction(app, 'dpOnClick')), '일정을 눌러 펼치는 갈래가 남았다');
   assert.ok(extractFunction(app, 'dpDetAcHtml').startsWith("function dpDetAcHtml(){ return PEER ? ''"), '열람 창에서 상세의 [수정] [삭제]를 그린다');
   assert.ok(/openQuickAdd\(null, 'todo', null, id\)/.test(extractFunction(app, 'openTodoEdit')), '할 일 [수정]이 [+ 추가] 창(openQuickAdd)의 할 일 수정이 아니다');
   const qa = extractFunction(app, 'openQuickAdd');
@@ -72,7 +71,7 @@ test('(S) 7.3: 조직도 함수는 P 를 생략하면 사람 고르기(__pk) 그
   assert.ok(!/__pk/.test(extractFunction(app, 'caWhoRender')), '[참여자] 팝업이 사람 고르기 상태(__pk)를 건드린다');
 });
 test('(S) 새 함수와 CSS: 금지 기호 없음, hex 색 없음(토큰만)', () => {
-  const fns = ['dpEvDetHtml', 'dpTdDetHtml', 'dpDetLn', 'dpDetAcHtml', 'todoRowHtml', 'qaDeleteTodo', 'openTodoEdit', 'todoAllByProject', 'todoAllPjHtml', 'todoAllHtml',
+  const fns = ['cardHtml', 'dpTdDetHtml', 'dpDetLn', 'dpDetAcHtml', 'todoRowHtml', 'qaDeleteTodo', 'openTodoEdit', 'todoAllByProject', 'todoAllPjHtml', 'todoAllHtml',
     'sortNext', 'sortAria', 'sortHeadHtml', 'caWatchRows', 'caWhoAll', 'caWhoUnits', 'caWhoFoundEl', 'caWhoRender', 'caWhoApply', 'caWhoPlace', 'caWhoOpen', 'caWhoClick', 'caWhoChange', 'caWhoKey',
     'pkUnitMembers', 'pkCheckRowEl', 'pkAllEl', 'fbHeadMarkup', 'fbPopEdgeKey'].map((n) => extractFunction(app, n)).join('\n');
   assert.ok(!/[—–「」]/.test(fns) && !/(^|\s)·(\s|$)/m.test(fns), '새 함수에 엠 대시, 낫표, 띄어 쓴 가운데 점이 있다');
@@ -140,49 +139,43 @@ if (!JSDOM) {
     return W;
   }
   const end = async (W) => { try { W.ev("closeModal('#quickAdd'); closeModal('#todoAllModal')"); } catch (_) {} await later(); W.close(); };
-  const openEv = (W, id) => W.$(`#dpBody .dp-er[data-id="${id}"] .dp-er-b`).click();
+  const card = (W, id) => W.$(`#dpBody .card[data-id="${id}"]`);
+  const cardLines = (el) => [...el.querySelectorAll('.card-top, .card-title, .card-when, .card-span, .card-recur, .card-memo')].map((x) => x.textContent.replace(/\s+/g, ' ').trim());
   const lines = (el) => [...el.querySelectorAll('.dp-det-ln, .dp-det-memo')].map((x) => x.textContent.replace(/\s+/g, ' ').trim());
-  const opened = (W) => [...W.$$('#dpBody .dp-er.open').map((r) => r.dataset.id), ...W.$$('#dpBody .todo-row.open').map((r) => r.dataset.id)];
+  const opened = (W) => W.$$('#dpBody .todo-row.open').map((r) => r.dataset.id);
 
   const checks = {
-    //  7.1 일정 상세: 있는 것만, 꼬리표 없음, 줄의 시각을 다시 쓰지 않음, 하나만(할 일과 합쳐서)
+    //  7.1 일정은 카드(2026-11-06 docs/DAY-PANEL-CARDS.md 되돌림): 꼬리표, 제목, 시각 범위와 장소, 기간 n일째 / n일, 반복, 메모. 할 일은 들여쓴 상세(펼침은 할 일끼리 하나)
     async detail(src) {
       const W = await boot(src);
       try {
         const T = W.T, f = (d) => { const x = new Date(d + 'T00:00:00'); return (x.getMonth() + 1) + '/' + x.getDate(); };
-        openEv(W, 'eFull');
-        let d = W.$('#dpBody .dp-er[data-id="eFull"] .dp-edet');
-        assert.ok(d && !W.$('#dpBody .card') && !d.querySelector('.badge'), '일정 상세가 카드 상자이거나 분류 꼬리표가 있다');
-        assert.deepStrictEqual(lines(d), ['10:00 ~ 11:00', '3층 대회의실', '안건: 납품 일정'], '일정 상세가 시각 범위, 장소, 메모(있는 것만)가 아니다');
-        assert.deepStrictEqual([...d.querySelectorAll('.dp-det-ac [data-act]')].map((b) => [b.dataset.act, b.textContent]), [['edit', '수정'], ['del', '삭제']], '상세 끝 [수정] [삭제] 글자 단추가 없다');
-        openEv(W, 'eSpan');
-        d = W.$('#dpBody .dp-er[data-id="eSpan"] .dp-edet');
-        assert.deepStrictEqual(lines(d), [`${f(ymdAdd(T, -2))} ~ ${f(ymdAdd(T, 2))} (3일째 / 5일)`], '기간 일정 상세가 기간(n일째 / n일)만이 아니다(종일은 줄에 있다)');
-        openEv(W, 'eBare');
-        d = W.$('#dpBody .dp-er[data-id="eBare"] .dp-edet');
-        assert.deepStrictEqual(lines(d), [], '더 보일 게 없는 일정에 상세 줄이 붙었다');
+        assert.ok(!W.$('#dpBody .dp-er, #dpBody .dp-edet, #dpBody [data-dp="ev"]'), '한 줄 일정이나 줄 펼침 상세가 남았다');
+        let d = card(W, 'eFull');
+        assert.deepStrictEqual(cardLines(d), ['알파', '일정 eFull', '10:00~11:00 3층 대회의실', '안건: 납품 일정'], '일정 카드가 꼬리표, 제목, 시각과 장소, 메모가 아니다');
+        assert.deepStrictEqual([...d.querySelectorAll('.card-actions [data-act]')].map((b) => [b.dataset.act, b.textContent]), [['edit', '수정'], ['del', '삭제']], '카드 끝 [수정] [삭제] 글자 단추가 없다');
+        d = card(W, 'eSpan');
+        assert.deepStrictEqual(cardLines(d), ['알파', '기간 일정', '종일', `${f(ymdAdd(T, -2))} ~ ${f(ymdAdd(T, 2))} (3일째 / 5일)`], '기간 일정 카드가 종일과 기간(n일째 / n일)이 아니다');
+        d = card(W, 'eBare');
+        assert.deepStrictEqual(cardLines(d), ['베타', '빈 일정', '종일'], '더 보일 게 없는 일정에 줄이 붙었다');
         assert.ok(d.querySelector('[data-act="edit"]') && d.querySelector('[data-act="del"]'), '더 보일 게 없는 일정도 [수정] [삭제]는 있어야 한다');
-        openEv(W, 'eRec');
-        d = W.$('#dpBody .dp-er[data-id="eRec"] .dp-edet');
-        assert.strictEqual(lines(d).length, 1, '시작 시각만 있는 반복 일정은 반복 한 줄이어야 한다(시작 시각은 줄에 있다)');
-        assert.ok(/매주/.test(lines(d)[0]), '반복 줄이 없다');
-        assert.deepStrictEqual(opened(W), ['eRec'], '한 번에 하나만 펼쳐져야 한다');
-        //  할 일 제목: 같은 들여쓴 상세, 일정 펼침은 접힌다(합쳐서 하나)
+        d = card(W, 'eRec');
+        assert.deepStrictEqual(cardLines(d).slice(0, 3), ['알파', '반복 일정', '14:00'], '반복 일정 카드의 시각 줄이 아니다');
+        assert.ok(/매주/.test(d.querySelector('.card-recur').textContent), '반복 줄이 없다');
+        //  할 일 제목: 들여쓴 상세
         W.$('#dpBody .todo-row[data-id="tOne"] .todo-text').click();
-        assert.deepStrictEqual(opened(W), ['tOne'], '할 일을 펼쳤는데 일정 펼침이 남았다(합쳐서 하나)');
+        assert.deepStrictEqual(opened(W), ['tOne']);
         const td = W.$('#dpBody .todo-row.open[data-id="tOne"] + .dp-tdet');
         assert.ok(td && !W.$('#dpBody .todo-edit'), '할 일 상세가 없거나 인라인 수정 폼이 열렸다');
         assert.deepStrictEqual(lines(td), ['기한 오늘', '알파', '설명 한 줄'], '할 일 상세가 기한, 과제, 설명이 아니다');
         assert.strictEqual(W.$('#dpBody .todo-row[data-id="tOne"] .todo-text').getAttribute('aria-expanded'), 'true');
         assert.strictEqual(W.doc.activeElement, W.$('#dpBody .todo-row[data-id="tOne"] .todo-text'), '펼친 뒤 포커스가 그 제목이 아니다');
-        //  여러 날 할 일: 기한은 줄에 있으니 상세에는 과제와 그날 설명
+        //  여러 날 할 일: 기한은 줄에 있으니 상세에는 과제와 그날 설명. 펼침은 할 일끼리 하나
         W.$('#dpBody .todo-row[data-id="tSpan"] .todo-text').dispatchEvent(new W.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-        assert.deepStrictEqual(opened(W), ['tSpan'], 'Enter 로 펼쳐지지 않았다');
+        assert.deepStrictEqual(opened(W), ['tSpan'], 'Enter 로 펼쳐지지 않았거나 앞 할 일 펼침이 남았다');
         assert.deepStrictEqual(lines(W.$('#dpBody .dp-tdet')), ['베타', '오늘 설명'], '여러 날 할 일 상세가 과제와 그날 설명이 아니다');
-        //  일정 상세의 [수정]은 일정 수정 창, [삭제]는 그대로(삭제 확인)
-        openEv(W, 'eFull');
-        assert.deepStrictEqual(opened(W), ['eFull']);
-        W.$('#dpBody .dp-edet [data-act="edit"]').click(); await settle();
+        //  카드의 [수정]은 일정 수정 창
+        card(W, 'eFull').querySelector('[data-act="edit"]').click(); await settle();
         assert.ok(!W.$('#quickAdd').classList.contains('hidden') && W.$('#qaEditTitle').textContent === '일정 수정' && W.$('#qaDel').classList.contains('hidden'), '일정 [수정]이 일정 수정 창(삭제 단추 없음)을 열지 않았다');
         assert.strictEqual(W.$('#qaTitle').value, '일정 eFull');
       } finally { await end(W); }
@@ -276,7 +269,7 @@ if (!JSDOM) {
     },
   };
 
-  test('(R) 7.1 일정 상세는 있는 것만(꼬리표 없음, 줄의 시각 다시 안 씀), 할 일도 같은 상세, 펼침은 합쳐서 하나, 일정 [수정]은 일정 수정', () => checks.detail());
+  test('(R) 7.1 일정은 카드(꼬리표, 시각과 장소, 기간, 반복, 메모, 있는 줄만), 할 일은 들여쓴 상세(할 일끼리 하나), 카드 [수정]은 일정 수정', () => checks.detail());
   test('(R) 7.1 할 일 [수정] = [+ 추가] 창의 할 일 수정(칸 채움, 취소, 저장, 여러 날 할 일의 그날 설명, 삭제와 실행 취소), 새 기록은 그대로', () => checks.todoEdit());
   test('(R) 7.2 밀린 할 일 팝업: 과제별 소제목(과제 순서, 개수, 가장 오래된 기한, 과제 없음은 끝), 소제목 접기(기억 안 함), 줄에 색점 없음', () => checks.overdue());
   test('(R) 7.3 정렬 머리 공용 함수: 세 상태 순환과 aria-sort', async () => {
@@ -291,9 +284,9 @@ if (!JSDOM) {
   });
 
   /* ══ (M) 변이 ═══════════════════════════════════════════════════════ */
-  test('(M) 일정 펼침에 카드 상자를 되살리면 상세 시험이 잡는다', async () => {
-    const bad = mutate(app, "    + (open ? dpEvDetHtml(e, ov) : '') + '</div>';", "    + (open ? '<div class=\"card\">' + dpEvDetHtml(e, ov) + '</div>' : '') + '</div>';");
-    await assert.rejects(() => checks.detail(bad));
+  test('(M) 카드에서 기간 줄(n일째 / n일)을 빼면 상세 시험이 잡는다', async () => {
+    const bad = mutate(app, '    + top + `<div class="card-title">${esc(e.title)}</div>` + whenRow + rangeLine + recurLine', '    + top + `<div class="card-title">${esc(e.title)}</div>` + whenRow + recurLine');
+    await assert.rejects(() => checks.detail(bad), /기간/);
   });
   test('(M) 할 일 [수정]이 [+ 추가] 창을 열지 않으면 수정 시험이 잡는다', async () => {
     const bad = mutate(app, "function openTodoEdit(id){ if(todoById(id)) openQuickAdd(null, 'todo', null, id); }", 'function openTodoEdit(id){}');

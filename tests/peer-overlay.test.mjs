@@ -358,14 +358,12 @@ if (!JSDOM) {
         new Array(MINE_CHIPS).fill('false'));
     });
 
-    //  2026-11-05(docs/PC-WATCH-2.md §5, §7.1): 패널 일정은 한 줄 줄(.dp-er)이고 누르면 그 자리에서 들여쓴 상세로 펼친다. 내 일정 줄은 .dp-er-mine(색 띠와 글자가 내 것 색)
-    test('P 렌더: 일자 패널(9/8)에 상대 일정 2 + 내 일정 1(.dp-er-mine) 줄이 함께 서고, 내 줄을 펼치면 읽기 전용 상세다', () => {
-      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .dp-er").length'), 3);
-      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .dp-er.dp-er-mine").length'), 1);
-      assert.strictEqual(P.ev('document.querySelector("#dpBody .dp-er-mine .dp-er-t").textContent'), '나: 회의 준비');
-      P.ev('document.querySelector("#dpBody .dp-er-mine .dp-er-b").click();');
-      assert.strictEqual(P.ev('!!document.querySelector("#dpBody .dp-er-mine.open .dp-edet") && !document.querySelector("#dpBody .dp-er-mine .card") && !document.querySelector("#dpBody .dp-edet [data-act]")'), true, '내 줄을 펼친 상세가 없거나 카드 상자이거나 [수정] [삭제]가 있다');
-      P.ev('DP.open = ""; renderPanel();');
+    //  2026-11-06(docs/DAY-PANEL-CARDS.md): 패널 일정은 다시 카드(11/5 의 한 줄 줄을 되돌림). 내 일정 카드는 .card-mine 이고 열람 창이라 [수정] [삭제]가 없다
+    test('P 렌더: 일자 패널(9/8)에 상대 카드 2 + 내 카드 1(.card-mine) 이 함께 서고, 열람 창 카드에는 [수정] [삭제]가 없다', () => {
+      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .card").length'), 3);
+      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .card.card-mine").length'), 1);
+      assert.strictEqual(P.ev('document.querySelector("#dpBody .card.card-mine .card-title").textContent'), '나: 회의 준비');
+      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .card [data-act], #dpBody .card-actions").length'), 0, '열람 창 카드에 [수정] [삭제]가 있다');
     });
 
     //  ★ 2026-10-01(docs/PEER-OVERLAY-REDESIGN.md O1) — 체크박스 + 「점선 = 내 일정」 글자 범례는 **범례 칩 두 개**로 바뀌었다.
@@ -413,7 +411,7 @@ if (!JSDOM) {
     test('P 토글: 끄면 겹이 사라지고(data-peer-overlay 해제 · localStorage "0"), 켜면 돌아온다', () => {
       P.ev('setPeerOverlay(false);');
       assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip.chip-mine").length'), 0);
-      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .dp-er-mine").length'), 0);
+      assert.strictEqual(P.ev('document.querySelectorAll("#dpBody .card.card-mine").length'), 0);
       assert.strictEqual(P.ev('String(document.body.dataset.peerOverlay)'), 'undefined',
         'CSS 스위치가 안 풀렸다 — 렌더가 늦어도 겹이 즉시 사라져야 한다');
       assert.strictEqual(P.ev('localStorage.getItem("tc_peerOverlay")'), '0');

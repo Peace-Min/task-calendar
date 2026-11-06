@@ -362,16 +362,15 @@ async function mineChipProbe(cdp) {
              +"; renderAll(); if(typeof renderPanel==='function') renderPanel();");
       const chip=w.document.querySelector('#grid .chip[data-id="'+e.id+'"]');
       if(!chip) continue;
-      //  2026-11-05(PC-WATCH-2 §5, §7.1): 패널 일정은 한 줄 줄이다. 강조(flash)처럼 그 줄을 펼쳐(5개 밖이면 더 보기) 들여쓴 상세를 본다. 내 줄은 .dp-er-mine
+      //  2026-11-06(DAY-PANEL-CARDS): 패널 일정은 다시 카드다. 강조(flash)처럼 그 카드를 보게 한다(5개 밖이면 더 보기, 접혔으면 편다). 내 카드는 .card-mine
       w.eval("flashTargetId="+JSON.stringify(e.id)+"; renderPanel();");
-      const row=w.document.querySelector('#dpBody .dp-er[data-id="'+e.id+'"]');
-      const card=row && row.querySelector('.dp-edet');
+      const card=w.document.querySelector('#dpBody .card[data-id="'+e.id+'"]');
       return JSON.stringify({
         id:e.id, date:d,
         chipMine: chip.classList.contains("chip-mine"),
         draggable: chip.getAttribute("draggable"),
         card: !!card,
-        cardMine: !!(card && row.classList.contains("dp-er-mine"))});
+        cardMine: !!(card && card.classList.contains("card-mine"))});
     }
     return JSON.stringify({err:"내 겹 중 격자에 칩이 그려진 것을 찾지 못했다(후보 "+cand.length+"건)"});})()`));
 }
@@ -655,9 +654,10 @@ try {
                            //  ★ 2026-11-03(PERSONAL-PANEL): 패널의 탭은 없어졌다. 할 일은 패널의 묶음으로 보이고, 맨 아래 '밀린 할 일' 줄(dpFoot)은 읽기다.
                            //    [+ 추가](btnAddHere)는 열람 프레임에서 아예 그리지 않는다.
                            "dpFoot",
-                           //  ★ 2026-11-05(PC-WATCH-2 §5, §7.1): 묶음 머리 접기(dp-fold), 일정 줄 펼치기(dp-er-b), 5개 넘을 때 더 보기(dp-more)는 읽기다.
-                           //    펼친 상세는 열람 창에서 [수정] [삭제]를 그리지 않는다(dpDetAcHtml 의 PEER 갈래).
-                           "dp-fold","dp-er-b","dp-more"]);
+                           //  ★ 2026-11-05(PC-WATCH-2 §5): 묶음 머리(dp-fold: 제자리면 접기, 붙었으면 그 묶음 처음으로 스크롤), 5개 넘을 때 더 보기(dp-more)는 읽기다.
+                           //  ★ 2026-11-06(DAY-PANEL-CARDS): 일정은 다시 카드다. 열람 창 카드는 [수정] [삭제](.card-actions)를 그리지 않고, 카드 안의 조작은
+                           //    메모 링크 열기(memo-link)뿐이라 읽기다. 한 줄 일정 펼치기(dp-er-b)는 없어졌다.
+                           "dp-fold","dp-more","memo-link"]);
     const extra = (vis.seen || []).filter((k) => !ALLOW.has(k));
     //  ★ 한계를 적어 둔다: 위젯 창이 화면에 안 그려지면 iframe 뷰포트가 0폭이 되고,
     //    그러면 **좁은 화면용 반응형 규칙**이 켜져 일부 버튼이 저절로 숨는다 — 이 검사가 그만큼 약해진다.
@@ -760,7 +760,7 @@ try {
     if (!mc.err) {
       ok(`R${r} 내 겹 칩이 chip-mine 이다(내 색 — 연한 채움 + 왼쪽 막대)`, mc.chipMine === true, `class 에 chip-mine 없음`);
       ok(`R${r} 내 겹 칩은 draggable="false" 다`, mc.draggable === 'false', `draggable=${mc.draggable}`);
-      ok(`R${r} 일자 패널의 내 겹 줄이 dp-er-mine 이고 펼친 상세가 있다`, mc.card === true && mc.cardMine === true,
+      ok(`R${r} 일자 패널의 내 겹 카드가 card-mine 이다`, mc.card === true && mc.cardMine === true,
          `card=${mc.card} card-mine=${mc.cardMine}`);
     }
 
