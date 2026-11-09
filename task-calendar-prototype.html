@@ -2844,7 +2844,6 @@ body:not(.at-on) #atView{display:none !important}
 .at-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .at-lb{font-size:var(--fs-meta);color:var(--muted);font-weight:600}
 .at-fmt{display:flex;gap:6px;flex-wrap:wrap}
-.at-fmt-cus{width:72px}
 .at-ed select,.at-ed textarea,.at-ed input[type=date],.at-ed input[type=number],.at-ed input[type=search]{font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 8px;color:var(--text);background:var(--panel)}
 .at-ed select:disabled,.at-ed textarea:disabled,.at-ed input[type=date]:disabled,.at-ed input[type=number]:disabled{opacity:.6}
 /* 과제 블록(결정 12, 2026-10-29 사용자 2차). 머리는 표시(과제명은 고칠 수 없다), 시간은 글 칸(↑ ↓ 로 0.5씩), 내용 칸은 쓰는 만큼 늘어난다(atGrow).
@@ -3600,7 +3599,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
               <span class="at-lb">포함 항목</span><span><label class="at-ck"><input type="checkbox" id="atOEvent" checked> 일정</label><label class="at-ck"><input type="checkbox" id="atOTodo" checked> 할 일</label></span>
               <span class="at-lb">과제</span><span><label class="at-ck"><input type="checkbox" id="atOSkip" checked> 기록 없는 과제 제외</label></span>
               <span class="at-lb">표시</span><span><label class="at-ck"><input type="checkbox" id="atODesc" checked> 설명 포함</label></span>
-              <span class="at-lb">서식</span><span class="at-fmt"><select id="atOFmt" class="at-sel" aria-label="가져오기 서식" title="가져오기 서식"><option value="body">본문</option><option value="l1">1수준</option><option value="l2">2수준</option><option value="custom">직접 입력</option></select><input type="text" id="atOFmtCus" class="at-sel at-fmt-cus" maxlength="8" aria-label="직접 입력 기호" title="제목 앞에 붙일 글자(번호는 매기지 않습니다)" hidden></span>
+              <span class="at-lb">서식</span><span class="at-fmt"><select id="atOFmt" class="at-sel" aria-label="가져오기 서식" title="가져오기 서식"><option value="body">본문</option><option value="l1">1수준</option><option value="l2">2수준</option><option value="l3">3수준</option><option value="l4">4수준</option><option value="l5">5수준</option><option value="l6">6수준</option><option value="l7">7수준</option></select></span>
             </div>
             <div class="at-pick-row"><span class="at-pick" id="atPick"></span><span><button type="button" class="at-lnk" id="atAll">전체 선택</button> <button type="button" class="at-lnk" id="atNone">전체 해제</button></span></div>
             <div class="at-cards" id="atCards"></div>
@@ -21452,57 +21451,49 @@ function atCalRows(){
   }
   return out;
 }
-//  캘린더 가져오기 서식(2026-11-09 사용자, docs/WRITING-ASSIST.md "5차"). 고르는 값은 넷이고 계정별로 기억한다(이 PC localStorage).
-//    l1 = 제목 1수준, 설명 2수준(기본값), l2 = 제목 2수준, 설명 3수준: 모양과 번호는 문단 모양 표(waT, WA.compose)를 따른다.
-//    body = 원문 그대로(기호, 들여쓰기 없음). custom = 직접 입력한 글자를 제목마다 그대로 붙인다(자동 번호 없음), 설명은 제목 글자 아래로 들여쓴다.
+//  캘린더 가져오기 서식(2026-11-09 사용자, docs/WRITING-ASSIST.md "5차"). 본문 또는 문단 모양의 1~7수준 중 하나를 고르고 계정별로 기억한다(이 PC localStorage).
+//    lN = 제목 N수준, 설명 N+1수준(7수준이면 설명도 7수준). 모양과 번호는 문단 모양 표(waT, WA.compose)를 따른다. 기본값 l1.
+//    body = 원문 그대로(기호, 들여쓰기 없음). 직접 입력은 두지 않는다(2026-11-09 사용자).
 //    예전 가져오기 서식 값(tc_attFmt:)은 모양이 달라 읽지 않는다(2차 결정).
-const AT_IFMT_PREFIX = 'tc_attImpFmt:';   // 키 = tc_attImpFmt:<who>, 값 { v: 1, mode, custom }
-const AT_IFMT_MODES = ['body', 'l1', 'l2', 'custom'];
-function atIFmtNorm(v){
-  const ok = v && v.v === 1 && AT_IFMT_MODES.includes(v.mode);
-  return { mode: ok ? v.mode : 'l1', custom: ok && typeof v.custom === 'string' ? v.custom.slice(0, 8) : '' };
-}
+const AT_IFMT_PREFIX = 'tc_attImpFmt:';   // 키 = tc_attImpFmt:<who>, 값 { v: 1, mode: 'body' | 'l1'..'l7' }
+const AT_IFMT_RE = /^(body|l[1-7])$/;
+function atIFmtNorm(v){ return { mode: v && v.v === 1 && AT_IFMT_RE.test(String(v.mode)) ? v.mode : 'l1' }; }
 function atIFmtLoad(){
   let v = null;
   try{ v = JSON.parse(localStorage.getItem(AT_IFMT_PREFIX + atWho()) || 'null'); }catch(_){ v = null; }
   ATE.ifmt = atIFmtNorm(v);
 }
 function atIFmtSave(){
-  try{ localStorage.setItem(AT_IFMT_PREFIX + atWho(), JSON.stringify({ v: 1, mode: ATE.ifmt.mode, custom: ATE.ifmt.custom })); }catch(_){}
+  try{ localStorage.setItem(AT_IFMT_PREFIX + atWho(), JSON.stringify({ v: 1, mode: ATE.ifmt.mode })); }catch(_){}
 }
-//  서식 칸을 지금 값에 맞춘다. 1수준, 2수준 이름 옆에 문단 모양의 그 수준 기호를 보인다(표를 바꾸면 따라 바뀐다).
+//  서식 칸을 지금 값에 맞춘다. 수준 이름 옆에 문단 모양의 그 수준 기호를 보인다(표를 바꾸면 따라 바뀐다).
 function atIFmtRender(){
-  const sel = $('#atOFmt'), cus = $('#atOFmtCus'); if(!sel || !cus || !ATE.ifmt) return;
+  const sel = $('#atOFmt'); if(!sel || !ATE.ifmt) return;
   const T = waT();
-  for(const o of sel.options) if(o.value === 'l1' || o.value === 'l2'){ const r = T[o.value === 'l1' ? 0 : 1]; o.textContent = (o.value === 'l1' ? '1수준' : '2수준') + (r ? ' (' + WA.markerText(r.mk, 1) + ')' : ''); }
+  for(const o of sel.options){
+    const m = /^l([1-7])$/.exec(o.value); if(!m) continue;
+    const r = T[Number(m[1]) - 1], t = m[1] + '수준' + (r ? ' (' + WA.markerText(r.mk, 1) + ')' : '');
+    if(o.textContent !== t) o.textContent = t;
+  }
   sel.value = ATE.ifmt.mode;
-  cus.hidden = ATE.ifmt.mode !== 'custom';
-  if(cus.value !== ATE.ifmt.custom) cus.value = ATE.ifmt.custom;
 }
 //  캘린더 과제 하나의 블록 내용. 머리 줄은 블록 머리(과제명, 시간 칸)가 맡는다. 시간 칸은 0 으로 시작한다(작성 중 시간 표는 구조 22 에서 없앴다).
 //    atCalLines = 남긴 기록마다 [제목 줄, 설명 줄...](패널 카드가 쓴다), atCalBody = 그 줄들을 이은 글.
-//    직접 입력이 비어 있으면 원문과 같다.
 function atCalLines(row){
   const one = t => String(t == null ? '' : t).replace(/\s*\n\s*/g, ' ').trim();
   const raw = t => String(t == null ? '' : t).split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim());
   const f = ATE.ifmt || atIFmtNorm(null), desc = x => ATE.opt.desc ? reportMetaDetails(x) : [];
-  const ch = f.mode === 'custom' ? f.custom.trim() : '';
-  if(f.mode === 'l1' || f.mode === 'l2'){
-    const L = f.mode === 'l1' ? 1 : 2, items = [], spans = [];
-    for(const x of row.kept){
-      const a = items.length;
-      items.push({ level: L, body: one(x.text) });
-      for(const d of desc(x)) items.push({ level: L + 1, body: one(d) });
-      spans.push([a, items.length]);
-    }
-    const lines = items.length ? WA.compose(items, waT()).split('\n') : [];
-    return spans.map(([a, b]) => lines.slice(a, b));
+  const m = /^l([1-7])$/.exec(f.mode);
+  if(!m) return row.kept.map(x => [one(x.text)].concat([].concat(...desc(x).map(raw))));
+  const L = Number(m[1]), D = Math.min(L + 1, WA.LEVELS), items = [], spans = [];
+  for(const x of row.kept){
+    const a = items.length;
+    items.push({ level: L, body: one(x.text) });
+    for(const d of desc(x)) items.push({ level: D, body: one(d) });
+    spans.push([a, items.length]);
   }
-  if(ch){
-    const pre = ch + ' ', sub = reportSubIndent(pre, ' ');
-    return row.kept.map(x => [pre + one(x.text)].concat(desc(x).map(d => sub + one(d))));
-  }
-  return row.kept.map(x => [one(x.text)].concat([].concat(...desc(x).map(raw))));
+  const lines = items.length ? WA.compose(items, waT()).split('\n') : [];
+  return spans.map(([a, b]) => lines.slice(a, b));
 }
 function atCalBody(row){ return atCalLines(row).map(g => g.join('\n')).join('\n'); }
 //  패널의 과제 목록(지금 출처와 날짜). id 는 체크 상태의 열쇠, blk 는 불러올 블록.
@@ -22406,8 +22397,7 @@ function atInit(){
     //  옵션은 패널 목록만 바로 바꾼다. 왼쪽은 [← 불러오기]를 눌러야 바뀐다. "기록 없는 과제 제외" 는 목록이 바뀌므로 체크를 다시 모두 켠다.
     const ck = { atOEvent: 'event', atOTodo: 'todo', atOSkip: 'skip', atODesc: 'desc' };
     for(const id of Object.keys(ck)) on(id, 'change', ev => { ATE.opt[ck[id]] = !!ev.target.checked; if(id === 'atOSkip') atCheckAll(); atPanelRender(); });
-    on('atOFmt', 'change', ev => { if(!ATE.ifmt) return; ATE.ifmt.mode = AT_IFMT_MODES.includes(ev.target.value) ? ev.target.value : 'l1'; atIFmtSave(); atPanelRender(); if(ATE.ifmt.mode === 'custom'){ const c = $('#atOFmtCus'); if(c) c.focus(); } });
-    on('atOFmtCus', 'input', ev => { if(!ATE.ifmt) return; ATE.ifmt.custom = String(ev.target.value).slice(0, 8); atIFmtSave(); atPanelRender(); });
+    on('atOFmt', 'change', ev => { if(!ATE.ifmt) return; ATE.ifmt = atIFmtNorm({ v: 1, mode: ev.target.value }); atIFmtSave(); atPanelRender(); });
     on('atCards', 'change', ev => {
       const c = ev.target.closest('input[data-atid]'); if(!c) return;
       if(c.checked) ATE.checked.add(c.dataset.atid); else ATE.checked.delete(c.dataset.atid);
@@ -23899,7 +23889,9 @@ const WA_MK_GROUPS = [
   ['숫자', [['1.', '1. 2. 3.'], ['1)', '1) 2) 3)'], ['(1)', '(1) (2) (3)']]],
   ['가나다', [['가.', '가. 나. 다.'], ['가)', '가) 나) 다)'], ['(가)', '(가) (나) (다)']]],
   ['자모', [['ㄱ.', 'ㄱ. ㄴ. ㄷ.'], ['ㄱ)', 'ㄱ) ㄴ) ㄷ)']]],
-  ['영문, 기타', [['A.', 'A. B. C.'], ['a.', 'a. b. c.'], ['①', '① ② ③']]]
+  ['영문, 기타', [['A.', 'A. B. C.'], ['a.', 'a. b. c.'], ['①', '① ② ③']]],
+  //  2026-11-09 사용자: 인트라넷 주간보고 2주치(85명)에서 2명 이상이 쓰는데 목록에 없던 기호. 줄 읽기는 긴 기호부터 맞춘다(-> 가 - 보다 먼저)
+  ['쌍점, 화살표', [[':', ': 쌍점'], ['::', ':: 겹쌍점'], [';', '; 쌍반점'], ['->', '-> 화살표'], ['=>', '=> 겹화살표'], ['>', '> 꺾쇠'], ['◈', '◈ 마름모'], ['■', '■ 검은 네모']]]
 ];
 //  상태: T = 지금 계정의 표, who = 그 계정, last = 마지막에 쓰던 본문(도구가 고칠 본문), quiet = 도구가 다른 본문을 잠깐 고치는 중(초점 이동을 무시),
 //  mark = 표시 중인 본문 칸(wa-tgt), hist = 문단 모양 창이 열린 동안의 표 바꿈 기록, queue = 한글 조합 중에 누른 수준 키,
