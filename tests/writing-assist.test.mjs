@@ -422,7 +422,7 @@ if (!JSDOM) {
       assert.deepStrictEqual([lvOf(X, '#atEd').disabled, lvOf(X, '#atEd').value], [false, '1'], '본문 밖으로 초점이 가면 고칠 본문을 잃는다');
       X.ev('waReset()');
       for (const ed of ['#atEd', '#awEd']) {
-        assert.deepStrictEqual([...tools(X, ed).children].map((e) => e.tagName + '.' + e.className), ['SELECT.wa-lv', 'BUTTON.btn sm wa-b'], ed + ' 도구 줄이 다르다');
+        assert.deepStrictEqual([...tools(X, ed).children].map((e) => e.tagName + '.' + e.className), ['SELECT.wa-lv', 'BUTTON.btn sm wa-b', 'BUTTON.btn sm wa-b'], ed + ' 도구 줄이 다르다');
       }
       assert.strictEqual(tools(X, '#atEd').nextElementSibling.id, 'atFold', '일간 도구가 패널 접기 바로 왼쪽이 아니다');
       assert.strictEqual(tools(X, '#awEd').nextElementSibling, null, '주간 도구가 머리 줄 오른쪽 끝이 아니다');

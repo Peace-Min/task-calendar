@@ -3109,6 +3109,30 @@ html.wa-hold .at-ed .aw-free.wa-tgt{border-color:var(--accent)}
 kbd.wa-kbd{display:inline-block;min-width:18px;margin:0 1px;padding:0 5px;border:1px solid var(--line-2);border-radius:4px;background:var(--bg);color:var(--text);font-family:ui-monospace,Consolas,monospace;font-size:var(--fs-micro);line-height:16px;text-align:center;vertical-align:1px}
 .wa-keys{display:flex;gap:6px 16px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--line);color:var(--muted);font-size:var(--fs-meta)}
 .wa-keys span{white-space:nowrap}
+.wa-pane{display:flex;flex-direction:column;flex:1;min-height:0}
+/* 프리셋 모드(docs/REPORT-PRESET.md, 시안 report-preset-v2 B안): 큰 띄움 창, 왼쪽 9칸 목록, 오른쪽 고른 칸 편집(글 칸이 남는 높이 전부) */
+.wa-pop.wa-pop-pre{width:760px;height:min(560px, calc(100vh - 16px));overflow:hidden}
+.wp-in{flex:1;display:flex;min-height:0}
+.wp-list{width:220px;flex:none;border-right:1px solid var(--line);overflow:auto}
+.wp-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;width:100%;padding:7px 10px;border:none;border-bottom:1px solid var(--line);background:none;color:var(--text);font:inherit;font-size:var(--fs-body);text-align:left;cursor:pointer}
+.wp-row:hover{background:var(--hover-bg)}
+.wp-row.sel{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.wp-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.wp-k{white-space:nowrap}
+.wp-n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wp-row.empty .wp-n{color:var(--faint-text)}
+.wp-ed{flex:1;display:flex;flex-direction:column;gap:8px;padding:12px;min-width:0;min-height:0}
+.wp-ed-row{display:flex;align-items:center;gap:8px}
+.wp-ed-k{flex:none;white-space:nowrap}
+.wp-name,.wp-text{font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);background:var(--panel);color:var(--text)}
+.wp-name{flex:1;min-width:0;height:28px;padding:0 8px}
+.wp-text{flex:1;min-height:80px;resize:none;padding:8px;line-height:1.55;white-space:pre;overflow:auto}
+.wp-name:focus-visible,.wp-text:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.wp-foot{display:flex;justify-content:flex-end}
+@media (max-width:560px){
+  .wp-in{flex-direction:column}
+  .wp-list{width:auto;max-height:40%;border-right:none;border-bottom:1px solid var(--line)}
+}
 .aw-pv{flex:1;min-height:0;overflow:auto;margin:10px 14px}
 #awImp{gap:8px}
 .aw-ibtn{display:block;width:100%;text-align:left;border:1px solid var(--line-2);background:var(--panel);color:var(--text);border-radius:var(--r-md);padding:9px 12px;cursor:pointer;font:inherit}
@@ -23795,7 +23819,31 @@ const WA = (function(){
   function applyOp(v, op){ return v.slice(0, op.from) + op.text + v.slice(op.to); }
   //  [{ level, body }] 를 표대로 그린 글. 번호형이면 같은 수준 형제끼리 차례(finish 와 같은 규칙). 근태 가져오기가 쓴다
   function compose(items, T){ return finish(items.map(x => ({ level: x.level, mode: 'render', body: String(x.body) })), T).text; }
-  return { LEVELS, OTHER, compose, IND_MAX, NUMS, PRESETS, preset, sameTable, isNum, markerText, parse, levelAt, shiftLevel, setLevel, enter, contEnter, unmark, pasteOp, normPaste, indentBlocked, conflicts, freeIndent, setMarker, fitTable, renumber, reshape, applyOp, lineStartAt };
+  //  근태 보고 프리셋(docs/REPORT-PRESET.md): 칸 9개, 칸 = { name, text }. 저장값 { v:1, slots } 나 칸 배열을 늘 9칸 글자 값으로 맞춘다
+  const PRESET_SLOTS = 9;
+  function fitPresets(raw){
+    const src = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' && raw.v === 1 && Array.isArray(raw.slots) ? raw.slots : []);
+    const str = x => typeof x === 'string' ? x : '';
+    return Array.from({ length: PRESET_SLOTS }, (_, i) => {
+      const s = src[i];
+      return (s && typeof s === 'object') ? { name: str(s.name), text: str(s.text) } : { name: '', text: '' };
+    });
+  }
+  //  Ctrl+1~9(숫자 줄 키만) -> 칸 번호 0~8. 숫자 패드, Ctrl+0, Shift 나 Alt 를 함께 누른 키는 -1
+  function presetSlot(e){
+    const m = /^Digit([1-9])$/.exec((e && e.code) || '');
+    if(!m || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return -1;
+    return Number(m[1]) - 1;
+  }
+  //  목록에 보일 이름: 이름, 없으면 글의 첫 글 줄, 둘 다 없으면 ''(빈 칸)
+  function presetLabel(s){
+    if(!s) return '';
+    const n = String(s.name || '').trim();
+    if(n) return n;
+    const line = String(s.text || '').split('\n').find(l => l.trim() !== '');
+    return line ? line.trim() : '';
+  }
+  return { LEVELS, OTHER, compose, PRESET_SLOTS, fitPresets, presetSlot, presetLabel, IND_MAX, NUMS, PRESETS, preset, sameTable, isNum, markerText, parse, levelAt, shiftLevel, setLevel, enter, contEnter, unmark, pasteOp, normPaste, indentBlocked, conflicts, freeIndent, setMarker, fitTable, renumber, reshape, applyOp, lineStartAt };
 })();
 /* ----- wa-core 끝 ----- */
 /* ----- 작성 보조 화면 배선(wa*). 도구 줄은 일간, 주간 편집 머리에 하나씩(waToolsHtml 한 벌을 두 자리에 넣는다), 문단 모양 창은 하나(#waPop, body 끝) ----- */
@@ -23810,8 +23858,9 @@ const WA_MK_GROUPS = [
   ['영문, 기타', [['A.', 'A. B. C.'], ['a.', 'a. b. c.'], ['①', '① ② ③']]]
 ];
 //  상태: T = 지금 계정의 표, who = 그 계정, last = 마지막에 쓰던 본문(도구가 고칠 본문), quiet = 도구가 다른 본문을 잠깐 고치는 중(초점 이동을 무시),
-//  mark = 표시 중인 본문 칸(wa-tgt), hist = 문단 모양 창이 열린 동안의 표 바꿈 기록, queue = 한글 조합 중에 누른 수준 키
-const WAS = { T: null, who: null, last: null, quiet: false, mark: null, hist: [], queue: [], composing: false, shift: false, altRight: false, pop: null };
+//  mark = 표시 중인 본문 칸(wa-tgt), hist = 문단 모양 창이 열린 동안의 표 바꿈 기록, queue = 한글 조합 중에 누른 수준 키,
+//  mode = 띄움 창(#waPop)이 보이는 것('shape' 문단 모양, 'preset' 프리셋)
+const WAS = { T: null, who: null, last: null, quiet: false, mark: null, hist: [], queue: [], composing: false, shift: false, altRight: false, pop: null, mode: 'shape' };
 const waClone = t => t.map(r => ({ mk: r.mk, indent: r.indent }));
 function waWho(){ return (ATTENDWIN && ATW.view !== 'day') ? awWho() : atWho(); }
 //  계정별 표 읽기. { v:1, rows } 또는 예전 배열. 읽을 수 없으면 기본(기호형 - * - * - * -, 0~12칸)
@@ -23829,6 +23878,19 @@ function waT(){
   return WAS.T;
 }
 function waSave(){ try{ localStorage.setItem(WA_KEY_PREFIX + WAS.who, JSON.stringify({ v: 1, rows: WAS.T })); }catch(_){} }
+//  근태 보고 프리셋(docs/REPORT-PRESET.md): 계정별 칸 9개. 키 = tc_attPreset:<who>, 값 = { v: 1, slots: [{ name, text }] }. 계정 규칙은 문단 모양과 같다(waWho)
+const WP_KEY_PREFIX = 'tc_attPreset:';
+const WPS = { who: null, slots: null, sel: 0 };   // slots = 지금 계정의 칸, sel = 프리셋 창에서 고른 칸
+function wpLoad(who){
+  try{ return WA.fitPresets(JSON.parse(localStorage.getItem(WP_KEY_PREFIX + who) || 'null')); }catch(_){}
+  return WA.fitPresets(null);
+}
+function wpSlots(){
+  const who = waWho();
+  if(WPS.who !== who || !WPS.slots){ WPS.who = who; WPS.slots = wpLoad(who); WPS.sel = 0; }
+  return WPS.slots;
+}
+function wpSave(){ try{ localStorage.setItem(WP_KEY_PREFIX + WPS.who, JSON.stringify({ v: 1, slots: WPS.slots })); }catch(_){} }
 function waVis(el){ return !!el && el.isConnected && !el.closest('.hidden') && !document.documentElement.classList.contains('at-idle'); }
 //  지금 보이는 편집 화면(일간 #atEd 또는 주간 #awEd). 없으면 null
 function waEd(){
@@ -23895,8 +23957,9 @@ function waRefresh(){
   waMarkTarget(ta);
   document.querySelectorAll('.wa-tools').forEach(box => {
     const mine = !!ed && ed.contains(box), off = !mine || waBusy(ed);
-    const lv = box.querySelector('.wa-lv'), b = box.querySelector('.wa-b');
-    waSetDis(b, off); waSetDis(lv, off || !ta);
+    const lv = box.querySelector('.wa-lv');
+    box.querySelectorAll('.wa-b').forEach(b => waSetDis(b, off));   // [문단 모양][프리셋]: 고칠 본문이 없어도 켠다
+    waSetDis(lv, off || !ta);
     let want = '';
     if(!off && ta){ const l = WA.levelAt(ta.value, ta.selectionStart, ta.selectionEnd, waT()); want = (l === null || l < 0) ? '' : String(l); }
     if(lv && lv.value !== want) lv.value = want;
@@ -23940,6 +24003,23 @@ function waLevelKey(ev){
   return null;
 }
 
+//  프리셋 넣기: 고른 글을 커서 자리에 그대로 넣는다(고른 글은 바꾼다). 문단 모양으로 다시 그리지 않는다(저장한 그대로가 사용자가 원하는 모양)
+//  바닥 줄 메시지: 보이는 편집 화면(일간 #atMsg, 주간 #awMsg)에 한 줄
+function wpMsg(t){ const ed = waEd(); if(!ed) return; if(ed.id === 'atEd') atMsg(t); else awMsg(t); }
+function wpEmptyMsg(i){ wpMsg((i + 1) + '번 프리셋이 비어 있습니다.'); }
+//  칸 i 를 넣는 고침(waEdit 의 op). 빈 칸이면 메시지만 보이고 null
+function wpOp(i, v, s, e){
+  const t = wpSlots()[i].text;
+  if(t === ''){ wpEmptyMsg(i); return null; }
+  return { from: s, to: e, text: t, selS: s + t.length, selE: s + t.length };
+}
+//  waEdit(insertText)로 넣어 Ctrl+Z 한 번에 빠지고 input 처리(ATE, AWE, 임시 저장, 미리보기)가 따라온다
+function wpInsert(ta, i){
+  const [s, e] = waSel(ta), op = wpOp(i, ta.value, s, e);
+  if(op){ waEdit(ta, op); waRefresh(); }
+  return !!op;
+}
+
 //  문단 모양 창
 function waFillRows(){
   const pop = WAS.pop, T = waT(), known = new Set(WA_MK_GROUPS.flatMap(g => g[1].map(o => o[0])));
@@ -23975,6 +24055,7 @@ function waApplyTable(nt){
 function waImportRedraw(){ if(ATE.p && ATE.src === 'cal') atPanelRender(); }
 //  창 안 Ctrl+Z: 마지막 표 바꿈을 표와 본문 모두 한 번에 되돌린다(값을 바로 넣고 input 을 알린다. 이 본문들의 기본 되돌리기 기록은 끊길 수 있다)
 function waUndoTable(){
+  if(WAS.mode !== 'shape') return;
   const h = WAS.hist.pop(); if(!h) return;
   waT(); WAS.T = waClone(h.T); waSave();
   h.bodies.forEach(b => {
@@ -23986,6 +24067,7 @@ function waUndoTable(){
   waFillRows(); waRefresh(); waImportRedraw();
 }
 function waOnPopChange(ev){
+  if(WAS.mode !== 'shape') return;   // 프리셋 칸의 change 는 표와 상관없다
   const t = ev.target, i = Number(t.dataset.r), T = waT();
   let nt;
   //  머리기호를 바꿔 같은 기호의 다른 수준과 들여쓰기가 겹치면 이 수준 들여쓰기도 같이 옮긴다(되돌리기 한 번)
@@ -24001,9 +24083,45 @@ function waOnPopChange(ev){
   WAS.hist.push({ T: oldT, bodies: before.filter(b => b.ta.value !== b.v) });
   waFillRows();
 }
-function waShapeBtn(){ const ed = waEd(); return ed ? ed.querySelector('.wa-tools .wa-b') : null; }
+//  프리셋 창: 왼쪽 9칸 목록, 오른쪽 고른 칸의 이름과 글, 바닥 [넣기]. 고치면 바로 저장한다(저장 단추 없음)
+function wpRowSync(r, s, on){
+  const l = WA.presetLabel(s), n = r.querySelector('.wp-n');
+  if(n.textContent !== (l || '비어 있음')) n.textContent = l || '비어 있음';
+  r.classList.toggle('empty', s.text === '');
+  r.classList.toggle('sel', on);
+  r.setAttribute('aria-pressed', String(on));
+}
+function wpFill(){
+  const pop = WAS.pop, S = wpSlots(), s = S[WPS.sel];
+  pop.querySelectorAll('.wp-row').forEach((r, i) => wpRowSync(r, S[i], i === WPS.sel));
+  pop.querySelector('.wp-ed-k').innerHTML = '<kbd class="wa-kbd">Ctrl+' + (WPS.sel + 1) + '</kbd>';
+  const nm = pop.querySelector('.wp-name'), tx = pop.querySelector('.wp-text');
+  if(nm.value !== s.name) nm.value = s.name;
+  if(tx.value !== s.text){ tx.value = s.text; tx.scrollTop = 0; }
+}
+function wpOnInput(ev){
+  if(WAS.mode !== 'preset') return;
+  const t = ev.target, s = wpSlots()[WPS.sel];
+  if(t.classList.contains('wp-name')) s.name = t.value;
+  else if(t.classList.contains('wp-text')) s.text = t.value;
+  else return;
+  wpSave();
+  const r = WAS.pop.querySelector('.wp-row[data-slot="' + WPS.sel + '"]'); if(r) wpRowSync(r, s, true);
+}
+//  [넣기]: 마지막에 쓰던 본문 칸에 넣고 창을 닫는다. 고칠 본문이 없거나 빈 칸이면 메시지만(창은 그대로)
+function wpPutSel(){
+  const ta = waTarget(), i = WPS.sel;
+  if(!ta){ wpMsg('넣을 본문 칸을 먼저 누르세요.'); return; }
+  if(wpSlots()[i].text === ''){ wpEmptyMsg(i); return; }
+  waClosePop(false);
+  ta.focus({ preventScroll: true });
+  wpInsert(ta, i);
+}
+
+//  띄움 창 하나(#waPop)를 두 모드로 쓴다: 'shape' 문단 모양, 'preset' 프리셋. 모드마다 머리 줄 단추 하나
+function waPopBtn(){ const ed = waEd(); return ed ? ed.querySelector('.wa-tools .wa-b[data-wa-pop="' + WAS.mode + '"]') : null; }
 function waPlacePop(){
-  const pop = WAS.pop, b = waShapeBtn(); if(!pop || !b) return;
+  const pop = WAS.pop, b = waPopBtn(); if(!pop || !b) return;
   const r = b.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
   const left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8));
   let top = r.bottom + 4;
@@ -24011,11 +24129,17 @@ function waPlacePop(){
   pop.style.left = left + 'px'; pop.style.top = top + 'px';
 }
 function waPopShown(){ return !!WAS.pop && !WAS.pop.classList.contains('hidden'); }
-function waOpenPop(){
+//  닫혀 있으면 그 모드로 열고, 다른 모드로 열려 있으면 내용만 바꾼다
+function waOpenPop(mode){
   const ed = waEd(); if(!ed || waBusy(ed)) return;
-  waFillRows(); WAS.hist.length = 0;
-  WAS.pop.classList.remove('hidden'); waPlacePop();
-  document.querySelectorAll('.wa-tools .wa-b').forEach(b => b.setAttribute('aria-expanded', String(ed.contains(b))));
+  const m = mode === 'preset' ? 'preset' : 'shape', pop = WAS.pop;
+  WAS.mode = m; WAS.hist.length = 0;
+  pop.querySelectorAll('[data-pane]').forEach(p => p.classList.toggle('hidden', p.dataset.pane !== m));
+  pop.classList.toggle('wa-pop-pre', m === 'preset');
+  pop.setAttribute('aria-label', m === 'preset' ? '프리셋' : '문단 모양');
+  if(m === 'preset') wpFill(); else waFillRows();
+  pop.classList.remove('hidden'); waPlacePop();
+  document.querySelectorAll('.wa-tools .wa-b').forEach(b => b.setAttribute('aria-expanded', String(ed.contains(b) && b.dataset.waPop === m)));
 }
 function waClosePop(refocus){
   if(!waPopShown()) return;
@@ -24032,14 +24156,15 @@ function waToolsHtml(){
   return '<select class="wa-lv" aria-label="수준" title="수준" disabled><option value="" hidden>수준</option>'
     + Array.from({ length: WA.LEVELS + 1 }, (_, L) => '<option value="' + L + '">' + (L ? L + '수준' : '본문') + '&nbsp;&nbsp;&nbsp;Alt+' + L + '</option>').join('')
     + '<hr><option value="mv" disabled>한 수준 이동&nbsp;&nbsp;&nbsp;Alt+← →</option></select>'
-    + '<button type="button" class="btn sm wa-b" data-wa-tool aria-haspopup="dialog" aria-controls="waPop" aria-expanded="false">문단 모양</button>';
+    + '<button type="button" class="btn sm wa-b" data-wa-tool data-wa-pop="shape" aria-haspopup="dialog" aria-controls="waPop" aria-expanded="false">문단 모양</button>'
+    + '<button type="button" class="btn sm wa-b" data-wa-tool data-wa-pop="preset" title="자주 쓰는 글(Ctrl+1~9)" aria-haspopup="dialog" aria-controls="waPop" aria-expanded="false">프리셋</button>';
 }
 function waPopHtml(){
   const escH = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const kbd = s => '<kbd class="wa-kbd">' + s + '</kbd>';
   const mk = WA_MK_GROUPS.map(g => '<optgroup label="' + g[0] + '">' + g[1].map(o => '<option value="' + escH(o[0]) + '">' + escH(o[1]) + '</option>').join('') + '</optgroup>').join('');
   const ind = Array.from({ length: WA.IND_MAX + 1 }, (_, n) => '<option value="' + n + '">' + n + '칸</option>').join('');
-  return popHeadHtml('문단 모양')
+  return '<div class="wa-pane" data-pane="shape">' + popHeadHtml('문단 모양')
     + '<div class="wa-pop-in"><table class="wa-tbl"><thead><tr><th>수준</th><th>머리기호</th><th>들여쓰기</th></tr></thead><tbody>'
     + Array.from({ length: WA.LEVELS }, (_, i) => '<tr><td><span class="wa-lvn">' + (i + 1) + '수준</span><span class="wa-k">' + kbd('Alt') + '+' + kbd(i + 1) + '</span></td>'
       + '<td><select class="wa-sym" data-r="' + i + '" aria-label="' + (i + 1) + '수준 머리기호">' + mk + '</select></td>'
@@ -24048,7 +24173,17 @@ function waPopHtml(){
     //  키 표: 화면 설명이 아니라 키 이름만 적는다
     + '<div class="wa-keys"><span>' + kbd('Alt') + '+' + kbd('←') + kbd('→') + ' 한 수준 이동</span>'
     + '<span>' + kbd('Alt') + '+' + kbd('0') + ' 본문</span>'
-    + '<span>' + kbd('Shift') + '+' + kbd('Enter') + ' 본문 줄</span></div></div>';
+    + '<span>' + kbd('Shift') + '+' + kbd('Enter') + ' 본문 줄</span></div></div></div>'
+    + wpPopHtml(kbd);
+}
+//  프리셋 모드 내용(처음엔 숨김). 목록 이름과 편집 칸 값은 열 때 wpFill 이 채운다
+function wpPopHtml(kbd){
+  return '<div class="wa-pane hidden" data-pane="preset">' + popHeadHtml('프리셋')
+    + '<div class="wp-in"><div class="wp-list" aria-label="프리셋 목록">'
+    + Array.from({ length: WA.PRESET_SLOTS }, (_, i) => '<button type="button" class="wp-row" data-slot="' + i + '" aria-pressed="false"><span class="wp-k">' + kbd('Ctrl+' + (i + 1)) + '</span><span class="wp-n"></span></button>').join('')
+    + '</div><div class="wp-ed"><div class="wp-ed-row"><span class="wp-ed-k"></span><input type="text" class="wp-name" placeholder="이름(선택)" aria-label="이름" autocomplete="off" spellcheck="false"></div>'
+    + '<textarea class="wp-text" placeholder="넣을 글" aria-label="넣을 글" spellcheck="false"></textarea>'
+    + '<div class="wp-foot"><button type="button" class="btn primary wp-put">넣기</button></div></div></div></div>';
 }
 
 /* ── 배선(atInit 이 부른다) ── */
@@ -24062,7 +24197,13 @@ function waInit(){
   document.body.appendChild(pop);
   WAS.pop = pop;
   pop.addEventListener('change', waOnPopChange);
-  pop.querySelector('[data-popx]').addEventListener('click', () => { const b = waShapeBtn(); waClosePop(true); if(!waTarget() && b) try{ b.focus({ preventScroll: true }); }catch(_){} });
+  pop.addEventListener('input', wpOnInput);
+  pop.addEventListener('click', ev => {
+    const r = ev.target.closest && ev.target.closest('.wp-row');
+    if(r){ WPS.sel = Number(r.dataset.slot); wpFill(); return; }
+    if(ev.target.closest && ev.target.closest('.wp-put')) wpPutSel();
+  });
+  pop.querySelectorAll('[data-popx]').forEach(x => x.addEventListener('click', () => { const b = waPopBtn(); waClosePop(true); if(!waTarget() && b) try{ b.focus({ preventScroll: true }); }catch(_){} }));
   //  도구 줄: 단추를 눌러도 본문이 초점과 선택을 그대로 갖는다
   document.addEventListener('mousedown', ev => { if(ev.target.closest && ev.target.closest('[data-wa-tool]')) ev.preventDefault(); });
   document.addEventListener('mousedown', ev => {
@@ -24072,7 +24213,8 @@ function waInit(){
   }, true);
   document.addEventListener('click', ev => {
     const b = ev.target.closest && ev.target.closest('.wa-tools .wa-b'); if(!b || b.disabled) return;
-    if(waPopShown()) waClosePop(false); else waOpenPop();
+    const m = b.dataset.waPop === 'preset' ? 'preset' : 'shape';
+    if(waPopShown() && WAS.mode === m) waClosePop(false); else waOpenPop(m);
   });
   document.addEventListener('change', ev => {
     const lv = ev.target; if(!lv.classList || !lv.classList.contains('wa-lv')) return;
@@ -24093,12 +24235,20 @@ function waInit(){
   document.addEventListener('focusout', ev => { if(waIsBody(ev.target)) WAS.composing = false; });
   document.addEventListener('keydown', ev => {
     if(ev.code === 'AltRight') WAS.altRight = true;
-    //  문단 모양 창 안에서 Ctrl+Z = 마지막 표 바꿈을 한 번에 되돌린다(표와 본문 모두)
-    if(waPopShown() && pop.contains(ev.target) && (ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && (ev.code === 'KeyZ' || ev.key === 'z' || ev.key === 'Z')){ ev.preventDefault(); waUndoTable(); return; }
+    //  문단 모양 창 안에서 Ctrl+Z = 마지막 표 바꿈을 한 번에 되돌린다(표와 본문 모두). 프리셋 모드의 글 칸은 제 되돌리기 그대로
+    if(waPopShown() && WAS.mode === 'shape' && pop.contains(ev.target) && (ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && (ev.code === 'KeyZ' || ev.key === 'z' || ev.key === 'Z')){ ev.preventDefault(); waUndoTable(); return; }
     const ta = ev.target;
     if(!waIsBody(ta) || ta.disabled || ta.readOnly) return;
     WAS.shift = ev.shiftKey;
     const ime = ev.isComposing || ev.keyCode === 229, c = ev.ctrlKey || ev.metaKey;
+    //  Ctrl+1~9 = 그 칸의 프리셋을 커서 자리에(docs/REPORT-PRESET.md). 보내는 중에는 하지 않는다. 한글 조합 중이면 조합이 끝난 뒤 한 번
+    const slot = WA.presetSlot(ev);
+    if(slot >= 0){
+      ev.preventDefault();
+      if(waBusy(waEd())) return;
+      if(ime) waLater(ta, (v, s, e) => wpOp(slot, v, s, e)); else wpInsert(ta, slot);
+      return;
+    }
     const fn = waLevelKey(ev);
     if(fn){ ev.preventDefault(); if(ime) waLater(ta, fn); else waRunOn(ta, fn); return; }
     if(ime) return;   // 그 밖의 키는 한글 조합 중에 손대지 않는다

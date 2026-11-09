@@ -7,6 +7,19 @@
 
 ---
 
+## 🆕 2026-11-09 (다음 판, 번호는 배포 때): 근태 보고 프리셋(자주 쓰는 글 9칸, Ctrl+1~9)
+
+기획 [docs/REPORT-PRESET.md](docs/REPORT-PRESET.md)(채택 B안, 시안 `dist/proto/report-preset-v2.html#B-open`). DB 구조 그대로(이관 SQL 없음). 근태 창 허용 목록 그대로(`#waPop` 을 모드로 다시 씀).
+
+- **wa-core(순수)**: `WA.PRESET_SLOTS`(9), `WA.fitPresets(raw)`(`{ v:1, slots }` 나 칸 배열을 늘 9칸 `{ name, text }` 글자 값으로, 깨진 값과 글자 아닌 값은 빈 칸), `WA.presetSlot(ev)`(숫자 줄 Ctrl+1~9 만 0~8, 숫자 패드, Ctrl+0, Shift, Alt 와 함께는 -1), `WA.presetLabel(slot)`(이름, 없으면 글의 첫 글 줄, 둘 다 없으면 '').
+- **저장**: 계정별 localStorage `tc_attPreset:<계정>`, 값 `{ v: 1, slots }`(`WP_KEY_PREFIX`, `wpSlots`, `wpSave`). 계정 규칙은 문단 모양과 같은 `waWho`. 고치면 바로 저장(저장 단추 없음).
+- **Ctrl+1~9**: 작성 보조 본문 칸(일간 과제 블록, 자유 메모, 주간 글 칸)의 keydown 에서 수준 키보다 먼저. 커서 자리에 넣고 고른 글은 바꾼다(`wpInsert`, `waEdit` 의 insertText 라 Ctrl+Z 한 번에 빠지고 ATE, AWE 가 따라온다). 글은 그대로 넣는다(문단 모양으로 다시 그리지 않음). 빈 칸은 바닥 줄(`#atMsg`, `#awMsg`) 한 줄 "N번 프리셋이 비어 있습니다.". 한글 조합 중이면 `waLater` 로 끝난 뒤 한 번. 보내는 중(`waBusy`)에는 넣지 않는다.
+- **[프리셋] 단추와 창**: `waToolsHtml` 에 [문단 모양] 바로 뒤 [프리셋](`data-wa-pop="preset"`, title "자주 쓰는 글(Ctrl+1~9)"). 두 단추 모두 `data-wa-pop` 모드 표시. `#waPop` 은 모드 둘(`WAS.mode` = `shape`, `preset`, 내용은 `[data-pane]` 두 칸을 바꿔 보임). 같은 단추는 닫고 다른 단추는 내용만 바꾼다. 프리셋 모드는 폭 760px, 높이 min(560px, 화면 - 16px), 왼쪽 9칸 목록(`.wp-row`), 오른쪽 이름 칸, 글 칸(남는 높이), [넣기](마지막에 쓰던 본문 칸에 넣고 창을 닫음, 본문이 없으면 "넣을 본문 칸을 먼저 누르세요."). 560px 아래는 목록을 위로 쌓는다.
+- **문단 모양 모드만**: 창 안 Ctrl+Z(`waUndoTable`)와 표 바꿈(`waOnPopChange`). 프리셋 글 칸은 제 되돌리기 그대로. `waShapeBtn` 은 `waPopBtn`(지금 모드의 단추)으로.
+- **시험**: 새 `tests/report-preset.test.mjs`(정적 3, 순수 3, jsdom 7, 변이 셋: Shift+숫자, 넣은 글 다시 그리기, value 대입). `tests/writing-assist.test.mjs` 의 도구 줄 자식 목록에 [프리셋] 단추를 더함.
+
+---
+
 ## 🆕 2026-11-06, v0.26.0: 과제 옆 숫자를 일정과 할 일 두 칸으로
 
 기획과 구현 기록 [docs/CAT-COUNTS-SPLIT.md](docs/CAT-COUNTS-SPLIT.md)(결정 1~8, 시안 `dist/proto/cat-counts-v1.html`). DB 구조 그대로. 계약 개정: 보기 팝업 과제 목록의 숫자와 정렬, 내 과제 목록의 숫자 칸.
