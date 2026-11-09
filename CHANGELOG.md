@@ -7,7 +7,7 @@
 
 ---
 
-## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 과제 옆 숫자를 일정과 할 일 두 칸으로
+## 🆕 2026-11-06, v0.26.0: 과제 옆 숫자를 일정과 할 일 두 칸으로
 
 기획과 구현 기록 [docs/CAT-COUNTS-SPLIT.md](docs/CAT-COUNTS-SPLIT.md)(결정 1~8, 시안 `dist/proto/cat-counts-v1.html`). DB 구조 그대로. 계약 개정: 보기 팝업 과제 목록의 숫자와 정렬, 내 과제 목록의 숫자 칸.
 
@@ -19,7 +19,7 @@
 
 ---
 
-## 🆕 2026-11-06 (다음 판, 번호는 배포 때): DB 구조 22, 일간보고 과제별 줄과 공식 과제 연결 공수 이관, 안 쓰는 표 셋 삭제
+## 🆕 2026-11-06, v0.26.0: DB 구조 22, 일간보고 과제별 줄과 공식 과제 연결 공수 이관, 안 쓰는 표 셋 삭제
 
 기획과 구현 기록 [docs/DB-V22-REPORT-HOURS.md](docs/DB-V22-REPORT-HOURS.md). 배포 판은 0.26.0(v21 과 함께). **DB 구조 21 에서 22**(`DbGate.AppStructureVersion` 22). 이관 조각 `db/deploy/migrations/v22-report-hours.sql`. 표 28개에서 25개.
 
@@ -49,7 +49,7 @@
 
 ---
 
-## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 날짜 패널 일정을 카드로 되돌리고 묶음 머리를 늘 보이게
+## 🆕 2026-11-06, v0.26.0: 날짜 패널 일정을 카드로 되돌리고 묶음 머리를 늘 보이게
 
 기획과 구현 기록 [docs/DAY-PANEL-CARDS.md](docs/DAY-PANEL-CARDS.md)(결정 1~10, 시안 `dist/proto/day-panel-v6.html`). DB 구조 그대로. 계약 개정: 날짜 패널 일정 마크업(한 줄 줄 `.dp-er` 걷고 카드 `.card`), 할 일 머리 숫자.
 
@@ -61,7 +61,7 @@
 
 ---
 
-## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 작성 보조 수준 판정을 표와 꼭 맞는 줄만으로
+## 🆕 2026-11-06, v0.26.0: 작성 보조 수준 판정을 표와 꼭 맞는 줄만으로
 
 기획과 구현 기록 [docs/WRITING-ASSIST.md](docs/WRITING-ASSIST.md) "3차"(결정 10~15). DB 구조 그대로. 계약 개정: wa-core 의 줄 판정, Enter, 수준 칸.
 
@@ -73,7 +73,7 @@
 
 ---
 
-## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 주간보고 임시저장까지 하고 [인트라넷에서 확인]
+## 🆕 2026-11-06, v0.26.0: 주간보고 임시저장까지 하고 [인트라넷에서 확인]
 
 기획과 구현 기록 [docs/WEEKLY-UPSERT.md](docs/WEEKLY-UPSERT.md) 맨 끝 절. DB 구조 그대로. 계약 개정: 주간 채우기의 인계 문서와 성공 문구, 근태 창 허용 목록(열).
 
@@ -86,7 +86,7 @@
 
 ---
 
-## 🆕 2026-11-06 (다음 판, 번호는 배포 때): 근태 가져오기 서식을 문단 모양으로 합침
+## 🆕 2026-11-06, v0.26.0: 근태 가져오기 서식을 문단 모양으로 합침
 
 기획 [docs/WRITING-ASSIST.md](docs/WRITING-ASSIST.md) "2차", 시안 `dist/proto/at-import-fmt-v1.html`(저장소 밖). DB 구조 그대로.
 
@@ -97,7 +97,7 @@
 
 ---
 
-## 🆕 2026-11-05 (다음 판, 번호는 배포 때): 근태 본문 수준과 문단 모양(이슈 #19)
+## 🆕 2026-11-05, v0.26.0: 근태 본문 수준과 문단 모양(이슈 #19)
 
 기획 [docs/WRITING-ASSIST.md](docs/WRITING-ASSIST.md), 시안 `dist/proto/writing-assist-v3.html`(저장소 밖). DB 구조 그대로.
 
@@ -112,7 +112,7 @@
 
 ---
 
-## 🆕 2026-11-05 (다음 판, 번호는 배포 때): 주간보고 기존 글 수정, 스크롤 튐, 일간 불러오기, 한글 입력 중 휠(fix/weekly-modify-viewno 병합)
+## 🆕 2026-11-05, v0.26.0: 주간보고 기존 글 수정, 스크롤 튐, 일간 불러오기, 한글 입력 중 휠(fix/weekly-modify-viewno 병합)
 
 다른 세션의 작업을 feat/db-app 에 병합. 기획은 [docs/WEEKLY-UPSERT.md](docs/WEEKLY-UPSERT.md), [docs/SCROLL-STABILITY.md](docs/SCROLL-STABILITY.md).
 
@@ -122,7 +122,7 @@
 - **한글 조합 중 휠**: `imeGuardInstall`(조합 중 첫 휠에서 확정 뒤 같은 칸 같은 커서로 복귀).
 - **병합 때 맞춘 것**: 과제 탭 왼쪽 목록은 그쪽 겉틀 구조에 관심 과제 탭과 서랍 × 를 얹음. 겉틀이 남아 스크롤이 유지되므로 [내 과제 | 관심 과제]를 바꿀 때만 목록을 맨 위로. 위키 옛 이름(다른 과제 보기) 정리.
 
-## 🆕 2026-11-05 (다음 판, 번호는 배포 때): 달력 칸 일정과 할 일 합쳐 채우기, 팝업 닫기 ×
+## 🆕 2026-11-05, v0.26.0: 달력 칸 일정과 할 일 합쳐 채우기, 팝업 닫기 ×
 
 기획 [docs/MONTH-TODO-POPUP-CLOSE.md](docs/MONTH-TODO-POPUP-CLOSE.md). DB 구조 그대로.
 
@@ -132,7 +132,7 @@
 
 ---
 
-## 🆕 2026-11-05 (다음 판, 번호는 배포 때): 관심 과제(보기만 과제 2차)와 날짜 패널 묶음 접기
+## 🆕 2026-11-05, v0.26.0: 관심 과제(보기만 과제 2차)와 날짜 패널 묶음 접기
 
 스트레스 시험(공식 과제 43개, 관심 50개, 일정 400건, 개인 일정 300건과 할 일 250건) 뒤 사용자 결정. 기획과 기록은 [docs/PC-WATCH-2.md](docs/PC-WATCH-2.md). DB 구조는 그대로 21.
 
@@ -151,7 +151,7 @@
 
 ---
 
-## 🆕 2026-11-04 (다음 판, 번호는 배포 때): 과제 탭 "다른 과제 보기"(보기만 과제, DB 구조 21)
+## 🆕 2026-11-04, v0.26.0: 과제 탭 "다른 과제 보기"(보기만 과제, DB 구조 21)
 
 사용자 결정(2026-11-04)과 DB 전문가 검토 반영. 기획과 구현 기록은 [docs/PC-WATCH.md](docs/PC-WATCH.md). 시안 `dist/proto/pc-watch-v3.html`, `pc-watch-v8.html`(최종). 원칙은 **이미 있는 화면을 모드로 재사용**한다는 것이다.
 
@@ -163,7 +163,7 @@
 
 ---
 
-## 🆕 2026-11-03 (다음 판, 번호는 배포 때): 취합의 월간 보고 문서 설정을 오른쪽 "문서 설정" 띠로
+## 🆕 2026-11-03, v0.26.0: 취합의 월간 보고 문서 설정을 오른쪽 "문서 설정" 띠로
 
 사용자 결정(2026-11-03, 확정 시안 `dist/proto/monthly-settings-v2.html` 애프터). 화면만 바뀌고 DB 구조와 호스트(C#) 변경은 없다. 설계는 [docs/ATTEND-SUMMARY.md](docs/ATTEND-SUMMARY.md) 2.
 
@@ -174,7 +174,7 @@
 - **걷은 CSS**: `.as-view .rptm-set` 단일 열 두 줄(계획 날짜 잘림 보정), `.as-mon`, `.rptm-set`, `.rptm-set .full`, `.as-view .rptm-ctl input[type=date]` 폭 규칙.
 - 시험: `attend-summary`(월간 설정이 왼쪽에 없고 오른쪽 탭 줄 아래 띠, 과제별 글이면 숨음, 접기와 요약, 격자 CSS, 변이 8종: 띠를 왼쪽으로, 탭 줄 위로, 격자 높이 상한 없앰, 옛 CSS 되살림, 과제별 글에서도 띠, 접으면 요약 숨음, 머리를 눌러도 안 접힘, 요약에 기타 표 없음), `monthly-report`(`#asMon` 을 `#asBand` 로, 미식별 칸 처음 접힘), 루프 `loop-monthly-report`, `loop-ui-visual`(`atSumDoc` 화면 추가).
 
-## 🆕 2026-11-03 (다음 판, 번호는 배포 때): 취합의 캘린더 기록은 이 앱 주간보고 DB
+## 🆕 2026-11-03, v0.26.0: 취합의 캘린더 기록은 이 앱 주간보고 DB
 
 사용자 결정(2026-11-03)으로 근태 [취합]의 내용 출처 두 개의 뜻을 바로잡았다. 설계는 [docs/ATTEND-SUMMARY.md](docs/ATTEND-SUMMARY.md) 7. DB 구조 변경과 호스트(C#) 변경 없음(화면만).
 
@@ -187,7 +187,7 @@
 - 출처 단추 title: "이 앱 근태 탭에서 쓴 주간보고를 읽습니다" / "회사 인트라넷의 주간보고를 읽습니다". 위키 [근태 보고](docs/wiki/근태-보고.md), [월간 보고](docs/wiki/월간-보고.md), [지운 기능](docs/wiki/지운-기능.md) 정정.
 - 시험: `attend-summary`(캘린더 기록이 `reportWeeklyList` 를 부르고 `collectReportData` 와 회사 명령 0, 겹치는 주만, 나눠 읽기, hours 줄, 미리 보기와 복사와 월간 문서가 같은 결과, 빈 결과 문구, 포함 항목 칸 없음, 변이), `monthly-report`(주간보고 DB 흉내로 읽어 오고 실적 글이 읽은 주간보고 블록과 같음), `app-context`(옛 일정 글 만들기 시험을 `collectReportData` + `reportRowBodyText` 직접 호출로 옮김, 포함 항목 저장과 날짜별 설명 고치기 시험 삭제), `report-wiring`, `git-removal-web` 갱신.
 
-## 🆕 2026-11-03 (다음 판, 0.26.0 예정, 번호는 배포 때): 개인 달력 우측 패널 정리와 보기 하나
+## 🆕 2026-11-03, v0.26.0: 개인 달력 우측 패널 정리와 보기 하나
 
 설계는 [docs/PERSONAL-PANEL.md](docs/PERSONAL-PANEL.md)(시안 `dist/proto/personal-panel.html`, 이슈 #15 1단계). 위키 [개인 달력 패널](docs/wiki/개인-달력-패널.md), [과제 필터와 보기](docs/wiki/과제-필터.md). DB 구조 변경 없음.
 
@@ -201,7 +201,7 @@
 - **사용설명서와 도움말**: "＋ 새 기록", "오른쪽 할 일 탭" 문구를 새 동작에 맞게 고쳤다(패치노트의 지난 기록은 그대로).
 - 시험: 새 `tests/personal-panel.test.mjs`(정적, 단위, jsdom, 변이). 바뀐 결정에 맞춰 고친 기존 시험: `filter-multi`(칩 없음, 요약 글자, 팝업 구성, 할 일 판정), `nav-layout-c`, `category-order`, `peer-view-full`(탭 대신 패널 묶음과 맨 아래 줄), `range-chip-click`(탭 전환 대신 강조), `personal-improve`(할 일 줄이 차지하는 차선), `offline-web`, `project-calendar-web`, `git-removal-web`. 실제 위젯 루프 `loop-category-order`, `loop-peer-frame`, `loop-personal-improve`, `loop-range-chip` 은 코드만 고쳤고 `loop-ui-visual` 에 보기 팝업(`viewPop`)과 밀린 할 일 팝업(`todoAllModal`) 화면을 넣었다. 사용자 확정 뒤 `personal-panel`(묶음 셋, 이번 주와 나중과 ★ 묶음 없음, 완료 접힘, 맨 아래 줄, seg 셋, 옛 저장값 무시, 변이), `filter-multi`, `peer-view-full` 시험을 새 결정에 맞춰 고쳤다.
 
-## 🆕 2026-11-03 (다음 판, 번호는 배포 때): 근태 탭 취합(기간 취합과 월간 보고 합치기, 보고서 창 없앰)과 주간보고 목록 찾기
+## 🆕 2026-11-03, v0.26.0: 근태 탭 취합(기간 취합과 월간 보고 합치기, 보고서 창 없앰)과 주간보고 목록 찾기
 
 설계는 [docs/ATTEND-SUMMARY.md](docs/ATTEND-SUMMARY.md). DB 구조 변경 없음.
 
