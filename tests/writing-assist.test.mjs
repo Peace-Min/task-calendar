@@ -6,8 +6,8 @@
 //   (B) jsdom 근태 창(?win=attend): 일간 본문과 자유 메모, 주간 세 칸에서 키(Tab, Alt+화살표, Alt+0~7, Enter, Shift+Enter, Backspace, 붙여넣기, 한글 조합),
 //       고친 뒤 ATE, AWE 가 따라온다, 문단 모양 창(7줄, 막힌 칸 수, 보이는 보고만 다시 쓰기, 창 안 Ctrl+Z, Esc 는 창만 닫기),
 //       계정별 저장과 5줄 표 읽기, 열기와 초점으로는 글을 고치지 않는다, 숨기기와 화면 전환 정리, 보내는 중 잠금.
-//       2차(2026-11-06): 가져오기 [서식] 줄이 없고 캘린더 불러오기는 제목 1수준, 설명 2수준(문단 모양 표, 번호), 표를 바꾸면 패널 카드도 새 모양,
-//       이전 보고 출처는 그대로. 변이 셋(설명 1수준, 카드 다시 그리기 빼기, 예전 보고서 서식 함수)을 같은 검사가 잡는다.
+//       2차(2026-11-06) 뒤 5차(2026-11-09): 캘린더 가져오기 [서식] 본문, 1수준(기본), 2수준, 직접 입력(번호 없음), 계정별 기억,
+//       이전 보고 출처는 그대로. 변이 여섯(설명 수준, 카드 다시 그리기, 직접 입력 번호, 저장, 기본값, 예전 보고서 서식 함수)을 같은 검사가 잡는다.
 //   3차(2026-11-06, 결정 10~15): 수준은 표와 꼭 맞는 줄만. 판정 셋(본문 0, 수준 1~7, 표와 다른 줄 WA.OTHER = 수준 칸 빈칸).
 //       check3 이 기획 시험 목록(사용자 글, 먼 줄 불변, 붙여넣기, 표 바꿈 넷, 다른 줄 수준 키, Enter 는 문단 모양만 등)을 돌리고,
 //       변이 넷(기호 우선 infer, 0칸 다른 줄을 항목으로, 표 바꿈이 다른 줄도 그림, 다른 줄 Enter 머리 이어 쓰기)을 같은 검사가 잡는다.
@@ -705,20 +705,47 @@ if (!JSDOM) {
   async function checkImport(X) {
     openImport(X);
     //  서식 줄이 없다(서식은 문단 모양 하나)
-    assert.ok(!X.$('#atOMk') && !X.$('#atOInd'), '가져오기 서식 칸이 남아 있다');
-    assert.ok(![...X.doc.querySelectorAll('#atOpts .at-lb')].some((e) => e.textContent === '서식'), '[서식] 줄이 남아 있다');
-    //  기본 표(1수준 '-' 0칸, 2수준 '*' 2칸): 제목은 1수준, 설명은 2수준. payload 의 보고서 일간 서식(source.fmt)은 쓰지 않는다
-    assert.deepStrictEqual(bodies(X), ['- 설계 검토\n  * 범위 확정\n- 시험 정리', '- 업체 회신\n  * 견적 비교'], '처음 블록이 문단 모양 기본 표(제목 1수준, 설명 2수준)가 아니다');
+    assert.ok(!X.$('#atOMk') && !X.$('#atOInd'), '예전 가져오기 서식 칸(머리기호, 들여쓰기)이 남아 있다');
+    //  기본 서식 = 1수준(5차): 제목 1수준, 설명 2수준, 기본 표('-' 0칸, '*' 2칸). payload 의 보고서 일간 서식(source.fmt)과 예전 tc_attFmt 값은 쓰지 않는다
+    const fsel = X.$('#atOFmt'), fcus = X.$('#atOFmtCus');
+    assert.ok(fsel && fcus, '[서식] 칸이 없다');
+    assert.strictEqual(fsel.value, 'l1', '기본 서식이 1수준이 아니다');
+    assert.ok(fcus.hidden, '직접 입력 칸이 처음부터 보인다');
+    assert.deepStrictEqual(bodies(X), ['- 설계 검토\n  * 범위 확정\n- 시험 정리', '- 업체 회신\n  * 견적 비교'], '처음 블록이 1수준 서식이 아니다');
     assert.deepStrictEqual(cardLines(X, 0), ['- 설계 검토 일정', '  * 범위 확정', '- 시험 정리 할 일'], '패널 카드가 불러올 모양이 아니다');
-    //  문단 모양 1수준을 '1.' 로: 패널 카드를 다시 그린다(번호는 같은 수준 형제끼리)
+    //  문단 모양 1수준을 '1.' 로: 카드와 서식 이름이 따라 바뀐다(번호는 과제마다 1부터)
     caret(blk(X, 0), 0);
     X.$('#atEd .wa-b').click();
     change(X, pop(X).querySelector('.wa-sym[data-r="0"]'), '1.');
     assert.deepStrictEqual(cardLines(X, 0), ['1. 설계 검토 일정', '  * 범위 확정', '2. 시험 정리 할 일'], '문단 모양을 바꿨는데 패널 카드가 새 모양이 아니다');
     assert.deepStrictEqual(cardLines(X, 1), ['1. 업체 회신 할 일', '  * 견적 비교'], '과제마다 번호를 1부터 세지 않았다');
+    assert.strictEqual(fsel.querySelector('option[value="l1"]').textContent, '1수준 (1.)', '서식 이름이 문단 모양 기호를 따르지 않는다');
     X.$('#atLoad').click();
     assert.deepStrictEqual(bodies(X), ['1. 설계 검토\n  * 범위 확정\n2. 시험 정리', '1. 업체 회신\n  * 견적 비교'], '불러온 글이 문단 모양 표(1수준 1. 2.)가 아니다');
-    //  설명 포함을 끄면 1수준만
+    const pick = (v) => { fsel.value = v; fsel.dispatchEvent(new X.w.Event('change', { bubbles: true })); };
+    const saved = () => JSON.parse(X.w.localStorage.getItem('tc_attImpFmt:7'));
+    //  본문 = 원문 그대로
+    pick('body');
+    assert.deepStrictEqual(saved(), { v: 1, mode: 'body', custom: '' }, '서식을 계정별로 저장하지 않았다');
+    X.$('#atLoad').click();
+    assert.deepStrictEqual(bodies(X), ['설계 검토\n범위 확정\n시험 정리', '업체 회신\n견적 비교'], '본문 서식이 원문 그대로가 아니다');
+    //  2수준 = 제목 2수준('*' 2칸), 설명 3수준('-' 4칸)
+    pick('l2');
+    X.$('#atLoad').click();
+    assert.deepStrictEqual(bodies(X)[0], '  * 설계 검토\n    - 범위 확정\n  * 시험 정리', '2수준 서식이 문단 모양 2, 3수준이 아니다');
+    //  직접 입력: 같은 글자를 그대로(번호 없음), 설명은 제목 글자 아래
+    pick('custom');
+    assert.ok(!fcus.hidden, '직접 입력을 골랐는데 칸이 숨어 있다');
+    fcus.value = '<<'; fcus.dispatchEvent(new X.w.Event('input', { bubbles: true }));
+    assert.deepStrictEqual(cardLines(X, 0), ['<< 설계 검토 일정', '   범위 확정', '<< 시험 정리 할 일'], '직접 입력 카드가 틀리다');
+    X.$('#atLoad').click();
+    assert.deepStrictEqual(bodies(X), ['<< 설계 검토\n   범위 확정\n<< 시험 정리', '<< 업체 회신\n   견적 비교'], '직접 입력이 같은 글자를 그대로 붙이지 않았다');
+    assert.deepStrictEqual(saved(), { v: 1, mode: 'custom', custom: '<<' });
+    fcus.value = '1.'; fcus.dispatchEvent(new X.w.Event('input', { bubbles: true }));
+    X.$('#atLoad').click();
+    assert.deepStrictEqual(bodies(X)[0], '1. 설계 검토\n   범위 확정\n1. 시험 정리', '직접 입력에 자동 번호를 매겼다');
+    //  설명 포함을 끄면 제목만(1수준으로 돌려 확인)
+    pick('l1');
     const d = X.$('#atODesc'); d.checked = false; d.dispatchEvent(new X.w.Event('change', { bubbles: true }));
     assert.deepStrictEqual(cardLines(X, 0), ['1. 설계 검토 일정', '2. 시험 정리 할 일']);
     X.$('#atLoad').click();
@@ -731,14 +758,17 @@ if (!JSDOM) {
     assert.deepStrictEqual(bodies(X)[0], '- 옛 줄\n  * 옛 설명', '이전 보고를 그대로 불러오지 않았다');
     assert.deepStrictEqual(X.errors, []);
   }
-  test('(B) 가져오기 서식은 문단 모양 하나: [서식] 줄 없음, 제목 1수준 설명 2수준, 문단 모양을 바꾸면 카드와 불러온 글이 새 모양(번호), 이전 보고는 그대로', async () => {
+  test('(B) 캘린더 가져오기 서식(5차): 기본 1수준, 본문, 2수준, 직접 입력(번호 없음), 계정별 기억, 문단 모양을 바꾸면 카드와 이름이 따라감, 이전 보고는 그대로', async () => {
     const X = boot((w) => w.localStorage.setItem('tc_attFmt:7', JSON.stringify({ v: 1, mk: '(1)', custom: '', indent: 3 })));   // 예전 가져오기 서식 값은 읽지 않는다
     try { await checkImport(X); } finally { X.close(); }
   });
   //  변이: 같은 검사가 잡는다
   const IMP_MUT = [
-    ['설명을 1수준으로 넣으면', 'items.push({ level: 2, body: one(d) })', 'items.push({ level: 1, body: one(d) })'],
+    ['설명을 같은 수준으로 넣으면', 'items.push({ level: L + 1, body: one(d) })', 'items.push({ level: L, body: one(d) })'],
     ['문단 모양을 바꾼 뒤 패널 카드를 다시 그리지 않으면', '  waRefresh(); waImportRedraw();\n}\n//  가져오기 패널의', '  waRefresh();\n}\n//  가져오기 패널의'],
+    ['직접 입력에 번호를 매기면', "return row.kept.map(x => [pre + one(x.text)]", "return row.kept.map((x, i) => [(ch === '1.' ? (i + 1) + '. ' : pre) + one(x.text)]"],
+    ['서식을 저장하지 않으면', "try{ localStorage.setItem(AT_IFMT_PREFIX + atWho()", "try{ if(0) localStorage.setItem(AT_IFMT_PREFIX + atWho()"],
+    ['기본 서식이 본문이면', "return { mode: ok ? v.mode : 'l1'", "return { mode: ok ? v.mode : 'body'"],
     ['캘린더 블록이 예전처럼 보고서 서식 함수를 쓰면', "function atCalBody(row){ return atCalLines(row).map(g => g.join('\\n')).join('\\n'); }",
       "function atCalBody(row){ const f = (ATE.p.source.fmt); return reportRowBodyText({ titles: row.kept.map(x => x.text), titleMeta: row.kept.map(x => ({ details: ATE.opt.desc ? x.details : [] })) }, ' ', f.mkSpec, f.indent); }"],
   ];

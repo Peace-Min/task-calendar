@@ -304,13 +304,13 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(B) 가져오기 서식은 문단 모양 하나: [서식] 줄이 없고, 불러온 제목은 1수준, 설명은 2수준, 표를 바꾸면 그 모양으로 불러온다(보고서 설정은 그대로, 예전 저장값은 읽지 않는다)', () => {
+  test('(B) 가져오기 서식은 문단 모양 수준에서 고른다(5차): 기본 1수준이면 제목 1수준, 설명 2수준, 표를 바꾸면 그 모양으로 불러온다(보고서 설정은 그대로, 예전 저장값은 읽지 않는다)', () => {
     const X = bootBrowser();
     try {
       X.ev("localStorage.setItem('tc_attFmt:' + rptDraftWho(), JSON.stringify({ v: 1, mk: '(1)', custom: '', indent: 3 }))");   // 예전 가져오기 서식 값(읽지 않는다)
       openB(X);
-      assert.ok(!X.$('#atOMk') && !X.$('#atOInd'), '가져오기 서식 칸이 남아 있다');
-      assert.ok(![...X.$('#atOpts').querySelectorAll('.at-lb')].some((e) => e.textContent === '서식'), '[서식] 줄 이름이 남아 있다');
+      assert.ok(!X.$('#atOMk') && !X.$('#atOInd'), '예전 가져오기 서식 칸(머리기호, 들여쓰기)이 남아 있다');
+      assert.strictEqual(X.$('#atOFmt').value, 'l1', '기본 가져오기 서식이 1수준이 아니다');
       assert.strictEqual(X.ev("typeof atFmt + typeof atFmtLoad + typeof AT_FMT_PREFIX"), 'undefinedundefinedundefined', '가져오기 서식 함수와 열쇠가 남아 있다');
       assert.ok(/^- 로그인 화면 리뷰\n {2}\* UI 확인$/m.test(blk(X)[0].text), '예전 가져오기 서식 값을 읽었거나 기본 표 모양이 아니다: ' + blk(X)[0].text);
       const before = X.ev('JSON.stringify(atDailyFmt())');
