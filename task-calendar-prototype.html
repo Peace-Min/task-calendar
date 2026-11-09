@@ -21466,15 +21466,9 @@ function atIFmtLoad(){
 function atIFmtSave(){
   try{ localStorage.setItem(AT_IFMT_PREFIX + atWho(), JSON.stringify({ v: 1, mode: ATE.ifmt.mode })); }catch(_){}
 }
-//  서식 칸을 지금 값에 맞춘다. 수준 이름 옆에 문단 모양의 그 수준 기호를 보인다(표를 바꾸면 따라 바뀐다).
+//  서식 칸을 지금 값에 맞춘다. 이름은 수준만 보인다(기호를 괄호로 덧붙이면 지저분하다, 2026-11-09 사용자)
 function atIFmtRender(){
   const sel = $('#atOFmt'); if(!sel || !ATE.ifmt) return;
-  const T = waT();
-  for(const o of sel.options){
-    const m = /^l([1-7])$/.exec(o.value); if(!m) continue;
-    const r = T[Number(m[1]) - 1], t = m[1] + '수준' + (r ? ' (' + WA.markerText(r.mk, 1) + ')' : '');
-    if(o.textContent !== t) o.textContent = t;
-  }
   sel.value = ATE.ifmt.mode;
 }
 //  캘린더 과제 하나의 블록 내용. 머리 줄은 블록 머리(과제명, 시간 칸)가 맡는다. 시간 칸은 0 으로 시작한다(작성 중 시간 표는 구조 22 에서 없앴다).
@@ -24087,7 +24081,7 @@ function waApplyTable(nt){
   });
   waRefresh(); waImportRedraw();
 }
-//  가져오기 패널의 캘린더 카드와 서식 이름은 문단 모양 표를 따르므로 표가 바뀌면 다시 그린다(이미 불러온 본문은 위에서 맞춘 것뿐)
+//  가져오기 패널의 캘린더 카드는 문단 모양 표를 따르므로 표가 바뀌면 다시 그린다(이미 불러온 본문은 위에서 맞춘 것뿐)
 function waImportRedraw(){ if(ATE.p && ATE.src === 'cal') atPanelRender(); }
 //  창 안 Ctrl+Z: 마지막 표 바꿈을 표와 본문 모두 한 번에 되돌린다(값을 바로 넣고 input 을 알린다. 이 본문들의 기본 되돌리기 기록은 끊길 수 있다)
 function waUndoTable(){

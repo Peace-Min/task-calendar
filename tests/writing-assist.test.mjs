@@ -732,7 +732,7 @@ if (!JSDOM) {
     change(X, pop(X).querySelector('.wa-sym[data-r="0"]'), '1.');
     assert.deepStrictEqual(cardLines(X, 0), ['1. 설계 검토 일정', '  * 범위 확정', '2. 시험 정리 할 일'], '문단 모양을 바꿨는데 패널 카드가 새 모양이 아니다');
     assert.deepStrictEqual(cardLines(X, 1), ['1. 업체 회신 할 일', '  * 견적 비교'], '과제마다 번호를 1부터 세지 않았다');
-    assert.strictEqual(fsel.querySelector('option[value="l1"]').textContent, '1수준 (1.)', '서식 이름이 문단 모양 기호를 따르지 않는다');
+    assert.deepStrictEqual([...fsel.options].map((o) => o.textContent), ['본문', '1수준', '2수준', '3수준', '4수준', '5수준', '6수준', '7수준'], '서식 이름에 기호를 덧붙였다(수준만 보인다)');
     X.$('#atLoad').click();
     assert.deepStrictEqual(bodies(X), ['1. 설계 검토\n  * 범위 확정\n2. 시험 정리', '1. 업체 회신\n  * 견적 비교'], '불러온 글이 문단 모양 표(1수준 1. 2.)가 아니다');
     const pick = (v) => { fsel.value = v; fsel.dispatchEvent(new X.w.Event('change', { bubbles: true })); };
@@ -754,7 +754,6 @@ if (!JSDOM) {
     assert.deepStrictEqual(saved(), { v: 1, mode: 'l7' });
     X.$('#atLoad').click();
     assert.deepStrictEqual(bodies(X)[0], '            - 설계 검토\n            - 범위 확정\n            - 시험 정리', '7수준 서식(설명도 7수준)이 아니다');
-    assert.strictEqual(fsel.querySelector('option[value="l7"]').textContent, '7수준 (-)');
     //  설명 포함을 끄면 제목만(1수준으로 돌려 확인)
     pick('l1');
     const d = X.$('#atODesc'); d.checked = false; d.dispatchEvent(new X.w.Event('change', { bubbles: true }));
