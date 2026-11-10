@@ -498,7 +498,7 @@ if (!JSDOM) {
       //  누르면 메뉴(두 항목만), 첫 항목에 포커스, 요청은 아직 없다
       const n0 = adds().length;
       add().focus(); add().click(); await tick();
-      assert.ok(M.shown('#asPop') && M.$('#asPop').classList.contains('menu') && visPk().join() === 'img', '빈 칸을 눌러도 그림 메뉴가 뜨지 않는다');
+      assert.ok(M.shown('#asPop') && M.$('#asPop').classList.contains('as-pop-menu') && visPk().join() === 'img', '빈 칸을 눌러도 그림 메뉴가 뜨지 않는다');
       assert.deepStrictEqual(its().map((b) => [b.dataset.imgmode, b.childNodes[0].textContent, (b.querySelector('kbd') || {}).textContent || '']), [['file', '파일 고르기', ''], ['clipboard', '붙여 넣기', 'Ctrl+V']], '메뉴 항목이 파일 고르기, 붙여 넣기(Ctrl+V) 둘이 아니다');
       assert.ok(M.d.activeElement === its()[0] && add().getAttribute('aria-expanded') === 'true' && adds().length === n0, '메뉴를 열면 첫 항목에 포커스가 가고 요청은 나가지 않아야 한다');
       //  위아래 화살표로 항목 사이(끝에서 돌아간다)

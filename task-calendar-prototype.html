@@ -2870,7 +2870,7 @@ html.at-idle #atEd,html.at-idle #awEd,html.at-idle #awList{ visibility:hidden } 
 .as-pop{position:fixed;z-index:30;background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:0 8px 24px rgba(0,0,0,.16);padding:10px 12px}
 .as-pk{display:inline-flex;align-items:center;gap:6px}
 /* 그림 칸 메뉴(시안 A, 2026-11-10): 같은 띄움 칸의 메뉴 모드. 항목 모양은 근무지 순서 메뉴(.off-ordmenu)와 같다 */
-.as-pop.menu{padding:4px}
+.as-pop.as-pop-menu{padding:4px}   /* 클래스 이름이 menu 면 전역 .menu(오른쪽 붙음, right:0)가 걸려 창 끝까지 늘어난다 */
 .as-pk.as-menu{display:flex;flex-direction:column;align-items:stretch;gap:0;min-width:150px}
 .as-menu [role="menuitem"]{display:flex;align-items:center;gap:16px;width:100%;min-height:30px;padding:5px 9px;border:0;border-radius:var(--r-sm);background:none;color:var(--text);font:inherit;font-size:var(--fs-body);text-align:left;cursor:pointer}
 .as-menu [role="menuitem"]:hover,.as-menu [role="menuitem"]:focus{background:var(--hover-bg);outline:none}
@@ -17312,7 +17312,7 @@ function asPopOpen(k, anchor, imgId){
   asPopClose();
   __asPopK = k; __asPopB = b; __asPopImg = imgId || '';
   pop.querySelectorAll('[data-pk]').forEach(e => e.classList.toggle('hidden', e.dataset.pk !== k));
-  pop.classList.toggle('menu', k === 'img');
+  pop.classList.toggle('as-pop-menu', k === 'img');
   pop.classList.remove('hidden');
   b.setAttribute('aria-expanded', 'true');
   const r = b.getBoundingClientRect();
