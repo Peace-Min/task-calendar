@@ -7,6 +7,18 @@
 
 ---
 
+## 🆕 2026-11-10, v0.27.0: 배포 전 점검(QA) 고침과 미리 보기를 Word 문서 치수로
+
+점검 기록 `docs/RELEASE-0.27.0-QA.md`. 첫 버전 갱신(8b3b3a3)이 실DB 루프와 실위젯 점검 없이 나가 다시 점검했다. DB 구조 22 그대로.
+
+- (P1) 월간 출처 [캘린더]: 주간 보내기(`awBuildSubmit`)가 줄 앞 공백을 `&nbsp;` 로 바꾼 글이 DB 에 그대로 있다. `rptMWeekFromRow` 가 `atDecode` 로 되돌린다(주간 편집 `awFromSaved` 와 같음). 0.26.0 부터 있던 결함. 저장 때 빼는 것은 다음 판 논의(옛 행이 남아 읽기 쪽 되돌리기는 계속 필요).
+- (P2) 머리 꼬리 `reHeadTail`: 첫 `]` 뒤가 기간, 시간, 쌍점, 대시와 숫자일 때만 머리. `[완료] 설계서 제출` 은 본문(0.26.0 과 같음).
+- (P2) DOCX 그림도 과제당 첫 장(`ScheduleImageDb.ImagesForExportAsync`, DB 길과 사본 길). 0.26.0 에서 여러 장 넣은 과제.
+- (P2) 알림 단추 `quiet`: [폴더 열기] 뒤 "되돌렸습니다" 가 뜨지 않게.
+- 미리 보기(`rptMPreview`, `.rptm-sheet`)를 DocxWriter 수치로: 종이 16838 twip, pgMar, 표 폭(13788, 14726), gridCol/20pt, 줄마다 trHeight(`data-tr`), tblCellMar 0/108, 줄 간격 13.3pt(240 auto, 맑은 고딕), 테두리 sz 4, HW 과제명 sz 21, 표 사이 빈 문단, 그림 `rptMImgFitStyle`(FitImage 와 같은 계산)과 가운데. `rptMFit` 분모 16838/15. 같은 payload 로 DOCX(LibreOffice) 와 대조해 편차 0.5pt 이내(dist/qa-morning/preview-vs-docx).
+- 실DB 월간 루프(`loop-monthly-report`) 기준을 v7 로(머리 체크 둘과 주간보고 제목 넣기 체크, 기록 없는 달은 첫 과제를 잠깐 켜서 확인). `run-loops.ps1` 목록에 월간 루프 둘 추가.
+- 다음 판: 주간 저장 때 `&nbsp;` 빼기 논의, "개인 일정에 등록" 직후 다시 읽기 실패 시 rev 가 어긋나 저장이 계속 충돌하는 것(새로고침하면 풀림), 그림 붙여 넣기 뒤 포커스가 칸으로 돌아오지 않는 것.
+
 ## 🆕 2026-11-10, v0.27.0: 월간 그림 칸 메뉴(시안 A, 파일 고르기와 붙여 넣기)
 
 시안 `docs/prototypes/monthly-img-paste.html` 의 A안. DB 구조와 호스트 그대로(명령 추가 없음).
