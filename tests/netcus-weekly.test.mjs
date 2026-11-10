@@ -486,6 +486,27 @@ test('parseNetcusWeekly 머리(2026-11-10): 사례 17건의 과제 이름(꼬리
 test('parseNetcusWeekly 머리(2026-11-10): 들여 쓰거나 기호 뒤의 [과제] 는 본문(c01, c07, c12)', () => headChecks.bodyBrackets(parseNetcusWeekly));
 test('parseNetcusWeekly 머리(2026-11-10): 꼬리 붙은 머리도 내 과제와 맞고, 이름이 빈 [ ] 는 본문', () => headChecks.headTail(parseNetcusWeekly));
 test('parseNetcusWeekly 시간(2026-11-10): [X] N, [X] - N, Nh, .5, [X]N, [X : N], 숫자 없음', () => headChecks.hoursForms(parseNetcusWeekly));
+//  QA 0.27.0: 0칸 '[' 줄이라도 꼬리가 잰 모양(빈 꼬리, 괄호, 쌍점 시간, 숫자 시간, 대시 뒤 숫자나 괄호)이 아니면 본문(0.26.0 과 같음)
+const tailBody = (parse) => {
+  const p = parse([{ title: '주', period: '', endwork: '[(예시) 관제 고도화]\n- 화면 검토\n[완료] 설계서 제출\n  - 검토 의견 반영\n[보류]: 외부 연동 일정\n- 마지막 줄', content: '' }], []);
+  assert.deepStrictEqual(p.order, ['(예시) 관제 고도화'], '꼬리가 글인 [완료] 설계서 제출 을 새 머리로 읽었다');
+  assert.deepStrictEqual(p.tasks[0].blocks[0].lines, ['- 화면 검토', '[완료] 설계서 제출', '  - 검토 의견 반영', '[보류]: 외부 연동 일정', '- 마지막 줄'], '[완료] 설계서 제출 뒤 글이 지금 과제 본문에 남지 않았다');
+};
+const tailHeads = (parse) => {
+  const forms = ['', "(~'27/11/20)", '(내용)', ' : 13h', ' : 2', ' :', ':', ' : .5', ' 12', '8h', ' .5', ' - 46', ' - 2026 9월', ' - (3내용 내용)2028년 04월 15내용', '：3'];
+  for (const tail of forms) {
+    const p = parse([{ title: '주', period: '', endwork: '[앞 과제]\n- 앞 일\n[과제X]' + tail + '\n- 일', content: '' }], []);
+    assert.deepStrictEqual(p.order, ['앞 과제', '과제X'], '잰 꼬리 ' + JSON.stringify(tail) + ' 인 줄을 머리로 읽지 않았다');
+    assert.deepStrictEqual(p.tasks[1].blocks[0].lines, ['- 일'], '잰 꼬리 ' + JSON.stringify(tail) + ' 머리의 본문이 다르다');
+  }
+};
+test('parseNetcusWeekly 머리 꼬리(QA 0.27.0): [완료] 설계서 제출 처럼 꼬리가 글이면 지금 과제의 본문', () => tailBody(parseNetcusWeekly));
+test('parseNetcusWeekly 머리 꼬리(QA 0.27.0): 잰 꼬리(빈, 괄호, 쌍점 시간, 숫자, 대시)는 그대로 머리', () => tailHeads(parseNetcusWeekly));
+test('변이⑩: 꼬리 검사를 빼면 [완료] 설계서 제출 본문 검사가 잡는다', () => {
+  const bad = parserFrom(mutateIn(src, SIG_PARSE, '(mh && reHeadTail.test(trimmed.slice(mh[0].length)))', 'mh'));
+  assert.throws(() => tailBody(bad), /새 머리/);
+  tailHeads(bad);
+});
 
 const A_HEAD = String.raw`const reHead = /^\[([^\]]*)\]/;`;
 const A_HOURS_RE = String.raw`const reHours = /^\s*\[([^\]]*)\](.*)$/;`;

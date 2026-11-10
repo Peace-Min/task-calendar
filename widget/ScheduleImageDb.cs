@@ -691,7 +691,9 @@ namespace TaskCalendarWidget
                     var metas = await ListMetaAsync(conn, null, me.UserId, pid, ct);   // 내 그림만
                     Cache.Remember(_dataDir, login, uid, metas, _log);
                     var list = new List<byte[]>();
-                    foreach (var m in metas)
+                    //  문서에는 과제마다 앞의 Limits.MaxPerProject 장(seq, id 순)만 넣는다. 웹 미리 보기(slice(0, RPTM_IMG_MAX))와 같은 그림이다.
+                    //  0.26.0 까지 5장을 넣을 수 있어 DB 에 더 남은 사람도 있다(지우지 않고 문서에서만 뺀다).
+                    foreach (var m in metas.GetRange(0, Math.Min(metas.Count, Limits.MaxPerProject)))
                     {
                         var b = Cache.Load(_dataDir, m.Sha256, m.Mime, _log);
                         if (b == null)
@@ -722,7 +724,7 @@ namespace TaskCalendarWidget
                     var metas = Cache.Recall(_dataDir, login, uid);
                     if (metas == null) continue;
                     var list = new List<byte[]>();
-                    foreach (var m in metas)
+                    foreach (var m in metas.GetRange(0, Math.Min(metas.Count, Limits.MaxPerProject)))   // DB 길과 같이 앞의 1장만
                     {
                         var b = Cache.Load(_dataDir, m.Sha256, m.Mime, _log);
                         if (b != null) list.Add(b); else missing++;

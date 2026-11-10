@@ -9,7 +9,7 @@
  *    O0  전제: 로그인, conn ok, 새 빌드(rptMOpen), 구조 17(DB 과제에 devStartDate 칸), 가로채기 설치
  *    M1  근태 탭 [취합](결과는 월간 보고 문서 하나, v6 결정 22): 보고서 창과 옛 월간 칸(#rptMonthlyPane, #rptmSub 등)이 없고, 월간 설정과 문서 미리 보기와 저장 단추가 보임, 탭, 복사, 글 미리 보기, 보내기 단추는 없음
  *    M2  기간과 과제: 실적 기간 = 지난달(기억하는 값이 없다), 계획 기간 = 기본값, 과제 목록 = 구독한 공식 과제(내 과제 순서 그대로, ▲▼ 없음),
- *        고치는 칸 없음(입력은 날짜와 체크뿐), 체크한 과제마다 미리 보기 표(목록 순서)
+ *        고치는 칸 없음(입력은 날짜와 체크뿐, 머리 체크 둘과 주간보고 제목 넣기 체크 포함, v6 결정 23, v7 결정 26), 체크한 과제마다 미리 보기 표(목록 순서)
  *    L1  배치(2026-11-10 시안 v2): 왼쪽 상자 #asBoxes, 오른쪽 미리 보기 #rptmPv 가 둘 다 보이는지, 미리 보기 종이가 칸 폭에 맞게 줄었는지,
  *        과제 줄 라벨에 앱 폼 라벨 여백(위 16px)이 걸리지 않는지, 체크를 끄고 켜면 미리 보기 표가 바로 빠지고 돌아오는지(돌려 놓는다)
  *    M3  다시 읽어 오기(캘린더 기록 = 이 앱 주간보고 DB, 확인 창 없음): 과제별 실적 = 읽은 주간보고의 과제별 글(복사 글 대조는 v6 결정 22 로 복사가 없어 뺐다)
@@ -161,7 +161,7 @@ async function main() {
       fromTo: [document.getElementById('rptFrom').value, document.getElementById('rptTo').value],
       arrows: (document.getElementById('asDoc').textContent.match(/[▲▼]/g) || []).length + document.querySelectorAll('#asDoc [data-act="up"], #asDoc [data-act="down"]').length,
       order: __rptM.order, off: rptMOfficial().map(function(c){ return c.id; }), picked: rptMPicked(__rptM), cards: [].map.call(document.querySelectorAll('#rptmSheet table[data-pv-uid]'), function(c){ return c.dataset.pvUid; }),
-      editors: [].filter.call(document.querySelectorAll('#asDocHead input, #asDocHead textarea, #asDocHead select, #asDocHead [contenteditable], #asBoxes input:not([data-unid-to]), #asBoxes textarea'), function(i){ return !((i.type === 'date') || (i.type === 'checkbox' && (i.matches('#rptmPick input[data-act="pick"]') || i.matches('#rptmEtc input[data-etc]')))); }).length,
+      editors: [].filter.call(document.querySelectorAll('#asDocHead input, #asDocHead textarea, #asDocHead select, #asDocHead [contenteditable], #asBoxes input:not([data-unid-to]), #asBoxes textarea'), function(i){ return !((i.type === 'date') || (i.type === 'checkbox' && (i.matches('#rptmPick input[data-act="pick"]') || i.matches('#rptmEtc input[data-etc]') || i.matches('#rptmPickAll, #rptmEtcAll, #rptmWeekHead')))); }).length,
       terms: rptMPicked(__rptM).map(function(id){ return rptMTerm(id).text; }) })`);
     vlogJSON(st);
     ok('M2 실적 기간 = 지난달(기억하는 값이 없다), 날짜 칸 #rptFrom, #rptTo 하나뿐', st.from === st.lm[0] && st.to === st.lm[1] && st.fromTo[0] === st.from && st.fromTo[1] === st.to, JSON.stringify([st.from, st.to, st.fromTo]));
@@ -183,10 +183,11 @@ async function main() {
     if (lay.lbTop == null) undecide('L1 과제 줄 라벨 여백', '과제 줄이 없다');
     else ok('L1 과제 줄 라벨에 앱 폼 라벨 여백과 굵기가 걸리지 않는다', lay.lbTop === '0px' && String(lay.lbW) === '400', JSON.stringify([lay.lbTop, lay.lbW]));
     //  체크를 끄고 켜면 미리 보기 표가 바로 빠지고 돌아온다(원래대로 돌려 놓는다)
-    const live = await J(`(function(){ var id = rptMPicked(__rptM)[0]; if (!id) return null; var cb = [].find.call(document.querySelectorAll('#rptmPick .rptm-it'), function(r){ return r.dataset.uid === id; }).querySelector('input[data-act="pick"]');
+    //  v7 결정 29: 읽은 뒤에는 기록 있는 과제만 체크라 기록이 없는 달이면 체크가 0 이다. 그때는 첫 과제를 켜고 보고 끈다(돌려 놓는다).
+    const live = await J(`(function(){ var id = rptMPicked(__rptM)[0], tmp = false; if (!id && __rptM.order.length) { id = __rptM.order[0]; tmp = true; __rptM.checked[id] = true; rptMRenderAll(); } if (!id) return null; var cb = [].find.call(document.querySelectorAll('#rptmPick .rptm-it'), function(r){ return r.dataset.uid === id; }).querySelector('input[data-act="pick"]');
       var has = function(){ return [].some.call(document.querySelectorAll('#rptmSheet table[data-pv-uid]'), function(t){ return t.dataset.pvUid === id; }); };
       cb.checked = false; cb.dispatchEvent(new Event('change', { bubbles: true })); var off = has();
-      cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); var on = has(); return { off: off, on: on }; })()`);
+      cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); var on = has(); if (tmp) { __rptM.checked[id] = false; rptMRenderAll(); } return { off: off, on: on }; })()`);
     if (!live) undecide('L1 체크와 미리 보기', '체크한 과제가 없다');
     else ok('L1 체크를 끄면 미리 보기 표가 바로 빠지고, 켜면 바로 돌아온다', live.off === false && live.on === true, JSON.stringify(live));
 

@@ -186,6 +186,44 @@ test('변이 MSM5:읽어 오기 없이 읽거나 처음 열기에서 월간을 �
   assert.throws(() => S.sumStructure(mutate(app, '<button type="button" class="seg-b" data-rsrc="week" aria-pressed="false"', '<button type="button" class="seg-b" data-rsrc="day" aria-pressed="false"></button><button type="button" class="seg-b" data-rsrc="week" aria-pressed="false"')), /출처가/);
 });
 
+//  QA 0.27.0: 캘린더 기록 출처(이 앱 주간보고 DB)의 행은 보낼 때(awBuildSubmit) 줄 앞 공백을 &nbsp; 로 바꿔 저장한 글이다.
+//  rptMWeekFromRow 가 주간 편집(awFromSaved)처럼 atDecode 로 되돌려야 실적 글에 '&nbsp;' 가 남지 않고 들여쓰기 단계(rptMLines)가 산다.
+//  순수 함수만 뽑아 돈다(jsdom 없이). 아래 위젯 시험의 WEEK_ROWS 와 같은 모양의 행 하나.
+const appDbNbsp = (src) => {
+  const fns = ['atDecode', 'rptMWeekFromRow', 'parseNetcusWeekly', 'buildNetcusWeeklyText', 'rptMLines'].map((n) => extractFunction(src, n)).join('\n');
+  // eslint-disable-next-line no-new-func
+  const lib = new Function('RPT_TAB_UNITS', fns + '\nreturn { rptMWeekFromRow, parseNetcusWeekly, buildNetcusWeeklyText, rptMLines };')(4);
+  const row = { periodStart: '2026-09-07', periodEnd: '2026-09-12', subject: '2026-09-07 주간보고', composedAt: '2026-09-07T09:00:00.000Z', plan: '', meeting: '',
+    endwork: '[(예시) 관제 고도화]\r\n- 화면 정리\r\n&nbsp;&nbsp;* 화면 검토\r\n&nbsp;&nbsp;&nbsp;&nbsp;; 검토 의견 반영', content: '[(예시) 관제 고도화] : 3', hours: null };
+  const p = lib.parseNetcusWeekly([lib.rptMWeekFromRow(row)], [{ id: 'c1', name: '(예시) 관제 고도화' }]);
+  assert.deepStrictEqual(p.order, ['(예시) 관제 고도화'], '과제 머리를 읽지 못했다');
+  assert.strictEqual(p.hoursByTask['(예시) 관제 고도화'], 3, '글(content)의 과제투입시간을 읽지 못했다');
+  const text = lib.buildNetcusWeeklyText(p, true);
+  assert.ok(!/&nbsp;/i.test(text), "실적 글에 '&nbsp;' 글자가 그대로 남았다: " + JSON.stringify(text));
+  const body = text.slice(text.indexOf('\n') + 1);
+  assert.deepStrictEqual(lib.rptMLines(body), [{ level: 0, text: '- 화면 정리' }, { level: 1, text: '* 화면 검토' }, { level: 2, text: '; 검토 의견 반영' }], '&nbsp; 들여쓰기 단계가 살지 않았다');
+};
+test('MS12 (QA 0.27.0): 이 앱 주간보고 DB 의 &nbsp; 줄 앞 공백을 되돌려 실적 글에 글자가 남지 않고 들여쓰기 단계가 산다', () => appDbNbsp(app));
+test('변이 MSM7: rptMWeekFromRow 에서 atDecode 를 빼면 MS12 가 잡는다', () => {
+  assert.throws(() => appDbNbsp(mutate(app, "return { endwork: atDecode(r.endwork), content:", "return { endwork: r.endwork, content:")), /&nbsp;/);
+});
+
+//  QA 0.27.0: 미리 보기 그림 폭은 DocxWriter.FitImage 와 같은 계산(원본 px 을 96dpi 로, 폭 11330 과 높이 7200 twip 안, 키우지 않음)이다.
+//  견본(긴 변 360px) 크기 그대로 두면 문서보다 작게 보였다.
+const imgFit = (src) => {
+  // eslint-disable-next-line no-new-func
+  const f = new Function(extractFunction(src, 'rptMImgFitStyle') + '\nreturn rptMImgFitStyle;')();
+  const pt = (im) => { const m = /width:([\d.]+)pt/.exec(f(im)); return m ? +m[1] : null; };
+  assert.strictEqual(pt({ width: 2000, height: 500 }), 566.5, '넓은 그림은 폭 11330 twip(566.5pt)으로 줄어야 한다');
+  assert.strictEqual(pt({ width: 300, height: 100 }), 225, '작은 그림은 원래 크기(300px = 225pt)여야 한다');
+  assert.strictEqual(pt({ width: 600, height: 1200 }), 180, '긴 그림은 높이 7200 twip 에 맞춰 줄어야 한다');
+  assert.strictEqual(f({ width: 0, height: 0 }), '', '크기를 모르면 견본 그대로');
+};
+test('MS13 (QA 0.27.0): 미리 보기 그림 폭이 DOCX 와 같은 계산이다', () => imgFit(app));
+test('변이 MSM8: 높이 상한을 빼면 MS13 이 잡는다', () => {
+  assert.throws(() => imgFit(mutate(app, 'Math.min(1, 11330 / cx, 7200 / cy)', 'Math.min(1, 11330 / cx)')), /높이/);
+});
+
 // ══════════════════════════════════════════════════════════════════════
 // jsdom 실행
 // ══════════════════════════════════════════════════════════════════════
@@ -884,7 +922,8 @@ if (!JSDOM) {
       //  다시 열어도 처음 값
       unidPick(K_TBD, 'etc'); reopen(W); await tick(); drainImages(W);
       assert.strictEqual(W.ev('__rptM.unidTo.size'), 0, '다시 열었는데 고른 것이 남았다');
-      assert.deepStrictEqual(lsSince(W, n0), [], '미식별 흐름이 저장소에 썼다');
+      //  tc_guideAsked 는 영상 안내의 실행 안 기억(부팅 뒤 늦게 쓴다)이라 시점에 따라 여기 끼어든다(MW 위 검사와 같은 제외)
+      assert.deepStrictEqual(lsSince(W, n0).filter((k) => k !== 'set:tc_guideAsked'), [], '미식별 흐름이 저장소에 썼다');
       W.doc.querySelector('#rptSrcSeg [data-rsrc="cal"]').click(); await tick();
       await fresh();
     });
