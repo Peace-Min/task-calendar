@@ -757,17 +757,22 @@ body.db-locked #btnAddHere{opacity:.5}
 .cat-add:hover{background:var(--accent-soft);border-style:solid}
 .cat-add:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .cat-add .cat-plus{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--on-accent);font-size:14px;line-height:1}
-/* ⋯ 메뉴: 그 줄 아래에 뜬다. 목록 칸 아래가 모자라면 위로 뜬다(.up, catMenuOpen 이 잰다) */
-.cat-menu{position:absolute;right:6px;top:calc(100% - 2px);z-index:8;min-width:220px;padding:4px;cursor:default;
+/* ⋯ 메뉴: 화면 기준(fixed)으로 ⋯ 아래에 뜨고, 화면 아래가 모자라면 위로 뜬다(catMenuPlace 가 잰다).
+   예전처럼 줄 안에 absolute 로 두면 창 본문(.modal-body, 스크롤 칸)이 메뉴를 잘라 내고 본문에 스크롤 막대가 생겼다(2026-11-10 피드백). */
+.cat-menu{position:fixed;left:0;top:0;z-index:60;min-width:220px;max-height:calc(100vh - 16px);overflow-y:auto;padding:4px;cursor:default;
   background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:var(--shadow)}
-.cat-menu.up{top:auto;bottom:calc(100% - 2px)}
 .cat-menu [role="menuitem"]{display:block;width:100%;text-align:left;border:0;background:none;padding:7px 10px;border-radius:var(--r-sm);cursor:pointer;font-family:inherit;font-size:var(--fs-body);color:var(--text)}
 .cat-menu [role="menuitem"]:hover:not(:disabled),.cat-menu [role="menuitem"]:focus-visible{background:var(--hover-bg)}
 .cat-menu [role="menuitem"]:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .cat-menu [role="menuitem"]:disabled{color:var(--faint-text);cursor:default}
 .cat-menu [role="menuitem"].danger{color:var(--danger-text)}
 .cat-menu [role="menuitem"] small{display:block;color:var(--muted);font-size:var(--fs-micro)}
-.cat-menu-grp{font-size:var(--fs-micro);color:var(--faint-text);padding:6px 10px 2px}
+/* 순서 한 줄: 왼쪽 글자 "순서", 오른쪽 그림 단추 넷(이름은 title 과 aria-label) */
+.cat-menu-ord{display:flex;align-items:center;gap:4px;padding:2px 6px 2px 10px}
+.cat-menu-ord > span{margin-right:auto;font-size:var(--fs-meta);color:var(--muted)}
+.cat-menu .cat-menu-ord [role="menuitem"]{display:inline-flex;align-items:center;justify-content:center;width:34px;height:28px;padding:0;border:1px solid var(--line-2);background:var(--panel)}
+.cat-menu .cat-menu-ord [role="menuitem"]:disabled{background:var(--bg);border-color:var(--line)}
+.cat-menu-ord svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .cat-menu-sep{height:1px;background:var(--line);margin:4px 2px}
 /* 끌어서 순서 바꾸기(포인터 이벤트, 공식 과제 목록과 같은 손) */
 .cat-row.cat-drag-src{opacity:.45}
@@ -2735,12 +2740,8 @@ body:not(.at-on) #atView{display:none !important}
 .at-ed-nav{display:inline-flex;align-items:center;gap:6px}
 .at-ed-nav .btn.icon{padding:3px 10px}
 .at-ed-date{font-size:var(--fs-emph);font-weight:600;white-space:nowrap}
-.at-fold{border:0;background:none;color:var(--muted);cursor:pointer;font:inherit;font-size:var(--fs-meta);padding:4px 8px;border-radius:var(--r-sm)}
-.at-fold:hover{background:var(--hover-bg);color:var(--text)}
 /* 오른쪽 패널 폭은 --atpw(기본 360px, 일간과 주간이 함께 쓴다). 끌개(.at-split)로 바꾸고, 너무 넓어도 몸통의 60% 를 넘지 않게 CSS 에서도 한 번 더 묶는다 */
 .at-ed-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 6px minmax(280px,min(var(--atpw,360px),60%))}
-.at-ed-body.folded{grid-template-columns:minmax(0,1fr)}
-.at-ed-body.folded .at-panel,.at-ed-body.folded .at-split{display:none}
 .at-split{position:relative;cursor:col-resize;touch-action:none;outline:none;background:transparent}
 .at-split::before{content:"";position:absolute;top:0;bottom:0;left:50%;width:1px;margin-left:-.5px;background:var(--line)}
 .at-split:hover::before,.at-split.dragging::before,.at-split:focus-visible::before{background:var(--accent);width:2px;margin-left:-1px}
@@ -3353,7 +3354,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
         <span class="spacer"></span>
         <!-- 작성 보조(docs/WRITING-ASSIST.md): [수준][문단 모양]. waInit 이 채운다(주간 머리와 같은 한 벌) -->
         <span class="wa-tools" data-watools="d"></span>
-        <button type="button" class="at-fold" id="atFold" aria-expanded="true" aria-controls="atPanel">패널 접기 ›</button>
+        <!-- 패널 접기 단추는 없앴다(2026-11-10 피드백). 패널 폭은 끌개로만 바꾼다 -->
       </div>
       <div class="at-ed-body" id="atEdBody">
         <div class="at-left">
@@ -13530,9 +13531,15 @@ function catMenuHtml(c){
   let h = item('edit', '수정');
   if(catDataCountText(catDataCounts(c.id))) h += item('merge', '다른 과제와 합치기…');
   if(kind === 'personal') h += item('link', '공식 과제로 연결…');
-  h += sep + `<div class="cat-menu-grp" aria-hidden="true">순서</div>`
-    + item('up', '위로', { off: i <= 0 }) + item('down', '아래로', { off: i >= last })
-    + item('top', '맨 위로', { off: i <= 0 }) + item('bottom', '맨 아래로', { off: i >= last });
+  //  순서 넷은 한 줄 그림 단추(맨 위로, 위로, 아래로, 맨 아래로). 메뉴 높이를 줄여 작은 창에서도 ⋯ 바로 아래에 다 들어가게(2026-11-10 B안)
+  const ord = (act, label, d, off) => `<button type="button" role="menuitem" tabindex="-1" data-catdo="${act}" title="${label}" aria-label="${label}"${off ? ' disabled' : ''}>`
+    + `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="${d}"/></svg></button>`;
+  h += sep + `<div class="cat-menu-ord" role="group" aria-label="순서"><span aria-hidden="true">순서</span>`
+    + ord('top', '맨 위로', 'M3 2.5h10M8 13.5V6M4.5 9.5 8 6l3.5 3.5', i <= 0)
+    + ord('up', '위로', 'M8 13.5V3M4.5 6.5 8 3l3.5 3.5', i <= 0)
+    + ord('down', '아래로', 'M8 2.5V13M4.5 9.5 8 13l3.5-3.5', i >= last)
+    + ord('bottom', '맨 아래로', 'M3 13.5h10M8 2.5V10M4.5 6.5 8 10l3.5-3.5', i >= last)
+    + `</div>`;
   if(kind === 'official'){
     const n = catUsageCount(c.id);
     h += sep + item('unsub', '내 캘린더에서 빼기', n ? { off: true, why: `일정과 할 일 ${n}건이 있습니다` } : null);
@@ -13552,13 +13559,21 @@ function catMenuOpen(btn){
   row.appendChild(m);
   btn.setAttribute('aria-expanded', 'true');
   __catMenu = { id: c.id, el: m, btn };
-  //  창 본문 아래가 모자라면 위로 띄운다(본문이 잘라 내지 않게). 크기를 재지 못하면(jsdom) 그대로 아래다.
-  try{
-    const body = row.closest('.modal-body'), mr = m.getBoundingClientRect(), br = body ? body.getBoundingClientRect() : null;
-    if(br && mr.height && mr.bottom > br.bottom && (row.getBoundingClientRect().top - br.top) > mr.height) m.classList.add('up');
-  }catch(_){}
+  catMenuPlace(m, btn);
   const f = m.querySelector('[role="menuitem"]:not(:disabled)');
   if(f) try{ f.focus({ preventScroll: true }); }catch(_){}
+}
+//  ⋯ 의 화면 자리에 맞춰 띄운다. 오른쪽 끝을 ⋯ 에 맞추고, 아래가 모자라면 위로, 위도 모자라면 화면 안에 들어오게 민다.
+//  크기를 재지 못하면(jsdom) 0,0 그대로 둔다.
+function catMenuPlace(m, btn){
+  try{
+    const b = btn.getBoundingClientRect(), mw = m.offsetWidth, mh = m.offsetHeight, vw = window.innerWidth, vh = window.innerHeight, pad = 8;
+    if(!mw || !mh) return;
+    const left = Math.max(pad, Math.min(b.right - mw, vw - pad - mw));
+    let top = b.bottom + 2;
+    if(top + mh > vh - pad) top = (b.top - 2 - mh >= pad) ? b.top - 2 - mh : Math.max(pad, vh - pad - mh);
+    m.style.left = left + 'px'; m.style.top = top + 'px';
+  }catch(_){}
 }
 function catMenuClose(refocus){
   const st = __catMenu; if(!st) return;
@@ -19930,13 +19945,16 @@ function bind(){
       if(row) openCatEdit(row.dataset.id);
     });
     list.addEventListener('keydown', ev => {
-      //  ⋯ 메뉴 안: 위아래 화살표, Home, End 로 항목 사이(꺼진 항목은 건너뛴다). Esc 는 아래 문서 캡처 처리기가 닫는다.
+      //  ⋯ 메뉴 안: 위아래 화살표, Home, End 로 항목 사이(꺼진 항목은 건너뛴다). 순서 한 줄 안에서는 좌우 화살표도 같다.
+      //  Esc 는 아래 문서 캡처 처리기가 닫는다.
       const menu = ev.target.closest ? ev.target.closest('.cat-menu') : null;
       if(menu){
         const its = [...menu.querySelectorAll('[role="menuitem"]:not(:disabled)')], n = its.length, k = its.indexOf(ev.target);
+        const inOrd = !!(ev.target.closest && ev.target.closest('.cat-menu-ord'));
         if(k >= 0 && n){
           let j = -1;
-          if(ev.key === 'ArrowDown') j = (k + 1) % n; else if(ev.key === 'ArrowUp') j = (k - 1 + n) % n;
+          if(ev.key === 'ArrowDown' || (inOrd && ev.key === 'ArrowRight')) j = (k + 1) % n;
+          else if(ev.key === 'ArrowUp' || (inOrd && ev.key === 'ArrowLeft')) j = (k - 1 + n) % n;
           else if(ev.key === 'Home') j = 0; else if(ev.key === 'End') j = n - 1;
           if(j >= 0){ ev.preventDefault(); its[j].focus(); }
         }
@@ -20025,6 +20043,14 @@ function bind(){
     ev.preventDefault(); ev.stopImmediatePropagation();
     catMenuClose(true);
   }, true);
+  //  메뉴는 화면 기준이라 본문이 스크롤되거나 창 크기가 바뀌면 ⋯ 와 떨어진다. 그때는 닫는다(메뉴 자체 스크롤은 둔다).
+  document.addEventListener('scroll', ev => {
+    if(!__catMenu) return;
+    const t = ev.target;
+    if(t && t.nodeType === 1 && __catMenu.el.contains(t)) return;
+    catMenuClose(false);
+  }, true);
+  window.addEventListener('resize', () => { if(__catMenu) catMenuClose(false); });
   catFitWatch();   // 긴 이름 맞추기: 목록 칸의 폭이 바뀌면 다시(ResizeObserver 가 있을 때만)
   /* 과제 추가 창(TASK-ADD-UX D9~D16) */
   { const tabs = $('#caTabs');
@@ -20647,7 +20673,7 @@ const ATT = { anchor: '', screen: 'month', kind: '', rows: new Map(), from: '', 
 const ATE = { p: null, date: '', base: null, memo: '', blocks: [], showErr: false, ptab: 'pv', pvT: null, intra: false, src: 'cal', srcDate: '',
   opt: { event: true, todo: true, skip: true, desc: true },
   checked: new Set(), cal: { date: '', source: null, loading: false, err: '', wd: null },
-  prev: { date: '', content: null, loading: false, err: '', gen: 0 }, folded: false,
+  prev: { date: '', content: null, loading: false, err: '', gen: 0 },
   sending: false, armed: false, timer: null, wd: null, savedAt: '', navPending: '', closeSent: false };
 const __attDraftMem = new Map();          // 저장소가 막혔거나 가득 찼을 때만 쓰는 메모리본(앱이 켜져 있는 동안은 남는다)
 
@@ -21853,15 +21879,6 @@ function atLoadClick(){
   atOnEdit();
   atFocusFirst();
 }
-function atToggleFold(){
-  ATE.folded = !ATE.folded;
-  const b = $('#atEdBody'); if(b) b.classList.toggle('folded', ATE.folded);
-  //  접힌 동안 이름은 "미리보기 열기", 펼치면 미리보기 탭으로 연다(2026-10-29 사용자 2차)
-  const f = $('#atFold'); if(f){ f.textContent = ATE.folded ? '미리보기 열기 ›' : '패널 접기 ›'; f.setAttribute('aria-expanded', String(!ATE.folded)); }
-  if(!ATE.folded) atPTabSet('pv', true);
-  if(!ATE.folded){ try{ window.dispatchEvent(new Event('resize')); }catch(_){} }   // 펼치면 기억한 폭을 다시 묶어 적용한다(끌개 aria 포함)
-  atGrowAll();   // 폭이 바뀌어 내용 칸의 줄 수가 달라진다
-}
 //  ‹ › 날짜 이동(쓰기, 보기 모두): 쓰던 글은 먼저 임시 저장한다. 근태 창은 메인 창에 그 날짜의 payload 를 청하고(attendNav), 브라우저는 그 자리에서 다시 만든다.
 function atNav(delta){
   if(!ATE.p || ATE.sending || ATE.navPending) return;
@@ -22116,7 +22133,6 @@ function atInit(){
     window.addEventListener('resize', () => { if(atEdShown()) atGrowAll(); if(atAddShown()) atAddPlace(); });
     on('atStatus', 'change', () => atOnEdit());
     on('atOt', 'change', () => atOnEdit());
-    on('atFold', 'click', atToggleFold);
     on('atPrev', 'click', () => atNav(-1));
     on('atNext', 'click', () => atNav(1));
     on('atBack', 'click', atRequestClose);
@@ -23239,7 +23255,7 @@ const WA = (function(){
   const OTHER = -1;
   const isNum = f => Object.prototype.hasOwnProperty.call(FMT, f);
   const SYM_DEF = ['-', '*', '·', '•', '□', '■', '○', '●', '◦', '▪', '◆', '◇', '※'];
-  const LEVELS = 7, IND_MAX = 20;   // 수준 수는 7로 고정(더하고 빼는 화면 없음), 들여쓰기는 0~20칸
+  const LEVELS = 7, IND_MAX = 28;   // 수준 수는 7로 고정(더하고 빼는 화면 없음), 들여쓰기는 0~28칸(4칸 단위로 7수준 = 28, 2026-11-10 피드백)
   const PRESETS = {
     sym:    ['-', '*', '-', '*', '-', '*', '-'],
     report: ['□', '○', '-', '·', '*', '▪', '◦'],
@@ -23260,7 +23276,7 @@ const WA = (function(){
       if(T[i].mk === T[j].mk && T[i].indent === T[j].indent) out.push([i, j]);
     return out;
   }
-  //  want 에서 가장 가까운 빈 들여쓰기(같으면 깊은 쪽 먼저, 0~20칸). 하나도 없으면 null
+  //  want 에서 가장 가까운 빈 들여쓰기(같으면 깊은 쪽 먼저, 0~IND_MAX칸). 하나도 없으면 null
   function freeIndent(T, i, want, mk){
     const bad = indentBlocked(T, i, mk);
     for(let d = 0; d <= IND_MAX; d++){
@@ -23277,7 +23293,7 @@ const WA = (function(){
     return nt;
   }
   //  저장해 둔 표를 7수준 표로 맞춘다. 예전 5수준 표는 그대로 두고 6, 7수준에 기본값을 붙인다
-  //  (기본값이 규칙에 걸리면 바로 윗수준 +2칸 이상에서 가장 작은 빈 값, 20칸까지). 읽을 수 없는 표면 null
+  //  (기본값이 규칙에 걸리면 바로 윗수준 +2칸 이상에서 가장 작은 빈 값, IND_MAX칸까지). 읽을 수 없는 표면 null
   function fitTable(t){
     if(!Array.isArray(t) || t.length < 1 || t.length > LEVELS) return null;
     if(!t.every(r => r && typeof r.mk === 'string' && r.mk.trim() && r.mk.length <= 3
@@ -23292,7 +23308,7 @@ const WA = (function(){
         const from = Math.min(IND_MAX, nt[i - 1].indent + 2);
         let v = null;
         for(let x = from; x <= IND_MAX; x++) if(bad.indexOf(x) < 0){ v = x; break; }
-        row.indent = v != null ? v : freeIndent(part, i, from);   // 20칸까지 다 찼으면 그 아래에서 가장 가까운 빈 값
+        row.indent = v != null ? v : freeIndent(part, i, from);   // IND_MAX칸까지 다 찼으면 그 아래에서 가장 가까운 빈 값
         if(row.indent == null) return null;
       }
       nt.push(row);

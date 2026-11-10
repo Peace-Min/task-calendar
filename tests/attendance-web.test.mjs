@@ -536,13 +536,8 @@ if (!JSDOM) {
       assert.strictEqual(X.ev('ATE.ptab'), 'imp', '블록이 없는 날인데 가져오기 탭이 아니다');
       X.ev(`atShowEditor(atBuildPayload(${JSON.stringify(X.T)}, null, false))`);
       assert.strictEqual(X.ev('ATE.ptab'), 'pv', '블록이 있는 날인데 기억한 탭(미리보기)이 아니다');
-      //  접기: 접힌 동안 "미리보기 열기 ›", 펼치면 미리보기 탭
-      X.$('#atPanel [data-attab="imp"]').click();
-      X.$('#atFold').click();
-      assert.strictEqual(X.$('#atFold').textContent, '미리보기 열기 ›');
-      X.$('#atFold').click();
-      assert.strictEqual(X.ev('ATE.ptab'), 'pv', '펼쳤는데 미리보기 탭이 아니다');
-      assert.notStrictEqual(X.$('#atFold').textContent, '미리보기 열기 ›');
+      //  패널 접기 단추는 없앴다(2026-11-10 피드백)
+      assert.strictEqual(X.$('#atFold'), null, '패널 접기 단추가 남아 있다');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });
