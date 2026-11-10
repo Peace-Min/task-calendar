@@ -1,7 +1,7 @@
 // Layer 1 — netcus 주간보고 범위 병합 파서(parseNetcusWeekly) + 복사 텍스트(buildNetcusWeeklyText) 순수 함수 단위테스트.
 // 두 함수 모두 전역·DOM 무의존이라 extractFunction으로 잘라 단독 검증한다(dependency-0).
 // ※ 픽스처는 실물 조회 캡처의 '구조'만 재현하고 과제명은 전부 합성(알파/베타/감마/기타/휴가)이다. 실제 국방 과제명 없음.
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction, readText } from './harness.mjs';
 
 const src = loadAppSource();
 const parseNetcusWeekly = eval('(' + extractFunction(src, 'parseNetcusWeekly') + ')');
@@ -361,7 +361,8 @@ const builderFrom = source => eval('(' + extractFunction(source, 'buildNetcusWee
 
 const A_HOURS = 't.hours = h ? Math.round(h.sum * 100) / 100 : 0;';
 const A_NORM = String.raw`const norm = s => String(s == null ? '' : s).normalize('NFC').replace(/\s+/g, '');`;
-const A_TOTAL = "const nm = mh[1].trim(); if(!nm || norm(nm) === '합계') continue;";
+//  2026-11-10: 시간 줄이 안쪽 시간을 읽게 되며 이름 줄과 합계 가드 줄이 나뉘었다(가드 계약은 그대로)
+const A_TOTAL = "if(!nm || norm(nm) === '합계') continue;";
 const A_INDENT = "parts.push('  ' + ln);";
 
 test('변이①: 반올림(Math.round)을 빼면 소수 합산 계약이 잡는다', () => {
@@ -396,11 +397,106 @@ test('변이⑤: norm 을 항등함수로 만들면 병합 계약 둘이 모두 
 });
 
 test("변이⑥: '합계' 가드를 빼면 [합계] 행이 과제 시간으로 새는 것을 잡는다", () => {
-  const bad = mutateIn(src, SIG_PARSE, A_TOTAL, 'const nm = mh[1].trim(); if(!nm) continue;');
+  const bad = mutateIn(src, SIG_PARSE, A_TOTAL, 'if(!nm) continue;');
   assert.throws(() => checks.totalLineGuard(parserFrom(bad)), /과제 시간으로 누적하면 안 된다/);
 });
 
 test('변이⑦: 주차별 2칸 접두를 빼면 들여쓰기 계약이 잡는다', () => {
   const bad = mutateIn(src, SIG_BUILD, A_INDENT, 'parts.push(ln);');
   assert.throws(() => checks.weeklyLinePrefix(parseNetcusWeekly, builderFrom(bad)), /2칸 접두/);
+});
+
+// ══ 2026-11-10 머리와 시간 읽기 넓힘(docs/MONTHLY-HEAD-MAPPING.md 결정 1, 9) ══════════════
+// 사례 = tests/fixtures/weekly-head-cases.json(인트라넷 실제 글 모양 17건, 이름은 가짜). 기대값은 픽스처를 눈으로 읽고 손으로 적었다.
+//   과제 이름 = 남는 과제(본문이 '-' 뿐이거나 빈 머리는 빠진다, 기존 규칙), 첫 등장 순서. hours = 그 과제들의 시간.
+//   ◈ 머리, 괄호 머리는 지원하지 않는다(결정 6): c05 는 과제가 없고, c13, c14 는 0칸 태그([구현] 등)가 머리가 된다.
+const HEAD_CASES = JSON.parse(readText(new URL('./fixtures/weekly-head-cases.json', import.meta.url))).cases;
+const caseById = (id) => { const c = HEAD_CASES.find((x) => x.id.startsWith(id + '-')); assert.ok(c, '사례가 없다: ' + id); return c; };
+const caseWeek = (c) => ({ title: c.id, period: '', endwork: c['진행사항'], content: c['과제투입시간'] });
+const HEAD_WANT = {
+  c00: { names: ['과제A', '과제B', '과제C', '휴가', '기타'], hours: { 과제A: 12.5, 과제B: 17.5, 과제C: 1, 휴가: 4, 기타: 5 } },
+  c01: { names: ['과제C', '기타'], hours: { 과제C: 30.5, 기타: 9.5 } },                       // 들여 쓴 [과제D] [과제E] 는 기타 본문
+  c02: { names: ['과제A', '과제B'], hours: { 과제A: 12, 과제B: 4 } },                        // [X] 12
+  c03: { names: ['과제A', '과제B', '과제E', '과제G'], hours: { 과제A: 34, 과제B: 0, 과제E: 0, 과제G: 8 } },   // 꼬리 (~'27/11/20) 뗌, [과제B] :0
+  c04: { names: ['과제A', '과제B', '기타'], hours: { 과제A: 20, 과제B: 18, 기타: 3 } },          // [X]:N
+  c05: { names: [], hours: {} },                                                             // 괄호 머리만: 과제 없음
+  c06: { names: ['과제A', '과제B', '과제C'], hours: { 과제A: 3, 과제B: 46, 과제C: 1 } },        // [X] - N
+  c07: { names: ['과제A', '과제B', '과제C'], hours: { 과제A: 0, 과제B: 5, 과제C: 39 } },        // '- [과제D]' 는 본문
+  c08: { names: ['과제A', '과제C', '과제D'], hours: { 과제A: 13, 과제C: 5.5, 과제D: 26.5 } },   // 머리 꼬리 ': 13h' 뗌, 시간 13h
+  c09: { names: ['과제B', '과제E', '과제F', '과제G'], hours: { 과제B: 0, 과제E: 1, 과제F: 7.5, 과제G: 0 } },   // 꼬리 ' - 2026 9월', '(내용)' 뗌
+  c10: { names: ['과제C', '과제D', '과제E'], hours: { 과제C: 4, 과제D: 24, 과제E: 8 } },
+  c11: { names: ['과제A', '과제B', '과제C', '과제E', '과제F'], hours: { 과제A: 6, 과제B: 3, 과제C: 18, 과제E: 8, 과제F: 0 } },   // [과제F:1] -> 과제F
+  c12: { names: ['과제A', '과제B', '과제C', '과제D', '기타'], hours: { 과제A: 2, 과제B: 1, 과제C: 2, 과제D: 3, 기타: 32 } },   // 꼬리 ' : 2' 뗌
+  c13: { names: ['구현', '시험'], hours: { 구현: 0, 시험: 0 } },                                // ◈ 머리 미지원
+  c14: { names: ['관리', '설계/구현', '문서 작성', '구현/시험/회의', '분석/설계/구현'], hours: { 관리: 0, '설계/구현': 0, '문서 작성': 0, '구현/시험/회의': 0, '분석/설계/구현': 0 } },
+  c15: { names: ['기능구현', '출장', '과제B', '과제C', '과제D', '과제E', '과제F', '기타'], hours: { 기능구현: 0, 출장: 0, 과제B: 0, 과제C: 10, 과제D: 0, 과제E: 18, 과제F: 12, 기타: 0 } },
+  c16: { names: ['과제A', '과제B', '과제C', '보안', '과제O', '구매', '정산', '기타', '휴가'], hours: { 과제A: 0, 과제B: 0, 과제C: 0, 보안: 0, 과제O: 0, 구매: 0, 정산: 0, 기타: 0, 휴가: 0 } },
+};
+const headChecks = {
+  //  사례 17건의 과제 이름과 시간(꼬리 뗌, 안쪽 시간 뗌, 시간 표기 여러 벌)
+  cases(parse) {
+    assert.strictEqual(HEAD_CASES.length, 17, '픽스처 전제: 사례 17건');
+    assert.deepStrictEqual(Object.keys(HEAD_WANT).sort(), HEAD_CASES.map((c) => c.id.slice(0, 3)).sort(), '기대값이 사례마다 하나가 아니다');
+    for (const [id, want] of Object.entries(HEAD_WANT)) {
+      const p = parse([caseWeek(caseById(id))], []);
+      assert.deepStrictEqual(p.order, want.names, id + ': 과제 이름(머리 읽기)이 다르다');
+      assert.deepStrictEqual(p.hoursByTask, want.hours, id + ': 과제 시간이 다르다');
+    }
+  },
+  //  들여 쓰거나 기호 뒤의 [ 는 본문으로 남는다(c01, c07, c12)
+  bodyBrackets(parse) {
+    const lines = (id, name) => parse([caseWeek(caseById(id))], []).tasks.find((t) => t.name === name).blocks[0].lines;
+    const c01 = lines('c01', '기타');
+    assert.ok(c01.includes('    [과제D]') && c01.includes('    [과제E]'), 'c01: 들여 쓴 [과제D] [과제E] 가 기타 본문에 남지 않았다');
+    const c07 = lines('c07', '과제C');
+    assert.ok(c07.includes('- [과제D]') && c07.includes('- [과제E] 내용 내용 내용 내용(내용)'), 'c07: 기호 뒤 [과제] 가 과제C 본문에 남지 않았다');
+    assert.ok(lines('c12', '기타').includes('  * [과제E]'), 'c12: 들여 쓴 * [과제E] 가 기타 본문에 남지 않았다');
+  },
+  //  머리 꼬리: 버리고 이름만(본문 첫 줄은 꼬리 다음 줄)
+  headTail(parse) {
+    const p = parse([caseWeek(caseById('c03'))], [{ id: 'a', name: '과제A' }]);
+    const a = p.tasks.find((t) => t.name === '과제A');
+    assert.ok(a && a.matched && a.catId === 'a', 'c03: 꼬리 붙은 [과제A](~...) 가 내 과제와 맞지 않았다');
+    assert.strictEqual(a.blocks[0].lines[0], '◈ 내용', 'c03: 꼬리 다음 줄이 본문 첫 줄이 아니다');
+    const q = parse([{ title: '주', period: '', endwork: '[과제A : 13h]\n- 일\n[: 3]\n- 이름 없는 머리는 본문\n[]\n- 빈 머리도 본문', content: '' }], []);
+    assert.deepStrictEqual(q.order, ['과제A'], '안쪽 시간 [과제A : 13h] 을 떼지 않았거나 이름이 빈 머리를 과제로 만들었다');
+    assert.deepStrictEqual(q.tasks[0].blocks[0].lines, ['- 일', '[: 3]', '- 이름 없는 머리는 본문', '[]', '- 빈 머리도 본문']);
+  },
+  //  시간 표기(결정 9). 실제 사례 모양에 합성 몇 줄
+  hoursForms(parse) {
+    const h = (content) => parse([{ title: '주', period: '', endwork: '[X]\n- 일', content }], []).hoursByTask.X;
+    assert.strictEqual(h('[X] 12'), 12, '[X] N(c02)');
+    assert.strictEqual(h('[X] - 46'), 46, '[X] - N(c06)');
+    assert.strictEqual(h('[X] : 13h'), 13, 'Nh(c08)');
+    assert.strictEqual(h('[X] : .5'), 0.5, '[X] : .5 는 0.5');
+    assert.strictEqual(h('[X]8'), 8, '[X]N');
+    assert.strictEqual(h('[X] :8'), 8, '[X] :N');
+    assert.strictEqual(h('[X]: 2.5'), 2.5, '[X]: N');
+    assert.strictEqual(h('[X : 3]'), 3, '[X : N] 안쪽 시간');
+    assert.strictEqual(h('[X:1]'), 1, '[X:N] 안쪽 시간');
+    assert.strictEqual(h('[X] :\n[X] 내용'), 0, '숫자가 없으면 시간 없음');
+    //  c10 의 안쪽 시간 줄 [과제F : 0] 을 실제 모양 그대로 숫자만 바꿔 본다(0 이면 없음과 구별되지 않아서)
+    const c10 = caseById('c10');
+    assert.ok(c10['과제투입시간'].includes('[과제F : 0]'), '픽스처 전제: c10 에 [과제F : 0] 줄이 있다');
+    const p = parse([{ title: 'c10', period: '', endwork: c10['진행사항'] + '\n[과제F]\n- 내용', content: c10['과제투입시간'].replace('[과제F : 0]', '[과제F : 6]') }], []);
+    assert.strictEqual(p.hoursByTask['과제F'], 6, 'c10: [과제F : N] 안쪽 시간을 읽지 않았다');
+  },
+};
+test('parseNetcusWeekly 머리(2026-11-10): 사례 17건의 과제 이름(꼬리, 안쪽 시간 뗌)과 시간', () => headChecks.cases(parseNetcusWeekly));
+test('parseNetcusWeekly 머리(2026-11-10): 들여 쓰거나 기호 뒤의 [과제] 는 본문(c01, c07, c12)', () => headChecks.bodyBrackets(parseNetcusWeekly));
+test('parseNetcusWeekly 머리(2026-11-10): 꼬리 붙은 머리도 내 과제와 맞고, 이름이 빈 [ ] 는 본문', () => headChecks.headTail(parseNetcusWeekly));
+test('parseNetcusWeekly 시간(2026-11-10): [X] N, [X] - N, Nh, .5, [X]N, [X : N], 숫자 없음', () => headChecks.hoursForms(parseNetcusWeekly));
+
+const A_HEAD = String.raw`const reHead = /^\[([^\]]*)\]/;`;
+const A_HOURS_RE = String.raw`const reHours = /^\s*\[([^\]]*)\](.*)$/;`;
+test('변이⑧: 머리를 옛 규칙(줄 전체가 대괄호)으로 되돌리면 사례 머리 검사가 잡는다', () => {
+  const bad = parserFrom(mutateIn(src, SIG_PARSE, A_HEAD, String.raw`const reHead = /^\[\s*(.+?)\s*\]$/;`));
+  assert.throws(() => headChecks.cases(bad), /머리 읽기/);
+  assert.throws(() => headChecks.headTail(bad), /꼬리/);
+});
+test('변이⑨: 시간 줄을 옛 규칙([X] : N 만)으로 되돌리면 시간 표기 검사가 잡는다', () => {
+  //  옛 정규식은 '[X] 12', '[X] - 46', '[X : 3]' 같은 줄에 아예 맞지 않는다
+  const bad = parserFrom(mutateIn(src, SIG_PARSE, A_HOURS_RE, String.raw`const reHours = /^\s*\[\s*(.+?)\s*\]\s*[:：]\s*(\d+(?:\.\d+)?)/;`));
+  assert.throws(() => headChecks.hoursForms(bad), /\[X\] N|\[X\] - N|안쪽/);
+  assert.throws(() => headChecks.cases(bad), /시간이 다르다/);
 });
