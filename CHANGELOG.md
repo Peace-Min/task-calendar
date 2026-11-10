@@ -7,6 +7,21 @@
 
 ---
 
+## 🆕 2026-11-10 (다음 판, 번호는 배포 때): 근태 취합을 월간 보고 문서 하나로(화면 개편, 텍스트 다이어트), 양식 SW/HW, 그림 과제당 1장
+
+기획 [docs/MONTHLY-UX-V2.md](docs/MONTHLY-UX-V2.md)(시안 `dist/proto/monthly-ux-v2.html`), HW 실측 [docs/MONTHLY-TEMPLATE-HW.md](docs/MONTHLY-TEMPLATE-HW.md). DB 구조 그대로.
+
+- 웹 배치(v2 를 위젯에서 본 뒤 v4 로 조정, MONTHLY-UX-V2 결정 14~21): 왼쪽 패널(`#asLeft`)과 끌개, 문서 설정 띠(`#asBand`)를 없앴다. 윗줄 `#asTop` 은 불러오기만(`실적 M/D ~ M/D ▾` 글자 단추 `#asActBtn`, 출처 [캘린더 | 인트라넷], 읽어 오기, `✓ n주`). 결과 칸 `#asOutCard` 맨 위 탭 `#asOut`, 그 아래 머리 `#asHead`: 문서 탭은 `보고서 양식 [SW | HW]`, 작성 `#asDateBtn`, SW 만 계획 `#asPlanBtn`, DOCX 저장. 글 탭은 [서식]과 복사. 날짜 상자는 띄움 칸 `#asPop` 하나(구역 act, date, plan, fmt, role=dialog 아닌 내림 칸)에만 있고 바깥, 같은 단추, Esc 로 닫힌다. 계획 ↺ 와 이름 줄 없앰. 왼쪽 상자(과제, 기타, 미식별)는 문서 탭에서만.
+- 기본값(`rptMPlanDefault`, `rptMFresh`): 작성일 = 실적 마지막 날, 계획 = 실적 끝이 든 주의 다음 주 월요일 ~ +39일(6주째 금요일). 실적 기간을 바꿔 새로 열 때 다시 계산하고 같은 기간 다시 읽기는 고친 값을 둔다. 예전 규칙(작성일 오늘, 계획은 실적과 같은 주 수)은 버렸다.
+- 강조(`asStageSync`): 읽기 전 읽어 오기 primary, 상자와 종이 자리 빈 아이콘, 저장 disabled. 읽은 뒤 저장(글 탭은 복사) primary. class 만 바꾼다.
+- 기타: 칩 대신 과제와 같은 체크 줄, 이 기간 글이 있는 개인 과제만(`rptMEtcShown`), 머리 `켠 수/전체`.
+- v6(결정 22~25): 취합은 월간 보고 문서 하나만. 결과 형태 탭 `#asOut`, 과제별 글 미리 보기(`#asText`, `#rptOut`), 복사, 서식 칸과 글꼴(`#rptFont*`, 숨긴 `#rptMarker*`)을 걷고, 함수 `buildReport`, `buildReportText`, `buildReportHtml`, `copyReport`, `renderNetcusWeeklyPreview`, `atSumOutSet`, 글꼴 묶음(`REPORT_FONTS`, `reportFontGet/Set` 등)을 지웠다. 근태 일간 가져오기와 월간 실적이 쓰는 `parseNetcusWeekly`, `buildNetcusWeeklyText`, `collectReportData`, `reportRowBodyText` 등은 남겼다. 머리 줄에 `☑ 주간보고 제목 넣기`(`#rptmWeekHead`, `asWeekHeadSet`: `weeklyFlat`/`tc_weeklyFlat` 그대로, 다시 읽지 않고 `rptMBuildWeek` 만 다시 만듦). 미식별 콤보 처음 값 이름 "미선택". 호스트 진행 알림 `__netcusStatus` 는 그릴 곳(`#rncProg`)이 없어져 아무것도 하지 않는다(읽는 중 표시는 윗줄 글).
+- 텍스트 다이어트: 기록 없음 글 대신 흐린 이름과 풍선, 넣지 않은 과제는 줄, 기타 칩 늘 펼침, 미식별 배지 `n` 또는 `k/n`, 읽기 성공 문장은 `✓ n주`(풍선에 원문), 미리 보기 머리 문구 없앰.
+- 그림 과제당 1장: 웹 `RPTM_IMG_MAX = 1`, 서랍과 순서 바꾸기(scheduleImageMove 웹 호출) 없앰, 과제 줄 안 칸 하나(빈 칸 누르면 파일, 줄에서 Ctrl+V), 썸네일 hover ✕, 누르면 `#shotViewer` 를 크게 보기로 재사용([빼기] [닫기]). 호스트 `ScheduleImageDb.Limits.MaxPerProject = 1`, 문구 "개발 일정 그림은 과제마다 1장입니다."
+- 양식 SW/HW(기억 안 함, 열 때마다 SW): HW 면 계획 기간과 그림 칸 숨김, 미리 보기 HW 모양(`rptMPreview`), payload `template`. 호스트 `MonthlyReportPayload.Parse` 가 `template` 을 읽고(기본 sw, HW 는 plan, changes, 계획 칸 무시), `RunMonthlyDocxExport` 는 HW 에서 그림을 찾지 않으며, `DocxWriter.HwBody`/`HwProjectTable`/`HwEtcTable` 이 HW 문서를 그린다(제목 14pt H/W팀, 실적 기간 줄, 격자 7열 14726 twip, 개발 일정 빈 표, 흰 칸 이름 줄, 기타 3칸, 여백 왼쪽 위 아래 1134, 오른쪽 960). 과제 수행 기간은 `HwTerm` 이 `YYYY년 M월` 로 바꾼다. 파일 이름은 두 양식 같음.
+- 시험: 새 `tests/monthly-ux-v2.test.mjs`, attend-summary, monthly-report, ui-copy-punct 새 계약, monthly-docx(계약 4, 변이 D12~D15), schedule-image(1장, 웹 호스트 상수 대조), loop-monthly-docx(SW, HW 225 항목, 산출물 `dist/monthly-docx-loop/`).
+- 남은 것: 실 DB 루프 `tests/db-schedule-image.mjs` 는 사람당 5장 시나리오라 1장 기준으로 다시 짜야 한다(strict 밖).
+
 ## 🆕 2026-11-10 (다음 판, 번호는 배포 때): 월간 보고 주간보고 머리 읽기 넓힘과 미식별 넣을 곳 콤보(A안)
 
 기획 [docs/MONTHLY-HEAD-MAPPING.md](docs/MONTHLY-HEAD-MAPPING.md)(결정 1~9). DB 구조 그대로. MONTHLY-REPORT-PLAN 14.2 의 "미식별은 읽기만"을 바꾼다(기억 없음은 그대로).

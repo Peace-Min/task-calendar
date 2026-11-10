@@ -85,8 +85,7 @@ const SCREENS = [
   { id: 'relinkModal',             enter: '__vt.closeAll(); openRelinkModal()' },
   { id: 'relinkPickModal',         enter: '__vt.closeAll(); openRelinkPick(__vt.mineId())', needsCatalog: true },
   { id: 'settingsModal',           enter: '__vt.closeAll(); openSettings()' },
-  { id: 'atSum',                   enter: '__vt.closeAll(); pcSetTab("attend"); atKindSet("sum"); atSumOutSet("text")' },   // 근태 탭 취합(보고서 창은 없다)
-  { id: 'atSumDoc',                enter: '__vt.closeAll(); pcSetTab("attend"); atKindSet("sum"); atSumOutSet("doc")' },   // 근태 탭 취합, 월간 보고 문서(문서 설정 띠)
+  { id: 'atSum',                   enter: '__vt.closeAll(); pcSetTab("attend"); atKindSet("sum")' },   // 근태 탭 취합(결과는 월간 보고 문서 하나, v6 결정 22. 예전 과제별 글 화면과 atSumDoc 은 같은 화면이 되어 하나로 합쳤다)
   { id: 'patchModal',              enter: '__vt.closeAll(); openPatch()' },
   { id: 'helpModal',               enter: '__vt.closeAll(); openHelp()' },
   // 문의(버그 리포트) — 로그 폴더 열기 버튼 + 반출 경고가 좁은 폭에서 잘리지 않아야 한다(320px 시트)

@@ -226,7 +226,7 @@ const emptyPlans = {
     const lines = csMemberBody(src, /^Lines$/);
     if (!/if \(!o\.TryGetProperty\(k, out var a\) \|\| a\.ValueKind == JsonValueKind\.Null\) return list;/.test(lines)) throw new Error('본문 칸이 없거나 null 일 때 빈 목록으로 받지 않는다');
     const parse = csMemberBody(src, /^Parse$/);
-    if (!/if \(o\.TryGetProperty\("changes", out var ch\) && ch\.ValueKind == JsonValueKind\.Array\)/.test(parse)) throw new Error('변경이력이 없을 때 받아들이지 않는다');
+    if (!/if \((?:!hw && )?o\.TryGetProperty\("changes", out var ch\) && ch\.ValueKind == JsonValueKind\.Array\)/.test(parse)) throw new Error('변경이력이 없을 때 받아들이지 않는다');
   },
   writerKeepsForm(src) {
     const al = listCsMembers(src).find((m) => m.name === 'AppendLines');
@@ -249,4 +249,88 @@ test('과제 표와 기타 표의 머리 줄은 keepNext 로 다음 줄과 붙�
   assert.ok(/new RowWriter\(sb, ProjectGrid, 580, atLeast: true, cantSplit: true\) \{ KeepNext = true \}/.test(w), '과제 표 1행');
   assert.ok(/new RowWriter\(sb, EtcGrid, 580, atLeast: true, cantSplit: true\) \{ KeepNext = true \}/.test(w), '기타 표 1행');
   assert.ok(/AppendPara\(s, l, true, Jc\.Center, 0, keepNext: KeepNext\)/.test(w), '칸 이름 문단이 줄의 KeepNext 를 따른다');
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// 양식 SW/HW(2026-11-10, docs/MONTHLY-UX-V2.md 11~13, docs/MONTHLY-TEMPLATE-HW.md 3장)
+//  (8) payload template: 'hw' 만 HW, 없거나 모르는 값은 SW. HW 는 계획 기간, changes, prevPlan, nextPlan 을 읽지 않는다.
+//  (9) 저장 흐름: HW 는 그림을 찾지 않는다(ImagesForExportAsync 를 부르지 않고 빈 묶음).
+//  (10) DocxWriter: HW 그리기 함수(HwBody, HwProjectTable, HwEtcTable)가 있고, 글자는 같은 통로(AppendPara, AppendLines)로만,
+//       그림과 변경이력과 계획 칸을 쓰지 않는다. 여백 합 + HW 격자 합이 A4 가로 폭(16838) 안이다. 문서 바이트는 루프가 본다.
+// ══════════════════════════════════════════════════════════════════════
+const tpl = {
+  parse(src) {
+    const parse = csMemberBody(src, /^Parse$/);
+    if (!/Template = Str\(q, "template"\)\.Trim\(\)\.ToLowerInvariant\(\) == "hw" \? DocxWriter\.Template\.Hw : DocxWriter\.Template\.Sw,/.test(parse)) {
+      throw new Error("payload template 을 읽지 않거나 'hw' 가 아닌 값(없음, 모르는 값)이 SW 가 되지 않는다");
+    }
+    if (!/public DocxWriter\.Template Template \{ get; private set; \} = DocxWriter\.Template\.Sw;/.test(src)) throw new Error('payload 의 양식 기본값이 SW 가 아니다');
+    if (!/bool hw = p\.Template == DocxWriter\.Template\.Hw;/.test(parse)) throw new Error('Parse 가 HW 여부를 따로 보지 않는다');
+    if (!/if \(!hw\)\s*\{\s*var \(pf, pt\) = Range\(q, "plan", "월간 계획 기간"\);/.test(parse)) throw new Error('HW 에서도 계획 기간을 읽거나 요구한다');
+    if (!/PrevPlan = hw \? new List<DocxWriter\.Line>\(\) : Lines\(o, "prevPlan"/.test(parse) || !/NextPlan = hw \? new List<DocxWriter\.Line>\(\) : Lines\(o, "nextPlan"/.test(parse)) throw new Error('HW 에서도 수행 계획 두 칸을 읽는다');
+    if (!/if \(!hw && o\.TryGetProperty\("changes"/.test(parse)) throw new Error('HW 에서도 변경이력을 읽는다');
+    const to = csMemberBody(src, /^ToReport$/);
+    if (!/Template = Template,/.test(to)) throw new Error('ToReport 가 양식을 문서로 넘기지 않는다');
+  },
+  noImagesForHw(src) {
+    const body = csMemberBody(src, /^RunMonthlyDocxExport$/);
+    if (!/var imgs = p\.Template == DocxWriter\.Template\.Hw \? new ScheduleImageDb\.ExportImages\(\) : await db\.ImagesForExportAsync\(p\.ProjectUids\(\)\);/.test(body)) {
+      throw new Error('HW 양식에서도 그림을 찾는다(HW 는 그림을 쓰지 않는다)');
+    }
+  },
+  writer(src) {
+    const members = listCsMembers(src);
+    const get = (n) => { const m = members.find((x) => x.name === n); if (!m) throw new Error(`HW 그리기 멤버 ${n} 가 없다`); return m.body; };
+    const doc = get('DocumentXml');
+    if (!/if \(r\.Template == Template\.Hw\)\s*\{\s*HwBody\(sb, r\);\s*AppendSectPr\(sb, HwMarginTop, HwMarginRight, HwMarginBottom, HwMarginLeft\);/.test(doc)) throw new Error('DocumentXml 이 HW 를 HwBody 와 HW 여백으로 그리지 않는다');
+    const hw = ['HwBody', 'HwProjectTable', 'HwEtcTable'].map(get).join('\n');
+    if (/AppendRun\(|<w:t[\s>/]|AppendImages|AppendDrawingRun|\.Images\b|\.Changes\b|PrevPlan|NextPlan|PlanFrom|PlanTo|FillA/.test(hw)) {
+      throw new Error('HW 그리기가 런을 직접 쓰거나 그림, 변경이력, 계획 칸, 계획 기간, 파랑 머리를 쓴다');
+    }
+    if (!/AppendLines\(s, p\.Actual\)/.test(hw) || !/AppendLines\(s, lines\)/.test(hw)) throw new Error('HW 본문이 SW 와 같은 줄 쓰기(AppendLines)를 거치지 않는다');
+    const body = get('HwBody');
+    if (!/"월간보고 \\u2013 H\/W팀 \(" \+ \(r\.Name \?\? ""\) \+ "\) \\u2013 " \+ YearMonthDay\(r\.ReportDate\)/.test(body)) throw new Error('HW 제목이 월간보고 [U+2013] H/W팀 (이름) [U+2013] 작성일 이 아니다');
+    if (!/sizeHalfPt: 28, underline: true/.test(body) || !/"\[ " \+ Dotted\(r\.ActualFrom\) \+ " ~ " \+ Dotted\(r\.ActualTo\) \+ " \]"/.test(body)) throw new Error('HW 제목 14pt 밑줄 또는 실적 기간 줄이 없다');
+    if (!/if \(etc != null && etc\.Count > 0\)/.test(body)) throw new Error('HW 기타 표 규칙이 SW 와 다르다(기타가 비면 표 없음)');
+  },
+  margins(src) {
+    const code = stripCsComments(src);
+    const grid = /private static readonly int\[\] HwGrid = \{([^}]*)\};/.exec(code);
+    if (!grid) throw new Error('HwGrid 가 없다');
+    const cols = grid[1].split(',').map((x) => Number(x.trim()));
+    const want = [1416, 992, 2974, 1274, 1132, 2268, 4670];
+    if (JSON.stringify(cols) !== JSON.stringify(want)) throw new Error(`HW 격자가 실측과 다르다: [${cols}]`);
+    const c = (n) => { const m = new RegExp(`private const int ${n} = (\\d+);`).exec(code); if (!m) throw new Error(`${n} 가 없다`); return Number(m[1]); };
+    const left = c('HwMarginLeft'), right = c('HwMarginRight');
+    const sum = cols.reduce((a, b) => a + b, 0);
+    if (16838 - left - right < sum) throw new Error(`HW 글 영역 ${16838 - left - right} 이 표 폭 ${sum} 을 담지 못한다(표가 오른쪽 여백으로 나간다)`);
+    if (left < 1000 || right < 600) throw new Error(`HW 여백이 너무 좁다(왼쪽 ${left}, 오른쪽 ${right})`);
+  },
+};
+test('월간 DOCX 호스트: payload template 은 hw 만 HW(없거나 모르면 SW), HW 는 계획 기간과 변경이력과 계획 칸을 읽지 않는다', () => tpl.parse(exportCs));
+test('월간 DOCX 호스트: HW 양식은 그림을 찾지 않는다', () => tpl.noImagesForHw(exportCs));
+test('월간 DOCX: HW 그리기(HwBody, HwProjectTable, HwEtcTable)는 같은 글자 통로를 쓰고 그림, 변경이력, 계획 칸, 파랑을 쓰지 않는다', () => tpl.writer(writer));
+test('월간 DOCX: HW 격자는 실측 7열(합 14726)이고 HW 여백 안에 들어간다', () => tpl.margins(writer));
+
+test('변이D12: 모르는 template 을 HW 로 읽으면 양식 파싱 검사가 실패한다', () => {
+  const bad = mutate(exportCs, '.ToLowerInvariant() == "hw" ? DocxWriter.Template.Hw', '.ToLowerInvariant() != "sw" ? DocxWriter.Template.Hw');
+  assert.throws(() => tpl.parse(bad), /모르는 값/);
+});
+test('변이D13: HW 에서도 그림을 찾게 하면 그림 검사가 실패한다', () => {
+  const bad = mutate(exportCs, 'var imgs = p.Template == DocxWriter.Template.Hw ? new ScheduleImageDb.ExportImages() : await db.ImagesForExportAsync(p.ProjectUids());',
+    'var imgs = await db.ImagesForExportAsync(p.ProjectUids());');
+  assert.throws(() => tpl.noImagesForHw(bad), /그림을 찾는다/);
+});
+test('변이D14: HW 표에 변경이력을 쓰거나 오른쪽 여백을 SW 값(1440)으로 두면 실패한다', () => {
+  const badW = mutate(writer, 'row.Cell(3, null, VMerge.None, false, s => AppendLines(s, p.Actual));',
+    'row.Cell(3, null, VMerge.None, false, s => AppendLines(s, p.Actual));\n            foreach (var c in p.Changes) AppendPara(sb, c.What, false, Jc.Left, 0);');
+  assert.throws(() => tpl.writer(badW), /변경이력/);
+  const badM = mutate(writer, 'private const int HwMarginRight = 960;', 'private const int HwMarginRight = 1440;');
+  assert.throws(() => tpl.margins(badM), /담지 못한다/);
+});
+test('변이D15: HW 그리기에 날 w:t 런을 넣으면 단일 통로 검사와 HW 검사가 둘 다 실패한다', () => {
+  const bad = mutate(writer, '            AppendMarkPara(sb, true, 24);\n\n            foreach (var p in r.Projects ?? new List<Project>())\n            {\n                if (p == null) continue;\n                HwProjectTable(sb, p);',
+    '            AppendMarkPara(sb, true, 24);\n            sb.Append("<w:p><w:r><w:t>").Append(r.Name).Append("</w:t></w:r></w:p>");\n\n            foreach (var p in r.Projects ?? new List<Project>())\n            {\n                if (p == null) continue;\n                HwProjectTable(sb, p);');
+  assert.throws(() => check.singleEscapedRunWriter(bad), /2곳이다/);
+  assert.throws(() => tpl.writer(bad), /런을 직접 쓰거나/);
 });

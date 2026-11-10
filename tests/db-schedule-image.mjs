@@ -10,23 +10,23 @@
  *    (net9.0-windows, WPF 이미징 포함)로, 세 사람의 세션을 번갈아 써서 실제 MySQL 에 친다.
  *    그림은 사람마다 따로다(2026-10-23 결정, user_id 주인, UNIQUE (user_id, project_id, seq)).
  *      - 추가: PNG, JPEG 를 받고 그 사람의 seq 1, 2 … 를 매기며 주인(세션의 사람)과 시각을 남긴다. 같은 사람의 같은 그림,
- *        그림이 아닌 바이트, 5MB 넘는 바이트, 그 사람의 과제당 6장째는 invalid 이고 아무것도 쓰지 않는다. 비활성 사용자는 forbidden.
- *        다른 사람은 같은 그림을 넣을 수 있고 상한도 따로다.
+ *        그림이 아닌 바이트, 5MB 넘는 바이트, 그 사람의 과제당 2장째(2026-11-10 과제마다 1장, docs/MONTHLY-UX-V2.md 결정 8, 9)는
+ *        invalid 이고 아무것도 쓰지 않는다. 비활성 사용자는 forbidden. 다른 사람은 같은 그림을 넣을 수 있고 상한도 따로다.
  *      - 주인 격리: 목록은 내 그림만. 남의 그림 번호로 미리 보기, 받기, 삭제, 순서 바꾸기를 하면 없는 번호와 같은 notFound 이고 행은 그대로.
  *      - 받기(get): DB 바이트의 해시가 메타와 같고, 두 번째부터는 PC 사본에서 읽는다.
- *      - 미리 보기: JPEG, 40KB 이하. 순서 바꾸기: 내 그림 안에서 자리가 바뀌고 seq 가 1..n 그대로. 삭제: 주인만(관리자 검사 없음),
- *        남은 내 그림은 1..n 으로 다시 매기고 남의 그림은 그대로다.
+ *      - 미리 보기: JPEG, 40KB 이하. 순서 바꾸기는 웹이 더 부르지 않고 1장에서 무해(seq 1 그대로). 삭제: 주인만(관리자 검사 없음),
+ *        남의 그림은 그대로이고, 빼고 다시 넣으면 seq 1 로 들어간다(바꾸기).
  *      - 그림이 있는 사람은 휴지통에서 지울 수 없다(기록 표, FK RESTRICT). 과제를 휴지통에서 지우면 모든 사람의 그림이 지워진다(CASCADE).
  *      - DOCX 그림은 저장하는 사람의 그림만. DB 를 못 쓰면(일부러 틀린 비밀번호): 그 로그인의 PC 사본으로, 목록은 그 로그인의 사본 색인(stale),
  *        한 PC 를 둘이 쓰면 남의 사본 목록과 그림을 주지 않는다. 추가와 삭제는 막힌다.
  *      - mysqldump --hex-blob 으로 그림 행을 떠서 지우고 다시 부으면 바이트(SHA-256, 길이)가 같다.
  *
  *  【어디에 치나】 공용 개발 DB(taskcalendar)가 아니라 **복사본**(기본 zz_si_dev, 이름이 zz_ 로 시작해야 한다)이다.
- *    구조 번호가 정확히 같아야 동작하는 관문 때문에 공용 DB 를 17 로 올리면 다른 세션의 위젯이 막힌다.
+ *    시험이 사람, 과제, 그림 행을 만들고 지우므로 공용 DB 에 직접 치지 않는다.
  *    복사본 만들기(이 스크립트는 하지 않는다, 비밀번호는 표준입력이나 환경 변수로만):
  *      mysqldump --single-transaction --routines --triggers --hex-blob --set-gtid-purged=OFF --no-tablespaces taskcalendar > dump.sql
  *      CREATE DATABASE zz_si_dev CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; 그 DB 에 dump.sql
- *      installer/release-sql.ps1 로 만든 release SQL 을 그 DB 에 돌려 구조 17 로
+ *      공용 DB 가 앱과 같은 구조 번호면 그대로 쓰고, 아니면 installer/release-sql.ps1 로 만든 release SQL 을 그 DB 에 돌려 앱 구조 번호로
  *
  *  【계정】 앱 계정(taskmgr_app)의 권한은 건드리지 않는다. 일회용 계정(zz_si_app_<pid>)을 만들어
  *    db/deploy/server-app-account.sql 의 권한(DB 이름만 바꿔서)을 그대로 주고, 끝나면(실패해도) 지운다.
@@ -317,7 +317,7 @@ async function main() {
     }
     const P = [png(64, 32, 1), png(48, 48, 2), png(40, 20, 3), png(30, 60, 4), png(20, 20, 5), png(22, 22, 6)];
 
-    console.log('\n[추가와 목록, 사람마다 따로]');
+    console.log('\n[추가와 목록, 사람마다 따로, 과제마다 1장(2026-11-10)]');
     let r = add('u1', D.p1.uid, P[0]);
     const id1 = r.ok ? r.data.image.id : 0;
     ok('PNG 추가: seq 1, 가로세로와 해시, 등록자 이름을 싣지 않는다', r.ok && r.data.image.seq === 1 && !('uploadedBy' in r.data.image) &&
@@ -334,30 +334,28 @@ async function main() {
       !('b64' in r.data.images[0]) && !('uploadedBy' in r.data.images[0]) && r.data.images[0].bytes === JPG.length && r.data.stale === false, JSON.stringify(r).slice(0, 300));
     r = cmd('u1', 'scheduleImageList', { projectUid: D.p1.uid });
     ok('u1 목록: 자기 그림만(u2 그림 없음)', r.ok && r.data.images.length === 1 && r.data.images[0].id === id1, JSON.stringify(r).slice(0, 300));
-    let before = countU(D.p1.id, D.u1.id);
     r = add('u1', D.p1.uid, P[0]);
-    ok('같은 사람이 같은 그림 다시 추가: invalid, 쓰지 않음', !r.ok && r.error.kind === 'invalid' && countU(D.p1.id, D.u1.id) === before, JSON.stringify(r));
-    r = add('u2', D.p1.uid, P[0]);
-    const idDup2 = r.ok ? r.data.image.id : 0;
-    ok('다른 사람이 같은 그림 추가: 된다(같은 그림 검사는 사람, 과제마다)', r.ok && r.data.image.seq === 2 && r.data.image.sha256 === sha(P[0]) && idDup2 !== id1, JSON.stringify(r).slice(0, 300));
-    r = add('u1', D.p1.uid, Buffer.from('zz 그림이 아닌 글자'));
-    ok('그림이 아닌 바이트: invalid(PNG 또는 JPEG), 쓰지 않음', !r.ok && r.error.kind === 'invalid' && /PNG 또는 JPEG/.test(r.error.message) && countU(D.p1.id, D.u1.id) === before, JSON.stringify(r));
-    const big = Buffer.concat([P[1].subarray(0, 8), Buffer.alloc(5 * 1024 * 1024 + 1 - 8)]);
-    r = add('u1', D.p1.uid, big);
-    ok('5MB 넘는 바이트: invalid(5MB), 쓰지 않음', !r.ok && r.error.kind === 'invalid' && /5MB/.test(r.error.message) && countU(D.p1.id, D.u1.id) === before, JSON.stringify(r));
-    before = count(D.p1.id);
-    r = add('out', D.p1.uid, P[1]);
-    ok('비활성 사용자의 추가: forbidden, 쓰지 않음', !r.ok && r.error.kind === 'forbidden' && count(D.p1.id) === before, JSON.stringify(r));
-    for (const b of [P[1], P[2], P[3], P[4]]) add('u1', D.p1.uid, b);
-    ok('u1 은 다섯 장까지 들어간다(u1 의 seq 1..5)', JSON.stringify(seqs(D.p1.id, D.u1.id).map((x) => x[1])) === '[1,2,3,4,5]', JSON.stringify(seqs(D.p1.id, D.u1.id)));
-    r = add('u1', D.p1.uid, P[5]);
-    ok('u1 여섯 장째: invalid(5장까지), 쓰지 않음', !r.ok && r.error.kind === 'invalid' && /5장/.test(r.error.message) && countU(D.p1.id, D.u1.id) === 5, JSON.stringify(r));
+    ok('같은 사람이 같은 그림 다시 추가: invalid, 쓰지 않음', !r.ok && r.error.kind === 'invalid' && countU(D.p1.id, D.u1.id) === 1, JSON.stringify(r));
+    r = add('u1', D.p1.uid, P[1]);
+    ok('u1 두 장째(다른 그림): invalid(과제마다 1장), 쓰지 않음', !r.ok && r.error.kind === 'invalid' && /과제마다 1장/.test(r.error.message) && countU(D.p1.id, D.u1.id) === 1, JSON.stringify(r));
     r = step('u1', { op: 'probe', projectUid: D.p1.uid });
-    ok('u1 의 미리 확인(파일 창 전)도 다섯 장이면 막는다', !r.ok && r.error.kind === 'invalid', JSON.stringify(r));
+    ok('u1 의 미리 확인(파일 창 전)도 이미 1장이면 막는다', !r.ok && r.error.kind === 'invalid', JSON.stringify(r));
     r = step('u2', { op: 'probe', projectUid: D.p1.uid });
-    ok('같은 과제라도 u2 는 상한이 따로다(u2 미리 확인 통과)', r.ok && r.data.count === 2, JSON.stringify(r));
-    r = add('u2', D.p1.uid, P[1]);
-    ok('u2 세 장째 추가: 된다(과제 전체가 여덟 장이어도 사람마다 5장)', r.ok && r.data.image.seq === 3 && count(D.p1.id) === 8, JSON.stringify(r).slice(0, 200));
+    ok('u2 도 자기 1장이 있으면 막는다(상한은 사람마다 따로 센다)', !r.ok && r.error.kind === 'invalid', JSON.stringify(r));
+    r = step('u1', { op: 'probe', projectUid: D.p2.uid });
+    ok('그림이 없는 과제(p2)의 미리 확인은 통과(0장)', r.ok && r.data.count === 0, JSON.stringify(r));
+    r = add('u2', D.p2.uid, P[0]);
+    const idDup2 = r.ok ? r.data.image.id : 0;
+    ok('다른 사람이 u1 과 같은 그림 추가(p2): 된다(같은 그림 검사는 사람, 과제마다)', r.ok && r.data.image.seq === 1 && r.data.image.sha256 === sha(P[0]) && idDup2 !== id1, JSON.stringify(r).slice(0, 300));
+    let before = countU(D.p2.id, D.u1.id);
+    r = add('u1', D.p2.uid, Buffer.from('zz 그림이 아닌 글자'));
+    ok('그림이 아닌 바이트: invalid(PNG 또는 JPEG), 쓰지 않음', !r.ok && r.error.kind === 'invalid' && /PNG 또는 JPEG/.test(r.error.message) && countU(D.p2.id, D.u1.id) === before, JSON.stringify(r));
+    const big = Buffer.concat([P[1].subarray(0, 8), Buffer.alloc(5 * 1024 * 1024 + 1 - 8)]);
+    r = add('u1', D.p2.uid, big);
+    ok('5MB 넘는 바이트: invalid(5MB), 쓰지 않음', !r.ok && r.error.kind === 'invalid' && /5MB/.test(r.error.message) && countU(D.p2.id, D.u1.id) === before, JSON.stringify(r));
+    before = count(D.p2.id);
+    r = add('out', D.p2.uid, P[1]);
+    ok('비활성 사용자의 추가: forbidden, 쓰지 않음', !r.ok && r.error.kind === 'forbidden' && count(D.p2.id) === before, JSON.stringify(r));
 
     console.log('\n[남의 그림: 없는 그림과 똑같이 notFound]');
     const u1Seq0 = JSON.stringify(seqs(D.p1.id, D.u1.id));
@@ -372,7 +370,7 @@ async function main() {
     const fakeMsg = cmd('u2', 'scheduleImageDelete', { id: 99999999 });
     ok('없는 번호와 남의 번호의 회신이 같다(있는지 알리지 않는다)', !fakeMsg.ok && fakeMsg.error.kind === 'notFound' && fakeMsg.error.message === r.error.message, JSON.stringify(fakeMsg));
 
-    console.log('\n[받기, 미리 보기, 순서, 삭제]');
+    console.log('\n[받기, 미리 보기, 순서, 빼고 다시 넣기]');
     r = step('u1b', { op: 'get', id: id1 });
     ok('받기(사본 없는 PC 의 주인): DB 바이트의 해시가 메타와 원본과 같다', r.ok && !r.fromCache && r.hash === r.sha && r.sha === sha(P[0]) && r.len === P[0].length, JSON.stringify(r));
     r = step('u1b', { op: 'get', id: id1 });
@@ -389,17 +387,19 @@ async function main() {
     const tb = r.ok ? Buffer.from(r.data.dataUrl.replace(/^data:image\/jpeg;base64,/, ''), 'base64') : Buffer.alloc(0);
     ok('미리 보기(내 그림): JPEG data URL, 40KB 이하', r.ok && tb[0] === 0xff && tb[1] === 0xd8 && tb.length <= 40 * 1024 && r.data.width > 0, JSON.stringify(r).slice(0, 200));
     const u2Seq0 = JSON.stringify(seqs(D.p1.id, D.u2.id));
+    //  웹은 순서 바꾸기를 더 부르지 않는다. 호스트 명령이 남아 있으므로 1장에서 무해한지만 본다(seq 는 1 로 잘린다)
     r = cmd('u1', 'scheduleImageMove', { id: id1, seq: 3 });
-    const afterMove = seqs(D.p1.id, D.u1.id);
-    ok('순서 바꾸기: u1 의 1번이 3번 자리로, u1 seq 는 1..5 그대로, u2 순서는 그대로', r.ok && afterMove[2][0] === id1 && JSON.stringify(afterMove.map((x) => x[1])) === '[1,2,3,4,5]' &&
-      JSON.stringify(seqs(D.p1.id, D.u2.id)) === u2Seq0, JSON.stringify(afterMove));
+    ok('순서 바꾸기(1장): 무해, u1 은 [id1, seq 1] 그대로, u2 그대로', r.ok && JSON.stringify(seqs(D.p1.id, D.u1.id)) === JSON.stringify([[id1, 1]]) &&
+      JSON.stringify(seqs(D.p1.id, D.u2.id)) === u2Seq0, JSON.stringify(r).slice(0, 200) + ' ' + JSON.stringify(seqs(D.p1.id, D.u1.id)));
     r = cmd('u1', 'scheduleImageDelete', { id: id1 });
-    const afterDel = seqs(D.p1.id, D.u1.id);
-    ok('삭제(주인): 실제 행 삭제, u1 남은 그림 1..4, u2 그림 그대로', r.ok && num(`SELECT COUNT(*) FROM project_schedule_image WHERE id=${id1}`) === 0 &&
-      JSON.stringify(afterDel.map((x) => x[1])) === '[1,2,3,4]' && JSON.stringify(seqs(D.p1.id, D.u2.id)) === u2Seq0 &&
+    ok('빼기(주인): 실제 행 삭제, u1 의 p1 그림 0장, u2 그림 그대로', r.ok && num(`SELECT COUNT(*) FROM project_schedule_image WHERE id=${id1}`) === 0 &&
+      countU(D.p1.id, D.u1.id) === 0 && JSON.stringify(seqs(D.p1.id, D.u2.id)) === u2Seq0 &&
       num(`SELECT COUNT(*) FROM project_schedule_image WHERE id=${idDup2}`) === 1, JSON.stringify(r).slice(0, 200));
     r = cmd('u1', 'scheduleImageDelete', { id: id1 });
     ok('지운 그림을 또 지우기: notFound', !r.ok && r.error.kind === 'notFound', JSON.stringify(r));
+    r = add('u1', D.p1.uid, P[1]);
+    const id1b = r.ok ? r.data.image.id : 0;
+    ok('빼고 다시 넣기(바꾸기): 다른 그림이 seq 1 로 들어간다', r.ok && r.data.image.seq === 1 && r.data.image.sha256 === sha(P[1]) && countU(D.p1.id, D.u1.id) === 1, JSON.stringify(r).slice(0, 200));
 
     console.log('\n[사람과 과제 삭제]');
     sql(`UPDATE app_user SET is_active=0 WHERE user_id=${D.u2.id}`, 'u2 퇴사');
@@ -410,26 +410,25 @@ async function main() {
     ok('DB 도 막는다(주인 FK RESTRICT, 1451)', /1451/.test(fk), fk);
     sql(`UPDATE app_user SET is_active=1 WHERE user_id=${D.u2.id}`, 'u2 복직');
 
-    console.log('\n[DOCX 그림: 저장하는 사람의 그림만, DB 를 못 쓸 때]');
+    console.log('\n[DOCX 그림: 저장하는 사람의 그림만, 과제마다 1장, DB 를 못 쓸 때]');
     add('u1', D.p2.uid, P[5]);
     r = step('u1', { op: 'export', uids: [D.p1.uid, D.p2.uid] });
     const want1 = sql(`SELECT sha256 FROM project_schedule_image WHERE project_id=${D.p1.id} AND user_id=${D.u1.id} ORDER BY seq`).map((x) => x[0]);
-    ok('DOCX 그림(DB, u1): 과제마다 u1 그림만 seq 순서로, 출처 db(u2 의 JPEG 없음)', r.source === 'db' && r.count === 5 && JSON.stringify(r.shas[D.p1.uid]) === JSON.stringify(want1) &&
-      !r.shas[D.p1.uid].includes(sha(JPG)) && r.shas[D.p2.uid][0] === sha(P[5]), JSON.stringify(r).slice(0, 300));
+    ok('DOCX 그림(DB, u1): 과제마다 u1 그림 1장, 출처 db(u2 의 JPEG 없음)', r.source === 'db' && r.count === 2 && JSON.stringify(r.shas[D.p1.uid]) === JSON.stringify(want1) &&
+      want1.length === 1 && want1[0] === sha(P[1]) && !r.shas[D.p1.uid].includes(sha(JPG)) && r.shas[D.p2.uid].length === 1 && r.shas[D.p2.uid][0] === sha(P[5]), JSON.stringify(r).slice(0, 300));
     r = step('u2', { op: 'export', uids: [D.p1.uid, D.p2.uid] });
-    const want2 = sql(`SELECT sha256 FROM project_schedule_image WHERE project_id=${D.p1.id} AND user_id=${D.u2.id} ORDER BY seq`).map((x) => x[0]);
-    ok('DOCX 그림(DB, u2): u2 그림만(같은 과제의 u1 그림 없음, p2 는 빈 목록)', r.source === 'db' && r.count === 3 && JSON.stringify(r.shas[D.p1.uid]) === JSON.stringify(want2) &&
-      r.shas[D.p2.uid].length === 0, JSON.stringify(r).slice(0, 300));
+    ok('DOCX 그림(DB, u2): u2 그림만(p1 은 JPEG, p2 는 u2 가 넣은 그림)', r.source === 'db' && r.count === 2 && JSON.stringify(r.shas[D.p1.uid]) === JSON.stringify([sha(JPG)]) &&
+      JSON.stringify(r.shas[D.p2.uid]) === JSON.stringify([sha(P[0])]), JSON.stringify(r).slice(0, 300));
     r = step('u1', { op: 'export', uids: [D.p1.uid, D.p2.uid] }, { badPw: true });
-    ok('DOCX 그림(DB 실패): PC 사본으로 같은 바이트, 출처 cache, 안내 문구', r.source === 'cache' && r.count === 5 && JSON.stringify(r.shas[D.p1.uid]) === JSON.stringify(want1) && /PC 에 받아 둔/.test(r.note), JSON.stringify(r).slice(0, 300));
+    ok('DOCX 그림(DB 실패): PC 사본으로 같은 바이트, 출처 cache, 안내 문구', r.source === 'cache' && r.count === 2 && JSON.stringify(r.shas[D.p1.uid]) === JSON.stringify(want1) && /PC 에 받아 둔/.test(r.note), JSON.stringify(r).slice(0, 300));
     r = cmd('u1', 'scheduleImageList', { projectUid: D.p1.uid }, { badPw: true });
-    ok('목록(DB 실패): 실패 회신에 이 로그인의 사본 색인 마지막 목록(stale)', !r.ok && r.data && r.data.stale === true && r.data.images.length === 4, JSON.stringify(r).slice(0, 300));
+    ok('목록(DB 실패): 실패 회신에 이 로그인의 사본 색인 마지막 목록(stale)', !r.ok && r.data && r.data.stale === true && r.data.images.length === 1, JSON.stringify(r).slice(0, 300));
     //  한 PC 를 둘이 쓴다: u1 으로 목록을 받아 둔 폴더에 u2 가 로그인하고 끊기면 u1 목록이 보이지 않는다
     r = cmd('pc', 'scheduleImageList', { projectUid: D.p1.uid });
     const pcU1 = r.ok ? r.data.images.length : -1;
     run([{ op: 'login', dataDir: DIRS.pc, loginId: D.u2.login }]);
     r = cmd('pc', 'scheduleImageList', { projectUid: D.p1.uid }, { badPw: true });
-    ok('한 PC 를 둘이 쓸 때: 끊긴 u2 에게 u1 의 사본 목록을 주지 않는다', pcU1 === 4 && !r.ok && !(r.data && Array.isArray(r.data.images) && r.data.images.length), JSON.stringify(r).slice(0, 300));
+    ok('한 PC 를 둘이 쓸 때: 끊긴 u2 에게 u1 의 사본 목록을 주지 않는다', pcU1 === 1 && !r.ok && !(r.data && Array.isArray(r.data.images) && r.data.images.length), JSON.stringify(r).slice(0, 300));
     r = step('pc', { op: 'export', uids: [D.p1.uid] }, { badPw: true });
     ok('한 PC 를 둘이 쓸 때: 끊긴 u2 의 DOCX 에 u1 사본 그림이 들어가지 않는다', r.count === 0 && r.source === 'none', JSON.stringify(r).slice(0, 300));
     const n2 = count(D.p2.id);
@@ -451,7 +450,7 @@ async function main() {
     const imp = spawnSync(OPT.mysql, ['-u' + OPT.adminUser, '--default-character-set=utf8mb4', '-D', OPT.db],
       { input: readFileSync(dumpPath), env: { ...process.env, MYSQL_PWD: OPT.adminPw }, encoding: 'utf8' });
     const after2 = sql(`SELECT id, user_id, seq, SHA2(bytes, 256), LENGTH(bytes), sha256 FROM project_schedule_image WHERE project_id=${D.p1.id} ORDER BY id`);
-    ok('되살린 행(두 사람, 일곱 장)의 바이트(SHA-256, 길이)와 번호, 주인, 순서가 덤프 전과 같다', imp.status === 0 && after2.length === 7 && JSON.stringify(after2) === JSON.stringify(before2) &&
+    ok('되살린 행(두 사람, 한 장씩)의 바이트(SHA-256, 길이)와 번호, 주인, 순서가 덤프 전과 같다', imp.status === 0 && after2.length === 2 && JSON.stringify(after2) === JSON.stringify(before2) &&
       after2.every((x) => x[3] === x[5]), (imp.stderr || '').slice(0, 200));
 
     console.log('\n[과제 삭제는 모든 사람의 그림까지]');

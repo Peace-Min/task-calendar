@@ -4,19 +4,19 @@
  * ----------------------------------------------------------------------------
  *  기본 실행(run-tests.mjs)에 들지 않는다. dotnet 빌드가 필요하기 때문이다(이름이 *.test.mjs 가 아니라 러너가 줍지 않는다).
  *  하는 일:
- *    1) tests/tools/monthly-docx-mock 을 dotnet run 으로 돌려 임시 폴더에 mock.docx 를 만든다(지어낸 값).
+ *    1) tests/tools/monthly-docx-mock 을 dotnet run 으로 돌려 dist/monthly-docx-loop/ 에 mock-sw.docx, mock-hw.docx 를 만든다(지어낸 값, 남겨 둔다).
  *    2) 외부 패키지 없이 ZIP 을 직접 읽는다(끝 레코드 EOCD, 중앙 디렉터리, inflateRawSync).
  *    3) 모든 .xml, .rels 를 jsdom DOMParser(application/xml)로 파싱한다. parsererror 면 실패.
  *    4) 구조를 본다: [Content_Types].xml 첫 엔트리, 제목 문단, 과제 표 수와 기타 표, 줄마다 gridSpan 합 = 7,
  *       tcW = 걸친 격자 폭 합, 세로 병합 모양, 기대 글자, 그림 관계와 콘텐츠 형식, A4 가로 구역.
+ *    5) HW 양식(7절): 제목과 기간 줄, 격자 7열 폭, 파랑 없음, 개발 일정 머리 넷, 변경이력과 그림 없음, 기타 3칸, 여백이 표 폭을 담는다.
  *  Word 나 한컴에서 실제로 열어 보는 것은 대신하지 못한다(스키마 순서와 렌더링은 사람이 확인).
  *
  *  실행(저장소 루트에서): node tests/loop-monthly-docx.mjs
  *  종료코드: 0 통과, 1 실패, 2 판정 불가(dotnet 실행 실패, jsdom 없음).
  * ==========================================================================*/
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
@@ -36,20 +36,24 @@ const ok = (n, c, d = '') => {
 };
 
 // ── 1) 목업 실행 ─────────────────────────────────────────────────────
-const work = mkdtempSync(join(tmpdir(), 'monthly-docx-'));
-const out = join(work, 'mock.docx');
-console.log('[1] dotnet run (monthly-docx-mock)');
-const run = spawnSync('dotnet', ['run', '--project', join(root, 'tests', 'tools', 'monthly-docx-mock'), '--', out],
+//  만든 문서는 dist/monthly-docx-loop/ 에 남긴다(dist 는 gitignore). Word 나 한컴으로 직접 열어 볼 수 있게.
+const work = join(root, 'dist', 'monthly-docx-loop');
+mkdirSync(work, { recursive: true });
+const out = join(work, 'mock-sw.docx');
+const outHw = join(work, 'mock-hw.docx');
+for (const f of [out, outHw]) rmSync(f, { force: true });
+console.log('[1] dotnet run (monthly-docx-mock) SW, HW');
+const run = spawnSync('dotnet', ['run', '--project', join(root, 'tests', 'tools', 'monthly-docx-mock'), '--', out, outHw],
   { cwd: root, encoding: 'utf8', timeout: 300000 });
 if (run.status !== 0) {
   console.error(run.stdout || ''); console.error(run.stderr || '');
   console.error(`[판정 불가] 목업 실행 실패(exit ${run.status})`);
-  rmSync(work, { recursive: true, force: true });
   process.exit(2);
 }
-let buf;
-try { buf = readFileSync(out); } finally { rmSync(work, { recursive: true, force: true }); }
-console.log(`  mock.docx ${buf.length} bytes`);
+const buf = readFileSync(out);
+const bufHw = readFileSync(outHw);
+console.log(`  ${out} ${buf.length} bytes`);
+console.log(`  ${outHw} ${bufHw.length} bytes`);
 
 // ── 2) 최소 ZIP 읽기 ─────────────────────────────────────────────────
 function readZip(b) {
@@ -83,34 +87,38 @@ function readZip(b) {
   return entries;
 }
 
-console.log('[2] ZIP 구조');
-let entries = [];
-try { entries = readZip(buf); ok('ZIP 을 읽었다', true, `${entries.length}개 엔트리`); }
-catch (e) { ok('ZIP 을 읽었다', false, e.message); }
-const byName = new Map(entries.map((e) => [e.name, e]));
-ok('[Content_Types].xml 이 중앙 디렉터리 첫 엔트리', entries[0] && entries[0].name === '[Content_Types].xml', entries[0] && entries[0].name);
-const firstLocal = entries.slice().sort((a, b) => a.local - b.local)[0];
-ok('[Content_Types].xml 이 파일 맨 앞(로컬 헤더 0)', firstLocal && firstLocal.name === '[Content_Types].xml' && firstLocal.local === 0);
-ok('디렉터리 엔트리가 없다', entries.every((e) => !e.name.endsWith('/')));
-ok('경로에 역슬래시가 없다', entries.every((e) => !e.name.includes('\\')));
-for (const need of ['_rels/.rels', 'docProps/core.xml', 'docProps/app.xml', 'word/document.xml', 'word/styles.xml',
-  'word/settings.xml', 'word/_rels/document.xml.rels']) {
-  ok(`파트 있음: ${need}`, byName.has(need));
-}
+//  ZIP 구조와 XML 파싱(두 양식 공통). tag 는 항목 이름 머리.
+function openDocx(b, tag) {
+  console.log(`[2] ZIP 구조${tag}`);
+  let entries = [];
+  try { entries = readZip(b); ok(`${tag}ZIP 을 읽었다`, true, `${entries.length}개 엔트리`); }
+  catch (e) { ok(`${tag}ZIP 을 읽었다`, false, e.message); }
+  const byName = new Map(entries.map((e) => [e.name, e]));
+  ok(`${tag}[Content_Types].xml 이 중앙 디렉터리 첫 엔트리`, entries[0] && entries[0].name === '[Content_Types].xml', entries[0] && entries[0].name);
+  const firstLocal = entries.slice().sort((a, c) => a.local - c.local)[0];
+  ok(`${tag}[Content_Types].xml 이 파일 맨 앞(로컬 헤더 0)`, firstLocal && firstLocal.name === '[Content_Types].xml' && firstLocal.local === 0);
+  ok(`${tag}디렉터리 엔트리가 없다`, entries.every((e) => !e.name.endsWith('/')));
+  ok(`${tag}경로에 역슬래시가 없다`, entries.every((e) => !e.name.includes('\\')));
+  for (const need of ['_rels/.rels', 'docProps/core.xml', 'docProps/app.xml', 'word/document.xml', 'word/styles.xml',
+    'word/settings.xml', 'word/_rels/document.xml.rels']) {
+    ok(`${tag}파트 있음: ${need}`, byName.has(need));
+  }
 
-// ── 3) XML 파싱 ──────────────────────────────────────────────────────
-console.log('[3] XML 파싱');
-const docs = new Map();
-for (const e of entries) {
-  if (!/\.(xml|rels)$/.test(e.name)) continue;
-  const bom = e.data[0] === 0xef && e.data[1] === 0xbb && e.data[2] === 0xbf;
-  const text = e.data.toString('utf8');
-  const d = new DOMParser().parseFromString(text, 'application/xml');
-  const bad = d.getElementsByTagName('parsererror').length > 0;
-  const decl = /^<\?xml version="1\.0" encoding="UTF-8" standalone="yes"\?>/.test(text);
-  ok(`파싱: ${e.name}`, !bad && !bom && decl, bad ? 'parsererror' : bom ? 'BOM 있음' : decl ? '' : '선언 없음');
-  docs.set(e.name, { d, text });
+  console.log(`[3] XML 파싱${tag}`);
+  const docs = new Map();
+  for (const e of entries) {
+    if (!/\.(xml|rels)$/.test(e.name)) continue;
+    const bom = e.data[0] === 0xef && e.data[1] === 0xbb && e.data[2] === 0xbf;
+    const text = e.data.toString('utf8');
+    const d = new DOMParser().parseFromString(text, 'application/xml');
+    const bad = d.getElementsByTagName('parsererror').length > 0;
+    const decl = /^<\?xml version="1\.0" encoding="UTF-8" standalone="yes"\?>/.test(text);
+    ok(`${tag}파싱: ${e.name}`, !bad && !bom && decl, bad ? 'parsererror' : bom ? 'BOM 있음' : decl ? '' : '선언 없음');
+    docs.set(e.name, { d, text });
+  }
+  return { entries, byName, docs };
 }
+const { byName, docs } = openDocx(buf, '');
 
 // ── 4) 본문 구조 ─────────────────────────────────────────────────────
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -156,7 +164,8 @@ const vmOf = (tc) => { const v = kid(kid(tc, 'tcPr'), 'vMerge'); return v ? (wat
 function checkGridAndWidths(t, grid, label) {
   ok(`${label}: tblGrid 열 = [${grid.join(',')}]`, JSON.stringify(gridOf(t)) === JSON.stringify(grid), gridOf(t).join(','));
   const tblW = kid(kid(t, 'tblPr'), 'tblW');
-  ok(`${label}: tblW 13788 dxa, 고정 레이아웃`, wattr(tblW, 'w') === '13788' && wattr(tblW, 'type') === 'dxa'
+  const sum = grid.reduce((a, b) => a + b, 0);
+  ok(`${label}: tblW ${sum} dxa(격자 합), 고정 레이아웃`, wattr(tblW, 'w') === String(sum) && wattr(tblW, 'type') === 'dxa'
     && wattr(kid(kid(t, 'tblPr'), 'tblLayout'), 'type') === 'fixed');
   let spanOk = true, wOk = true, pOk = true; const bad = [];
   rowsOf(t).forEach((tr, ri) => {
@@ -299,6 +308,124 @@ const settings = docs.get('word/settings.xml');
 ok('compatibilityMode 15', !!settings && /w:name="compatibilityMode"[^>]*w:val="15"/.test(settings.text));
 const core = docs.get('docProps/core.xml');
 ok('core.xml 제목 월간보고, 작성자 홍길동', !!core && core.text.includes('<dc:title>월간보고</dc:title>') && core.text.includes('<dc:creator>홍길동</dc:creator>'));
+
+// ── 7) HW 양식(docs/MONTHLY-TEMPLATE-HW.md 3장, MONTHLY-UX-V2 11~13) ─────
+//  목업은 HW 가 쓰지 않는 값(그림, 변경이력, 계획 두 칸, 계획 기간)을 일부러 채워 보낸다. 문서에 나오면 안 된다.
+console.log('[7] HW 양식');
+const hw = openDocx(bufHw, 'HW ');
+const hwDoc = hw.docs.get('word/document.xml');
+if (!hwDoc) { ok('HW document.xml 있음', false); finish(); }
+const hb = hwDoc.d.getElementsByTagNameNS(W, 'body')[0];
+const hbl = kids(hb);
+const ht = hbl.filter((n) => n.localName === 'tbl');
+const runRPr = (p) => { const r = p && p.getElementsByTagNameNS(W, 'r')[0]; return r && kid(r, 'rPr'); };
+const markRPr = (p) => p && kid(p, 'pPr') && kid(kid(p, 'pPr'), 'rPr');
+const jcOf = (p) => wattr(kid(kid(p, 'pPr') || p, 'jc'), 'val');
+const szOf = (rp) => wattr(rp && kid(rp, 'sz'), 'val');
+
+const HW_TITLE = '월간보고 \u2013 H/W팀 (홍길동) \u2013 2026년 10월 6일';
+ok('HW 제목 글자(H/W팀, U+2013, 앞 0 없음)', hbl[0] && textOf(hbl[0]) === HW_TITLE, hbl[0] && JSON.stringify(textOf(hbl[0])));
+const hrp = runRPr(hbl[0]);
+ok('HW 제목은 굵게 14pt, 밑줄, 가운데', !!(hrp && kid(hrp, 'b') && szOf(hrp) === '28' && wattr(kid(hrp, 'u'), 'val') === 'single' && jcOf(hbl[0]) === 'center'));
+ok('HW 실적 기간 줄 [ 2026. 8. 17 ~ 2026. 10. 2 ] 11pt 가운데, 굵게 아님', hbl[1] && textOf(hbl[1]) === '[ 2026. 8. 17 ~ 2026. 10. 2 ]'
+  && szOf(runRPr(hbl[1])) === '22' && !kid(runRPr(hbl[1]), 'b') && jcOf(hbl[1]) === 'center', hbl[1] && JSON.stringify(textOf(hbl[1])));
+const isBold12Empty = (p) => !!p && p.localName === 'p' && textOf(p) === '' && !!markRPr(p) && !!kid(markRPr(p), 'b') && szOf(markRPr(p)) === '24';
+ok('HW 기간 줄 뒤 빈 문단(굵게 12pt)', isBold12Empty(hbl[2]));
+ok('HW 표 4개(과제 3 + 기타 1)', ht.length === 4, String(ht.length));
+ok('HW 표마다 뒤에 빈 문단(굵게 12pt)', ht.every((t) => isBold12Empty(hbl[hbl.indexOf(t) + 1])));
+ok('HW 마지막 요소는 sectPr', hbl[hbl.length - 1] && hbl[hbl.length - 1].localName === 'sectPr');
+
+const HWGRID = [1416, 992, 2974, 1274, 1132, 2268, 4670];
+ht.forEach((t, i) => checkGridAndWidths(t, HWGRID, i < 3 ? `HW 과제 표 ${i + 1}` : 'HW 기타 표'));
+ok('HW 격자 합 14726', HWGRID.reduce((a, b) => a + b, 0) === 14726);
+
+ok('HW 파랑(DBE5F1) 없음', !hwDoc.text.includes('DBE5F1'));
+ok('HW 그림 없음(blip, 그림 관계, media 파트)', hb.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'blip').length === 0
+  && !hw.docs.get('word/_rels/document.xml.rels').text.includes('/image"') && hw.entries.every((e) => !e.name.startsWith('word/media/')));
+const hwAll = textOf(hb);
+ok('HW 변경이력, 계획 머리, 계획 칸 값이 없다', !/변경|월간 계획|월간 실적|쓰이면 안 되는/.test(hwAll));
+
+const shdOf = (tc) => wattr(kid(kid(tc, 'tcPr'), 'shd'), 'fill');
+const pTexts = (tc) => kids(tc, 'p').map(textOf);
+const hasKeepNext = (tc) => kids(tc, 'p').every((p) => !!(kid(p, 'pPr') && kid(kid(p, 'pPr'), 'keepNext')));
+const heightOf = (tr) => { const h = kid(kid(tr, 'trPr'), 'trHeight'); return [Number(wattr(h, 'val')), wattr(h, 'hRule')]; };
+const HW_PROJ = [
+  { title: '(예시) 장비 유지보수', term: '2026년 3월 ~ 2026년 12월',
+    actual: ['● 정기점검', '- 운용센터 점검 (9/2)', ': 점검 확인서 작성', '. 서명 받기 (~ 9/30)', '', '● 문의 대응', '- 비교 기호 확인: A&B <태그> "따옴표" (w. 김예시 선임)'] },
+  { title: '(예시) 시험장비 설계', term: '2026년 3월 ~', actual: ['● 설계', '- 회로 검토'] },
+  { title: '(예시) 신규 과제', term: '', actual: [''] },
+];
+ht.slice(0, 3).forEach((t, k) => {
+  const m = HW_PROJ[k], label = `HW 과제 표 ${k + 1}`;
+  const rows = rowsOf(t);
+  ok(`${label}: 줄 5개`, rows.length === 5, String(rows.length));
+  if (rows.length !== 5) return;
+  const c1 = rows.map((tr) => vmOf(cellsOf(tr)[0]));
+  ok(`${label}: 과제명 칸 1줄부터 끝까지 세로 병합`, c1[0] === 'restart' && c1.slice(1).every((v) => v === 'continue'), JSON.stringify(c1));
+  const r0 = cellsOf(rows[0]);
+  ok(`${label}: 과제명 = ${m.title}, 흰 바탕 10.5pt`, textOf(r0[0]) === m.title && !shdOf(r0[0]) && szOf(runRPr(kids(r0[0], 'p')[0])) === '21');
+  ok(`${label}: 과제 수행 기간 칸(2~3열 회색)`, r0.length === 3 && textOf(r0[1]) === '과제 수행 기간' && spanOf(r0[1]) === 2 && shdOf(r0[1]) === 'F2F2F2');
+  ok(`${label}: 기간 값 '${m.term}'(4~7열 회색)`, textOf(r0[2]) === m.term && spanOf(r0[2]) === 4 && shdOf(r0[2]) === 'F2F2F2', JSON.stringify(textOf(r0[2])));
+  const r1 = cellsOf(rows[1]);
+  ok(`${label}: 개발 일정 머리(개발 일정 / 개발 항목 / 시작 / 종료 / 상세 내용)`, r1.length === 6
+    && JSON.stringify(pTexts(r1[1])) === JSON.stringify(['개발', '일정']) && vmOf(r1[1]) === 'restart'
+    && JSON.stringify(r1.slice(2).map(textOf)) === JSON.stringify(['개발 항목', '시작', '종료', '상세 내용'])
+    && JSON.stringify(r1.map(spanOf)) === '[1,1,1,1,1,2]' && r1.slice(1).every((tc) => shdOf(tc) === 'F2F2F2'),
+    JSON.stringify(r1.map(textOf)));
+  const r2 = cellsOf(rows[2]);
+  ok(`${label}: 개발 일정 빈 줄 하나(회색, 칸 이름 병합 계속)`, r2.length === 6 && vmOf(r2[1]) === 'continue'
+    && r2.slice(1).every((tc) => shdOf(tc) === 'F2F2F2' && textOf(tc) === '') && JSON.stringify(r2.map(spanOf)) === '[1,1,1,1,1,2]');
+  const r3 = cellsOf(rows[3]);
+  ok(`${label}: 본문 칸 이름 줄 흰 바탕(수행 계획 2 / 수행 실적 3 / 수행 계획 1)`, r3.length === 4
+    && JSON.stringify(r3.slice(1).map(textOf)) === JSON.stringify(['수행 계획', '수행 실적', '수행 계획'])
+    && JSON.stringify(r3.slice(1).map(spanOf)) === '[2,3,1]' && r3.every((tc) => !shdOf(tc))
+    && r3.slice(1).every((tc) => !!kid(runRPr(kids(tc, 'p')[0]), 'b')));
+  const r4 = cellsOf(rows[4]);
+  ok(`${label}: 본문 세 칸(계획 빈칸, 실적 글 그대로, 계획 빈칸)`, r4.length === 4 && JSON.stringify(r4.slice(1).map(spanOf)) === '[2,3,1]'
+    && JSON.stringify(pTexts(r4[1])) === '[""]' && JSON.stringify(pTexts(r4[3])) === '[""]'
+    && JSON.stringify(pTexts(r4[2])) === JSON.stringify(m.actual), JSON.stringify(pTexts(r4[2])));
+  const hs = rows.map(heightOf);
+  ok(`${label}: 줄 높이 348/344/346/380/6180(본문 최소 309pt)`, JSON.stringify(hs.map((h) => h[0])) === '[348,344,346,380,6180]' && hs[4][1] === 'atLeast');
+  const cant = rows.map((tr) => !!kid(kid(tr, 'trPr'), 'cantSplit'));
+  ok(`${label}: 머리 넷은 cantSplit, 본문 줄은 쪽 나눔 허용`, JSON.stringify(cant) === '[true,true,true,true,false]');
+  ok(`${label}: 머리 넷의 모든 문단에 keepNext(본문 첫머리와 같은 쪽)`, rows.slice(0, 4).every((tr) => cellsOf(tr).every(hasKeepNext)));
+});
+if (ht[0] && rowsOf(ht[0]).length === 5) {
+  const body0 = kids(cellsOf(rowsOf(ht[0])[4])[2], 'p');
+  const ind = (p) => wattr(kid(kid(p, 'pPr') || p, 'ind'), 'left');
+  ok('HW 본문 들여쓰기 0/284/568/852(글자는 그대로)', JSON.stringify(body0.slice(0, 4).map(ind)) === JSON.stringify([null, '284', '568', '852']),
+    JSON.stringify(body0.slice(0, 4).map(ind)));
+}
+const he = ht[3];
+if (he) {
+  const rows = rowsOf(he);
+  ok('HW 기타 표: 줄 3개', rows.length === 3, String(rows.length));
+  if (rows.length === 3) {
+    const r0 = cellsOf(rows[0]);
+    ok('HW 기타 표: 기타 칸 세로 병합(끝까지)', textOf(r0[0]) === '기타' && vmOf(r0[0]) === 'restart'
+      && rows.slice(1).every((tr) => vmOf(cellsOf(tr)[0]) === 'continue'));
+    ok('HW 기타 표: 1줄 얇은 회색 빈 줄(2~3열, 4~7열, 글자 5pt, 높이 274)', r0.length === 3 && JSON.stringify(r0.map(spanOf)) === '[1,2,4]'
+      && r0.slice(1).every((tc) => shdOf(tc) === 'F2F2F2' && textOf(tc) === '' && szOf(markRPr(kids(tc, 'p')[0])) === '10')
+      && heightOf(rows[0])[0] === 274);
+    const r1 = cellsOf(rows[1]);
+    ok('HW 기타 표: 이름 줄(수행 계획 / 수행 실적 / 수행 계획, 흰 바탕)', r1.length === 4
+      && JSON.stringify(r1.slice(1).map(textOf)) === JSON.stringify(['수행 계획', '수행 실적', '수행 계획']) && r1.every((tc) => !shdOf(tc)));
+    const r2 = cellsOf(rows[2]);
+    ok('HW 기타 표: 본문 세 칸(실적 = 기타 글, 계획 빈칸), 최소 156pt', r2.length === 4 && JSON.stringify(r2.slice(1).map(spanOf)) === '[2,3,1]'
+      && JSON.stringify(pTexts(r2[1])) === '[""]' && JSON.stringify(pTexts(r2[3])) === '[""]'
+      && JSON.stringify(pTexts(r2[2])) === JSON.stringify(['● 교육 참석', '- 사내 보안 교육 (9/24)', '● 매뉴얼 작성'])
+      && heightOf(rows[2])[0] === 3120 && heightOf(rows[2])[1] === 'atLeast', JSON.stringify(pTexts(r2[2])));
+  }
+}
+ok('HW 이스케이프 시료가 그대로 돌아오고 원문은 이스케이프돼 있다', hwAll.includes('A&B <태그> "따옴표"') && hwDoc.text.includes('A&amp;B &lt;태그&gt; &quot;따옴표&quot;'));
+
+const hsect = hbl[hbl.length - 1];
+const hsz = hsect && kid(hsect, 'pgSz'), hmar = hsect && kid(hsect, 'pgMar');
+ok('HW A4 가로 16838 x 11906', wattr(hsz, 'w') === '16838' && wattr(hsz, 'h') === '11906' && wattr(hsz, 'orient') === 'landscape');
+const mar = (a) => Number(wattr(hmar, a));
+ok('HW 여백 왼쪽 1134, 위 1134, 아래 1134, 오른쪽 960', mar('left') === 1134 && mar('top') === 1134 && mar('bottom') === 1134 && mar('right') === 960,
+  ['left', 'right', 'top', 'bottom'].map((a) => `${a}=${mar(a)}`).join(' '));
+ok('HW 글 영역이 표 폭을 담는다(16838 - 왼쪽 - 오른쪽 >= 14726)', 16838 - mar('left') - mar('right') >= 14726, String(16838 - mar('left') - mar('right')));
 
 finish();
 

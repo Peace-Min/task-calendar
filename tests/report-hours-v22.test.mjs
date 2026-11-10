@@ -6,7 +6,7 @@
 //       공수 옮기기 SQL(id 로만, 잠금 순서, 커밋 직전 관문, 24와 168 미리 거절), 지운 세 표를 코드가 부르지 않는다.
 //   (P) 호스트 C# 그대로(dotnet 프로브): 일간 줄 합치기(메모만 있는 날, 내용 있는 0시간, 빈 0시간 빼기, 같은 과제 합치기), 다시 만든 글,
 //       공수 옮기기 계획(합치기, 가장 작은 line_no, 내용 잇기, 옛 과제 없는 날은 그대로, 다시 돌려도 같음)과 24, 168 넘침 판정.
-//   (S) 웹 정적: 작성 중 시간, 서식 저장, state 글꼴이 없다, 글꼴은 tc_rptFont:<계정> localStorage(try/catch), 공식 과제 연결의 순서와 확인 문구.
+//   (S) 웹 정적: 작성 중 시간, 서식 저장, state 글꼴이 없다, 보고 글꼴도 없다(v6 결정 22, 예전에는 tc_rptFont:<계정> localStorage), 공식 과제 연결의 순서와 확인 문구.
 //   (U) 웹 순수(jsdom 한 번): 보고 줄(atHoursPayload), 블록 과제 id 정하기(하나뿐, 같은 이름 둘, 없음, id 우선, id 로만), 새 보고와 옛 보고 가르기(memo),
 //       주간 [일간 불러오기] 두 길(awDailyCollect), 주간 줄 catUid(awHoursPayload), 0시간 블록 허용.
 //   (A) 근태 창: 보고한 새 보고를 줄로 되살린다(이름이 바뀐 과제는 id 로 지금 이름), 이전 보고는 detail 로 읽는다, 보내기 payload(memo, 줄),
@@ -335,13 +335,10 @@ const S = {
     assert.ok(/function buildStateFrom\(data\)\{[\s\S]*?return \{categories:data\.categories, entries:data\.entries, todos:data\.todos\|\|\[\], reportSource:'cal', attendance:data\.attendance\|\|\{\}\};/.test(src),
       'buildStateFrom 이 서식이나 작성 중 시간을 state 에 싣는다');
   },
+  //  보고 글꼴(tc_rptFont:<계정>)은 취합 과제별 글의 미리 보기와 복사에만 쓰였다. v6 결정 22(docs/MONTHLY-UX-V2.md)로 그 글을 없애 글꼴도 없다.
+  //  예전 기대: RPT_FONT_PREFIX = 'tc_rptFont:', reportFontGet, reportFontSet 이 try/catch 로 계정별 localStorage 를 읽고 쓴다.
   font(src) {
-    assert.ok(/const RPT_FONT_PREFIX = 'tc_rptFont:';/.test(src), '글꼴 키가 tc_rptFont: 가 아니다');
-    const g = extractFunction(src, 'reportFontGet'), s = extractFunction(src, 'reportFontSet');
-    assert.ok(/try\{[\s\S]*localStorage\.getItem\(rptFontKey\(\)\)[\s\S]*\}catch\(_\)\{ return defaultReportFont\(\); \}/.test(g), '글꼴 읽기가 try/catch 로 기본값에 떨어지지 않는다');
-    assert.ok(/try\{[\s\S]*localStorage\.(setItem|removeItem)\(rptFontKey\(\)[\s\S]*\}catch\(_\)\{\}/.test(s), '글꼴 쓰기가 try/catch 가 아니다');
-    assert.ok(/atWho\(\)/.test(extractFunction(src, 'rptFontKey')), '글꼴 키가 계정별이 아니다');
-    assert.ok(/reportFontSet\(\{ family: _ff\.value, size: reportFontGet\(\)\.size \}\); buildReport\(\);/.test(src), '글꼴 고르기가 localStorage 에 쓰지 않는다');
+    assert.ok(!/RPT_FONT_PREFIX|tc_rptFont|function reportFont(Get|Set)\(|function rptFontKey\(|id="rptFont/.test(src), '보고 글꼴(저장 키, 함수, 고르기)이 남았다(v6 결정 22)');
   },
   relink(src) {
     const f = extractFunction(src, 'runRelink');
@@ -362,7 +359,7 @@ const S = {
   },
 };
 test('(S) 웹: 작성 중 시간, 서식 저장, state 글꼴, 옛 XML <prefs>, <taskHours> 가 없다', () => S.noDropped(app));
-test('(S) 웹: 보고 글꼴은 계정별 localStorage(tc_rptFont:<계정>), 읽기와 쓰기 모두 try/catch', () => S.font(app));
+test('(S) 웹: 보고 글꼴(tc_rptFont, 고르기)이 없다(v6 결정 22)', () => S.font(app));
 test('(S) 웹: 공식 과제로 연결 순서(reportRelink 먼저, 성공한 과제만 옮기기, 저장, 지움)와 확인 문구', () => S.relink(app));
 test('(S) 변이: 연결이 실패해도 옛 과제를 지우거나, 글꼴을 state 에 두거나, 확인 문구를 빼면 잡는다', () => {
   assert.throws(() => S.relink(mutate(app, RL_MOVE_FIRST[0], RL_MOVE_FIRST[1])), /순서가|공수 옮기기 전에/);
@@ -371,6 +368,7 @@ test('(S) 변이: 연결이 실패해도 옛 과제를 지우거나, 글꼴을 s
   assert.throws(() => S.relink(mutate(app, '원래 과제는 지웁니다. 이번', '이번')), /원래 과제는 지웁니다/);
   assert.throws(() => S.relink(mutate(app, ' 이번 판 전에 보낸 일간보고의 시간은 옮기지 않습니다.', '')), /옛 보고 시간/);
   assert.throws(() => S.noDropped(app + '\nstate.reportFont = 1;'), /서식이나 글꼴/);
+  assert.throws(() => S.font(app + "\nconst RPT_FONT_PREFIX = 'tc_rptFont:';"), /보고 글꼴/);
 });
 
 // ══ (U)(A)(W) jsdom ═════════════════════════════════════════════════════
@@ -577,20 +575,11 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(U) 글꼴: tc_rptFont:<계정> 에 저장하고 읽는다, 기본이면 키를 지운다, 저장소가 막혀도 기본으로', () => {
+  //  예전 (U) 글꼴 시험(tc_rptFont:<계정> 저장, 읽기, 막힌 저장소)은 v6 결정 22 로 글꼴이 없어져 지웠다. 함수가 없다는 것을 실행으로 본다
+  test('(U) 글꼴 함수가 없다(v6 결정 22)', () => {
     const X = bootBrowser();
     try {
-      X.ev("__bootMeta = { userId: 42 }");
-      X.ev("reportFontSet({ family: 'Gulim', size: 12 })");
-      assert.strictEqual(X.ev("localStorage.getItem('tc_rptFont:42')"), JSON.stringify({ family: 'Gulim', size: 12 }));
-      assert.deepStrictEqual(X.evJSON('reportFontGet()'), { family: 'Gulim', size: 12 });
-      X.ev("reportFontSet({ family: '', size: 0 })");
-      assert.strictEqual(X.ev("localStorage.getItem('tc_rptFont:42')"), null, '기본 글꼴인데 키가 남았다');
-      X.ev("localStorage.setItem('tc_rptFont:42', '{깨짐')");
-      assert.deepStrictEqual(X.evJSON('reportFontGet()'), { family: '', size: 0 }, '깨진 값에서 기본으로 떨어지지 않는다');
-      X.ev("Object.defineProperty(window, 'localStorage', { get(){ throw new Error('막힘'); } })");
-      assert.deepStrictEqual(X.evJSON('reportFontGet()'), { family: '', size: 0 }, '저장소가 막히면 기본으로 그리지 않는다');
-      X.ev("reportFontSet({ family: 'Gulim', size: 12 })");   // 던지지 않는다
+      for (const fn of ['reportFontSet', 'reportFontGet', 'rptFontKey']) assert.strictEqual(X.ev('typeof ' + fn), 'undefined', fn + ' 이 남았다');
       assert.ok(!('reportFont' in X.evJSON('state')), 'state 에 글꼴이 있다');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }

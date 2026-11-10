@@ -10,7 +10,7 @@
 //   ③ 백업: backup-taskmgr.ps1(복원 전 안전 덤프, 데모 전 백업도) mysqldump 에 --hex-blob 이 있다.
 //   ④ 개발 시작일 배선: ProjectDb 읽기와 쓰기(@dsd), 순서 검사, saveProject 분기, 엑셀 열, 웹 dbCatalog(mapDbRows), 편집 폼과 payload,
 //      상세 보기. 선진행 잠금 배열에는 없다(개발종료일과 같은 설계 결정).
-//   ⑤ 그림 명령: 추가가 형식(머리 글자와 WPF BitmapDecoder)과 크기(5MB), 사람마다 과제당 5장을 검사한다. 추가, 삭제, 순서 바꾸기에
+//   ⑤ 그림 명령: 추가가 형식(머리 글자와 WPF BitmapDecoder)과 크기(5MB), 사람마다 과제당 1장(2026-11-10 MONTHLY-UX-V2 결정 8, 9. 전에는 5장)을 검사한다. 추가, 삭제, 순서 바꾸기에
 //      관리자 검사가 없다(내 그림은 내가, 의도). 연결은 DbGate.OpenAsync 뿐이고 커밋은 관문 재확인 한 곳. 신원은 세션에서만.
 //      그림 표를 건드리는 SQL 은 모두 세션의 사람(user_id=@u)을 건다(INSERT 는 주인 열을 쓴다). 웹에 등록자 이름을 싣지 않는다.
 //      PC 사본 파일 이름은 해시와 형식에서만 만들고, 색인은 (로그인, 과제)별이다.
@@ -197,16 +197,16 @@ const checks = {
   // ══ ⑤ 그림 명령 ════════════════════════════════════════════════════
   imageRules(sidb) {
     const code = stripCsComments(sidb);
-    assert.ok(/public const int MaxBytes = 5 \* 1024 \* 1024;/.test(code) && /public const int MaxPerProject = 5;/.test(code), '상한이 5MB, 과제당 5장이 아니다');
+    assert.ok(/public const int MaxBytes = 5 \* 1024 \* 1024;/.test(code) && /public const int MaxPerProject = 1;/.test(code), '상한이 5MB, 과제당 1장이 아니다');
     const inspect = extractCsMember(sidb, 'internal static Info Inspect(byte[] bytes)');
     assert.ok(/bytes\.Length > ScheduleImageDb\.Limits\.MaxBytes/.test(inspect), '그림 검사가 5MB 상한을 보지 않는다');
     assert.ok(/BitmapDecoder\.Create\(/.test(inspect) && /dec is PngBitmapDecoder/.test(inspect) && /dec is JpegBitmapDecoder/.test(inspect), '그림 검사가 WPF BitmapDecoder 로 PNG, JPEG 를 확인하지 않는다');
     assert.ok(/Sniff\(bytes\)/.test(inspect), '그림 검사가 머리 글자(PNG, JPEG)를 보지 않는다');
     const add = extractCsMember(sidb, 'public async Task<ScheduleImageReply> AddAsync(');
     assert.ok(/ScheduleImageCodec\.InspectAsync\(bytes\)/.test(add), '추가가 그림 검사를 거치지 않는다');
-    assert.ok(/if \(n >= Limits\.MaxPerProject\) throw new SiFail\(Kind\.Invalid, MsgTooMany\);/.test(add), '추가가 과제당 5장을 검사하지 않는다');
-    assert.ok(/CountAsync\(conn, tx, me\.UserId, pid, ct\)/.test(add), '추가의 5장 상한이 사람마다가 아니다(세션의 사람 그림만 세야 한다)');
-    assert.ok(/ProjectIdAsync\(conn, tx, projectUid, lockRow: true, ct\)/.test(add), '추가가 과제 행을 잠그지 않는다(5장 상한과 seq 가 엇갈린다)');
+    assert.ok(/if \(n >= Limits\.MaxPerProject\) throw new SiFail\(Kind\.Invalid, MsgTooMany\);/.test(add), '추가가 과제당 1장을 검사하지 않는다');
+    assert.ok(/CountAsync\(conn, tx, me\.UserId, pid, ct\)/.test(add), '추가의 1장 상한이 사람마다가 아니다(세션의 사람 그림만 세야 한다)');
+    assert.ok(/ProjectIdAsync\(conn, tx, projectUid, lockRow: true, ct\)/.test(add), '추가가 과제 행을 잠그지 않는다(1장 상한과 seq 가 엇갈린다)');
     assert.ok(/ins\.Parameters\.AddWithValue\("@u", me\.UserId\)/.test(add) && /"@at"/.test(add), '추가가 주인(세션의 사람)과 시각을 남기지 않는다');
     //  주인 격리: 그림 표를 건드리는 SQL 글자마다 세션의 사람을 건다. INSERT 는 주인 열을 쓴다. 등록자 이름을 웹에 싣지 않는다.
     const lits = [...code.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]).filter((s) => s.includes(TABLE));
@@ -299,7 +299,7 @@ test('그림표①e: 앱 구조 번호와 정본 시드가 17 이상이고 서�
 test('그림표②: 권한(SELECT, INSERT, UPDATE, DELETE), init 명부, setup 표 수, 데모, 사용자 기록 표(표.열)', () => checks.grantsAndTools(src));
 test('그림표③: 백업, 복원 전 안전 덤프, 데모 전 백업의 mysqldump 에 --hex-blob 이 있다', () => checks.hexBlob(src.backup, src.restore, src.demoPs));
 test('그림표④: 개발 시작일이 과제 읽기와 쓰기, 순서 검사, saveProject, 엑셀 열, dbCatalog, 편집 폼과 payload 에 이어지고 선진행 잠금에는 없다', () => checks.devStartWiring(src.pdb, src.main, src.html));
-test('그림표⑤a: 추가는 형식(머리 글자, BitmapDecoder), 5MB, 사람마다 과제당 5장을 검사하고 관리자 검사가 없으며 커밋은 관문 재확인 한 곳, 모든 SQL 이 주인을 건다', () => checks.imageRules(src.sidb));
+test('그림표⑤a: 추가는 형식(머리 글자, BitmapDecoder), 5MB, 사람마다 과제당 1장을 검사하고 관리자 검사가 없으며 커밋은 관문 재확인 한 곳, 모든 SQL 이 주인을 건다', () => checks.imageRules(src.sidb));
 test('그림표⑤b: DB 가 끊기면 DOCX 그림은 사본으로, 추가는 파일 창 전에 DB 를 확인한다(파일, 클립보드 두 방법)', () => checks.offlineRules(src.sidb, src.mre));
 test('그림표⑥: 그림 명령과 exportMonthlyDocx 는 메인 창 전용이다(호스트와 웹 허용 목록 밖, case 한 줄씩)', () => checks.mainOnly(src.main, src.appwin, src.html, src.sidb));
 
@@ -357,12 +357,12 @@ test('변이SI9: 선진행 잠금 함수를 되살리면 ④ 가 실패한다', 
   const bad = mutate(src.html, 'function offAddMonths(ymd, n){', "function offEdApplySectionRule(){ ['offEdStart', 'offEdEnd', 'offEdDevStart'].forEach(id => {}); }\nfunction offAddMonths(ymd, n){");
   assert.throws(() => checks.devStartWiring(src.pdb, src.main, bad), /잠금\(offEdApplySectionRule\)이 되살아났다/);
 });
-test('변이SI10: 추가에서 과제당 5장 검사를 빼면 ⑤a 가 실패한다', () => {
+test('변이SI10: 추가에서 과제당 1장 검사를 빼면 ⑤a 가 실패한다', () => {
   const add = extractCsMember(src.sidb, 'public async Task<ScheduleImageReply> AddAsync(');
   assert.ok(add.includes('if (n >= Limits.MaxPerProject) throw new SiFail(Kind.Invalid, MsgTooMany);'), '변이 준비 실패');
   const bad = src.sidb.replace(/(public async Task<ScheduleImageReply> AddAsync\([\s\S]*?)                        if \(n >= Limits\.MaxPerProject\) throw new SiFail\(Kind\.Invalid, MsgTooMany\);\n/, '$1');
-  assert.notStrictEqual(bad, src.sidb, '변이 준비 실패: 추가의 5장 검사를 찾지 못했다');
-  assert.throws(() => checks.imageRules(bad), /과제당 5장을 검사하지 않는다/);
+  assert.notStrictEqual(bad, src.sidb, '변이 준비 실패: 추가의 1장 검사를 찾지 못했다');
+  assert.throws(() => checks.imageRules(bad), /과제당 1장을 검사하지 않는다/);
 });
 test('변이SI11: 그림 검사에서 5MB 상한을 빼면 ⑤a 가 실패한다', () => {
   const bad = mutate(src.sidb, '            if (bytes.Length > ScheduleImageDb.Limits.MaxBytes) throw new ArgumentException(ScheduleImageDb.MsgTooBig);\n            string mime = Sniff(bytes);',
@@ -399,4 +399,36 @@ test('변이SI16: 그림 명령을 관리 창 허용 목록에 넣으면 ⑥ 이
 test('변이SI17: exportMonthlyDocx 를 웹 열람 창 목록에 넣으면 ⑥ 이 실패한다', () => {
   const bad = mutate(src.html, "const PEERWIN_CMD = new Set(['peerWinReady',", "const PEERWIN_CMD = new Set(['exportMonthlyDocx','peerWinReady',");
   assert.throws(() => checks.mainOnly(src.main, src.appwin, bad, src.sidb), /웹의 PEERWIN_CMD 에 exportMonthlyDocx/);
+});
+
+// ══ 과제당 1장(2026-11-10, docs/MONTHLY-UX-V2.md 결정 8, 9) ══════════════════
+//  호스트 상한 1, 넘으면 '과제마다 1장' 문구. 웹 상수 RPTM_IMG_MAX 도 같은 값(웹이 먼저 막고 호스트가 다시 막는다).
+//  순서 바꾸기(scheduleImageMove)는 웹이 더 부르지 않지만 호스트 명령은 남는다. 1장에서는 seq 가 1로 잘리고
+//  이미 1..n 이면 아무것도 쓰지 않아 무해하다(Renumber).
+const onePer = {
+  host(sidb) {
+    const code = stripCsComments(sidb);
+    const max = /public const int MaxPerProject = (\d+);/.exec(code);
+    if (!max || max[1] !== '1') throw new Error('호스트 과제당 그림 상한이 1이 아니다: ' + (max && max[1]));
+    const msg = /internal const string MsgTooMany = "([^"]*)";/.exec(code);
+    if (!msg || !/과제마다 1장/.test(msg[1])) throw new Error('MsgTooMany 가 과제마다 1장 뜻이 아니다: ' + (msg && msg[1]));
+    const ren = extractCsMember(sidb, 'private static async Task Renumber(');
+    if (!/int to = Math\.Max\(1, Math\.Min\(order\.Count, move\.Value\.seq\)\) - 1;/.test(ren) || !/if \(same\) return;/.test(ren)) {
+      throw new Error('순서 바꾸기가 seq 를 1..n 으로 자르지 않거나 이미 맞을 때 쓰기를 건너뛰지 않는다(1장에서 무해하지 않다)');
+    }
+  },
+  webMatches(sidb, html) {
+    const host = /public const int MaxPerProject = (\d+);/.exec(stripCsComments(sidb));
+    const web = /const RPTM_IMG_MAX = (\d+);/.exec(html);
+    if (!web) throw new Error('웹 상수 RPTM_IMG_MAX 를 찾지 못했다');
+    if (!host || host[1] !== web[1]) throw new Error(`웹 RPTM_IMG_MAX(${web[1]})와 호스트 MaxPerProject(${host && host[1]})가 다르다`);
+  },
+};
+test('그림표⑤c: 호스트는 과제당 그림 1장(문구 과제마다 1장), 순서 바꾸기는 1장에서 무해하다', () => onePer.host(src.sidb));
+test('그림표⑤d: 웹 RPTM_IMG_MAX 와 호스트 MaxPerProject 가 같다(1)', () => onePer.webMatches(src.sidb, src.html));
+test('변이SI19: 상한을 5로 되돌리거나 문구를 옛것으로 두면 ⑤c 가 실패한다', () => {
+  assert.throws(() => onePer.host(mutate(src.sidb, 'public const int MaxPerProject = 1;', 'public const int MaxPerProject = 5;')), /1이 아니다/);
+  const msg = /internal const string MsgTooMany = "([^"]*)";/.exec(src.sidb)[1];
+  assert.throws(() => onePer.host(mutate(src.sidb, msg, '개발 일정 그림은 과제마다 5장까지 올릴 수 있습니다.')), /1장 뜻이 아니다/);
+  assert.throws(() => onePer.webMatches(src.sidb, src.html.replace(/const RPTM_IMG_MAX = \d+;/, 'const RPTM_IMG_MAX = 3;')), /다르다/);
 });

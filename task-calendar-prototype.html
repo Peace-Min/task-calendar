@@ -1247,111 +1247,13 @@ mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px;padding:0
 .s-badge{font-size:var(--fs-micro);padding:1px 6px;border-radius:var(--r-sm);background:var(--accent-soft);color:var(--accent-2);margin-left:6px;white-space:nowrap}
 .card-span,.card-recur{font-size:var(--fs-meta);color:var(--muted)}
 
-/* ---------- 보고서 모달이 쓰던 공용 조각(과제 내보내기 창이 아직 쓴다) + 취합 화면의 서식 ---------- */
+/* ---------- 보고서 모달이 쓰던 공용 조각(과제 내보내기 창이 아직 쓴다) ---------- */
 .rpt-presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
 .rpt-range input:disabled{opacity:.55;cursor:not-allowed}
 .rpt-range{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .rpt-range input[type=date]{flex:1;min-width:130px}
 /* 보고 유형은 role=tablist → 프리셋 버튼 배치를 밑줄 탭 배치로(같은 클래스지만 tablist일 때만) */
 /* 근태 묶음 = 그룹핑용 배경. accent-soft는 '동작/선택'에만(Batch A 규약) — 여기는 둘 다 아니라 중립 wash. */
-.rpt-opt-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
-/* 보고서 서식바 — 머리기호(index marker) + 들여쓰기(indent). 표시+복사 전용, 전역 1값(state에 영속). */
-/* 서식 컨트롤 외형 — .rpt-fmt 는 이제 격자 안의 스코프 클래스일 뿐(카드 아님, 2026-09-18) */
-/* ⚙옵션 격자(2026-09-18) — 라벨 열(고정) + 컨트롤 열. 카드·구분선 없이 정렬만으로 묶는다(테두리 두 겹 방지). */
-.rpt-optgrid{display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;column-gap:12px;row-gap:10px;margin-top:2px}
-.rpt-optgrid > .rpt-opt-lb{white-space:nowrap;align-self:center}   /* 한 줄 컨트롤(칩·머리기호·들여쓰기)과 세로 가운데 */
-.rpt-optgrid > .rpt-opt-lb.top{align-self:start;padding-top:4px}   /* 두 줄 컨트롤(표시)만 첫 줄 옆에 */
-.rpt-optgrid .rpt-ctl{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;min-width:0}
-.rpt-optgrid .rpt-checks{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding-top:2px}   /* 표시 옵션 둘은 세로 목록 — 레일 폭(≈300px)에서 가로로 두면 어차피 접힌다 */
-.rpt-optgrid .rpt-fmt-sel{flex:1 1 90px;min-width:0;width:auto}   /* 셀렉트는 남는 폭, 「직접」은 고정 — 한 줄에 둘 */
-.rpt-optgrid .rpt-fmt-custom{flex:0 0 56px}
-/* 포함 항목 — 체크박스를 칩으로: 켜진 것만 채워진 알약(세그먼트 .seg-b.active 와 같은 외형). input 은 시각적으로만 숨긴다(포커스·시험·저장 계약 유지). */
-.rpt-chips{display:flex;gap:6px;flex-wrap:wrap}
-.rpt-chip{position:relative;display:inline-flex;align-items:center;cursor:pointer;user-select:none}
-.rpt-chip input{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none}
-.rpt-chip span{display:inline-block;padding:4px 11px;border:1px solid var(--line-2);border-radius:999px;font-size:var(--fs-meta);line-height:1.3;color:var(--muted);background:var(--bg);transition:background .12s,color .12s,border-color .12s}
-.rpt-chip:hover span{border-color:var(--accent);color:var(--text)}
-.rpt-chip input:checked + span{background:var(--accent-soft);border-color:var(--accent);color:var(--text);font-weight:600}
-.rpt-chip input:focus-visible + span{outline:2px solid var(--accent);outline-offset:1px}
-.rpt-fmt{display:contents}   /* 옛 서식 카드 — 이제 셀렉트·스텝퍼 외형 규칙의 스코프로만 남는다 */
-/* 셀렉트 외형은 카드(.rpt-fmt) 안이든 레일 직속 글꼴 행이든 동일해야 한다 */
-.rpt-fmt .rpt-fmt-sel,.rpt-fontrow .rpt-fmt-sel{border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 8px;font-size:var(--fs-meta);font-family:inherit;background:var(--panel);color:var(--text)}
-.rpt-fmt .rpt-fmt-custom{width:56px;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 7px;font-size:var(--fs-meta);font-family:inherit;background:var(--panel);color:var(--text)}
-.rpt-fmt .rpt-fmt-custom:focus,.rpt-fmt .rpt-fmt-sel:focus,.rpt-fontrow .rpt-fmt-sel:focus{outline:2px solid var(--accent);outline-offset:-1px}
-.rpt-fmt .rpt-fmt-stepper{display:inline-flex;align-items:center;gap:4px}
-.rpt-fmt .rpt-fmt-step{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--panel);color:var(--text);cursor:pointer;font-size:14px;line-height:1}
-.rpt-fmt .rpt-fmt-step:hover{border-color:var(--accent);color:var(--accent)}
-.rpt-fmt .rpt-fmt-ind{min-width:28px;text-align:center;font-size:var(--fs-meta);color:var(--text);font-variant-numeric:tabular-nums}
-.rpt-guard{padding:26px 18px;text-align:center;color:var(--muted);font-size:var(--fs-body);line-height:1.6;border:1px dashed var(--line-2);border-radius:var(--r-md)}
-.rpt-summary{font-size:var(--fs-meta);color:var(--muted);margin-top:8px;min-height:16px}
-/* 미리보기 글자 크기(#rptFontSize) — 미러 안의 모든 글자는 자기 --fs-* 토큰을 직접 쓰기 때문에 #rptOut의
-   font-size 상속만으로는 하나도 안 커진다(설정이 아무 일도 안 하는 것처럼 보였던 원인). 그래서 미러 전용
-   배율 --m-scale 을 두고 토큰에 곱한다. em 이 아니라 '토큰 × 무단위 배율'인 이유: .rcard-tasks > .rtask-desc
-   처럼 font-size를 잡은 요소가 중첩돼 있어 em 이면 배율이 겹쳐 곱해진다(안쪽일수록 과하게 작아짐).
-   배율은 syncReportFontUI()가 인라인으로 넣고, 기본(0)이면 지워 아래 1 로 되돌아간다 = 기존 픽셀과 동일. */
-#rptOut.rpt-mirror{--m-scale:1;width:100%;margin-top:8px;display:flex;flex-direction:column;gap:7px;background:transparent;border:none;padding:0}
-.rpt-mirror .rcard{border:1px solid var(--line);border-radius:var(--r-md);padding:8px 11px;background:var(--panel)}
-.rpt-mirror .rcard-empty{opacity:.6}
-.rpt-mirror .rcard-head{display:flex;align-items:center;gap:7px}
-.rpt-mirror .rc-dot{width:8px;height:8px;border-radius:50%;flex:none}
-.rpt-mirror .rcard-nm{font-size:calc(var(--m-scale) * var(--fs-body));font-weight:600;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rpt-mirror .rcard-empty .rcard-nm{font-weight:400}
-/* 폭도 같이 키운다 — 글자만 키우면 "23.5"가 54px 안에서 잘린다(숫자 입력이라 줄바꿈 도피처가 없다). */
-.rpt-mirror .rcard-tasks{font-size:calc(var(--m-scale) * var(--fs-meta));color:var(--text);line-height:1.7;margin:5px 0 0;padding-left:13px;word-break:keep-all;overflow-wrap:anywhere}
-/* 일간 보고서 줄은 읽기 전용이다(docs/REPORT-EDIT.md §2.2, 2026-10-07). 고치기는 글 편집 보기에서 하고, 캘린더 기록을 바꾸던 줄 ✎/✕ 는 없앴다. */
-.rpt-mirror .rcard-tasks .rtask{display:flex;align-items:flex-start;gap:4px}
-.rpt-mirror .rtask .rtask-mk{flex:none;color:var(--muted);white-space:pre;font-variant-numeric:tabular-nums}
-.rpt-mirror .rtask .rtask-t{flex:1;min-width:0;word-break:keep-all;overflow-wrap:anywhere}
-.rpt-mirror .rtask .rtask-main{flex:1;min-width:0}
-.rpt-mirror .rtask .rtask-desc,.rpt-mirror .rtask-roline .rtask-desc{margin-top:2px;color:var(--muted);font-size:calc(var(--m-scale) * var(--fs-meta));line-height:1.45;word-break:keep-all;overflow-wrap:anywhere}
-.rpt-mirror .rtask-roline{display:flex;align-items:flex-start;gap:4px}   /* 주간 읽기전용 줄도 마커(.rtask-mk)+본문(.rtask-main) 구조 → 설명·dayNote가 제목 아래 정렬 */
-.rpt-mirror .rcard-tasks .rtask-body{white-space:pre-wrap;font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);line-height:1.5;margin:0 0 3px;padding-left:14px;word-break:keep-all;overflow-wrap:anywhere}
-/* 보고서: 기간 할일 날짜별 dayNote 라인. 편집(✎)은 주간만 연다(일간은 읽기 전용, REPORT-EDIT §5). 제목 아래 한 단계 들여쓴 라인. */
-.rpt-mirror .rcard-note{font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);margin-top:5px;display:inline-block}
-/* 일간 글 편집(docs/REPORT-EDIT.md §2). 카드 X(이 보고서에서 빼기)는 카드를 지우지 않고 그 자리에 흐리게 남긴다(카드 순서, 수 불변). */
-/* 시간 칸과 X, 그리고 "이 보고서에서 뺌 되돌리기" 는 격자 한 칸에서 맞바꾼다. 감춘 쪽도 높이는 남겨 카드 높이가 바뀌지 않는다(폭만 내준다). */
-.rpt-mirror .rcard-free{white-space:pre-wrap}   /* 고친 글은 줄바꿈과 들여쓰기 그대로 */
-/* 글 편집 보기: 보낼 글 전체가 문서처럼 이어진다. 회색 머리 줄은 잠겨 있고(카드에서 정함) 그 아래 내용 칸만 고친다. */
-/* 보고서 묶음 카드(REPORT-GROUP §4): 묶인 과제는 대상 카드 안의 들여 쓴 작은 카드, 대상 머리에는 합계 */
-/* 주간 글 편집(docs/WEEKLY-EDIT.md §3): 카드의 이번 주 시간, 회사 주간보고 작성 폼 모양(왼쪽 회색 항목 이름, 오른쪽 값) */
-.rpt-mirror .rwf{flex:none;display:grid;grid-template-columns:110px minmax(0,1fr);border:1px solid var(--line-2);border-radius:var(--r-md);overflow:hidden;background:var(--panel)}   /* flex:none: 스크롤하는 미리보기 안에서 줄어들어 잘리지 않게 */
-.rpt-mirror .rwf-info{color:var(--accent-2)}   /* 회사 폼처럼 과제투입시간 이름만 파랗게(안내 칸) */
-/* 일간 미리보기 머리(REPORT-EDIT §2.1): 고친 과제 수, 임시 저장 시각, 보기 전환 [카드][글 편집]. 미러 밖이라 배율을 받지 않는다. */
-/* netcus 일간보고 병합 미리보기(읽기전용) — 보고서 모달 전용 */
-.rpt-mirror .rnc-loading{display:flex;align-items:center;gap:8px;padding:22px 14px;color:var(--muted);font-size:calc(var(--m-scale) * var(--fs-meta));flex-wrap:wrap}
-.rpt-mirror .rnc-loading .ic{width:15px;height:15px;flex:none;animation:spin .8s linear infinite}
-/* 읽기 진행바(#rncProg) — __netcusStatus가 채움/텍스트 갱신. total>0=결정형(%), total=-1=무한형(indet) */
-.rpt-mirror .rnc-progbar{flex-basis:100%;height:6px;border-radius:99px;background:var(--accent-soft);overflow:hidden;margin-top:8px}
-.rpt-mirror .rnc-progfill{height:100%;background:var(--accent);border-radius:99px;transition:width .25s ease;width:4%}
-.rpt-mirror .rnc-progfill.indet{width:35%!important;animation:ncIndet 1.1s ease-in-out infinite}
-@keyframes ncIndet{0%{margin-left:-35%}100%{margin-left:100%}}
-/* 읽기 실패 날 danger 배너(무음 손실 가시화) */
-.rpt-mirror .rnc-fail{font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--danger-text);background:var(--danger-soft);border:1px solid var(--danger);border-radius:var(--r-sm);padding:5px 9px;margin-top:6px;display:flex;align-items:center;gap:6px}
-.rpt-mirror .rnc-banner{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);background:var(--accent-soft);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:6px 9px}
-.rpt-mirror .rnc-banner-t{flex:1;min-width:0}
-.rpt-mirror .rnc-at{opacity:.8}
-.rpt-mirror .rnc-refresh{flex:none;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--panel);color:var(--accent-2);font-family:inherit;font-size:calc(var(--m-scale) * var(--fs-micro));padding:3px 8px;cursor:pointer}
-.rpt-mirror .rnc-refresh:hover{border-color:var(--accent);color:var(--accent)}
-.rpt-mirror .rnc-badge{margin-left:6px;font-size:calc(var(--m-scale) * var(--fs-micro));font-weight:700;color:var(--accent-2);background:var(--accent-soft);border-radius:999px;padding:1px 6px;white-space:nowrap;flex:none}
-.rpt-mirror .rnc-hhint{margin-left:6px;font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);white-space:nowrap;flex:none}
-.rpt-mirror .rnc-uncat{border-style:dashed}
-.rpt-mirror .rnc-uline{margin:1px 0}
-.rpt-mirror .rnc-why{color:var(--muted);opacity:.7;font-size:calc(var(--m-scale) * var(--fs-micro))}
-.rpt-mirror .rnc-guard .rnc-guard-act{margin-top:10px}
-/* netcus 주간보고 병합 — 과제 카드 안 주차별 소제목 + 진행사항 라인 */
-.rpt-mirror .rncw-wk{margin:7px 0 2px;font-size:calc(var(--m-scale) * var(--fs-micro));font-weight:600;color:var(--accent-2)}
-.rpt-mirror .rncw-lines{padding-left:13px;white-space:pre-wrap}
-/* 주차별↔평면 표시형식 = 저장되는 값 → 공용 .seg(seg-micro). 전용 규칙 없음 */
-/*  마우스가 없는 화면: ⋯ 와 X 는 늘 보인다. 터치는 ⠿ 에서만 끌기 시작(줄은 그대로 스크롤) */
-/* 내용 출처 = 저장되는 값 → 공용 .seg. 전체폭 3등분은 기본 flex:1 1 0가 이미 한다(전용 규칙 없음) */
-.rpt-seg .seg-b{padding:5px 6px}   /* 3열 라벨이 길어 좌우 패딩만 좁힘 */
-/* ⚙ 옵션 — 좁은 폭 접이(포함 항목·서식). 넓은 폭은 항상 펼침(@media 900). */
-/* 글꼴 행 — 레일 직속(⚙옵션 밖). 기간 취합에서만 보인다(setReportMode 가 display 를 정한다 · 2026-09-18).
-   테두리·배경 없음: '서식' 카드와 같은 외형을 주면 둘째 카드로 읽혀 다른 설정처럼 보인다.
-   좁은 레일(380px)에서 라벨과 셀렉트가 떨어져 잘리지 않게 근태 행과 같은 2열 그리드를 쓴다. */
-.rpt-fontrow{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:7px 8px;margin-top:10px}
-.rpt-fontrow .rpt-fmt-sel{width:100%}
-.rpt-fontrow .git-hint{grid-column:1 / -1;font-size:var(--fs-micro);color:var(--muted);line-height:1.45}
 .lnk{border:none;background:none;color:var(--accent-2);cursor:pointer;font:inherit;padding:0;text-decoration:underline}
 /* 라벨행 우측 바로가기 링크 — 칩 아닌 깔끔한 액센트 텍스트 */
 .lbl-row .lnk{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-meta);font-weight:600;text-decoration:none;white-space:nowrap}
@@ -1464,6 +1366,8 @@ mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px;padding:0
 .shotViewer-head{height:44px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid var(--line);font-size:var(--fs-body);font-weight:700;color:var(--text)}
 .shotViewer-head .spacer{flex:1}
 .shotViewer-head button{border:none;background:transparent;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:4px 8px}
+.shotViewer-foot{display:flex;gap:6px;justify-content:flex-end;padding:8px 12px;border-top:1px solid var(--line)}
+.shotViewer[data-rptm] .shotViewer-card img{max-height:calc(92vh - 96px);min-width:240px;min-height:120px}
 /* 변경사항(패치노트) 모달 — 온디맨드(도움말 링크로만 열림) */
 .patch-body{max-height:64vh}
 .patch-ver{display:flex;align-items:baseline;gap:8px;margin:16px 0 7px}
@@ -2289,12 +2193,10 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
   .x{min-width:32px;min-height:32px;padding:2px 7px}
   /* 체크 아이콘의 '보이는 크기'는 그대로 두고 패딩으로만 히트영역 확보 → 음수 마진으로 행 레이아웃은 불변 */
   .todo-check{padding:8px;margin:-8px}   /* 16+8·2=32 히트, 사방 -8로 마진박스는 다시 16 → 행 배치·간격 불변 */
-  .rpt-fmt .rpt-fmt-step{width:32px;height:32px}
   /* 위 하한에서 빠져 있던 나머지 — 체크박스 라벨(17px)·순서 ▲▼(20.3px)·공수 입력(23px)도 같은 32px로.
      체크박스는 입력 크기(15px)를 그대로 두고 라벨 행만 키운다 — 아이콘 크기가 커지면 폼 밀도가 흔들린다. */
   .check{min-height:32px}
   .cust-row .code-ord .btn{min-height:32px}
-  .rpt-mirror .rcard-back,.rpt-mirror .rdoc-revert,.rpt-mirror .rdoc-resetall{display:inline-flex;align-items:center;min-height:32px;padding:0 4px}
   /* 시트 폭에선 좌우 20px 거터가 3버튼 푸터(닫기+전송+복사=282px)를 280px 안에 못 담아 1.8px 차이로 접혔다.
      푸터만 16px 거터로 줄여 한 줄을 지킨다(버튼 크기·간격 8px 접촉 규칙은 건드리지 않는다). */
   .modal-foot{padding-left:16px;padding-right:16px}
@@ -2937,60 +2839,52 @@ html.at-idle #atEd,html.at-idle #awEd,html.at-idle #awList{ visibility:hidden } 
    목록(#awList)은 근태 달력 자리에, 편집 화면(#awEd)은 일간 보고 화면(.at-ed)의 틀을 그대로 쓴다(머리, 왼쪽, 오른쪽 패널, 바닥). */
 .at-kind{flex:none}
 .aw-listv{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:10px 12px 8px}
-/* ===== 근태 탭 취합(docs/ATTEND-SUMMARY.md): 왼쪽 설정, 끌개(.at-split, 일간 주간 화면과 같은 폭 변수 --atpw), 오른쪽 미리 보기 ===== */
+/* ===== 근태 탭 취합(docs/ATTEND-SUMMARY.md, 시안 v4, v6 docs/MONTHLY-UX-V2.md 결정 14~25): 윗줄(.as-top)은 불러오기만, 그 아래 두 칸(.as-main)
+   = 왼쪽 상자(늘 보임)와 오른쪽 결과 칸(.as-out: 머리 줄, 문서 미리 보기). 날짜는 글자 단추(.as-dt)와 띄움 칸 하나(.as-pop). */
 .as-view{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:10px 12px 8px}
-.as-main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(280px,min(var(--atpw,360px),60%)) 6px minmax(0,1fr)}
-.as-left{overflow:auto;min-width:0;min-height:0;padding:2px 14px 12px 2px}
-.as-right{overflow:auto;min-width:0;min-height:0;padding:0 2px 12px 14px;display:flex;flex-direction:column;gap:8px}
+.as-top,.as-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;flex:none;min-width:0}
+.as-top{padding:8px 2px;border-bottom:1px solid var(--line)}
+.as-top .seg,.as-top .btn,.as-head .seg,.as-head .btn{flex:none}
+.as-sp{flex:1 1 0;min-width:0}
 .as-view input[type=date],.as-view select{font:inherit;font-size:var(--fs-body);border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 8px;color:var(--text);background:var(--panel);height:32px}
-.as-sec{margin-bottom:14px}
-.as-sec > h3{font-size:var(--fs-meta);color:var(--muted);font-weight:600;margin:0 0 6px}
-.as-dates{display:flex;align-items:center;gap:6px}
-.as-dates input[type=date]{flex:1 1 0;min-width:0;max-width:148px}
+.as-view input[type=date]{width:140px;min-width:0}
 .as-sep{color:var(--muted);flex:none}
-.as-fmt > summary{cursor:pointer;font-size:var(--fs-meta);color:var(--muted);font-weight:600;margin-bottom:6px}
-.as-fmt > summary:focus-visible{outline:2px solid var(--accent)}
-.as-loadrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.as-loadrow .rptm-hint,.as-loadrow .rptm-msg{flex-basis:100%}
-/* 문서 설정 띠(2026-11-03): 결과 형태가 월간 보고 문서일 때만, 오른쪽 탭 줄 바로 아래. 머리 줄을 누르면 접히고 접혀도 요약이 보인다. 시안 dist/proto/monthly-settings-v2.html */
-.as-band{flex:none;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md)}
-.as-bandh{display:flex;align-items:center;gap:10px;width:100%;padding:8px 12px;border:0;background:transparent;font:inherit;color:var(--text);text-align:left;cursor:pointer;border-radius:var(--r-md)}
-.as-bandh:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.as-bandh b{font-size:var(--fs-emph);flex:none}
-.as-bandsum{flex:1 1 0;min-width:0;color:var(--muted);font-size:var(--fs-meta);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.as-bandtg{flex:none;margin-left:auto;color:var(--accent-2);font-size:var(--fs-meta)}   /* --accent-2: 포레스트의 --accent 는 흰 바탕 작은 글자에서 AA 미달(2026-11-03 화면 점검 V8) */
-.as-bandb{border-top:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:10px;min-width:0}
-.as-line1{display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap}
-.as-fld{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
-.as-band .rptm-ctl{flex-wrap:wrap;min-width:0}   /* 좁은 폭에서 계획 날짜 둘과 ↺ 가 한 줄을 넘으면 줄바꿈(2026-11-03 화면 점검 V1, 320px 에서 86px 넘침) */
-.as-band input[type=date]{width:136px;flex:0 1 136px;min-width:0}
-.as-band .rptm-h{margin:0 0 6px}
-.as-band .rptm-etc{margin-top:0}
-.as-band .rptm-unid{margin-top:0}
-/* 과제 격자: 칸 폭 230px 이상으로 자동 채움, 높이 약 132px 를 넘기면 격자 안에서만 스크롤. 그림 서랍을 연 칸은 한 줄을 다 쓴다 */
-.as-band .rptm-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px;max-height:132px;overflow:auto;border:0;border-radius:0;align-content:start}
-.as-band .rptm-list:has(.rptm-drawer:not(.hidden)){max-height:none}
-.as-band .rptm-it{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--dim-bg)}
-.as-band .rptm-it:first-child{border-top:1px solid var(--line)}
-.as-band .rptm-it:not(.off){border-color:var(--accent);background:var(--accent-soft)}
-.as-band .rptm-it:has(.rptm-drawer:not(.hidden)){grid-column:1 / -1}
-.as-band .rptm-row{min-height:0;padding:5px 8px}
-.as-band .rptm-row:hover{background:transparent}
-.as-band .rptm-it .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal;display:block}
-.as-band .rptm-row .check{display:flex;align-items:center;gap:8px}
-.as-rh{display:flex;align-items:center;gap:10px;flex:none}
-.as-rh .seg,.as-rh .btn,.as-docact{flex:none}
-.as-sub{font-size:var(--fs-meta);color:var(--muted);min-width:0;flex:1 1 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.as-docact{display:inline-flex;gap:8px}
-.as-pane{display:flex;flex-direction:column;min-width:0}
-.as-view .rptm-list label,.as-view .rptm-etc-cats label{margin:0;font-weight:400}
-@media (max-width:760px){
+.as-top .rptm-msg{flex:0 1 auto;min-width:0}
+.as-top .rptm-msg.ok{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.as-top .rptm-msg .ic{width:14px;height:14px}
+.as-docact{display:inline-flex;gap:8px;flex:none}
+.as-hd{display:inline-flex;align-items:center;gap:8px 12px;flex-wrap:wrap;min-width:0}
+.as-head .as-wk{display:inline-flex;align-items:center;gap:5px;margin:0;font-weight:400;white-space:nowrap;flex:none;cursor:pointer}
+/* 글자 단추: 짧은 이름(옅게) + 값 + ▾, 테두리 없음 */
+.as-dt{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 8px;border:0;border-radius:var(--r-sm);background:none;color:var(--text);cursor:pointer;font:inherit;font-size:var(--fs-body);flex:none;white-space:nowrap}
+.as-dt:hover,.as-dt[aria-expanded="true"]{background:var(--accent-soft)}
+.as-dt:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.as-dt .k{color:var(--muted);font-size:var(--fs-meta)}
+.as-dt b{font-weight:600}
+.as-dt .car{color:var(--muted);font-size:10px}
+/* 띄움 칸 하나: 누른 단추 아래에 붙는다(asPopPlace 가 left, top 을 정한다) */
+.as-pop{position:fixed;z-index:30;background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:0 8px 24px rgba(0,0,0,.16);padding:10px 12px}
+.as-pk{display:inline-flex;align-items:center;gap:6px}
+.as-main{flex:1;min-height:0;min-width:0;padding-top:10px;display:grid;grid-template-columns:minmax(300px,400px) minmax(0,1fr);gap:12px;align-items:stretch}
+.as-out{display:flex;flex-direction:column;min-width:0;min-height:0;flex:1;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
+.as-head{padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg)}
+.as-pane{display:flex;flex-direction:column;min-width:0;flex:1;min-height:0}
+#asDoc{padding:10px}
+.as-boxes{overflow:auto;min-height:0;min-width:0;scrollbar-gutter:stable}
+.as-box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:10px;min-width:0}
+.as-boxh{display:flex;align-items:center;gap:6px;padding:8px 12px;font-weight:700;border-bottom:1px solid var(--line)}
+.as-view .rptm-list label{margin:0;font-weight:400}
+/* 읽기 전 빈 자리: 아이콘만(글 없음) */
+.as-blank{display:flex;align-items:center;justify-content:center;height:200px;color:var(--line-2)}
+.as-blank .ic{width:56px;height:56px;stroke-width:1.2}
+.as-paperblank{flex:1;height:auto;min-height:280px}
+.as-box.as-wait{display:none}
+#asDoc .rptm-pv{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+#asDoc .rptm-pvwrap{flex:1;min-height:0}
+@media (max-width:900px){
   .as-main{display:block;overflow:auto}
-  .as-split{display:none}
-  .as-rh{flex-wrap:wrap}
-  .as-sub{flex:1 1 100%;order:3}
-  .as-left,.as-right{overflow:visible;padding:0}
-  .as-right{margin-top:12px}
+  .as-boxes{overflow:visible}
+  #asDoc .rptm-pv{overflow:visible}
 }
 .aw-ltitle{font-size:var(--fs-title);padding:0 4px}
 .aw-cnt{font-size:var(--fs-meta);color:var(--muted)}
@@ -3161,89 +3055,45 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
   .at-grid{grid-auto-rows:minmax(84px,1fr)}
   .at-day{padding:2px 3px}
 }
-/* ===== 월간 보고 문서(docs/MONTHLY-REPORT-PLAN.md §5). 새 규칙은 모두 .rptm- 와 #rptm* 다 =====
-   2026-10-23 결정: 모으기와 미리 보기만 한다(고치는 칸 없음). 개발 일정 그림은 과제 고르기 줄에서 다룬다.
-   2026-11-03: 보고서 창에서 근태 탭 [취합]으로 옮겼다. 설정은 오른쪽 탭 줄 아래 띠(#asBand), 미리 보기는 오른쪽(#rptmPv). 자리 규칙은 아래 .as-* 이다. */
-.rptm-note{margin-bottom:12px;padding:8px 12px;border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--accent-soft);color:var(--accent-2);font-size:var(--fs-body);line-height:1.5}
-/* 앱의 폼 라벨 규칙(.modal label: 위 16px, 아래 6px, 굵게 600, display:block)이 이 탭의 과제 줄과 기타 칩에도 걸려 줄 사이가 벌어졌다
-   (2026-10-23 시안 docs/prototypes/monthly-report-layout.html 이 찾은 원인). 전역 규칙은 그대로 두고 이 탭 안의 라벨만 되돌린다. */
-/* 오른쪽 = 문서 설정 띠(과제와 그림 서랍, 기타, 미식별)와 문서 미리 보기(칸 폭에 맞춰 줄임, rptMFit). 왼쪽은 기간, 출처, 서식, 읽어 오기만. */
+/* ===== 월간 보고 문서(docs/MONTHLY-REPORT-PLAN.md §5, 시안 v2 docs/MONTHLY-UX-V2.md). 새 규칙은 모두 .rptm- 와 #rptm* 다 =====
+   2026-10-23 결정: 모으기와 미리 보기만 한다(고치는 칸 없음). 개발 일정 그림은 과제 줄의 작은 칸 하나(과제당 1장, 2026-11-10).
+   자리 규칙은 위 .as-* 이다. */
+.rptm-note{margin-bottom:8px;padding:6px 10px;border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--accent-soft);color:var(--accent-2);font-size:var(--fs-meta);line-height:1.5}
 .rptm-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted);white-space:nowrap}
-.rptm-ctl{display:flex;align-items:center;gap:4px;min-width:0}
-.rptm-ctl .btn.sm{height:32px}
-.rptm-ctl .btn.primary{margin-left:auto}
 .rptm-sep{color:var(--muted);flex:none}
-.rptm-ib{flex:none;width:30px;height:30px;padding:0;justify-content:center;font-size:var(--fs-body)}
-.rptm-name{font-weight:700;margin-left:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.rptm-name small{font-weight:400;color:var(--muted);font-size:var(--fs-meta);margin-right:4px}
-.rptm-hint{font-size:var(--fs-meta);color:var(--muted);line-height:1.5}
-.rptm-hint:empty{display:none}
 .rptm-cnt{font-size:var(--fs-meta);font-weight:400;color:var(--muted);white-space:nowrap}
-.rptm-i{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--ctl-border);color:var(--muted);font-size:10px;font-weight:700;font-style:normal;cursor:help;flex:none}
-.rptm-tip{margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-meta);font-weight:400;color:var(--muted);min-width:0;cursor:help}
-.rptm-h{display:flex;align-items:center;gap:8px;font-size:var(--fs-emph);font-weight:700;margin:14px 0 6px}
-/* 과제 목록: 체크, 기록 없음 표시, 그림 단추. 순서는 내 과제 순서 그대로(이 탭에서 바꾸지 않는다) */
-.rptm-list{border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
-.rptm-it{border-top:1px solid var(--line);min-width:0}
+/* 과제 줄: 체크, 이름(기록 없으면 흐리게, 넣지 않으면 줄), 그림 칸. 순서는 내 과제 순서 그대로(이 화면에서 바꾸지 않는다) */
+.rptm-it{display:flex;align-items:center;gap:10px;padding:6px 12px;border-top:1px solid var(--line);min-height:46px;min-width:0}
 .rptm-it:first-child{border-top:none}
-.rptm-row{display:flex;align-items:center;gap:8px;padding:6px 10px;min-height:42px;min-width:0}
-.rptm-row:hover{background:var(--dim-bg)}
-.rptm-row .check{flex:1 1 auto;min-width:0}
-.rptm-it .nm{min-width:0;overflow-wrap:anywhere}
-.rptm-it.off .nm{color:var(--muted)}
-.rptm-imgtog{flex:none}
-.rptm-none{font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;flex:none}
-.rptm-imgbtn{flex:none;padding:3px 8px;font-size:var(--fs-meta);white-space:nowrap}
-.rptm-imgbtn.has{color:var(--accent-2);border-color:currentColor}
-.rptm-imgbtn.open{background:var(--accent-soft)}
-.rptm-imgbtn.warn{color:var(--warn-text);border-color:currentColor}
-/* 그림 서랍(과제 줄 아래로 펼침): 그림 카드(번호, 앞뒤, 삭제)와 넣기 칸 */
-.rptm-drawer{background:var(--dim-bg);border-top:1px dashed var(--line-2);padding:8px 10px 10px 32px}
-.rptm-dr-h{display:flex;align-items:center;gap:8px;font-size:var(--fs-meta);font-weight:700;color:var(--muted);margin-bottom:6px}
-.rptm-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px}
-.rptm-card{margin:0;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel);padding:4px;min-width:0}
-.rptm-card .ph{position:relative;height:56px;background:var(--rptm-paper);border:1px solid var(--line);border-radius:4px;overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--faint-text);font-size:10px}
-.rptm-card .ph img{width:100%;height:100%;object-fit:cover;display:block}
-.rptm-card .no{position:absolute;left:3px;top:3px;background:var(--panel);color:var(--text);border-radius:4px;font-size:10px;font-weight:700;padding:0 4px;border:1px solid var(--line-2)}
-.rptm-card figcaption{display:flex;gap:2px;margin-top:4px;align-items:center}
-.rptm-card figcaption .grow{flex:1}
-.rptm-card .btn{padding:1px 6px;font-size:var(--fs-micro)}
-.rptm-addc{border:1px dashed var(--ctl-border);border-radius:var(--r-sm);display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:4px;padding:6px;min-height:88px}
-.rptm-addc .btn{padding:2px 6px;font-size:var(--fs-micro);justify-content:center}
-.rptm-addc span{font-size:10px;color:var(--muted);text-align:center}
+.rptm-it .check{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0}
+.rptm-it .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rptm-it.norec .nm{color:var(--muted)}
+.rptm-it.off .nm{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line-2)}
+/* 그림 칸(과제당 1장): 비면 그림 아이콘 단추, 있으면 썸네일(누르면 크게 보기), 마우스를 올리면 ✕ */
+.rptm-slot{position:relative;width:84px;height:34px;flex:none;border:1px dashed var(--ctl-border);border-radius:5px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:var(--dim-bg);padding:0;cursor:pointer;overflow:hidden;font:inherit}
+.rptm-slot:hover:not(:disabled),.rptm-slot:focus-visible{border-color:var(--accent);color:var(--accent-2)}
+.rptm-slot:disabled{cursor:default;opacity:.55}
+.rptm-slot.warn{border-color:var(--warn-text);color:var(--warn-text)}
+.rptm-slot .ic{width:16px;height:16px}
+.rptm-slot.has{border-style:solid;border-color:var(--line-2);cursor:default}
+.rptm-slot .z{display:block;width:100%;height:100%;border:0;padding:0;margin:0;background:var(--rptm-paper);cursor:zoom-in}
+.rptm-slot .z img{display:block;width:100%;height:100%;object-fit:cover}
+.rptm-slot .x{position:absolute;top:1px;right:1px;width:16px;height:16px;border:0;border-radius:3px;background:var(--panel);color:var(--danger-text);font-size:11px;line-height:16px;padding:0;cursor:pointer;display:none}
+.rptm-slot.has:hover .x,.rptm-slot.has:focus-within .x{display:block}
 .rptm-msg{font-size:var(--fs-meta);color:var(--danger-text);line-height:1.5;overflow-wrap:anywhere}
 .rptm-msg:empty{display:none}
 .rptm-msg.ok{color:var(--ok)}
 .rptm-msg.info{color:var(--warn-text)}
-.rptm-drawer .rptm-msg{margin-top:6px}
-/* 기타 표: 처음은 한 줄 요약(모두 넣음), 고르기를 누르면 칩 */
-.rptm-etc{margin-top:12px;border:1px solid var(--line);border-radius:var(--r-md);padding:8px 10px}
-.rptm-etc-h{display:flex;align-items:center;gap:8px;font-size:var(--fs-emph);font-weight:700}
-.rptm-etc-h .lnk{margin-left:auto;font-size:var(--fs-meta);font-weight:400}
-.rptm-etc-cats{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-/* 미식별 항목(주간보고 출처에서 내 과제와 맞지 않은 [과제]). 접기, 줄마다 넣을 곳 콤보(2026-11-10) */
-.rptm-unid{margin-top:12px;border:1px solid var(--line);border-left:3px solid var(--warn-text);border-radius:var(--r-md)}
-.rptm-unid > summary{cursor:pointer;display:flex;align-items:center;gap:8px;padding:8px 10px;font-weight:700;font-size:var(--fs-body);list-style:none}
-.rptm-unid > summary::-webkit-details-marker{display:none}
-.rptm-unid > summary::before{content:"▸";color:var(--muted);font-size:11px}
-.rptm-unid[open] > summary::before{content:"▾"}
-.rptm-unid > summary:focus-visible{outline:2px solid var(--accent)}
-.rptm-unid .git-hint{display:block;padding:0 10px 8px 24px}
-.rptm-badge{display:inline-block;font-size:var(--fs-micro);font-weight:700;border-radius:999px;padding:1px 8px;border:1px solid var(--line-2);color:var(--muted);white-space:nowrap;flex:none}
-.rptm-ui{border-top:1px solid var(--line)}
-.rptm-ur{display:flex;align-items:flex-start;border-top:1px solid var(--line)}
-.rptm-ur > .rptm-ui{flex:1;min-width:0;border-top:0}
-.rptm-ur > select{flex:none;max-width:200px;height:28px;margin:3px 10px 3px 0;padding:0 4px}
-.rptm-ui > summary{cursor:pointer;display:flex;gap:8px;align-items:baseline;padding:6px 12px 6px 24px;font-size:var(--fs-body);min-width:0}
-.rptm-ui > summary b{flex:none;overflow-wrap:anywhere}
-.rptm-ui > summary span{color:var(--muted);font-size:var(--fs-meta);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.rptm-ui > summary:focus-visible{outline:2px solid var(--accent)}
-.rptm-ui .tx{margin:0 12px 8px 24px;padding:6px 8px;border-radius:4px;background:var(--dim-bg);white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--fs-meta);max-height:220px;overflow:auto}
-.rptm-empty{padding:18px;text-align:center;color:var(--muted);font-size:var(--fs-body);border:1px dashed var(--line-2);border-radius:var(--r-md)}
+/* 미식별 항목(주간보고의 [과제] 가운데 내 과제와 맞지 않은 것): 배지 n 또는 k/n, 줄마다 넣을 곳 콤보, 첫 줄은 풍선 */
+.rptm-badge{display:inline-block;font-size:var(--fs-micro);font-weight:700;border-radius:999px;padding:0 7px;border:1px solid currentColor;color:var(--warn-text);white-space:nowrap;flex:none}
+.rptm-badge.done{color:var(--accent-2)}
+.rptm-ur{display:flex;align-items:center;gap:8px;padding:5px 12px;border-top:1px solid var(--line);min-width:0}
+.rptm-ur:first-of-type{border-top:0}
+.rptm-ur .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:var(--fs-meta)}
+.rptm-ur.set .t{color:var(--accent-2)}
+.rptm-ur > select{flex:none;max-width:160px;height:28px;padding:0 4px}
+.rptm-empty{padding:18px;text-align:center;color:var(--muted);font-size:var(--fs-body)}
 /* 오른쪽 미리 보기: 종이 폭 1000px 을 칸 폭에 맞춰 줄인다(--fz, rptMFit) */
-.rptm-pvh{display:flex;align-items:center;gap:8px;font-size:var(--fs-emph);font-weight:700;margin-bottom:6px}
-.rptm-pvh .rptm-cnt:last-child{margin-left:auto}
-.rptm-pv > .rptm-empty{margin-bottom:8px}
 .rptm-pvwrap{overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:10px;max-width:100%}
 .rptm-sheet{background:var(--rptm-paper);color:var(--rptm-ink);width:100%;max-width:1123px;min-width:880px;margin:0 auto;box-shadow:0 2px 10px rgba(0,0,0,.18);
   padding:56px 64px 56px 80px;font-family:'Malgun Gothic','맑은 고딕',sans-serif;font-size:10pt;line-height:1.45;word-break:keep-all}
@@ -3254,10 +3104,17 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
 .rptm-sheet td.a{background:var(--rptm-fa);font-weight:700;text-align:center}
 .rptm-sheet td.b{background:var(--rptm-fb);font-weight:700;text-align:center}
 .rptm-sheet td.bv{background:var(--rptm-fb)}
+.rptm-sheet td.w{font-weight:700;text-align:center}
 .rptm-sheet td.nm,.rptm-sheet td.c{text-align:center}
 .rptm-sheet td.body{vertical-align:top;height:120px}
 .rptm-sheet .ln{min-height:1.45em;white-space:pre-wrap}
 .rptm-sheet td.img img{display:block;max-width:100%;margin:3px 0}
+/* HW 양식(docs/MONTHLY-TEMPLATE-HW.md 3장): 제목 14pt 와 그 아래 실적 기간 줄 11pt, 파랑 머리 줄 없음, 본문 칸 이름 줄 흰 바탕, 오른쪽 여백을 줄여 표가 글 영역 안에 */
+.rptm-sheet.hw{padding:56px 48px 56px 64px}
+.rptm-sheet.hw .ttl{font-size:14pt;margin-bottom:4px}
+.rptm-sheet .per{text-align:center;font-size:11pt;margin-bottom:16px}
+.rptm-sheet.hw td.body{height:180px}
+.rptm-sheet.hw td.thin{height:8px;padding:0}
 </style>
 </head>
 <body>
@@ -3420,128 +3277,65 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
     <div class="at-month" id="atMonth"></div>
     <!-- 주간보고 목록(결정 13): 근태 탭 머리에서 [주간]을 고르면 달력 대신 이것이 보인다. awListRender 가 채운다. 근태 창에서는 창 안의 목록 화면이다. -->
     <div class="aw-listv hidden" id="awList" role="region" aria-label="주간보고 목록"></div>
-    <!-- 취합(docs/ATTEND-SUMMARY.md): 근태 탭 머리에서 [취합]을 고르면 보인다. 보고서 창의 기간 취합과 월간 보고를 합친 화면이고,
-         담는 그릇만 바뀌었다(id 와 함수는 그대로). 왼쪽 설정, 끌개, 오른쪽 미리 보기. atSumEnter 가 채운다. -->
+    <!-- 취합(docs/ATTEND-SUMMARY.md, 시안 v2 docs/MONTHLY-UX-V2.md): 근태 탭 머리에서 [취합]을 고르면 보인다. 보고서 창의 기간 취합과 월간 보고를 합친 화면이다(id 와 함수는 그대로).
+         2026-11-10 시안 v4(docs/MONTHLY-UX-V2.md 결정 14~21, dist/proto/monthly-ux-v4.html): 윗줄은 불러오기만, 문서 값은 결과 칸 머리 줄. v6(결정 22~25, dist/proto/monthly-ux-v6.html): 결과는 월간 보고 문서 하나다.
+         날짜 상자는 화면에 두지 않고 글자 단추가 띄움 칸(#asPop) 하나를 같이 쓴다. atSumEnter 가 채운다. -->
     <div class="as-view hidden" id="atSum" role="region" aria-label="취합">
       <div class="at-bar" id="asBar"></div>
-      <div class="as-main">
-        <div class="as-left" id="asLeft">
-          <div class="as-sec"><h3>기간</h3>
-            <div class="as-dates"><input type="date" id="rptFrom" aria-label="보고 기간 시작일"><span class="as-sep">~</span><input type="date" id="rptTo" aria-label="보고 기간 종료일"></div>
-          </div>
-          <div class="as-sec"><h3>내용 출처</h3>
-            <div class="seg seg-auto" id="rptSrcSeg" role="group" aria-label="내용 출처">
-              <button type="button" class="seg-b active" data-rsrc="cal" aria-pressed="true" title="이 앱 근태 탭에서 쓴 주간보고를 읽습니다">캘린더 기록</button>
-              <button type="button" class="seg-b" data-rsrc="week" aria-pressed="false" title="회사 인트라넷의 주간보고를 읽습니다">인트라넷 주간</button>
-            </div>
-          </div>
-          <details class="as-sec as-fmt" id="asFmt">
-            <summary>서식</summary>
-            <div class="rpt-optgrid">
-              <!-- 머리기호와 들여쓰기는 이제 취합 글에 쓰이지 않는다(2026-11-03, 과제별 글은 주간보고 원문). 화면에서는 숨기고, 보고서 서식 저장값과 문단 모양 머리기호 묶음의 기준이라 요소만 남긴다(근태 가져오기 서식은 2026-11-06 문단 모양으로 합쳐 없어졌다) -->
-              <span class="rpt-opt-lb" style="display:none">머리기호</span>
-              <div class="rpt-ctl rpt-fmt" style="display:none">
-                <select id="rptMarker" class="rpt-fmt-sel" aria-label="머리기호">
-                  <optgroup label="불릿">
-                    <option value="-">- 하이픈</option>
-                    <option value="•">• 점</option>
-                    <option value="·">· 가운뎃점</option>
-                    <option value="*">* 별표</option>
-                    <option value="▪">▪ 네모</option>
-                    <option value="◦">◦ 빈 점</option>
-                    <option value="–">– 대시</option>
-                  </optgroup>
-                  <optgroup label="숫자">
-                    <option value="1.">1. 2. 3.</option>
-                    <option value="1)">1) 2) 3)</option>
-                    <option value="(1)">(1) (2) (3)</option>
-                  </optgroup>
-                  <optgroup label="가나다">
-                    <option value="가.">가. 나. 다.</option>
-                    <option value="가)">가) 나) 다)</option>
-                    <option value="(가)">(가) (나) (다)</option>
-                  </optgroup>
-                  <optgroup label="자모">
-                    <option value="ㄱ.">ㄱ. ㄴ. ㄷ.</option>
-                    <option value="ㄱ)">ㄱ) ㄴ) ㄷ)</option>
-                  </optgroup>
-                  <optgroup label="영문·기타">
-                    <option value="A.">A. B. C.</option>
-                    <option value="a.">a. b. c.</option>
-                    <option value="①">① ② ③</option>
-                    <option value="none">무번호</option>
-                  </optgroup>
-                </select>
-                <input type="text" id="rptMarkerCustom" class="rpt-fmt-custom" maxlength="8" placeholder="직접" aria-label="머리기호 직접 입력">
-              </div>
-              <span class="rpt-opt-lb" style="display:none">들여쓰기</span>
-              <div class="rpt-ctl rpt-fmt" style="display:none">
-                <span class="rpt-fmt-stepper">
-                  <button type="button" id="rptIndMinus" class="rpt-fmt-step" aria-label="들여쓰기 줄이기">−</button>
-                  <span id="rptIndVal" class="rpt-fmt-ind">2단</span>
-                  <button type="button" id="rptIndPlus" class="rpt-fmt-step" aria-label="들여쓰기 늘리기">+</button>
-                </span>
-              </div>
-              <span class="rpt-opt-lb">글꼴</span>
-              <div class="rpt-ctl rpt-fontrow" id="rptFontRow" title="미리 보기와 복사에만 적용됩니다">
-                <select id="rptFontFamily" class="rpt-fmt-sel" aria-label="폰트 종류"></select>
-                <select id="rptFontSize" class="rpt-fmt-sel" aria-label="폰트 크기"></select>
-              </div>
-            </div>
-          </details>
-          <div class="as-sec as-loadrow">
-            <button type="button" class="btn primary" id="asLoad">읽어 오기</button>
-            <div class="rptm-hint" id="rptmSrcHint"></div>
-            <div class="rptm-msg" id="rptmSrcMsg" role="status" aria-live="polite"></div>
-          </div>
+      <!-- 윗줄(시안 v4 결정 14): 데이터 불러오기만. 실적 기간은 글자 단추(누르면 띄움 칸 #asPop 에 날짜 칸), 출처, 읽어 오기, 읽은 결과 -->
+      <div class="as-top" id="asTop">
+        <button type="button" class="as-dt" id="asActBtn" data-aspk="act" aria-expanded="false" aria-controls="asPop"><span class="k">실적</span><b id="asActTxt"></b><span class="car">▾</span></button>
+        <div class="seg seg-auto" id="rptSrcSeg" role="group" aria-label="내용 출처">
+          <button type="button" class="seg-b active" data-rsrc="cal" aria-pressed="true" title="이 앱 근태 탭에서 쓴 주간보고를 읽습니다">캘린더</button>
+          <button type="button" class="seg-b" data-rsrc="week" aria-pressed="false" title="회사 인트라넷의 주간보고를 읽습니다">인트라넷</button>
         </div>
-        <div class="at-split as-split" role="separator" aria-orientation="vertical" aria-label="설정 폭" tabindex="0" title="끌어서 폭 조절, 두 번 누르면 기본 폭" data-atsplit="s"></div>
-        <div class="as-right" id="asRight">
-          <div class="as-rh">
-            <div class="seg seg-auto" id="asOut" role="group" aria-label="결과 형태">
-              <button type="button" class="seg-b active" data-aso="text" aria-pressed="true">과제별 글</button>
-              <button type="button" class="seg-b" data-aso="doc" aria-pressed="false">월간 보고 문서</button>
+        <button type="button" class="btn primary" id="asLoad">읽어 오기</button>
+        <span class="rptm-msg" id="rptmSrcMsg" role="status" aria-live="polite"></span>
+      </div>
+      <!-- 그 아래 두 칸(결정 15, 21, v6 결정 22): 왼쪽 상자(과제, 기타, 미식별)는 늘 보이고, 오른쪽 결과 칸은 머리 줄과 문서 미리 보기만이다(과제별 글 탭, 복사, 글꼴은 없앴다).
+           읽기 전에는 상자 자리와 종이 자리에 빈 아이콘만(결정 18). -->
+      <div class="as-main" id="asRight">
+        <div class="as-boxes" id="asBoxes">
+          <div class="as-box as-blank" id="asBoxBlank"></div>
+          <div class="as-box" id="rptmPickBox"><div class="as-boxh">과제 <span class="rptm-cnt" id="rptmPickCnt"></span></div><div class="rptm-list" id="rptmPick"></div></div>
+          <div class="as-box" id="rptmEtcBox"><div class="as-boxh">기타 <span class="rptm-cnt" id="rptmEtcCnt"></span></div><div class="rptm-list" id="rptmEtc"></div></div>
+          <div class="as-box hidden" id="rptmUnid"></div>
+        </div>
+        <div class="as-out" id="asOutCard">
+          <!-- 머리 줄: 보고서 양식 [SW|HW], 주간보고 제목 넣기(v6 결정 23), 작성, (SW) 계획, 오른쪽 끝 DOCX 저장과 폴더 열기 -->
+          <div class="as-head" id="asHead">
+            <div class="as-hd" id="asDocHead">
+              <span class="rptm-lb">보고서 양식</span>
+              <div class="seg seg-auto" id="rptmTpl" role="group" aria-label="보고서 양식">
+                <button type="button" class="seg-b active" data-tpl="sw" aria-pressed="true">SW</button>
+                <button type="button" class="seg-b" data-tpl="hw" aria-pressed="false">HW</button>
+              </div>
+              <label class="check as-wk"><input type="checkbox" id="rptmWeekHead" checked>주간보고 제목 넣기</label>
+              <button type="button" class="as-dt" id="asDateBtn" data-aspk="date" aria-expanded="false" aria-controls="asPop"><span class="k">작성</span><b id="asDateTxt"></b><span class="car">▾</span></button>
+              <button type="button" class="as-dt rptm-plan" id="asPlanBtn" data-aspk="plan" aria-expanded="false" aria-controls="asPop"><span class="k">계획</span><b id="asPlanTxt"></b><span class="car">▾</span></button>
             </div>
-            <span class="as-sub" id="asSub"></span>
-            <button type="button" class="btn primary" id="btnRptCopy">복사</button>
-            <span class="as-docact hidden" id="asDocAct">
+            <span class="as-sp"></span>
+            <span class="as-docact" id="asDocAct">
+              <button type="button" class="btn" id="rptmSave" disabled>DOCX 저장</button>
               <button type="button" class="btn hidden" id="rptmOpenDir">폴더 열기</button>
-              <button type="button" class="btn primary" id="rptmSave">DOCX 저장</button>
             </span>
           </div>
-          <!-- 문서 설정 띠: 결과 형태가 월간 보고 문서일 때만 탭 줄 바로 아래에 보인다. 그리는 일은 모두 rptM* 함수가 한다 -->
-          <div class="as-band hidden" id="asBand">
-            <button type="button" class="as-bandh" id="asBandH" aria-expanded="true" aria-controls="asBandB"><b>문서 설정</b><span class="as-bandsum" id="asBandSum"></span><span class="as-bandtg" id="asBandTg">접기</span></button>
-            <div class="as-bandb" id="asBandB">
-              <div class="as-line1">
-                <span class="as-fld"><span class="rptm-lb">계획</span><span class="rptm-ctl"><input type="date" id="rptmPFrom" aria-label="계획 기간 시작일"><span class="rptm-sep">~</span><input type="date" id="rptmPTo" aria-label="계획 기간 종료일"><button type="button" class="btn rptm-ib" id="rptmPlanDef" title="기본값으로(실적 끝 다음 월요일부터 같은 주 수, 금요일 끝)" aria-label="계획 기간 기본값으로">↺</button></span></span>
-                <span class="as-fld"><span class="rptm-lb">작성일</span><input type="date" id="rptmDate" aria-label="작성일"></span>
-                <span class="as-fld rptm-name" title="로그인 이름. 문서 제목과 파일 이름에 들어갑니다"><small>이름</small><span id="rptmName"></span></span>
-              </div>
-              <div>
-                <div class="rptm-h">과제 <span class="rptm-cnt" id="rptmPickCnt"></span></div>
-                <div class="rptm-list" id="rptmPick"></div>
-              </div>
-              <div class="rptm-etc">
-                <div class="rptm-etc-h"><span title="공식 과제가 아닌 카테고리의 기록이 문서 맨 끝 기타 표에 들어갑니다">기타 표</span> <span class="rptm-cnt" id="rptmEtcSum"></span><button type="button" class="lnk" id="rptmEtcTog" aria-expanded="false" aria-controls="rptmEtc">고르기</button></div>
-                <div class="rptm-etc-cats hidden" id="rptmEtc"></div>
-              </div>
-              <div id="rptmUnid"></div>
-            </div>
-          </div>
-          <div class="as-pane" id="asText">
-            <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
-            <div id="rptOut" class="rpt-mirror" role="tabpanel" aria-label="과제별 글 미리 보기"></div>
-          </div>
-          <div class="as-pane hidden" id="asDoc">
-            <div class="rptm-note hidden" id="rptmHostNote" role="note">DOCX 저장과 개발 일정 그림은 데스크톱 위젯에서만 됩니다. 여기서는 기록을 모아 미리 볼 수 있습니다.</div>
+          <div class="as-pane" id="asDoc">
             <div class="rptm-pv" id="rptmPv">
-              <div class="rptm-pvh">미리 보기 <span class="rptm-cnt" title="수행 계획 두 칸과 일정 변경이력은 빈칸으로 들어가니 Word 에서 채우세요. 회사 양식(A4 가로)을 비슷하게 그린 것이라 글꼴과 줄바꿈은 Word 와 조금 다를 수 있습니다">읽기 전용</span><span class="rptm-cnt" id="rptmPvSum"></span></div>
-              <div class="rptm-empty hidden" id="rptmPvEmpty">고른 과제가 없습니다. 과제 목록에서 체크하세요.</div>
-              <div class="rptm-pvwrap" id="rptmPvWrap"><div class="rptm-sheet fit" id="rptmSheet"></div></div>
+              <div class="rptm-note hidden" id="rptmHostNote" role="note">DOCX 저장과 개발 일정 그림은 데스크톱 위젯에서만 됩니다.</div>
+              <div class="as-blank as-paperblank" id="rptmPvBlank"></div>
+              <div class="rptm-pvwrap hidden" id="rptmPvWrap"><div class="rptm-sheet fit" id="rptmSheet"></div></div>
             </div>
           </div>
         </div>
+      </div>
+      <!-- 띄움 칸 하나(결정 16): 실적, 작성, 계획 날짜 칸이 여기 있고, 누른 글자 단추의 칸만 보인다(asPopOpen).
+           바깥 누르기, 같은 단추 다시 누르기, Esc 로 닫힌다. 고르기 목록 같은 내림 칸이라 role=dialog 를 쓰지 않는다
+           (month-todo-close 시험의 비모달 팝업 규칙은 role=dialog 창에 닫기 × 를 요구한다. 이 칸은 시안 v4 대로 × 없이 단추가 aria-expanded, aria-controls 로 연다). -->
+      <div class="as-pop hidden" id="asPop">
+        <span class="as-pk hidden" data-pk="act"><input type="date" id="rptFrom" aria-label="실적 기간 시작일"><span class="as-sep">~</span><input type="date" id="rptTo" aria-label="실적 기간 종료일"></span>
+        <span class="as-pk hidden" data-pk="date"><input type="date" id="rptmDate" aria-label="작성일"></span>
+        <span class="as-pk hidden" data-pk="plan"><input type="date" id="rptmPFrom" aria-label="계획 기간 시작일"><span class="as-sep">~</span><input type="date" id="rptmPTo" aria-label="계획 기간 종료일"></span>
       </div>
     </div>
     <div class="at-ed hidden" id="atEd" role="region" aria-labelledby="atEdTitle">
@@ -4756,7 +4550,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
           <li><b>일간</b>: 과제별 블록에 내용과 시간을 적고 <b>보고</b>로 회사 일간보고에 보냅니다.</li>
           <li><b>주간</b>: 목록에서 기간과 찾기로 지난 보고를 찾고, <b>작성</b>으로 새 주간보고를 씁니다.</li>
           <li><b>취합</b>: 기간과 내용 출처(캘린더 기록은 이 앱에서 쓴 주간보고, 인트라넷 주간은 회사 주간보고)를 고르고 <b>읽어 오기</b>를 누릅니다.</li>
-          <li>오른쪽 위에서 <b>과제별 글</b>은 <b>복사</b>, <b>월간 보고 문서</b>는 <b>DOCX 저장</b>으로 내보냅니다.</li>
+          <li>월간 보고 문서를 확인하고 <b>DOCX 저장</b>으로 내보냅니다.</li>
         </ol>
       </section>
 
@@ -4829,6 +4623,8 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
   <div class="shotViewer-card">
     <div class="shotViewer-head"><span id="shotViewerTitle">화면 캡처 크게 보기</span><span class="spacer"></span><button type="button" id="shotViewerClose" aria-label="닫기">×</button></div>
     <img id="shotViewerImg" alt="사용설명서 화면 캡처 확대">
+    <!-- 월간 보고 개발 일정 그림 크게 보기(rptMImgZoom)에서만 보인다. 그때는 머리 × 를 숨긴다(닫는 단추가 둘이 되지 않게) -->
+    <div class="shotViewer-foot hidden" id="shotViewerFoot"><button type="button" class="btn" id="shotViewerDel">빼기</button><button type="button" class="btn" id="shotViewerDone">닫기</button></div>
   </div>
 </div>
 
@@ -5929,54 +5725,6 @@ function setAttendance(date, status, overtime){
 //
 //  대신 무엇을 하나: **명시적 「XML 가져오기」**. 사용자가 파일을 고르고 교체를 누른다.
 //  2026-10-07 병합 제거(XML-MERGE-REMOVAL). 가져오기는 교체 하나라 병합기도 함께 지웠다.
-/* ---------- 보고서 폰트(기간 취합 전용) — 표시+복사 서식만, 내용 불변 ----------
-   월간/연간 취합본을 외부 문서(Word·한글·메일)에 붙여넣을 때 사내 양식에 맞추기 위한 값.
-   구조 22(2026-11-06)부터 DB 가 아니라 이 PC 의 계정별 localStorage(tc_rptFont:<계정>)에 둔다(reportFontGet, reportFontSet).
-   옛 값은 옮기지 않는다(기본 글꼴로 시작). 데이터가 아니라 표시 설정이라 편집 잠금(guardEdit)과 저장(save)에 묶지 않는다.
-   const는 부팅 경로에서 쓰일 수 있어 `let state = load()` 앞에 선언한다(TDZ). */
-const REPORT_FONTS = [
-  { v: '',              label: '기본' },
-  { v: 'Malgun Gothic', label: '맑은 고딕' },
-  { v: 'Gulim',         label: '굴림' },
-  { v: 'Dotum',         label: '돋움' },
-  { v: 'Batang',        label: '바탕' },
-  { v: 'NanumGothic',   label: '나눔고딕' },
-];
-const REPORT_FONT_SIZES = [0, 10, 11, 12, 13, 14, 15, 16];   // 0 = 기본(현재 스타일 그대로)
-const REPORT_FONT_FAMILY_SET = new Set(REPORT_FONTS.map(f => f.v).filter(Boolean));
-function defaultReportFont(){ return { family: '', size: 0 }; }
-// 화이트리스트 밖 폰트/범위 밖 크기는 조용히 기본값 — 외부편집·구버전·손상 데이터 방어(다른 정규화기와 동일 규약).
-function normalizeReportFont(raw){
-  const family = (raw && typeof raw.family === 'string' && REPORT_FONT_FAMILY_SET.has(raw.family)) ? raw.family : '';
-  const n = raw ? Number(raw.size) : 0;
-  const size = (Number.isInteger(n) && n >= 10 && n <= 16) ? n : 0;
-  return { family, size };
-}
-const RPT_FONT_PREFIX = 'tc_rptFont:';   // 키 = tc_rptFont:<계정>. 계정은 근태 임시 저장과 같은 규칙(atWho)
-function rptFontKey(){ let who = 'me'; try{ who = atWho(); }catch(_){} return RPT_FONT_PREFIX + who; }
-//  저장된 글꼴(없거나 못 읽으면 기본). 저장소가 막혀도(사생활 보호 창, 지운 사이트 데이터) 기본으로 그린다.
-function reportFontGet(){
-  try{ const raw = localStorage.getItem(rptFontKey()); return normalizeReportFont(raw ? JSON.parse(raw) : null); }catch(_){ return defaultReportFont(); }
-}
-//  글꼴을 고친다. 기본이면 키를 지운다. 돌려주는 값 = 정리한 글꼴.
-function reportFontSet(f){
-  const n = normalizeReportFont(f);
-  try{ if(!n.family && !n.size) localStorage.removeItem(rptFontKey()); else localStorage.setItem(rptFontKey(), JSON.stringify(n)); }catch(_){}
-  return n;
-}
-// 미러 램프의 기준 픽셀 = body 기본 글자(--fs-emph). 여기서만 배율의 분모로 쓰인다.
-// CSS calc()는 길이로 나눠 무단위를 만들 수 없어 배율 계산이 JS 쪽에 남는다 → 토큰과 어긋나면 테스트가 잡는다.
-const REPORT_MIRROR_BASE_PX = 14;
-// 미리보기·복사 공용 CSS 값 — 대상 PC에 폰트가 없어도 한글이 깨지지 않도록 안전 폴백 스택을 항상 덧붙인다.
-// scale: 미러 전용 --m-scale(무단위). 복사(HTML 트윈)는 안 쓰고 화면 미러만 쓴다.
-function reportFontCss(font){
-  const f = normalizeReportFont(font);
-  return {
-    family: f.family ? `"${f.family}", 'Malgun Gothic', sans-serif` : '',
-    size: f.size ? (f.size + 'pt') : '',
-    scale: f.size ? String(+((f.size * 4 / 3) / REPORT_MIRROR_BASE_PX).toFixed(5)) : ''   // 1pt = 4/3px
-  };
-}
 
 //  ★★ 열람 창은 **빈 상태로 시작한다.** load() 는 localStorage 의 taskCalendar.v1 을 읽는데,
 //    그건 XML 시절의 **내** 캘린더다. 열람 프레임은 같은 origin 이라 그 키를 그대로 본다.
@@ -6045,7 +5793,7 @@ function ensureDefaultTasks(s){
 let state = (HOST || PEER) ? buildStateFrom({ categories: [], entries: [] }) : load();
 
 //  보고서 서식(머리기호, 들여쓰기)은 고정값이다(구조 22, 2026-11-06). 예전에는 일간과 주간 서식을 저장했지만(cal_user_pref)
-//    근태가 쓰지 않아 저장을 없앴다. 화면의 서식 칸(#rptMarker 등)은 숨겨 두었고 문단 모양 머리기호 목록의 기준으로만 남는다.
+//    근태가 쓰지 않아 저장을 없앴다. 화면의 서식 칸(#rptMarker 등)은 2026-11-10 v6 결정 22 로 취합 [서식] 칸과 함께 없앴다.
 function defaultReportFormatPref(){
   return { marker: '-', markerCustom: '', indent: 2 };
 }
@@ -14159,6 +13907,7 @@ function setNetcusLocked(on){
   document.body.classList.toggle('nc-busy', on);
 }
 // 읽기 진행바 갱신(merge/weekly만) — submit/weekfill/validate/probe는 기존 텍스트 핸들러가 담당하므로 무시(중복 방지).
+//  진행바(#rncProg)를 그리던 취합 글 미리 보기는 v6 결정 22 로 없앴다. 호스트가 부르는 진입점이라 남기고, 바가 없으면 아무것도 하지 않는다(읽는 중은 윗줄 글 rptMSrcMsg).
 window.__netcusStatus = function(s){
   s = s || {};
   if(s.op === 'merge' || s.op === 'weekly'){
@@ -16890,7 +16639,7 @@ function reportSubIndent(prefix, unit){
   for(const ch of String(prefix || '')) w += /[가-힣㄰-㆏①-⓿　-〿！-｠一-鿿]/.test(ch) ? 2 : 1;
   return unit.repeat(Math.max(w, 2));
 }
-// 분→시간 표시(정수면 정수, 아니면 소수 둘째자리). buildReport(렌더)·buildReportText(복사) 공유.
+// 분→시간 표시(정수면 정수, 아니면 소수 둘째자리).
 function fmtH(min){ const h = min / 60; return Number.isInteger(h) ? String(h) : String(Math.round(h * 100) / 100); }
 // 중복 제목 강등 시 날짜별 설명 병합(순수 함수). dayDetails: [{date,text}] 둘을 날짜순으로 합친다(같은 date+text 는 한 번). 둘 다 없으면 null.
 function mergeReportDayDetails(a, b){
@@ -17053,8 +16802,6 @@ function buildCalendarExportMd(cat, from, to){
   }
   return out.join('\n');
 }
-// 보고 모드. 취합은 늘 'custom'. 글꼴은 기간 취합(custom)에서만 미리보기와 복사에 입힌다.
-let reportMode = 'custom';
 // ── netcus 주간 병합 파서(Phase2) — 순수 함수(전역·DOM 무의존 → Layer1 테스트 대상) ──
 // days=[{date:'YYYY-MM-DD', content:string, ok:bool}], categories=[{id,name}], opts={sumTime:false}
 // 각 날 일간보고 content를 줄 단위로 훑어 회사양식 [과제명] 머리표 기준으로 과제 블록에 재그룹한다.
@@ -17211,8 +16958,8 @@ function buildNetcusPlanText(parsed){
 // 각 주간보고의 endwork(진행사항)를 회사양식 [과제] 머리표로 블록화(들여쓰기된 [..]는 본문)하여
 // 같은 과제명으로 주간 병합한다. content(과제투입시간 [과제]:숫자)를 과제별 총합으로 누적('합계' 제외).
 // 2026-11-10(docs/MONTHLY-HEAD-MAPPING.md 결정 1, 9): 머리는 0칸 '[' 줄의 첫 ']' 까지(꼬리 기간, 시간, 쌍점은 버림),
-// 시간은 [X] : N, [X] N, [X]N, [X] - N, [X : N], Nh, .5 를 읽는다. 기간 취합 과제별 글과 월간 보고가 같이 쓴다.
-// 반환: 미리보기(renderNetcusWeeklyPreview)·복사(buildNetcusWeeklyText)가 공유하는 순수 데이터.
+// 시간은 [X] : N, [X] N, [X]N, [X] - N, [X : N], Nh, .5 를 읽는다. 월간 보고 실적 글과 미식별이 쓴다.
+// 반환: 월간 보고 실적 글(buildNetcusWeeklyText, rptMBuildWeek)이 쓰는 순수 데이터.
 function parseNetcusWeekly(weeks, categories){
   const cats = Array.isArray(categories) ? categories : [];
   const rows = Array.isArray(weeks) ? weeks : [];
@@ -17327,7 +17074,7 @@ function reportMarkerSpec(){
   const fmt = currentReportFormatPref();
   return reportMarkerSpecFor((fmt && fmt.marker) || '-', (fmt && fmt.markerCustom) ? String(fmt.markerCustom) : '');
 }
-//  머리기호 키(#rptMarker 의 값)와 직접 입력으로 서식을 만든다. 순수(지금 설정을 읽지 않는다).
+//  머리기호 키(옛 #rptMarker 의 값 형식)와 직접 입력으로 서식을 만든다. 순수(지금 설정을 읽지 않는다).
 function reportMarkerSpecFor(key, custom){
   const KO_GA = '가나다라마바사아자차카타파하';
   const KO_JA = 'ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ';
@@ -17368,33 +17115,6 @@ function reportMarkerAt(spec, i){
     default: return '';
   }
 }
-// 폰트 행 — 셀렉트 동기화·미리보기 반영을 한곳에서. 일간/주간/기간 취합 모두 같은 값을 쓴다:
-// 글꼴은 모드별이 아니라 단일 설정('내 보고서 글꼴')이고 계정별 localStorage 에 있다(reportFontGet, 구조 22).
-// 표시+복사 전용 — buildReportText()/전송 페이로드는 이 함수와 무관하다(회사 폼 바이트 불변).
-function syncReportFontUI(){
-  const stored = reportFontGet();
-  const fam = $('#rptFontFamily'); if(fam) fam.value = stored.family;
-  const sz = $('#rptFontSize'); if(sz) sz.value = String(stored.size);
-  //  ★ 미리보기에 입히는 것은 기간 취합에서만 — 일간·주간은 저장값이 있어도 기본 서식(2026-09-18). 콤보는 저장값을 그대로 보인다.
-  const f = (reportMode === 'custom') ? stored : normalizeReportFont(null);
-  const out = $('#rptOut');
-  // 빈 문자열 = 인라인 스타일 해제(기본 복귀). --m-scale은 CSS 기본값 1로 되돌아간다.
-  if(out){ const css = reportFontCss(f);
-    out.style.fontFamily = css.family; out.style.fontSize = css.size;
-    if(css.scale) out.style.setProperty('--m-scale', css.scale); else out.style.removeProperty('--m-scale'); }
-}
-// 서식 컨트롤(머리기호·직접·들여쓰기)을 저장값으로 맞춘다 — **본문 가드와 무관하게** buildReport 첫머리에서(syncReportFontUI 와 같은 자리).
-//   ★ 2026-09-18 사용자 지적: 포함 항목이 0개면 ± 를 눌러도 '2단' 표시가 안 바뀌고, 다시 켜면 그제야 값이 튀었다. 동기화가 본문
-//     렌더 안(가드 뒤)에 있어서였다 — 근태 슬롯이 사라지던 것과 같은 병(컨트롤 상태 ↔ 저장값 동기화가 렌더 순서에 묶임).
-//     규칙: 저장값 → 컨트롤 표시는 렌더가 아니라 이 함수의 일이고, 렌더는 저장값을 읽기만 한다.
-function syncReportFormatUI(){
-  const f = currentReportFormatPref();
-  const indent = Math.max(0, Math.min(6, f.indent != null ? f.indent : 2));
-  const sel = $('#rptMarker'), cin = $('#rptMarkerCustom'), iv = $('#rptIndVal');
-  if(sel) sel.value = f.marker || '-';
-  if(cin) cin.value = f.markerCustom || '';
-  if(iv) iv.textContent = indent + '단';
-}
 const RPT_TAB_UNITS = 4;                 // 고친 글의 줄 앞 탭 하나 = 들여쓰기 단위 4개
 // 계정 = legacyPromptKey 와 같은 순서(__bootMeta.userId → currentUser.loginId → 'me'). 같은 PC 의 다른 계정 초안이 섞이지 않게.
 function rptDraftWho(){
@@ -17415,7 +17135,7 @@ function reportEditedBodyOut(text, unit){
   }).join('\n');
 }
 // 과제 하나의 초안 본문 = 머리 줄 아래 줄들(머리기호, 들여쓰기, 설명 줄, 기간 할 일 날짜 줄). 머리 줄과 첫 줄 사이의 '\n' 은 넣지 않는다.
-//   buildReportText(나가는 글)와 글 편집(초안)이 **같은 함수**를 쓴다(§3.1). 글 편집은 unit=' '(보통 공백)으로 부른다.
+//   나가는 글과 글 편집(초안)이 **같은 함수**를 쓴다(§3.1). 글 편집은 unit=' '(보통 공백)으로 부른다.
 function reportRowBodyText(r, indentUnit, mkSpec, indent){
   const _pad = indentUnit.repeat(indent * 2);   // 복사=U+00A0 / netcus=&nbsp; / 글 편집=' '
   return r.titles.map((t, i) => {
@@ -17430,61 +17150,13 @@ const Netcus = { watchdog: 0 };
 //  병합 열쇠 = 출처|시작|끝. 같은 그릇을 두 출처(캘린더 기록 = 이 앱 주간보고 DB, 인트라넷 주간 = 회사 사이트)가 쓰므로 출처가 열쇠에 들어간다(섞이지 않게).
 function ncMergeKey(from, to, src){ return (src === 'cal' ? 'cal' : 'week') + '|' + from + '|' + to; }
 // 주간보고 범위 병합(Phase2) — 별도 캐시 슬롯(net 일간병합과 독립). key=출처|from|to, 기간 바뀌면 무효화.
-//  src = 'cal' | 'week', weeksRead = 읽은 주 수(빈 주 포함), auto = 월간 보고 문서용 과제별 글(rptMBuildWeek).
+//  src = 'cal' | 'week', weeksRead = 읽은 주 수(빈 주 포함), auto = 월간 보고 문서용 실적 글(rptMBuildWeek).
 let netcusWeeklyMerge = { key: '', parsed: null, at: '', src: '', weeksRead: 0, auto: null };
-// 주간보고 병합 표시 형식 — false=주차별(주차 헤더+원문), true=평면(과제 아래 전 주 원문 나열). localStorage 영속.
+// 주간보고 병합 형식 — false=주차별(주차 헤더+원문), true=평면(과제 아래 전 주 원문 나열). localStorage 영속.
+//  취합 머리 줄의 '주간보고 제목 넣기' 체크가 고른다(켬 = 주차별, v6 결정 23). 월간 보고 실적 글(rptMBuildWeek)이 따른다.
 let weeklyFlat = (function(){ try{ return localStorage.getItem('tc_weeklyFlat') === '1'; }catch(_){ return false; } })();
 function clearNetcusWeeklyMerge(){ netcusWeeklyMerge = { key: '', parsed: null, at: '', src: '', weeksRead: 0, auto: null }; }
 function ncNow(){ const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
-// 읽기 진행바 골격 — #rncProg(진행 텍스트 + 채움바). __netcusStatus(login/reading)가 실시간 갱신.
-function ncLoadingHtml(label){ return '<div class="rnc-loading" id="rncProg">' + ICON.spinner + ' <span class="rnc-progtext">' + esc(label) + '</span><div class="rnc-progbar"><div class="rnc-progfill" style="width:4%"></div></div></div>'; }
-// 읽기전용 미리보기 — 과제별로 묶고 그 아래 주차별 소제목(· 제목 (기간)) + 진행사항 라인. src 'cal' 은 이 앱 주간보고 기록, 그 밖은 인트라넷.
-function renderNetcusWeeklyPreview(parsed, at, src, weeksRead){
-  const out = $('#rptOut'), sum = $('#rptSummary');
-  if(!out) return;
-  const app = src === 'cal';
-  let html = '<div class="rnc-banner"><span class="rnc-banner-t">' + ICON.book + (app ? ' 읽기전용: 이 앱의 주간보고 기록을 과제별로 모음' : ' 읽기전용: 인트라넷 주간보고를 과제별로 모음')
-    + (at ? ' <span class="rnc-at">(조회 ' + esc(at) + ')</span>' : '') + '</span>'
-    + '<span class="seg seg-auto seg-micro" role="group" aria-label="표시 형식">'
-    + '<button type="button" class="seg-b' + (weeklyFlat ? '' : ' active') + '" data-wmode="week" aria-pressed="' + (weeklyFlat ? 'false' : 'true') + '" title="주차별 소제목 + 진행사항">주차별</button>'
-    + '<button type="button" class="seg-b' + (weeklyFlat ? ' active' : '') + '" data-wmode="flat" aria-pressed="' + (weeklyFlat ? 'true' : 'false') + '" title="주차 헤더 없이 전 주 원문 나열">평면</button>'
-    + '</span>'
-    + '<button type="button" class="rnc-refresh" id="rncwRefresh" title="다시 읽기">' + ICON.refresh + ' 새로고침</button></div>';
-  for(const t of parsed.tasks){
-    html += '<div class="rcard rnc-card">';
-    const hHint = (t.hours > 0) ? '<span class="rnc-hhint">투입 ' + esc(String(t.hours)) + 'h</span>' : '';
-    html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']') + '</span>' + hHint + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + '</div>';
-    const blocks = (t.blocks || []);
-    if(!weeklyFlat){   // 주차별 — 주차 소제목 + 진행사항
-      for(const b of blocks){
-        const label = (b.title && b.period) ? (b.title + ' (' + b.period + ')') : (b.title || b.period || b.regdate || '');
-        html += '<div class="rncw-wk">· ' + esc(label) + '</div>';
-        if(b.lines && b.lines.length){
-          html += '<div class="rcard-tasks rncw-lines">' + b.lines.map(l => esc(l)).join('<br>') + '</div>';
-        }
-      }
-    } else {           // 평면 — 주차 헤더 없이 전 주 원문(주 사이 빈 줄)
-      const allLines = [];
-      for(let i = 0; i < blocks.length; i++){ if(i > 0) allLines.push(''); for(const l of (blocks[i].lines || [])) allLines.push(l); }
-      if(allLines.length){
-        html += '<div class="rcard-tasks rncw-lines">' + allLines.map(l => esc(l)).join('<br>') + '</div>';
-      }
-    }
-    html += '</div>';
-  }
-  if(!parsed.tasks.length){
-    html += '<div class="rpt-guard">' + (app ? (weeksRead ? '이 기간 주간보고에서 과제별로 가져올 내용이 없습니다.' : '이 기간에 이 앱으로 쓴 주간보고가 없습니다.') : '그 기간 netcus 주간보고에서 과제별로 가져올 내용이 없습니다.') + '</div>';
-  }
-  out.innerHTML = html;
-  const rb = $('#rncwRefresh'); if(rb) rb.addEventListener('click', atSumLoad);
-  out.querySelectorAll('[data-wmode]').forEach(b => b.addEventListener('click', () => {   // 주차별↔평면 — 미리보기 재렌더(복사도 이 형식 따름)
-    const flat = b.dataset.wmode === 'flat';
-    if(flat === weeklyFlat) return;
-    weeklyFlat = flat; try{ localStorage.setItem('tc_weeklyFlat', flat ? '1' : '0'); }catch(_){}
-    renderNetcusWeeklyPreview(parsed, at, src, weeksRead);
-  }));
-  if(sum) sum.textContent = '과제 ' + parsed.tasks.length + '개, ' + (parsed.weekCount || 0) + '주 병합';
-}
 // 내용 출처 세그의 표시를 state.reportSource 에 맞춘다(취합을 열 때와 출처를 바꿀 때).
 // ★ 활성 표시는 '지금 출처가 무엇인가'만 말한다. disabled(읽기 잠금·모드별 숨김) 여부와 AND 하면
 //   출처는 그대로인데 켜진 칸이 하나도 없는 상태가 생겨, 사용자가 자기 출처를 화면에서 읽을 수 없다.
@@ -17496,11 +17168,11 @@ function syncReportSourceSeg(){
 /* ===== 근태 탭 취합(docs/ATTEND-SUMMARY.md) =====
  *  보고서 창의 기간 취합 탭과 월간 보고 탭을 근태 탭 [취합] 한 화면으로 옮겼다. 담는 그릇(#atSum)과 기간, 출처를 한 곳에서 고른다.
  *  ★ 내용 출처 둘(2026-11-03 사용자): 캘린더 기록 = 이 앱의 주간보고 DB(cal_report_weekly, 근태 [주간]에서 쓰고 보낸 주)를 읽어 과제별로 모은다.
- *    인트라넷 주간 = 회사 사이트의 주간보고. 둘 다 같은 파서(parseNetcusWeekly)와 같은 그릇(netcusWeeklyMerge)을 쓰고, 미리 보기, 복사, 월간 보고 문서가 한 번 읽은 결과를 같이 쓴다.
+ *    인트라넷 주간 = 회사 사이트의 주간보고. 둘 다 같은 파서(parseNetcusWeekly)와 같은 그릇(netcusWeeklyMerge)을 쓰고, 월간 보고 문서가 한 번 읽은 결과를 쓴다(과제별 글 미리 보기와 복사는 v6 결정 22 로 없앴다).
  *    달력의 일정과 할 일을 하루 단위로 모으는 출처는 없다(collectReportData 는 근태 일간 가져오기와 기록 있음 판정이 쓴다).
  *  ★ 읽는 것은 [읽어 오기]를 눌렀을 때만이다. 출처나 기간을 바꾸는 것만으로는 읽지 않고, 인트라넷 주간만 회사로 요청이 나간다.
- *  ★ 회사로 보내는 길은 없다(복사와 DOCX 저장뿐). 인트라넷 일간 출처와 기간 빠른 단추도 없다. */
-const AS = { out: 'text', ready: false };
+ *  ★ 회사로 보내는 길은 없다(DOCX 저장뿐). 인트라넷 일간 출처와 기간 빠른 단추도 없다. */
+const AS = { ready: false };
 // 월간 보고 문서를 지금 상태로 다시 그린다. '기록 있음'(달력 기록과 공수)이 바뀌었을 수 있어 같이 다시 센다.
 function atSumMonthlyRefresh(){
   const S = __rptM; if(!S || !AS.ready) return;
@@ -17511,79 +17183,96 @@ function atSumMonthlyRefresh(){
 function atSumRefresh(){
   const box = document.getElementById('atSum');
   if(!box || !AS.ready || box.classList.contains('hidden')) return;
-  buildReport();
-}
-function atSumSub(){
-  const e = $('#asSub'); if(!e) return;
-  const f = $('#rptFrom').value, t = $('#rptTo').value;
-  e.textContent = (/^\d{4}-\d{2}-\d{2}$/.test(f) && /^\d{4}-\d{2}-\d{2}$/.test(t) ? f + ' ~ ' + t + ', ' : '') + (state.reportSource === 'week' ? '인트라넷 주간' : '캘린더 기록');
-}
-// 과제별 글 미리 보기(#rptOut). 두 출처 모두 읽어 둔 것을 보인다(없으면 읽어 오기를 기다린다).
-function buildReport(){
-  const from = $('#rptFrom').value, to = $('#rptTo').value;
-  const out = $('#rptOut'), sum = $('#rptSummary');
-  if(!out || !sum) return;
-  syncReportFontUI();   // 조기 반환 경로들보다 앞: 가드 화면에서도 미리 보기 서식이 설정과 일치하게
-  syncReportFormatUI();
-  atSumSub();
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){
-    sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.innerHTML = ''; atSumMonthlyRefresh(); return;
-  }
-  const c = netcusWeeklyMerge;
-  if(c && c.parsed && c.key === ncMergeKey(from, to, state.reportSource)) renderNetcusWeeklyPreview(c.parsed, c.at, c.src, c.weeksRead);
-  else { sum.textContent = ''; out.innerHTML = '<div class="rpt-guard">읽어 오기를 눌러 주세요.</div>'; }
   atSumMonthlyRefresh();
 }
-// 복사용 텍스트: 화면 DOM 이 아니라 읽어 둔 데이터에서 다시 계산한다(드리프트 방지). 화면 미리 보기와 같은 병합 글을 복사한다.
-function buildReportText(indentUnit){
-  const from = $('#rptFrom').value, to = $('#rptTo').value;
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return '';
-  //  ★ 읽어 둔 글은 '그 기간, 그 출처의 것'일 때만 쓴다. 기간이나 출처를 바꾼 직후 복사한 내용이 화면과 다른 것이 되지 않게.
-  const c = netcusWeeklyMerge;
-  return (c && c.parsed && c.key === ncMergeKey(from, to, state.reportSource)) ? buildNetcusWeeklyText(c.parsed, weeklyFlat) : '';
-}
 /* ── 취합 화면 열기와 배선 ── */
-// 처음 열 때(앱을 켠 뒤 한 번): 기간은 지난달 1일~말일, 출처는 캘린더 기록(읽어 오기를 눌러야 읽는다), 결과 형태는 과제별 글. 월간 보고의 처음 값(rptMOpen)도 같다.
+// 처음 열 때(앱을 켠 뒤 한 번): 기간은 지난달 1일~말일, 출처는 캘린더 기록(읽어 오기를 눌러야 읽는다). 월간 보고의 처음 값(rptMOpen)도 같다.
+//  결과는 월간 보고 문서 하나다(v6 결정 22: 과제별 글 탭, 복사, 글꼴을 없앴다).
 function atSumInit(){
   AS.ready = true;
-  reportMode = 'custom';
   state.reportSource = 'cal';
   clearNetcusWeeklyMerge();
   const r = monthRange(new Date(), -1);
   $('#rptFrom').value = r[0]; $('#rptTo').value = r[1];
+  //  읽기 전 빈 자리 아이콘(결정 18). 마크업 뒤에 ICON 이 정의되어 여기서 한 번 넣는다
+  for(const [id, ic] of [['asBoxBlank', ICON.doc], ['rptmPvBlank', ICON.file]]){ const e = $('#' + id); if(e && !e.firstChild) e.innerHTML = ic; }
   rptMOpen();
   syncReportSourceSeg();
-  atSumOutSet('text');
-  buildReport();
+  rptMFit();
 }
 function atSumEnter(){
   if(!AS.ready){ atSumInit(); return; }
-  if(__rptM){ __rptMHas = rptMHasSet(__rptM); rptMRenderAll(); }
-  buildReport();
+  atSumMonthlyRefresh();
+  rptMFit();
 }
-// 결과 형태(과제별 글 | 월간 보고 문서): 오른쪽 미리 보기와 같은 줄 끝 단추가 같이 바뀐다. 월간 보고 전용 설정은 문서일 때만 펼친다.
-function atSumOutSet(kind){
-  AS.out = kind === 'doc' ? 'doc' : 'text';
-  const doc = AS.out === 'doc';
-  $$('#asOut [data-aso]').forEach(b => { const on = b.dataset.aso === AS.out; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-  $('#asText').classList.toggle('hidden', doc);
-  $('#asDoc').classList.toggle('hidden', !doc);
-  $('#asBand').classList.toggle('hidden', !doc);
-  $('#btnRptCopy').classList.toggle('hidden', doc);
-  $('#asDocAct').classList.toggle('hidden', !doc);
-  if(doc){ rptMRenderAll(); rptMFit(); }
+//  주간보고 제목 넣기(v6 결정 23): 켬 = 주차별(실적 글에 '· 제목 (기간)' 줄), 끔 = 평면. PC 에 기억(tc_weeklyFlat, 취합 공용 설정이라 월간 함수 rptM* 밖에 둔다. 월간 보고는 기억하지 않는다).
+//  읽어 둔 주간보고(netcusWeeklyMerge.parsed)로 실적 글만 다시 만들고 미리 보기를 다시 그린다(다시 읽지 않는다). 체크와 미식별 넣을 곳은 그대로.
+function asWeekHeadSet(on){
+  const flat = !on;
+  const cb = $('#rptmWeekHead'); if(cb) cb.checked = !flat;
+  if(flat === weeklyFlat) return;
+  weeklyFlat = flat; try{ localStorage.setItem('tc_weeklyFlat', flat ? '1' : '0'); }catch(_){}
+  const c = netcusWeeklyMerge;
+  if(c && c.parsed && c.auto) c.auto = rptMBuildWeek(c.parsed);
+  rptMRenderUnid(); rptMPreview();
+}
+//  읽었는가(결정 18): 이 기간을 읽어 둔 글이 있다(rptMAuto). 강조는 다음 할 일 하나다.
+//  읽기 전: [읽어 오기] 파랑, 상자 자리와 종이 자리는 빈 아이콘, DOCX 저장은 보통 단추로 잠금.
+//  읽은 뒤: [읽어 오기] 보통, DOCX 저장 파랑. 단추 class 와 hidden, disabled 만 바꾼다(다시 그리지 않는다).
+function asStageSync(){
+  const S = __rptM, read = !!(S && rptMAuto(S));
+  const ld = $('#asLoad'); if(ld) ld.classList.toggle('primary', !read);
+  const sv = $('#rptmSave');
+  if(sv){ sv.classList.toggle('primary', read); sv.disabled = !read || !HOST || __rptMSaving; sv.title = HOST ? '' : 'DOCX 저장은 데스크톱 위젯에서만 됩니다'; }
+  const bb = $('#asBoxBlank'); if(bb) bb.classList.toggle('hidden', read);
+  for(const id of ['rptmPickBox', 'rptmEtcBox']){ const e = $('#' + id); if(e) e.classList.toggle('as-wait', !read); }
+  const pb = $('#rptmPvBlank'); if(pb) pb.classList.toggle('hidden', read);
+  const pw = $('#rptmPvWrap'); if(pw) pw.classList.toggle('hidden', !read);
+}
+//  글자 단추의 값(실적 M/D ~ M/D, 작성 M월 D일, 계획 M/D ~ M/D). 날짜 칸 값에서 바로 만든다.
+function asDtText(v){ return _rptMValid(v) ? (+v.slice(5, 7)) + '/' + (+v.slice(8, 10)) : '__'; }
+function asDtSync(){
+  const t = (id, v) => { const e = $('#' + id); if(e) e.textContent = v; };
+  t('asActTxt', asDtText($('#rptFrom').value) + ' ~ ' + asDtText($('#rptTo').value));
+  const d = $('#rptmDate').value;
+  t('asDateTxt', _rptMValid(d) ? (+d.slice(5, 7)) + '월 ' + (+d.slice(8, 10)) + '일' : '__');
+  t('asPlanTxt', asDtText($('#rptmPFrom').value) + ' ~ ' + asDtText($('#rptmPTo').value));
+}
+//  띄움 칸 하나(결정 16): 실적, 작성, 계획이 같은 칸(#asPop)을 쓴다. 누른 단추의 칸만 보이고 단추 아래에 붙는다.
+//  같은 단추를 다시 누르거나, 칸과 단추 밖을 누르거나, Esc 면 닫는다. 기억하지 않는다.
+let __asPopK = '';
+function asPopBtn(k){ return document.querySelector('#atSum [data-aspk="' + k + '"]'); }
+function asPopOpen(k){
+  const pop = $('#asPop'), b = asPopBtn(k); if(!pop || !b) return;
+  if(__asPopK === k){ asPopClose(); return; }
+  asPopClose();
+  __asPopK = k;
+  pop.querySelectorAll('[data-pk]').forEach(e => e.classList.toggle('hidden', e.dataset.pk !== k));
+  pop.classList.remove('hidden');
+  b.setAttribute('aria-expanded', 'true');
+  const r = b.getBoundingClientRect();
+  pop.style.left = Math.max(4, Math.min(r.left, (window.innerWidth || 0) - pop.offsetWidth - 8)) + 'px';
+  pop.style.top = (r.bottom + 6) + 'px';
+}
+function asPopClose(focusBtn){
+  const pop = $('#asPop'); if(!pop) return;
+  const k = __asPopK; __asPopK = '';
+  pop.classList.add('hidden');
+  $$('#atSum [data-aspk]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+  if(focusBtn && k){ const b = asPopBtn(k); if(b) b.focus(); }
 }
 // 기간을 바꿨다: 월간 보고도 같은 기간으로 새로 연다. 읽어 둔 글은 버리고 읽어 오기를 기다린다(요청은 나가지 않는다).
 function atSumPeriod(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   clearNetcusWeeklyMerge();
+  asDtSync();
   if(AS.ready && _rptMValid(from) && _rptMValid(to) && from <= to){
     __rptMGen++;
     __rptM = rptMFresh(from, to, state.reportSource === 'week' ? 'week' : 'cal', __rptM ? __rptM.etcOff : null);
     rptMSrcMsg('', '');
     rptMRenderAll();
   }
-  buildReport();
+  asStageSync();
 }
 // 내용 출처를 골랐다. 요청은 나가지 않는다(읽는 것은 [읽어 오기]). 다른 출처로 읽어 둔 글은 읽어 오기를 누를 때까지 월간 보고 문서에 그대로 남는다.
 function atSumSource(src){
@@ -17594,21 +17283,13 @@ function atSumSource(src){
   const S = __rptM;
   if(S){ S.src = src; rptMRenderSettings(); rptMRenderUnid(); }
   rptMSrcMsg('', '');
-  buildReport();
 }
-// 읽어 오기: 캘린더 기록은 이 앱 주간보고 DB 에서, 인트라넷 주간은 회사 사이트에서 그 기간을 한 번 읽는다(미리 보기와 월간 보고가 같은 결과를 쓴다).
+// 읽어 오기: 캘린더 기록은 이 앱 주간보고 DB 에서, 인트라넷 주간은 회사 사이트에서 그 기간을 한 번 읽는다(월간 보고 문서가 그 결과를 쓴다). 읽는 중은 윗줄 글(rptMSrcMsg).
 async function atSumLoad(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   if(!_rptMValid(from) || !_rptMValid(to) || from > to){ rptMSrcMsg('기간을 바르게 고르세요(시작이 끝보다 늦을 수 없습니다).', 'err'); return; }
   if(!AS.ready || !__rptM || __rptMReading) return;
-  const out = $('#rptOut'), sum = $('#rptSummary');
-  if(out){
-    if(sum) sum.textContent = '';
-    out.innerHTML = state.reportSource === 'week' ? ncLoadingHtml('인트라넷 주간보고 읽는 중…')
-      : '<div class="rnc-loading">' + ICON.spinner + ' <span class="rnc-progtext">주간보고 기록 읽는 중…</span></div>';
-  }
   await rptMLoadClick();   // 기간이 다르면 그 기간을 새로 열고, 같으면 지금 출처로 다시 읽는다
-  buildReport();
 }
 // 분기 = 오늘이 속한 3개월(1-3/4-6/7-9/10-12). monthRange를 재사용해 말일 계산을 한 곳에 둔다.
 function quarterRange(base){
@@ -17750,70 +17431,36 @@ async function runResearchExport(){
     toast((res && res.error) || '내보내기 실패', 'error');
   }
 }
-// 복사용 HTML — 평문(buildReportText)과 내용이 완전히 동일하고 폰트/줄바꿈만 입힌다(내용 드리프트 방지).
-// DOM에서 재수집하지 않고 평문을 그대로 감싸는 것이 핵심. 기간 취합에서 폰트가 설정된 경우에만 서식이 붙는다.
-// 들여쓰기 단위가 U+00A0(비분리공백)이라 pre-wrap + esc 만으로 선행 공백이 보존된다.
-function buildReportHtml(text, font){
-  const css = reportFontCss(font);
-  const style = 'white-space:pre-wrap'
-    + (css.family ? ';font-family:' + css.family : '')
-    + (css.size ? ';font-size:' + css.size : '');
-  return '<div style="' + esc(style) + '">' + String(text == null ? '' : text).split('\n').map(esc).join('<br>') + '</div>';
-}
-async function copyReport(){
-  const text = buildReportText();
-  if(!text){ toast('복사할 내용이 없습니다', 'warn'); return; }
-  // text/plain은 항상 buildReportText 원문 그대로(평문 붙여넣기·netcus 전송 계약 불변),
-  // HTML 트윈에만 서식을 입힌다. 폰트는 **기간 취합 복사에만**(2026-09-18) — 일간·주간은 평문과 같은 기본 서식.
-  const font = (reportMode === 'custom') ? reportFontGet() : normalizeReportFont(null);
-  const styled = !!(font.family || font.size);
-  try{
-    if(navigator.clipboard && window.ClipboardItem){
-      await navigator.clipboard.write([new ClipboardItem({
-        'text/html': new Blob([buildReportHtml(text, font)], {type:'text/html'}),
-        'text/plain': new Blob([text], {type:'text/plain'}),
-      })]);
-      toast('보고서를 클립보드에 복사했습니다' + (styled ? ' (폰트 적용)' : ''), 'success');
-      return;
-    }
-  }catch(_){ /* HTML 복사 미지원·권한 차단 → 아래 평문 경로로 폴백(내용은 동일) */ }
-  try{ await navigator.clipboard.writeText(text); toast('보고서를 클립보드에 복사했습니다', 'success'); }
-  catch(_){ // WebView2/비보안 컨텍스트 폴백 — 미러는 div라 .select() 불가 → 숨김 textarea 주입
-    try{
-      const ta = document.createElement('textarea');
-      ta.value = text; ta.style.position = 'absolute'; ta.style.left = '-9999px';
-      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
-      toast('보고서를 클립보드에 복사했습니다', 'success');
-    }catch(e){ toast('복사에 실패했습니다. 다시 시도해 주세요', 'error'); }
-  }
-}
 
 /* ===== 월간 보고 탭(docs/MONTHLY-REPORT-PLAN.md §5, 2026-10-23 결정으로 모으기와 미리 보기만) =====
  *  ★ 기존 보고 함수(parseNetcusWeekly, buildNetcusWeeklyText, monthRange)는 읽기만 한다. 과제(카테고리)별로 자르는 일만 여기서 한다(§8).
  *    기존 코드와의 접점은 탭 버튼 하나와 setReportMode 의 분기(rptMOpen) 뿐이다. 나머지는 rptM* 함수와 .rptm- CSS.
  *  ★ 이 탭은 회사 사이트로 아무것도 보내지 않는다. 호스트로 가는 것은 RPTM_HOST_CMDS 뿐이다: 주간보고 읽기(이 앱 DB 의 reportWeeklyList, 인트라넷 netcusWeeklyRangeRead), 그림 명령,
  *    DOCX 저장, 저장한 폴더 열기(tests/monthly-report.test.mjs 가 정적 검사와 가로채기로 지킨다).
- *  ★ 이 화면은 글을 고치지 않는다(사용자 결정 2026-10-23). 고르는 것(기간, 출처, 작성일, 과제 체크, 기타 넣기 빼기, 미식별 넣을 곳 콤보 2026-11-10)과
- *    과제 줄의 개발 일정 그림 서랍뿐이다. 문서에 채우는 칸은 수행 실적과 개발 일정 그림이고, 수행 계획 두 칸과 일정 변경이력은 빈칸으로 보낸다.
+ *  ★ 이 화면은 글을 고치지 않는다(사용자 결정 2026-10-23). 고르는 것(기간, 출처, 양식, 작성일, 과제 체크, 기타 넣기 빼기, 미식별 넣을 곳 콤보 2026-11-10)과
+ *    과제 줄의 개발 일정 그림 칸(과제당 1장, 2026-11-10 시안 v2)뿐이다. 문서에 채우는 칸은 수행 실적과 개발 일정 그림이고, 수행 계획 두 칸과 일정 변경이력은 빈칸으로 보낸다.
  *    실적 글 = 읽어 둔 주간보고(캘린더 기록은 이 앱 주간보고 DB, 인트라넷 주간은 회사 사이트)를 과제별로 모은 글의 그 과제 블록에서 머리 줄 [과제명] 을 뺀 것(글자 그대로). 저장하지 않는다.
- *  ★ B안 두 칸(2026-10-23 결정, docs/prototypes/monthly-report-layout.html): 왼쪽에서 바꾸면 오른쪽 미리 보기가 바로 바뀐다(rptMPreview).
+ *  ★ 두 칸(시안 v2, docs/MONTHLY-UX-V2.md): 왼쪽 상자(과제, 기타, 미식별)에서 바꾸면 오른쪽 미리 보기가 바로 바뀐다(rptMPreview). 바뀐 부분만 다시 그린다.
  *    과제 순서는 내 과제(카테고리) 순서 그대로이고 이 탭에서 바꾸지 않는다.
- *  ★ 기억하는 값이 없다(2026-10-23). 열 때마다 지난달, 캘린더 기록, 기록 있는 과제만 체크, 기타 모두 넣음, 미식별 넣지 않음, 계획 기본값, 작성일 오늘로 연다.
+ *  ★ 양식 SW/HW(2026-11-10, docs/MONTHLY-TEMPLATE-HW.md): 열 때마다 SW(기억하지 않는다). HW 는 계획 기간과 그림 칸을 숨기고 미리 보기를 HW 모양으로 그린다.
+ *    계획 기간 값과 그림은 그대로 남는다(SW 로 돌아오면 다시 보인다). payload 에 template 하나를 더한다.
+ *  ★ 기억하는 값이 없다(2026-10-23). 열 때마다 지난달, 캘린더 기록, SW, 기록 있는 과제만 체크, 기타 모두 넣음, 미식별 미선택, 계획 기본값, 작성일 실적 마지막 날로 연다(시안 v4 결정 17).
  *    이 탭은 localStorage 를 읽지도 쓰지도 않는다(예전 키 tc_rptMSel:, tc_rptMEtcOff:, tc_rptDraftM:, tc_rptMNcMap: 도 읽지 않는다).
- *    그림만 사람마다 DB 에 있어(scheduleImage*) 다시 열어도 '그림 n' 이 보인다. 글은 모두 esc 나 textContent 로 그린다. */
-const RPTM_IMG_MAX = 5;                     // 과제마다 그림 5장(호스트도 같은 값으로 막는다)
+ *    그림만 사람마다 DB 에 있어(scheduleImage*) 다시 열어도 썸네일이 보인다. 글은 모두 esc 나 textContent 로 그린다. */
+const RPTM_IMG_MAX = 1;                     // 과제마다 그림 1장(2026-11-10 시안 v2 결정 8, 9. 호스트도 같은 값으로 막는다)
 const RPTM_NC_MAX_DAYS = 400;                // netcus 주간보고 읽기 한도(호스트 NetcusWeeklyRangeRead 와 같다. 이 앱 주간보고 기록은 나눠 읽어서 한도가 없다)
-const RPTM_HOST_CMDS = ['netcusWeeklyRangeRead', 'reportWeeklyList', 'scheduleImageList', 'scheduleImageThumb', 'scheduleImageAdd', 'scheduleImageDelete', 'scheduleImageMove', 'exportMonthlyDocx', 'openFolder'];
+//  순서 바꾸기(scheduleImageMove)는 과제당 1장이 되어 화면에서 부르지 않는다(시안 v2 결정 9)
+const RPTM_HOST_CMDS = ['netcusWeeklyRangeRead', 'reportWeeklyList', 'scheduleImageList', 'scheduleImageThumb', 'scheduleImageAdd', 'scheduleImageDelete', 'exportMonthlyDocx', 'openFolder'];
 let __rptM = null;          // 지금 고른 것 { from, to, src, fillSrc(읽어 둔 출처, 아직 없으면 ''), pFrom, pTo, date, order, checked, etcOff, unidTo }. 열 때마다 새로 만든다
+let __rptMTpl = 'sw';       // 양식 'sw' | 'hw'. 기억하지 않는다(rptMOpen 이 늘 SW 로 연다). 기간을 바꿔도 이 화면을 연 동안은 그대로
 let __rptMBound = false;
-let __rptMEtcOpen = false;  // 기타 표 칩을 펼쳤는지(처음은 한 줄 요약)
 let __rptMSaving = false;
 let __rptMReading = false;  // netcus 주간보고 읽는 중
 let __rptMGen = 0;          // 읽기 세대(기간을 바꾸면 늦은 회신을 버린다)
 let __rptMHas = new Set();  // 기록이 있는 공식 과제(목록의 '기록 있음')
 let __rptMDir = '';         // 마지막으로 저장한 폴더(호스트가 준 값)
 let __rptMHover = '';       // 마우스가 올라가 있는 과제 줄(그 줄의 Ctrl+V 는 그림 붙여넣기)
-const __rptMImgOpen = new Set();   // 그림 칸을 펼친 과제 id
+let __rptMZoom = '';        // 크게 보기 창에 띄운 과제 id
 const __rptMImgs = new Map();      // 과제 id -> { loaded, list, stale, failed, busy, msg, kind }
 const __rptMThumbs = new Map();    // sha256 -> 미리 보기 data URL(호스트 scheduleImageThumb)
 const __rptMThumbReq = new Set();  // 요청 중이거나 실패한 sha256
@@ -17823,12 +17470,13 @@ function rptMDays(from, to){
   const f = parseYmd(from), t = parseYmd(to);
   return Math.round((Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()) - Date.UTC(f.getFullYear(), f.getMonth(), f.getDate())) / 86400000) + 1;
 }
-// 계획 기간 기본값(§5.2): 실적 끝 다음 월요일부터 실적 기간과 같은 주 수, 금요일 끝. 예: 08/03(월) ~ 09/18(금) → 09/21(월) ~ 11/06(금).
+// 계획 기간 기본값(시안 v4 결정 17): 실적 마지막 날의 다음 주 월요일 ~ 그 월요일부터 6주째 주의 금요일(딱 6주).
+//  주는 월~일. 예: 실적 10/01 ~ 10/31(토) 이면 11/02(월) ~ 12/11(금). 실적 끝이 월요일(11/02)이면 그다음 주 11/09 ~ 12/18.
+//  예전 규칙(실적과 같은 주 수)은 버렸다.
 function rptMPlanDefault(from, to){
   if(!_rptMValid(from) || !_rptMValid(to) || from > to) return { from: '', to: '' };
-  const weeks = Math.max(1, Math.ceil(rptMDays(from, to) / 7));
-  const m = calViewWeek(addDays(to, 7)).mon;   // 실적 끝 다음 날 이후 첫 월요일
-  return { from: m, to: addDays(m, weeks * 7 - 3) };
+  const m = calViewWeek(addDays(to, 7)).mon;   // 실적 끝이 든 주의 다음 주 월요일
+  return { from: m, to: addDays(m, 5 * 7 + 4) };
 }
 function rptMName(){ return (currentUser && currentUser.name) ? String(currentUser.name) : ''; }
 function rptMOfficial(){ return state.categories.filter(isOfficialCat); }
@@ -17841,12 +17489,19 @@ function rptMTerm(id){
   const a = ym(c && c.devStartDate), b = ym(c && c.devEndDate);
   return { a, b, known: !!c, text: (a || b) ? (a + ' ~ ' + b) : '' };
 }
+//  HW 양식의 과제 수행 기간(MONTHLY-TEMPLATE-HW 3.3): payload 의 term(YYYY/MM ~ YYYY/MM)을 'YYYY년 M월 ~ YYYY년 M월' 로. 끝이 비면 'YYYY년 M월 ~'.
+function rptMTermHw(term){
+  const ym = s => { const m = /^(\d{4})\/(\d{2})$/.exec(String(s || '').trim()); return m ? m[1] + '년 ' + (+m[2]) + '월' : ''; };
+  const parts = String(term || '').split('~');
+  const a = ym(parts[0]), b = ym(parts[1]);
+  return a && b ? a + ' ~ ' + b : a ? a + ' ~' : b ? '~ ' + b : '';
+}
 
 // ── 실적 글(읽어 둔 주간보고에서 모은다) ───────────────────────────────────────────
 //  두 출처(이 앱 주간보고 기록, 인트라넷 주간) 공통: parseNetcusWeekly 결과를 buildNetcusWeeklyText 의 과제 블록(주차별, 평면은 사용자가 고른 weeklyFlat 그대로)에서 머리 줄을 뺀 것.
 //  나누기 정책(§14, 사용자 결정 2026-10-23): [과제] 머리는 **내 카테고리에만** 맞춘다. 공식 과제는 카테고리 이름, 통상명칭, 사업명
 //  가운데 하나와 같으면(정규화: NFC, 공백 전부 제거) 그 과제로, 개인 카테고리는 이름이 같으면 기타 표로(기타의 넣기, 빼기 그대로).
-//  나머지는 unid(미식별 항목)다. 문서 설정 띠의 미식별 칸에 줄마다 넣을 곳 콤보(넣지 않음, 공식 과제, 기타)로 보인다.
+//  나머지는 unid(미식별 항목)다. 미식별 상자에 줄마다 넣을 곳 콤보(미선택, 공식 과제, 기타)로 보인다.
 //  고른 것(S.unidTo)은 rptMPayload 가 붙이고 기억하지 않는다(2026-11-10 docs/MONTHLY-HEAD-MAPPING.md 결정 4, 5).
 //  반환 auto = { proj, etc, unid: [{ key: 정규화한 머리, name, text }] }.
 function rptMBuildWeek(parsed){
@@ -17879,7 +17534,7 @@ function rptMNcAliases(){
   }
   return m;
 }
-//  읽어 둔 과제별 글(출처 둘이 같은 그릇 netcusWeeklyMerge 를 쓴다). 그 기간, 지금 보이는 출처(fillSrc)로 읽은 것이 있을 때만(없으면 null: 읽어 오기를 눌러야 한다).
+//  읽어 둔 실적 글(출처 둘이 같은 그릇 netcusWeeklyMerge 를 쓴다). 그 기간, 지금 보이는 출처(fillSrc)로 읽은 것이 있을 때만(없으면 null: 읽어 오기를 눌러야 한다).
 function rptMAuto(S){
   const c = netcusWeeklyMerge;
   if(!S || !S.fillSrc || !c || !c.auto || c.key !== ncMergeKey(S.from, S.to, S.fillSrc)) return null;
@@ -17889,7 +17544,7 @@ function rptMEtcText(S, auto){
   const off = (S && S.etcOff) || new Set();
   return auto.etc.filter(e => !off.has(e.key) && String(e.text).trim()).map(e => e.text).join('\n');
 }
-//  '기록 있음': 읽어 둔 주간보고에 실적 글이 있는 과제(처음 체크 값과 '기록 없음' 표시). 읽기 전에는 비어 있고 표시도 하지 않는다.
+//  '기록 있음': 읽어 둔 주간보고에 실적 글이 있는 과제(처음 체크 값과 흐린 이름 표시). 읽기 전에는 비어 있고 표시도 하지 않는다.
 //  달력의 일정, 할 일, 공수를 모으지 않는다(2026-11-03 사용자: 캘린더 기록 = 이 앱 주간보고 DB).
 function rptMHasSet(S){
   const has = new Set();
@@ -17904,24 +17559,25 @@ function rptMSync(S, has){
 }
 //  새 기간. 체크는 그 기간의 '기록 있음'으로 새로 정한다. 기타에서 뺀 것(etcOff)은 이 탭을 연 동안만 이어 받는다.
 //  미식별 넣을 곳(unidTo: 정규화 머리 -> 공식 과제 id | 'etc', 넣지 않음은 없음)은 기간마다 처음 값(빈 것). 같은 기간 다시 읽기는 S 를 그대로 쓰므로 남는다.
+//  작성일과 계획 기간은 새 기간마다 기본값(결정 17: 작성일 = 실적 마지막 날, 계획 = rptMPlanDefault). 손으로 고친 값은 같은 기간 다시 읽기에서만 남는다.
 function rptMFresh(from, to, src, etcOff){
   const pd = rptMPlanDefault(from, to);
   const S = { from, to, src: src === 'week' ? 'week' : 'cal', fillSrc: '', pFrom: pd.from, pTo: pd.to,
-    date: todayYmd(), order: [], checked: {}, etcOff: new Set(etcOff instanceof Set ? etcOff : []), unidTo: new Map() };
+    date: to, order: [], checked: {}, etcOff: new Set(etcOff instanceof Set ? etcOff : []), unidTo: new Map() };
   __rptMHas = rptMHasSet(S);
   rptMSync(S, __rptMHas);
   return S;
 }
 
 // ── 열기와 그리기 ───────────────────────────────────────────────────────────
-//  setReportMode('monthly') 가 부른다. 기억하는 값이 없어(2026-10-23) 열 때마다 처음 값으로 연다:
-//  실적 기간 지난달 1일 ~ 말일, 출처 캘린더 기록(읽어 오기를 눌러야 읽는다), 기록 있는 과제만 체크, 기타 모두 넣음, 계획 기간 기본값, 작성일 오늘.
+//  atSumInit 이 부른다. 기억하는 값이 없어(2026-10-23) 열 때마다 처음 값으로 연다:
+//  실적 기간 지난달 1일 ~ 말일, 출처 캘린더 기록(읽어 오기를 눌러야 읽는다), 양식 SW, 기록 있는 과제만 체크, 기타 모두 넣음, 계획 기간 기본값, 작성일 실적 마지막 날.
 //  그림은 사람별 DB 목록을 다시 묻는다.
 function rptMOpen(){
   rptMBind();
   __rptMGen++;
-  clearNetcusWeeklyMerge(); __rptMImgs.clear(); __rptMImgOpen.clear();
-  __rptMEtcOpen = false; __rptMHover = '';
+  clearNetcusWeeklyMerge(); __rptMImgs.clear();
+  __rptMHover = ''; __rptMTpl = 'sw';
   const r = monthRange(new Date(), -1);
   __rptM = rptMFresh(r[0], r[1], 'cal');
   rptMSrcMsg('', '');
@@ -17930,107 +17586,112 @@ function rptMOpen(){
 function rptMRenderAll(){
   const S = __rptM; if(!S) return;
   const note = $('#rptmHostNote'); if(note) note.classList.toggle('hidden', HOST);
-  const sv = $('#rptmSave'); if(sv){ sv.disabled = !HOST || __rptMSaving; sv.title = HOST ? '회사 월간보고 양식(.docx)으로 저장합니다' : 'DOCX 저장은 데스크톱 위젯에서만 됩니다'; }
   const od = $('#rptmOpenDir'); if(od) od.classList.toggle('hidden', !(HOST && __rptMDir));
-  rptMRenderSettings(); rptMRenderPick(); rptMRenderEtc(); rptMRenderUnid(); rptMPreview();
+  rptMTplUi(); rptMRenderSettings(); rptMRenderPick(); rptMRenderEtc(); rptMRenderUnid(); rptMPreview();
+  const wh = $('#rptmWeekHead'); if(wh) wh.checked = !weeklyFlat;
+  asStageSync();
 }
 function rptMRenderSettings(){
   const S = __rptM;
   $('#rptmPFrom').value = S.pFrom; $('#rptmPTo').value = S.pTo;
   $('#rptmDate').value = S.date;
-  $('#rptmName').textContent = rptMName() || '(로그인 이름 없음)';
+  asDtSync();   // 이름은 줄에 따로 두지 않는다(결정 19, 종이 제목에 있다)
   $$('#rptSrcSeg [data-rsrc]').forEach(b => { b.disabled = __rptMReading; });
   const lb = $('#asLoad'); if(lb) lb.disabled = __rptMReading;
-  //  안내는 짧게, 필요할 때만(긴 설명은 출처 단추의 풍선 글)
-  const h = $('#rptmSrcHint');
-  if(h) h.textContent = (S.fillSrc && S.src !== S.fillSrc) ? '읽어 오기를 누르면 이 출처로 바꿉니다.' : '';
 }
-//  문서 설정 띠 머리의 요약(접어도 보인다): 계획 기간, 작성일, 고른 과제 수, 넣을 기타 표 수. 월/일만 쓴다(2026-11-02 는 11/2).
-function rptMBandMd(iso){ const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(String(iso || '')); return m ? (+m[1]) + '/' + (+m[2]) : ''; }
-function rptMBandSum(S, n){
-  const sm = $('#asBandSum'); if(!sm || !S) return;
-  const cats = rptMEtcCats(), e = cats.filter(c => !S.etcOff.has(c.key)).length;
-  const plan = S.pFrom && S.pTo ? '계획 ' + rptMBandMd(S.pFrom) + '~' + rptMBandMd(S.pTo) : '';
-  sm.textContent = [plan, S.date ? '작성일 ' + rptMBandMd(S.date) : '', '과제 ' + n + '개', '기타 표 ' + e + '개'].filter(Boolean).join(', ');
+//  양식 세그와 HW 에서 숨기는 것(계획 기간, 그림 칸). 요소의 hidden 만 바꾼다(다시 그리지 않는다).
+function rptMTplUi(){
+  const hw = __rptMTpl === 'hw';
+  $$('#rptmTpl [data-tpl]').forEach(b => { const on = b.dataset.tpl === __rptMTpl; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  $$('#asHead .rptm-plan').forEach(e => e.classList.toggle('hidden', hw));
+  if(hw && __asPopK === 'plan') asPopClose();
+  $$('#rptmPick [data-slot]').forEach(e => e.classList.toggle('hidden', hw));
 }
-//  띠 접기와 펼치기(사용자 동작). 접힘 상태는 이 창을 연 동안만 둔다(기억하지 않는다).
-let __asBandOpen = true;
-function asBandSet(open){
-  __asBandOpen = !!open;
-  const b = $('#asBandB'), h = $('#asBandH'), t = $('#asBandTg');
-  if(b) b.classList.toggle('hidden', !__asBandOpen);
-  if(h) h.setAttribute('aria-expanded', __asBandOpen ? 'true' : 'false');
-  if(t) t.textContent = __asBandOpen ? '접기' : '펼치기';
+//  양식을 골랐다: 숨김과 미리 보기만 바꾼다(전체 다시 그리기 없음). 계획 기간 값과 그림은 그대로 둔다. 기억하지 않는다.
+function rptMTplSet(t){
+  const v = t === 'hw' ? 'hw' : 'sw';
+  if(v === __rptMTpl) return;
+  __rptMTpl = v;
+  rptMTplUi();
+  rptMPreview();
 }
-function rptMSrcMsg(text, kind){
+//  읽기 상태(윗줄): 성공은 '✓ n주'(원래 문장은 풍선), 읽은 주가 없으면 '0주'(풍선), 실패와 읽는 중은 글로.
+function rptMSrcMsg(text, kind, tip){
   const m = $('#rptmSrcMsg'); if(!m) return;
-  m.textContent = text || '';
-  m.className = 'rptm-msg full' + (kind === 'ok' ? ' ok' : kind === 'info' ? ' info' : '');
+  if(kind === 'ok' || kind === 'none'){ m.innerHTML = (kind === 'ok' ? ICON.check : '') + esc(text || ''); m.title = tip || ''; }
+  else { m.textContent = text || ''; m.title = ''; }
+  m.className = 'rptm-msg' + (kind === 'ok' ? ' ok' : kind === 'info' || kind === 'none' ? ' info' : '');
 }
 function rptMPicked(S){ return S.order.filter(id => S.checked[id]); }
 function rptMRowEl(id){ return [...document.querySelectorAll('#rptmPick .rptm-it[data-uid]')].find(r => r.dataset.uid === id) || null; }
-//  과제 줄: 체크, 기록이 없을 때만 '기록 없음', 그림 단추(위젯만). 그림 서랍은 줄 아래로 펼친다(rptMImgRender). 순서 단추는 없다.
+//  기록이 없는 과제(읽은 뒤, 미식별에서 받은 글도 없을 때): 이름을 흐리게 하고 풍선만 둔다(시안 v2 결정 7, '기록 없음' 글자는 없다)
+function rptMNoRec(S, id){ return !!rptMAuto(S) && !__rptMHas.has(id) && !rptMUnidHas(S, id); }
+//  과제 줄: 체크, 이름(넣지 않으면 줄, 기록 없으면 흐리게), 그림 칸(위젯만, rptMImgRender). 순서 단추는 없다.
 function rptMPickRowHtml(id){
-  const S = __rptM, on = !!S.checked[id], has = __rptMHas.has(id), nm = rptMCatName(id);
-  return `<div class="rptm-it${on ? '' : ' off'}" data-uid="${esc(id)}"><div class="rptm-row">`
-    + `<label class="check"><input type="checkbox" data-act="pick"${on ? ' checked' : ''}><span class="nm">${esc(nm)}</span></label>`
-    + ((has || !rptMAuto(S)) ? '' : '<span class="rptm-none' + (rptMUnidHas(S, id) ? ' hidden' : '') + '">기록 없음</span>')
-    + (HOST ? '<span class="rptm-imgtog" data-imgtog></span>' : '')
-    + '</div>'
-    + (HOST ? '<div class="rptm-drawer hidden" data-strip></div>' : '')
+  const S = __rptM, on = !!S.checked[id], nr = rptMNoRec(S, id), nm = rptMCatName(id);
+  return `<div class="rptm-it${on ? '' : ' off'}${nr ? ' norec' : ''}" data-uid="${esc(id)}">`
+    + `<label class="check"><input type="checkbox" data-act="pick"${on ? ' checked' : ''}><span class="nm"${nr ? ' title="이 기간 기록 없음"' : ''}>${esc(nm)}</span></label>`
+    + (HOST ? `<span class="rptm-slotw${__rptMTpl === 'hw' ? ' hidden' : ''}" data-slot></span>` : '')
     + '</div>';
+}
+//  줄의 기록 없음 표시만 바꾼다(미식별 넣을 곳을 바꿨을 때)
+function rptMNoRecSync(id){
+  const S = __rptM, r = rptMRowEl(id); if(!r || !S) return;
+  const nr = rptMNoRec(S, id), nm = r.querySelector('.nm');
+  r.classList.toggle('norec', nr);
+  if(nm){ if(nr) nm.title = '이 기간 기록 없음'; else nm.removeAttribute('title'); }
 }
 function rptMRenderPick(){
   const S = __rptM, box = $('#rptmPick'); if(!box) return;
-  if(!S.order.length){ box.innerHTML = '<div class="rptm-empty">구독한 공식 과제가 없습니다. 내 과제에서 공식 과제를 구독하면 여기에 나옵니다.</div>'; return; }
+  if(!S.order.length){ box.innerHTML = '<div class="rptm-empty">구독한 공식 과제가 없습니다.</div>'; return; }
   box.innerHTML = S.order.map(id => rptMPickRowHtml(id)).join('');
   if(HOST) for(const id of S.order){ rptMImgRender(id); rptMImgEnsure(id); }
 }
 function rptMEtcCats(){ return state.categories.filter(c => !isOfficialCat(c)).map(c => ({ key: c.id, name: String(c.name || '') })); }
-//  기타 표: 처음은 한 줄 요약('n개 모두 넣음' 또는 '넣은 수/전체'), 고르기를 누르면 칩(체크)으로 넣고 뺀다. 기억하지 않는다.
-function rptMEtcSummary(){
-  const S = __rptM, cats = rptMEtcCats();
-  const on = cats.filter(e => !(S && S.etcOff.has(e.key))).length;
-  return !cats.length ? '없음' : on === cats.length ? cats.length + '개 모두 넣음' : on + '/' + cats.length;
-}
+//  기타 상자(시안 v4 결정 20): 과제 줄과 같은 체크 줄, 이 기간 읽은 글이 있는 개인 과제만. 머리는 켠 수/전체. 읽기 전이나 글 있는 것이 없으면 상자를 숨긴다.
+//  넣기 빼기(etcOff)는 그대로이고 기억하지 않는다.
+function rptMEtcShown(S){ const w = S ? rptMAuto(S) : null; return w ? w.etc.filter(e => String(e.text).trim()) : []; }
 function rptMRenderEtc(){
   const S = __rptM, box = $('#rptmEtc'); if(!box || !S) return;
-  const cats = rptMEtcCats().map(e => `<label class="rpt-chip"><input type="checkbox" data-etc="${esc(e.key)}"${S.etcOff.has(e.key) ? '' : ' checked'}><span>${esc(e.name)}</span></label>`).join('');
-  box.innerHTML = cats || '<span class="git-hint">공식 과제가 아닌 카테고리가 없습니다.</span>';
-  box.classList.toggle('hidden', !__rptMEtcOpen);
-  const tg = $('#rptmEtcTog'); if(tg){ tg.textContent = __rptMEtcOpen ? '접기' : '고르기'; tg.setAttribute('aria-expanded', __rptMEtcOpen ? 'true' : 'false'); }
-  const sm = $('#rptmEtcSum'); if(sm) sm.textContent = rptMEtcSummary();
+  const list = rptMEtcShown(S);
+  box.innerHTML = list.map(e => { const on = !S.etcOff.has(e.key);
+    return `<div class="rptm-it${on ? '' : ' off'}" data-etc-key="${esc(e.key)}"><label class="check"><input type="checkbox" data-etc="${esc(e.key)}"${on ? ' checked' : ''}><span class="nm">${esc(e.name)}</span></label></div>`; }).join('');
+  const w = $('#rptmEtcBox'); if(w) w.classList.toggle('hidden', !list.length);
+  rptMEtcCount(S, list);
 }
-//  미식별 항목(§14, 2026-11-10 MONTHLY-HEAD-MAPPING 결정 4). 읽어 둔 주간보고의 [과제] 가운데 내 과제와 맞지 않은 것을 문서 설정 띠에 보인다(두 출처 공통).
-//  줄 = 머리 이름, 첫 줄, 펼친 글(details) + 오른쪽 넣을 곳 콤보 하나(넣지 않음, 내 공식 과제, 기타). 콤보는 summary 밖이라 눌러도 줄이 펼쳐지거나 접히지 않는다.
-//  칸 전체와 줄의 펼침은 다시 그려도 사용자가 둔 대로 둔다. 콤보를 바꿀 때는 다시 그리지 않는다(rptMUnidSet, 포커스 그대로).
+function rptMEtcCount(S, list){
+  const c = $('#rptmEtcCnt'); if(!c || !S) return;
+  list = list || rptMEtcShown(S);
+  c.textContent = list.length ? list.filter(e => !S.etcOff.has(e.key)).length + '/' + list.length : '';
+}
+//  미식별 상자(§14, 2026-11-10 MONTHLY-HEAD-MAPPING 결정 4, 시안 v2 결정 7). 읽어 둔 주간보고의 [과제] 가운데 내 과제와 맞지 않은 것(두 출처 공통).
+//  머리 배지는 개수(고른 것이 있으면 고른 수/전체), 줄 = [머리 이름](풍선은 첫 줄) + 넣을 곳 콤보(미선택 = 넣지 않음(v6 결정 24), 내 공식 과제, 기타). 없으면 상자를 숨긴다.
+//  콤보를 바꿀 때는 다시 그리지 않는다(rptMUnidSet, 포커스 그대로).
 function rptMRenderUnid(){
   const box = $('#rptmUnid'); if(!box) return;
   const S = __rptM;
-  const prev = box.querySelector('details[data-unid]');
-  const open = prev ? prev.open : false;
-  const openKeys = new Set([...box.querySelectorAll('[data-unid-key]')].filter(r => { const d = r.querySelector('details.rptm-ui'); return d && d.open; }).map(r => r.dataset.unidKey));
-  if(!S){ box.innerHTML = ''; return; }
-  const w = rptMAuto(S);
+  const w = S ? rptMAuto(S) : null;
   const items = (w && w.unid) || [];
+  box.classList.toggle('hidden', !items.length);
+  if(!items.length){ box.innerHTML = ''; return; }
   const offs = rptMOfficial();
-  const opts = to => '<option value="">넣지 않음</option>'
+  const opts = to => '<option value="">미선택</option>'
     + offs.map(c => `<option value="${esc(c.id)}"${to === c.id ? ' selected' : ''}>${esc(rptMCatName(c.id))}</option>`).join('')
     + `<option value="etc"${to === 'etc' ? ' selected' : ''}>기타</option>`;
-  const list = !w ? '<span class="git-hint">읽어 오기를 누르면 내 과제와 맞지 않은 항목이 여기에 나옵니다.</span>'
-    : !items.length ? '<span class="git-hint">미식별 항목이 없습니다.</span>'
-    : items.map(u => `<div class="rptm-ur" data-unid-key="${esc(u.key)}"><details class="rptm-ui"${openKeys.has(u.key) ? ' open' : ''}><summary><b>${esc('[' + u.name + ']')}</b><span>${esc(String(u.text).split('\n').find(l => l.trim()) || '')}</span></summary><div class="tx">${esc(u.text)}</div></details>`
-      + `<select data-unid-to aria-label="${esc('[' + u.name + '] 넣을 곳')}">${opts(S.unidTo.get(u.key) || '')}</select></div>`).join('');
-  box.innerHTML = `<details class="rptm-unid" data-unid${open ? ' open' : ''}><summary title="주간보고의 [과제] 가운데 내 과제 이름(공식 과제는 통상명칭, 사업명도)이나 내 카테고리와 맞지 않은 것. 줄마다 넣을 곳을 고르면 문서에 들어갑니다">미식별 항목 <span class="rptm-badge">${items.length}</span>`
-    + `<span class="rptm-cnt">${esc(rptMUnidCnt(S, items))}</span></summary>`
-    + list + '</details>';
+  box.innerHTML = '<div class="as-boxh">미식별 <span class="rptm-badge" data-unid-badge></span></div>'
+    + items.map(u => { const to = S.unidTo.get(u.key) || '', first = String(u.text).split('\n').find(l => l.trim()) || '';
+      return `<div class="rptm-ur${to ? ' set' : ''}" data-unid-key="${esc(u.key)}" title="${esc(first.trim())}"><span class="t">${esc('[' + u.name + ']')}</span>`
+        + `<select data-unid-to aria-label="${esc('[' + u.name + '] 넣을 곳')}">${opts(to)}</select></div>`; }).join('');
+  rptMUnidBadge(S, items);
 }
-//  칸 머리: 고른 것이 있으면 'n개 넣음', 없으면 '문서에 넣지 않음'. 지금 미식별 목록에 있는 머리만 센다.
-function rptMUnidCnt(S, items){
-  const k = (items || []).filter(u => S && S.unidTo.has(u.key)).length;
-  return k ? k + '개 넣음' : '문서에 넣지 않음';
+//  배지: 고른 것이 없으면 n, 있으면 k/n, 모두 고르면 done. 지금 미식별 목록에 있는 머리만 센다.
+function rptMUnidBadge(S, items){
+  const b = $('#rptmUnid [data-unid-badge]'); if(!b) return;
+  const n = (items || []).length, k = (items || []).filter(u => S && S.unidTo.has(u.key)).length;
+  b.textContent = k ? k + '/' + n : String(n);
+  b.classList.toggle('done', !!n && k === n);
 }
-//  콤보 하나를 바꿨다. 공식 과제를 고르면 그 과제를 체크한다(과제 목록은 다시 그리지 않고 그 줄만 바꾼다. 포커스와 그림 서랍 그대로).
+//  콤보 하나를 바꿨다. 공식 과제를 고르면 그 과제를 체크한다(과제 목록은 다시 그리지 않고 그 줄만 바꾼다. 포커스와 그림 칸 그대로).
 //  기억하지 않는다(이 탭을 연 동안, 같은 기간에서만).
 function rptMUnidSet(key, to){
   const S = __rptM; if(!S) return;
@@ -18041,10 +17702,12 @@ function rptMUnidSet(key, to){
     const row = rptMRowEl(to);
     if(row){ row.classList.remove('off'); const cb = row.querySelector('[data-act="pick"]'); if(cb) cb.checked = true; }
   }
-  //  미식별 글을 받은 과제는 '기록 없음' 을 감춘다(넣지 않음으로 되돌리면 다시 보인다)
-  for(const id of S.order){ const r = rptMRowEl(id), nr = r && r.querySelector('.rptm-none'); if(nr) nr.classList.toggle('hidden', rptMUnidHas(S, id)); }
-  const w = rptMAuto(S), cnt = $('#rptmUnid .rptm-unid > summary .rptm-cnt');
-  if(cnt) cnt.textContent = rptMUnidCnt(S, w && w.unid);
+  //  미식별 글을 받은 과제는 흐린 이름(기록 없음)을 푼다(미선택으로 되돌리면 다시 흐리게)
+  for(const id of S.order) rptMNoRecSync(id);
+  const r = [...document.querySelectorAll('#rptmUnid [data-unid-key]')].find(x => x.dataset.unidKey === key);
+  if(r) r.classList.toggle('set', ok);
+  const w = rptMAuto(S);
+  rptMUnidBadge(S, w && w.unid);
   rptMPreview();
 }
 //  그 공식 과제로 고른 미식별 머리가 있는가
@@ -18055,7 +17718,7 @@ function rptMUnidText(S, auto, to){
   return auto.unid.filter(u => S.unidTo.get(u.key) === to && String(u.text).trim()).map(u => u.text).join('\n');
 }
 
-// ── 개발 일정 그림(§6, 과제 줄의 그림 서랍. 명령 scheduleImage*) ─────────────────────
+// ── 개발 일정 그림(§6, 과제 줄의 작은 칸 하나, 과제당 1장 2026-11-10. 명령 scheduleImage*) ─────────────────────
 function rptMImgState(id){ if(!__rptMImgs.has(id)) __rptMImgs.set(id, { loaded: false, loading: false, list: [], stale: false, failed: false, busy: false, msg: '', kind: '' }); return __rptMImgs.get(id); }
 function rptMErrText(res, fallback){
   if(res && res.error && typeof res.error === 'object' && res.error.message) return String(res.error.message);
@@ -18068,41 +17731,23 @@ function rptMAt(iso){
   const md = pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   return d.getFullYear() === new Date().getFullYear() ? md : d.getFullYear() + '/' + md;
 }
-//  그 과제 줄의 그림 단추와 펼친 서랍. 그림이 있으면 '그림 n', 없으면 '+ 그림'(누르면 서랍을 연다).
-//  서랍: 머리(n/5, 풍선 안내 하나), 그림 카드(번호, 앞뒤, 삭제), 넣기 칸(파일 고르기, 붙여넣기). 긴 설명은 풍선(title)에만 둔다.
+//  그 과제 줄의 그림 칸. 비면 그림 아이콘 단추(누르면 파일 고르기, 줄에 마우스를 둔 채 Ctrl+V 는 붙여넣기), 있으면 썸네일(누르면 크게 보기)과 마우스를 올리면 ✕.
+//  끊김(사본 목록)이나 거부는 칸 테두리 색과 풍선(이유)으로, 넣기와 빼기는 막는다.
 function rptMImgRender(id){
   const row = rptMRowEl(id); if(!row || !HOST) return;
-  const tog = row.querySelector('[data-imgtog]'), strip = row.querySelector('[data-strip]'); if(!tog || !strip) return;
-  const st = rptMImgState(id), open = __rptMImgOpen.has(id), nm = rptMCatName(id);
-  const n = st.list.length, ro = st.stale || st.failed, full = n >= RPTM_IMG_MAX, dis = ro || st.busy || !st.loaded;
-  const label = !st.loaded ? '그림' : n ? '그림 ' + n : '+ 그림';
-  tog.innerHTML = `<button type="button" class="btn rptm-imgbtn${n ? ' has' : ''}${open ? ' open' : ''}${st.failed || st.stale ? ' warn' : ''}" data-act="imgTog" aria-expanded="${open ? 'true' : 'false'}"`
-    + ` aria-label="${esc(label + ', ' + nm + ' 개발 일정 그림 ' + (open ? '닫기' : '열기'))}"${st.msg ? ` title="${esc(st.msg)}"` : ''}${st.loaded ? '' : ' disabled'}>`
-    + `${esc(label)}${n ? `<span aria-hidden="true"> ${open ? '▴' : '▾'}</span>` : ''}</button>`;
-  strip.classList.toggle('hidden', !open);
-  if(!open){ strip.innerHTML = ''; return; }
-  strip.innerHTML = `<div class="rptm-dr-h">개발 일정 그림 <span class="rptm-cnt">${n}/${RPTM_IMG_MAX}</span>`
-    + '<span class="rptm-tip" title="PNG, JPG 한 장 5MB, 과제마다 5장. 잘라 복사한 그림은 이 줄에 마우스를 두거나 이 줄을 누른 뒤 Ctrl+V 로도 넣습니다. 내 보고서에 넣을 그림이라 나만 봅니다.">나만 봅니다 <i class="rptm-i" aria-hidden="true">i</i></span></div>'
-    + '<div class="rptm-cards">'
-    + st.list.map((im, i) => {
-      const th = im.sha256 ? __rptMThumbs.get(im.sha256) : '', at = rptMAt(im.uploadedAt);
-      return `<figure class="rptm-card" data-id="${esc(String(im.id))}"${at ? ` title="${esc(at)} 넣음"` : ''}>`
-        + `<div class="ph">${th ? `<img src="${esc(th)}" alt="개발 일정 그림 ${i + 1}">` : '준비 중'}<span class="no">${i + 1}</span></div>`
-        + '<figcaption>'
-        + `<button type="button" class="btn" data-act="imgL" aria-label="그림 ${i + 1} 앞으로"${i === 0 || dis ? ' disabled' : ''}>◀</button>`
-        + `<button type="button" class="btn" data-act="imgR" aria-label="그림 ${i + 1} 뒤로"${i === n - 1 || dis ? ' disabled' : ''}>▶</button>`
-        + '<span class="grow"></span>'
-        + `<button type="button" class="btn danger" data-act="imgDel" aria-label="그림 ${i + 1} 삭제" title="삭제"${dis ? ' disabled' : ''}>✕</button></figcaption></figure>`;
-    }).join('')
-    + (full ? '' : '<div class="rptm-addc">'
-      + `<button type="button" class="btn" data-act="imgFile"${dis ? ' disabled' : ''}>파일 고르기</button>`
-      + `<button type="button" class="btn" data-act="imgPaste"${dis ? ' disabled' : ''}>붙여넣기</button>`
-      + '<span>또는 Ctrl+V</span></div>')
-    + '</div>'
-    + '<div class="rptm-msg" data-msg role="status" aria-live="polite"></div>';
-  const msg = strip.querySelector('[data-msg]');
-  msg.textContent = st.busy ? '처리 중입니다' : (st.msg || (ro ? '서버에 연결되면 그림을 넣고 지울 수 있습니다.' : ''));
-  msg.className = 'rptm-msg' + (st.busy || st.kind === 'info' ? ' info' : st.kind === 'ok' ? ' ok' : '');
+  const w = row.querySelector('[data-slot]'); if(!w) return;
+  const st = rptMImgState(id), nm = rptMCatName(id);
+  const ro = st.stale || st.failed, dis = ro || st.busy || !st.loaded;
+  const im = st.list[0];
+  const tip = st.msg && (ro || st.kind === 'err') ? st.msg : '';
+  if(im){
+    const th = im.sha256 ? __rptMThumbs.get(im.sha256) : '', at = rptMAt(im.uploadedAt);
+    w.innerHTML = `<span class="rptm-slot has${ro ? ' warn' : ''}"${tip ? ` title="${esc(tip)}"` : ''}>`
+      + `<button type="button" class="z" data-act="imgZoom" title="${esc('크게 보기' + (at ? ' (' + at + ' 넣음)' : ''))}" aria-label="${esc(nm + ' 개발 일정 그림 크게 보기')}">${th ? `<img src="${esc(th)}" alt="">` : ''}</button>`
+      + `<button type="button" class="x" data-act="imgDel" title="빼기" aria-label="${esc(nm + ' 개발 일정 그림 빼기')}"${dis ? ' disabled' : ''}>✕</button></span>`;
+  } else {
+    w.innerHTML = `<button type="button" class="rptm-slot${ro ? ' warn' : ''}" data-act="imgAdd" title="${esc(tip || '개발 일정 그림(파일, Ctrl+V)')}" aria-label="${esc(nm + ' 개발 일정 그림 넣기')}"${dis ? ' disabled' : ''}>${ICON.image}</button>`;
+  }
 }
 function rptMImgEnsure(id){
   if(!HOST) return;
@@ -18111,7 +17756,7 @@ function rptMImgEnsure(id){
   st.loading = true;
   hostRequest('scheduleImageList', { projectUid: id }, 30000).then(res => { st.loading = false; rptMImgTake(id, res, true); });
 }
-//  회신 하나를 그 과제 그림 상태로. 목록 실패에 사본 목록(stale)이 실려 오면 그것을 보이고 추가, 삭제, 순서를 막는다.
+//  회신 하나를 그 과제 그림 상태로. 목록 실패에 사본 목록(stale)이 실려 오면 그것을 보이고 넣기와 빼기를 막는다.
 function rptMImgTake(id, res, isList){
   const st = rptMImgState(id);
   st.loaded = true;
@@ -18125,61 +17770,76 @@ function rptMImgTake(id, res, isList){
   } else if(isList){
     if(d && Array.isArray(d.images)){ st.list = d.images.filter(x => x && x.id != null); st.stale = true; st.msg = String(d.notice || rptMErrText(res, '')); st.kind = 'info'; }
     else { st.list = []; st.failed = true; st.msg = rptMErrText(res, '그림 목록을 읽지 못했습니다.'); st.kind = 'err'; }
-  } else { st.msg = rptMErrText(res, '그림을 바꾸지 못했습니다.'); st.kind = 'err'; }
+  } else { st.msg = rptMErrText(res, '그림을 바꾸지 못했습니다.'); st.kind = 'err'; toast(st.msg, 'error'); }
   rptMImgRender(id);
   rptMThumbsLoad(id);
   rptMPreview();
 }
 function rptMThumbsLoad(id){
   const st = rptMImgState(id);
-  for(const im of st.list){
+  for(const im of st.list.slice(0, RPTM_IMG_MAX)){
     const sha = String(im.sha256 || '');
     if(!sha || __rptMThumbs.has(sha) || __rptMThumbReq.has(sha)) continue;
     __rptMThumbReq.add(sha);
     hostRequest('scheduleImageThumb', { id: im.id }, 30000).then(r => {
       const u = r && r.ok && r.data && r.data.dataUrl;
-      if(typeof u === 'string' && u.indexOf('data:image/jpeg;base64,') === 0){ __rptMThumbs.set(sha, u); __rptMThumbReq.delete(sha); rptMImgRender(id); rptMPreview(); }
+      if(typeof u === 'string' && u.indexOf('data:image/jpeg;base64,') === 0){ __rptMThumbs.set(sha, u); __rptMThumbReq.delete(sha); rptMImgRender(id); rptMPreview(); rptMZoomSync(id); }
     });
   }
 }
-//  mode: 'file'(호스트 열기 창) | 'clipboard'(잘라 복사한 그림). 바이트는 웹을 거치지 않는다(§6.3). 결과가 보이게 그 줄의 서랍을 연다.
+//  mode: 'file'(호스트 열기 창) | 'clipboard'(잘라 복사한 그림). 바이트는 웹을 거치지 않는다(§6.3). 이미 1장이면 넣지 않고 토스트 하나(바꾸려면 빼고 다시 넣는다).
 async function rptMImgAdd(id, mode){
-  if(!HOST) return;
+  if(!HOST || __rptMTpl === 'hw') return;
   const st = rptMImgState(id);
   if(st.busy || !st.loaded) return;
-  __rptMImgOpen.add(id);
-  if(st.stale || st.failed){ rptMImgRender(id); return; }
-  if(st.list.length >= RPTM_IMG_MAX){ st.msg = '그림은 과제마다 5장까지입니다. 먼저 하나를 지우세요.'; st.kind = 'err'; rptMImgRender(id); return; }
+  if(st.stale || st.failed){ if(st.msg) toast(st.msg, 'warn'); return; }
+  if(st.list.length >= RPTM_IMG_MAX){ toast('그림은 과제마다 1장입니다. 빼고 다시 넣으세요', 'warn'); return; }
   st.busy = true; st.msg = ''; rptMImgRender(id);
   let res;
   try{ res = await hostRequest('scheduleImageAdd', { projectUid: id, mode: mode === 'clipboard' ? 'clipboard' : 'file' }, 300000); }
   finally{ st.busy = false; }
   rptMImgTake(id, res, false);
-  if(res && res.ok){ st.msg = '그림을 넣었습니다. 내 월간보고에만 들어갑니다.'; st.kind = 'ok'; rptMImgRender(id); }
 }
+//  빼기(✕ 나 크게 보기의 [빼기]): 확인 창 뒤 scheduleImageDelete. 내 그림만 지워지고 되돌릴 수 없다.
 async function rptMImgAct(id, imgId, act){
   const st = rptMImgState(id);
-  if(st.busy || st.stale || st.failed) return;
+  if(st.busy || st.stale || st.failed || act !== 'imgDel') return;
   const i = st.list.findIndex(x => String(x.id) === String(imgId)); if(i < 0) return;
   const im = st.list[i];
-  let cmd, params;
-  if(act === 'imgDel'){
-    const at = rptMAt(im.uploadedAt);
-    if(await confirmBox('그림 삭제', `개발 일정 그림 ${i + 1}${at ? ' (' + at + ' 넣음)' : ''}을 지울까요?\n내 그림만 지워지고 되돌릴 수 없습니다.`, '지우기') !== 'ok') return;
-    cmd = 'scheduleImageDelete'; params = { id: im.id };
-  } else if(act === 'imgL' && i > 0){ cmd = 'scheduleImageMove'; params = { id: im.id, seq: i }; }
-  else if(act === 'imgR' && i < st.list.length - 1){ cmd = 'scheduleImageMove'; params = { id: im.id, seq: i + 2 }; }
-  else return;
+  const at = rptMAt(im.uploadedAt);
+  if(await confirmBox('그림 빼기', `개발 일정 그림${at ? ' (' + at + ' 넣음)' : ''}을 뺄까요?\n내 그림만 지워지고 되돌릴 수 없습니다.`, '빼기') !== 'ok') return;
   st.busy = true; st.msg = ''; rptMImgRender(id);
   let res;
-  try{ res = cmd === 'scheduleImageDelete' ? await hostRequest('scheduleImageDelete', params, 30000) : await hostRequest('scheduleImageMove', params, 30000); }
+  try{ res = await hostRequest('scheduleImageDelete', { id: im.id }, 30000); }
   finally{ st.busy = false; }
   rptMImgTake(id, res, false);
-  if(res && res.ok && cmd === 'scheduleImageDelete'){ st.msg = '그림을 지웠습니다'; st.kind = 'ok'; rptMImgRender(id); }
-  const row = rptMRowEl(id);
-  const again = row && row.querySelector(`.rptm-card[data-id="${String(im.id).replace(/[^\w-]/g, '')}"] [data-act="${act}"]`);
-  if(again && !again.disabled) again.focus();
-  else { const t = row && row.querySelector('[data-act="imgTog"]'); if(t) t.focus(); }
+  const row = rptMRowEl(id), f = row && row.querySelector('[data-act="imgAdd"], [data-act="imgZoom"]');
+  if(f && !f.disabled) f.focus();
+}
+//  크게 보기: 사용설명서의 그림 확대 창(#shotViewer)을 빌려 쓴다. 이 모드에서는 머리 × 대신 아래 [빼기] [닫기].
+function rptMImgZoom(id){
+  const st = rptMImgState(id), im = st.list[0]; if(!im) return;
+  const ov = $('#shotViewer'), out = $('#shotViewerImg'), ttl = $('#shotViewerTitle'), ft = $('#shotViewerFoot'), x = $('#shotViewerClose');
+  if(!ov || !out || !ft) return;
+  __rptMZoom = id;
+  ov.dataset.rptm = '1';
+  const th = im.sha256 ? __rptMThumbs.get(im.sha256) : '';
+  if(th) out.src = th; else out.removeAttribute('src');
+  out.alt = rptMCatName(id) + ' 개발 일정 그림';
+  if(ttl) ttl.textContent = rptMCatName(id);
+  ft.classList.remove('hidden');
+  if(x) x.classList.add('hidden');
+  const del = $('#shotViewerDel'); if(del) del.disabled = st.busy || st.stale || st.failed;
+  ov.removeAttribute('inert');
+  ov.classList.remove('hidden');
+  ov.setAttribute('aria-hidden', 'false');
+  const dn = $('#shotViewerDone'); if(dn) dn.focus({ preventScroll: true });
+}
+//  늦게 온 썸네일을 열어 둔 크게 보기 창에도 붙인다
+function rptMZoomSync(id){
+  const ov = $('#shotViewer'); if(!ov || ov.classList.contains('hidden') || !ov.dataset.rptm || __rptMZoom !== id) return;
+  const im = rptMImgState(id).list[0], th = im && im.sha256 ? __rptMThumbs.get(im.sha256) : '';
+  if(th) $('#shotViewerImg').src = th;
 }
 
 // ── 주간보고 출처(netcus 읽기만) ─────────────────────────────────────────────
@@ -18228,11 +17888,12 @@ async function rptMReadApp(from, to){
 }
 //  지금 기간의 글을 지금 출처(S.src)로 읽는다. 못 읽으면 이유를 보인다(읽어 둔 글과 출처는 그대로).
 //  fresh(새 기간)이거나 이 기간의 첫 읽기면 체크를 '기록 있음'으로 새로 정한다.
+//  읽은 결과는 윗줄에 '✓ n주' 하나(원래 문장은 풍선, 시안 v2 결정 6). 읽는 중과 실패는 글로.
 async function rptMFill(S, fresh){
   const src = S.src === 'week' ? 'week' : 'cal';
   const gen = ++__rptMGen;
   __rptMReading = true; rptMRenderSettings();
-  rptMSrcMsg(src === 'week' ? 'netcus 주간보고를 읽는 중입니다. 여러 건을 조회해 시간이 걸립니다.' : '주간보고 기록을 읽는 중입니다.', 'info');
+  rptMSrcMsg(src === 'week' ? '인트라넷 주간보고 읽는 중' : '주간보고 기록 읽는 중', 'info');
   let r;
   try{ r = src === 'week' ? await rptMReadNetcus(S.from, S.to) : await rptMReadApp(S.from, S.to); }
   finally{ __rptMReading = false; }
@@ -18246,9 +17907,8 @@ async function rptMFill(S, fresh){
   S.fillSrc = src;
   const nu = netcusWeeklyMerge.auto.unid.length, n = r.parsed.weekCount || 0;
   const nuMsg = nu ? ' 내 과제와 맞지 않은 ' + nu + '개는 미식별 항목에 있습니다.' : '';
-  if(src === 'week') rptMSrcMsg('netcus 주간보고 ' + n + '주를 읽어 과제별로 모았습니다.' + nuMsg, 'ok');
-  else if(!netcusWeeklyMerge.weeksRead) rptMSrcMsg('이 기간에 이 앱으로 쓴 주간보고가 없습니다.', 'info');
-  else rptMSrcMsg('주간보고 기록 ' + n + '주를 읽어 과제별로 모았습니다.' + nuMsg, 'ok');
+  if(src === 'cal' && !netcusWeeklyMerge.weeksRead) rptMSrcMsg('0주', 'none', '이 기간에 이 앱으로 쓴 주간보고가 없습니다.');
+  else rptMSrcMsg(n + '주', 'ok', (src === 'week' ? 'netcus 주간보고 ' : '주간보고 기록 ') + n + '주를 읽어 과제별로 모았습니다.' + nuMsg);
   __rptMHas = rptMHasSet(S);
   if(fresh || first) for(const id of S.order) S.checked[id] = __rptMHas.has(id);
   rptMRenderAll();
@@ -18265,11 +17925,13 @@ async function rptMLoadClick(){
   rptMSrcMsg('', ''); rptMRenderAll();
   await rptMFill(__rptM, true);
 }
-//  기타 칩 넣기 빼기: 이 탭을 연 동안만(기억하지 않는다). 요약 줄과 미리 보기를 바로 바꾼다.
+//  기타 줄 넣기 빼기: 이 탭을 연 동안만(기억하지 않는다). 미리 보기를 바로 바꾼다.
 function rptMEtcToggle(key, on){
   const S = __rptM; if(!S) return;
   if(on) S.etcOff.delete(key); else S.etcOff.add(key);
-  const sm = $('#rptmEtcSum'); if(sm) sm.textContent = rptMEtcSummary();
+  const r = [...document.querySelectorAll('#rptmEtc [data-etc-key]')].find(x => x.dataset.etcKey === key);
+  if(r) r.classList.toggle('off', !on);   // 줄만 바꾼다(다시 그리지 않아 포커스 그대로)
+  rptMEtcCount(S);
   rptMPreview();
 }
 
@@ -18278,8 +17940,8 @@ function rptMEtcToggle(key, on){
 //  앞뒤 빈 줄과 줄 끝 공백만 걷는다(§5.3-4, DocxWriter 는 단계를 문단 들여쓰기로 쓴다).
 function rptMLines(text){
   const rows = String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n').map(l => {
-    const t = l.replace(/[ \t\u00a0\u3000]+$/, '');
-    const lead = /^[ \t\u00a0\u3000]*/.exec(t)[0];
+    const t = l.replace(/[ \t 　]+$/, '');
+    const lead = /^[ \t 　]*/.exec(t)[0];
     let w = 0; for(const ch of lead) w += ch === '\t' ? RPT_TAB_UNITS : ch === '　' ? 2 : 1;
     return { w, text: t.slice(lead.length) };
   });
@@ -18293,10 +17955,12 @@ function rptMLines(text){
 //  exportMonthlyDocx payload(§7.4). 그림 바이트는 없다(호스트가 uid 로 찾아 넣는다).
 //  2026-10-23: 과제명은 공식 이름, 수행 계획 두 칸(prevPlan, nextPlan)과 일정 변경이력(changes)은 늘 빈 배열이다(문서에 빈칸, 변경이력은 빈 줄 하나).
 //  2026-11-10: 미식별에서 넣을 곳을 고른 글(rptMUnidText)을 그 과제 실적과 기타 뒤에 줄바꿈으로 잇는다.
+//  2026-11-10(시안 v2 결정 13): template 'sw' | 'hw'. 나머지 필드는 그대로(HW 는 호스트가 그림, 계획 기간, changes 를 쓰지 않는다).
 function rptMPayload(S){
   const auto = rptMAuto(S);
   const join = (a, b) => [a, b].filter(t => String(t).trim()).join('\n');
   return {
+    template: __rptMTpl === 'hw' ? 'hw' : 'sw',
     name: rptMName().trim(), reportDate: S.date,
     actual: { from: S.from, to: S.to }, plan: { from: S.pFrom, to: S.pTo },
     projects: rptMPicked(S).map(id => ({ uid: id, title: rptMCatName(id), term: rptMTerm(id).text,
@@ -18307,7 +17971,7 @@ function rptMPayload(S){
 function rptMCheck(S){
   if(__rptMReading) return '주간보고를 읽는 중입니다. 다 읽은 뒤 저장하세요.';
   if(!_rptMValid(S.from) || !_rptMValid(S.to) || S.from > S.to) return '실적 기간을 바르게 고르세요.';
-  if(!_rptMValid(S.pFrom) || !_rptMValid(S.pTo) || S.pFrom > S.pTo) return '계획 기간을 바르게 고르세요(시작이 끝보다 늦을 수 없습니다).';
+  if(__rptMTpl !== 'hw' && (!_rptMValid(S.pFrom) || !_rptMValid(S.pTo) || S.pFrom > S.pTo)) return '계획 기간을 바르게 고르세요(시작이 끝보다 늦을 수 없습니다).';
   if(!_rptMValid(S.date)) return '작성일을 고르세요.';
   const p = rptMPayload(S);
   if(!p.projects.length && !p.etc.lines.length) return '문서에 넣을 과제가 없습니다. 과제를 하나 이상 체크하세요.';
@@ -18321,7 +17985,7 @@ async function rptMSave(){
   const sv = $('#rptmSave'); if(sv){ sv.disabled = true; sv.textContent = '저장 중'; }
   let res;
   try{ res = await hostRequest('exportMonthlyDocx', rptMPayload(S), 300000); }
-  finally{ __rptMSaving = false; if(sv){ sv.disabled = !HOST; sv.textContent = 'DOCX 저장'; } }
+  finally{ __rptMSaving = false; if(sv) sv.textContent = 'DOCX 저장'; asStageSync(); }
   if(res && res.ok){
     __rptMDir = String(res.dir || '');
     const od = $('#rptmOpenDir'); if(od){ od.classList.toggle('hidden', !__rptMDir); od.title = String(res.path || ''); }
@@ -18335,46 +17999,69 @@ async function rptMSave(){
 }
 function rptMOpenDir(){ if(HOST && __rptMDir) hpost({ cmd: 'openFolder', path: __rptMDir }); }
 //  읽기 전용 문서 미리 보기(오른쪽 칸, 왼쪽에서 바꾸면 바로 다시 그린다): 고른 과제마다(내 과제 순서대로) 공식 과제명, 수행 기간, 그림, 수행 실적, 그리고 기타 표. 문서와 같은 payload 로 그린다.
-//  수행 계획 두 칸과 일정 변경이력(빈 줄 하나)은 문서처럼 비어 있다.
+//  수행 계획 두 칸과 일정 변경이력(빈 줄 하나)은 문서처럼 비어 있다. 양식(payload.template)에 따라 SW 와 HW 모양을 그린다.
 function rptMPreview(){
   const S = __rptM, sheet = $('#rptmSheet'); if(!S || !sheet) return;
   const p = rptMPayload(S);
-  const md = s => _rptMValid(s) ? s.slice(5, 7) + '월 ' + s.slice(8, 10) + '일' : '__월 __일';
+  const hw = p.template === 'hw';
   const lines = ls => ls.length ? ls.map(l => `<div class="ln" style="padding-left:${(l.level * 14.2).toFixed(1)}pt">${esc(l.text)}</div>`).join('') : '<div class="ln"></div>';
-  const actualHead = '월간 실적: ' + md(S.from) + ' ~ ' + md(S.to), planHead = '월간 계획: ' + md(S.pFrom) + ' ~ ' + md(S.pTo);
-  const dt = _rptMValid(S.date) ? S.date.slice(0, 4) + '년 ' + S.date.slice(5, 7) + '월 ' + S.date.slice(8, 10) + '일' : '';
-  const GRID = [1126, 1116, 2394, 1548, 1270, 2692, 3642], GSUM = GRID.reduce((a, b) => a + b, 0);
-  const cols = '<colgroup>' + GRID.map(w => `<col style="width:${(w / GSUM * 100).toFixed(3)}%">`).join('') + '</colgroup>';
+  const colsOf = g => { const sum = g.reduce((a, b) => a + b, 0); return '<colgroup>' + g.map(w => `<col style="width:${(w / sum * 100).toFixed(3)}%">`).join('') + '</colgroup>'; };
   //  제목의 구분 기호는 문서와 같은 글자(DocxWriter 의 U+2013)다. 문서 미리 보기라 화면 문구 규칙의 예외다.
-  let h = `<div class="ttl">${esc('월간보고 (' + p.name + ') – ' + dt)}</div>`;
-  for(const pr of p.projects){
-    const st = __rptMImgs.get(pr.uid);
-    const imgs = (st && st.list ? st.list : []).map(im => __rptMThumbs.get(im.sha256)).filter(Boolean).map(u => `<img src="${esc(u)}" alt="">`).join('');
-    h += `<table data-pv-uid="${esc(pr.uid)}">${cols}<tr><td class="a">과제명</td><td class="a" colspan="4">${esc(actualHead)}</td><td class="a" colspan="2">${esc(planHead)}</td></tr>`
-      + `<tr><td class="nm" rowspan="6">${esc(pr.title)}</td><td class="b" colspan="2">과제 수행 기간</td><td class="bv" colspan="4">${esc(pr.term)}</td></tr>`
-      + `<tr><td class="b">개발<br>일정</td><td class="bv img" colspan="5">${imgs}</td></tr>`
-      + '<tr><td class="b" rowspan="2">일정<br>변경이력</td><td class="b">변경 내용</td><td class="b">변경 날짜</td><td class="b" colspan="3">변경 사유</td></tr>'
-      + '<tr data-pv="chg"><td></td><td class="c"></td><td colspan="3"></td></tr>'
-      + '<tr><td class="b" colspan="2">수행 계획</td><td class="b" colspan="3">수행 실적</td><td class="b">수행 계획</td></tr>'
-      + `<tr><td class="body" colspan="2" data-pv="prev">${lines(pr.prevPlan)}</td><td class="body" colspan="3" data-pv="actual">${lines(pr.actual)}</td><td class="body" data-pv="next">${lines(pr.nextPlan)}</td></tr></table>`;
+  let h;
+  if(hw){
+    //  HW(MONTHLY-TEMPLATE-HW 3장): 제목 'H/W팀', 날짜 앞 0 없음, 그 아래 실적 기간 줄. 격자 7열(twip 1416, 992, 2974, 1274, 1132, 2268, 4670)
+    const nz = s => _rptMValid(s) ? { y: s.slice(0, 4), m: +s.slice(5, 7), d: +s.slice(8, 10) } : null;
+    const dt = nz(S.date), f = nz(S.from), t = nz(S.to);
+    const cols = colsOf([1416, 992, 2974, 1274, 1132, 2268, 4670]);
+    h = `<div class="ttl">${esc('월간보고 – H/W팀 (' + p.name + ') – ' + (dt ? dt.y + '년 ' + dt.m + '월 ' + dt.d + '일' : ''))}</div>`
+      + `<div class="per">${esc('[ ' + (f ? f.y + '. ' + f.m + '. ' + f.d : '') + ' ~ ' + (t ? t.y + '. ' + t.m + '. ' + t.d : '') + ' ]')}</div>`;
+    for(const pr of p.projects){
+      h += `<table data-pv-uid="${esc(pr.uid)}">${cols}`
+        + `<tr><td class="nm" rowspan="5">${esc(pr.title)}</td><td class="b" colspan="2">과제 수행 기간</td><td class="bv c" colspan="4">${esc(rptMTermHw(pr.term))}</td></tr>`
+        + '<tr><td class="b" rowspan="2">개발<br>일정</td><td class="b">개발 항목</td><td class="b">시작</td><td class="b">종료</td><td class="b" colspan="2">상세 내용</td></tr>'
+        + '<tr data-pv="dev"><td class="bv"></td><td class="bv"></td><td class="bv"></td><td class="bv" colspan="2"></td></tr>'
+        + '<tr><td class="w" colspan="2">수행 계획</td><td class="w" colspan="3">수행 실적</td><td class="w">수행 계획</td></tr>'
+        + `<tr><td class="body" colspan="2" data-pv="prev">${lines(pr.prevPlan)}</td><td class="body" colspan="3" data-pv="actual">${lines(pr.actual)}</td><td class="body" data-pv="next">${lines(pr.nextPlan)}</td></tr></table>`;
+    }
+    if(p.etc.lines.length){
+      h += `<table data-pv-etc>${cols}`
+        + '<tr><td class="nm" rowspan="3">기타</td><td class="bv thin" colspan="2"></td><td class="bv thin" colspan="4"></td></tr>'
+        + '<tr><td class="w" colspan="2">수행 계획</td><td class="w" colspan="3">수행 실적</td><td class="w">수행 계획</td></tr>'
+        + `<tr><td class="body" colspan="2"><div class="ln"></div></td><td class="body" colspan="3">${lines(p.etc.lines)}</td><td class="body"><div class="ln"></div></td></tr></table>`;
+    }
+  } else {
+    const md = s => _rptMValid(s) ? s.slice(5, 7) + '월 ' + s.slice(8, 10) + '일' : '__월 __일';
+    const actualHead = '월간 실적: ' + md(S.from) + ' ~ ' + md(S.to), planHead = '월간 계획: ' + md(S.pFrom) + ' ~ ' + md(S.pTo);
+    const dt = _rptMValid(S.date) ? S.date.slice(0, 4) + '년 ' + S.date.slice(5, 7) + '월 ' + S.date.slice(8, 10) + '일' : '';
+    const GRID = [1126, 1116, 2394, 1548, 1270, 2692, 3642], GSUM = GRID.reduce((a, b) => a + b, 0);
+    const cols = colsOf(GRID);
+    h = `<div class="ttl">${esc('월간보고 (' + p.name + ') – ' + dt)}</div>`;
+    for(const pr of p.projects){
+      const st = __rptMImgs.get(pr.uid);
+      const imgs = (st && st.list ? st.list.slice(0, RPTM_IMG_MAX) : []).map(im => __rptMThumbs.get(im.sha256)).filter(Boolean).map(u => `<img src="${esc(u)}" alt="">`).join('');
+      h += `<table data-pv-uid="${esc(pr.uid)}">${cols}<tr><td class="a">과제명</td><td class="a" colspan="4">${esc(actualHead)}</td><td class="a" colspan="2">${esc(planHead)}</td></tr>`
+        + `<tr><td class="nm" rowspan="6">${esc(pr.title)}</td><td class="b" colspan="2">과제 수행 기간</td><td class="bv" colspan="4">${esc(pr.term)}</td></tr>`
+        + `<tr><td class="b">개발<br>일정</td><td class="bv img" colspan="5">${imgs}</td></tr>`
+        + '<tr><td class="b" rowspan="2">일정<br>변경이력</td><td class="b">변경 내용</td><td class="b">변경 날짜</td><td class="b" colspan="3">변경 사유</td></tr>'
+        + '<tr data-pv="chg"><td></td><td class="c"></td><td colspan="3"></td></tr>'
+        + '<tr><td class="b" colspan="2">수행 계획</td><td class="b" colspan="3">수행 실적</td><td class="b">수행 계획</td></tr>'
+        + `<tr><td class="body" colspan="2" data-pv="prev">${lines(pr.prevPlan)}</td><td class="body" colspan="3" data-pv="actual">${lines(pr.actual)}</td><td class="body" data-pv="next">${lines(pr.nextPlan)}</td></tr></table>`;
+    }
+    if(p.etc.lines.length){
+      h += `<table data-pv-etc><colgroup><col style="width:${(GRID[0] / GSUM * 100).toFixed(3)}%"><col></colgroup>`
+        + `<tr><td class="a">과제명</td><td class="a">${esc(actualHead)}</td></tr><tr><td class="nm">기타</td><td class="body">${lines(p.etc.lines)}</td></tr></table>`;
+    }
   }
-  if(p.etc.lines.length){
-    h += `<table data-pv-etc><colgroup><col style="width:${(GRID[0] / GSUM * 100).toFixed(3)}%"><col></colgroup>`
-      + `<tr><td class="a">과제명</td><td class="a">${esc(actualHead)}</td></tr><tr><td class="nm">기타</td><td class="body">${lines(p.etc.lines)}</td></tr></table>`;
-  }
+  sheet.classList.toggle('hw', hw);
   sheet.innerHTML = h;
-  const em = $('#rptmPvEmpty'); if(em) em.classList.toggle('hidden', !!(p.projects.length || p.etc.lines.length));
   rptMCounts(S, p);
   rptMFit();
 }
-//  왼쪽 과제 머리(체크 수/전체), 미리 보기 머리와 아래 상태 줄(저장할 것)
+//  과제 상자 머리(체크 수/전체)
 function rptMCounts(S, p){
-  const n = p.projects.length, e = p.etc.lines.length > 0;
-  const pc = $('#rptmPickCnt'); if(pc) pc.textContent = S.order.length ? n + '/' + S.order.length : '';
-  rptMBandSum(S, n);
-  const ps = $('#rptmPvSum'); if(ps) ps.textContent = (n ? '과제 ' + n + '개' : '') + (n && e ? ', ' : '') + (e ? '기타 표' : '');
+  const pc = $('#rptmPickCnt'); if(pc) pc.textContent = S.order.length ? p.projects.length + '/' + S.order.length : '';
 }
-//  미리 보기 종이(폭 1000px)를 오른쪽 칸 폭에 맞춰 줄인다(CSS zoom, --fz). 칸이 숨어 있으면(좁은 폭의 설정 화면) 그대로 둔다.
+//  미리 보기 종이(폭 1000px)를 오른쪽 칸 폭에 맞춰 줄인다(CSS zoom, --fz). 칸이 숨어 있으면 그대로 둔다.
 function rptMFit(){
   const wrap = $('#rptmPvWrap'), sheet = $('#rptmSheet'); if(!wrap || !sheet) return;
   const w = wrap.clientWidth - 20;
@@ -18388,18 +18075,13 @@ function rptMBind(){
   if(__rptMBound) return;
   __rptMBound = true;
   const S = () => __rptM;
-  const planCh = () => { const s = S(); if(!s) return; s.pFrom = $('#rptmPFrom').value; s.pTo = $('#rptmPTo').value; rptMPreview(); };
-  $('#asBandH').addEventListener('click', () => asBandSet(!__asBandOpen));
+  const planCh = () => { const s = S(); if(!s) return; s.pFrom = $('#rptmPFrom').value; s.pTo = $('#rptmPTo').value; asDtSync(); rptMPreview(); };
+  $('#rptmTpl').addEventListener('click', ev => { const b = ev.target.closest('[data-tpl]'); if(b) rptMTplSet(b.dataset.tpl); });
   $('#rptmPFrom').addEventListener('change', planCh);
   $('#rptmPTo').addEventListener('change', planCh);
-  $('#rptmPlanDef').addEventListener('click', () => {
-    const s = S(); if(!s) return;
-    const pd = rptMPlanDefault(s.from, s.to); s.pFrom = pd.from; s.pTo = pd.to;
-    rptMRenderSettings(); rptMPreview();
-    toast('계획 기간을 기본값으로 되돌렸습니다', 'info');
-  });
-  $('#rptmDate').addEventListener('change', () => { const s = S(); if(s){ s.date = $('#rptmDate').value; rptMPreview(); } });
-  //  과제 목록: 체크(줄을 다시 그리지 않아 포커스와 서랍이 그대로, 미리 보기는 바로), 그림 서랍
+  //  계획 기본값 단추는 없앴다(시안 v4 결정 16). 기본값은 새 기간을 열 때만(rptMFresh)
+  $('#rptmDate').addEventListener('change', () => { const s = S(); if(s){ s.date = $('#rptmDate').value; asDtSync(); rptMPreview(); } });
+  //  과제 목록: 체크(줄을 다시 그리지 않아 포커스와 그림 칸이 그대로, 미리 보기는 바로), 그림 칸(넣기, 크게 보기, 빼기)
   const pick = $('#rptmPick');
   pick.addEventListener('change', ev => {
     const cb = ev.target.closest('[data-act="pick"]'), s = S(); if(!cb || !s) return;
@@ -18410,24 +18092,21 @@ function rptMBind(){
   });
   pick.addEventListener('click', async ev => {
     const b = ev.target.closest('[data-act]'), s = S(); if(!b || !s || b.disabled) return;
-    const act = b.dataset.act, row = b.closest('.rptm-it[data-uid]'); if(!row) return;
+    const act = b.dataset.act, row = b.closest('.rptm-it[data-uid]'); if(!row || act === 'pick') return;
     const id = row.dataset.uid;
-    if(act === 'imgTog'){
-      if(__rptMImgOpen.has(id)) __rptMImgOpen.delete(id); else __rptMImgOpen.add(id);
-      rptMImgRender(id);
-      const t = rptMRowEl(id) && rptMRowEl(id).querySelector('[data-act="imgTog"]'); if(t) t.focus();
-    } else if(act === 'imgFile') await rptMImgAdd(id, 'file');
-    else if(act === 'imgPaste') await rptMImgAdd(id, 'clipboard');
-    else if(act === 'imgL' || act === 'imgR' || act === 'imgDel') await rptMImgAct(id, b.closest('.rptm-card').dataset.id, act);
+    if(act === 'imgAdd') await rptMImgAdd(id, 'file');
+    else if(act === 'imgZoom') rptMImgZoom(id);
+    else if(act === 'imgDel'){ const im = rptMImgState(id).list[0]; if(im) await rptMImgAct(id, im.id, 'imgDel'); }
   });
   pick.addEventListener('mouseover', ev => { const r = ev.target.closest && ev.target.closest('.rptm-it[data-uid]'); __rptMHover = r ? r.dataset.uid : ''; });
   pick.addEventListener('mouseleave', () => { __rptMHover = ''; });
-  //  붙여넣기(Ctrl+V): 포커스가 과제 줄이나 그 서랍 안에 있거나 마우스가 그 위에 있으면 그 과제의 그림 넣기(클립보드).
-  //  날짜 칸 같은 글 칸, 다른 창(확인 창 등)이 위에 있을 때, 월간 탭이 아닐 때는 그대로 둔다.
+  //  붙여넣기(Ctrl+V): 포커스가 과제 줄 안에 있거나 마우스가 그 위에 있으면 그 과제의 그림 넣기(클립보드).
+  //  날짜 칸 같은 글 칸, 다른 창(확인 창, 크게 보기 등)이 위에 있을 때, 취합 화면이 아닐 때, HW 양식일 때는 그대로 둔다.
   document.addEventListener('keydown', ev => {
-    if(!HOST || !(ev.ctrlKey || ev.metaKey) || String(ev.key).toLowerCase() !== 'v' || AS.out !== 'doc') return;
+    if(!HOST || !(ev.ctrlKey || ev.metaKey) || String(ev.key).toLowerCase() !== 'v' || __rptMTpl === 'hw') return;
     const modal = $('#atSum'); if(!modal || modal.classList.contains('hidden')) return;
     const cf = $('#confirmModal'); if(cf && !cf.classList.contains('hidden')) return;
+    const zv = $('#shotViewer'); if(zv && !zv.classList.contains('hidden')) return;
     const t = ev.target;
     const typing = t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable || (t.tagName === 'INPUT' && !/^(checkbox|radio|button)$/i.test(t.type || '')));
     if(typing) return;
@@ -18437,8 +18116,14 @@ function rptMBind(){
     ev.preventDefault();
     rptMImgAdd(row.dataset.uid, 'clipboard');
   });
-  //  기타 표: 고르기(칩 펼치기, 접기)와 칩 넣기 빼기
-  $('#rptmEtcTog').addEventListener('click', () => { __rptMEtcOpen = !__rptMEtcOpen; rptMRenderEtc(); });
+  //  크게 보기 창의 [빼기] [닫기]
+  $('#shotViewerDone').addEventListener('click', ev => closeShotViewer(ev));
+  $('#shotViewerDel').addEventListener('click', ev => {
+    const id = __rptMZoom; closeShotViewer(ev);
+    const im = id ? rptMImgState(id).list[0] : null;
+    if(im) rptMImgAct(id, im.id, 'imgDel');
+  });
+  //  기타 줄 넣기 빼기
   $('#rptmEtc').addEventListener('change', ev => {
     const t = ev.target;
     if(t.matches && t.matches('input[data-etc]')) rptMEtcToggle(t.dataset.etc, t.checked);
@@ -19254,6 +18939,7 @@ const ICON = {
   refresh:  svgIc('<path d="M20.5 11a8.5 8.5 0 0 0-14.6-4.4L3.5 9"/><path d="M3.5 11a8.5 8.5 0 0 0 14.6 4.4l2.4-2.4"/><path d="M3.5 4.5V9H8M20.5 19.5V15H16"/>'),
   gear:     svgIc('<circle cx="12" cy="12" r="3.1"/><path d="M12 2.8l1.3 2.2 2.5-.4.5 2.5 2.3 1.1-1.2 2.2 1.2 2.2-2.3 1.1-.5 2.5-2.5-.4L12 21.2l-1.3-2.2-2.5.4-.5-2.5-2.3-1.1 1.2-2.2-1.2-2.2 2.3-1.1.5-2.5 2.5.4z"/>'),
   file:     svgIc('<path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z"/><path d="M13.5 3v5.5H19"/>'),
+  image:    svgIc('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>'),   // 월간 보고 과제 줄의 빈 그림 칸
   // 맨 앞에 띄우기(제목줄 #hbFocus) — 겹친 두 창 중 **앞 창**이 채워져 있다 = '앞으로 가져오기'. 예전 확대 화살표 글리프는 '창을 넓히는 기능'으로 읽혀 혼란을 줬다(UI-CLARITY U1).
   front:    svgIc('<rect x="3" y="3.5" width="12.5" height="10" rx="1.8"/><rect x="8.5" y="10.5" width="12.5" height="10" rx="1.8" fill="currentColor"/>'),
 };
@@ -19289,7 +18975,7 @@ function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 �
   set('btnTheme', ICON.palette);               // 모양: 전체 테마 선택 + 위젯 투명도(HOST)
   set('btnHelp', ICON.help);                   // 상시 도움말
   set('btnMore', ICON.more);
-  set('btnRptCopy', ICON.copy + ' 복사');   // 취합 화면의 복사
+  set('asLoad', ICON.refresh + ' 읽어 오기');   // 취합 화면의 읽어 오기(보통 단추, 시안 v2)
   set('fbWarnIc', ICON.alert);                             // 문의 모달 반출 경고(⚠ 이모지 → 단색 글리프)
   set('btnFbCopyMail', ICON.copy + ' 복사');
   set('btnFbLog', ICON.folder + ' 로그 폴더 열기');
@@ -19365,7 +19051,7 @@ function openFeedback(){
   openModal('#feedbackModal');
 }
 
-// 메일 주소 복사 — 보고서 복사(copyReport)와 같은 폴백 사다리(clipboard API → 숨김 textarea + execCommand).
+// 메일 주소 복사 — 클립보드 폴백 사다리(clipboard API → 숨김 textarea + execCommand).
 // WebView2·비보안 컨텍스트에서 navigator.clipboard가 막히는 경우가 실제로 있어 폴백이 필수다.
 async function copyFeedbackMail(){
   try{ await navigator.clipboard.writeText(FEEDBACK_MAIL); toast('메일 주소를 복사했습니다', 'success'); return; }
@@ -19497,7 +19183,11 @@ function closeShotViewer(ev){
   ev?.stopPropagation?.();
   const ov = $('#shotViewer'), out = $('#shotViewerImg');
   if(out) out.removeAttribute('src');
-  if(ov){ ov.classList.add('hidden'); ov.setAttribute('aria-hidden', 'true'); }
+  if(ov){ ov.classList.add('hidden'); ov.setAttribute('aria-hidden', 'true'); delete ov.dataset.rptm; }
+  //  월간 보고 그림 크게 보기 모드(rptMImgZoom)를 걷는다: 아래 [빼기] [닫기]를 숨기고 머리 × 를 되살린다
+  const ft = $('#shotViewerFoot'), x = $('#shotViewerClose');
+  if(ft) ft.classList.add('hidden');
+  if(x) x.classList.remove('hidden');
 }
 /* ---------- 사용 영상(docs/GUIDE-VIDEOS.md, 2026-10-23 사용자 결정) ----------
  *  영상은 Setup 에 없다. 운영자가 업데이트 폴더 아래 guide\ 에 guide.json, mp4, (선택) srt 를 올리고 호스트가 읽는다(widget/GuideHost.cs).
@@ -20668,17 +20358,14 @@ function bind(){
   /* 근태 탭 취합(진입: 근태 탭 머리의 [취합]). 글 만들기와 월간 보고 함수는 보고서 창에 있던 그대로다 */
   $('#rptFrom').addEventListener('change', atSumPeriod);
   $('#rptTo').addEventListener('change', atSumPeriod);
-  $('#btnRptCopy').addEventListener('click', copyReport);
   $('#asLoad').addEventListener('click', atSumLoad);
-  $('#asOut').addEventListener('click', ev => { const b = ev.target.closest('[data-aso]'); if(b) atSumOutSet(b.dataset.aso); });
+  $('#rptmWeekHead').addEventListener('change', ev => asWeekHeadSet(ev.target.checked));   // 주간보고 제목 넣기(v6 결정 23)
+  //  띄움 칸 하나(시안 v4 결정 16): 실적, 작성, 계획 글자 단추가 연다. 같은 단추를 다시 누르면 닫는다.
+  //  칸과 그 단추들 밖을 누르거나 Esc 면 닫는다(Esc 는 연 단추로 포커스를 돌린다).
+  $('#atSum').addEventListener('click', ev => { const b = ev.target.closest('[data-aspk]'); if(b) asPopOpen(b.dataset.aspk); });
+  document.addEventListener('mousedown', ev => { if(!__asPopK) return; const t = ev.target; if(t && t.closest && (t.closest('#asPop') || t.closest('#atSum [data-aspk]'))) return; asPopClose(); });
+  document.addEventListener('keydown', ev => { if(ev.key === 'Escape' && __asPopK){ ev.preventDefault(); asPopClose(true); } });
   $('#atSum').addEventListener('click', ev => { const k = ev.target.closest('[data-atkind]'); if(k) atKindSet(k.dataset.atkind); });   // 탭 머리 [일간][주간][취합]
-  // 서식바(머리기호+들여쓰기)는 숨긴 요소라 배선하지 않는다(구조 22: 서식은 고정값이고 저장하지 않는다).
-  // 폰트 행(전 모드 공통 설정): 옵션 1회 채우기 + 변경 시 계정별 localStorage 갱신 → buildReport() 재빌드. 데이터가 아니라 저장(save)과 편집 잠금에 묶지 않는다.
-  { const _ff = $('#rptFontFamily'), _fs = $('#rptFontSize');
-    if(_ff) _ff.innerHTML = REPORT_FONTS.map(f => `<option value="${esc(f.v)}">${esc(f.label)}</option>`).join('');
-    if(_fs) _fs.innerHTML = REPORT_FONT_SIZES.map(n => `<option value="${n}">${n ? n + 'pt' : '기본'}</option>`).join('');
-    if(_ff) _ff.addEventListener('change', () => { reportFontSet({ family: _ff.value, size: reportFontGet().size }); buildReport(); });
-    if(_fs) _fs.addEventListener('change', () => { reportFontSet({ family: reportFontGet().family, size: parseInt(_fs.value, 10) }); buildReport(); }); }
   // 내용 출처 세그먼트 — 캘린더 기록(cal) / 인트라넷 주간(week). state.reportSource 는 인메모리(XML 미영속). 누르는 것만으로는 회사로 요청이 나가지 않는다.
   { const _seg = $('#rptSrcSeg');
     if(_seg) _seg.addEventListener('click', ev => {
@@ -20854,7 +20541,6 @@ function setupAttSplit(){
   window.addEventListener('resize', () => apply(want));
   for(const sp of splits){
     const body = bodyOf(sp);
-    const left = sp.dataset.atsplit === 's';   // 취합: 폭을 정하는 쪽이 왼쪽 설정이라 방향이 반대다(같은 변수 --atpw)
     let active = false, raf = 0, nextW = 0;
     sp.addEventListener('pointerdown', e => {
       if(e.button !== 0) return;
@@ -20864,7 +20550,7 @@ function setupAttSplit(){
     sp.addEventListener('pointermove', e => {
       if(!active) return;
       const r = body.getBoundingClientRect();
-      nextW = left ? e.clientX - r.left - 3 : r.right - e.clientX - 3;   // 끌개 가운데가 패널의 가장자리
+      nextW = r.right - e.clientX - 3;   // 끌개 가운데가 패널의 가장자리
       if(raf) return;
       raf = requestAnimationFrame(() => { raf = 0; want = clamp(nextW); apply(want); });
     });
@@ -20881,8 +20567,8 @@ function setupAttSplit(){
     sp.addEventListener('keydown', ev => {   // ← 는 패널을 넓히고 → 는 좁힌다(메인 끌개와 같은 방향). Shift 는 큰 걸음
       const STEP = ev.shiftKey ? 96 : 24;
       let w;
-      if(ev.key === (left ? 'ArrowRight' : 'ArrowLeft')) w = apply(want) + STEP;
-      else if(ev.key === (left ? 'ArrowLeft' : 'ArrowRight')) w = apply(want) - STEP;
+      if(ev.key === 'ArrowLeft') w = apply(want) + STEP;
+      else if(ev.key === 'ArrowRight') w = apply(want) - STEP;
       else return;
       ev.preventDefault(); ev.stopPropagation();
       commit(w);
@@ -22194,7 +21880,7 @@ function atWinRefresh(){
   hpost({ cmd: 'attendNav', date: ATE.date, refresh: true });
 }
 //  보내기(§2.5, 결정 12): 막을 블록이 있으면 보내지 않고 빨갛게 보인다. 보내기 직전에 임시 저장을 쓴 뒤, 처리 중에는 입력과 단추를 잠근다. 결과는 __netcusResult 가 알린다.
-//    content = 블록 조립(atCompose)의 줄 앞 공백을 &nbsp; 로(기존 buildReportText('&nbsp;') 와 같은 규칙), hours = 블록의 시간(0 초과만),
+//    content = 블록 조립(atCompose)의 줄 앞 공백을 &nbsp; 로(옛 취합 복사 글과 같은 규칙), hours = 블록의 시간(0 초과만),
 //    status = 고른 근태 코드(이 화면은 늘 하나를 고른다).
 //  보낼 때의 과제 이름은 id 로 찾은 지금 이름이다(구조 22). memo = 자유 메모(기록 cal_report_daily.memo, 없으면 '').
 function atBuildSubmit(){
@@ -23539,7 +23225,7 @@ const WA = (function(){
   // ---------- 수준 표 ----------
   //  표 한 줄 = { mk: 기호 또는 번호 형식, indent: 앞 칸 수 }. 1수준부터 7수준까지 일곱 줄.
   const KO = '가나다라마바사아자차카타파하';
-  //  번호 형식 = [앞 글자, 차례 종류, 뒤 글자]. 보고서 머리기호 목록(#rptMarker)과 같은 형식들
+  //  번호 형식 = [앞 글자, 차례 종류, 뒤 글자]. 옛 보고서 머리기호 목록(#rptMarker, v6 결정 22 로 없앰)과 같은 형식들
   const SEQ = { ko: KO, jm: 'ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ', A: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', a: 'abcdefghijklmnopqrstuvwxyz', c: '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳' };
   const FMT = {
     '1.': ['', 'n', '.'], '1)': ['', 'n', ')'], '(1)': ['(', 'n', ')'],
@@ -23933,7 +23619,7 @@ const WA = (function(){
 /* ----- 작성 보조 화면 배선(wa*). 도구 줄은 일간, 주간 편집 머리에 하나씩(waToolsHtml 한 벌을 두 자리에 넣는다), 문단 모양 창은 하나(#waPop, body 끝) ----- */
 const WA_KEY_PREFIX = 'tc_attOutline:';   // 키 = tc_attOutline:<who>. 값 = { v: 1, rows: [{ mk, indent }] }(7줄). 시안에서 저장한 5줄 표(배열)도 읽는다(6, 7수준은 기본값)
 const WA_BODY_SEL = '#atBlocks textarea[data-bt], #atBlocks textarea[data-memo], #awProg, #awPlan, #awMeet';
-//  머리기호 고르기 = 보고서 머리기호 목록(#rptMarker)과 같은 묶음(시안 승인 목록: 대시 대신 빈 네모, 빈 동그라미). 표에 든 값이 목록에 없으면 맨 아래에 그 값을 더해 보인다
+//  머리기호 고르기 = 옛 보고서 머리기호 목록(#rptMarker, v6 결정 22 로 없앰)과 같은 묶음(시안 승인 목록: 대시 대신 빈 네모, 빈 동그라미). 표에 든 값이 목록에 없으면 맨 아래에 그 값을 더해 보인다
 const WA_MK_GROUPS = [
   ['불릿', [['-', '- 하이픈'], ['•', '• 점'], ['·', '· 가운뎃점'], ['*', '* 별표'], ['▪', '▪ 네모'], ['◦', '◦ 빈 점'], ['□', '□ 빈 네모'], ['○', '○ 빈 동그라미']]],
   ['숫자', [['1.', '1. 2. 3.'], ['1)', '1) 2) 3)'], ['(1)', '(1) (2) (3)']]],

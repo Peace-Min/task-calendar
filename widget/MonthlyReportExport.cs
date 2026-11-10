@@ -53,10 +53,11 @@ namespace TaskCalendarWidget
             {
                 try
                 {
-                    var imgs = await db.ImagesForExportAsync(p.ProjectUids());
+                    //  HW 양식은 개발 일정 그림을 쓰지 않는다. DB 와 사본을 찾지 않는다(그림이 없으니 연결이 끊겨도 안내가 없다).
+                    var imgs = p.Template == DocxWriter.Template.Hw ? new ScheduleImageDb.ExportImages() : await db.ImagesForExportAsync(p.ProjectUids());
                     var report = p.ToReport(imgs.ByProject);
                     DocxWriter.Write(target, report);
-                    Log("월간보고 DOCX 저장: " + target + " (과제 " + report.Projects.Count + ", 그림 " + imgs.Count + ", " + imgs.Source + ")");
+                    Log("월간보고 DOCX 저장: " + target + " (" + (p.Template == DocxWriter.Template.Hw ? "HW" : "SW") + " 양식, 과제 " + report.Projects.Count + ", 그림 " + imgs.Count + ", " + imgs.Source + ")");
                     ReplyOnUi(reqId, new
                     {
                         ok = true, path = target, dir = Path.GetDirectoryName(target) ?? "",
@@ -140,7 +141,7 @@ namespace TaskCalendarWidget
             ReplyOnUi(reqId, r.ToPayload());
         }
 
-        //  { projectUid, mode:'file' | 'clipboard' }. 먼저 DB 로 미리 보고(끊겼거나 5장이면 창을 열지 않는다), 바이트를 얻고, AddAsync.
+        //  { projectUid, mode:'file' | 'clipboard' }. 먼저 DB 로 미리 보고(끊겼거나 이미 1장 있으면 창을 열지 않는다), 바이트를 얻고, AddAsync.
         private async Task<ScheduleImageReply> AddScheduleImageAsync(ScheduleImageDb db, Window owner, string raw)
         {
             string uid = ScheduleImageDb.ReqProjectUidOrEmpty(raw);
@@ -195,6 +196,8 @@ namespace TaskCalendarWidget
     //  2026-10-23 부터 월간 탭은 prevPlan, nextPlan, changes 를 늘 빈 배열로 보낸다(사용자가 Word 에서 채운다). 칸이 없거나 비어도
     //  받아들이고, DocxWriter 가 양식 그대로 빈 문단과 변경이력 빈 줄 하나를 쓴다. 값이 오면 그대로 쓴다(계약은 바꾸지 않았다).
     //  ★ 상한을 넘으면 자르지 않고 거절한다(ArgumentException, 사용자 문장). 날짜는 YYYY-MM-DD.
+    //  2026-11-10(docs/MONTHLY-UX-V2.md 13): template 'sw' | 'hw'. 없거나 모르는 값이면 sw. HW 는 계획 기간(plan), changes,
+    //  prevPlan, nextPlan 을 읽지 않고(와도 무시, 없어도 거절하지 않음) 저장 흐름이 그림을 찾지 않는다. 파일 이름 규칙은 같다.
     // ================================================================================
     internal sealed class MonthlyReportPayload
     {
@@ -207,6 +210,7 @@ namespace TaskCalendarWidget
             public const int ShortChars = 200;     // 이름, 과제명, 기간 글자, 변경이력 칸
         }
 
+        public DocxWriter.Template Template { get; private set; } = DocxWriter.Template.Sw;
         public string Name { get; private set; } = "";
         public DateTime ReportDate { get; private set; }
         public DateTime ActualFrom { get; private set; }
@@ -227,12 +231,18 @@ namespace TaskCalendarWidget
                 if (q.ValueKind != JsonValueKind.Object) throw new ArgumentException("요청 형식이 잘못되었습니다.");
                 var p = new MonthlyReportPayload
                 {
+                    Template = Str(q, "template").Trim().ToLowerInvariant() == "hw" ? DocxWriter.Template.Hw : DocxWriter.Template.Sw,
                     Name = Short(q, "name", "이름"),
                     ReportDate = Date(q, "reportDate", "작성일"),
                 };
+                bool hw = p.Template == DocxWriter.Template.Hw;
                 var (af, at) = Range(q, "actual", "월간 실적 기간");
-                var (pf, pt) = Range(q, "plan", "월간 계획 기간");
-                p.ActualFrom = af; p.ActualTo = at; p.PlanFrom = pf; p.PlanTo = pt;
+                p.ActualFrom = af; p.ActualTo = at;
+                if (!hw)
+                {
+                    var (pf, pt) = Range(q, "plan", "월간 계획 기간");
+                    p.PlanFrom = pf; p.PlanTo = pt;
+                }
 
                 if (q.TryGetProperty("projects", out var arr) && arr.ValueKind != JsonValueKind.Null)
                 {
@@ -246,11 +256,11 @@ namespace TaskCalendarWidget
                         {
                             Title = Short(o, "title", "과제명"),
                             Term = Short(o, "term", "과제 수행 기간"),
-                            PrevPlan = Lines(o, "prevPlan", "왼쪽 수행 계획"),
+                            PrevPlan = hw ? new List<DocxWriter.Line>() : Lines(o, "prevPlan", "왼쪽 수행 계획"),
                             Actual = Lines(o, "actual", "수행 실적"),
-                            NextPlan = Lines(o, "nextPlan", "오른쪽 수행 계획"),
+                            NextPlan = hw ? new List<DocxWriter.Line>() : Lines(o, "nextPlan", "오른쪽 수행 계획"),
                         };
-                        if (o.TryGetProperty("changes", out var ch) && ch.ValueKind == JsonValueKind.Array)
+                        if (!hw && o.TryGetProperty("changes", out var ch) && ch.ValueKind == JsonValueKind.Array)
                         {
                             if (ch.GetArrayLength() > Limits.Changes) throw new ArgumentException("일정 변경이력은 " + Limits.Changes + "줄까지 넣을 수 있습니다.");
                             foreach (var c in ch.EnumerateArray())
@@ -289,6 +299,7 @@ namespace TaskCalendarWidget
         {
             var r = new DocxWriter.Report
             {
+                Template = Template,
                 Name = Name, ReportDate = ReportDate,
                 ActualFrom = ActualFrom, ActualTo = ActualTo, PlanFrom = PlanFrom, PlanTo = PlanTo,
                 Etc = Etc,

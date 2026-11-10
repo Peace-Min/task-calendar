@@ -54,9 +54,9 @@ test('(S) 근태 화면 문구에 엠 대시, en 대시, 낫표, 띄어 쓴 가�
   const a = app.indexOf('<section class="at-view" id="atView"'), b = app.indexOf('</section>', a);
   const j0 = app.indexOf('/* ===== 근태 탭과 근태 보고 화면(docs/ATTENDANCE-PLAN.md, 2026-10-29'), j1 = app.indexOf('function atInit(){', j0);
   assert.ok(a > 0 && b > a && j0 > 0 && j1 > j0);
-  //  취합 화면의 머리기호 선택지(#rptMarker)는 보고 본문에 실제로 찍힐 글자(- ◦ · – 등)를 그대로 보여 주는 자리라 뺀다(ui-copy-punct 의 ALLOW_TEXT 와 같은 예외).
-  const html = app.slice(a, b).replace(/<select id="rptMarker"[\s\S]*?<\/select>/, '');
-  assert.ok(html.length < b - a, '#rptMarker 선택지를 찾지 못했다');
+  //  예전에는 취합 [서식] 칸의 숨긴 머리기호 선택지(#rptMarker, 찍힐 글자 - ◦ · – 를 그대로 보임)를 빼고 보았다. v6 결정 22(docs/MONTHLY-UX-V2.md)로 그 칸이 없어 그대로 본다.
+  const html = app.slice(a, b);
+  assert.ok(!html.includes('id="rptMarker"'), '없앤 머리기호 선택지(#rptMarker)가 되살아났다');
   for (const part of [html, app.slice(j0, j1)]) {
     assert.ok(!/[—–「」]/.test(part), '금지 기호가 있다');
     assert.ok(!/(^|\s)·|·(\s|$)/m.test(part), '띄어 쓴 가운데 점이 있다');

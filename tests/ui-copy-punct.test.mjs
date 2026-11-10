@@ -34,11 +34,10 @@ const RULES = [
 const badOf = (text) => RULES.filter(([re]) => re.test(text)).map(([, n]) => n);
 
 // ── 허용 목록(보이는 자리에 있지만 기호 자체가 기능인 것) ─────────────────
-//  보고서 머리기호 선택지: 옵션 이름표가 실제로 찍힐 문자를 보여 준다(값 '·' '–' 가 보고서 본문에 그대로 쓰인다).
-const ALLOW_TEXT = new Map([
-  ['· 가운뎃점', '보고서 머리기호 선택지(#rptMarker): 찍힐 문자 자체를 보여 준다'],
-  ['– 대시', '보고서 머리기호 선택지(#rptMarker): 찍힐 문자 자체를 보여 준다'],
-]);
+//  예전에는 취합 [서식] 칸의 숨긴 머리기호 선택지(#rptMarker) 이름표 '· 가운뎃점', '– 대시' 가 있었다. v6 결정 22(docs/MONTHLY-UX-V2.md)로 그 칸을 없애 비었다.
+const ALLOW_TEXT = new Map([]);
+//  문단 모양 머리기호 선택지(#waPop .wa-sym, WRITING-ASSIST): 옵션 이름표가 실제로 찍힐 문자를 보여 준다(화면 실행 검사에서만 뺀다)
+const SYM_TEXT = new Set(['· 가운뎃점', '– 대시']);
 //  스크립트 문자열 중 화면 문구가 아닌 것. [그 줄에 있어야 하는 표지, 리터럴 원문(따옴표 포함), 이유].
 //  리터럴만으로 허용하면 같은 조각이 다른 화면 문구에 끼어도 통과하므로, 줄 표지를 함께 본다.
 const ALLOW_JS = [
@@ -51,9 +50,11 @@ const ALLOW_JS = [
   ["(detail ? ' — ' + detail : '')", "' — '", '연구노트 .md 내보내기 본문 형식'],
   ["if(h > 0) head += ' — 투입 '", "' — 투입 '", 'netcus 주간보고 병합 본문(복사, 전송되는 출력 형식)'],
   ["parts.push('· ' + (bt && bp", "'· '", 'netcus 주간보고 병합 본문(복사, 전송되는 출력 형식)'],
-  ['html += \'<div class="rncw-wk">· \'', '\'<div class="rncw-wk">· \'', '위 주간보고 본문을 그대로 보여 주는 미리보기'],
   ["esc('월간보고 (' + p.name", "') – '", '월간보고 문서 미리 보기 제목: DocxWriter 가 쓰는 양식 원본 구분 글자 그대로(문서 본문 형식, MONTHLY-REPORT-PLAN §2.2)'],
-  ["['·', '· 가운뎃점']", "'· 가운뎃점'", '문단 모양 머리기호 선택지(#waPop .wa-sym, WRITING-ASSIST): #rptMarker 와 같은 이름표, 찍힐 문자 자체를 보여 준다'],
+  //  HW 양식 제목(2026-11-10, MONTHLY-TEMPLATE-HW 3.2): 원본 Word 문서와 같은 U+2013 두 번
+  ["esc('월간보고 – H/W팀 (' + p.name", "'월간보고 – H/W팀 ('", 'HW 양식 월간보고 미리 보기 제목: 양식 원본 구분 글자 그대로(MONTHLY-TEMPLATE-HW 3.2)'],
+  ["esc('월간보고 – H/W팀 (' + p.name", "') – '", 'HW 양식 월간보고 미리 보기 제목: 양식 원본 구분 글자 그대로(MONTHLY-TEMPLATE-HW 3.2)'],
+  ["['·', '· 가운뎃점']", "'· 가운뎃점'", '문단 모양 머리기호 선택지(#waPop .wa-sym, WRITING-ASSIST): 찍힐 문자 자체를 보여 준다'],
 ];
 const lineAt = (src, pos) => { const a = src.lastIndexOf('\n', pos) + 1; const b = src.indexOf('\n', pos); return src.slice(a, b < 0 ? src.length : b); };
 
@@ -353,7 +354,7 @@ if (!JSDOM) {
     while ((n = walker.nextNode())) {
       const p = n.parentElement;
       if (!p || p.closest('script,style,template')) continue;
-      if (p.closest('#rptMarker, #waPop .wa-sym') && ALLOW_TEXT.has(n.nodeValue.trim())) continue;   // 문단 모양 머리기호 선택지도 같은 이름표(WRITING-ASSIST)
+      if (p.closest('#waPop .wa-sym') && SYM_TEXT.has(n.nodeValue.trim())) continue;   // 문단 모양 머리기호 선택지 이름표(WRITING-ASSIST)
       //  월간 보고 문서 미리 보기 제목은 DocxWriter 와 같은 글자(U+2013)다(위 정적 허용 목록의 '월간보고 문서 미리 보기 제목' 과 짝)
       if (p.closest('.rptm-sheet .ttl') && /^월간보고 (.*) – /.test(n.nodeValue.trim())) continue;
       const f = badOf(n.nodeValue);

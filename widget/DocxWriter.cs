@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace TaskCalendarWidget
 {
@@ -38,8 +39,17 @@ namespace TaskCalendarWidget
     //  - 글자는 전부 하나뿐인 런 헬퍼(AppendRun)를 지나며, 그 헬퍼가 Esc 로 이스케이프한다.
     //    XML 1.0 불법 문자 제거, 줄바꿈은 공백으로(한 Line 은 한 문단이다).
     //  - [Content_Types].xml 이 첫 ZIP 엔트리, 경로 구분자는 '/', 디렉터리 엔트리 없음, UTF-8(BOM 없음).
+    //
+    // 양식 둘(2026-11-10, docs/MONTHLY-UX-V2.md 11~13, docs/MONTHLY-TEMPLATE-HW.md 3장): Report.Template 이 Sw(기본) 또는 Hw.
+    //   HW 는 제목(14pt, 'H/W팀', 앞 0 없음)과 실적 기간 줄, 파랑 머리 줄 없음, 과제 수행 기간 'YYYY년 M월 ~ YYYY년 M월',
+    //   개발 일정은 빈 작은 표(머리 넷 + 빈 줄), 변경이력 없음, 본문 칸 이름 줄 흰 바탕, 기타 표도 세 칸이다.
+    //   HW 는 그림, 계획 기간, 변경이력, 수행 계획 두 칸(PrevPlan, NextPlan)을 쓰지 않는다(값이 와도 무시).
+    //   여백도 양식마다 다르다(HW 표 14726 twip 는 SW 글 영역에 들어가지 않는다).
     public static class DocxWriter
     {
+        /// 문서 양식. 모르는 값은 호출측이 Sw 로 읽는다.
+        public enum Template { Sw, Hw }
+
         /// 본문 한 줄 = 문단 하나. Level 은 들여쓰기 단계(0..3), 글자는 받은 그대로 쓴다(글머리를 덧붙이지 않는다).
         public sealed class Line
         {
@@ -75,6 +85,7 @@ namespace TaskCalendarWidget
         /// Etc 가 null 이거나 비면 기타 표를 만들지 않는다.
         public sealed class Report
         {
+            public Template Template { get; set; } = Template.Sw;
             public string Name { get; set; } = "";
             public DateTime ReportDate { get; set; }
             public DateTime ActualFrom { get; set; }
@@ -90,7 +101,16 @@ namespace TaskCalendarWidget
         private static readonly int[] ProjectGrid = { 1126, 1116, 2394, 1548, 1270, 2692, 3642 };
         // 기타 표: 첫 열은 과제 표와 같고 나머지는 한 칸.
         private static readonly int[] EtcGrid = { 1126, 12662 };
-        private const int TableWidth = 13788;
+        // 표 폭(tblW)은 격자 합이다(OpenTable 이 센다). SW 13788.
+
+        // HW 양식(docs/MONTHLY-TEMPLATE-HW.md 3.3 실측 x 20). 기타 표도 같은 격자를 쓴다. 합 14726.
+        private static readonly int[] HwGrid = { 1416, 992, 2974, 1274, 1132, 2268, 4670 };
+        // HW 여백: 왼쪽, 위, 아래 약 2cm(1134). 오른쪽은 표가 글 영역에 들어가게 줄인다(3.1 권고):
+        //   16838(A4 가로) - 1134 - 14726 = 978 이 상한이고, 18 twip 남겨 960. 제목 가운데가 약 4pt 오른쪽으로 옮겨질 뿐이다.
+        private const int HwMarginLeft = 1134;
+        private const int HwMarginRight = 960;
+        private const int HwMarginTop = 1134;
+        private const int HwMarginBottom = 1134;
 
         private const string FillA = "DBE5F1";   // 맨 윗줄(과제명, 월간 실적, 월간 계획)
         private const string FillB = "F2F2F2";   // 칸 이름 줄, 과제 수행 기간, 개발 일정
@@ -250,6 +270,14 @@ namespace TaskCalendarWidget
               .Append("\" xmlns:pic=\"").Append(PicNs).Append("\">");
             sb.Append("<w:body>");
 
+            if (r.Template == Template.Hw)
+            {
+                HwBody(sb, r);
+                AppendSectPr(sb, HwMarginTop, HwMarginRight, HwMarginBottom, HwMarginLeft);
+                sb.Append("</w:body></w:document>");
+                return sb.ToString();
+            }
+
             // 제목. 이름과 날짜 사이 구분 기호는 양식 원본 글자(U+2013)를 그대로 쓴다.
             string title = "월간보고 (" + (r.Name ?? "") + ") \u2013 " +
                            r.ReportDate.ToString("yyyy", CultureInfo.InvariantCulture) + "년 " +
@@ -275,16 +303,163 @@ namespace TaskCalendarWidget
                 AppendEmptyPara(sb);
             }
 
-            // 구역: A4 가로, 여백은 양식 실측값. pgMar 은 일곱 속성이 모두 필수다.
-            sb.Append("<w:sectPr>")
-              .Append("<w:pgSz w:w=\"16838\" w:h=\"11906\" w:orient=\"landscape\"/>")
-              .Append("<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1800\" w:header=\"851\" w:footer=\"851\" w:gutter=\"0\"/>")
-              .Append("<w:cols w:space=\"425\"/>")
-              .Append("<w:docGrid w:linePitch=\"360\"/>")
-              .Append("</w:sectPr>");
+            // 구역: A4 가로, 여백은 SW 양식 실측값.
+            AppendSectPr(sb, 1440, 1440, 1440, 1800);
             sb.Append("</w:body></w:document>");
             return sb.ToString();
         }
+
+        // 구역: A4 가로. pgMar 은 일곱 속성이 모두 필수다. 머리말 꼬리말 851 은 두 양식이 같다.
+        private static void AppendSectPr(StringBuilder sb, int top, int right, int bottom, int left)
+        {
+            sb.Append("<w:sectPr>")
+              .Append("<w:pgSz w:w=\"16838\" w:h=\"11906\" w:orient=\"landscape\"/>")
+              .Append("<w:pgMar w:top=\"").Append(top).Append("\" w:right=\"").Append(right)
+              .Append("\" w:bottom=\"").Append(bottom).Append("\" w:left=\"").Append(left)
+              .Append("\" w:header=\"851\" w:footer=\"851\" w:gutter=\"0\"/>")
+              .Append("<w:cols w:space=\"425\"/>")
+              .Append("<w:docGrid w:linePitch=\"360\"/>")
+              .Append("</w:sectPr>");
+        }
+
+        // ---------- HW 양식(docs/MONTHLY-TEMPLATE-HW.md 3장) ----------
+        //  제목, 실적 기간 줄, 빈 문단(굵게 12pt), 과제마다 표와 빈 문단, 기타가 있으면 기타 표와 빈 문단.
+        //  그림(Images), 계획 기간, 변경이력(Changes), 수행 계획 두 칸(PrevPlan, NextPlan)은 읽지 않는다.
+        private static void HwBody(StringBuilder sb, Report r)
+        {
+            // 제목. 구분 기호는 SW 와 같은 U+2013, 날짜는 작성일(앞 0 없음), 'H/W팀' 은 양식 고정 글자.
+            string title = "월간보고 \u2013 H/W팀 (" + (r.Name ?? "") + ") \u2013 " + YearMonthDay(r.ReportDate);
+            AppendPara(sb, title, true, Jc.Center, 0, sizeHalfPt: 28, underline: true);
+            // 실적 기간 줄 [ YYYY. M. D ~ YYYY. M. D ] 11pt
+            AppendPara(sb, "[ " + Dotted(r.ActualFrom) + " ~ " + Dotted(r.ActualTo) + " ]", false, Jc.Center, 0, sizeHalfPt: 22);
+            AppendMarkPara(sb, true, 24);
+
+            foreach (var p in r.Projects ?? new List<Project>())
+            {
+                if (p == null) continue;
+                HwProjectTable(sb, p);
+                AppendMarkPara(sb, true, 24);
+            }
+
+            var etc = r.Etc;
+            if (etc != null && etc.Count > 0)
+            {
+                HwEtcTable(sb, etc);
+                AppendMarkPara(sb, true, 24);
+            }
+        }
+
+        // 과제 표(3.3). 1~4줄은 keepNext 로 본문 줄 첫머리와 같은 쪽에 둔다(머리만 쪽 끝에 남지 않게).
+        private static void HwProjectTable(StringBuilder sb, Project p)
+        {
+            OpenTable(sb, HwGrid);
+
+            // 1줄 과제명 값(끝까지 세로 병합, 흰 바탕 10.5pt) / 과제 수행 기간 / 기간 값
+            var row = new RowWriter(sb, HwGrid, 348, atLeast: true, cantSplit: true) { KeepNext = true };
+            row.Cell(1, null, VMerge.Restart, true, s => AppendPara(s, p.Title ?? "", false, Jc.Center, 0, sizeHalfPt: 21, keepNext: true));
+            row.Label(2, FillB, VMerge.None, "과제 수행 기간");
+            row.Cell(4, FillB, VMerge.None, true, s => AppendPara(s, HwTerm(p.Term), false, Jc.Center, 0, keepNext: true));
+            row.End();
+
+            // 2줄 개발 일정 머리(칸 이름은 다음 빈 줄과 세로 병합)
+            row = new RowWriter(sb, HwGrid, 344, atLeast: true, cantSplit: true) { KeepNext = true };
+            row.Continue(1);
+            row.Label(1, FillB, VMerge.Restart, "개발", "일정");
+            row.Label(1, FillB, VMerge.None, "개발 항목");
+            row.Label(1, FillB, VMerge.None, "시작");
+            row.Label(1, FillB, VMerge.None, "종료");
+            row.Label(2, FillB, VMerge.None, "상세 내용");
+            row.End();
+
+            // 3줄 개발 일정 빈 줄 하나(회색)
+            row = new RowWriter(sb, HwGrid, 346, atLeast: true, cantSplit: true) { KeepNext = true };
+            row.Continue(1);
+            row.Continue(1, FillB);
+            row.Empty(1, FillB);
+            row.Empty(1, FillB);
+            row.Empty(1, FillB);
+            row.Empty(2, FillB);
+            row.End();
+
+            // 4줄 본문 칸 이름(흰 바탕)
+            row = new RowWriter(sb, HwGrid, 380, atLeast: true, cantSplit: true) { KeepNext = true };
+            row.Continue(1);
+            row.Label(2, null, VMerge.None, "수행 계획");
+            row.Label(3, null, VMerge.None, "수행 실적");
+            row.Label(1, null, VMerge.None, "수행 계획");
+            row.End();
+
+            // 5줄 본문(최소 약 309pt, 쪽을 넘어 이어질 수 있게 cantSplit 을 주지 않는다). 계획 두 칸은 빈칸.
+            row = new RowWriter(sb, HwGrid, 6180, atLeast: true, cantSplit: false);
+            row.Continue(1);
+            row.Cell(2, null, VMerge.None, false, s => AppendLines(s, null));
+            row.Cell(3, null, VMerge.None, false, s => AppendLines(s, p.Actual));
+            row.Cell(1, null, VMerge.None, false, s => AppendLines(s, null));
+            row.End();
+
+            sb.Append("</w:tbl>");
+        }
+
+        // 기타 표(3.4): 과제 표에서 기간 줄을 비우고 개발 일정 줄을 지운 모양. 1줄은 글자 5pt 빈 문단이라 얇다.
+        private static void HwEtcTable(StringBuilder sb, List<Line> lines)
+        {
+            OpenTable(sb, HwGrid);
+
+            var row = new RowWriter(sb, HwGrid, 274, atLeast: true, cantSplit: true) { KeepNext = true };
+            row.Cell(1, null, VMerge.Restart, true, s => AppendPara(s, "기타", false, Jc.Center, 0, keepNext: true));
+            row.Cell(2, FillB, VMerge.None, true, s => AppendMarkPara(s, false, 10, keepNext: true));
+            row.Cell(4, FillB, VMerge.None, true, s => AppendMarkPara(s, false, 10, keepNext: true));
+            row.End();
+
+            row = new RowWriter(sb, HwGrid, 426, atLeast: true, cantSplit: true) { KeepNext = true };
+            row.Continue(1);
+            row.Label(2, null, VMerge.None, "수행 계획");
+            row.Label(3, null, VMerge.None, "수행 실적");
+            row.Label(1, null, VMerge.None, "수행 계획");
+            row.End();
+
+            row = new RowWriter(sb, HwGrid, 3120, atLeast: true, cantSplit: false);
+            row.Continue(1);
+            row.Cell(2, null, VMerge.None, false, s => AppendLines(s, null));
+            row.Cell(3, null, VMerge.None, false, s => AppendLines(s, lines));
+            row.Cell(1, null, VMerge.None, false, s => AppendLines(s, null));
+            row.End();
+
+            sb.Append("</w:tbl>");
+        }
+
+        // 'YYYY년 M월 D일'(앞 0 없음)
+        private static string YearMonthDay(DateTime d) =>
+            d.Year.ToString(CultureInfo.InvariantCulture) + "년 " + d.Month.ToString(CultureInfo.InvariantCulture) + "월 " +
+            d.Day.ToString(CultureInfo.InvariantCulture) + "일";
+
+        // 'YYYY. M. D'(앞 0 없음)
+        private static string Dotted(DateTime d) =>
+            d.Year.ToString(CultureInfo.InvariantCulture) + ". " + d.Month.ToString(CultureInfo.InvariantCulture) + ". " +
+            d.Day.ToString(CultureInfo.InvariantCulture);
+
+        private static readonly Regex SwTermRe = new Regex(@"^\s*(?:(\d{4})/(\d{1,2}))?\s*~\s*(?:(\d{4})/(\d{1,2}))?\s*$", RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// 과제 수행 기간을 HW 표기로. 웹이 보내는 SW 글자('2026/03 ~ 2026/12', '2026/03 ~', 빈 글자)를
+        /// '2026년 3월 ~ 2026년 12월', '2026년 3월 ~', 빈 글자로 바꾼다. 끝만 있으면 '~ 2026년 12월'.
+        /// 그 모양이 아니면(웹이 이미 바꿔 보냈거나 다른 글) 받은 그대로 쓴다.
+        /// </summary>
+        public static string HwTerm(string? term)
+        {
+            string t = (term ?? "").Trim();
+            if (t.Length == 0) return "";
+            var m = SwTermRe.Match(t);
+            if (!m.Success) return t;
+            string a = HwYearMonth(m.Groups[1], m.Groups[2]), b = HwYearMonth(m.Groups[3], m.Groups[4]);
+            if (a.Length > 0 && b.Length > 0) return a + " ~ " + b;
+            if (a.Length > 0) return a + " ~";
+            if (b.Length > 0) return "~ " + b;
+            return "";
+        }
+
+        private static string HwYearMonth(Group y, Group mo) =>
+            y.Success ? y.Value + "년 " + int.Parse(mo.Value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture) + "월" : "";
 
         private static string MonthDay(DateTime d) =>
             d.ToString("MM", CultureInfo.InvariantCulture) + "월 " + d.ToString("dd", CultureInfo.InvariantCulture) + "일";
@@ -376,12 +551,14 @@ namespace TaskCalendarWidget
             sb.Append("</w:tbl>");
         }
 
-        // 표 머리: 고정 레이아웃, 폭 13788, 얇은 검정 실선 테두리, 격자.
+        // 표 머리: 고정 레이아웃, 폭 = 격자 합(SW 13788, HW 14726), 얇은 검정 실선 테두리, 격자.
         private static void OpenTable(StringBuilder sb, int[] grid)
         {
+            int width = 0;
+            foreach (int w in grid) width += w;
             sb.Append("<w:tbl><w:tblPr>")
               .Append("<w:tblStyle w:val=\"ReportTable\"/>")
-              .Append("<w:tblW w:w=\"").Append(TableWidth).Append("\" w:type=\"dxa\"/>")
+              .Append("<w:tblW w:w=\"").Append(width).Append("\" w:type=\"dxa\"/>")
               .Append("<w:tblInd w:w=\"0\" w:type=\"dxa\"/>")
               .Append(BordersXml("w:tblBorders"))
               .Append("<w:tblLayout w:type=\"fixed\"/>")
@@ -448,14 +625,24 @@ namespace TaskCalendarWidget
             }
 
             /// 칸 이름: 굵게, 가로세로 가운데. 여러 줄이면 줄마다 문단 하나.
-            public void Label(int span, string fill, VMerge vm, params string[] lines) =>
+            public void Label(int span, string? fill, VMerge vm, params string[] lines) =>
                 Cell(span, fill, vm, true, s =>
                 {
                     foreach (var l in lines) AppendPara(s, l, true, Jc.Center, 0, keepNext: KeepNext);
                 });
 
             /// 세로 병합으로 가려지는 자리. 내용은 없어도 tc 와 빈 문단은 있어야 한다.
-            public void Continue(int span) => Cell(span, null, VMerge.Continue, true, AppendEmptyPara);
+            /// fill 은 병합 시작 칸과 같은 바탕을 줄 때(HW 개발 일정). KeepNext 줄이면 빈 문단에도 keepNext 를 건다.
+            public void Continue(int span, string? fill = null) => Cell(span, fill, VMerge.Continue, true, EmptyContent);
+
+            /// 빈 칸(병합 없음).
+            public void Empty(int span, string? fill) => Cell(span, fill, VMerge.None, true, EmptyContent);
+
+            private void EmptyContent(StringBuilder s)
+            {
+                if (KeepNext) AppendPara(s, "", false, Jc.Left, 0, keepNext: true);
+                else AppendEmptyPara(s);
+            }
 
             public void End()
             {
@@ -538,6 +725,18 @@ namespace TaskCalendarWidget
         }
 
         private static void AppendEmptyPara(StringBuilder sb) => sb.Append("<w:p/>");
+
+        // 글자 없는 문단에 문단 표시 글자 모양만 준다(빈 줄 높이가 그 글자 크기를 따른다). HW 의 굵게 12pt 빈 문단, 5pt 얇은 줄.
+        // pPr 안의 rPr 은 pPr 의 마지막 자식이다. 런이 없으니 w:t 도 없다.
+        private static void AppendMarkPara(StringBuilder sb, bool bold, int sizeHalfPt, bool keepNext = false)
+        {
+            sb.Append("<w:p><w:pPr>");
+            if (keepNext) sb.Append("<w:keepNext/>");
+            sb.Append("<w:rPr>");
+            if (bold) sb.Append("<w:b/><w:bCs/>");
+            if (sizeHalfPt > 0) sb.Append("<w:sz w:val=\"").Append(sizeHalfPt).Append("\"/><w:szCs w:val=\"").Append(sizeHalfPt).Append("\"/>");
+            sb.Append("</w:rPr></w:pPr></w:p>");
+        }
 
         // pPr 순서: ... spacing, ind, jc. 간격은 styles 의 기본값(앞뒤 0, 줄 240 auto)을 따른다.
         private static void AppendPPr(StringBuilder sb, Jc jc, int indentDxa, bool keepNext = false)

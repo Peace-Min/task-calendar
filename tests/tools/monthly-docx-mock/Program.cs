@@ -6,7 +6,7 @@ using TaskCalendarWidget;
 
 namespace MonthlyDocxMock
 {
-    // 월간보고 DOCX 목업. 실행(저장소 루트에서): dotnet run --project tests/tools/monthly-docx-mock -- <out.docx>
+    // 월간보고 DOCX 목업. 실행(저장소 루트에서): dotnet run --project tests/tools/monthly-docx-mock -- <sw.docx> [hw.docx]
     // 값은 전부 지어낸 것이다(과제명은 '(예시)' 머리, 사람 이름은 홍길동, 김예시).
     // 실제 보고서의 과제명, 동료 이름, 본문은 저장소에 두지 않는다(docs/MONTHLY-REPORT-PLAN.md 2장).
     //
@@ -53,7 +53,68 @@ namespace MonthlyDocxMock
 
             DocxWriter.Write(outPath, r);
             Console.WriteLine("작성: " + outPath + " (" + new FileInfo(outPath).Length + " bytes)");
+
+            // 둘째 인자가 있으면 HW 양식도 만든다(docs/MONTHLY-TEMPLATE-HW.md 3장).
+            if (args.Length >= 2)
+            {
+                string hwPath = Path.GetFullPath(args[1]);
+                DocxWriter.Write(hwPath, HwReport(ganttA));
+                Console.WriteLine("작성: " + hwPath + " (" + new FileInfo(hwPath).Length + " bytes)");
+            }
             return 0;
+        }
+
+        // HW 양식 목업. HW 가 쓰지 않는 값(그림, 변경이력, 계획 두 칸, 계획 기간)을 일부러 채워, 문서에 나오지 않는지 시험이 본다.
+        //  과제 HA 기간 시작과 끝, 4단 글머리(●, -, :, .), 이스케이프 시료 / HB 끝 없는 기간 / HC 기간 빈칸, 실적 빈칸 / 기타 3줄
+        private static DocxWriter.Report HwReport(byte[] png)
+        {
+            var ignoredPlan = new List<DocxWriter.Line> { L(0, "● 쓰이면 안 되는 계획") };
+            var ignoredChanges = new List<DocxWriter.Change> { new DocxWriter.Change { What = "쓰이면 안 되는 이력", Date = "2026.09.01", Why = "HW 는 이력 없음" } };
+            return new DocxWriter.Report
+            {
+                Template = DocxWriter.Template.Hw,
+                Name = "홍길동",
+                ReportDate = new DateTime(2026, 10, 6),
+                ActualFrom = new DateTime(2026, 8, 17),
+                ActualTo = new DateTime(2026, 10, 2),
+                PlanFrom = new DateTime(2026, 10, 5),
+                PlanTo = new DateTime(2026, 11, 13),
+                Projects = new List<DocxWriter.Project>
+                {
+                    new DocxWriter.Project
+                    {
+                        Title = "(예시) 장비 유지보수",
+                        Term = "2026/03 ~ 2026/12",
+                        Images = new List<byte[]> { png },
+                        Changes = ignoredChanges,
+                        PrevPlan = ignoredPlan,
+                        NextPlan = ignoredPlan,
+                        Actual = new List<DocxWriter.Line>
+                        {
+                            L(0, "● 정기점검"),
+                            L(1, "- 운용센터 점검 (9/2)"),
+                            L(2, ": 점검 확인서 작성"),
+                            L(3, ". 서명 받기 (~ 9/30)"),
+                            L(0, ""),
+                            L(0, "● 문의 대응"),
+                            L(1, "- 비교 기호 확인: A&B <태그> \"따옴표\" (w. 김예시 선임)"),
+                        },
+                    },
+                    new DocxWriter.Project
+                    {
+                        Title = "(예시) 시험장비 설계",
+                        Term = "2026/03 ~",
+                        Actual = new List<DocxWriter.Line> { L(0, "● 설계"), L(1, "- 회로 검토") },
+                    },
+                    new DocxWriter.Project { Title = "(예시) 신규 과제", Term = "" },
+                },
+                Etc = new List<DocxWriter.Line>
+                {
+                    L(0, "● 교육 참석"),
+                    L(1, "- 사내 보안 교육 (9/24)"),
+                    L(0, "● 매뉴얼 작성"),
+                },
+            };
         }
 
         private static string ProjectDir([CallerFilePath] string here = "") =>

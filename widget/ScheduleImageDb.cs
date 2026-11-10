@@ -21,14 +21,14 @@ namespace TaskCalendarWidget
     //  표는 project_schedule_image 하나(정본 db/deploy/schema-calendar.sql 16, 구조 번호 17). 그 표의 SQL 은 이 파일에만 있다.
     //  그림은 **사람마다 따로**다(사용자 결정 2026-10-23, §6.1). 행마다 주인(user_id)이 하나고, 모든 SQL 이 세션의 사람을 건다:
     //    목록, 미리 보기, 받기는 내 그림만 돌려주고, 남의 그림 번호로 지우거나 옮기면 없는 그림과 똑같이 notFound 다(있는지 알리지 않는다).
-    //    추가는 세션의 사람을 주인으로 쓴다. 5장 상한, 같은 그림 거절, seq 매기기는 (사람, 과제) 단위다. DOCX 에도 저장하는 사람의 그림만.
+    //    추가는 세션의 사람을 주인으로 쓴다. 과제당 1장 상한, 같은 그림 거절, seq 매기기는 (사람, 과제) 단위다. DOCX 에도 저장하는 사람의 그림만.
     //  ★ 관리자 검사는 하지 않는다(의도, §6.1). 내 그림은 내가 넣고 지운다.
     //
     //  【명령】 MainWindow 의 메인 창에서만 온다(관리 창, 열람 창 허용 목록 밖). 배선은 MonthlyReportExport.cs.
     //    scheduleImageList   { projectUid }            → { projectUid, images:[메타], limits }      바이트 없음
     //    scheduleImageAdd    { projectUid, mode }       mode 'file'(파일 고르기) 또는 'clipboard'(붙여넣기). 호스트가 바이트를 얻어 AddAsync
     //    scheduleImageDelete { id }                     실제 행 삭제(휴지통 없음). 남은 그림은 1..n 으로 다시 매긴다
-    //    scheduleImageMove   { id, seq }                과제 안 자리를 seq(1부터)로 옮긴다
+    //    scheduleImageMove   { id, seq }                과제 안 자리를 seq(1부터)로 옮긴다. 과제당 1장이 된 뒤(2026-11-10) 웹은 부르지 않는다. 1장이면 seq 가 1로 잘려 아무것도 쓰지 않는다
     //    scheduleImageThumb  { id }                     → { id, sha256, dataUrl, width, height } 웹 미리 보기(약 40KB 이하 JPEG)
     //    회신은 { ok, data?, error?: { kind, message } }. kind 는 forbidden, invalid, notFound, conflict 와 연결 분류(DbErrorKind).
     //    파일 고르기를 취소하면 { ok:false, cancelled:true }.
@@ -41,7 +41,7 @@ namespace TaskCalendarWidget
     //    - 연결은 모두 DbGate.OpenAsync(버전 관문). 쓰기는 READ-COMMITTED 한 트랜잭션이고 커밋은 CommitWithGateAsync 한 곳에서
     //      관문을 다시 읽은 뒤에 한다(VERSION-GATE §2.2, CalendarWriteDb, ProjectCalendarDb 와 같은 규칙).
     //    - 쓰기 트랜잭션은 신원(세션의 login_id 로 활성 app_user)과 과제 행 FOR UPDATE 로 시작한다. 같은 과제의 그림 쓰기는(사람이 달라도)
-    //      이 잠금으로 줄을 서고(5장 상한, seq 매기기가 엇갈리지 않는다), 휴지통의 과제 영구 삭제(CASCADE)와도 엇갈리지 않는다.
+    //      이 잠금으로 줄을 서고(1장 상한, seq 매기기가 엇갈리지 않는다), 휴지통의 과제 영구 삭제(CASCADE)와도 엇갈리지 않는다.
     //      잠금 순서는 어디서나 과제 행 다음 그림 행이다.
     //    - (user_id, project_id, seq) UNIQUE 를 피해 순서를 바꿀 때는 먼저 내 그림을 모두 +100 으로 비켜 놓고 제자리로 하나씩 옮긴다.
     //    - 사용자 값(projectUid, id, seq)은 형식을 보고 매개변수로만 넣는다. 웹이 보낸 사용자 값은 읽지 않는다.
@@ -52,7 +52,7 @@ namespace TaskCalendarWidget
         internal static class Limits
         {
             public const int MaxBytes = 5 * 1024 * 1024;     // 장당 5MB(MEDIUMBLOB 은 16MB 까지 받지만 앱이 막는다)
-            public const int MaxPerProject = 5;              // 사람마다 과제당 5장
+            public const int MaxPerProject = 1;              // 사람마다 과제당 1장(2026-11-10 MONTHLY-UX-V2 결정 8, 9. 전에는 5장)
             public const int MaxEdgePx = 16000;              // 가로, 세로 상한(SMALLINT UNSIGNED 안, 압축 폭탄과 거대 그림 막기)
             public const int ThumbMaxBytes = 40 * 1024;      // 미리 보기 JPEG 상한(약 40KB)
             public const int ThumbEdgePx = 360;              // 미리 보기 긴 변(처음 시도). 크면 줄여 가며 다시 만든다
@@ -79,7 +79,7 @@ namespace TaskCalendarWidget
         internal const string MsgInactiveUser = "비활성 처리된 계정입니다.";
         internal const string MsgNoProject = "과제를 찾을 수 없습니다. 과제 목록을 다시 읽으세요.";
         internal const string MsgGone = "이미 지워졌거나 없는 그림입니다.";
-        internal const string MsgTooMany = "개발 일정 그림은 과제마다 5장까지 올릴 수 있습니다.";
+        internal const string MsgTooMany = "개발 일정 그림은 과제마다 1장입니다.";
         internal const string MsgTooBig = "그림 파일은 5MB 까지 올릴 수 있습니다.";
         internal const string MsgNotImage = "PNG 또는 JPEG 그림만 올릴 수 있습니다.";
         internal const string MsgBroken = "그림을 읽지 못했습니다. 파일이 손상되었거나 그림이 아닙니다.";
@@ -341,7 +341,7 @@ namespace TaskCalendarWidget
         // ================================================================================
         //  2. 추가: 파일 창이나 클립보드를 열기 전에 미리 보고(ProbeAddAsync), 바이트를 얻은 뒤 AddAsync
         // ================================================================================
-        //  DB 가 끊겼거나 막혔거나 이미 5장이면 파일 창을 열지 않는다(고른 뒤에 실패하지 않게). 최종 판정은 AddAsync 가 다시 한다.
+        //  DB 가 끊겼거나 막혔거나 이미 1장 있으면 파일 창을 열지 않는다(고른 뒤에 실패하지 않게). 최종 판정은 AddAsync 가 다시 한다.
         public async Task<ScheduleImageReply> ProbeAddAsync(string projectUid)
         {
             try
@@ -379,7 +379,7 @@ namespace TaskCalendarWidget
                     {
                         var me = await IdentityAsync(conn, tx, login, ct);
                         uint pid = await ProjectIdAsync(conn, tx, projectUid, lockRow: true, ct);   // 잠금: 과제 행. 같은 과제의 그림 쓰기가 줄을 선다
-                        long n = await CountAsync(conn, tx, me.UserId, pid, ct);   // 내 그림만 센다(사람마다 과제당 5장)
+                        long n = await CountAsync(conn, tx, me.UserId, pid, ct);   // 내 그림만 센다(사람마다 과제당 1장)
                         if (n >= Limits.MaxPerProject) throw new SiFail(Kind.Invalid, MsgTooMany);
                         await using (var dup = new MySqlCommand("SELECT COUNT(*) FROM project_schedule_image WHERE user_id=@u AND project_id=@p AND sha256=@h", conn, tx))
                         {

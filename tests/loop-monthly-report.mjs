@@ -7,12 +7,12 @@
  *
  *  케이스:
  *    O0  전제: 로그인, conn ok, 새 빌드(rptMOpen), 구조 17(DB 과제에 devStartDate 칸), 가로채기 설치
- *    M1  근태 탭 [취합] → 결과 형태 월간 보고 문서: 보고서 창과 옛 월간 칸(#rptMonthlyPane, #rptmSub 등)이 없고, 월간 설정과 문서 미리 보기와 저장 단추가 보임, 복사 단추는 숨고 보내기 단추는 없음
+ *    M1  근태 탭 [취합](결과는 월간 보고 문서 하나, v6 결정 22): 보고서 창과 옛 월간 칸(#rptMonthlyPane, #rptmSub 등)이 없고, 월간 설정과 문서 미리 보기와 저장 단추가 보임, 탭, 복사, 글 미리 보기, 보내기 단추는 없음
  *    M2  기간과 과제: 실적 기간 = 지난달(기억하는 값이 없다), 계획 기간 = 기본값, 과제 목록 = 구독한 공식 과제(내 과제 순서 그대로, ▲▼ 없음),
  *        고치는 칸 없음(입력은 날짜와 체크뿐), 체크한 과제마다 미리 보기 표(목록 순서)
- *    L1  배치(2026-11-03): 왼쪽 #asLeft, 오른쪽 #asRight 가 둘 다 보이는지, 미리 보기 종이가 칸 폭에 맞게 줄었는지,
+ *    L1  배치(2026-11-10 시안 v2): 왼쪽 상자 #asBoxes, 오른쪽 미리 보기 #rptmPv 가 둘 다 보이는지, 미리 보기 종이가 칸 폭에 맞게 줄었는지,
  *        과제 줄 라벨에 앱 폼 라벨 여백(위 16px)이 걸리지 않는지, 체크를 끄고 켜면 미리 보기 표가 바로 빠지고 돌아오는지(돌려 놓는다)
- *    M3  다시 읽어 오기(캘린더 기록 = 이 앱 주간보고 DB, 확인 창 없음): 과제별 실적 = 읽은 주간보고의 과제별 글, 복사 글에 그 블록이 글자 그대로 들어 있음
+ *    M3  다시 읽어 오기(캘린더 기록 = 이 앱 주간보고 DB, 확인 창 없음): 과제별 실적 = 읽은 주간보고의 과제별 글(복사 글 대조는 v6 결정 22 로 복사가 없어 뺐다)
  *    M4  그림 목록: 과제 줄마다 scheduleImageList 회신(정상이면 목록, 끊겼으면 사본 목록과 안내)과 그림 단추(그림 n 또는 + 그림). 넣기, 지우기는 하지 않는다
  *    M5  저장 payload 모양(rptMPayload): 기간, 과제 uid, 본문 {level, text}, 계획 두 칸과 변경이력은 빈 배열.
  *        실제 저장은 저장 창이 떠서 사람이 한다(아래 안내)
@@ -142,14 +142,13 @@ async function main() {
     ok('O0 가로채기 설치', ['ok', 'already'].includes(await cdp.ev(INSTALL)));
 
     head('M1 월간 보고 탭 열기');
-    //  보고서 창은 없다(2026-11-03). 근태 탭 [취합] 을 처음 값으로 새로 열고(atSumInit, 요청 없음), 결과 형태를 월간 보고 문서로 한다.
+    //  보고서 창은 없다(2026-11-03). 근태 탭 [취합] 을 처음 값으로 새로 연다(atSumInit, 요청 없음). 결과는 월간 보고 문서 하나다(v6 결정 22).
     ok('M1 보고서 창(#reportModal)과 보고서 버튼(#btnReportTop)이 없다', await cdp.ev(`!document.getElementById('reportModal') && !document.getElementById('btnReportTop')`));
     await cdp.ev(`pcSetTab('attend'); atKindSet('sum'); atSumInit(); 1`);
     ok('M1 근태 탭 [취합] 화면(#atSum)이 보인다', await waitFor(shown('div#atSum'), 5000));
-    await cdp.ev(`document.querySelector('#asOut [data-aso="doc"]').click(); 1`);
-    ok('M1 결과 형태 월간 보고 문서(#asBand, #asDoc 보임)', await waitFor(`${shown('#asBand')} && ${shown('#asDoc')}`, 3000));
-    const vis = await J(`({ band: ${shown('#asBand')}, doc: ${shown('#asDoc')}, text: ${shown('#asText')}, copy: ${shown('#btnRptCopy')}, send: !!document.getElementById('btnRptSend'), save: ${shown('#rptmSave')}, dir: !!document.getElementById('rptmOpenDir'), act: ${shown('#asDocAct')} })`);
-    ok('M1 문서 설정 띠, 문서 미리 보기, 저장 단추가 보이고, 과제별 글 미리 보기와 복사 단추는 숨고, 보내기 단추는 없다', vis.band && vis.doc && vis.act && vis.save && vis.dir && !vis.text && !vis.copy && !vis.send, JSON.stringify(vis));
+    ok('M1 월간 보고 문서(#asDocHead, #asDoc 보임)', await waitFor(`${shown('#asDocHead')} && ${shown('#asDoc')}`, 3000));
+    const vis = await J(`({ band: ${shown('#asDocHead')}, doc: ${shown('#asDoc')}, text: !!document.getElementById('asText'), copy: !!document.getElementById('btnRptCopy'), tabs: !!document.getElementById('asOut'), send: !!document.getElementById('btnRptSend'), save: ${shown('#rptmSave')}, dir: !!document.getElementById('rptmOpenDir'), act: ${shown('#asDocAct')} })`);
+    ok('M1 문서 값 머리 줄(#asDocHead), 문서 미리 보기, 저장 단추가 보이고, 결과 형태 탭, 과제별 글 미리 보기, 복사, 보내기 단추는 없다', vis.band && vis.doc && vis.act && vis.save && vis.dir && !vis.text && !vis.copy && !vis.tabs && !vis.send, JSON.stringify(vis));
     const gone = await J(`({ pane: !!document.getElementById('rptMonthlyPane'), grid: !!document.querySelector('.rptm-grid'), sub: !!document.getElementById('rptmSub'), rf: !!document.getElementById('rptmFrom'), rt: !!document.getElementById('rptmTo'), src: !!document.getElementById('rptmSrc'), load: !!document.getElementById('rptmLoad') })`);
     ok('M1 사라진 것이 없다(#rptMonthlyPane, .rptm-grid, #rptmSub, #rptmFrom, #rptmTo, #rptmSrc, #rptmLoad)', Object.values(gone).every((v) => v === false), JSON.stringify(gone));
 
@@ -160,9 +159,9 @@ async function main() {
     head('M2 기간과 과제');
     const st = await J(`({ from: __rptM.from, to: __rptM.to, lm: monthRange(new Date(), -1), plan: [__rptM.pFrom, __rptM.pTo], pd: rptMPlanDefault(__rptM.from, __rptM.to),
       fromTo: [document.getElementById('rptFrom').value, document.getElementById('rptTo').value],
-      arrows: (document.getElementById('asBand').textContent.match(/[▲▼]/g) || []).length + document.querySelectorAll('#asBand [data-act="up"], #asBand [data-act="down"]').length,
+      arrows: (document.getElementById('asDoc').textContent.match(/[▲▼]/g) || []).length + document.querySelectorAll('#asDoc [data-act="up"], #asDoc [data-act="down"]').length,
       order: __rptM.order, off: rptMOfficial().map(function(c){ return c.id; }), picked: rptMPicked(__rptM), cards: [].map.call(document.querySelectorAll('#rptmSheet table[data-pv-uid]'), function(c){ return c.dataset.pvUid; }),
-      editors: [].filter.call(document.querySelectorAll('#asBand input, #asBand textarea, #asBand select, #asBand [contenteditable]'), function(i){ return !((i.type === 'date') || (i.type === 'checkbox' && (i.matches('#rptmPick input[data-act="pick"]') || i.matches('#rptmEtc input[data-etc]')))); }).length,
+      editors: [].filter.call(document.querySelectorAll('#asDocHead input, #asDocHead textarea, #asDocHead select, #asDocHead [contenteditable], #asBoxes input:not([data-unid-to]), #asBoxes textarea'), function(i){ return !((i.type === 'date') || (i.type === 'checkbox' && (i.matches('#rptmPick input[data-act="pick"]') || i.matches('#rptmEtc input[data-etc]')))); }).length,
       terms: rptMPicked(__rptM).map(function(id){ return rptMTerm(id).text; }) })`);
     vlogJSON(st);
     ok('M2 실적 기간 = 지난달(기억하는 값이 없다), 날짜 칸 #rptFrom, #rptTo 하나뿐', st.from === st.lm[0] && st.to === st.lm[1] && st.fromTo[0] === st.from && st.fromTo[1] === st.to, JSON.stringify([st.from, st.to, st.fromTo]));
@@ -173,13 +172,13 @@ async function main() {
     ok('M2 고치는 칸 없음(입력은 날짜와 체크뿐)', st.editors === 0, String(st.editors));
     note('과제 수행 기간: ' + JSON.stringify(st.terms));
 
-    head('L1 배치(근태 취합 화면: 왼쪽 #asLeft, 오른쪽 #asRight)');
+    head('L1 배치(근태 취합 화면: 시안 v2: 왼쪽 상자 #asBoxes, 오른쪽 미리 보기 #rptmPv)');
     const lay = await J(`(function(){ var wrap = document.getElementById('rptmPvWrap'), sh = document.getElementById('rptmSheet');
       var lb = document.querySelector('#rptmPick .rptm-it label.check');
-      return { w: innerWidth, left: getComputedStyle(document.getElementById('asLeft')).display, right: getComputedStyle(document.getElementById('asRight')).display,
+      return { w: innerWidth, left: getComputedStyle(document.getElementById('asBoxes')).display, right: getComputedStyle(document.getElementById('rptmPv')).display,
         fz: sh.style.getPropertyValue('--fz'), sheetW: sh.getBoundingClientRect().width, wrapW: wrap.clientWidth, lbTop: lb ? getComputedStyle(lb).marginTop : null, lbW: lb ? getComputedStyle(lb).fontWeight : null }; })()`);
     vlogJSON(lay);
-    ok('L1 왼쪽 설정 칸과 오른쪽 미리 보기 칸이 둘 다 보인다(좁은 폭 세그는 없다)', lay.left !== 'none' && lay.right !== 'none', JSON.stringify(lay));
+    ok('L1 왼쪽 상자와 오른쪽 미리 보기가 둘 다 보인다', lay.left !== 'none' && lay.right !== 'none', JSON.stringify(lay));
     ok('L1 미리 보기 종이가 칸 폭 안에 맞게 줄었다', !!lay.fz && lay.sheetW <= lay.wrapW + 1, JSON.stringify([lay.fz, lay.sheetW, lay.wrapW]));
     if (lay.lbTop == null) undecide('L1 과제 줄 라벨 여백', '과제 줄이 없다');
     else ok('L1 과제 줄 라벨에 앱 폼 라벨 여백과 굵기가 걸리지 않는다', lay.lbTop === '0px' && String(lay.lbW) === '400', JSON.stringify([lay.lbTop, lay.lbW]));
@@ -199,21 +198,19 @@ async function main() {
     ok('M3 같은 기간 읽어 오기에 확인 창이 뜨지 않는다', !(await cdp.ev(isOpen('#confirmModal'))));
     const cmp = await J(`(function(){ var c = netcusWeeklyMerge; if (!c || !c.parsed || c.src !== 'cal') return ['읽은 결과 없음']; var a = rptMBuildWeek(c.parsed), m = rptMAuto(__rptM); var bad = []; if (!m) return ['문서 글 없음']; rptMPicked(__rptM).forEach(function(id){ if ((m.proj.get(id) || '') !== (a.proj.get(id) || '')) bad.push(id); }); return bad; })()`);
     ok('M3 과제별 실적 = 읽은 주간보고의 과제별 글', cmp.length === 0, JSON.stringify(cmp));
-    //  복사 글과 월간 문서가 같은 읽기 한 번의 결과다(과제별 글 쪽 복사 글에 문서의 과제 블록이 그대로 들어 있다)
-    const eq = await J(`(function(){ var S = __rptM, m = rptMAuto(S); if (!m) return { same: false, n: 0 }; var f0 = $('#rptFrom').value, t0 = $('#rptTo').value; $('#rptFrom').value = S.from; $('#rptTo').value = S.to; var copy = buildReportText(); $('#rptFrom').value = f0; $('#rptTo').value = t0;
-      var miss = []; rptMPicked(S).forEach(function(id){ var t = m.proj.get(id) || ''; if (t && copy.indexOf(t) < 0) miss.push(id); }); return { same: miss.length === 0, n: rptMPicked(S).length, miss: miss, len: copy.length }; })()`);
-    ok('M3 문서의 과제 블록이 복사 글에 글자 그대로 들어 있다(같은 읽기 결과)', eq.same, JSON.stringify(eq));
+    //  (예전에는 복사 글과 문서가 같은 읽기 결과인지 보았다. 취합 복사는 v6 결정 22 로 없앴다)
 
     head('M4 그림 목록');
-    await cdp.ev(`atSumInit(); atSumOutSet('doc'); 1`);   // 처음 값으로 다시 열면 그림 목록을 다시 묻는다(요청은 DB 그림 목록뿐)
+    await cdp.ev(`atSumInit(); 1`);   // 처음 값으로 다시 열면 그림 목록을 다시 묻는다(요청은 DB 그림 목록뿐)
     const ids = st.order;
     const okList = await waitFor(`(function(){ var L = __mrLoop.log.filter(function(x){ return x.req === 'scheduleImageList' && x.done; }); return L.length >= ${ids.length}; })()`, 20000);
     const L = await J(`__mrLoop.log.filter(function(x){ return x.req === 'scheduleImageList'; })`);
     if (!ids.length) undecide('M4 그림 목록', '구독한 공식 과제가 없다');
     else {
       ok('M4 과제 줄마다 scheduleImageList 회신', okList, JSON.stringify(L.map((x) => [x.projectUid, x.res])));
-      const togs = await J(`[].map.call(document.querySelectorAll('#rptmPick [data-act="imgTog"]'), function(b){ return b.textContent; })`);
-      ok('M4 과제 줄마다 그림 단추(그림 n 또는 + 그림)', togs.length === ids.length && togs.every((s) => /^(그림( \d+ [▾▴])?|\+ 그림)$/.test(s)), JSON.stringify(togs));
+      //  2026-11-10 시안 v2 결정 8: 과제 줄마다 그림 칸 하나(비면 넣기 단추, 있으면 썸네일). 넣기, 빼기는 하지 않는다
+      const slots = await J(`[].map.call(document.querySelectorAll('#rptmPick [data-slot]'), function(s){ return s.querySelector('[data-act="imgZoom"]') ? 'has' : s.querySelector('[data-act="imgAdd"]') ? 'empty' : '?'; })`);
+      ok('M4 과제 줄마다 그림 칸 하나(썸네일 또는 넣기 단추)', slots.length === ids.length && slots.every((s) => s === 'has' || s === 'empty'), JSON.stringify(slots));
       ok('M4 미리 보기 쪽에는 그림 버튼이 없다', (await cdp.ev(`document.querySelectorAll('#rptmPvWrap button').length`)) === 0);
       for (const x of L.filter((y) => y.res)) note(`${x.projectUid}: ${x.res.ok ? '정상' : x.res.stale ? '사본 목록(끊김)' : '실패'} ${x.res.n == null ? '' : x.res.n + '장'} ${x.res.err || ''}`);
     }
@@ -243,7 +240,7 @@ async function main() {
   } finally {
     try {
       await cdp.ev(UNINSTALL);
-      await cdp.ev(`(function(){ ['#confirmModal'].forEach(function(s){ try { const m = document.querySelector(s); if (m && !m.classList.contains('hidden')) closeModal(s); } catch (_) {} }); try { atSumOutSet('text'); } catch (_) {} pcSetTab('personal'); return 1; })()`);
+      await cdp.ev(`(function(){ ['#confirmModal'].forEach(function(s){ try { const m = document.querySelector(s); if (m && !m.classList.contains('hidden')) closeModal(s); } catch (_) {} }); pcSetTab('personal'); return 1; })()`);
     } catch (e) { console.log('정리 실패: ' + e.message); fail++; }
     cdp.close();
   }

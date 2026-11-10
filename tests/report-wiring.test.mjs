@@ -452,8 +452,11 @@ test('지운 보고서 창: 단추, 창, 일간 주간 작성, 글 편집, 묶�
     assert.ok(!src.includes('function ' + f + '('), `지운 ${f}() 가 되살아났다`);
   assert.ok(!/id="(asInc|rptSrcEvent|rptSrcTodo|rptWithDesc|rptSkipEmpty)"/.test(src), '지운 포함 항목 칸이 되살아났다');
   //  살아 있는 것: 근태 일간 가져오기와 취합 화면이 쓰는 순수 함수와 파서
-  for (const f of ['collectReportData', 'reportRowBodyText', 'reportMarkerSpec', 'currentReportFormatPref', 'parseNetcusWeek', 'buildNetcusSendText', 'buildReport', 'buildReportText', 'rptDraftWho', 'reportEditedBodyOut'])
+  for (const f of ['collectReportData', 'reportRowBodyText', 'reportMarkerSpec', 'currentReportFormatPref', 'parseNetcusWeek', 'buildNetcusSendText', 'rptDraftWho', 'reportEditedBodyOut'])
     assert.ok(src.includes('function ' + f + '('), `살아 있어야 할 ${f}() 가 없다`);
+  //  2026-11-10 v6 결정 22(docs/MONTHLY-UX-V2.md): 취합 과제별 글(미리 보기 buildReport, 복사 글 buildReportText, 복사 copyReport)은 없앴다(예전에는 살아 있어야 할 목록에 있었다)
+  for (const f of ['buildReport', 'buildReportText', 'copyReport', 'buildReportHtml'])
+    assert.ok(!src.includes('function ' + f + '('), `지운 ${f}() 가 되살아났다`);
 });
 
 test('변이⑤c: 근태 보내기가 hours 를 안 실으면 배선⑤ 가 실패한다', () => {

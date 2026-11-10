@@ -53,34 +53,13 @@ test(`디자인 토큰: 토큰 블록 밖 hex 색 선언은 ${HEX_DECL_CEILING}�
     `hex 색 선언이 ${hits.length}개로 상한(${HEX_DECL_CEILING})보다 적다 — HEX_DECL_CEILING을 ${hits.length}로 내려 래칫을 조일 것`);
 });
 
-// ── 보고서 미리보기 글자 크기 배율(--m-scale) 가드 ───────────────────────
-// 미러 안의 글자는 전부 자기 --fs-* 토큰을 직접 잡는다. 그래서 #rptOut의 font-size를 키워도
-// 상속이 이겨지지 않아 '크기' 설정이 아무것도 안 하는 것처럼 보였다(실버그). 새로 추가되는 선언이
-// 배율을 빠뜨리면 그 요소만 다시 고정 크기로 얼어붙으므로 선언 단위로 못박는다.
-test('보고서 미리보기: .rpt-mirror 안의 font-size는 전부 --m-scale 배율을 곱해야 한다', () => {
+// ── 보고서 미리보기 글자 크기 배율(--m-scale) ───────────────────────
+//  2026-11-10 v6 결정 22(docs/MONTHLY-UX-V2.md): 취합의 과제별 글(미리 보기 #rptOut, 복사, 글꼴)을 없앴다.
+//  예전 두 시험(.rpt-mirror 의 font-size 는 --m-scale 을 곱한다, REPORT_MIRROR_BASE_PX = --fs-emph)은 대상이 사라져 '없음' 계약으로 바꿨다.
+test('보고서 미리보기 미러(.rpt-mirror, --m-scale, REPORT_MIRROR_BASE_PX)와 글꼴 저장(tc_rptFont)이 없다(v6 결정 22)', () => {
   const src = loadAppSource();
-  const s = src.indexOf('<style>'), e = src.indexOf('</style>', s);
-  const css = src.slice(s + 7, e).replace(/\/\*[\s\S]*?\*\//g, '');
-  const rules = [...css.matchAll(/(^|\})([^{}]*\.rpt-mirror[^{}]*)\{([^}]*)\}/g)];
-  assert.ok(rules.length > 0, '.rpt-mirror 규칙을 찾지 못함');
-  const bad = rules
-    .filter(m => /font-size\s*:/.test(m[3]) && !/font-size\s*:\s*calc\(\s*var\(--m-scale\)/.test(m[3]))
-    .map(m => m[2].trim());
-  assert.deepStrictEqual(bad, [],
-    '미러 안에 고정 font-size가 있음 — calc(var(--m-scale) * var(--fs-*))로 쓸 것(크기 설정이 이 요소만 건너뛴다)');
-  // 배율 기본값이 없으면 설정 전 첫 렌더에서 calc()가 통째로 무효 → 글자가 사라진다.
-  assert.ok(/#rptOut\.rpt-mirror\{--m-scale:1;/.test(css), '#rptOut.rpt-mirror에 --m-scale 기본값 1이 없음');
-});
-
-// JS가 배율을 계산할 때 쓰는 기준 픽셀은 CSS 토큰(--fs-emph)과 같아야 한다.
-// calc()는 길이로 나눠 무단위 배율을 만들 수 없어 이 분모만 JS에 복제돼 있다 → 드리프트를 여기서 잡는다.
-test('보고서 미리보기: REPORT_MIRROR_BASE_PX는 --fs-emph 픽셀값과 일치해야 한다', () => {
-  const src = loadAppSource();
-  const js = src.match(/const REPORT_MIRROR_BASE_PX\s*=\s*(\d+)/);
-  assert.ok(js, 'REPORT_MIRROR_BASE_PX 선언을 찾지 못함');
-  const tok = src.match(/--fs-emph\s*:\s*(\d+)px/);
-  assert.ok(tok, '--fs-emph 토큰을 찾지 못함');
-  assert.strictEqual(js[1], tok[1], 'JS 기준 픽셀과 --fs-emph가 어긋남 — 배율이 통째로 틀어진다');
+  for (const gone of ['rpt-mirror', '--m-scale', 'REPORT_MIRROR_BASE_PX', 'REPORT_FONTS', 'tc_rptFont', 'reportFontGet', 'reportFontSet', 'reportFontCss', 'syncReportFontUI', 'buildReportHtml'])
+    assert.ok(!src.includes(gone), gone + ' 이 남았다');
 });
 
 // ── 2026-09-18 4축 리뷰: 소스 계약 핀(jsdom 불필요) ─────────────────────
@@ -831,7 +810,7 @@ if (!JSDOM) {
       assert.deepStrictEqual(occStarts(E, '2026-07-01', '2026-09-30'), ['2026-07-15', '2026-08-15', '2026-09-15']);
     });
 
-    // ── 보고서 서식(머리기호/들여쓰기) — prefs 영속 + buildReportText/buildReport WYSIWYG(결정6: 데이터 불변) ──
+    // ── 보고서 서식(머리기호/들여쓰기) — 일정 글 만들기(결정6: 데이터 불변) ──
     //  구조 22: 서식은 state 에 없고 고정값이다. 일정 글 만들기(reportRowBodyText)의 머리기호, 들여쓰기 처리는 서식을 직접 넘겨 본다(FMT).
     let FMT = { marker: '-', custom: '', indent: 2 };
     const fmtState = (marker, custom, indent) => (FMT = { marker, custom, indent }, {
@@ -848,9 +827,9 @@ if (!JSDOM) {
       ],
       todos: [], rooms: [],
     });
-    const setRptRange = (f, t) => ev(`reportMode='custom'; $('#rptFrom').value=${JSON.stringify(f)}; $('#rptTo').value=${JSON.stringify(t)};`);
-    //  2026-11-03: 취합(buildReportText)은 달력의 일정과 할 일을 모으지 않는다(캘린더 기록 = 이 앱 주간보고 DB). 일정 글 만들기(collectReportData + reportRowBodyText)는
-    //  근태 일간 가져오기가 그대로 쓰므로, 옛 buildReportText 가 하던 일을 이 도우미로 직접 부른다(머리기호, 들여쓰기, 설명, 단위 U+00A0).
+    const setRptRange = (f, t) => ev(`$('#rptFrom').value=${JSON.stringify(f)}; $('#rptTo').value=${JSON.stringify(t)};`);
+    //  2026-11-03: 취합은 달력의 일정과 할 일을 모으지 않는다(캘린더 기록 = 이 앱 주간보고 DB). 일정 글 만들기(collectReportData + reportRowBodyText)는
+    //  근태 일간 가져오기가 그대로 쓰므로, 옛 취합 글 만들기가 하던 일을 이 도우미로 직접 부른다(머리기호, 들여쓰기, 설명, 단위 U+00A0).
     const calText = (src, unit) => ev(`(function(){ var f=$('#rptFrom').value, t=$('#rptTo').value;
       var rows=collectReportData(f, t, ${JSON.stringify(src || { event: true, todo: true, desc: true })}).rows;
       var mk=reportMarkerSpecFor(${JSON.stringify(FMT.marker)}, ${JSON.stringify(FMT.custom)}), ind=${JSON.stringify(FMT.indent)};
@@ -912,181 +891,19 @@ if (!JSDOM) {
       assert.deepStrictEqual(Object.keys(p).sort(), ['attendance', 'categories', 'entries', 'todos'], 'fromXML 이 서식, 글꼴, 작성 중 시간을 돌려준다');
       assert.strictEqual(p.entries.length, 5, '데이터가 사라졌다');
     });
-    // ── 기간 취합(custom) 전용 보고서 폰트 — 정규화 / <prefs> 왕복 / 복사용 HTML 트윈 ──────────
-    test('normalizeReportFont: 화이트리스트 폰트·10~16pt만 통과, 그 외는 기본(""/0)', () => {
-      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Gulim',size:12})"), { family: 'Gulim', size: 12 });
-      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Comic Sans MS',size:12})"), { family: '', size: 12 }, '미등록 폰트 → ""(크기는 유효하면 유지)');
-      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Batang',size:9})"), { family: 'Batang', size: 0 }, '하한 미만 → 0');
-      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Batang',size:17})"), { family: 'Batang', size: 0 }, '상한 초과 → 0');
-      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Batang',size:'abc'})"), { family: 'Batang', size: 0 }, '숫자 아님 → 0');
-      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Batang',size:12.5})"), { family: 'Batang', size: 0 }, '정수 아님 → 0');
-      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Batang',size:'12'})"), { family: 'Batang', size: 12 }, '숫자 문자열은 허용(셀렉트 value)');
-      assert.deepStrictEqual(evJSON('normalizeReportFont(null)'), { family: '', size: 0 });
-      assert.deepStrictEqual(evJSON('normalizeReportFont(undefined)'), { family: '', size: 0 });
-      assert.deepStrictEqual(evJSON('normalizeReportFont({})'), { family: '', size: 0 });
-      // 경계값 10/16은 통과해야 한다
-      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'',size:10})"), { family: '', size: 10 });
-      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'',size:16})"), { family: '', size: 16 });
-    });
-
-    // 셀렉트에 실제로 뜨는 값이 전부 끝까지 살아 있어야 한다 — 하나라도 정규화에서 기본으로 떨어지면
-    // 사용자가 고른 크기가 조용히 무시된다(고를 수 있는데 안 먹는 옵션 = 고장난 컨트롤).
-    test('reportFont: REPORT_FONT_SIZES의 모든 옵션이 정규화를 통과하고 미러 배율로 단조 증가한다', () => {
-      const sizes = evJSON('REPORT_FONT_SIZES');
-      assert.deepStrictEqual(sizes, [0, 10, 11, 12, 13, 14, 15, 16], '제공 목록이 바뀌면 이 테스트도 같이 갱신할 것');
-      // 0(기본)은 pt가 아니라 14px이라 10pt(13.33px)와 11pt(14.67px) 사이에 낀다 → 단조 검사는 pt 옵션만.
-      let prev = 0;
-      for (const n of sizes) {
-        const norm = evJSON(`normalizeReportFont({family:'',size:${n}})`);
-        assert.strictEqual(norm.size, n, `${n}pt가 정규화에서 기본으로 떨어짐 — 셀렉트에 있는데 안 먹는 옵션`);
-        if (n === 0) continue;
-        const scale = Number(evJSON(`reportFontCss({family:'',size:${n}})`).scale);
-        assert.ok(scale > prev, `${n}pt 배율(${scale})이 이전 옵션(${prev}) 이하 — 크기 순서가 깨짐`);
-        prev = scale;
-      }
-      // 기본(0)은 배율을 아예 안 싣는다 = CSS 기본값 1 = 기존 픽셀 그대로.
-      assert.strictEqual(evJSON("reportFontCss({family:'',size:0})").scale, '');
-      // 경계: 10pt는 기본보다 작고, 16pt는 크다(1pt=4/3px, 기준 14px).
-      assert.ok(Number(evJSON("reportFontCss({family:'',size:10})").scale) < 1);
-      assert.ok(Number(evJSON("reportFontCss({family:'',size:16})").scale) > 1);
-    });
-
-    // 배율이 DOM까지 실제로 도달하는지 — syncReportFontUI가 #rptOut에 인라인으로 심고, 기본이면 지운다.
-    test('reportFont: syncReportFontUI가 #rptOut에 --m-scale을 심고 기본에서는 제거한다(기간 취합)', () => {
-      ev("reportMode = 'custom'; reportFontSet({family:'', size:16}); syncReportFontUI();");
-      assert.strictEqual(ev("$('#rptOut').style.getPropertyValue('--m-scale')").trim(),
-        evJSON("reportFontCss({family:'',size:16})").scale);
-      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '16pt');
-      ev("reportFontSet({family:'', size:0}); syncReportFontUI();");
-      assert.strictEqual(ev("$('#rptOut').style.getPropertyValue('--m-scale')").trim(), '',
-        '기본으로 돌아오면 인라인 배율은 지워져야 한다(CSS 기본값 1로 복귀)');
-      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
-    });
-
-    // 글꼴·크기는 기간 취합 전용(2026-09-18 사용자 결정) — 일간·주간에서는 저장값이 있어도 미리보기에 입히지 않고, 행 자체가 숨는다.
-    test('reportFont: 일간·주간에서는 저장값이 있어도 #rptOut 에 입히지 않는다(기간 취합 전용)', () => {
-      ev("reportMode = 'daily'; reportFontSet({family:'Gulim', size:16}); syncReportFontUI();");
-      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '', '일간에서 글꼴 크기가 미리보기에 입혀졌다');
-      assert.strictEqual(ev("$('#rptOut').style.getPropertyValue('--m-scale')").trim(), '');
-      assert.strictEqual(ev("$('#rptFontSize').value"), '16', '콤보는 저장값을 그대로 보여야 한다(값이 사라지면 안 된다)');
-      ev("reportMode = 'weekly'; syncReportFontUI();");
-      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
-      ev("reportMode = 'custom'; syncReportFontUI();");
-      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '16pt', '기간 취합에서는 입혀야 한다');
-      ev("reportFontSet({family:'', size:0}); reportMode = 'daily'; syncReportFontUI();");
-    });
-    test('reportFont: #rptFontRow 는 근태 [취합] 화면 안에 있고 기간 취합(custom)에서 숨지 않는다', () => {
-      const inSum = ev("(function(){ var r = document.getElementById('rptFontRow'); return !!(r && r.closest('.as-view')); })()");
-      assert.strictEqual(inSum, true, '글꼴 행이 근태 [취합] 화면(.as-view) 안에 없다');
-      ev("reportMode = 'custom'; syncReportFontUI();");
-      assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', '기간 취합에서 글꼴 행이 숨었다');
-      ev("reportMode = 'daily'");
-    });
-
-    test('reportFont: 글꼴은 XML 이 아니라 계정별 localStorage(tc_rptFont:<계정>)에 있다(구조 22, 옛 값은 옮기지 않는다)', () => {
+    // ── 기간 취합 보고서 글꼴과 복사 ──────────
+    //  2026-11-10 v6 결정 22(docs/MONTHLY-UX-V2.md): 취합의 과제별 글(미리 보기, [복사], [서식] 글꼴)을 없앴다. 예전 시험(normalizeReportFont, REPORT_FONT_SIZES 배율,
+    //  syncReportFontUI, #rptFontRow, tc_rptFont 저장, buildReportHtml, 글꼴과 복사 글 불변식)은 대상이 사라져 아래 '없음' 계약 하나로 바꿨다.
+    //  읽어 둔 글(rptMStoreRead)은 월간 보고 문서 실적 글(rptMAuto)로만 쓰인다.
+    test('취합 글꼴, 복사, 과제별 글 미리 보기가 없다(v6 결정 22): 함수, 요소, 저장 키', () => {
       seed(fmtState('-', '', 2));
-      ev("reportFontSet({family:'Batang', size:14})");
-      const xml = ev('toXML()');
-      assert.ok(!/fontFamily|fontSize/.test(xml), 'XML 에 글꼴이 남았다');
-      assert.deepStrictEqual(evJSON('reportFontGet()'), { family: 'Batang', size: 14 });
-      assert.ok(String(ev('rptFontKey()')).startsWith('tc_rptFont:'), '글꼴 키가 tc_rptFont: 가 아니다');
-      assert.strictEqual(ev('localStorage.getItem(rptFontKey())'), JSON.stringify({ family: 'Batang', size: 14 }));
-      ev("reportFontSet({family:'', size:0})");
-      assert.strictEqual(ev('localStorage.getItem(rptFontKey())'), null, '기본이면 키를 지운다');
-    });
-
-    test('buildReportHtml: 평문과 내용 동일(줄 수 보존·HTML 이스케이프) + 폰트 있을 때만 서식', () => {
-      const st = fmtState('-', '', 2);
-      st.entries = st.entries.concat([{
-        id: 'x1', date: '2026-07-07', title: '<b>중요</b> & "인용"', categoryId: 'ca', allDay: true,
-        startTime: '', endTime: '', location: '', memo: '', 
-        hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA,
-      }]);
-      seed(st);
-      setRptRange('2026-07-01', '2026-07-31');
-      const text = calText();
-      assert.ok(text.includes('<b>중요</b> & "인용"'), '평문에는 원문 그대로');
-
-      // 폰트 없음 — 서식 속성 없이 white-space만
-      const plainHtml = ev('buildReportHtml(' + JSON.stringify(text) + ', {family:"",size:0})');
-      assert.strictEqual((plainHtml.match(/<br>/g) || []).length, text.split('\n').length - 1,
-        '<br> 수 = 평문 줄바꿈 수(라인 추가·손실 없음)');
-      assert.ok(!/font-family/.test(plainHtml), '폰트 미설정이면 font-family 없음');
-      assert.ok(!/font-size/.test(plainHtml), '폰트 미설정이면 font-size 없음');
-      assert.ok(/white-space:pre-wrap/.test(plainHtml), '선행 공백 보존용 pre-wrap은 항상');
-      // HTML 특수문자 이스케이프 — 본문에 살아있는 태그가 없어야 한다(<div>/<br>은 래퍼)
-      assert.ok(plainHtml.includes('&lt;b&gt;중요&lt;/b&gt;'), '< > 이스케이프');
-      assert.ok(plainHtml.includes('&amp;'), '& 이스케이프');
-      assert.ok(!/<b>/.test(plainHtml), '원문 태그가 실제 태그로 새지 않음');
-      // 언이스케이프 후 평문과 완전 일치(내용 드리프트 0)
-      const unesc = plainHtml
-        .replace(/^<div style="[^"]*">/, '').replace(/<\/div>$/, '')
-        .split('<br>').join('\n')
-        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-        .replace(/&amp;/g, '&');
-      assert.strictEqual(unesc, text, '언이스케이프하면 평문과 바이트 동일');
-
-      // 폰트 설정 — 서식만 추가되고 라인 수는 그대로
-      const styledHtml = ev('buildReportHtml(' + JSON.stringify(text) + ', {family:"Gulim",size:12})');
-      assert.ok(/font-family/.test(styledHtml), '폰트 설정 시 font-family 부여');
-      assert.ok(styledHtml.includes('Gulim'), '선택한 폰트명 포함');
-      assert.ok(/Malgun Gothic/.test(styledHtml), '안전 폴백 스택 동반');
-      assert.ok(/font-size:12pt/.test(styledHtml), 'pt 단위 크기');
-      assert.strictEqual((styledHtml.match(/<br>/g) || []).length, text.split('\n').length - 1,
-        '서식을 입혀도 라인 수 불변');
-    });
-
-    //  글꼴과 크기는 기간 취합(취합 화면) 전용이다. 일간 서식 쪽(atDailyFmt 가 잠깐 reportMode='daily')에서 입히지 않는 것은 위 syncReportFontUI 시험이 본다.
-    test('reportFont: 기간 취합에서는 저장값 서식이 미리보기에 입혀지고 기본값이면 걷힌다', () => {
-      seed(fmtState('-', '', 2));
-      ev("reportFontSet({ family: 'Gulim', size: 13 })");
-      ev("reportMode='custom'; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; buildReport();");
-      assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', '글꼴 행이 숨었다');
-      assert.ok(ev("$('#rptOut').style.fontFamily").includes('Gulim'), '미리보기 폰트가 입혀지지 않았다');
-      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '13pt', '미리보기 크기가 입혀지지 않았다');
-      assert.ok(!/폰트|글꼴/.test(ev("$('#rptSummary').textContent")), '요약에 글꼴이 있다');
-      assert.strictEqual(ev("$('#rptFontFamily').value"), 'Gulim', '폰트 셀렉트 동기');
-      assert.strictEqual(ev("$('#rptFontSize').value"), '13', '크기 셀렉트 동기');
-      // 기본값이면 인라인 스타일을 걷어낸다
-      ev("reportFontSet({family:'',size:0}); buildReport();");
-      assert.strictEqual(ev("$('#rptOut').style.fontFamily"), '', '기본 폰트면 인라인 스타일 해제');
-      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
-      ev("reportMode='daily'");   // 상태 원복(다른 테스트 보호)
-    });
-
-    //  글꼴 행은 내용 출처(캘린더 기록, 인트라넷 주간)와 무관하게 남는다. 출처를 바꿔도 행이 사라지거나 서식이 풀리면 안 된다.
-    test('reportFont: 글꼴 행과 미리보기 서식은 내용 출처(캘린더 기록, 인트라넷 주간)와 무관하게 남는다', () => {
-      seed(fmtState('-', '', 2));
-      ev("reportFontSet({ family: 'Gulim', size: 13 })");
-      for(const src of ['cal', 'week']){
-        ev(`reportMode='custom'; state.reportSource=${JSON.stringify(src)}; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; buildReport();`);
-        assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', `${src}: 글꼴 행이 숨었다`);
-        assert.strictEqual(ev("$('#rptFontFamily').value"), 'Gulim', `${src}: 폰트 셀렉트 동기`);
-        assert.strictEqual(ev("$('#rptFontSize').value"), '13', `${src}: 크기 셀렉트 동기`);
-        assert.ok(ev("$('#rptOut').style.fontFamily").includes('Gulim'), `${src}: 미리보기 폰트`);
-      }
-      ev("state.reportSource='cal'; reportFontSet({family:'',size:0}); reportMode='daily'");   // 상태 원복
-    });
-
-    //  폰트는 표시+복사 전용이라는 계약 — 평문 복사는 폰트에 1바이트도 반응하면 안 된다.
-    test('reportFont 불변식: buildReportText(복사 글)는 폰트와 무관하게 바이트 동일', () => {
-      seed(fmtState('-', '', 2));
-      ev("reportMode='custom'; state.reportSource='cal'; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31';");
-      //  읽어 둔 결과를 그릇에 두는 길(rptMStoreRead)은 시험이 직접 채운다. 복사 글은 이 그릇의 글이다(2026-11-03).
-      ev(`rptMStoreRead('cal', '2026-07-01', '2026-07-31', parseNetcusWeekly([{ endwork: '[에이]\\n  - 폰트 무관 확인\\n    메모', content: '[에이] : 3', title: '주간', period: '2026-06-29 ~ 2026-07-04', regdate: '' }], state.categories), 1)`);
-      const plain = ev('buildReportText()');
-      const sendLike = ev("buildReportText('&nbsp;')");
-      // 공허한 비교(양쪽 다 빈 문자열) 방지 — 기준값이 실제 내용을 담고 있어야 한다
-      assert.ok(plain.includes('폰트 무관 확인') && sendLike.includes('폰트 무관 확인'), '기준 텍스트가 비어 있지 않음');
-
-      ev("reportFontSet({family:'Batang',size:16}); buildReport();");   // 폰트 설정 후 동일 경로 재계산
-      assert.strictEqual(ev('buildReportText()'), plain, '평문 복사 바이트 동일');
-      assert.strictEqual(ev("buildReportText('&nbsp;')"), sendLike, '&nbsp; 들여쓰기 글 바이트 동일');
-      // HTML 트윈에만 서식이 붙는다 — 같은 평문에서 파생됐음을 함께 확인
-      const html = ev("buildReportHtml(buildReportText(), reportFontGet())");
-      assert.ok(/font-family/.test(html) && /font-size:16pt/.test(html), 'HTML 트윈에는 폰트 적용');
-      assert.strictEqual((html.match(/<br>/g) || []).length, plain.split('\n').length - 1, '라인 수 불변');
-      ev("reportFontSet({family:'',size:0}); reportMode='daily'; clearNetcusWeeklyMerge();");   // 상태 원복
+      for (const fn of ['normalizeReportFont', 'reportFontCss', 'reportFontGet', 'reportFontSet', 'syncReportFontUI', 'syncReportFormatUI', 'buildReportHtml', 'copyReport', 'buildReportText', 'buildReport', 'renderNetcusWeeklyPreview', 'atSumOutSet'])
+        assert.strictEqual(ev('typeof ' + fn), 'undefined', fn + ' 이 남았다');
+      for (const id of ['rptOut', 'rptSummary', 'rptFontRow', 'rptFontFamily', 'rptFontSize', 'btnRptCopy', 'asText', 'asOut', 'asFmt', 'asFmtBtn'])
+        assert.strictEqual(ev(`!!document.getElementById(${JSON.stringify(id)})`), false, '#' + id + ' 이 남았다');
+      ev(`rptMStoreRead('cal', '2026-07-01', '2026-07-31', parseNetcusWeekly([{ endwork: '[에이]\\n  - 실적 확인', content: '[에이] : 3', title: '주간', period: '2026-06-29 ~ 2026-07-04', regdate: '' }], state.categories), 1)`);
+      assert.ok(ev("(netcusWeeklyMerge.auto.etc.filter(function(e){ return e.key === 'ca'; })[0] || {}).text").includes('실적 확인'), '읽어 둔 글이 월간 실적 글(auto)에 없다');
+      ev('clearNetcusWeeklyMerge();');
     });
 
     test('<prefs> 없는 XML → entries/todos 무손실(가산적), 서식 키는 없다', () => {
@@ -1106,12 +923,12 @@ if (!JSDOM) {
     // 세그 활성 표시는 '지금 출처'만 말한다 — disabled(읽기 잠금)와 AND 하면 켜진 칸이 하나도 없는 화면이 된다.
     test('report UI: 출처 세그 활성 표시는 잠금(disabled) 여부와 무관하다', () => {
       seed(reportState);
-      ev("reportMode='custom'; state.reportSource='week'; syncReportSourceSeg();");
+      ev("state.reportSource='week'; syncReportSourceSeg();");
       assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"week\"]').classList.contains('active')"), true, '사전조건: 인트라넷 주간 칸이 켜진다');
       ev("setNetcusLocked(true); syncReportSourceSeg();");
       assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"week\"]').disabled"), true, '전제: 읽기 잠금이 걸렸다');
       assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"week\"]').classList.contains('active')"), true, '잠겨 있어도 현재 출처 표시는 남는다');
-      ev("setNetcusLocked(false); state.reportSource='cal'; syncReportSourceSeg(); reportMode='daily';");
+      ev("setNetcusLocked(false); state.reportSource='cal'; syncReportSourceSeg();");
     });
 
     test('검색: 결과 0건이어도 상자가 남고 안내 줄(.s-empty)이 선다', () => {
@@ -1134,8 +951,9 @@ if (!JSDOM) {
 
 
     // ── netcus 주간 병합(인트라넷 주간 출처) 함수 ─────
-    test('report UI(netcus): 파서·전송 글·주간 미리 보기 함수 전역 도달', () => {
-      for(const fn of ['parseNetcusWeek', 'buildNetcusSendText', 'renderNetcusWeeklyPreview']){
+    //  주간 미리 보기(renderNetcusWeeklyPreview)는 v6 결정 22 로 없앴다(취합 과제별 글). 남은 두 함수만 본다.
+    test('report UI(netcus): 파서, 전송 글 함수 전역 도달', () => {
+      for(const fn of ['parseNetcusWeek', 'buildNetcusSendText']){
         assert.strictEqual(ev('typeof ' + fn), 'function', fn + ' 전역이어야 함');
       }
     });
