@@ -107,7 +107,8 @@ const S = {
     const pane = paneHtml(src);
     assert.ok(!/<textarea|contenteditable|<select/i.test(pane), '월간 문서 영역 마크업에 고치는 칸(textarea, select, contenteditable)이 있다');
     const inputs = [...pane.matchAll(/<input\b[^>]*>/g)].map((m) => m[0]);
-    assert.deepStrictEqual(inputs.map((x) => (/type="(\w+)"/.exec(x) || [])[1] + ':' + (/id="(\w+)"/.exec(x) || [])[1]), ['checkbox:rptmWeekHead', ...DATE_IDS.map((id) => 'date:' + id)], '월간 문서 영역의 입력이 주간보고 제목 넣기 체크(v6 결정 23)와 날짜 셋(계획 시작, 계획 끝, 작성일)이 아니다');
+    //  v7 결정 26: 과제, 기타 상자 머리의 모두 선택 체크 둘(rptmPickAll, rptmEtcAll)이 더해졌다(글을 고치는 칸이 아니다)
+    assert.deepStrictEqual(inputs.map((x) => (/type="(\w+)"/.exec(x) || [])[1] + ':' + (/id="(\w+)"/.exec(x) || [])[1]), ['checkbox:rptmPickAll', 'checkbox:rptmEtcAll', 'checkbox:rptmWeekHead', ...DATE_IDS.map((id) => 'date:' + id)], '월간 문서 영역의 입력이 모두 선택 체크 둘(v7 결정 26), 주간보고 제목 넣기 체크(v6 결정 23)와 날짜 셋(계획 시작, 계획 끝, 작성일)이 아니다');
     const code = rptMCode(src);
     assert.ok(!/<textarea|contenteditable=|type="text"/i.test(code), '월간 함수가 고치는 칸을 그린다');
     //  2026-11-10(MONTHLY-HEAD-MAPPING 결정 4): 고르는 칸은 미식별 줄의 넣을 곳 콤보(rptMRenderUnid) 하나뿐이고 글을 고치지 않는다.
@@ -394,9 +395,13 @@ if (!JSDOM) {
       assert.deepStrictEqual(W.evJSON("rptMPlanDefault('2026-08-03', '2026-09-18')"), { from: '2026-09-21', to: '2026-10-30' }, '계획 기본값 예시(결정 17)가 다르다');
       assert.deepStrictEqual(W.evJSON('rptMPlanDefault(' + JSON.stringify(lm[0]) + ',' + JSON.stringify(lm[1]) + ')'), { from: d0.pFrom, to: d0.pTo }, '화면 계획 기간이 기본값이 아니다');
       assert.deepStrictEqual([d0.src, d0.srcBtn], ['cal', 'cal'], '출처 기본이 캘린더가 아니다');
-      assert.deepStrictEqual(d0.checked, d0.has, '처음 체크가 기록 있는 과제가 아니다');
-      //  시안 v4 결정 20: 기타는 읽은 글이 있는 개인 과제만이라 읽기 전에는 줄이 없고 상자를 숨긴다(v2 기대: 모든 카테고리 칩 펼침)
-      assert.deepStrictEqual([d0.etcOn, d0.etcAll, d0.etcShown], [[], [], false], '읽기 전인데 기타 줄이 있거나 상자가 보인다');
+      //  v7 결정 28: 읽기 전에는 공식 과제 모두 체크(예전 기대: 기록 있는 과제만이라 읽기 전에는 모두 꺼짐). 읽은 뒤 기록 있는 것만은 MW1b
+      assert.ok(d0.checked.length > 0 && d0.has.length === 0, '전제: 공식 과제가 있고 읽기 전이라 기록 있음이 비어 있다');
+      assert.deepStrictEqual(d0.checked, W.evJSON('__rptM.order'), '읽기 전 처음 체크가 공식 과제 전부가 아니다(v7 결정 28)');
+      //  v7 결정 28: 기타는 읽기 전에 내 개인 과제 전부를 모두 켜서 보인다(예전 기대: 시안 v4 결정 20 으로 읽기 전 줄 없음과 상자 숨김)
+      const personal = W.evJSON('rptMEtcCats().map(function(e){ return e.key; })');
+      assert.ok(personal.length > 0, '전제: 개인 과제가 있다');
+      assert.deepStrictEqual([d0.etcOn, d0.etcAll, d0.etcShown], [personal, personal, true], '읽기 전 기타가 내 개인 과제 전부(모두 켬)가 아니거나 상자가 숨었다(v7 결정 28)');
       assert.ok(!$id(W, 'rptmEtcSum') && !$id(W, 'rptmEtcTog'), '기타 요약 줄이나 고르기 단추가 남았다');
       assert.strictEqual(d0.tpl, 'sw', '양식이 SW 로 열리지 않았다');
       //  시안 v4 결정 19: 이름은 화면 줄에 없고 종이 제목에만(예전 기대: #rptmName 읽기만 글자)
@@ -543,7 +548,8 @@ if (!JSDOM) {
       const qa = (sel) => panes.flatMap((p) => [...p.querySelectorAll(sel)]);
       assert.strictEqual(qa('textarea, select, [contenteditable]').length, 0, '월간 문서 영역에 textarea, select, contenteditable 이 있다');
       const inputs = qa('input');
-      const bad = inputs.filter((i) => !((i.type === 'date' && DATE_IDS.includes(i.id)) || (i.type === 'checkbox' && (i.id === 'rptmWeekHead' || i.matches('#rptmPick input[data-act="pick"]') || i.matches('#rptmEtc input[data-etc]')))));
+      //  v7 결정 26: 상자 머리의 모두 선택 체크 둘(rptmPickAll, rptmEtcAll)도 고르는 것이다
+      const bad = inputs.filter((i) => !((i.type === 'date' && DATE_IDS.includes(i.id)) || (i.type === 'checkbox' && (i.id === 'rptmWeekHead' || i.id === 'rptmPickAll' || i.id === 'rptmEtcAll' || i.matches('#rptmPick input[data-act="pick"]') || i.matches('#rptmEtc input[data-etc]')))));
       assert.deepStrictEqual(bad.map((i) => i.outerHTML), [], '고르는 것 말고 다른 입력이 있다');
       assert.strictEqual(inputs.filter((i) => i.type === 'date').length, 3);
       assert.ok(!$id(W, 'rptmCards') && !qa('[data-f], [data-cf], [data-act="reload"], [data-act="chgAdd"], [data-act="unidMove"]').length, '과제 카드나 고치는 칸, 다시 붙이기, 변경이력 행, 이관이 남았다');
@@ -1069,9 +1075,11 @@ if (!JSDOM) {
       assert.ok(sheetText().includes('월간 실적: 08월 01일 ~ 08월 31일') && sheetText().includes('기간 밖 일'), '읽어 오기 뒤 미리 보기가 새 기간으로 바뀌지 않았다');
       //  날짜 칸을 고르면(change) 월간 문서도 그 기간으로 바로 새로 열린다(요청은 나가지 않는다)
       setVal(W, $id(W, 'rptFrom'), '2026-07-01', 'change'); setVal(W, $id(W, 'rptTo'), '2026-07-31', 'change'); drainImages(W);
-      //  읽어 둔 글이 없어 과제 표가 없으니(머리는 표 안에 있다) 새로 연 상태로 본다
       assert.deepStrictEqual(W.evJSON('[__rptM.from, __rptM.to, rptMAuto(__rptM)]'), ['2026-07-01', '2026-07-31', null], '기간 칸을 고쳤는데 월간 문서가 새 기간으로 새로 열리지 않았다');
-      assert.ok(!$id(W, 'rptmSheet').querySelector('table') && $id(W, 'rptmSheet').textContent.includes('월간보고'), '읽기 전 미리 보기가 제목만이 아니다');
+      //  v7 결정 28: 새 기간(읽기 전)은 공식 과제 모두 체크라 과제마다 빈 표와 기타 빈 표가 새 기간 머리로 보인다(예전 기대: 읽기 전 미리 보기는 제목만)
+      const tbls = [...$id(W, 'rptmSheet').querySelectorAll('table[data-pv-uid]')].map((t) => t.dataset.pvUid);
+      assert.deepStrictEqual(tbls, W.evJSON('__rptM.order'), '새 기간 읽기 전 미리 보기가 과제마다 빈 표가 아니다');
+      assert.ok($id(W, 'rptmSheet').querySelector('table[data-pv-etc]') && sheetText().includes('월간 실적: 07월 01일 ~ 07월 31일') && !sheetText().includes('기간 밖 일'), '새 기간 읽기 전 미리 보기가 빈 표와 새 기간 머리가 아니다');
       await fresh();
     });
 

@@ -69,7 +69,10 @@ function checkStatic(src) {
   //  두 칸(결정 21): 왼쪽 상자(과제, 기타, 미식별)와 결과 칸
   const main = view.slice(view.indexOf('<div class="as-main" id="asRight">'), view.indexOf('<div class="as-pop hidden"'));
   assert.ok(main.indexOf('id="asBoxes"') >= 0 && main.indexOf('id="asBoxes"') < main.indexOf('id="asOutCard"') && main.indexOf('id="rptmPick"') < main.indexOf('id="rptmEtc"') && main.indexOf('id="rptmEtc"') < main.indexOf('id="rptmUnid"') && main.indexOf('id="rptmPv"') > main.indexOf('id="asOutCard"'), '상자(과제, 기타, 미식별)와 결과 칸(미리 보기) 순서가 아니다');
-  assert.ok(/<div class="as-boxes" id="asBoxes">/.test(main) && /<div class="as-box" id="rptmEtcBox"><div class="as-boxh">기타 <span class="rptm-cnt" id="rptmEtcCnt"><\/span><\/div><div class="rptm-list" id="rptmEtc"><\/div><\/div>/.test(main), '상자가 처음 숨어 있거나(v6 결정 22: 늘 보인다) 기타 상자가 과제와 같은 목록(켠 수/전체)이 아니다');
+  assert.ok(/<div class="as-boxes" id="asBoxes">/.test(main) && /<div class="as-box" id="rptmEtcBox"><div class="as-boxh"><label class="check as-all"><input type="checkbox" id="rptmEtcAll" aria-label="기타 모두 선택">기타<\/label> <span class="rptm-cnt" id="rptmEtcCnt"><\/span><\/div><div class="rptm-list" id="rptmEtc"><\/div><\/div>/.test(main)
+    && /<div class="as-box" id="rptmPickBox"><div class="as-boxh"><label class="check as-all"><input type="checkbox" id="rptmPickAll" aria-label="과제 모두 선택">과제<\/label> <span class="rptm-cnt" id="rptmPickCnt"><\/span><\/div>/.test(main), '상자가 처음 숨어 있거나(v6 결정 22: 늘 보인다) 기타 상자가 과제와 같은 목록(켠 수/전체)이 아니거나 머리에 모두 선택 체크가 없다(v7 결정 26)');
+  //  v7 결정 28: 읽기 전 빈 아이콘 자리(예전 기대: 결정 18 의 #asBoxBlank, #rptmPvBlank, 상자 숨김 as-wait)는 없다. 종이 칸은 처음부터 보인다
+  assert.ok(!/id="(asBoxBlank|rptmPvBlank)"|as-wait|as-paperblank/.test(src) && /<div class="rptm-pvwrap" id="rptmPvWrap">/.test(main), '읽기 전 빈 아이콘 자리나 상자 숨김이 남았거나 종이 칸이 처음 숨어 있다(v7 결정 28)');
   assert.ok(/\.as-main\{[^}]*display:grid;grid-template-columns:minmax\(300px,400px\) minmax\(0,1fr\)/.test(src) && /@media \(max-width:900px\)\{\s*\.as-main\{display:block/.test(src) && !/\.as-main\.doc/.test(src), '두 칸(늘 나란히, 좁은 폭 위아래) CSS 가 아니다');
   assert.ok(!/\.as-band|\.as-left|\.as-split|\.as-view \.rptm-set|\.as-mon|\.as-docbar|\.as-docm|\.as-fmtpop|\.rptm-etc-cats/.test(src), '옛 왼쪽 패널, 끌개, 띠, 둘째 줄, 서식 칸, 기타 칩 CSS 가 남았다');
   const one = (n) => (src.match(new RegExp('function ' + n + '\\(', 'g')) || []).length;
@@ -125,6 +128,10 @@ test('(M) 변이: 지운 것을 되살리면 정적 계약이 잡는다', () => 
     ['문서 설정 띠 되살림', (s) => mutate(s, '<div class="as-main" id="asRight">', '<div class="as-band hidden" id="asBand"></div><div class="as-main" id="asRight">')],
     ['두 칸을 늘 위아래로', (s) => mutate(s, 'padding-top:10px;display:grid;grid-template-columns:minmax(300px,400px) minmax(0,1fr)', 'padding-top:10px;display:block')],
     ['옛 왼쪽 CSS 되살림', (s) => s.replace('.as-sep{', '.as-left{overflow:auto} .as-sep{')],
+    //  v7 결정 26, 28
+    ['과제 머리 모두 선택 체크 빠짐', (s) => mutate(s, '<label class="check as-all"><input type="checkbox" id="rptmPickAll" aria-label="과제 모두 선택">과제</label>', '과제')],
+    ['읽기 전 빈 아이콘 자리 되살림', (s) => mutate(s, '<div class="as-boxes" id="asBoxes">', '<div class="as-boxes" id="asBoxes"><div class="as-box as-blank" id="asBoxBlank"></div>')],
+    ['종이 칸 처음 숨김', (s) => mutate(s, '<div class="rptm-pvwrap" id="rptmPvWrap">', '<div class="rptm-pvwrap hidden" id="rptmPvWrap">')],
   ];
   for (const [name, f] of cases) {
     let caught = false;
@@ -160,10 +167,10 @@ if (!JSDOM) {
     const X = boot(app, false);
     await tick(200);
     X.ev("pcSetTab('attend')"); await tick();
-    assert.deepStrictEqual([...X.d.querySelectorAll('#atMonth [data-atkind]')].map((b) => b.textContent), ['일간', '주간', '취합']);
+    assert.deepStrictEqual([...X.d.querySelectorAll('#atMonth [data-atkind]')].map((b) => b.textContent), ['일간', '주간', '월간']);   // v7 결정 27(예전 기대: 취합)
     X.ev("atKindSet('sum')"); await tick();
     assert.ok(X.shown('#atSum') && !X.shown('#atMonth') && !X.shown('#awList'));
-    assert.deepStrictEqual([...X.d.querySelectorAll('#asBar [data-atkind]')].map((b) => b.textContent), ['일간', '주간', '취합']);
+    assert.deepStrictEqual([...X.d.querySelectorAll('#asBar [data-atkind]')].map((b) => b.textContent), ['일간', '주간', '월간']);   // v7 결정 27(예전 기대: 취합)
     const r = X.ev('monthRange(new Date(), -1)');
     assert.strictEqual(X.$('#rptFrom').value, r[0]); assert.strictEqual(X.$('#rptTo').value, r[1]);
     assert.strictEqual(X.$('#rptSrcSeg .active').dataset.rsrc, 'cal');

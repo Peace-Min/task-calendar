@@ -1,4 +1,4 @@
-// 근태 취합과 월간 보고 화면 시안 v4(docs/MONTHLY-UX-V2.md 끝 "v4 조정" 결정 14~21, 시안 dist/proto/monthly-ux-v4.html) 웹 쪽 시험.
+// 근태 월간(옛 이름 취합)과 월간 보고 화면 시안 v4(docs/MONTHLY-UX-V2.md 끝 "v4 조정" 결정 14~21, 시안 dist/proto/monthly-ux-v4.html) 웹 쪽 시험.
 //  v2(결정 1~13) 가운데 v4 가 바꾸지 않은 것(그림 1장, 양식 SW/HW, payload template, 텍스트 다이어트)도 여기서 본다.
 //  2026-11-10 v6(결정 22~25, dist/proto/monthly-ux-v6.html): 과제별 글 탭, [서식], 복사, 글꼴을 없앴다(결정 22). 머리 줄에 주간보고 제목 넣기(결정 23),
 //  미식별 콤보 처음 값 이름 미선택(결정 24). 탭을 오가던 시험은 '없음' 계약으로 바꿨다.
@@ -9,6 +9,8 @@
 //       실적을 바꿔 읽으면 다시 계산, 손으로 고친 값은 같은 기간 다시 읽기에서 남음, 강조 전환(읽기 전후, class 만), 기타는 글 있는 것만,
 //       왼쪽 상자는 늘 보임, 양식 전환, 그림 1장 흐름.
 //   (M) 변이: 기본값 옛 규칙, 계획 ↺ 부활, 둘 다 강조, 날짜 상자를 윗줄로, template 빠짐, 그림 5장 등을 넣으면 위 검사가 잡는다.
+//   2026-11-10 v7(결정 26~30): 상자 머리 모두 선택 체크(indeterminate), 탭 이름 월간, 읽기 전 과제와 기타 모두 체크와 빈 보고서 표(SW, HW),
+//       읽은 뒤 기록 있는 것만 체크와 기타 축소, 읽기 전 저장 막힘. 아래 'v7' 시험과 변이.
 // ★ 회사 사이트로 아무것도 보내지 않는다. 호스트 회신은 __hostReply 로 흉내 낸다. 과제와 사람 이름은 지어낸 (예시) 값이다.
 import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 
@@ -308,16 +310,16 @@ if (!JSDOM) {
     const M = await open(src);
     try {
       const load0 = M.$('#asLoad'), save0 = M.$('#rptmSave');
-      //  읽은 뒤(문서 탭): DOCX 저장만 파랑, 읽어 오기는 보통, 종이가 보이고 빈 아이콘은 숨음
+      //  읽은 뒤(문서 탭): DOCX 저장만 파랑, 읽어 오기는 보통, 종이가 보인다(빈 아이콘 자리는 v7 결정 28 로 없앴다)
       assert.deepStrictEqual(visPrimary(M), ['rptmSave'], '읽은 뒤 문서 탭 강조가 DOCX 저장 하나가 아니다');
-      assert.ok(!M.$('#rptmSave').disabled && M.shown('#rptmPvWrap') && !M.shown('#rptmPvBlank') && !M.shown('#asBoxBlank') && !M.$('#rptmPickBox').classList.contains('as-wait'), '읽은 뒤인데 저장이 잠기거나 빈 자리가 보인다');
+      assert.ok(!M.$('#rptmSave').disabled && M.shown('#rptmPvWrap') && M.shown('#rptmPickBox'), '읽은 뒤인데 저장이 잠기거나 상자, 종이가 숨었다');
       const r1 = row(M, P1);   // 여기부터 같은 줄이어야 한다(예전 글 탭 강조 복사는 v6 결정 22 로 없앴다)
-      //  읽기 전으로(같은 그릇을 비운다): 읽어 오기만 파랑, 저장은 보통+잠금, 상자 자리와 종이 자리는 빈 아이콘
+      //  읽기 전으로(같은 그릇을 비운다): 읽어 오기만 파랑, 저장은 보통+잠금(v7 결정 30)
       M.ev('clearNetcusWeeklyMerge(); asStageSync();');
       assert.deepStrictEqual(visPrimary(M), ['asLoad'], '읽기 전 강조가 읽어 오기 하나가 아니다');
       assert.ok(M.$('#rptmSave').disabled && !M.$('#rptmSave').classList.contains('primary'), '읽기 전 저장이 잠기지 않았거나 파랗다');
-      assert.ok(M.shown('#asBoxBlank') && M.$('#asBoxBlank svg') && !M.$('#asBoxBlank').textContent.trim() && M.$('#rptmPickBox').classList.contains('as-wait'), '읽기 전 상자 자리가 빈 아이콘(글 없음)이 아니다');
-      assert.ok(M.shown('#rptmPvBlank') && M.$('#rptmPvBlank svg') && !M.$('#rptmPvBlank').textContent.trim() && !M.shown('#rptmPvWrap'), '읽기 전 종이 자리가 빈 아이콘(글 없음)이 아니다');
+      //  v7 결정 28: 읽기 전에도 상자와 종이가 그대로 보인다(예전 기대: 결정 18 의 빈 아이콘 자리 #asBoxBlank, #rptmPvBlank 와 상자 숨김 as-wait)
+      assert.ok(!M.$('#asBoxBlank') && !M.$('#rptmPvBlank') && M.shown('#rptmPickBox') && !M.$('#rptmPickBox').classList.contains('as-wait') && M.shown('#rptmPvWrap'), '읽기 전 빈 아이콘 자리가 있거나 상자, 종이가 숨었다(v7 결정 28)');
       //  전환은 class 만: 단추와 과제 줄이 같은 요소다
       assert.ok(M.$('#asLoad') === load0 && M.$('#rptmSave') === save0 && row(M, P1) === r1, '강조 전환이 다시 그렸다');
       //  다시 읽으면 되돌아온다
@@ -497,10 +499,149 @@ if (!JSDOM) {
       assert.ok(M.d.querySelector('#rptmEtc .rptm-it') === er && er.classList.contains('off') && M.$('#rptmEtcCnt').textContent === '0/1' && M.ev("__rptM.etcOff.has('c-etc')"), '기타 줄을 빼면 그 줄만 off, 머리 0/1 이어야 한다(다시 그리지 않는다)');
       assert.ok(!M.$('#rptmSheet').textContent.includes('회의 자료'), '뺀 기타 글이 미리 보기에 남았다');
       assert.ok(!M.shown('#rptmUnid') && M.$('#rptmUnid').textContent === '', '미식별이 없는데 상자나 안내 글이 보인다');
-      //  읽기 전에는 흐린 이름과 기타 줄이 없다(아직 모른다)
+      //  읽기 전에는 흐린 이름이 없다(아직 모른다). 기타는 v7 결정 28 로 내 개인 과제 전부(예전 기대: 결정 20 으로 읽기 전 기타 줄 없음과 상자 숨김)
       M.ev("clearNetcusWeeklyMerge(); __rptMHas = rptMHasSet(__rptM); rptMRenderPick(); rptMRenderEtc();"); answerImages(M); await tick();
       assert.ok(!M.d.querySelector('#rptmPick .rptm-it.norec'), '읽기 전인데 흐린 이름이 있다');
-      assert.ok(!M.shown('#rptmEtcBox') && !M.d.querySelector('#rptmEtc .rptm-it'), '읽기 전인데 기타 줄이 있다');
+      assert.ok(M.shown('#rptmEtcBox') && [...M.d.querySelectorAll('#rptmEtc .rptm-it')].map((r) => r.dataset.etcKey).join() === 'c-etc,c-none', '읽기 전 기타 줄이 내 개인 과제 전부가 아니다(v7 결정 28)');
     } finally { M.w.close(); }
+  });
+  // ── v7 다듬기(docs/MONTHLY-UX-V2.md 결정 26~30) ─────────────────────────────
+  //  읽기 전 화면 그대로 연다(그릇에 읽은 글을 두지 않는다). 그림 목록과 썸네일에는 회신한다(그림 칸은 읽기 전부터 쓴다, 결정 28)
+  async function openFresh(src = app) {
+    const M = boot(src);
+    M.ev('__applyState(' + JSON.stringify(JSON.stringify(STATE)) + ',' + JSON.stringify(META) + ')');
+    M.ev('__applyProjects(' + JSON.stringify(JSON.stringify(ROWS)) + ')');
+    await tick();
+    M.ev('state.categories = ' + JSON.stringify(CATS) + ';');
+    M.ev("pcSetTab('attend'); atKindSet('sum'); atSumInit();");
+    M.ev(`$('#rptFrom').value = '${FROM}'; $('#rptTo').value = '${TO}'; atSumPeriod();`);
+    await tick();
+    answerImages(M); await tick(); answerThumbs(M); await tick();
+    return M;
+  }
+  const allBox = (M, id) => { const c = M.$('#' + id); return c.indeterminate ? 'mixed' : c.checked ? 'on' : 'off'; };
+  const pickOn = (M) => M.evJSON('__rptM.order.filter(function(id){ return __rptM.checked[id]; })');
+  const etcOn = (M) => [...M.d.querySelectorAll('#rptmEtc input[data-etc]')].filter((x) => x.checked).map((x) => x.dataset.etc);
+  const fire = (M, el, on) => { el.checked = on; el.dispatchEvent(new M.w.Event('change', { bubbles: true })); };
+
+  //  머리 체크 검사기(결정 26). 변이가 같은 검사기를 부른다
+  async function checkAll(src) {
+    const M = await openFresh(src);
+    try {
+      const r1 = row(M, P1), r2 = row(M, P2), slot2 = r2.querySelector('[data-slot]');
+      assert.ok(M.$('#rptmPickAll').closest('.as-boxh') && M.$('#rptmPickAll').closest('label').textContent.trim() === '과제' && M.$('#rptmEtcAll').closest('label').textContent.trim() === '기타', '머리 이름 앞 모두 선택 체크가 아니다');
+      //  처음(읽기 전 모두 켬): 머리 켬, 2/2
+      assert.deepStrictEqual([allBox(M, 'rptmPickAll'), M.$('#rptmPickCnt').textContent, allBox(M, 'rptmEtcAll'), M.$('#rptmEtcCnt').textContent], ['on', '2/2', 'on', '2/2'], '처음 머리 체크와 n/m 이 모두 켬이 아니다');
+      //  개별 하나 끄기: 머리 indeterminate, 1/2
+      fire(M, r2.querySelector('[data-act="pick"]'), false);
+      assert.deepStrictEqual([allBox(M, 'rptmPickAll'), M.$('#rptmPickCnt').textContent], ['mixed', '1/2'], '개별 체크를 끄면 머리가 반쯤(indeterminate), 1/2 가 아니다');
+      //  머리 켬: 모두 켬(같은 줄 요소, 그림 칸 그대로), 미리 보기 과제 표 둘
+      fire(M, M.$('#rptmPickAll'), true);
+      assert.deepStrictEqual([pickOn(M), allBox(M, 'rptmPickAll'), M.$('#rptmPickCnt').textContent], [[P1, P2], 'on', '2/2'], '머리 켬이 모두 켜지 않았다');
+      assert.ok(row(M, P1) === r1 && row(M, P2) === r2 && r2.querySelector('[data-slot]') === slot2 && !r2.classList.contains('off') && r2.querySelector('[data-act="pick"]').checked, '머리 켬이 줄을 다시 그렸거나 줄 표시가 따라오지 않았다');
+      assert.strictEqual(M.d.querySelectorAll('#rptmSheet table[data-pv-uid]').length, 2, '머리 켬 뒤 미리 보기에 과제 표가 둘이 아니다');
+      //  머리 끔: 모두 끔, 0/2, 미리 보기에 과제 표 없음
+      fire(M, M.$('#rptmPickAll'), false);
+      assert.deepStrictEqual([pickOn(M), allBox(M, 'rptmPickAll'), M.$('#rptmPickCnt').textContent], [[], 'off', '0/2'], '머리 끔이 모두 끄지 않았다');
+      assert.ok([r1, r2].every((r) => r.classList.contains('off') && !r.querySelector('[data-act="pick"]').checked) && !M.$('#rptmSheet table[data-pv-uid]'), '머리 끔 뒤 줄 표시나 미리 보기가 따라오지 않았다');
+      //  개별 하나 켜기: 다시 반쯤
+      fire(M, r1.querySelector('[data-act="pick"]'), true);
+      assert.deepStrictEqual([allBox(M, 'rptmPickAll'), M.$('#rptmPickCnt').textContent], ['mixed', '1/2'], '개별을 켜도 머리가 따라가지 않는다');
+      //  기타도 같다(etcOff)
+      const e1 = M.d.querySelector('#rptmEtc [data-etc-key="c-etc"]');
+      fire(M, M.d.querySelector('#rptmEtc input[data-etc="c-none"]'), false);
+      assert.deepStrictEqual([allBox(M, 'rptmEtcAll'), M.$('#rptmEtcCnt').textContent], ['mixed', '1/2'], '기타 하나를 빼도 머리가 반쯤, 1/2 가 아니다');
+      fire(M, M.$('#rptmEtcAll'), false);
+      assert.deepStrictEqual([etcOn(M), allBox(M, 'rptmEtcAll'), M.$('#rptmEtcCnt').textContent, M.evJSON('[...__rptM.etcOff].sort()')], [[], 'off', '0/2', ['c-etc', 'c-none']], '기타 머리 끔이 모두 빼지 않았다');
+      assert.ok(M.d.querySelector('#rptmEtc [data-etc-key="c-etc"]') === e1 && e1.classList.contains('off') && !M.$('#rptmSheet table[data-pv-etc]'), '기타 머리 끔이 줄을 다시 그렸거나 기타 표가 남았다');
+      fire(M, M.$('#rptmEtcAll'), true);
+      assert.deepStrictEqual([etcOn(M), allBox(M, 'rptmEtcAll'), M.$('#rptmEtcCnt').textContent], [['c-etc', 'c-none'], 'on', '2/2'], '기타 머리 켬이 모두 넣지 않았다');
+      assert.ok(M.$('#rptmSheet table[data-pv-etc]'), '기타 머리 켬 뒤 기타 표가 없다');
+      //  읽은 뒤에도 같은 머리 체크가 따라간다(P2 는 기록 없음이라 첫 읽기에서 꺼짐: 반쯤)
+      await load(M);
+      assert.deepStrictEqual([pickOn(M), allBox(M, 'rptmPickAll'), M.$('#rptmPickCnt').textContent, allBox(M, 'rptmEtcAll'), M.$('#rptmEtcCnt').textContent], [[P1], 'mixed', '1/2', 'on', '1/1'], '읽은 뒤 머리 체크가 기록 있는 것만 체크와 기타 축소를 따라가지 않는다');
+    } finally { M.w.close(); }
+  }
+  test('(W) v7 결정 26: 과제와 기타 머리 체크. 처음 모두 켬, 개별을 바꾸면 반쯤(indeterminate)과 n/m 이 따라가고, 머리 켬과 끔은 모두 바꾸되 줄과 그림 칸을 다시 그리지 않고 미리 보기를 바꾼다', async () => { await checkAll(app); });
+  test('(M) 변이 v7: 머리 반쯤 표시 없음, 머리 켬이 줄 표시를 안 바꿈, 기타 머리가 etcOff 를 안 바꿈을 넣으면 머리 체크 시험이 잡는다', async () => {
+    const cases = [
+      ['반쯤 없음', (s) => mutate(s, '  cb.indeterminate = on > 0 && on < n;\n', '  cb.indeterminate = false;\n')],
+      ['줄 표시 안 바꿈', (s) => mutate(s, "    if(row){ row.classList.toggle('off', !on); const cb = row.querySelector('[data-act=\"pick\"]'); if(cb) cb.checked = !!on; }\n", '')],
+      ['기타 머리 무시', (s) => mutate(s, '    if(on) S.etcOff.delete(e.key); else S.etcOff.add(e.key);\n', '')],
+    ];
+    for (const [name, f] of cases) {
+      let caught = false;
+      try { await checkAll(f(app)); } catch (_) { caught = true; }
+      assert.ok(caught, '변이가 잡히지 않았다: ' + name);
+    }
+  });
+
+  test('(W) v7 결정 27: 근태 셋째 탭 이름은 월간이고 화면에 옛 이름 취합이 없다(탭, 묶음 aria-label, 화면 aria-label, 사용설명서 근태 장)', async () => {
+    const M = await openFresh();
+    try {
+      assert.deepStrictEqual([...M.d.querySelectorAll('#asBar [data-atkind]')].map((b) => b.textContent + (b.classList.contains('active') ? '*' : '')), ['일간', '주간', '월간*'], '탭 이름이 일간, 주간, 월간이 아니다');
+      assert.strictEqual(M.$('#asBar .at-kind').getAttribute('aria-label'), '일간 보고, 주간보고, 월간');
+      assert.strictEqual(M.$('#atSum').getAttribute('aria-label'), '월간');
+      assert.ok(!M.$('#atSum').textContent.includes('취합') && !M.$('#asBar').innerHTML.includes('취합'), '월간 화면에 옛 이름 취합이 보인다');
+      const guide = M.$('#g-report');
+      assert.ok(guide && guide.textContent.includes('월간') && !guide.textContent.includes('취합'), '사용설명서 보고서 장이 월간 이름이 아니다');
+      //  패치노트(#patchModal)는 지난 판의 기록이라 옛 이름을 그대로 둔다
+      const doc = M.d.documentElement.cloneNode(true); const pm = doc.querySelector('#patchModal'); if (pm) pm.remove();
+      const html = doc.innerHTML;
+      assert.ok(!/<b>취합<\/b>|shot-tab on">취합|일간, 주간, 취합/.test(html), '사용설명서나 탭에 옛 이름 취합이 남았다');
+    } finally { M.w.close(); }
+  });
+
+  //  읽기 전 화면 검사기(결정 28, 30)
+  async function checkBefore(src) {
+    const M = await openFresh(src);
+    try {
+      assert.strictEqual(M.ev('rptMAuto(__rptM)'), null, '전제: 읽기 전');
+      assert.ok(!M.$('#asBoxBlank') && !M.$('#rptmPvBlank') && M.shown('#rptmPickBox') && M.shown('#rptmEtcBox') && M.shown('#rptmPvWrap') && !M.shown('#rptmUnid'), '읽기 전 상자(과제, 기타)와 종이가 보이지 않거나 빈 아이콘 자리, 미식별이 있다');
+      //  과제 = 공식 과제 전부 모두 체크(흐림 없음), 기타 = 개인 과제 전부 모두 켬
+      assert.deepStrictEqual(pickOn(M), [P1, P2], '읽기 전 과제가 모두 체크가 아니다');
+      assert.ok(!M.d.querySelector('#rptmPick .norec, #rptmPick .off'), '읽기 전 과제 줄이 흐리거나 줄이 그어졌다');
+      assert.deepStrictEqual(etcOn(M), ['c-etc', 'c-none'], '읽기 전 기타가 내 개인 과제 전부(모두 켬)가 아니다');
+      //  그림 칸은 읽기 전부터: 목록을 물었고 P2 썸네일이 보인다
+      assert.ok(M.posted.some((x) => x && x.cmd === 'scheduleImageList' && x.projectUid === P1) && row(M, P2).querySelector('.rptm-slot.has img') && row(M, P1).querySelector('[data-act="imgAdd"]:not([disabled])'), '읽기 전 그림 칸이 동작하지 않는다');
+      //  SW 미리 보기: 과제마다 빈 표(과제명, 수행 기간 DB 값, 실적 빈칸, 그림) + 기타 빈 표
+      const sheet = M.$('#rptmSheet');
+      const t1 = sheet.querySelector(`table[data-pv-uid="${P1}"]`), t2 = sheet.querySelector(`table[data-pv-uid="${P2}"]`), et = sheet.querySelector('table[data-pv-etc]');
+      assert.ok(t1 && t2 && et && !sheet.classList.contains('hw'), '읽기 전 SW 미리 보기에 과제 표 둘과 기타 표가 없다');
+      assert.ok(t1.querySelector('td.nm').textContent === '(예시) 관측 장비 고도화' && t1.querySelectorAll('tr')[1].querySelector('td.bv').textContent === '2026/03 ~ 2026/12' && t2.querySelectorAll('tr')[1].querySelector('td.bv').textContent === '2026/05 ~ ', 'SW 빈 표의 과제명이나 수행 기간(DB 값)이 아니다');
+      assert.ok([t1, t2].every((t) => t.querySelector('[data-pv="actual"]').textContent === '') && et.querySelector('td.body').textContent === '', 'SW 빈 표의 실적이나 기타 칸이 비어 있지 않다');
+      assert.ok(t2.querySelector('td.img img') && !t1.querySelector('td.img img'), 'SW 빈 표에 넣은 그림이 없다');
+      //  HW 미리 보기도 같다
+      M.$('#rptmTpl [data-tpl="hw"]').click(); await tick();
+      const h1 = sheet.querySelector(`table[data-pv-uid="${P1}"]`), h2 = sheet.querySelector(`table[data-pv-uid="${P2}"]`), he = sheet.querySelector('table[data-pv-etc]');
+      assert.ok(sheet.classList.contains('hw') && h1 && h2 && he && he.querySelectorAll('tr').length === 3, '읽기 전 HW 미리 보기에 과제 표 둘과 기타 표(3칸)가 없다');
+      assert.ok(h1.querySelectorAll('tr')[0].querySelector('td.bv').textContent === '2026년 3월 ~ 2026년 12월' && h1.querySelector('[data-pv="actual"]').textContent === '' && !sheet.querySelector('img'), 'HW 빈 표의 수행 기간이나 실적 빈칸이 아니다');
+      M.$('#rptmTpl [data-tpl="sw"]').click(); await tick();
+      //  결정 30: 읽기 전 저장은 막고 강조는 읽어 오기
+      assert.ok(M.$('#rptmSave').disabled && M.$('#asLoad').classList.contains('primary') && !M.$('#rptmSave').classList.contains('primary'), '읽기 전 저장이 열렸거나 강조가 읽어 오기가 아니다');
+      //  결정 29: 첫 읽기 뒤 기록 있는 것만 체크(P2 흐림), 기타는 글 있는 것만, 미리 보기는 그 과제만
+      await load(M);
+      assert.ok(M.ev('!!rptMAuto(__rptM)'), '전제: 읽었다');
+      assert.deepStrictEqual(pickOn(M), [P1], '읽은 뒤 체크가 기록 있는 과제만이 아니다');
+      assert.ok(row(M, P2).classList.contains('norec') && row(M, P2).classList.contains('off'), '읽은 뒤 기록 없는 과제가 흐리고 꺼지지 않았다');
+      assert.deepStrictEqual([...M.d.querySelectorAll('#rptmEtc .rptm-it')].map((r) => r.dataset.etcKey), ['c-etc'], '읽은 뒤 기타가 글 있는 개인 과제만이 아니다');
+      assert.ok(!sheet.querySelector(`table[data-pv-uid="${P2}"]`) && sheet.querySelector(`table[data-pv-uid="${P1}"] [data-pv="actual"]`).textContent.includes('점검 항목 정리'), '읽은 뒤 미리 보기가 기록 있는 과제의 실적이 아니다');
+      assert.ok(!M.$('#rptmSave').disabled && M.$('#rptmSave').classList.contains('primary'), '읽은 뒤 저장이 열리지 않았다');
+    } finally { M.w.close(); }
+  }
+  test('(W) v7 결정 28~30: 읽기 전 과제와 기타 모두 체크, 그림 칸 동작, 과제마다 빈 표(과제명, DB 수행 기간, 실적 빈칸, 그림)와 기타 빈 표(SW, HW), 저장 막힘. 읽은 뒤 기록 있는 것만 체크와 기타 축소', async () => { await checkBefore(app); });
+  test('(M) 변이 v7: 읽기 전 체크를 기록 있음으로, 읽기 전 기타 숨김, 읽기 전 기타 표 없음, 첫 읽기의 기록 있음 재설정 없앰, 읽기 전 저장 열림을 넣으면 읽기 전 시험이 잡는다', async () => {
+    const cases = [
+      ['읽기 전 체크 기록 있음', (s) => mutate(s, " : true;\n}", " : !!(has && has.has(id));\n}")],
+      ['읽기 전 기타 숨김', (s) => mutate(s, ": rptMEtcCats().map(e => ({ key: e.key, name: e.name, text: '' }));", ': [];')],
+      ['읽기 전 기타 표 없음', (s) => mutate(s, "  const etcOn = p.etc.lines.length > 0 || (!rptMAuto(S) && rptMEtcShown(S).some(e => !S.etcOff.has(e.key)));", '  const etcOn = p.etc.lines.length > 0;')],
+      ['첫 읽기 재설정 없앰', (s) => mutate(s, '  if(fresh || first) for(const id of S.order) S.checked[id] = __rptMHas.has(id);\n', '')],
+      ['읽기 전 저장 열림', (s) => mutate(s, 'sv.disabled = !read || !HOST || __rptMSaving;', 'sv.disabled = !HOST || __rptMSaving;')],
+    ];
+    for (const [name, f] of cases) {
+      let caught = false;
+      try { await checkBefore(f(app)); } catch (_) { caught = true; }
+      assert.ok(caught, '변이가 잡히지 않았다: ' + name);
+    }
   });
 }

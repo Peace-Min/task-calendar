@@ -220,7 +220,8 @@ if (!JSDOM) {
     try {
       X.ev("pcSetTab('attend')");
       assert.ok(shown(X, '#atMonth') && !shown(X, '#awList'), '처음은 일간(근태 달력)이어야 한다');
-      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#atMonth [data-atkind]'), function(b){ return b.textContent + (b.classList.contains('active') ? '*' : ''); })"), ['일간*', '주간', '취합']);
+      //  v7 결정 27: 셋째 탭 이름은 월간(예전 기대: 취합)
+      assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#atMonth [data-atkind]'), function(b){ return b.textContent + (b.classList.contains('active') ? '*' : ''); })"), ['일간*', '주간', '월간']);
       X.$('#atMonth [data-atkind="week"]').click();
       assert.ok(!shown(X, '#atMonth') && shown(X, '#awList'), '[주간]을 눌렀는데 목록이 아니다');
       assert.strictEqual(X.ev("localStorage.getItem('tc_attKind')"), 'week', '고른 쪽을 기억하지 않았다');
