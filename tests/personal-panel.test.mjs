@@ -451,7 +451,8 @@ if (!JSDOM) {
         const row = (id) => W.$(`#dpBody .todo-row[data-id="${id}"]`);
         assert.ok(row('tC').querySelector('.todo-star-btn.on') && !row('tA').querySelector('.todo-star-btn.on'));
         assert.strictEqual(row('tA').querySelector('.todo-star-btn').dataset.act, 'star');
-        assert.strictEqual(row('tA').querySelector('.todo-star-btn').closest('.todo-row').lastElementChild.className.includes('todo-del') || true, true);
+        //  줄 끝은 ★ 다. ✕ 는 없앴다(지우기는 펼친 상세의 [삭제], docs/DAY-PANEL-TODO-TITLE.md)
+        assert.ok(!row('tA').querySelector('.todo-del') && row('tA').lastElementChild.classList.contains('todo-star-btn'), '할 일 줄 끝이 ★ 가 아니거나 ✕ 가 남았다');
         //  줄 끝 ★ 로 켜고 끈다
         click(row('tA').querySelector('.todo-star-btn'));
         assert.strictEqual(W.ev('todoById("tA").prio'), 'high');

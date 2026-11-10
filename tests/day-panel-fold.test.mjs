@@ -118,11 +118,30 @@ test('(S) 꼬리표 대비: 테마 다섯(light, dark, forest, sepia, contrast)�
 test('(S) 새 함수와 CSS: 금지 기호 없음, hex 색 없음(토큰만)', () => {
   const fns = ['dpFoldSet', 'dpFoldSave', 'dpSync', 'dpLimit', 'dpMoreHtml', 'cardHtml', 'dpTdDetHtml', 'dpDetLn', 'dpReveal', 'dpHeadEl', 'dpHeadGeom', 'dpHeadPlan', 'dpHeadJump', 'dpScrollTo', 'dpMarkStuck', 'dpStuckSoon', 'dpOnClick', 'dayGrpHtml', 'dayDetailHtml'].map((n) => extractFunction(app, n)).join('\n');
   assert.ok(!/[—–「」]/.test(fns) && !/(^|\s)·(\s|$)/m.test(fns), '새 함수에 엠 대시, 낫표, 띄어 쓴 가운데 점이 있다');
-  const mine = css.split('\n').filter((l) => /\.dp-(fold|tw|more|det|grp|cards|body)|\.dp-todos \.todo-text|\.cat-tag|^\.card-(top|when|memo|actions|span)/.test(l));
-  assert.ok(mine.length >= 14, '새 CSS 규칙을 찾지 못했다: ' + mine.length);
-  assert.ok(mine.every((l) => !/#[0-9a-fA-F]{3,8}\b/.test(l)), '새 CSS 에 hex 색이 있다: ' + mine.find((l) => /#[0-9a-fA-F]{3,8}\b/.test(l)));
-  assert.ok(/\.dp-todos \.todo-text\{[^}]*-webkit-line-clamp:2[^}]*overflow:hidden/.test(css), '할 일 제목이 두 줄 자르기가 아니다(한 줄 말줄임은 좁은 패널에서 앞머리만 남는다)');
+  //  #todoAllModal 이나 #dpBody 로 시작하는 줄은 hex 검사가 # 를 색으로 오인하지 않게 선택자 id 를 지우고 본다
+  const mine = css.split('\n').filter((l) => /\.dp-(fold|tw|more|det|grp|cards|body)|\.dp-todos \.todo-(text|row|dot|star-btn)|\.cat-tag|^\.card-(top|when|memo|actions|span)/.test(l));
+  assert.ok(mine.length >= 19, '새 CSS 규칙을 찾지 못했다: ' + mine.length);
+  for (const head of ['#todoAllModal .dp-todos .todo-text{', '#dpBody .dp-todos .todo-text{', '#dpBody .dp-todos .todo-row{', '#dpBody .dp-todos .todo-dot{']) {
+    assert.ok(mine.some((l) => l.startsWith(head)), '할 일 제목 규칙이 hex 검사 대상에 없다: ' + head);
+  }
+  const noId = (l) => l.replace(/#(todoAllModal|dpBody)\b/g, '');
+  assert.ok(mine.every((l) => !/#[0-9a-fA-F]{3,8}\b/.test(noId(l))), '새 CSS 에 hex 색이 있다: ' + mine.find((l) => /#[0-9a-fA-F]{3,8}\b/.test(noId(l))));
+  checkTodoClamp(app);
 });
+//  할 일 제목 자르기(docs/DAY-PANEL-TODO-TITLE.md): 날짜 패널은 자르지 않고 첫 줄 맞춤, 밀린 할 일 팝업만 두 줄까지
+function checkTodoClamp(src) {
+  const c = src.slice(0, src.indexOf('</style>'));
+  const pop = /\n#todoAllModal \.dp-todos \.todo-text\{([^}]*)\}/.exec(c);
+  assert.ok(pop && /-webkit-line-clamp:2/.test(pop[1]) && /overflow:hidden/.test(pop[1]), '밀린 할 일 팝업의 할 일 제목이 두 줄 자르기가 아니다');
+  const dp = /\n#dpBody \.dp-todos \.todo-text\{([^}]*)\}/.exec(c);
+  assert.ok(dp && !/line-clamp|overflow:hidden|text-overflow|max-height/.test(dp[1]) && /overflow-wrap:anywhere/.test(dp[1]), '날짜 패널의 할 일 제목이 잘린다(전부 보여야 한다)');
+  //  .todo-text 에 자르기를 거는 규칙은 팝업(#todoAllModal) 한정이어야 한다. 맨 .dp-todos .todo-text 같은 규칙은 날짜 패널에도 걸린다
+  for (const m of c.matchAll(/([^{}]+)\{([^}]*line-clamp[^}]*)\}/g)) {
+    const sels = m[1].replace(/\/\*[\s\S]*?\*\//g, '').split(',').map((s) => s.trim());
+    for (const s of sels) if (/\.todo-text/.test(s)) assert.ok(/^#todoAllModal\s/.test(s), '날짜 패널 할 일 제목에 걸리는 두 줄 자르기가 남았다: ' + s);
+  }
+  assert.ok(/\n#dpBody \.dp-todos \.todo-row\{align-items:flex-start\}/.test(c), '날짜 패널 할 일 줄이 첫 줄 맞춤(flex-start)이 아니다');
+}
 test('(S) 머리 누르기 판정(dpHeadPlan): 제자리면 null(접기), 붙어 있으면 그 묶음 처음으로 갈 scrollTop', () => {
   const plan = new Function(extractFunction(app, 'dpHeadPlan') + '; return dpHeadPlan;')();
   //  (scrollTop, 제자리, 보이는 자리, 위에 붙는 머리 높이)
@@ -396,21 +415,33 @@ if (!JSDOM) {
         assert.ok(W.$('#dpBody .todo-row.flash[data-id="t7"]'));
       } finally { await end(W); }
     },
-    //  할 일 줄: 지금 줄(체크, ★, ✕) 그대로, 제목 두 줄까지와 전체는 title, 제목을 누르면 들여쓴 상세(§7.1, 인라인 수정 폼 없음)
+    //  할 일 줄(docs/DAY-PANEL-TODO-TITLE.md): 체크와 ★ 는 그대로, 줄 끝 ✕ 와 제목 title 은 없다(제목은 자르지 않아 전부 보인다).
+    //  제목을 누르면 들여쓴 상세(§7.1, 인라인 수정 폼 없음), 지우기는 그 상세의 [삭제]이고 실행 취소로 돌아온다
     async todos(src) {
       const W = await boot(src);
       try {
         more(W, 'td').click();
         const r = W.$('#dpBody .todo-row[data-id="t7"]');
         const t = r.querySelector('.todo-text');
-        assert.strictEqual(t.getAttribute('title'), t.textContent, '할 일 제목 전체가 title 에 없다');
-        assert.ok(r.querySelector('[data-act="toggle"]') && r.querySelector('[data-act="star"]') && r.querySelector('[data-act="del"]'), '할 일 줄의 체크, ★, ✕ 가 없다');
+        assert.ok(!t.hasAttribute('title'), '할 일 제목에 title 이 남았다(제목이 전부 보이니 툴팁이 필요 없다)');
+        assert.ok(r.querySelector('[data-act="toggle"]') && r.querySelector('[data-act="star"]'), '할 일 줄의 체크, ★ 가 없다');
+        assert.ok(!W.$('#dpBody .todo-row [data-act="del"], #dpBody .todo-row .todo-del'), '할 일 줄 끝에 ✕ 가 남았다(지우기는 펼친 상세의 [삭제])');
         assert.strictEqual(t.dataset.dp, 'td', '할 일 제목을 눌러 상세를 펼치지 않는다');
         assert.strictEqual(t.dataset.act, undefined, '할 일 제목이 아직 인라인 수정을 연다');
         t.click();
         assert.ok(W.$('#dpBody .todo-row.open[data-id="t7"] + .dp-tdet') && !W.$('#dpBody .todo-edit'), '제목을 누르면 들여쓴 상세가 펼쳐져야 한다(인라인 수정 폼 없음)');
         W.$('#dpBody .todo-row[data-id="t7"] [data-act="toggle"]').click();
         assert.ok(W.$('#dpBody .todo-row[data-id="t7"]').classList.contains('done'), '체크가 돌지 않는다');
+        //  상세의 [삭제]로 지우고, 토스트의 실행 취소로 되살린다
+        if (!W.$('#dpBody .todo-row.open[data-id="t7"]')) W.$('#dpBody .todo-row[data-id="t7"] .todo-text').click();
+        const del = W.$('#dpBody .dp-tdet [data-act="del"]');
+        assert.ok(del, '펼친 상세에 [삭제]가 없다');
+        del.click();
+        assert.ok(!W.$('#dpBody .todo-row[data-id="t7"]') && !W.ev('todoById("t7")'), '상세의 [삭제]가 할 일을 지우지 않았다');
+        const undo = [...W.doc.querySelectorAll('.toast button')].find((b) => /실행 취소/.test(b.textContent));
+        assert.ok(undo, '삭제 뒤 실행 취소가 없다');
+        undo.click();
+        assert.ok(W.ev('todoById("t7")') && W.$('#dpBody .todo-row[data-id="t7"]'), '실행 취소가 할 일 줄을 되살리지 않았다');
       } finally { await end(W); }
     },
   };
@@ -422,7 +453,7 @@ if (!JSDOM) {
   test('(R) 접기와 줄이기 뒤 누른 머리와 더 보기가 같은 자리(출렁임 없음), 더 보기는 스크롤을 옮기지 않는다', () => checks.steady());
   test('(R) 묶음 머리를 누르면 접히고(▾ ▸) 계정별로 기억한다, 다시 띄워도 접힌 채', () => checks.fold());
   test('(R) 달력 칩 강조: 그 카드를 강조, 5개 밖이면 더 보기를 열고 접힌 묶음은 편다, 할 일도 같다', () => checks.flash());
-  test('(R) 할 일 줄은 체크, ★, ✕ 그대로이고 제목 전체는 title, 제목을 누르면 들여쓴 상세', () => checks.todos());
+  test('(R) 할 일 줄은 체크, ★ 그대로이고 줄 끝 ✕ 와 제목 title 은 없다, 제목을 누르면 들여쓴 상세, 상세의 [삭제]와 실행 취소', () => checks.todos());
 
   // ══════════════════════════════════════════════════════════════════════
   // (M) 변이
@@ -458,6 +489,15 @@ if (!JSDOM) {
   test('(M) 카드 메모를 자르면(한 줄) 카드 시험이 잡는다', async () => {
     const bad = mutate(app, "    + (e.memo ? `<div class=\"card-memo\">${linkifyHtml(e.memo)}</div>` : '')", "    + (e.memo ? `<div class=\"card-memo\">${linkifyHtml(e.memo.split('\\n')[0])}</div>` : '')");
     await assert.rejects(() => checks.cards(bad), /메모가 전부/);
+  });
+  test('(M) 날짜 패널 할 일 제목에 두 줄 자르기를 되돌리면 자르기 시험이 잡는다', () => {
+    assert.throws(() => checkTodoClamp(mutate(app, '#dpBody .dp-todos .todo-text{display:block;overflow-wrap:anywhere}', '#dpBody .dp-todos .todo-text{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}')), /날짜 패널의 할 일 제목이 잘린다/);
+    //  팝업 한정을 풀어 맨 .dp-todos .todo-text 로 되돌려도(날짜 패널에도 걸린다) 잡는다
+    assert.throws(() => checkTodoClamp(mutate(app, '\n#todoAllModal .dp-todos .todo-text{', '\n.dp-todos .todo-text{-webkit-line-clamp:2}\n#todoAllModal .dp-todos .todo-text{')), /두 줄 자르기가 남았다/);
+  });
+  test('(M) todoRowHtml 이 날짜 패널에서 줄 끝 ✕ 를 다시 그리면 할 일 줄 시험이 잡는다', async () => {
+    const bad = mutate(app, "    ${star}\n  </div>` + (open ? dpTdDetHtml(t) : '');", "    ${star}\n    ${(PEER || opts.all) ? '' : `<button class=\"todo-del\" data-act=\"del\" title=\"삭제\" aria-label=\"삭제\">${ICON.xmark}</button>`}\n  </div>` + (open ? dpTdDetHtml(t) : '');");
+    await assert.rejects(() => checks.todos(bad), /✕ 가 남았다/);
   });
   test('(M) 꼬리표 섞는 몫을 과제 색 쪽으로 올리거나 어두운 테마도 검정 쪽으로 섞으면 대비 시험이 잡는다', () => {
     assert.throws(() => checkContrast(mutate(app, '  --tag-mix:35%;', '  --tag-mix:70%;')), /4\.5:1 미만/);
