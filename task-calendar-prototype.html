@@ -191,7 +191,6 @@ header.topbar .nav{flex-wrap:wrap;row-gap:6px}   /* 자리가 모자라면 보�
 .chip-todo .ic{width:11px;height:11px;margin-right:1px;color:var(--star)}     /* 그리드 할 일 칩 별표 — 패널 행 별표와 동일 골드(의미색 통일) */
 .badge-git .ic,.cat-desc .ic{width:12px;height:12px;vertical-align:-2px}
 .todo-check .ic,.todo-star-btn .ic{width:17px;height:17px;vertical-align:-3px}
-.todo-del .ic{width:14px;height:14px;vertical-align:-2px}
 .nd-toggle .ic{width:13px;height:13px;vertical-align:-2px}
 .card-span .ic,.card-recur .ic{width:13px;height:13px;vertical-align:-2px}   /* 일정 상세 카드 의미 마커 — 칩·패널과 동일 단색 SVG */
 .s-badge .ic{width:11px;height:11px;vertical-align:-1px}   /* 검색 결과 배지 */
@@ -520,7 +519,12 @@ body.cal-week #weekdays,body.cal-week #weekdaysMine{display:none}   /* 주간 �
 .dp-more{display:block;width:calc(100% - 32px);margin:0 16px 12px;padding:4px;border:1px dashed var(--line-2);border-radius:var(--r-sm);background:none;font:inherit;font-size:var(--fs-meta);color:var(--accent-2);cursor:pointer}
 .dp-more:hover{border-color:var(--accent);background:var(--accent-soft)}
 .dp-more:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.dp-todos .todo-text{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}   /* 두 줄까지. 한 줄 말줄임은 좁은 패널(240px)에서 "[과제] 날짜 ..." 처럼 앞머리만 남아 할 일끼리 구분이 안 됐다(2026-11-05 실제 위젯 점검). 전체는 title */
+#todoAllModal .dp-todos .todo-text{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}   /* 밀린 할 일 팝업은 두 줄까지(그대로). 폭이 넓고 줄을 누르면 그 날짜로 간다 */
+/* 날짜 패널은 제목을 자르지 않는다. 두 줄 자르기로는 좁은 패널(240px)에서 할 일끼리 구분이 안 됐다(docs/DAY-PANEL-TODO-TITLE.md). block 은 줄 높이를 13px 글자 기준(17px)으로 두려고 */
+#dpBody .dp-todos .todo-text{display:block;overflow-wrap:anywhere}
+/* 여러 줄 제목에서 체크, 색 점, 별을 첫 줄(높이 17px, 가운데 8.5px)에 맞춘다. 체크와 별 아이콘은 17px 라 위에 붙이면 가운데가 맞고, 8px 색 점만 4.5px 내린다 */
+#dpBody .dp-todos .todo-row{align-items:flex-start}
+#dpBody .dp-todos .todo-dot{margin-top:4.5px}
 /* 패널 맨 아래 고정 한 줄: 밀린 할 일 … 기한 없음 n, 지남 n › */
 .dp-foot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;min-height:40px;padding:8px 12px 8px 16px;border:0;border-top:1px solid var(--line);background:var(--panel);color:var(--accent-2);font:inherit;font-size:var(--fs-body);text-align:left;cursor:pointer}
 .dp-foot:hover{background:var(--hover-bg)}
@@ -1649,8 +1653,6 @@ details.vg-more dd{margin:0;color:var(--text)}
 .todo-due.od{color:var(--danger-text);font-weight:700}
 .todo-dueline{margin-top:1px;line-height:1.3}
 .todo-dot{flex:none;width:8px;height:8px;border-radius:50%}
-.todo-del{flex:none;border:none;background:none;color:var(--muted);cursor:pointer;font-size:13px;padding:2px 5px;border-radius:var(--r-sm)}
-.todo-del:hover{color:var(--danger);background:var(--danger-soft)}
 .nd-empty-hint{display:block;margin-top:10px;font-size:var(--fs-meta);color:var(--muted);line-height:1.7}
 .nd-tools{display:flex;gap:6px;margin:8px 0 2px;align-items:center}
 .dp-dayctx{font-size:var(--fs-meta);font-weight:700;color:var(--muted);padding:8px 0 5px;border-bottom:1px solid var(--line);margin-bottom:5px}
@@ -1659,8 +1661,9 @@ details.vg-more dd{margin:0;color:var(--text)}
 .nd-toggle.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
 .todo-star-btn{flex:none;border:none;background:none;cursor:pointer;font-size:14px;color:var(--muted);padding:0 3px;line-height:1}
 .todo-star-btn.on,.todo-star-btn:hover{color:var(--star)}
-/* 좁은 폭(터치)에서 줄 끝 ★ 와 × 가 17px 높이라 누르기 어렵다(2026-11-03 화면 점검 V7). 앱의 440px 터치 하한 규칙에 맞춘다 */
-@media (max-width:440px){ .ta-tog{min-height:32px;padding:0 6px} .todo-row .todo-star-btn,.todo-row .todo-del{min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center} }
+/* 좁은 폭(터치)에서 줄 끝 ★ 가 17px 높이라 누르기 어렵다(2026-11-03 화면 점검 V7). 앱의 440px 터치 하한 규칙에 맞춘다.
+   날짜 패널은 첫 줄 맞춤이라 32px 별의 아이콘 가운데(16px)를 첫 줄 가운데(8.5px)로 끌어올린다 */
+@media (max-width:440px){ .ta-tog{min-height:32px;padding:0 6px} .todo-row .todo-star-btn{min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center} #dpBody .dp-todos .todo-star-btn{margin-top:-7.5px} }
 
 /* ---------- 설정: 저장 모델 구분 ----------
    한 모달에 저장 방식이 셋(즉시 저장 / 자격증명 명시 저장 / 업데이트 URL 명시 저장) 섞여 있어,
@@ -18585,14 +18588,15 @@ function todoPeriodLabel(t){
   const s = dueLabel(t.due);
   return (t.endDate && t.endDate > t.due) ? `${s}~${dueLabel(t.endDate)}` : s;
 }
-//  opts.panel = 우측 패널의 그날 목록(기한 글자는 기간 할 일에만). opts.all = 밀린 할 일 팝업(기한 글자 늘, 삭제 없음, 행을 누르면 그 날짜로: data-go).
+//  opts.panel = 우측 패널의 그날 목록(기한 글자는 기간 할 일에만, 제목은 자르지 않음). opts.all = 밀린 할 일 팝업(기한 글자 늘, 행을 누르면 그 날짜로: data-go).
+//  줄 끝 ✕ 는 어느 쪽에도 없다. 지우기는 날짜 패널에서 제목을 눌러 펼친 상세의 [삭제](docs/DAY-PANEL-TODO-TITLE.md).
 //  opts.noDot = 줄 끝 과제 색점을 빼기(밀린 할 일 팝업은 과제별 소제목에 색점이 있다, §7.2).
 //  ★ 날짜 패널의 제목은 일정 줄처럼 누르면 아래에 들여쓴 상세(dpTdDetHtml)를 펼친다(docs/PC-WATCH-2.md §7.1). 패널 안 수정 폼은 없다.
 //    설명(메모)은 줄이 아니라 그 상세에 나온다. 고치기는 상세의 [수정] = [+ 추가] 창의 할 일 수정(openTodoEdit).
 function todoRowHtml(t, opts){
   opts = opts || {};
   //  ★ P2: 열람 창(PEER)은 같은 행을 **읽기 전용**으로 그린다. 체크와 중요는 상태 표시(span, data-act 없음),
-  //    삭제 버튼 없음. 상세는 펼쳐 볼 수 있지만 [수정] [삭제]가 없다. 보이는 정보(완료, 중요, 마감, 과제)는 같다.
+  //    상세는 펼쳐 볼 수 있지만 [수정] [삭제]가 없다. 보이는 정보(완료, 중요, 마감, 과제)는 같다.
   const ro = PEER;
   const cat = catById(t.categoryId);
   const overdue = todoIsOverdue(t);
@@ -18601,22 +18605,20 @@ function todoRowHtml(t, opts){
   const dueUnder = !!(opts.panel && dueHtml);   // 좁은 패널에서는 기간 글자를 글 아래 줄에 둔다(글자가 한 자씩 꺾이지 않게)
   const due = dueUnder ? '' : dueHtml;
   const open = !!opts.panel && DP.open === dpTdKey(t);
-  //  날짜 패널: 제목은 두 줄까지, 전체는 title. 누르면 상세를 펼치고 접는다(키보드는 Enter, Space)
-  const textAttr = opts.panel ? ` data-dp="td" role="button" tabindex="0" aria-expanded="${open}" title="${esc(t.text)}"` : '';
+  //  날짜 패널: 제목은 전부 보이니 title 툴팁이 없다. 누르면 상세를 펼치고 접는다(키보드는 Enter, Space)
+  const textAttr = opts.panel ? ` data-dp="td" role="button" tabindex="0" aria-expanded="${open}"` : '';
   const check = ro
     ? `<span class="todo-check" role="img" aria-label="${t.done ? '완료' : '미완료'}">${t.done ? ICON.boxCheck : ICON.box}</span>`
     : `<button class="todo-check" data-act="toggle" aria-label="${t.done ? '완료 해제' : '완료 표시'}">${t.done ? ICON.boxCheck : ICON.box}</button>`;
   const star = ro
     ? (t.prio === 'high' ? `<span class="todo-star-btn on" role="img" aria-label="중요">${ICON.starFill}</span>` : '')
     : `<button class="todo-star-btn${t.prio==='high'?' on':''}" data-act="star" title="중요 표시" aria-label="중요 토글">${t.prio==='high'?ICON.starFill:ICON.star}</button>`;
-  const del = (ro || opts.all) ? '' : `<button class="todo-del" data-act="del" title="삭제" aria-label="삭제">${ICON.xmark}</button>`;
   const dot = (cat && !opts.noDot) ? `<span class="todo-dot" style="background:${validColor(cat.color)}" title="${esc(cat.name)}"></span>` : '';
   return `<div class="todo-row${t.done ? ' done' : ''}${open ? ' open' : ''}${flashTodoId===t.id?' flash':''}" data-id="${esc(t.id)}"${opts.all ? ` data-go="${esc(t.due || '')}"` : ''}>
     ${check}
     <div class="todo-main"><span class="todo-text"${textAttr}>${esc(t.text)}</span>${dueUnder ? `<div class="todo-dueline">${dueHtml}</div>` : ''}</div>
     ${due}${dot}
     ${star}
-    ${del}
   </div>` + (open ? dpTdDetHtml(t) : '');
 }
 /* ---------- 밀린 할 일 팝업(docs/PERSONAL-PANEL.md §2.1) ----------
@@ -19788,7 +19790,7 @@ function bind(){
   window.addEventListener('resize', dpStuckSoon);
 
   $('#dpBody').addEventListener('click', ev => {
-    //  할 일 상세(들여쓴 상세, §7.1)의 [수정] = [+ 추가] 창의 할 일 수정, [삭제] = 줄 끝 ✕ 와 같다(실행 취소 있음)
+    //  할 일 상세(들여쓴 상세, §7.1)의 [수정] = [+ 추가] 창의 할 일 수정, [삭제] = 할 일 지우기의 유일한 자리(실행 취소 있음, 줄 끝 ✕ 는 없앴다)
     const det = ev.target.closest('.dp-tdet');
     if(det){
       const act = ev.target.dataset.act, id = det.dataset.tid; if(!act || !id) return;
@@ -19800,10 +19802,9 @@ function bind(){
     // TODO 행 액션 (제목 누름은 data-dp 라 #dayPanel 핸들러가 펼친다. 일정 상세의 [수정] [삭제]도 아래 #dayPanel 핸들러가 처리)
     const row = ev.target.closest('.todo-row'); if(!row) return;
     const act = ev.target.dataset.act; if(!act) return;
-    if(peerReadOnly()){ renderPanel(); return; }   // P2 — 열람 창: 체크·중요·삭제 없음(행에 data-act 도 안 그린다)
-    if((act === 'toggle' || act === 'del' || act === 'star') && guardEdit()){ renderPanel(); return; }   // 체크 표시도 되돌린다
+    if(peerReadOnly()){ renderPanel(); return; }   // P2 — 열람 창: 체크·중요 없음(행에 data-act 도 안 그린다)
+    if((act === 'toggle' || act === 'star') && guardEdit()){ renderPanel(); return; }   // 체크 표시도 되돌린다
     if(act === 'toggle'){ toggleTodo(row.dataset.id); renderPanel(); renderGrid(); }
-    else if(act === 'del'){ const rm = todoById(row.dataset.id); deleteTodo(row.dataset.id); renderPanel(); renderGrid(); if(rm) toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreTodo(rm); renderPanel(); renderGrid(); }}); }
     else if(act === 'star'){ const t = todoById(row.dataset.id); if(t){ updateTodo(row.dataset.id, {prio: t.prio==='high'?'normal':'high'}); renderPanel(); renderGrid(); } }
   });
   //  할 일 제목(role=button, data-dp="td")은 Enter, Space 로도 펼친다
