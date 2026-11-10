@@ -3,6 +3,7 @@
 - 상태: 구현(2026-11-10, 브랜치 `feat/save-diff`). DB 구조 번호는 22 그대로다. 표, 칸, 색인을 바꾸지 않는다.
 - 바꾼 곳: `widget/CalendarWriteDb.cs` 한 파일. 웹(`task-calendar-prototype.html`)과 회신 모양은 그대로다.
 - 시험: `tests/save-diff.test.mjs`(소스 계약과 변이), `tests/loop-calendar-write.mjs` 의 [바뀐 행만] 절(실제 MySQL).
+- QA(2026-11-10, 개발 PC): strict 3660/0/0, `loop-calendar-write` 통과 144, 실패 0, 판정 불가 0(같은 state 0행, 한 행 수정 1행, 예외일 변경, 연속 저장, 무관한 행의 낡은 스냅샷 거부, 병렬 4개 5회). 실제 위젯으로 도는 `loop-offline`(응답만 끊긴 저장)은 돌리지 않았다.
 
 ## 1. 왜
 
