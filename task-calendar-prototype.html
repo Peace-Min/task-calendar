@@ -3101,30 +3101,56 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
 .rptm-ur.set .t{color:var(--accent-2)}
 .rptm-ur > select{flex:none;max-width:160px;height:28px;padding:0 4px}
 .rptm-empty{padding:18px;text-align:center;color:var(--muted);font-size:var(--fs-body)}
-/* 오른쪽 미리 보기: 종이 폭 1000px 을 칸 폭에 맞춰 줄인다(--fz, rptMFit) */
+/* 오른쪽 미리 보기: 종이는 DOCX 와 같은 A4 가로이고 칸 폭에 맞춰 줄인다(--fz, rptMFit).
+   치수는 모두 DocxWriter.cs 값을 pt 로(twip / 20) 옮긴 것이다. Word 가 그리는 모양이 기준이다. 쪽 나눔은 흉내 내지 않는다(한 장으로 이어진다) */
 .rptm-pvwrap{overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:10px;max-width:100%}
-.rptm-sheet{background:var(--rptm-paper);color:var(--rptm-ink);width:100%;max-width:1123px;min-width:880px;margin:0 auto;box-shadow:0 2px 10px rgba(0,0,0,.18);
-  padding:56px 64px 56px 80px;font-family:'Malgun Gothic','맑은 고딕',sans-serif;font-size:10pt;line-height:1.45;word-break:keep-all}
-.rptm-sheet.fit{width:1000px;min-width:0;max-width:none;margin:0;zoom:var(--fz,1)}
-.rptm-sheet .ttl{text-align:center;font-weight:700;font-size:12pt;text-decoration:underline;margin-bottom:18px}
-.rptm-sheet table{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:14px}
-.rptm-sheet td{border:1px solid var(--rptm-ink);padding:3px 6px;vertical-align:middle}
+/* DOCX pgMar SW 위 1440, 오른쪽 1440, 아래 1440, 왼쪽 1800 twip. 줄 높이: 간격 240 auto 에 맑은 고딕 win 높이 (2229+495)/2048 = 1.3301 배(10pt 면 13.3pt) */
+.rptm-sheet{background:var(--rptm-paper);color:var(--rptm-ink);width:100%;max-width:841.9pt;min-width:880px;margin:0 auto;box-shadow:0 2px 10px rgba(0,0,0,.18);
+  padding:72pt 72pt 72pt 90pt;font-family:'Malgun Gothic','맑은 고딕',sans-serif;font-size:10pt;line-height:1.3301;word-break:keep-all}
+/* DOCX pgSz w 16838 twip = 841.9pt(A4 가로) */
+.rptm-sheet.fit{width:841.9pt;min-width:0;max-width:none;margin:0;zoom:var(--fz,1)}
+/* DOCX 제목 sz 24(12pt), 그 아래 빈 문단 하나(10pt 한 줄 = 13.3pt) */
+.rptm-sheet .ttl{text-align:center;font-weight:700;font-size:12pt;text-decoration:underline;margin-bottom:13.3pt}
+/* DOCX SW tblW = 격자 합 13788 twip = 689.4pt(글 영역 679.9pt 보다 9.5pt 넓어 문서에서도 오른쪽 여백으로 나간다). 표 뒤 빈 문단 10pt 한 줄 = 13.3pt */
+.rptm-sheet table{width:689.4pt;border-collapse:collapse;table-layout:fixed;margin-bottom:13.3pt}
+/* DOCX 테두리 sz 4(0.5pt), tblCellMar 위아래 0, 좌우 108 twip = 5.4pt */
+.rptm-sheet td{border:.5pt solid var(--rptm-ink);padding:0 5.4pt;vertical-align:middle}
 .rptm-sheet td.a{background:var(--rptm-fa);font-weight:700;text-align:center}
 .rptm-sheet td.b{background:var(--rptm-fb);font-weight:700;text-align:center}
 .rptm-sheet td.bv{background:var(--rptm-fb)}
 .rptm-sheet td.w{font-weight:700;text-align:center}
 .rptm-sheet td.nm,.rptm-sheet td.c{text-align:center}
-.rptm-sheet td.body{vertical-align:top;height:120px}
-.rptm-sheet .ln{min-height:1.45em;white-space:pre-wrap}
-/* 빈 개발 일정 줄과 빈 변경이력 줄: 문서는 trHeight 344~346 twip(약 17.3pt)라 미리 보기도 같은 높이로(비면 패딩만 남아 납작해진다) */
-.rptm-sheet tr[data-pv="dev"] td,.rptm-sheet tr[data-pv="chg"] td{height:17.3pt}
-.rptm-sheet td.img img{display:block;max-width:100%;margin:3px 0}
+.rptm-sheet td.body{vertical-align:top}
+/* 본문 한 줄 = 10pt 문단 한 줄(13.3pt). 빈 줄도 그 높이 */
+.rptm-sheet .ln{min-height:13.3pt;white-space:pre-wrap}
+/* 줄 높이(trHeight, 모두 atLeast 라 글이 많으면 늘어난다). data-tr 은 DocxWriter.cs 의 twip 값이다 */
+.rptm-sheet tr[data-tr="580"]{height:29pt}     /* DOCX trHeight 580 twip: SW 머리 줄(과제명, 월간 실적) */
+.rptm-sheet tr[data-tr="346"]{height:17.3pt}   /* DOCX trHeight 346 twip: SW 과제 수행 기간, 변경이력 머리, HW 빈 개발 일정 줄 */
+.rptm-sheet tr[data-tr="692"]{height:34.6pt}   /* DOCX trHeight 692 twip: SW 개발 일정(그림) */
+.rptm-sheet tr[data-tr="344"]{height:17.2pt}   /* DOCX trHeight 344 twip: SW 빈 변경이력 줄, HW 개발 일정 머리 */
+.rptm-sheet tr[data-tr="392"]{height:19.6pt}   /* DOCX trHeight 392 twip: SW 본문 칸 이름 */
+.rptm-sheet tr[data-tr="1460"]{height:73pt}    /* DOCX trHeight 1460 twip: SW 본문, SW 기타 본문 */
+.rptm-sheet tr[data-tr="348"]{height:17.4pt}   /* DOCX trHeight 348 twip: HW 과제 수행 기간 */
+.rptm-sheet tr[data-tr="380"]{height:19pt}     /* DOCX trHeight 380 twip: HW 본문 칸 이름 */
+.rptm-sheet tr[data-tr="6180"]{height:309pt}   /* DOCX trHeight 6180 twip: HW 본문 */
+.rptm-sheet tr[data-tr="274"]{height:13.7pt}   /* DOCX trHeight 274 twip: HW 기타 1줄(얇은 회색) */
+.rptm-sheet tr[data-tr="426"]{height:21.3pt}   /* DOCX trHeight 426 twip: HW 기타 칸 이름 */
+.rptm-sheet tr[data-tr="3120"]{height:156pt}   /* DOCX trHeight 3120 twip: HW 기타 본문 */
+/* DOCX 그림 문단 jc center, 문단 앞뒤 간격 0 */
+.rptm-sheet td.img img{display:block;max-width:100%;margin:0 auto}
+/* 크기를 아는 그림은 rptMImgFitStyle 이 이미 DOCX 상한(그림 칸 11546 - 셀 여백 216 = 11330 twip)으로 줄였다. 칸 안쪽 폭은 테두리 반만큼 좁아 다시 줄이지 않는다 */
+.rptm-sheet td.img img[style]{max-width:none}
 /* HW 양식(docs/MONTHLY-TEMPLATE-HW.md 3장): 제목 14pt 와 그 아래 실적 기간 줄 11pt, 파랑 머리 줄 없음, 본문 칸 이름 줄 흰 바탕, 오른쪽 여백을 줄여 표가 글 영역 안에 */
-.rptm-sheet.hw{padding:56px 48px 56px 64px}
-.rptm-sheet.hw .ttl{font-size:14pt;margin-bottom:4px}
-.rptm-sheet .per{text-align:center;font-size:11pt;margin-bottom:16px}
-.rptm-sheet.hw td.body{height:180px}
-.rptm-sheet.hw td.thin{height:13.7pt;padding:0}   /* DOCX HW 기타 표 1줄 trHeight 274 twip(atLeast) = 13.7pt */
+/* DOCX HW pgMar 위 1134, 오른쪽 960, 아래 1134, 왼쪽 1134 twip */
+.rptm-sheet.hw{padding:56.7pt 48pt 56.7pt 56.7pt}
+/* DOCX HW 제목 sz 28(14pt), 바로 실적 기간 줄 */
+.rptm-sheet.hw .ttl{font-size:14pt;margin-bottom:0}
+/* DOCX HW 실적 기간 줄 sz 22(11pt), 그 아래 굵게 sz 24 빈 문단(12pt 한 줄 = 15.96pt) */
+.rptm-sheet .per{text-align:center;font-size:11pt;margin-bottom:15.96pt}
+/* DOCX HW tblW = 격자 합 14726 twip = 736.3pt, 표 뒤 굵게 sz 24 빈 문단(15.96pt) */
+.rptm-sheet.hw table{width:736.3pt;margin-bottom:15.96pt}
+/* DOCX HW 과제명 값 sz 21(10.5pt). 기타 표의 '기타'는 기본 10pt */
+.rptm-sheet.hw table[data-pv-uid] td.nm{font-size:10.5pt}
 </style>
 </head>
 <body>
@@ -18102,7 +18128,8 @@ function rptMPreview(){
   //  기타 표: 읽은 뒤는 글이 있을 때만, 읽기 전은 켠 기타가 하나라도 있으면 빈 표(v7 결정 28)
   const etcOn = p.etc.lines.length > 0 || (!rptMAuto(S) && rptMEtcShown(S).some(e => !S.etcOff.has(e.key)));
   const lines = ls => ls.length ? ls.map(l => `<div class="ln" style="padding-left:${(l.level * 14.2).toFixed(1)}pt">${esc(l.text)}</div>`).join('') : '<div class="ln"></div>';
-  const colsOf = g => { const sum = g.reduce((a, b) => a + b, 0); return '<colgroup>' + g.map(w => `<col style="width:${(w / sum * 100).toFixed(3)}%">`).join('') + '</colgroup>'; };
+  //  열 폭은 DOCX gridCol twip 을 그대로 pt 로(twip / 20). 표 폭(CSS)은 그 합이다.
+  const colsOf = g => '<colgroup>' + g.map(w => `<col style="width:${w / 20}pt">`).join('') + '</colgroup>';
   //  제목의 구분 기호는 문서와 같은 글자(DocxWriter 의 U+2013)다. 문서 미리 보기라 화면 문구 규칙의 예외다.
   let h;
   if(hw){
@@ -18114,39 +18141,39 @@ function rptMPreview(){
       + `<div class="per">${esc('[ ' + (f ? f.y + '. ' + f.m + '. ' + f.d : '') + ' ~ ' + (t ? t.y + '. ' + t.m + '. ' + t.d : '') + ' ]')}</div>`;
     for(const pr of p.projects){
       h += `<table data-pv-uid="${esc(pr.uid)}">${cols}`
-        + `<tr><td class="nm" rowspan="5">${esc(pr.title)}</td><td class="b" colspan="2">과제 수행 기간</td><td class="bv c" colspan="4">${esc(rptMTermHw(pr.term))}</td></tr>`
-        + '<tr><td class="b" rowspan="2">개발<br>일정</td><td class="b">개발 항목</td><td class="b">시작</td><td class="b">종료</td><td class="b" colspan="2">상세 내용</td></tr>'
-        + '<tr data-pv="dev"><td class="bv"></td><td class="bv"></td><td class="bv"></td><td class="bv" colspan="2"></td></tr>'
-        + '<tr><td class="w" colspan="2">수행 계획</td><td class="w" colspan="3">수행 실적</td><td class="w">수행 계획</td></tr>'
-        + `<tr><td class="body" colspan="2" data-pv="prev">${lines(pr.prevPlan)}</td><td class="body" colspan="3" data-pv="actual">${lines(pr.actual)}</td><td class="body" data-pv="next">${lines(pr.nextPlan)}</td></tr></table>`;
+        + `<tr data-tr="348"><td class="nm" rowspan="5">${esc(pr.title)}</td><td class="b" colspan="2">과제 수행 기간</td><td class="bv c" colspan="4">${esc(rptMTermHw(pr.term))}</td></tr>`
+        + '<tr data-tr="344"><td class="b" rowspan="2">개발<br>일정</td><td class="b">개발 항목</td><td class="b">시작</td><td class="b">종료</td><td class="b" colspan="2">상세 내용</td></tr>'
+        + '<tr data-pv="dev" data-tr="346"><td class="bv"></td><td class="bv"></td><td class="bv"></td><td class="bv" colspan="2"></td></tr>'
+        + '<tr data-tr="380"><td class="w" colspan="2">수행 계획</td><td class="w" colspan="3">수행 실적</td><td class="w">수행 계획</td></tr>'
+        + `<tr data-tr="6180"><td class="body" colspan="2" data-pv="prev">${lines(pr.prevPlan)}</td><td class="body" colspan="3" data-pv="actual">${lines(pr.actual)}</td><td class="body" data-pv="next">${lines(pr.nextPlan)}</td></tr></table>`;
     }
     if(etcOn){
       h += `<table data-pv-etc>${cols}`
-        + '<tr><td class="nm" rowspan="3">기타</td><td class="bv thin" colspan="2"></td><td class="bv thin" colspan="4"></td></tr>'
-        + '<tr><td class="w" colspan="2">수행 계획</td><td class="w" colspan="3">수행 실적</td><td class="w">수행 계획</td></tr>'
-        + `<tr><td class="body" colspan="2"><div class="ln"></div></td><td class="body" colspan="3">${lines(p.etc.lines)}</td><td class="body"><div class="ln"></div></td></tr></table>`;
+        + '<tr data-tr="274"><td class="nm" rowspan="3">기타</td><td class="bv thin" colspan="2"></td><td class="bv thin" colspan="4"></td></tr>'
+        + '<tr data-tr="426"><td class="w" colspan="2">수행 계획</td><td class="w" colspan="3">수행 실적</td><td class="w">수행 계획</td></tr>'
+        + `<tr data-tr="3120"><td class="body" colspan="2"><div class="ln"></div></td><td class="body" colspan="3">${lines(p.etc.lines)}</td><td class="body"><div class="ln"></div></td></tr></table>`;
     }
   } else {
     const md = s => _rptMValid(s) ? s.slice(5, 7) + '월 ' + s.slice(8, 10) + '일' : '__월 __일';
     const actualHead = '월간 실적: ' + md(S.from) + ' ~ ' + md(S.to), planHead = '월간 계획: ' + md(S.pFrom) + ' ~ ' + md(S.pTo);
     const dt = _rptMValid(S.date) ? S.date.slice(0, 4) + '년 ' + S.date.slice(5, 7) + '월 ' + S.date.slice(8, 10) + '일' : '';
-    const GRID = [1126, 1116, 2394, 1548, 1270, 2692, 3642], GSUM = GRID.reduce((a, b) => a + b, 0);
+    const GRID = [1126, 1116, 2394, 1548, 1270, 2692, 3642];
     const cols = colsOf(GRID);
     h = `<div class="ttl">${esc('월간보고 (' + p.name + ') – ' + dt)}</div>`;
     for(const pr of p.projects){
       const st = __rptMImgs.get(pr.uid);
       const imgs = (st && st.list ? st.list.slice(0, RPTM_IMG_MAX) : []).filter(im => __rptMThumbs.get(im.sha256)).map(im => `<img src="${esc(__rptMThumbs.get(im.sha256))}" alt=""${rptMImgFitStyle(im)}>`).join('');
-      h += `<table data-pv-uid="${esc(pr.uid)}">${cols}<tr><td class="a">과제명</td><td class="a" colspan="4">${esc(actualHead)}</td><td class="a" colspan="2">${esc(planHead)}</td></tr>`
-        + `<tr><td class="nm" rowspan="6">${esc(pr.title)}</td><td class="b" colspan="2">과제 수행 기간</td><td class="bv" colspan="4">${esc(pr.term)}</td></tr>`
-        + `<tr><td class="b">개발<br>일정</td><td class="bv img" colspan="5">${imgs}</td></tr>`
-        + '<tr><td class="b" rowspan="2">일정<br>변경이력</td><td class="b">변경 내용</td><td class="b">변경 날짜</td><td class="b" colspan="3">변경 사유</td></tr>'
-        + '<tr data-pv="chg"><td></td><td class="c"></td><td colspan="3"></td></tr>'
-        + '<tr><td class="b" colspan="2">수행 계획</td><td class="b" colspan="3">수행 실적</td><td class="b">수행 계획</td></tr>'
-        + `<tr><td class="body" colspan="2" data-pv="prev">${lines(pr.prevPlan)}</td><td class="body" colspan="3" data-pv="actual">${lines(pr.actual)}</td><td class="body" data-pv="next">${lines(pr.nextPlan)}</td></tr></table>`;
+      h += `<table data-pv-uid="${esc(pr.uid)}">${cols}<tr data-tr="580"><td class="a">과제명</td><td class="a" colspan="4">${esc(actualHead)}</td><td class="a" colspan="2">${esc(planHead)}</td></tr>`
+        + `<tr data-tr="346"><td class="nm" rowspan="6">${esc(pr.title)}</td><td class="b" colspan="2">과제 수행 기간</td><td class="bv" colspan="4">${esc(pr.term)}</td></tr>`
+        + `<tr data-tr="692"><td class="b">개발<br>일정</td><td class="bv img" colspan="5">${imgs}</td></tr>`
+        + '<tr data-tr="346"><td class="b" rowspan="2">일정<br>변경이력</td><td class="b">변경 내용</td><td class="b">변경 날짜</td><td class="b" colspan="3">변경 사유</td></tr>'
+        + '<tr data-pv="chg" data-tr="344"><td></td><td class="c"></td><td colspan="3"></td></tr>'
+        + '<tr data-tr="392"><td class="b" colspan="2">수행 계획</td><td class="b" colspan="3">수행 실적</td><td class="b">수행 계획</td></tr>'
+        + `<tr data-tr="1460"><td class="body" colspan="2" data-pv="prev">${lines(pr.prevPlan)}</td><td class="body" colspan="3" data-pv="actual">${lines(pr.actual)}</td><td class="body" data-pv="next">${lines(pr.nextPlan)}</td></tr></table>`;
     }
     if(etcOn){
-      h += `<table data-pv-etc><colgroup><col style="width:${(GRID[0] / GSUM * 100).toFixed(3)}%"><col></colgroup>`
-        + `<tr><td class="a">과제명</td><td class="a">${esc(actualHead)}</td></tr><tr><td class="nm">기타</td><td class="body">${lines(p.etc.lines)}</td></tr></table>`;
+      h += `<table data-pv-etc>${colsOf([GRID[0], 12662])}`
+        + `<tr data-tr="580"><td class="a">과제명</td><td class="a">${esc(actualHead)}</td></tr><tr data-tr="1460"><td class="nm">기타</td><td class="body">${lines(p.etc.lines)}</td></tr></table>`;
     }
   }
   sheet.classList.toggle('hw', hw);
@@ -18159,12 +18186,14 @@ function rptMCounts(S, p){
   const pc = $('#rptmPickCnt'); if(pc) pc.textContent = S.order.length ? p.projects.length + '/' + S.order.length : '';
   rptMAllSync($('#rptmPickAll'), S.order.length, p.projects.length);
 }
-//  미리 보기 종이(폭 1000px)를 오른쪽 칸 폭에 맞춰 줄인다(CSS zoom, --fz). 칸이 숨어 있으면 그대로 둔다.
+//  미리 보기 종이를 오른쪽 칸 폭에 맞춰 줄인다(CSS zoom, --fz). 칸이 숨어 있으면 그대로 둔다.
+//  종이 폭은 DOCX pgSz w 16838 twip(A4 가로 841.9pt). 1px = 15 twip 이라 약 1122.5px.
+const RPTM_PAPER_PX = 16838 / 15;
 function rptMFit(){
   const wrap = $('#rptmPvWrap'), sheet = $('#rptmSheet'); if(!wrap || !sheet) return;
   const w = wrap.clientWidth - 20;
   if(!(w > 0)) return;
-  const z = Math.min(1, w / 1000).toFixed(3);
+  const z = Math.min(1, w / RPTM_PAPER_PX).toFixed(3);
   if(sheet.style.getPropertyValue('--fz') !== z) sheet.style.setProperty('--fz', z);
 }
 

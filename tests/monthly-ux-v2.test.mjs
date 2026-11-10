@@ -369,9 +369,10 @@ if (!JSDOM) {
       assert.ok(!sheet.querySelector('td.a') && !sheet.textContent.includes('월간 계획') && !sheet.textContent.includes('변경이력'), 'HW 에 파랑 머리 줄, 계획 기간, 일정 변경이력이 있다');
       const t1 = sheet.querySelector(`table[data-pv-uid="${P1}"]`), t2 = sheet.querySelector(`table[data-pv-uid="${P2}"]`);
       assert.ok(t1 && t2, 'HW 미리 보기에 과제 표가 없다');
-      const widths = [...t1.querySelectorAll('col')].map((c) => parseFloat(c.style.width));
-      const want = [1416, 992, 2974, 1274, 1132, 2268, 4670].map((w) => w / 14726 * 100);
-      assert.ok(widths.length === 7 && widths.every((w, i) => Math.abs(w - want[i]) < 0.01), 'HW 격자 7열 폭 비율이 아니다: ' + widths.join());
+      //  열 폭은 DOCX gridCol twip 을 pt 로(twip / 20) 그대로 쓴다
+      const widths = [...t1.querySelectorAll('col')].map((c) => c.style.width);
+      const want = [1416, 992, 2974, 1274, 1132, 2268, 4670].map((w) => w / 20 + 'pt');
+      assert.deepStrictEqual(widths, want, 'HW 격자 7열 폭이 DOCX gridCol 값이 아니다: ' + widths.join());
       assert.strictEqual(t1.querySelectorAll('tr').length, 5, 'HW 과제 표 줄 수가 5가 아니다');
       assert.strictEqual(t1.querySelector('td.nm').getAttribute('rowspan'), '5', '과제명이 끝까지 세로 병합이 아니다');
       assert.strictEqual(t1.querySelectorAll('tr')[0].querySelector('td.bv').textContent, '2026년 3월 ~ 2026년 12월', 'HW 과제 수행 기간 형식이 아니다');

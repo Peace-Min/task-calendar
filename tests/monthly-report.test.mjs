@@ -1079,10 +1079,11 @@ if (!JSDOM) {
       for (const id of ['rptmPick', 'rptmPickCnt', 'rptmEtc', 'rptmEtcCnt', 'rptmUnid']) assert.ok($id(W, 'asBoxes').contains($id(W, id)), '왼쪽 상자에 없다: ' + id);
       assert.ok((top.compareDocumentPosition(main) & 4) && main.contains($id(W, 'rptmSheet')), '윗줄, 두 칸 순서가 아니다');
       assert.ok(($id(W, 'asBoxes').compareDocumentPosition($id(W, 'asOutCard')) & 4) && $id(W, 'asBoxes').parentElement === main && $id(W, 'asOutCard').parentElement === main && $id(W, 'asOutCard').contains($id(W, 'rptmPv')), '상자와 결과 칸(미리 보기)이 나란한 두 칸이 아니다');
-      //  종이 배율: 칸 폭(안쪽 여백 20px 뺌) / 1000, 1 을 넘지 않는다. 칸이 숨어 폭이 0 이면 그대로 둔다
+      //  종이 배율: 칸 폭(안쪽 여백 20px 뺌) / 종이 폭, 1 을 넘지 않는다. 칸이 숨어 폭이 0 이면 그대로 둔다.
+      //  종이 폭은 DOCX pgSz w 16838 twip(A4 가로) = 16838 / 15 px(약 1122.5px)
       const wrap = $id(W, 'rptmPvWrap'), sheet = $id(W, 'rptmSheet');
       assert.ok(sheet.classList.contains('fit'), '미리 보기 종이에 맞춤(fit)이 없다');
-      for (const [cw, want] of [[520, '0.500'], [2000, '1.000']]) {
+      for (const [cw, want] of [[520, (500 / (16838 / 15)).toFixed(3)], [2000, '1.000']]) {
         Object.defineProperty(wrap, 'clientWidth', { value: cw, configurable: true });
         W.ev('rptMFit()');
         assert.strictEqual(sheet.style.getPropertyValue('--fz'), want, '종이 배율이 칸 폭에 맞지 않는다: ' + cw);
