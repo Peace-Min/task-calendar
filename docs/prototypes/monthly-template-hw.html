@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>월간 보고 양식 고르기 시안</title>
+<!--
+  월간 보고 문서의 양식 고르기(SW, HW) 시안(2026-11-10). 앱 코드는 바꾸지 않는다.
+  근거: docs/MONTHLY-TEMPLATE-HW.md(HW 양식 실측), 지금 앱의 근태 [취합] 오른쪽 칸(문서 설정 띠 #asBand, 미리 보기 .rptm-sheet).
+  결정(2026-11-10, 사용자):
+    1. 양식은 기억하지 않는다. 열 때마다 SW 로 시작하고, 쓸 때마다 고른다.
+    2. 파일 이름은 두 양식 모두 지금 SW 규칙(월간보고_<이름>_<작성일 YYMMDD>.docx).
+    3. HW 를 고르면 계획 기간과 개발 일정 그림(단추와 서랍)을 숨긴다.
+  계획 칸은 문서 설정 첫 줄의 맨 끝에 두어, 숨겨도 앞 칸(양식, 작성일, 이름)이 움직이지 않는다.
+  데이터는 모두 지어낸 값이다. 네트워크를 쓰지 않는다.
+-->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+/* ===== 앱 토큰(task-calendar-prototype.html :root, html.dark 를 그대로) ===== */
+:root{
+  --bg:#f3f4f7; --panel:#ffffff; --line:#e4e7ee; --line-2:#d6dbe6;
+  --ctl-border:#8b93a5;
+  --text:#1d2433; --muted:#5b6373; --faint:#9aa2b3; --faint-text:#6c7488;
+  --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd; --accent-fill:var(--accent); --on-accent:#fff;
+  --danger-text:#c0343a; --ok:#1f7a4d; --warn-text:#8a6400;
+  --r-sm:6px; --r-md:10px;
+  --seg-sh:rgba(20,28,55,.16);
+  --fs-micro:11px; --fs-meta:12px; --fs-body:13px; --fs-emph:14px; --fs-title:15px;
+  --hover-bg:#f3f5fa; --dim-bg:#fafbfd;
+  --rptm-paper:#ffffff; --rptm-ink:#000000; --rptm-fa:#DBE5F1; --rptm-fb:#F2F2F2;
+}
+html.dark{
+  color-scheme:dark;
+  --bg:#0f1420; --panel:#1a2031; --line:#2a3245; --line-2:#3a4357;
+  --text:#e6e9f2; --muted:#a8b0c3; --faint:#5c6578; --faint-text:#9aa3b7;
+  --accent:#6182ff; --accent-2:#9db0ff; --accent-soft:#1d2742; --accent-fill:#4f66d8;
+  --ctl-border:#666f8a; --danger-text:#ff6b70; --ok:#6fd49a; --warn-text:#e3b766;
+  --hover-bg:#222b3e; --seg-sh:rgba(0,0,0,.55); --dim-bg:#141a27;
+}
+html.dark input{color-scheme:dark}
+
+/* ===== 앱 공통 컨트롤 ===== */
+button{font-family:inherit}
+.hidden{display:none !important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+html,body{height:100%}
+body{font-family:'Segoe UI','Malgun Gothic','맑은 고딕',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:var(--fs-emph);
+  word-break:keep-all;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);background:var(--panel);color:var(--text);
+  padding:8px 12px;border-radius:var(--r-sm);cursor:pointer;font-size:var(--fs-emph);white-space:nowrap}
+.btn:hover{border-color:#bcc4d6;background:var(--hover-bg)}
+.btn.sm{padding:4px 10px;font-size:var(--fs-body)}
+.btn.primary{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent);font-weight:600}
+.btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2)}
+.lnk{border:none;background:none;color:var(--accent-2);cursor:pointer;font:inherit;padding:0;text-decoration:underline}
+.seg{display:flex;flex:0 1 auto;gap:2px;background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-md);padding:2px}
+.seg-b{flex:1 1 auto;min-width:max-content;border:none;background:transparent;color:var(--text);font:inherit;font-size:var(--fs-meta);
+  line-height:1.3;padding:5px 11px;border-radius:calc(var(--r-md) - 3px);cursor:pointer;white-space:nowrap}
+.seg-b:hover{background:var(--hover-bg)}
+.seg-b.active{background:var(--panel);font-weight:600;box-shadow:0 0 0 1px var(--ctl-border), 0 1px 2px var(--seg-sh)}
+input[type=date]{height:30px;border:1px solid var(--ctl-border);border-radius:var(--r-sm);background:var(--panel);color:var(--text);padding:0 6px;font:inherit;font-size:var(--fs-body)}
+input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
+.chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line-2);border-radius:999px;padding:3px 10px;font-size:var(--fs-meta);background:var(--panel);cursor:pointer}
+.chip.off{color:var(--muted);background:transparent;text-decoration:line-through}
+
+/* ===== 시안 틀(앱 밖) ===== */
+.proto-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.proto-bar h1{font-size:var(--fs-title)}
+.proto-bar .sp{flex:1}
+.proto-memo{padding:10px 16px;font-size:var(--fs-meta);color:var(--muted);line-height:1.6;border-bottom:1px solid var(--line);background:var(--dim-bg)}
+.proto-memo b{color:var(--text)}
+
+/* ===== 근태 [취합] 화면(왼쪽 공통 설정 + 오른쪽 결과) ===== */
+.as-main{display:grid;grid-template-columns:300px minmax(0,1fr);gap:12px;padding:12px 16px;min-height:0}
+.as-left{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:12px;display:flex;flex-direction:column;gap:10px;align-self:start}
+.as-left .row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.as-left .lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted);min-width:44px}
+.as-right{display:flex;flex-direction:column;gap:10px;min-width:0}
+.as-rh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.as-sub{font-size:var(--fs-meta);color:var(--muted);min-width:0;flex:1 1 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 문서 설정 띠(앱 .as-band 그대로) */
+.as-band{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md)}
+.as-bandh{display:flex;align-items:center;gap:10px;width:100%;padding:8px 12px;border:0;background:transparent;font:inherit;color:var(--text);text-align:left;cursor:pointer;border-radius:var(--r-md)}
+.as-bandh b{font-size:var(--fs-emph);flex:none}
+.as-bandsum{flex:1 1 0;min-width:0;color:var(--muted);font-size:var(--fs-meta);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.as-bandtg{flex:none;margin-left:auto;color:var(--accent-2);font-size:var(--fs-meta)}
+.as-bandb{border-top:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.as-line1{display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap}
+.as-fld{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+.rptm-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted);white-space:nowrap}
+.rptm-ctl{display:flex;align-items:center;gap:4px;min-width:0;flex-wrap:wrap}
+.rptm-sep{color:var(--muted)}
+.rptm-ib{width:30px;height:30px;padding:0;justify-content:center;font-size:var(--fs-body)}
+.rptm-name{font-weight:700;white-space:nowrap}
+.rptm-name small{font-weight:400;color:var(--muted);font-size:var(--fs-meta);margin-right:4px}
+.rptm-h{display:flex;align-items:center;gap:8px;font-size:var(--fs-emph);font-weight:700;margin:0 0 6px}
+.rptm-cnt{font-size:var(--fs-meta);font-weight:400;color:var(--muted);white-space:nowrap}
+.rptm-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px;align-content:start}
+.rptm-it{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--dim-bg);min-width:0}
+.rptm-it:not(.off){border-color:var(--accent);background:var(--accent-soft)}
+.rptm-it.wide{grid-column:1 / -1}
+.rptm-row{display:flex;align-items:center;gap:8px;padding:5px 8px}
+.rptm-row label{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0;cursor:pointer}
+.rptm-row .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rptm-it.off .nm{color:var(--muted)}
+.rptm-none{font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;flex:none}
+.rptm-imgbtn{flex:none;padding:3px 8px;font-size:var(--fs-meta)}
+.rptm-imgbtn.has{color:var(--accent-2);border-color:currentColor}
+.rptm-imgbtn.open{background:var(--accent-soft)}
+.rptm-drawer{background:var(--dim-bg);border-top:1px dashed var(--line-2);padding:8px 10px 10px 32px}
+.rptm-dr-h{display:flex;align-items:center;gap:8px;font-size:var(--fs-meta);font-weight:700;color:var(--muted);margin-bottom:6px}
+.rptm-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px}
+.rptm-card{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel);padding:4px}
+.rptm-card .ph{height:56px;background:var(--rptm-paper);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.rptm-card .ph svg{width:100%;height:100%;display:block}
+.rptm-card .cap{display:flex;gap:2px;margin-top:4px;font-size:var(--fs-micro);color:var(--muted)}
+.rptm-addc{border:1px dashed var(--ctl-border);border-radius:var(--r-sm);display:flex;flex-direction:column;gap:4px;padding:6px;justify-content:center;min-height:88px}
+.rptm-addc .btn{padding:2px 6px;font-size:var(--fs-micro);justify-content:center}
+.rptm-etc{border:1px solid var(--line);border-radius:var(--r-md);padding:8px 10px}
+.rptm-etc-h{display:flex;align-items:center;gap:8px;font-size:var(--fs-emph);font-weight:700}
+.rptm-etc-h .lnk{margin-left:auto;font-size:var(--fs-meta);font-weight:400}
+.rptm-etc-cats{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+
+/* 미리 보기(앱 .rptm-pv 그대로) */
+.rptm-pvh{display:flex;align-items:center;gap:8px;font-size:var(--fs-emph);font-weight:700;margin-bottom:6px}
+.rptm-pvh .rptm-cnt:last-child{margin-left:auto}
+.rptm-pvwrap{overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:10px}
+.rptm-empty{padding:18px;text-align:center;color:var(--muted);font-size:var(--fs-body);border:1px dashed var(--line-2);border-radius:var(--r-md)}
+.rptm-sheet{background:var(--rptm-paper);color:var(--rptm-ink);width:1000px;zoom:var(--fz,1);box-shadow:0 2px 10px rgba(0,0,0,.18);
+  padding:56px 64px 56px 80px;font-family:'Malgun Gothic','맑은 고딕',sans-serif;font-size:10pt;line-height:1.45;word-break:keep-all}
+.rptm-sheet .ttl{text-align:center;font-weight:700;font-size:12pt;text-decoration:underline;margin-bottom:18px}
+.rptm-sheet table{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:14px}
+.rptm-sheet td{border:1px solid var(--rptm-ink);padding:3px 6px;vertical-align:middle}
+.rptm-sheet td.a{background:var(--rptm-fa);font-weight:700;text-align:center}
+.rptm-sheet td.b{background:var(--rptm-fb);font-weight:700;text-align:center}
+.rptm-sheet td.bv{background:var(--rptm-fb)}
+.rptm-sheet td.nm,.rptm-sheet td.c{text-align:center}
+.rptm-sheet td.body{vertical-align:top;height:120px}
+.rptm-sheet td.img svg{display:block;width:100%;max-width:520px;height:auto;margin:3px 0}
+.rptm-sheet .ln{min-height:1.45em;white-space:pre-wrap}
+/* HW 양식: 좌우 여백 약 2cm, 제목 14pt, 기간 줄 11pt, 칸 이름 줄 흰 바탕, 본문 칸 최소 높이(실측 309pt / 표 폭 736pt 비율) */
+.rptm-sheet.hw{padding:56px 48px 56px 54px}
+.rptm-sheet.hw .ttl{font-size:14pt;margin-bottom:2px}
+.rptm-sheet.hw .per{text-align:center;font-size:11pt;margin-bottom:18px}
+.rptm-sheet.hw td.w{background:var(--rptm-paper);font-weight:700;text-align:center}
+.rptm-sheet.hw td.nm{font-size:10.5pt}
+.rptm-sheet.hw td.body{height:375px}
+.rptm-sheet.hw td.ebody{vertical-align:top;height:190px}
+.rptm-sheet.hw tr.thin td{height:9px;padding:0}
+
+/* 저장 알림(앱 토스트 흉내) */
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 14px;border-radius:var(--r-md);font-size:var(--fs-body);box-shadow:0 6px 20px rgba(0,0,0,.25)}
+
+@media (max-width:760px){ .as-main{grid-template-columns:minmax(0,1fr)} }
+</style>
+</head>
+<body>
+
+<div class="proto-bar">
+  <h1>월간 보고 양식 고르기 시안</h1>
+  <span class="rptm-cnt">SW, HW 두 양식. 데이터는 지어낸 값</span>
+  <span class="sp"></span>
+  <div class="seg" role="group" aria-label="화면 밝기">
+    <button type="button" class="seg-b active" data-th="light" aria-pressed="true">밝게</button>
+    <button type="button" class="seg-b" data-th="dark" aria-pressed="false">어둡게</button>
+  </div>
+</div>
+<div class="proto-memo">
+  <b>결정 반영</b>: 1) 양식은 기억하지 않음. 열 때마다 SW 로 시작하고 쓸 때마다 고름. 2) 파일 이름은 두 양식 모두 SW 규칙. 3) HW 면 계획 기간과 개발 일정 그림(단추, 서랍)을 숨김.
+  계획 칸은 첫 줄 맨 끝이라 숨겨도 앞 칸이 움직이지 않는다. 양식을 바꾸면 미리 보기가 바로 바뀐다.
+</div>
+
+<div class="as-main">
+  <!-- 왼쪽: 취합 공통 설정(이 시안에서는 그림만) -->
+  <aside class="as-left" aria-label="취합 설정">
+    <div class="row"><span class="lb">기간</span><input type="date" value="2026-09-07" aria-label="실적 시작일"><span class="rptm-sep">~</span><input type="date" value="2026-10-23" aria-label="실적 종료일"></div>
+    <div class="row"><span class="lb">출처</span>
+      <div class="seg" role="group" aria-label="내용 출처"><button type="button" class="seg-b active" aria-pressed="true">캘린더 기록</button><button type="button" class="seg-b" aria-pressed="false">인트라넷 주간</button></div>
+    </div>
+    <div class="row"><span class="sp" style="flex:1"></span><button type="button" class="btn primary sm">읽어 오기</button></div>
+  </aside>
+
+  <!-- 오른쪽: 결과 -->
+  <section class="as-right">
+    <div class="as-rh">
+      <div class="seg" role="group" aria-label="결과 형태">
+        <button type="button" class="seg-b" aria-pressed="false">과제별 글</button>
+        <button type="button" class="seg-b active" aria-pressed="true">월간 보고 문서</button>
+      </div>
+      <span class="as-sub" id="asSub"></span>
+      <button type="button" class="btn primary" id="btnSave">DOCX 저장</button>
+    </div>
+
+    <div class="as-band" id="asBand">
+      <button type="button" class="as-bandh" id="asBandH" aria-expanded="true" aria-controls="asBandB"><b>문서 설정</b><span class="as-bandsum" id="asBandSum"></span><span class="as-bandtg" id="asBandTg">접기</span></button>
+      <div class="as-bandb" id="asBandB">
+        <div class="as-line1">
+          <span class="as-fld"><span class="rptm-lb">양식</span>
+            <div class="seg" id="tplSeg" role="group" aria-label="문서 양식">
+              <button type="button" class="seg-b active" data-tpl="sw" aria-pressed="true" title="SW 양식: 월간 실적과 월간 계획 머리, 개발 일정 그림, 일정 변경이력">SW</button>
+              <button type="button" class="seg-b" data-tpl="hw" aria-pressed="false" title="HW 양식: 제목 아래 실적 기간 줄, 개발 일정 표(빈칸), 계획 기간 없음">HW</button>
+            </div>
+          </span>
+          <span class="as-fld"><span class="rptm-lb">작성일</span><input type="date" id="rDate" value="2026-11-10" aria-label="작성일"></span>
+          <span class="as-fld rptm-name" title="로그인 이름. 문서 제목과 파일 이름에 들어갑니다"><small>이름</small>홍길동</span>
+          <span class="as-fld" id="fldPlan"><span class="rptm-lb">계획</span><span class="rptm-ctl"><input type="date" id="pFrom" value="2026-10-26" aria-label="계획 기간 시작일"><span class="rptm-sep">~</span><input type="date" id="pTo" value="2026-12-11" aria-label="계획 기간 종료일"><button type="button" class="btn rptm-ib" id="pDef" title="기본값으로(실적 끝 다음 월요일부터 같은 주 수, 금요일 끝)" aria-label="계획 기간 기본값으로">↺</button></span></span>
+        </div>
+        <div>
+          <div class="rptm-h">과제 <span class="rptm-cnt" id="pickCnt"></span></div>
+          <div class="rptm-list" id="pick"></div>
+        </div>
+        <div class="rptm-etc">
+          <div class="rptm-etc-h"><span title="공식 과제가 아닌 카테고리의 기록이 문서 맨 끝 기타 표에 들어갑니다">기타 표</span> <span class="rptm-cnt" id="etcSum"></span><button type="button" class="lnk" id="etcTog" aria-expanded="false" aria-controls="etcCats">고르기</button></div>
+          <div class="rptm-etc-cats hidden" id="etcCats"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rptm-pv">
+      <div class="rptm-pvh">미리 보기 <span class="rptm-cnt" id="pvNote"></span><span class="rptm-cnt" id="pvSum"></span></div>
+      <div class="rptm-empty hidden" id="pvEmpty">고른 과제가 없습니다. 과제 목록에서 체크하세요.</div>
+      <div class="rptm-pvwrap" id="pvWrap"><div class="rptm-sheet" id="sheet"></div></div>
+    </div>
+  </section>
+</div>
+<div class="toast hidden" id="toast" role="status"></div>
+
+<script>
+'use strict';
+// ===== 지어낸 데이터(실제 과제명, 사람 이름 없음) =====
+const ACTUAL = { from: '2026-09-07', to: '2026-10-23' };
+const NAME = '홍길동';
+const PROJECTS = [
+  { uid: 'db-101', title: '(예시) 장비 유지보수', devStart: '2026-03', devEnd: '2026-12', images: 2, has: true,
+    actual: ['● 정기점검', '  - 운용센터 점검 (9/22)', '  - 1호 사이트 현장 점검 (9/23)', '  - 점검 확인서 작성', '',
+             '● 예비 시재 점검 (w. 김예시 연구원)', '  - 입고된 처리 보드 점검', '    : 변환 칩 교체 후 정상 동작 확인'] },
+  { uid: 'db-102', title: '(예시) 지상국 소프트웨어 개발', devStart: '2026-04', devEnd: '', images: 1, has: true,
+    actual: ['● 설계', '  - 패킷 구조 변화 분석 자료 작성', '  - 설계 검토 회의 자료 작성', '     . 수신부, 송신부 설계 자료', '',
+             '● 구현 (~ 10/30)', '  - 암호 라이브러리 구현 완료', '  - 시험용 모의기 구현'] },
+  { uid: 'db-103', title: '(예시) 시험 장비 제작', devStart: '2026-06', devEnd: '2027-02', images: 0, has: false, actual: [] },
+];
+const ETC = [
+  { id: 'c1', name: '교육', lines: ['● 보안 교육 참석 (10/16)'] },
+  { id: 'c2', name: '내부 업무', lines: ['● 공용 라이브러리 정리', '  - 연결 유지 기능 추가', '  - 설명서 작성'] },
+  { id: 'c3', name: '휴가', lines: ['● 연차 (10/2)'] },
+];
+
+// ===== 화면 상태(기억하지 않음: 새로 열면 늘 이 값) =====
+const st = {
+  tpl: 'sw',
+  checked: new Set(PROJECTS.filter(p => p.has).map(p => p.uid)),
+  etcOff: new Set(),
+  drawer: null,          // 그림 서랍을 연 과제 uid(SW 만)
+  bandOpen: true,
+};
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const DASH = '–';   // 양식 원본의 구분 기호(DocxWriter 와 같은 글자)
+const ymd = s => { const [y, m, d] = s.split('-').map(Number); return { y, m, d }; };
+const md = s => { const t = ymd(s); return t.m + '/' + t.d; };
+
+// ===== 문서 설정 띠 =====
+function renderBand() {
+  const hw = st.tpl === 'hw';
+  for (const b of document.querySelectorAll('#tplSeg .seg-b')) {
+    const on = b.dataset.tpl === st.tpl;
+    b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  $('fldPlan').classList.toggle('hidden', hw);
+  if (hw) st.drawer = null;
+
+  const pick = $('pick');
+  pick.innerHTML = '';
+  for (const p of PROJECTS) {
+    const on = st.checked.has(p.uid);
+    const open = !hw && st.drawer === p.uid;
+    const it = document.createElement('div');
+    it.className = 'rptm-it' + (on ? '' : ' off') + (open ? ' wide' : '');
+    let h = '<div class="rptm-row"><label><input type="checkbox" data-uid="' + p.uid + '"' + (on ? ' checked' : '') + '><span class="nm">' + esc(p.title) + '</span></label>';
+    if (!p.has) h += '<span class="rptm-none">기록 없음</span>';
+    if (!hw) h += '<button type="button" class="btn rptm-imgbtn' + (p.images ? ' has' : '') + (open ? ' open' : '') + '" data-img="' + p.uid + '" aria-expanded="' + open + '">' + (p.images ? '그림 ' + p.images + ' ▾' : '+ 그림') + '</button>';
+    h += '</div>';
+    if (open) h += drawerHtml(p);
+    it.innerHTML = h;
+    pick.appendChild(it);
+  }
+  $('pickCnt').textContent = st.checked.size + '/' + PROJECTS.length;
+
+  const cats = $('etcCats');
+  cats.innerHTML = ETC.map(c => '<button type="button" class="chip' + (st.etcOff.has(c.id) ? ' off' : '') + '" data-etc="' + c.id + '" aria-pressed="' + !st.etcOff.has(c.id) + '">' + esc(c.name) + '</button>').join('');
+  const inN = ETC.length - st.etcOff.size;
+  $('etcSum').textContent = st.etcOff.size ? inN + '/' + ETC.length : ETC.length + '개 모두 넣음';
+
+  const parts = [hw ? 'HW 양식' : 'SW 양식'];
+  if (!hw) parts.push('계획 ' + md($('pFrom').value) + ' ~ ' + md($('pTo').value));
+  parts.push('작성일 ' + md($('rDate').value), '과제 ' + st.checked.size + '/' + PROJECTS.length, '기타 표 ' + inN);
+  $('asBandSum').textContent = parts.join(', ');
+}
+
+function drawerHtml(p) {
+  let cards = '';
+  for (let i = 1; i <= p.images; i++) cards += '<div class="rptm-card"><div class="ph">' + ganttSvg(i) + '</div><div class="cap">' + i + '</div></div>';
+  if (p.images < 5) cards += '<div class="rptm-addc"><button type="button" class="btn">파일 고르기</button><button type="button" class="btn">붙여넣기</button></div>';
+  return '<div class="rptm-drawer"><div class="rptm-dr-h">개발 일정 그림 ' + p.images + '/5</div><div class="rptm-cards">' + cards + '</div></div>';
+}
+
+// 간트 그림 대용(스크립트가 그리는 SVG)
+function ganttSvg(seed) {
+  let bars = '';
+  for (let i = 0; i < 4; i++) {
+    const x = 20 + ((i * 37 + seed * 13) % 90), w = 60 + ((i * 29 + seed * 7) % 70);
+    bars += '<rect x="' + x + '" y="' + (10 + i * 14) + '" width="' + w + '" height="8" fill="#7f9db9"/>';
+  }
+  return '<svg viewBox="0 0 220 70" xmlns="http://www.w3.org/2000/svg"><rect width="220" height="70" fill="#fff"/>' +
+    '<line x1="16" y1="4" x2="16" y2="66" stroke="#999"/>' + bars + '</svg>';
+}
+
+// ===== 미리 보기 =====
+const linesHtml = arr => (arr || []).map(t => '<div class="ln">' + (t ? esc(t) : '&nbsp;') + '</div>').join('') || '<div class="ln">&nbsp;</div>';
+const colgroup = tw => { const s = tw.reduce((a, b) => a + b, 0); return '<colgroup>' + tw.map(w => '<col style="width:' + (w / s * 100).toFixed(3) + '%">').join('') + '</colgroup>'; };
+
+// SW: 지금 앱과 같은 모양(DocxWriter ProjectGrid)
+const SW_GRID = [1126, 1116, 2394, 1548, 1270, 2692, 3642];
+function swTerm(p) { const f = s => s ? s.replace('-', '/') : ''; return (p.devStart || p.devEnd) ? f(p.devStart) + ' ~ ' + f(p.devEnd) : ''; }
+function swMonthDay(s) { const t = ymd(s); return String(t.m).padStart(2, '0') + '월 ' + String(t.d).padStart(2, '0') + '일'; }
+function renderSw(projects, etc) {
+  const d = ymd($('rDate').value);
+  const actualHead = '월간 실적: ' + swMonthDay(ACTUAL.from) + ' ~ ' + swMonthDay(ACTUAL.to);
+  const planHead = '월간 계획: ' + swMonthDay($('pFrom').value) + ' ~ ' + swMonthDay($('pTo').value);
+  let h = '<div class="ttl">월간보고 (' + esc(NAME) + ') ' + DASH + ' ' + d.y + '년 ' + String(d.m).padStart(2, '0') + '월 ' + String(d.d).padStart(2, '0') + '일</div>';
+  for (const p of projects) {
+    let imgs = '';
+    for (let i = 1; i <= p.images; i++) imgs += ganttSvg(i);
+    h += '<table>' + colgroup(SW_GRID) +
+      '<tr><td class="a">과제명</td><td class="a" colspan="4">' + actualHead + '</td><td class="a" colspan="2">' + planHead + '</td></tr>' +
+      '<tr><td class="nm" rowspan="6">' + esc(p.title) + '</td><td class="b" colspan="2">과제 수행 기간</td><td class="bv" colspan="4">' + esc(swTerm(p)) + '</td></tr>' +
+      '<tr><td class="b">개발<br>일정</td><td class="bv img" colspan="5">' + imgs + '</td></tr>' +
+      '<tr><td class="b" rowspan="2">일정<br>변경이력</td><td class="b">변경 내용</td><td class="b">변경 날짜</td><td class="b" colspan="3">변경 사유</td></tr>' +
+      '<tr><td>&nbsp;</td><td>&nbsp;</td><td colspan="3">&nbsp;</td></tr>' +
+      '<tr><td class="b" colspan="2">수행 계획</td><td class="b" colspan="3">수행 실적</td><td class="b">수행 계획</td></tr>' +
+      '<tr><td></td><td class="body" colspan="2"></td><td class="body" colspan="3">' + linesHtml(p.actual) + '</td><td class="body"></td></tr>' +
+      '</table>';
+  }
+  if (etc.length) {
+    h += '<table>' + colgroup([1126, 12662]) +
+      '<tr><td class="a">과제명</td><td class="a">' + actualHead + '</td></tr>' +
+      '<tr><td class="nm">기타</td><td class="body">' + linesHtml(etcLines(etc)) + '</td></tr></table>';
+  }
+  return h;
+}
+
+// HW: docs/MONTHLY-TEMPLATE-HW.md 3장(격자 7열 실측)
+const HW_GRID = [1416, 992, 2974, 1274, 1132, 2268, 4670];
+function hwTerm(p) {
+  const f = s => { if (!s) return ''; const [y, m] = s.split('-').map(Number); return y + '년 ' + m + '월'; };
+  if (!p.devStart && !p.devEnd) return '';
+  return f(p.devStart) + ' ~' + (p.devEnd ? ' ' + f(p.devEnd) : '');
+}
+const hwDot = s => { const t = ymd(s); return t.y + '. ' + t.m + '. ' + t.d; };
+function renderHw(projects, etc) {
+  const d = ymd($('rDate').value);
+  let h = '<div class="ttl">월간보고 ' + DASH + ' H/W팀 (' + esc(NAME) + ') ' + DASH + ' ' + d.y + '년 ' + d.m + '월 ' + d.d + '일</div>' +
+          '<div class="per">[ ' + hwDot(ACTUAL.from) + ' ~ ' + hwDot(ACTUAL.to) + ' ]</div>';
+  for (const p of projects) {
+    h += '<table>' + colgroup(HW_GRID) +
+      '<tr><td class="nm" rowspan="5">' + esc(p.title) + '</td><td class="b" colspan="2">과제 수행 기간</td><td class="bv c" colspan="4">' + esc(hwTerm(p)) + '</td></tr>' +
+      '<tr><td class="b" rowspan="2">개발<br>일정</td><td class="b">개발 항목</td><td class="b">시작</td><td class="b">종료</td><td class="b" colspan="2">상세 내용</td></tr>' +
+      '<tr><td class="bv">&nbsp;</td><td class="bv"></td><td class="bv"></td><td class="bv" colspan="2"></td></tr>' +
+      '<tr><td class="w" colspan="2">수행 계획</td><td class="w" colspan="3">수행 실적</td><td class="w">수행 계획</td></tr>' +
+      '<tr><td class="body" colspan="2"></td><td class="body" colspan="3">' + linesHtml(p.actual) + '</td><td class="body"></td></tr>' +
+      '</table>';
+  }
+  if (etc.length) {
+    h += '<table>' + colgroup(HW_GRID) +
+      '<tr class="thin"><td class="nm" rowspan="3">기타</td><td class="bv" colspan="2"></td><td class="bv" colspan="4"></td></tr>' +
+      '<tr><td class="w" colspan="2">수행 계획</td><td class="w" colspan="3">수행 실적</td><td class="w">수행 계획</td></tr>' +
+      '<tr><td class="ebody" colspan="2"></td><td class="ebody" colspan="3">' + linesHtml(etcLines(etc)) + '</td><td class="ebody"></td></tr></table>';
+  }
+  return h;
+}
+
+function etcLines(etc) {
+  const out = [];
+  etc.forEach((c, i) => { if (i) out.push(''); out.push(...c.lines); });
+  return out;
+}
+
+function renderPreview() {
+  const hw = st.tpl === 'hw';
+  const projects = PROJECTS.filter(p => st.checked.has(p.uid));
+  const etc = ETC.filter(c => !st.etcOff.has(c.id));
+  const sheet = $('sheet');
+  sheet.classList.toggle('hw', hw);
+  const none = !projects.length && !etc.length;
+  $('pvEmpty').classList.toggle('hidden', !none);
+  $('pvWrap').classList.toggle('hidden', none);
+  sheet.innerHTML = hw ? renderHw(projects, etc) : renderSw(projects, etc);
+  $('pvNote').textContent = '읽기 전용';
+  $('pvNote').title = hw ? '수행 계획 두 칸과 개발 일정 표는 빈칸으로 들어가니 Word 에서 채우세요'
+                         : '수행 계획 두 칸과 일정 변경이력은 빈칸으로 들어가니 Word 에서 채우세요';
+  $('pvSum').textContent = (hw ? 'HW 양식, ' : 'SW 양식, ') + '과제 ' + projects.length + '개' + (etc.length ? ', 기타 표' : '');
+  $('asSub').textContent = none ? '' : '과제 ' + projects.length + '개' + (etc.length ? '와 기타 표' : '') + '를 저장합니다';
+  fit();
+}
+
+// 종이(1000px)를 칸 폭에 맞춰 줄인다(앱 rptMFit 과 같은 방식)
+function fit() {
+  const w = $('pvWrap').clientWidth - 20;
+  if (w > 0) $('sheet').style.setProperty('--fz', Math.min(1, w / 1000).toFixed(4));
+}
+
+function render() { renderBand(); renderPreview(); }
+
+// ===== 이벤트 =====
+$('tplSeg').addEventListener('click', e => {
+  const b = e.target.closest('[data-tpl]'); if (!b || b.dataset.tpl === st.tpl) return;
+  st.tpl = b.dataset.tpl; render();
+});
+$('pick').addEventListener('change', e => {
+  const c = e.target.closest('input[data-uid]'); if (!c) return;
+  c.checked ? st.checked.add(c.dataset.uid) : st.checked.delete(c.dataset.uid); render();
+});
+$('pick').addEventListener('click', e => {
+  const b = e.target.closest('[data-img]'); if (!b) return;
+  st.drawer = st.drawer === b.dataset.img ? null : b.dataset.img; renderBand();
+});
+$('etcTog').addEventListener('click', () => {
+  const open = $('etcCats').classList.toggle('hidden') === false;
+  $('etcTog').textContent = open ? '접기' : '고르기'; $('etcTog').setAttribute('aria-expanded', open);
+});
+$('etcCats').addEventListener('click', e => {
+  const b = e.target.closest('[data-etc]'); if (!b) return;
+  st.etcOff.has(b.dataset.etc) ? st.etcOff.delete(b.dataset.etc) : st.etcOff.add(b.dataset.etc); render();
+});
+for (const id of ['rDate', 'pFrom', 'pTo']) $(id).addEventListener('change', render);
+$('pDef').addEventListener('click', () => { $('pFrom').value = '2026-10-26'; $('pTo').value = '2026-12-11'; render(); });
+$('asBandH').addEventListener('click', () => {
+  st.bandOpen = !st.bandOpen;
+  $('asBandB').classList.toggle('hidden', !st.bandOpen);
+  $('asBandTg').textContent = st.bandOpen ? '접기' : '펼치기';
+  $('asBandH').setAttribute('aria-expanded', st.bandOpen); fit();
+});
+// 저장: 두 양식 모두 SW 파일 이름 규칙(월간보고_<이름>_<작성일 YYMMDD>.docx)
+let toastT = 0;
+$('btnSave').addEventListener('click', () => {
+  const d = ymd($('rDate').value);
+  const name = '월간보고_' + NAME + '_' + String(d.y % 100).padStart(2, '0') + String(d.m).padStart(2, '0') + String(d.d).padStart(2, '0') + '.docx';
+  const t = $('toast'); t.textContent = '저장 창 기본 이름: ' + name + ' (' + st.tpl.toUpperCase() + ' 양식)';
+  t.classList.remove('hidden'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hidden'), 2600);
+});
+document.querySelector('.proto-bar .seg').addEventListener('click', e => {
+  const b = e.target.closest('[data-th]'); if (!b) return;
+  document.documentElement.classList.toggle('dark', b.dataset.th === 'dark');
+  for (const x of document.querySelectorAll('.proto-bar .seg-b')) { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on); }
+});
+new ResizeObserver(fit).observe($('pvWrap'));
+addEventListener('resize', fit);
+
+render();
+</script>
+</body>
+</html>
