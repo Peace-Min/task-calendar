@@ -249,7 +249,7 @@ class R {
 
     Console.Out.Write(JsonSerializer.Serialize(new {
       ok = res.Ok, conflict = res.Conflict, msg = res.Message, rev = res.Rev,
-      ins = res.Inserted, upd = res.Updated, del = res.Deleted, logs }));
+      ins = res.Inserted, upd = res.Updated, del = res.Deleted, same = res.Unchanged, logs }));
     return 0;
   }
 }`;
@@ -537,6 +537,94 @@ try {
   const nameNow = one(`SELECT name FROM cal_category WHERE user_id=${U} ORDER BY cat_no LIMIT 1`);
   ok('먼저 저장한 쪽의 값이 남아 있다(덮이지 않았다)', nameNow === 'A가 고친 이름', `현재="${nameNow}"`);
   wipe(U);
+
+  // ── ★ 바뀐 행만 쓴다(docs/SAVE-DIFF.md) ─────────────────────────────────
+  //    부팅 조회로 읽은 스냅샷 위에 같은 state 를 저장하면 한 행도 쓰지 않는다. 한 행만 고치면 그 행만 쓴다.
+  //    ★ 매번 DB 에서 스냅샷을 새로 읽는다(op=save). 위젯이 부팅 뒤 처음 저장할 때의 길이고,
+  //      "읽은 state 의 투영 = 보낸 state 의 투영" 이 어긋나면 여기서 '그대로 0' 으로 드러난다.
+  console.log('');
+  console.log('[바뀐 행만] 같은 state 는 쓰지 않고, 고친 행만 쓴다');
+  {
+    const d0 = makeState(null, 610);
+    //  무작위 state 는 일정이 0건일 수 있다. 이 절은 일정 둘과 할 일, 근태가 있어야 하므로 고정 행을 더한다.
+    for (let i = 0; i < 2; i++)
+      d0.entries.push({ id: `e-610-fix${i}`, date: `2026-04-1${i}`, title: `고정 일정 ${i}`, categoryId: d0.categories[0].id,
+        allDay: true, startTime: '', endTime: '', hours: null, location: '', remind: null, memo: '', endDate: '',
+        recur: null, recurExcept: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+    d0.todos.push({ id: 't-610-fix', text: '고정 할 일', done: false, categoryId: null, due: '2026-05-01', endDate: '',
+      prio: 'normal', completedAt: '', note: '', dayNotes: { '2026-05-01': '그날 메모' },
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+    d0.attendance['2026-06-16'] = { status: '1', overtime: 0 };
+    const total =d0.categories.length + d0.entries.length + d0.todos.length +
+                  Object.values(d0.attendance).filter(a => a && a.status).length;
+    ok('바뀐 행만 전제: 일정이 둘 이상이다', d0.entries.length >= 2, `entries=${d0.entries.length}`);
+    const r0 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(d0) });
+    ok('바탕 상태 저장', r0.ok === true, r0.msg || '');
+    const stamp = () => one(`SELECT CONCAT(
+        (SELECT IFNULL(SUM(CRC32(CONCAT(cat_no, updated_at))),0) FROM cal_category WHERE user_id=${U}),'/',
+        (SELECT IFNULL(SUM(CRC32(CONCAT(entry_no, updated_at))),0) FROM cal_entry WHERE user_id=${U}),'/',
+        (SELECT IFNULL(SUM(CRC32(CONCAT(todo_no, updated_at))),0) FROM cal_todo WHERE user_id=${U}),'/',
+        (SELECT IFNULL(SUM(CRC32(CONCAT(work_date, updated_at))),0) FROM cal_attendance WHERE user_id=${U}))`);
+    const st0 = stamp();
+    const rev0 = Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`));
+
+    //  ① 같은 state 를 다시 저장: 쓰는 행 0, 건너뛴 행 = 전부, 시각 그대로, rev 는 1 오른다
+    const r1 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(d0) });
+    ok('같은 state 저장이 성공한다', r1.ok === true, r1.msg || '');
+    ok('같은 state 저장은 한 행도 쓰지 않는다', r1.ins === 0 && r1.upd === 0 && r1.del === 0,
+       `ins=${r1.ins} upd=${r1.upd} del=${r1.del}`);
+    ok('건너뛴 행 수가 전체 행 수와 같다', r1.same === total, `same=${r1.same} 전체=${total}`);
+    ok('같은 state 저장 뒤 모든 행의 updated_at 이 그대로다', stamp() === st0, `${st0} → ${stamp()}`);
+    ok('같은 state 저장도 rev 는 1 오른다', Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`)) === rev0 + 1);
+
+    //  ② 일정 하나의 제목만 고친다: 그 행만 UPDATE, 나머지는 그대로
+    const d1 = JSON.parse(JSON.stringify(d0));
+    d1.entries[1].title = '한 행만 고침';
+    const r2 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(d1) });
+    ok('한 행 수정 저장이 성공한다', r2.ok === true, r2.msg || '');
+    ok('한 행만 쓴다', r2.ins === 0 && r2.upd === 1 && r2.del === 0 && r2.same === total - 1,
+       `ins=${r2.ins} upd=${r2.upd} del=${r2.del} same=${r2.same}`);
+    ok('updated_at 이 바뀐 일정은 하나뿐이다', Number(one(
+       `SELECT COUNT(*) FROM cal_entry WHERE user_id=${U} AND updated_at=(SELECT MAX(updated_at) FROM cal_entry WHERE user_id=${U})`)) === 1);
+    {
+      const back = run({ op: 'read', loginId: LOGIN });
+      const diffs = back.ok ? compare(d1, JSON.parse(back.state)) : ['읽기 실패'];
+      ok('한 행 수정 뒤 왕복이 같다', diffs.length === 0, diffs.slice(0, 3).join(' | '));
+    }
+
+    //  ③ 자식만 고친다(반복 예외일, 날짜별 메모): 부모 행과 자식이 다시 쓰인다
+    const d2 = JSON.parse(JSON.stringify(d1));
+    d2.entries[0].recur = { freq: 'weekly', interval: 1, count: 0, until: '' };
+    d2.entries[0].endDate = '';
+    d2.entries[0].recurExcept = ['2026-03-09'];
+    const r3 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(d2) });
+    const d3 = JSON.parse(JSON.stringify(d2));
+    d3.entries[0].recurExcept = ['2026-03-09', '2026-03-16'];
+    const r4 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(d3) });
+    ok('예외일만 늘린 저장이 그 일정 하나를 쓴다', r3.ok === true && r4.ok === true && r4.upd === 1 && r4.same === total - 1,
+       `r3=${r3.ok} r4=${r4.ok} upd=${r4.upd} same=${r4.same} ${r4.msg || r3.msg || ''}`);
+    ok('예외일이 둘 들어갔다', Number(one(`SELECT COUNT(*) FROM cal_entry_except WHERE user_id=${U}`)) >= 2);
+
+    //  ④ 연속 저장(한 스냅샷): 저장 뒤 스냅샷의 state 가 보낸 state 로 바뀌므로 다음 같은 저장도 0행이다
+    const ch = run({ op: 'saveChain', loginId: LOGIN, state: {}, stateJson: JSON.stringify(d3), more: [JSON.stringify(d3)] });
+    ok('연속으로 같은 state 를 저장해도 쓰는 행이 없다', ch.ok === true && ch.upd === 0 && ch.ins === 0 && ch.del === 0 && ch.same === total,
+       `ok=${ch.ok} upd=${ch.upd} same=${ch.same} ${ch.msg || ''}`);
+
+    //  ⑤ 낡은 스냅샷: 먼저 저장한 쪽이 **무관한 행**만 고쳤어도 나중 쪽은 거부된다(rev 검사).
+    //     건너뛴 행은 토큰 검사를 받지 않으므로, 이 검사가 없으면 나중 쪽이 낡은 번호 맵으로 저장해 버린다.
+    const eA = JSON.parse(JSON.stringify(d3)); eA.categories[0].name = 'A가 과제 이름만';
+    const eB = JSON.parse(JSON.stringify(d3)); eB.entries[1].title = 'B가 일정 제목만';
+    const con2 = run({ op: 'concurrent', loginId: LOGIN, state: {}, stateA: JSON.stringify(eA), stateB: JSON.stringify(eB) });
+    ok('무관한 행: 먼저 저장한 쪽은 성공한다', con2.aOk === true, con2.aMsg || '');
+    ok('무관한 행: 나중 저장한 쪽은 충돌로 거부된다', con2.bOk === false && con2.bConflict === true,
+       `bOk=${con2.bOk} bConflict=${con2.bConflict} msg=${con2.bMsg}`);
+    ok('무관한 행: 거부된 쪽의 수정이 들어가지 않았다', Number(one(
+       `SELECT COUNT(*) FROM cal_entry WHERE user_id=${U} AND title='B가 일정 제목만'`)) === 0);
+    ok('무관한 행: 거부된 저장은 rev 를 남기지 않는다',
+       Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`)) === rev0 + 7,
+       `rev0=${rev0} 지금=${one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`)}`);
+    wipe(U);
+  }
 
   // ── 전량 교체(가져오기) — 지우고 통째로 다시 넣는가 ─────────────────────
   console.log('\n[전량 교체] 「XML 가져오기」 — 지우고 통째로 다시 넣는다');
