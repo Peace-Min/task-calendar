@@ -582,7 +582,8 @@ if (!JSDOM) {
     const before = M.posted.length;
     $(M, '#hostbar button[data-host="menu"]').click(); await settle();
     assert.deepStrictEqual(menuMsgs(M, before), [{ cmd: 'menu' }], '관리자인데 ☰ 메시지에 무엇이 더 실렸다');
-    assert.strictEqual(M.doc.querySelector('[role="menu"]'), null);
+    //  웹 쪽 ☰ 메뉴가 뜨지 않는다. 숨어 있는 메뉴(월간 그림 칸 메뉴 #asPop, 2026-11-10 시안 A)는 ☰ 와 상관없다
+    assert.deepStrictEqual([...M.doc.querySelectorAll('[role="menu"]')].filter((e) => !e.closest('.hidden')).length, 0, '☰ 를 누르니 웹 쪽 메뉴가 떴다');
     assert.strictEqual(M.ev('typeof window.__openAdminHub'), 'undefined', '쓰는 곳이 없는 호스트→웹 창구가 남았다');
     assert.strictEqual(isOpen(M, 'adminHub'), false);
     const cs = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));

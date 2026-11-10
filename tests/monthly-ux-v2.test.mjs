@@ -421,10 +421,11 @@ if (!JSDOM) {
       //  비면 그림 아이콘 단추, 있으면 썸네일과 ✕
       assert.ok(slot(P1).querySelector('button.rptm-slot[data-act="imgAdd"] svg') && !slot(P1).querySelector('img'), '빈 칸이 그림 아이콘 단추가 아니다');
       assert.ok(slot(P2).querySelector('.rptm-slot.has [data-act="imgZoom"] img') && slot(P2).querySelector('.rptm-slot.has [data-act="imgDel"]'), '그림 칸이 썸네일과 ✕ 가 아니다');
-      //  넣기(파일)
+      //  넣기(빈 칸 → 메뉴 → 파일 고르기)
       slot(P1).querySelector('[data-act="imgAdd"]').click(); await tick();
+      M.$('#asPop [data-imgmode="file"]').click(); await tick();
       const a1 = reply(M, 'scheduleImageAdd', { ok: true, data: { projectUid: U1, image: IMG(7), images: [IMG(7)] } });
-      assert.deepStrictEqual([a1.projectUid, a1.mode], [P1, 'file'], '빈 칸 누르기가 파일 고르기 넣기가 아니다');
+      assert.deepStrictEqual([a1.projectUid, a1.mode], [P1, 'file'], '메뉴의 파일 고르기가 파일 넣기가 아니다');
       await tick(); answerThumbs(M); await tick();
       assert.ok(slot(P1).querySelector('[data-act="imgZoom"] img'), '넣은 뒤 썸네일이 되지 않았다');
       //  두 번째 넣기 막음: 붙여넣기도, 직접 부르기도 요청 없이 토스트 하나
@@ -478,6 +479,78 @@ if (!JSDOM) {
     for (const [name, f] of cases) {
       let caught = false;
       try { await checkImage(f(app)); } catch (_) { caught = true; }
+      assert.ok(caught, '변이가 잡히지 않았다: ' + name);
+    }
+  });
+
+  //  그림 칸 메뉴 검사기(시안 A, 2026-11-10, docs/prototypes/monthly-img-paste.html): 빈 칸을 누르면 띄움 칸(#asPop)의 메뉴 모드로 두 항목
+  async function checkImgMenu(src) {
+    const M = await open(src);
+    try {
+      const add = () => row(M, P1).querySelector('[data-slot] [data-act="imgAdd"]');
+      const adds = () => M.posted.filter((x) => x && x.cmd === 'scheduleImageAdd');
+      const its = () => [...M.d.querySelectorAll('#asPop [data-pk="img"] [role="menuitem"]')];
+      const key = (el, k) => el.dispatchEvent(new M.w.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+      const visPk = () => [...M.d.querySelectorAll('#asPop [data-pk]')].filter((e) => !e.classList.contains('hidden')).map((e) => e.dataset.pk);
+      assert.strictEqual(add().title, '개발 일정 그림', '빈 칸 풍선이 짧은 이름이 아니다');
+      assert.strictEqual(add().getAttribute('aria-haspopup'), 'menu', '빈 칸이 메뉴를 연다고 알리지 않는다');
+      //  누르면 메뉴(두 항목만), 첫 항목에 포커스, 요청은 아직 없다
+      const n0 = adds().length;
+      add().focus(); add().click(); await tick();
+      assert.ok(M.shown('#asPop') && M.$('#asPop').classList.contains('menu') && visPk().join() === 'img', '빈 칸을 눌러도 그림 메뉴가 뜨지 않는다');
+      assert.deepStrictEqual(its().map((b) => [b.dataset.imgmode, b.childNodes[0].textContent, (b.querySelector('kbd') || {}).textContent || '']), [['file', '파일 고르기', ''], ['clipboard', '붙여 넣기', 'Ctrl+V']], '메뉴 항목이 파일 고르기, 붙여 넣기(Ctrl+V) 둘이 아니다');
+      assert.ok(M.d.activeElement === its()[0] && add().getAttribute('aria-expanded') === 'true' && adds().length === n0, '메뉴를 열면 첫 항목에 포커스가 가고 요청은 나가지 않아야 한다');
+      //  위아래 화살표로 항목 사이(끝에서 돌아간다)
+      key(its()[0], 'ArrowDown'); assert.strictEqual(M.d.activeElement, its()[1], '아래 화살표가 다음 항목으로 가지 않는다');
+      key(its()[1], 'ArrowDown'); assert.strictEqual(M.d.activeElement, its()[0], '마지막에서 아래 화살표가 처음으로 돌지 않는다');
+      key(its()[0], 'ArrowUp'); assert.strictEqual(M.d.activeElement, its()[1], '위 화살표가 앞 항목으로 가지 않는다');
+      //  Esc 는 닫고 칸으로 포커스
+      key(M.d.activeElement, 'Escape'); await tick();
+      assert.ok(!M.shown('#asPop') && M.d.activeElement === add() && add().getAttribute('aria-expanded') === 'false', 'Esc 로 닫히지 않거나 포커스가 그림 칸으로 돌아오지 않았다');
+      //  같은 칸을 다시 누르면 닫힌다
+      add().click(); await tick(); add().click(); await tick();
+      assert.ok(!M.shown('#asPop'), '같은 칸을 다시 눌러도 메뉴가 닫히지 않았다');
+      //  붙여 넣기 → clipboard. 그림이 없으면 호스트 거절 이유가 토스트로 그대로
+      add().click(); await tick();
+      its()[1].click(); await tick();
+      assert.ok(!M.shown('#asPop'), '항목을 누른 뒤 메뉴가 남았다');
+      const c1 = reply(M, 'scheduleImageAdd', { ok: false, error: { kind: 'invalid', message: '클립보드에 그림이 없습니다. 그림을 복사한 뒤 붙여 넣으세요.' } });
+      await tick();   // 회신 처리(토스트)를 끝낸 뒤 판정한다(실패해 창을 닫은 뒤 토스트가 돌지 않게)
+      assert.deepStrictEqual([c1.projectUid, c1.mode], [P1, 'clipboard'], '붙여 넣기가 그 과제 클립보드 넣기가 아니다');
+      assert.ok(M.evJSON('__toasts').includes('클립보드에 그림이 없습니다. 그림을 복사한 뒤 붙여 넣으세요.'), '클립보드에 그림이 없다는 거절 이유가 보이지 않는다');
+      //  파일 고르기 → file(취소)
+      add().click(); await tick();
+      its()[0].click(); await tick();
+      const f1 = reply(M, 'scheduleImageAdd', { ok: false, cancelled: true });
+      await tick();
+      assert.deepStrictEqual([f1.projectUid, f1.mode], [P1, 'file'], '파일 고르기가 그 과제 파일 넣기가 아니다');
+      assert.strictEqual(M.d.activeElement, add(), '넣기를 마친 뒤 포커스가 그림 칸으로 돌아오지 않았다');
+      //  메뉴 안에서 Ctrl+V 는 메뉴를 연 과제로 붙여 넣고 닫는다
+      add().click(); await tick();
+      ctrlV(M, M.d.activeElement); await tick();
+      const v1 = reply(M, 'scheduleImageAdd', { ok: false, cancelled: true });
+      await tick();
+      assert.ok(v1.projectUid === P1 && v1.mode === 'clipboard' && !M.shown('#asPop'), '메뉴 안 Ctrl+V 가 그 과제 붙여넣기가 아니거나 메뉴가 남았다');
+      //  막힌 칸(끊김, 거부, 넣는 중)은 메뉴를 열지 않는다
+      M.ev(`(function(){ const s = rptMImgState(${JSON.stringify(P1)}); s.stale = true; s.msg = '(예시) 끊김'; rptMImgRender(${JSON.stringify(P1)}); })()`);
+      const n1 = adds().length;
+      assert.ok(add().disabled, '전제: 끊긴 칸이 막혀 있다');
+      add().dispatchEvent(new M.w.MouseEvent('click', { bubbles: true }));
+      await tick();
+      assert.ok(!M.shown('#asPop') && adds().length === n1, '막힌 칸이 메뉴를 열었거나 요청을 보냈다');
+    } finally { M.w.close(); }
+  }
+  test('(W) 그림 칸 메뉴(시안 A): 빈 칸을 누르면 [파일 고르기][붙여 넣기 Ctrl+V] 메뉴, 각 항목이 file, clipboard 넣기, 화살표 이동, Esc 는 닫고 칸으로 포커스, 메뉴 안 Ctrl+V, 막힌 칸은 열지 않음', async () => { await checkImgMenu(app); });
+  test('(M) 변이: 누르면 바로 파일 고르기(옛 동작), 붙여 넣기를 파일로, Esc 뒤 포커스 안 돌림, 막힌 칸도 메뉴를 넣으면 메뉴 시험이 잡는다', async () => {
+    const cases = [
+      ['바로 파일 고르기', (s) => mutate(s, "if(act === 'imgAdd') asPopOpen('img', b, id);", "if(act === 'imgAdd') await rptMImgAdd(id, 'file');")],
+      ['붙여 넣기를 파일로', (s) => mutate(s, "mode = it.dataset.imgmode === 'clipboard' ? 'clipboard' : 'file';", "mode = 'file';")],
+      ['포커스 안 돌림', (s) => mutate(s, ': asPopBtn(k)); if(b && !b.disabled) b.focus(); }', ': asPopBtn(k)); }')],
+      ['막힌 칸도 메뉴', (s) => mutate(s, "const b = ev.target.closest('[data-act]'), s = S(); if(!b || !s || b.disabled) return;", "const b = ev.target.closest('[data-act]'), s = S(); if(!b || !s) return;")],
+    ];
+    for (const [name, f] of cases) {
+      let caught = false;
+      try { await checkImgMenu(f(app)); } catch (_) { caught = true; }
       assert.ok(caught, '변이가 잡히지 않았다: ' + name);
     }
   });

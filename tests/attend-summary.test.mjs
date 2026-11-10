@@ -64,7 +64,8 @@ function checkStatic(src) {
   //  띄움 칸 하나(결정 16): 실적, 작성, 계획 날짜 칸(서식은 v6 결정 22 로 없앴다). role=dialog 가 아니다(month-todo-close 비모달 팝업 목록 밖, 근거 주석)
   const pop = view.slice(view.indexOf('<div class="as-pop hidden" id="asPop">'), view.indexOf('<div class="at-ed hidden" id="atEd"'));
   assert.ok(pop.length > 100 && !/role="dialog"/.test(pop.slice(0, pop.indexOf('>'))), '띄움 칸이 없거나 role=dialog 다');
-  assert.deepStrictEqual([...pop.matchAll(/data-pk="(\w+)"/g)].map((m) => m[1]), ['act', 'date', 'plan'], '띄움 칸 안이 실적, 작성, 계획이 아니다');
+  //  2026-11-10 시안 A: 같은 칸의 넷째 모드가 그림 칸 메뉴(img)다(새 팝업을 만들지 않는다)
+  assert.deepStrictEqual([...pop.matchAll(/data-pk="(\w+)"/g)].map((m) => m[1]), ['act', 'date', 'plan', 'img'], '띄움 칸 안이 실적, 작성, 계획, 그림 메뉴가 아니다');
   assert.deepStrictEqual([...pop.matchAll(/<input type="date" id="(\w+)"/g)].map((m) => m[1]), ['rptFrom', 'rptTo', 'rptmDate', 'rptmPFrom', 'rptmPTo'], '날짜 칸이 띄움 칸에 없다');
   //  두 칸(결정 21): 왼쪽 상자(과제, 기타, 미식별)와 결과 칸
   const main = view.slice(view.indexOf('<div class="as-main" id="asRight">'), view.indexOf('<div class="as-pop hidden"'));

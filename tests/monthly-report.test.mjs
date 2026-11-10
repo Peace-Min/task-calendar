@@ -649,8 +649,9 @@ if (!JSDOM) {
       await tick();
       assert.strictEqual(slot(P1).querySelector('img').getAttribute('src'), 'data:image/jpeg;base64,AAAA', '줄의 썸네일이 붙지 않았다');
       assert.strictEqual(pvTable(W, P1).querySelector('td.img img').getAttribute('src'), 'data:image/jpeg;base64,AAAA', '문서 미리 보기에 그림이 들어가지 않았다');
-      //  빈 칸 누르기 → 파일 고르기(취소)
+      //  빈 칸 누르기 → 메뉴(시안 A) → 파일 고르기(취소)
       slot(P4).querySelector('[data-act="imgAdd"]').click(); await tick();
+      W.doc.querySelector('#asPop [data-imgmode="file"]').click(); await tick();
       const add1 = reply(W, 'scheduleImageAdd', { ok: false, cancelled: true });
       assert.deepStrictEqual([add1.projectUid, add1.mode], [P4, 'file']);
       await tick();

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>그림 붙여 넣기 시안</title>
+<style>
+/* 근태 월간 왼쪽 과제 상자의 그림 칸에 클립보드 붙여 넣기를 보이게 하는 시안(2026-11-10). 앱 값(.as-box, .rptm-it, .rptm-slot)을 옮겨 왔다. */
+:root{--panel:#fff;--line:#e3e6ee;--line-2:#cfd5e2;--muted:#7a8399;--dim-bg:#f6f7fb;--ctl-border:#b9c1d4;--accent:#3e5be0;--accent-2:#2f49c4;--text:#1d2333;--bg:#eef1f6;--r-md:8px}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--panel:#1f2430;--line:#323a4b;--line-2:#3d465a;--muted:#98a2b8;--dim-bg:#262c3a;--ctl-border:#4a5368;--accent:#6c84f0;--accent-2:#8ea1f5;--text:#e6e9f0;--bg:#161a22}}
+:root[data-theme="dark"]{--panel:#1f2430;--line:#323a4b;--line-2:#3d465a;--muted:#98a2b8;--dim-bg:#262c3a;--ctl-border:#4a5368;--accent:#6c84f0;--accent-2:#8ea1f5;--text:#e6e9f0;--bg:#161a22}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 "Malgun Gothic","맑은 고딕",system-ui,sans-serif;padding:20px 16px}
+h1{font-size:16px;margin:0 0 4px}
+.lead{color:var(--muted);margin:0 0 18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;max-width:1500px}
+.card{background:transparent}
+.card h2{font-size:14px;margin:0 0 4px}
+.card p{margin:0 0 10px;color:var(--muted);font-size:12px}
+.as-box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);min-width:0}
+.as-boxh{display:flex;align-items:center;gap:6px;padding:8px 12px;font-weight:700;border-bottom:1px solid var(--line)}
+.rptm-it{display:flex;align-items:center;gap:10px;padding:6px 12px;border-top:1px solid var(--line);min-height:46px;position:relative}
+.rptm-it:first-of-type{border-top:0}
+.rptm-it label{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.rptm-slot{position:relative;width:84px;height:34px;flex:none;border:1px dashed var(--ctl-border);border-radius:5px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:var(--dim-bg);padding:0;cursor:pointer;overflow:hidden;font:inherit}
+.rptm-slot:hover,.rptm-slot:focus-visible{border-color:var(--accent);color:var(--accent-2)}
+.rptm-slot svg{width:16px;height:16px}
+.rptm-slot.has{border-style:solid;border-color:var(--line-2);background:#dde6f7}
+.rptm-slot.has i{display:block;height:4px;background:var(--accent);margin:3px 6px;border-radius:2px}
+.tip{position:absolute;right:12px;top:44px;background:#2b3245;color:#fff;font-size:12px;padding:4px 8px;border-radius:4px;white-space:nowrap;z-index:2;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+/* B 고르기 */
+.pop{position:absolute;right:12px;top:42px;background:var(--panel);border:1px solid var(--line-2);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.14);padding:4px;z-index:3;min-width:150px}
+.pop button{display:flex;justify-content:space-between;gap:16px;width:100%;border:0;background:none;color:var(--text);font:inherit;padding:6px 10px;border-radius:4px;cursor:pointer;text-align:left}
+.pop button:hover,.pop button.hv{background:var(--dim-bg)}
+.pop kbd{color:var(--muted);font:11px/1.6 inherit}
+/* C 두 칸 */
+.split{display:flex;width:84px;height:34px;flex:none;border:1px dashed var(--ctl-border);border-radius:5px;overflow:hidden;background:var(--dim-bg)}
+.split button{flex:1;border:0;background:none;color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.split button+button{border-left:1px dashed var(--ctl-border)}
+.split button:hover,.split button.hv{color:var(--accent-2);background:rgba(62,91,224,.08)}
+.split svg{width:15px;height:15px}
+/* D 붙여 넣기 글 단추 */
+.paste{flex:none;border:0;background:none;color:var(--accent-2);font:inherit;font-size:12px;padding:2px 4px;cursor:pointer;visibility:hidden}
+.rptm-it:hover .paste,.rptm-it.hv .paste{visibility:visible}
+.note{margin-top:8px;font-size:12px;color:var(--muted)}
+.note b{color:var(--text)}
+</style>
+</head>
+<body>
+<h1>개발 일정 그림: 붙여 넣기를 보이게</h1>
+<p class="lead">근태 월간 왼쪽 과제 상자. 각 시안의 둘째 줄은 마우스를 올린 모양입니다. 붙여 넣기는 모든 시안에서 Ctrl+V 로도 됩니다.</p>
+
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="img" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></g></symbol>
+<symbol id="folder" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></symbol>
+<symbol id="clip" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4.5V3h6v1.5"/><path d="M9 11h6M9 15h4"/></g></symbol>
+</defs></svg>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>지금 (0.27.0)</h2>
+    <p>빈 칸을 누르면 파일 고르기. 마우스를 올려 1초쯤 있으면 Windows 풍선이 뜬다.</p>
+    <div class="as-box">
+      <div class="as-boxh">과제 2/2</div>
+      <div class="rptm-it"><label><input type="checkbox" checked>(예시) 관제 고도화</label><span class="rptm-slot has"><i></i><i style="margin-left:22px"></i><i style="margin-left:40px"></i></span></div>
+      <div class="rptm-it"><label><input type="checkbox" checked>(예시) 해양 관측 체계</label><button class="rptm-slot" style="border-color:var(--accent);color:var(--accent-2)"><svg><use href="#img"/></svg></button><span class="tip">개발 일정 그림(파일, Ctrl+V)</span></div>
+    </div>
+    <div class="note">풍선이 늦게 뜨고 작아서 <b>Ctrl+V 를 아는 사람만</b> 씁니다.</div>
+  </div>
+
+  <div class="card">
+    <h2>A. 누르면 둘 중 고르기</h2>
+    <p>빈 칸을 누르면 작은 목록. 붙여 넣기에 단축키를 같이 적어 다음부터는 Ctrl+V 로.</p>
+    <div class="as-box">
+      <div class="as-boxh">과제 2/2</div>
+      <div class="rptm-it"><label><input type="checkbox" checked>(예시) 관제 고도화</label><button class="rptm-slot"><svg><use href="#img"/></svg></button></div>
+      <div class="rptm-it" style="margin-bottom:62px"><label><input type="checkbox" checked>(예시) 해양 관측 체계</label><button class="rptm-slot" style="border-color:var(--accent);color:var(--accent-2)"><svg><use href="#img"/></svg></button>
+        <div class="pop"><button>파일 고르기</button><button class="hv">붙여 넣기 <kbd>Ctrl+V</kbd></button></div></div>
+    </div>
+    <div class="note">클릭이 하나 늘지만 <b>메뉴 모양이라 익숙</b>합니다. 클립보드에 그림이 없으면 붙여 넣기를 흐리게.</div>
+  </div>
+
+  <div class="card">
+    <h2>B. 칸을 둘로</h2>
+    <p>빈 칸을 왼쪽 파일, 오른쪽 붙여 넣기 두 단추로 나눈다. 글 없이 아이콘만.</p>
+    <div class="as-box">
+      <div class="as-boxh">과제 2/2</div>
+      <div class="rptm-it"><label><input type="checkbox" checked>(예시) 관제 고도화</label><span class="split"><button title="파일 고르기"><svg><use href="#folder"/></svg></button><button title="붙여 넣기 (Ctrl+V)"><svg><use href="#clip"/></svg></button></span></div>
+      <div class="rptm-it"><label><input type="checkbox" checked>(예시) 해양 관측 체계</label><span class="split" style="border-color:var(--accent)"><button title="파일 고르기"><svg><use href="#folder"/></svg></button><button class="hv" title="붙여 넣기 (Ctrl+V)"><svg><use href="#clip"/></svg></button></span><span class="tip">붙여 넣기 (Ctrl+V)</span></div>
+    </div>
+    <div class="note">클릭 하나로 끝나지만 <b>칸이 작아 아이콘 뜻을 알아보기 어렵</b>습니다.</div>
+  </div>
+
+  <div class="card">
+    <h2>C. 줄에 올리면 [붙여 넣기]</h2>
+    <p>평소에는 지금과 같고, 과제 줄에 마우스를 올리면 칸 왼쪽에 글 단추가 나타난다.</p>
+    <div class="as-box">
+      <div class="as-boxh">과제 2/2</div>
+      <div class="rptm-it"><label><input type="checkbox" checked>(예시) 관제 고도화</label><button class="paste">붙여 넣기</button><button class="rptm-slot"><svg><use href="#img"/></svg></button></div>
+      <div class="rptm-it hv"><label><input type="checkbox" checked>(예시) 해양 관측 체계</label><button class="paste">붙여 넣기</button><button class="rptm-slot" style="border-color:var(--accent);color:var(--accent-2)"><svg><use href="#img"/></svg></button></div>
+    </div>
+    <div class="note">눈에 잘 띄지만 <b>마우스를 따라 글이 나타났다 사라져</b> 화면이 출렁입니다.</div>
+  </div>
+
+</div>
+</body>
+</html>

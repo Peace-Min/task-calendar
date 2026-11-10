@@ -7,6 +7,17 @@
 
 ---
 
+## 🆕 2026-11-10, v0.27.0: 월간 그림 칸 메뉴(시안 A, 파일 고르기와 붙여 넣기)
+
+시안 `docs/prototypes/monthly-img-paste.html` 의 A안. DB 구조와 호스트 그대로(명령 추가 없음).
+
+- 빈 그림 칸(`data-act="imgAdd"`)을 누르면 바로 파일 창이 아니라 띄움 칸 `#asPop` 의 메뉴 모드(`asPopOpen('img', 단추, 과제)`, 구역 `data-pk="img"`, role=menu)를 연다. 항목은 [파일 고르기](file), [붙여 넣기 `Ctrl+V`](clipboard) 둘. 새 팝업을 만들지 않고 자리, 바깥 누르기, Esc 닫기와 포커스 돌려주기는 날짜 칸과 같다. `#asPop` 은 role=dialog 가 아니므로 비모달 팝업 목록(month-todo-close)은 그대로.
+- `asPopOpen` 에 연 단추(`__asPopB`)와 과제(`__asPopImg`)를 둔다. 열면 첫 항목에 포커스, 위아래 화살표, Home, End 로 이동, Tab 과 Esc 는 닫고 칸으로. 열린 사이 칸을 다시 그리면 새 빈 칸에 다시 붙고, 그림이 생기거나 막히면 닫는다. HW 로 바꾸면 닫는다. 칸에 `aria-haspopup=menu`, `aria-expanded`, `aria-controls=asPop`.
+- 메뉴 안의 Ctrl+V 는 메뉴를 연 과제로 붙여 넣는다. 줄에 마우스를 둔 Ctrl+V 는 예전 그대로. 막힌 칸(끊김, 거부, 넣는 중, disabled)은 메뉴를 열지 않는다.
+- 클립보드에 그림이 없을 때 붙여 넣기를 흐리게 하는 것은 하지 않았다. 호스트는 PNG 데이터, 파일 하나, 비트맵 순으로 읽어 `Clipboard.ContainsImage` 하나로는 맞게 가릴 수 없다. 대신 호스트 거절 문구("클립보드에 그림이 없습니다. 그림을 복사한 뒤 붙여 넣으세요.")가 토스트로 그대로 보인다.
+- 빈 칸 풍선은 `개발 일정 그림(파일, Ctrl+V)` 에서 `개발 일정 그림` 으로 줄였다.
+- 시험: monthly-ux-v2(메뉴 검사기 checkImgMenu 와 변이 넷, 그림 흐름은 메뉴를 거쳐 파일), monthly-report MW8(메뉴를 거쳐 파일), attend-summary(띄움 칸 구역에 img), admin-hub(☰ 뒤 보이는 role=menu 가 없음으로 좁힘). 위키 월간-보고 개발 일정 그림.
+
 ## 🆕 2026-11-10, v0.27.0: 피드백 3건(내 과제 ⋯ 메뉴 잘림 B안, 들여쓰기 28칸, 일간 패널 접기 삭제)
 
 기획 [docs/TASK-ADD-UX.md](docs/TASK-ADD-UX.md) §6(D19~D21), 시안 `docs/prototypes/my-task-menu-proto.html`. DB 구조와 호스트 그대로.
