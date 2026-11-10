@@ -25,7 +25,7 @@ test('(S) wa-core 구역이 하나 있고 DOM 을 쓰지 않는다, 도구 자�
   assert.ok(a > 0 && b > a && app.indexOf(CORE_A, a + 1) < 0, 'wa-core 구역 표지가 없거나 둘이다');
   assert.ok(!/document\.|window\./.test(app.slice(a, b)), 'wa-core 가 DOM 을 쓴다');
   const dh = app.slice(app.indexOf('<div class="at-ed hidden" id="atEd"'), app.indexOf('<div class="at-ed-body" id="atEdBody">'));
-  assert.ok(/<span class="spacer"><\/span>\s*<!--[^>]*-->\s*<span class="wa-tools" data-watools="d"><\/span>\s*<button type="button" class="at-fold" id="atFold"/.test(dh), '일간 도구가 spacer 와 패널 접기 사이에 없다');
+  assert.ok(/<span class="spacer"><\/span>\s*<!--[^>]*-->\s*<span class="wa-tools" data-watools="d"><\/span>\s*(<!--[^>]*-->\s*)?<\/div>\s*$/.test(dh), '일간 도구가 머리 줄 오른쪽 끝에 없다');
   const wh = app.slice(app.indexOf('<div class="at-ed aw-ed hidden" id="awEd"'), app.indexOf('<div class="at-ed-body" id="awBody">'));
   assert.ok(/<span class="spacer"><\/span>\s*<span class="wa-tools" data-watools="w"><\/span>\s*<\/div>\s*$/.test(wh), '주간 도구가 머리 줄 오른쪽 끝에 없다');
   assert.strictEqual((app.match(/class="wa-tools"/g) || []).length, 2, '도구 자리가 두 곳이 아니다');
@@ -230,7 +230,7 @@ test('(U) 시안 핵심 시험: review 2', () => {
   T('M4 caret inside marker: null','-| a',um(SYM),null);
 });
 test('(U) 시안 핵심 시험: 7 levels', () => {
-  B('LEVELS 7, presets 7 rows',[WA.LEVELS,WA.IND_MAX,SYM.length,REP.length,NUM.length],[7,20,7,7,7]);
+  B('LEVELS 7, presets 7 rows',[WA.LEVELS,WA.IND_MAX,SYM.length,REP.length,NUM.length],[7,28,7,7,7]);
   B('preset sym markers/indents',SYM.map(r=>r.mk+r.indent).join(' '),'-0 *2 -4 *6 -8 *10 -12');
   B('presets valid (no conflicts)',[WA.conflicts(SYM),WA.conflicts(REP),WA.conflicts(NUM)],[[],[],[]]);
   T('7L decrease 7 -> 6','            - g|',sh(SYM,-1),'          * g|');
@@ -262,17 +262,17 @@ test('(U) 시안 핵심 시험: 7 levels', () => {
   B('setMarker no conflict keeps indent',WA.setMarker(SYM,1,'-')[1],{mk:'-',indent:2});
   B('setMarker 4수준 * -> - at 6 is free',WA.setMarker(SYM,3,'-')[3],{mk:'-',indent:6});
   { const t=SYM.map(r=>({...r})); t[5].indent=4; B('setMarker conflict at 4 -> 5 (deeper first)',WA.setMarker(t,5,'-')[5],{mk:'-',indent:5}); B('setMarker result has no conflicts',WA.conflicts(WA.setMarker(t,5,'-')),[]); }
-  { const t=[{mk:'-',indent:20},{mk:'*',indent:20},{mk:'-',indent:0},{mk:'*',indent:2},{mk:'-',indent:4},{mk:'*',indent:6},{mk:'-',indent:8}]; B('setMarker at cap 20 goes shallower',WA.setMarker(t,1,'-')[1],{mk:'-',indent:19}); }
-  B('setMarker 20 and 19 taken -> 18',WA.setMarker([{mk:'-',indent:20},{mk:'-',indent:19},{mk:'*',indent:20}],2,'-')[2],{mk:'-',indent:18});
+  { const t=[{mk:'-',indent:28},{mk:'*',indent:28},{mk:'-',indent:0},{mk:'*',indent:2},{mk:'-',indent:4},{mk:'*',indent:6},{mk:'-',indent:8}]; B('setMarker at cap 28 goes shallower',WA.setMarker(t,1,'-')[1],{mk:'-',indent:27}); }
+  B('setMarker 28 and 27 taken -> 26',WA.setMarker([{mk:'-',indent:28},{mk:'-',indent:27},{mk:'*',indent:28}],2,'-')[2],{mk:'-',indent:26});
   B('setMarker does not mutate input',[WA.setMarker(SYM,3,'-')!==SYM,SYM[3].mk],[true,'*']);
   B('freeIndent prefers deeper at same distance',WA.freeIndent([{mk:'-',indent:4},{mk:'-',indent:0}],1,4),5);
   // loading a saved 5-row table
   B('fitTable 5-row sym -> defaults appended',WA.fitTable(SYM.slice(0,5)),SYM);
   B('fitTable 5-row num keeps rows, adds * and -',WA.fitTable(NUM.slice(0,5)).map(r=>r.mk+r.indent).join(' '),'1.0 가.2 1)4 가)6 (1)8 *10 -12');
   B('fitTable 5-row conflict -> smallest >= prev+2',WA.fitTable([{mk:'-',indent:0},{mk:'*',indent:2},{mk:'-',indent:4},{mk:'*',indent:10},{mk:'-',indent:12}]).slice(5),[{mk:'*',indent:14},{mk:'-',indent:16}]);
-  B('fitTable 5-row conflict capped at 20',WA.fitTable([{mk:'-',indent:0},{mk:'-',indent:2},{mk:'*',indent:10},{mk:'-',indent:12},{mk:'*',indent:20}]).map(r=>r.mk+r.indent).join(' '),'-0 -2 *10 -12 *20 *19 -20');
+  B('fitTable 5-row conflict capped at 28',WA.fitTable([{mk:'-',indent:0},{mk:'-',indent:2},{mk:'*',indent:10},{mk:'-',indent:12},{mk:'*',indent:28}]).map(r=>r.mk+r.indent).join(' '),'-0 -2 *10 -12 *28 *27 -28');
   B('fitTable 7-row passes through',WA.fitTable(UN),UN);
-  B('fitTable rejects junk',[WA.fitTable(null),WA.fitTable([]),WA.fitTable([{mk:'',indent:0}]),WA.fitTable([{mk:'-',indent:21}]),WA.fitTable(SYM.concat(SYM))],[null,null,null,null,null]);
+  B('fitTable rejects junk',[WA.fitTable(null),WA.fitTable([]),WA.fitTable([{mk:'',indent:0}]),WA.fitTable([{mk:'-',indent:29}]),WA.fitTable(SYM.concat(SYM))],[null,null,null,null,null]);
   B('fitTable repairs saved duplicate',WA.fitTable([{mk:'-',indent:0},{mk:'-',indent:0}]).slice(0,2),[{mk:'-',indent:0},{mk:'-',indent:1}]);
 });
 
@@ -437,7 +437,7 @@ if (!JSDOM) {
       for (const ed of ['#atEd', '#awEd']) {
         assert.deepStrictEqual([...tools(X, ed).children].map((e) => e.tagName + '.' + e.className), ['SELECT.wa-lv', 'BUTTON.btn sm wa-b', 'BUTTON.btn sm wa-b'], ed + ' 도구 줄이 다르다');
       }
-      assert.strictEqual(tools(X, '#atEd').nextElementSibling.id, 'atFold', '일간 도구가 패널 접기 바로 왼쪽이 아니다');
+      assert.strictEqual(tools(X, '#atEd').nextElementSibling, null, '일간 도구가 머리 줄 오른쪽 끝이 아니다');
       assert.strictEqual(tools(X, '#awEd').nextElementSibling, null, '주간 도구가 머리 줄 오른쪽 끝이 아니다');
       assert.deepStrictEqual([...lvOf(X, '#atEd').options].slice(1).map((o) => o.textContent),
         ['본문   Alt+0', '1수준   Alt+1', '2수준   Alt+2', '3수준   Alt+3', '4수준   Alt+4', '5수준   Alt+5', '6수준   Alt+6', '7수준   Alt+7', '한 수준 이동   Alt+← →']);
@@ -557,7 +557,7 @@ if (!JSDOM) {
       assert.strictEqual(X.$('#atEd .wa-b').getAttribute('aria-expanded'), 'true');
       assert.deepStrictEqual([...pop(X).querySelectorAll('.wa-tbl tbody tr')].map((r) => r.querySelector('.wa-lvn').textContent + ' ' + r.querySelector('.wa-k').textContent),
         ['1수준 Alt+1', '2수준 Alt+2', '3수준 Alt+3', '4수준 Alt+4', '5수준 Alt+5', '6수준 Alt+6', '7수준 Alt+7']);
-      assert.strictEqual([...pop(X).querySelector('.wa-ind[data-r="0"]').options].map((o) => o.textContent).join(','), Array.from({ length: 21 }, (_, i) => i + '칸').join(','));
+      assert.strictEqual([...pop(X).querySelector('.wa-ind[data-r="0"]').options].map((o) => o.textContent).join(','), Array.from({ length: 29 }, (_, i) => i + '칸').join(','));
       assert.strictEqual(rowsOf(X), '-0 *2 -4 *6 -8 *10 -12');
       assert.deepStrictEqual([dis(X, 0), dis(X, 1), dis(X, 2), dis(X, 6)], [[4, 8, 12], [6, 10], [0, 8, 12], [0, 4, 8]]);
       const before = [memo.value, ta.value, b1.value];

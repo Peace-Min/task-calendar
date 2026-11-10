@@ -7,6 +7,16 @@
 
 ---
 
+## 🆕 2026-11-10 (다음 판, 번호는 배포 때): 피드백 3건(내 과제 ⋯ 메뉴 잘림 B안, 들여쓰기 28칸, 일간 패널 접기 삭제)
+
+기획 [docs/TASK-ADD-UX.md](docs/TASK-ADD-UX.md) §6(D19~D21), 시안 `docs/prototypes/my-task-menu-proto.html`. DB 구조와 호스트 그대로.
+
+- 내 과제 ⋯ 메뉴(`.cat-menu`): 줄 안 absolute 에서 화면 기준 `position:fixed` 로. `catMenuPlace(m, btn)` 이 ⋯ 오른쪽 끝에 맞춰 아래, 모자라면 위, 둘 다 모자라면 화면 안(8px)으로 놓는다. 메뉴 DOM 은 그대로 줄 안이라 키보드, focusout, 바깥 누르기 처리는 바뀌지 않았다. 문서 캡처 scroll(메뉴 안 스크롤 제외)과 window resize 에 닫는다. `.cat-menu.up` 과 `.cat-menu-grp` 는 지웠다.
+- 순서 넷은 한 줄 그림 단추 `.cat-menu-ord`(role=group, 단추는 role=menuitem, data-catdo top/up/down/bottom 차례, title 과 aria-label). 순서 줄 안 좌우 화살표도 이동. 메뉴 높이 299px 에서 186px(800x600 창, 일반 과제 기준).
+- 문단 모양 들여쓰기 `IND_MAX` 20 에서 28(4칸 단위 7수준). 표는 localStorage 만 쓰므로 옛 표는 그대로 읽힌다.
+- 근태 일간 머리 줄 `#atFold`(패널 접기)와 `atToggleFold`, `ATE.folded`, `.at-fold`, `.at-ed-body.folded` 를 지웠다. 패널 폭은 끌개(`--atpw`)로만.
+- 시험: task-add(메뉴 차례, 런타임②b 자리와 닫기, 변이⑨⑩), category-order(순서 단추), att-ui, attendance-web, writing-assist(접기 없음, IND_MAX 28).
+
 ## 🆕 2026-11-10 (다음 판, 번호는 배포 때): 근태 취합을 월간 보고 문서 하나로(화면 개편, 텍스트 다이어트), 양식 SW/HW, 그림 과제당 1장
 
 기획 [docs/MONTHLY-UX-V2.md](docs/MONTHLY-UX-V2.md)(시안 `dist/proto/monthly-ux-v2.html`), HW 실측 [docs/MONTHLY-TEMPLATE-HW.md](docs/MONTHLY-TEMPLATE-HW.md). DB 구조 그대로.

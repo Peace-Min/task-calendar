@@ -26,11 +26,11 @@ test('(S) 끌개: 일간과 주간 몸통에 하나씩(separator, 세로, 키보
     assert.ok(body.indexOf('class="at-left"') < body.indexOf('class="at-split"'), id + ' 끌개가 왼쪽 칸 뒤에 있지 않다');
   }
 });
-test('(S) 끌개 CSS: 폭은 --atpw 변수(기본 360px)와 6px 칸, 접히면 숨고, 좁은 쌓기 배치에서 숨는다. 새 색 hex 없음', () => {
+test('(S) 끌개 CSS: 폭은 --atpw 변수(기본 360px)와 6px 칸, 접기 없음, 좁은 쌓기 배치에서 숨는다. 새 색 hex 없음', () => {
   assert.ok(/\.at-ed-body\{[^}]*grid-template-columns:minmax\(0,1fr\) 6px minmax\(280px,min\(var\(--atpw,360px\),60%\)\)/.test(app), '격자가 --atpw 변수를 쓰지 않는다');
   const left = app.replace(/var\(--atpw,360px\)/g, '');
   assert.ok(!/\.at-ed-body\{[^}]*grid-template-columns:[^;}]*\b360px/.test(left), '고정 360px 격자가 남아 있다');
-  assert.ok(/\.at-ed-body\.folded \.at-panel,\.at-ed-body\.folded \.at-split\{display:none\}/.test(app), '접히면 끌개가 숨지 않는다');
+  assert.ok(!/\.at-ed-body\.folded|\.at-fold\b|id="atFold"/.test(app), '없앤 패널 접기(2026-11-10)가 남아 있다');
   const nar = between(app, '@media (max-width:760px){\n  .at-ed-body{', '.at-grid{grid-auto-rows');
   assert.ok(/\.at-split\{display:none\}/.test(nar), '좁은 배치에서 끌개가 숨지 않는다');
   const css = between(app, '.at-split{position:relative', '.at-split + .at-panel');
@@ -296,18 +296,16 @@ if (!JSDOM) {
       try { Y.w.localStorage.setItem('tc_attPanelW', 'abc'); Y.ev('setupAttSplit()'); fakeWidth(Y, 1000); Y.ev('window.dispatchEvent(new Event("resize"))'); assert.strictEqual(root(Y), '360px', '깨진 저장값이 기본 폭이 아니다'); } finally { Y.close(); }
     } finally { X.close(); }
   });
-  test('(B) 접으면 끌개가 숨고 펼치면 기억한 폭으로 돌아온다(일간 .folded)', () => {
+  test('(B) 일간 패널 접기 단추는 없다(2026-11-10). 끌개로 바꾼 폭은 다시 맞춰도 그대로', () => {
     const X = bootX();
     try {
       openDay(X);
+      assert.strictEqual(X.$('#atFold'), null, '패널 접기 단추가 남아 있다');
       fakeWidth(X, 1000); X.ev('window.dispatchEvent(new Event("resize"))');
       pkey(X, KEYS, 'ArrowLeft'); assert.strictEqual(root(X), '384px');
-      X.$('#atFold').click();
-      assert.ok(X.$('#atEdBody').classList.contains('folded'));
-      assert.ok(/\.at-ed-body\.folded \.at-split\{display:none\}|\.at-ed-body\.folded \.at-panel,\.at-ed-body\.folded \.at-split\{display:none\}/.test(app));
-      X.$('#atFold').click();
+      X.ev('window.dispatchEvent(new Event("resize"))');
       assert.ok(!X.$('#atEdBody').classList.contains('folded'));
-      assert.strictEqual(root(X), '384px', '펼쳤는데 기억한 폭이 아니다');
+      assert.strictEqual(root(X), '384px', '다시 맞췄는데 기억한 폭이 아니다');
     } finally { X.close(); }
   });
 

@@ -70,8 +70,8 @@ const MUT = {
     s),
   //  메뉴의 끝 항목을 끄지 않는다(첫 줄의 위로가 켜져 있다)
   noMenuEnds: (s) => mutate(
-    "    + item('up', '위로', { off: i <= 0 }) + item('down', '아래로', { off: i >= last })",
-    "    + item('up', '위로') + item('down', '아래로')",
+    "ord('up', '위로', 'M8 13.5V3M4.5 6.5 8 3l3.5 3.5', i <= 0)",
+    "ord('up', '위로', 'M8 13.5V3M4.5 6.5 8 3l3.5 3.5', false)",
     s),
   //  옮길 때 목록을 통째로 다시 그린다(R3 위반: 스크롤과 포커스가 날아간다)
   rerender: (s) => mutate(
@@ -116,8 +116,8 @@ const statics = {
     assert.ok(/<span class="cat-grip" data-catgrip aria-hidden="true"/.test(row), '줄에 ⠿ 손잡이(data-catgrip, 마우스 전용 aria-hidden)가 없다(D3)');
     assert.ok(/data-catmore aria-haspopup="menu" aria-expanded="false" aria-label="\$\{nm\} 더 보기"/.test(row), '줄의 ⋯ 가 메뉴 버튼(aria-haspopup, aria-expanded, aria-label)이 아니다(D5)');
     const m = fnBody(app, 'catMenuHtml');
-    assert.ok(m.includes("item('up', '위로', { off: i <= 0 }) + item('down', '아래로', { off: i >= last })")
-      && m.includes("item('top', '맨 위로', { off: i <= 0 }) + item('bottom', '맨 아래로', { off: i >= last })"),
+    assert.ok(/ord\('top', '맨 위로', '[^']+', i <= 0\)/.test(m) && /ord\('up', '위로', '[^']+', i <= 0\)/.test(m)
+      && /ord\('down', '아래로', '[^']+', i >= last\)/.test(m) && /ord\('bottom', '맨 아래로', '[^']+', i >= last\)/.test(m),
       '⋯ 메뉴의 순서 묶음(위로, 아래로, 맨 위로, 맨 아래로)이 없거나 끝 항목을 끄지 않는다(D3, D5)');
     assert.ok(/role="menuitem"/.test(m) && /' disabled'/.test(m), '메뉴 항목이 menuitem 이 아니거나 끝 항목이 disabled 가 아니다');
     const ro = fnBody(app, 'catReorder');

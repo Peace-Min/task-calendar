@@ -268,18 +268,23 @@ if (!JSDOM) {
     //  ⋯ 메뉴 항목이 종류마다 맞다(D5, D7) · 한 번에 하나 · Esc 는 메뉴만 · 바깥 클릭 · 화살표
     async menuItems(source) {
       await withBoot(source, async (W) => {
-        assert.deepStrictEqual(W.menu('c-p'), ['edit', 'merge', 'link', 'up:off', 'down', 'top:off', 'bottom', 'del'], '일반 과제 메뉴가 다르다');
-        assert.deepStrictEqual(W.menu('db-1'), ['edit', 'merge', 'up', 'down', 'top', 'bottom', 'unsub:off'], '사용 중 공식 과제 메뉴가 다르다');
+        assert.deepStrictEqual(W.menu('c-p'), ['edit', 'merge', 'link', 'top:off', 'up:off', 'down', 'bottom', 'del'], '일반 과제 메뉴가 다르다');
+        assert.deepStrictEqual(W.menu('db-1'), ['edit', 'merge', 'top', 'up', 'down', 'bottom', 'unsub:off'], '사용 중 공식 과제 메뉴가 다르다');
         assert.strictEqual(W.item('db-1', 'unsub').querySelector('small').textContent, '일정과 할 일 1건이 있습니다', '빼기가 꺼진 이유가 없다(D7)');
-        assert.deepStrictEqual(W.menu('db-2'), ['edit', 'up', 'down', 'top', 'bottom', 'unsub'], '데이터 없는 공식 과제 메뉴가 다르다(합치기 없음, 빼기 켜짐)');
-        assert.deepStrictEqual(W.menu('c-e'), ['edit', 'up', 'down:off', 'top', 'bottom:off'], '기본 과제 메뉴에 빼기나 삭제가 있다(D5)');
+        assert.deepStrictEqual(W.menu('db-2'), ['edit', 'top', 'up', 'down', 'bottom', 'unsub'], '데이터 없는 공식 과제 메뉴가 다르다(합치기 없음, 빼기 켜짐)');
+        assert.deepStrictEqual(W.menu('c-e'), ['edit', 'top', 'up', 'down:off', 'bottom:off'], '기본 과제 메뉴에 빼기나 삭제가 있다(D5)');
         assert.strictEqual(W.$$('.cat-menu').length, 1, '메뉴가 한 번에 하나만 열리지 않는다');
         assert.strictEqual(W.row('c-e').querySelector('[data-catmore]').getAttribute('aria-expanded'), 'true');
         //  화살표: 꺼진 항목을 건너뛴다
         const first = W.item('c-p', 'edit');
         assert.strictEqual(W.d.activeElement, first, '메뉴를 열면 첫 항목에 포커스가 가지 않는다');
         W.key(first, 'ArrowDown'); W.key(W.d.activeElement, 'ArrowDown'); W.key(W.d.activeElement, 'ArrowDown');
-        assert.strictEqual(W.d.activeElement.dataset.catdo, 'down', '아래 화살표가 꺼진 항목(위로)을 건너뛰지 않는다');
+        assert.strictEqual(W.d.activeElement.dataset.catdo, 'down', '아래 화살표가 꺼진 항목(맨 위로, 위로)을 건너뛰지 않는다');
+        //  순서 한 줄 안에서는 좌우 화살표도 옮긴다(B안)
+        W.key(W.d.activeElement, 'ArrowRight');
+        assert.strictEqual(W.d.activeElement.dataset.catdo, 'bottom', '순서 줄에서 오른쪽 화살표가 다음 단추로 가지 않는다');
+        W.key(W.d.activeElement, 'ArrowLeft');
+        assert.strictEqual(W.d.activeElement.dataset.catdo, 'down', '순서 줄에서 왼쪽 화살표가 앞 단추로 가지 않는다');
         W.key(W.d.activeElement, 'End');
         assert.strictEqual(W.d.activeElement.dataset.catdo, 'del');
         //  Esc 는 메뉴만 닫고 ⋯ 로 돌아온다(창은 그대로)
@@ -294,6 +299,39 @@ if (!JSDOM) {
         //  같은 ⋯ 를 다시 누르면 닫힌다
         W.menu('db-2'); W.row('db-2').querySelector('[data-catmore]').click();
         assert.strictEqual(W.$$('.cat-menu').length, 0, '같은 ⋯ 를 다시 눌렀는데 메뉴가 닫히지 않았다');
+      });
+    },
+    //  메뉴는 화면 기준(fixed)으로 ⋯ 옆에 뜬다(2026-11-10 B안). 아래가 모자라면 위로, 둘 다 모자라면 화면 안으로.
+    //  jsdom 은 크기를 재지 않으므로 ⋯ 와 메뉴의 크기, 창 높이를 꾸며 catMenuPlace 만 본다. 본문 스크롤과 창 크기 바뀜은 메뉴를 닫는다.
+    async menuPlace(source) {
+      await withBoot(source, async (W) => {
+        const place = (btnTop, menuH, vh) => W.evJSON(`(function(){
+          var m = document.createElement('div'), b = document.createElement('button');
+          Object.defineProperty(m, 'offsetWidth', { value: 220 }); Object.defineProperty(m, 'offsetHeight', { value: ${menuH} });
+          b.getBoundingClientRect = function(){ return { top: ${btnTop}, bottom: ${btnTop} + 28, left: 500, right: 530, width: 30, height: 28 }; };
+          Object.defineProperty(window, 'innerWidth', { value: 800, configurable: true }); Object.defineProperty(window, 'innerHeight', { value: ${vh}, configurable: true });
+          catMenuPlace(m, b);
+          return [m.style.left, m.style.top];
+        })()`);
+        assert.deepStrictEqual(place(200, 186, 600), ['310px', '230px'], '자리가 있으면 ⋯ 바로 아래, 오른쪽 끝을 ⋯ 에 맞춰야 한다');
+        assert.deepStrictEqual(place(500, 186, 600), ['310px', '312px'], '아래가 모자라면 ⋯ 바로 위로 떠야 한다');
+        assert.deepStrictEqual(place(150, 450, 600), ['310px', '142px'], '위아래 다 모자라면 화면 안(아래 끝 8px)으로 밀어야 한다');
+        assert.ok(/^\.cat-menu\{position:fixed;/m.test(source) && !/\.cat-menu\.up\{/.test(source), '메뉴가 화면 기준(fixed)이 아니거나 옛 .up 규칙이 남았다');
+        //  본문 스크롤, 창 크기 바뀜 = 닫기. 메뉴 안 스크롤은 그대로
+        W.menu('c-p');
+        W.item('c-p', 'edit').dispatchEvent(new W.w.Event('scroll'));
+        assert.strictEqual(W.$$('.cat-menu').length, 1, '메뉴 안 스크롤에 메뉴가 닫혔다');
+        W.$('#categoryModal .modal-body').dispatchEvent(new W.w.Event('scroll'));
+        assert.strictEqual(W.$$('.cat-menu').length, 0, '목록을 스크롤했는데 메뉴가 닫히지 않았다(⋯ 와 떨어진다)');
+        W.menu('c-p');
+        W.w.dispatchEvent(new W.w.Event('resize'));
+        assert.strictEqual(W.$$('.cat-menu').length, 0, '창 크기가 바뀌었는데 메뉴가 닫히지 않았다');
+        //  순서 넷은 한 줄 그림 단추(이름은 title, aria-label)
+        W.menu('c-p');
+        const ord = W.$('.cat-menu .cat-menu-ord');
+        assert.ok(ord, '순서 한 줄(.cat-menu-ord)이 없다');
+        assert.deepStrictEqual([...ord.querySelectorAll('[data-catdo]')].map((b) => b.dataset.catdo + '=' + b.getAttribute('aria-label')),
+          ['top=맨 위로', 'up=위로', 'down=아래로', 'bottom=맨 아래로'], '순서 단추의 차례나 이름이 다르다');
       });
     },
     //  줄을 누르면 수정 창(⋯ 의 「수정」과 같다). ⋯, ⠿, 메뉴 안을 누르면 열리지 않는다. 줄에서 Enter 도 연다.
@@ -529,6 +567,7 @@ if (!JSDOM) {
 
   test('런타임①: 목록 줄 구조 · 공식, 삭제됨 표 · 기록 수 · 메모 줄 · 하단 연결 버튼 없음', () => checks.listRows(src));
   test('런타임②: ⋯ 메뉴 항목이 과제 종류마다 맞다 · 한 번에 하나 · 화살표 · Esc 는 메뉴만 · 바깥 클릭', () => checks.menuItems(src));
+  test('런타임②b: ⋯ 메뉴는 화면 기준으로 ⋯ 옆(아래, 위, 화면 안) · 본문 스크롤과 창 크기 바뀜에 닫힘 · 순서는 한 줄 단추', () => checks.menuPlace(src));
   test('런타임③: 줄을 누르면 수정 창(⋯, ⠿ 는 아님) · 줄에서 Enter · ⋯ 의 수정', () => checks.rowOpensEdit(src));
   test('런타임④: 수정 저장 — 일반 이름 바꾸기(줄바꿈은 공백), 같은 이름과 빈 이름 거절, 공식 과제 이름 불변', () => checks.editSave(src));
   test('런타임⑤: 합치기 — 확인창 없음, 체크하면 일반 삭제, 공식 빼기, 기본 과제는 체크 없음', () => checks.mergeAfter(src));
@@ -571,6 +610,14 @@ if (!JSDOM) {
     const bad = mutate('  if(isOfficialCat(c)) updateOfficialLocalFields(id, desc, color);\n  else if(isDefaultTask(c))',
       "  if(isOfficialCat(c)){ updateOfficialLocalFields(id, desc, color); c.name = catNameClean($('#ceName').value) || c.name; }\n  else if(isDefaultTask(c))", src);
     await assert.rejects(() => checks.editSave(bad), /공식 과제 이름이 바뀌었다/);
+  });
+  test('변이⑨: 아래가 모자랄 때 위로 뒤집지 않으면 런타임②b 가 실패한다', async () => {
+    const bad = mutate('if(top + mh > vh - pad) top = ', 'if(false) top = ', src);
+    await assert.rejects(() => checks.menuPlace(bad), /위로 떠야/);
+  });
+  test('변이⑩: 본문 스크롤에 메뉴를 닫지 않으면 런타임②b 가 실패한다', async () => {
+    const bad = mutate("    if(t && t.nodeType === 1 && __catMenu.el.contains(t)) return;\n    catMenuClose(false);", "    return;", src);
+    await assert.rejects(() => checks.menuPlace(bad), /스크롤했는데/);
   });
   test('변이⑧: 메뉴가 기본 과제에도 삭제를 주면 런타임② 가 실패한다', async () => {
     const bad = mutate("  }else if(kind === 'personal'){\n    h += sep + item('del', '삭제…', { cls: 'danger' });", "  }else{\n    h += sep + item('del', '삭제…', { cls: 'danger' });", src);
