@@ -7,7 +7,7 @@
 
 ---
 
-## 🆕 2026-11-10 (다음 판, 번호는 배포 때): 피드백 3건(내 과제 ⋯ 메뉴 잘림 B안, 들여쓰기 28칸, 일간 패널 접기 삭제)
+## 🆕 2026-11-10, v0.27.0: 피드백 3건(내 과제 ⋯ 메뉴 잘림 B안, 들여쓰기 28칸, 일간 패널 접기 삭제)
 
 기획 [docs/TASK-ADD-UX.md](docs/TASK-ADD-UX.md) §6(D19~D21), 시안 `docs/prototypes/my-task-menu-proto.html`. DB 구조와 호스트 그대로.
 
@@ -17,7 +17,7 @@
 - 근태 일간 머리 줄 `#atFold`(패널 접기)와 `atToggleFold`, `ATE.folded`, `.at-fold`, `.at-ed-body.folded` 를 지웠다. 패널 폭은 끌개(`--atpw`)로만.
 - 시험: task-add(메뉴 차례, 런타임②b 자리와 닫기, 변이⑨⑩), category-order(순서 단추), att-ui, attendance-web, writing-assist(접기 없음, IND_MAX 28).
 
-## 🆕 2026-11-10 (다음 판, 번호는 배포 때): 근태 취합을 월간 보고 문서 하나로(화면 개편, 텍스트 다이어트), 양식 SW/HW, 그림 과제당 1장
+## 🆕 2026-11-10, v0.27.0: 근태 취합을 월간 보고 문서 하나로(화면 개편, 텍스트 다이어트), 양식 SW/HW, 그림 과제당 1장
 
 기획 [docs/MONTHLY-UX-V2.md](docs/MONTHLY-UX-V2.md)(시안 `dist/proto/monthly-ux-v2.html`), HW 실측 [docs/MONTHLY-TEMPLATE-HW.md](docs/MONTHLY-TEMPLATE-HW.md). DB 구조 그대로.
 
@@ -32,7 +32,7 @@
 - 시험: 새 `tests/monthly-ux-v2.test.mjs`, attend-summary, monthly-report, ui-copy-punct 새 계약, monthly-docx(계약 4, 변이 D12~D15), schedule-image(1장, 웹 호스트 상수 대조), loop-monthly-docx(SW, HW 225 항목, 산출물 `dist/monthly-docx-loop/`).
 - 남은 것: 실 DB 루프 `tests/db-schedule-image.mjs` 는 사람당 5장 시나리오라 1장 기준으로 다시 짜야 한다(strict 밖).
 
-## 🆕 2026-11-10 (다음 판, 번호는 배포 때): 월간 보고 주간보고 머리 읽기 넓힘과 미식별 넣을 곳 콤보(A안)
+## 🆕 2026-11-10, v0.27.0: 월간 보고 주간보고 머리 읽기 넓힘과 미식별 넣을 곳 콤보(A안)
 
 기획 [docs/MONTHLY-HEAD-MAPPING.md](docs/MONTHLY-HEAD-MAPPING.md)(결정 1~9). DB 구조 그대로. MONTHLY-REPORT-PLAN 14.2 의 "미식별은 읽기만"을 바꾼다(기억 없음은 그대로).
 
@@ -42,7 +42,7 @@
 - `rptMPayload`: 공식 과제 실적 뒤, 기타 표 뒤에 고른 미식별 글을 미식별 목록 순서로 잇는다(`rptMUnidText`). 읽은 뒤 안내는 "미식별 항목에 있습니다".
 - 시험: netcus-weekly 사례 17건(`tests/fixtures/weekly-head-cases.json`) 머리 이름과 시간, 본문 대괄호, 꼬리, 시간 표기와 변이 둘(옛 머리, 옛 시간). monthly-report MW23(콤보 계약), 변이 MWM1(payload 가 무시), MSM6(저장소 기억, 콤보 하나 더). MS7 은 콤보 하나만 허용, MW11, MW17 은 "읽기만" 기대를 새 결정에 맞췄다.
 
-## 🆕 2026-11-09 (다음 판, 번호는 배포 때): 근태 캘린더 가져오기 서식(본문, 1~7수준)과 문단 모양 머리기호 8개 추가
+## 🆕 2026-11-09, v0.27.0: 근태 캘린더 가져오기 서식(본문, 1~7수준)과 문단 모양 머리기호 8개 추가
 
 기획 [docs/WRITING-ASSIST.md](docs/WRITING-ASSIST.md) "5차"(결정 21~24). DB 구조 그대로.
 
@@ -54,7 +54,7 @@
 - 문단 모양 머리기호 목록(`WA_MK_GROUPS`)에 묶음 "쌍점, 화살표": `:` `::` `;` `->` `=>` `>` `◈` `■`. 인트라넷 주간보고 2주치(85명)에서 2명 이상이 쓰는데 없던 기호. 줄 읽기 코어는 그대로(긴 기호부터 맞춤). 안 쓰는 기호는 지우지 않았다.
 - 시험: writing-assist (U) 추가 기호, (B) 가져오기 새 계약과 변이 여섯, attendance-web 기본 서식 계약. 실제 Chromium 확인 `dist/qa-morning/import-fmt5/`.
 
-## 🆕 2026-11-09 (다음 판, 번호는 배포 때): 근태 보고 프리셋(자주 쓰는 글 9칸, Ctrl+1~9)
+## 🆕 2026-11-09, v0.27.0: 근태 보고 프리셋(자주 쓰는 글 9칸, Ctrl+1~9)
 
 기획 [docs/REPORT-PRESET.md](docs/REPORT-PRESET.md)(채택 B안, 시안 `dist/proto/report-preset-v2.html#B-open`). DB 구조 그대로(이관 SQL 없음). 근태 창 허용 목록 그대로(`#waPop` 을 모드로 다시 씀).
 
