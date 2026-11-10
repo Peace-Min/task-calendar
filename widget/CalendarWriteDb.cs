@@ -34,6 +34,8 @@ namespace TaskCalendarWidget
         public int Inserted { get; init; }
         public int Updated { get; init; }
         public int Deleted { get; init; }
+        //  부팅 스냅샷과 같아 쓰지 않고 건너뛴 행 수(docs/SAVE-DIFF.md). 회신에는 싣지 않고 로그와 시험이 본다.
+        public int Unchanged { get; init; }
     }
 
     // ================================================================================
@@ -44,6 +46,13 @@ namespace TaskCalendarWidget
     //    그런데 §3.3 의 낙관적 잠금은 **행 단위 토큰**이 전제다. 그래서 이 클래스가 둘을 잇는다:
     //      부팅 스냅샷(CalendarSnapshot) ↔ 새 state 를 비교해 행 단위 INSERT/UPDATE/DELETE 로 바꾼다.
     //    스냅샷이 Tokens 와 *NoByUid 를 들고 있는 이유가 정확히 이것이다(설계가 의도한 구조).
+    //
+    //  【바뀐 행만 쓴다(docs/SAVE-DIFF.md)】
+    //    스냅샷의 state 와 새 state 를 같은 행 투영(RowSig)으로 견줘, 같은 행은 UPDATE 도 자식 교체도 하지 않는다.
+    //    그 행의 토큰은 그대로 둔다(DB 의 updated_at 이 안 바뀌었으니 여전히 맞다).
+    //    ★ 건너뛴 행은 토큰 검사도 받지 않는다. 그래서 스냅샷이 낡았는지를 rev 로 따로 본다(SaveAsync 1c).
+    //      이 검사가 없으면 다른 PC 가 지운 과제의 번호가 새 과제에 다시 쓰였을 때, 낡은 번호 맵으로 넣은
+    //      일정이 엉뚱한 과제에 조용히 붙는다(계약 H-1).
     //
     //  【트랜잭션 골격 — 순서를 바꾸면 조용히 깨진다】
     //    1. rev 증가가 **첫 문장**이다(§3.1). 앞에 SELECT 를 한 줄도 두지 않는다 —
@@ -135,8 +144,10 @@ namespace TaskCalendarWidget
             var catNo = new Dictionary<string, uint>(prev.CategoryNoByUid, StringComparer.Ordinal);
             var entNo = new Dictionary<string, uint>(prev.EntryNoByUid, StringComparer.Ordinal);
             var todNo = new Dictionary<string, uint>(prev.TodoNoByUid, StringComparer.Ordinal);
-            int ins = 0, upd = 0, del = 0;
+            int ins = 0, upd = 0, del = 0, same = 0;
             long newRev;
+            //  스냅샷 쪽 행 투영. 전량 교체는 전부 새 행이라 견줄 것이 없다.
+            var prevSig = replaceAll ? new Dictionary<string, string>(StringComparer.Ordinal) : PrevSigs(prev);
 
             try
             {
@@ -158,6 +169,13 @@ namespace TaskCalendarWidget
                 // 여기서부터는 읽어도 안전하다(락을 이미 잡았다).
                 newRev = Convert.ToInt64(await Scalar(conn, tx, $"SELECT rev FROM cal_user_rev WHERE user_id={u}", ct) ?? 0L,
                                          CultureInfo.InvariantCulture);
+
+                // ── 1c. 스냅샷이 낡았는가: rev 가 스냅샷의 바로 다음 번호여야 한다(docs/SAVE-DIFF.md §3) ──
+                //   다르면 이 스냅샷 뒤에 다른 저장이 있었다(다른 PC, 응답만 끊긴 앞 저장). 충돌로 끝내고 통째로 롤백한다.
+                //   예전에는 모든 행을 토큰으로 UPDATE 해서 같은 일을 했다. 이제 같은 행은 건너뛰므로 여기서 본다.
+                //   전량 교체는 보지 않는다(지금처럼 토큰 없이 통째로 바꾼다).
+                if (!replaceAll && newRev != prev.Rev + 1)
+                    throw new ConflictException("다른 곳에서 먼저 수정되었습니다. 새로고침 후 다시 시도하세요");
 
                 // ── 1b. 전량 교체(가져오기) — 발번보다 **먼저** 지운다 ────────────────────
                 //   MAX(<표>_no) 로 발번하므로, 지운 뒤라야 번호가 1 부터 다시 붙는다.
@@ -197,6 +215,12 @@ namespace TaskCalendarWidget
                     bool isDb = string.Equals(S(c, "source"), "db", StringComparison.Ordinal);
                     var p = CategoryParams(c, i);
                     uint no;
+                    //  스냅샷과 같은 행은 쓰지 않는다. 토큰도 그대로 둔다.
+                    if (catNo.TryGetValue(uid, out no) && SameAsPrev(prevSig, "category:" + uid, RowSig(p, null, null)))
+                    {
+                        same++; i++;
+                        continue;
+                    }
                     if (catNo.TryGetValue(uid, out no))
                     {
                         //  ★ project_uid 는 SET 목록에 없다 — uid 에서 파생되는 불변값이라
@@ -239,6 +263,13 @@ namespace TaskCalendarWidget
                     object? cno = (cuid != null && catNo.TryGetValue(cuid, out uint cn)) ? cn : (object?)null;
                     var p = EntryParams(e, i, cno);
                     uint no;
+                    //  스냅샷과 같은 행(예외일 포함)은 쓰지 않는다. 자식 교체도 하지 않는다.
+                    if (entNo.TryGetValue(uid, out no) &&
+                        SameAsPrev(prevSig, "entry:" + uid, RowSig(p, cno != null ? cuid : null, ExceptDates(e))))
+                    {
+                        same++; i++;
+                        continue;
+                    }
                     if (entNo.TryGetValue(uid, out no))
                     {
                         await Upd(conn, tx, "cal_entry",
@@ -286,6 +317,13 @@ namespace TaskCalendarWidget
                     object? cno = (cuid != null && catNo.TryGetValue(cuid, out uint cn2)) ? cn2 : (object?)null;
                     var p = TodoParams(t, i, cno);
                     uint no;
+                    //  스냅샷과 같은 행(날짜별 메모 포함)은 쓰지 않는다. 자식 교체도 하지 않는다.
+                    if (todNo.TryGetValue(uid, out no) &&
+                        SameAsPrev(prevSig, "todo:" + uid, RowSig(p, cno != null ? cuid : null, DayNotes(t))))
+                    {
+                        same++; i++;
+                        continue;
+                    }
                     if (todNo.TryGetValue(uid, out no))
                     {
                         await Upd(conn, tx, "cal_todo",
@@ -334,6 +372,7 @@ namespace TaskCalendarWidget
                         string key = "attendance:" + day.Name;
                         seenAt.Add(key);
                         var p = new List<(string, object?)> { ("@d", day.Name), ("@s", status), ("@o", IntOrNull(day.Value, "overtime") ?? 0) };
+                        if (tokens.ContainsKey(key) && SameAsPrev(prevSig, key, RowSig(p, null, null))) { same++; continue; }
                         if (tokens.ContainsKey(key))
                         {
                             await Upd(conn, tx, "cal_attendance", "SET status=@s, overtime=@o, updated_at=@now " +
@@ -399,7 +438,7 @@ namespace TaskCalendarWidget
                 }
 
                 await tx.CommitAsync(ct);
-                _log($"캘린더 저장{(replaceAll ? "(전량 교체)" : "")}: user_id={u} rev={newRev} · 추가 {ins} · 수정 {upd} · 삭제 {del}");
+                _log($"캘린더 저장{(replaceAll ? "(전량 교체)" : "")}: user_id={u} rev={newRev} · 추가 {ins} · 수정 {upd} · 삭제 {del} · 그대로 {same}");
 
                 //  장애 주입 commit-lost(§7 · S9 재현) — COMMIT 은 **이미 됐다.** 응답만 잃은 것처럼
                 //  네트워크 종류 예외를 던진다. 한 발짜리(ConsumeCommitLost 가 off 로 되돌린다).
@@ -430,8 +469,117 @@ namespace TaskCalendarWidget
             {
                 Ok = true, Rev = newRev, Tokens = tokens,
                 CategoryNoByUid = catNo, EntryNoByUid = entNo, TodoNoByUid = todNo,
-                Inserted = ins, Updated = upd, Deleted = del,
+                Inserted = ins, Updated = upd, Deleted = del, Unchanged = same,
             };
+        }
+
+        // ================================================================================
+        //  바뀐 행만 쓰기: 행 투영 견주기(docs/SAVE-DIFF.md §2)
+        // ================================================================================
+        //  한 행이 DB 에 무엇으로 적히는가를 글자 하나로 만든다. 저장이 쓰는 바로 그 파라미터(CategoryParams,
+        //  EntryParams, TodoParams)와 자식(예외일, 날짜별 메모)을 잇는다. 스냅샷 쪽과 새 state 쪽이 같은 함수를 쓴다.
+        //  ★ 과제 참조(@c)는 번호가 아니라 과제 uid 로 견준다. 번호는 스냅샷마다 맵을 거쳐야 하지만 uid 는 양쪽이 같다.
+        //  ★ 어긋나면 늘 '다르다' 쪽이다. 다르다고 보면 예전처럼 쓸 뿐이고, 같다고 잘못 보면 편집을 잃는다.
+        //    그래서 스냅샷을 못 읽으면 빈 맵을 돌려 전부 쓰게 한다.
+        private static string RowSig(List<(string, object?)> ps, string? catUid, IEnumerable<string>? children)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var (k, v) in ps)
+            {
+                if (k == "@c") continue;
+                sb.Append(k).Append('=');
+                if (v == null) sb.Append('\u0000'); else sb.Append(Convert.ToString(v, CultureInfo.InvariantCulture));
+                sb.Append('\u001f');
+            }
+            sb.Append("@c=");
+            if (catUid == null) sb.Append('\u0000'); else sb.Append(catUid);
+            if (children != null)
+                foreach (var ch in children) sb.Append('\u001e').Append(ch);
+            return sb.ToString();
+        }
+
+        private static bool SameAsPrev(Dictionary<string, string> prevSig, string key, string sig) =>
+            prevSig.TryGetValue(key, out var ps) && string.Equals(ps, sig, StringComparison.Ordinal);
+
+        //  저장이 실제로 넣는 예외일: 날짜 모양인 것만, 겹침 없이(INSERT IGNORE), 날짜순.
+        private static SortedSet<string> ExceptDates(JsonElement e)
+        {
+            var ex = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (var x in Arr(e, "recurExcept"))
+            {
+                string d = x.ValueKind == JsonValueKind.String ? (x.GetString() ?? "") : "";
+                if (DateOrNull(d) != null) ex.Add(d);
+            }
+            return ex;
+        }
+
+        //  저장이 실제로 넣는 날짜별 메모: 날짜 모양인 키만, 날짜순 "날짜=글".
+        private static List<string> DayNotes(JsonElement t)
+        {
+            var notes = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            var dn = Obj(t, "dayNotes");
+            if (dn != null)
+                foreach (var kv in dn.Value.EnumerateObject())
+                {
+                    if (DateOrNull(kv.Name) == null) continue;
+                    notes[kv.Name] = kv.Value.ValueKind == JsonValueKind.String ? kv.Value.GetString() ?? "" : "";
+                }
+            var l = new List<string>(notes.Count);
+            foreach (var kv in notes) l.Add(kv.Key + "=" + kv.Value);
+            return l;
+        }
+
+        //  스냅샷 state 의 행마다 투영을 만든다. 열쇠는 "category:"+uid, "entry:"+uid, "todo:"+uid, "attendance:"+날짜.
+        //  순서 번호(i)는 SaveAsync 와 같은 규칙이다(빈 id 는 세지 않는다).
+        private static Dictionary<string, string> PrevSigs(CalendarSnapshot prev)
+        {
+            var map = new Dictionary<string, string>(StringComparer.Ordinal);
+            try
+            {
+                using var doc = JsonDocument.Parse(prev.StateJson);
+                var st = doc.RootElement;
+                string? CatRef(JsonElement o)
+                {
+                    string? cu = NS(o, "categoryId");
+                    return cu != null && prev.CategoryNoByUid.ContainsKey(cu) ? cu : null;   // 저장은 모르는 과제를 NULL 로 쓴다
+                }
+                int i = 0;
+                foreach (var c in Arr(st, "categories"))
+                {
+                    string uid = S(c, "id");
+                    if (uid.Length == 0) continue;
+                    map["category:" + uid] = RowSig(CategoryParams(c, i), null, null);
+                    i++;
+                }
+                i = 0;
+                foreach (var e in Arr(st, "entries"))
+                {
+                    string uid = S(e, "id");
+                    if (uid.Length == 0) continue;
+                    map["entry:" + uid] = RowSig(EntryParams(e, i, null), CatRef(e), ExceptDates(e));
+                    i++;
+                }
+                i = 0;
+                foreach (var t in Arr(st, "todos"))
+                {
+                    string uid = S(t, "id");
+                    if (uid.Length == 0) continue;
+                    map["todo:" + uid] = RowSig(TodoParams(t, i, null), CatRef(t), DayNotes(t));
+                    i++;
+                }
+                var at = Obj(st, "attendance");
+                if (at != null)
+                    foreach (var day in at.Value.EnumerateObject())
+                    {
+                        if (DateOrNull(day.Name) == null || day.Value.ValueKind != JsonValueKind.Object) continue;
+                        string status = S(day.Value, "status");
+                        if (status.Length == 0) continue;
+                        map["attendance:" + day.Name] = RowSig(new List<(string, object?)>
+                            { ("@d", day.Name), ("@s", status), ("@o", IntOrNull(day.Value, "overtime") ?? 0) }, null, null);
+                    }
+            }
+            catch { map.Clear(); }   // 못 읽으면 전부 쓴다(예전 동작)
+            return map;
         }
 
         // ── 쓰기 헬퍼 ────────────────────────────────────────────────────────────

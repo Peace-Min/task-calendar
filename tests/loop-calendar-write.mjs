@@ -53,7 +53,13 @@ const OPT = {
   db: process.env.TC_TEST_DB_NAME || 'taskcalendar',
   rounds: Number(ARG.get('rounds') || 10),
   seed: Number(ARG.get('seed') || 20260901),
+  //  --bench=N : 일정 N건짜리 큰 state 로 저장 시간만 잰다(다른 절은 돌지 않는다, docs/SAVE-DIFF.md §5).
+  //  --wdb=<경로> : 러너가 링크할 CalendarWriteDb.cs 를 바꾼다(예전 판과 견줄 때. 기본은 이 저장소의 것).
+  bench: Number(ARG.get('bench') || 0),
+  wdb: typeof ARG.get('wdb') === 'string' ? ARG.get('wdb') : '',
 };
+const WDB_PATH = (OPT.wdb || join(ROOT, 'widget', 'CalendarWriteDb.cs')).replace(/\\/g, '/');
+class BenchDone extends Error {}
 if (!OPT.adminPw) {
   console.error("[중단] TC_TEST_DB_ADMIN_PW 가 필요합니다.  $env:TC_TEST_DB_ADMIN_PW = '<비번>'");
   process.exit(2);
@@ -152,6 +158,11 @@ class R {
                                  snap.CategoryNoByUid, snap.EntryNoByUid, snap.TodoNoByUid);
     }
 
+    //  badPrevState=true : 스냅샷의 state 를 읽을 수 없는 글자로 바꾼다. 저장은 견주지 못하므로 전부 써야 한다(SAVE-DIFF §2).
+    if (e.TryGetProperty("badPrevState", out var bpEl) && bpEl.ValueKind == JsonValueKind.True)
+      use = new CalendarSnapshot("이건 JSON 이 아니다", use.Tokens, use.Rev, use.SchemaVersion, use.UserId,
+                                 use.CategoryNoByUid, use.EntryNoByUid, use.TodoNoByUid);
+
     // op == "concurrent" : 같은 스냅샷을 든 두 클라이언트가 **차례로** 저장한다(순차).
     //   토큰을 인위적으로 조작하지 않는다는 것이 값이다 — "낡은 토큰이 현실에서 이렇게 생긴다" 를
     //   조작 없이 보여 준다. 두 PC 가 같은 계정으로 붙어 있는 상황의 **결과**가 이 모양이다.
@@ -223,7 +234,9 @@ class R {
 
     //  replaceAll : 「XML 가져오기」·「전체 초기화」가 쓰는 전량 교체.
     bool replaceAll = e.TryGetProperty("replaceAll", out var raEl) && raEl.ValueKind == JsonValueKind.True;
+    var swSave = System.Diagnostics.Stopwatch.StartNew();
     var res = await new CalendarWriteDb(log).SaveAsync(use, newState, replaceAll);
+    swSave.Stop();
 
     // op == "saveChain" : **한 스냅샷으로 연속 저장**한다. 위젯이 실제로 하는 일이다 —
     //   매 저장마다 DB 를 다시 읽지 않고, 앞 저장이 돌려준 토큰/번호로 다음 저장을 친다.
@@ -249,8 +262,13 @@ class R {
 
     Console.Out.Write(JsonSerializer.Serialize(new {
       ok = res.Ok, conflict = res.Conflict, msg = res.Message, rev = res.Rev,
-      ins = res.Inserted, upd = res.Updated, del = res.Deleted, logs }));
+      ins = res.Inserted, upd = res.Updated, del = res.Deleted, same = Same(res), ms = swSave.ElapsedMilliseconds, logs }));
     return 0;
+  }
+  //  건너뛴 행 수. 예전 판(--wdb)에는 이 값이 없어 -1 이다.
+  static int Same(CalendarSaveResult r) {
+    var pi = typeof(CalendarSaveResult).GetProperty("Unchanged");
+    return pi == null ? -1 : Convert.ToInt32(pi.GetValue(r) ?? -1);
   }
 }`;
 
@@ -264,7 +282,7 @@ const PROJ = root => `<Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <Compile Include="R.cs" />
     <Compile Include="${root}/widget/CalendarDb.cs" />
-    <Compile Include="${root}/widget/CalendarWriteDb.cs" />
+    <Compile Include="${WDB_PATH}" />
     <!-- ★ C4(2026-09-03)부터 CalendarDb 가 ProjectDb.CanViewScheduleAsync 를 쓴다(인가 판정을
          **한 벌**로 두려고 거기 뒀다). 그래서 이 러너도 그 사슬을 함께 링크해야 한다.
          빠뜨리면 CS0103 으로 빌드가 죽는데, 빌드 로그가 길어 통과로 오인하기 쉽다 — 실제로 그랬다. -->
@@ -417,6 +435,46 @@ function compare(sent, got) {
   return diffs;
 }
 
+/* ── 저장 시간 측정(--bench=N) ─────────────────────────────────────────── */
+//  일정 N건, 할 일 N/10건, 근태 250일, 과제 20개짜리 state 를 넣고, 같은 저장, 한 행 수정, 맨 뒤 한 건 추가의
+//  SaveAsync 시간을 잰다(스냅샷 읽기와 프로세스 시작은 빼고 저장 함수만). 개발 PC 의 같은 기계 MySQL 이라
+//  망 지연이 없다. 실제 서버에서는 문장 수에 비례해 차이가 더 벌어진다.
+function runBench(u, N) {
+  const pad = (x) => String(x).padStart(2, '0');
+  const cats = [];
+  for (let i = 0; i < 20; i++) cats.push({ id: `c-b-${i}`, name: `측정 과제 ${i}`, color: '#3e5be0', desc: '', createdAt: '2026-01-01T00:00:00.000Z' });
+  const entries = [];
+  for (let i = 0; i < N; i++) {
+    const rec = i % 10 === 0 ? { freq: 'weekly', interval: 1, until: '', count: 0 } : null;
+    entries.push({ id: `e-b-${i}`, date: `2025-${pad(1 + (i % 12))}-${pad(1 + (i % 28))}`, title: `측정 일정 ${i}`,
+      categoryId: cats[i % 20].id, allDay: false, startTime: '09:00', endTime: '18:00', hours: null, location: '',
+      remind: null, memo: `메모 ${i}`, endDate: '', recur: rec, recurExcept: rec ? ['2026-03-02', '2026-03-09'] : [],
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+  }
+  const todos = [];
+  for (let i = 0; i < Math.floor(N / 10); i++)
+    todos.push({ id: `t-b-${i}`, text: `측정 할 일 ${i}`, done: false, categoryId: cats[0].id, due: '2026-05-01', endDate: '',
+      prio: 'normal', completedAt: '', note: '', dayNotes: i % 2 ? { '2026-05-01': '그날 메모' } : {},
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+  const attendance = {};
+  for (let i = 0; i < 250; i++) attendance[`2025-${pad(1 + Math.floor(i / 25))}-${pad(1 + (i % 25))}`] = { status: '1', overtime: 0 };
+  const big = { categories: cats, entries, todos, attendance };
+  const total = cats.length + entries.length + todos.length + 250;
+  const go = (name, st) => {
+    const r = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(st) });
+    console.log(`  ${name.padEnd(18)} ${String(r.ms).padStart(6)} ms · ok=${r.ok} ins=${r.ins} upd=${r.upd} del=${r.del} same=${r.same}${r.ok ? '' : ' · ' + r.msg}`);
+    return r;
+  };
+  console.log(`[측정] 행 ${total}건(일정 ${N}) · CalendarWriteDb = ${WDB_PATH}`);
+  go('처음 넣기', big);
+  go('같은 내용 저장', big);
+  const one1 = JSON.parse(JSON.stringify(big)); one1.entries[Math.floor(N / 2)].title = '측정: 한 행 수정';
+  go('한 행 수정', one1);
+  const add1 = JSON.parse(JSON.stringify(one1));
+  add1.entries.push({ ...add1.entries[0], id: 'e-b-new', title: '측정: 맨 뒤 추가', recur: null, recurExcept: [] });
+  go('맨 뒤 한 건 추가', add1);
+}
+
 /* ── main ──────────────────────────────────────────────────────────────── */
 const t0 = Date.now();
 console.log('═'.repeat(70));
@@ -430,6 +488,8 @@ try {
   U = makeUser();
   wipe(U);
   console.log(`시험 사용자 user_id=${U}\n`);
+
+  if (OPT.bench > 0) { runBench(U, OPT.bench); code = 0; throw new BenchDone(); }
 
   let prevRev = Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`));
   ok('구조 18: cal_entry_commit 표가 없다', Number(one(
@@ -537,6 +597,176 @@ try {
   const nameNow = one(`SELECT name FROM cal_category WHERE user_id=${U} ORDER BY cat_no LIMIT 1`);
   ok('먼저 저장한 쪽의 값이 남아 있다(덮이지 않았다)', nameNow === 'A가 고친 이름', `현재="${nameNow}"`);
   wipe(U);
+
+  // ── ★ 바뀐 행만 쓴다(docs/SAVE-DIFF.md) ─────────────────────────────────
+  //    부팅 조회로 읽은 스냅샷 위에 같은 state 를 저장하면 한 행도 쓰지 않는다. 한 행만 고치면 그 행만 쓴다.
+  //    ★ 매번 DB 에서 스냅샷을 새로 읽는다(op=save). 위젯이 부팅 뒤 처음 저장할 때의 길이고,
+  //      "읽은 state 의 투영 = 보낸 state 의 투영" 이 어긋나면 여기서 '그대로 0' 으로 드러난다.
+  console.log('');
+  console.log('[바뀐 행만] 같은 state 는 쓰지 않고, 고친 행만 쓴다');
+  {
+    const d0 = makeState(null, 610);
+    //  무작위 state 는 일정이 0건일 수 있다. 이 절은 일정 둘과 할 일, 근태가 있어야 하므로 고정 행을 더한다.
+    for (let i = 0; i < 2; i++)
+      d0.entries.push({ id: `e-610-fix${i}`, date: `2026-04-1${i}`, title: `고정 일정 ${i}`, categoryId: d0.categories[0].id,
+        allDay: true, startTime: '', endTime: '', hours: null, location: '', remind: null, memo: '', endDate: '',
+        recur: null, recurExcept: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+    d0.todos.push({ id: 't-610-fix', text: '고정 할 일', done: false, categoryId: null, due: '2026-05-01', endDate: '',
+      prio: 'normal', completedAt: '', note: '', dayNotes: { '2026-05-01': '그날 메모' },
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+    d0.attendance['2026-06-16'] = { status: '1', overtime: 0 };
+    const total =d0.categories.length + d0.entries.length + d0.todos.length +
+                  Object.values(d0.attendance).filter(a => a && a.status).length;
+    ok('바뀐 행만 전제: 일정이 둘 이상이다', d0.entries.length >= 2, `entries=${d0.entries.length}`);
+    const r0 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(d0) });
+    ok('바탕 상태 저장', r0.ok === true, r0.msg || '');
+    const stamp = () => one(`SELECT CONCAT(
+        (SELECT IFNULL(SUM(CRC32(CONCAT(cat_no, updated_at))),0) FROM cal_category WHERE user_id=${U}),'/',
+        (SELECT IFNULL(SUM(CRC32(CONCAT(entry_no, updated_at))),0) FROM cal_entry WHERE user_id=${U}),'/',
+        (SELECT IFNULL(SUM(CRC32(CONCAT(todo_no, updated_at))),0) FROM cal_todo WHERE user_id=${U}),'/',
+        (SELECT IFNULL(SUM(CRC32(CONCAT(work_date, updated_at))),0) FROM cal_attendance WHERE user_id=${U}))`);
+    const st0 = stamp();
+    const rev0 = Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`));
+
+    //  ① 같은 state 를 다시 저장: 쓰는 행 0, 건너뛴 행 = 전부, 시각 그대로, rev 는 1 오른다
+    const r1 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(d0) });
+    ok('같은 state 저장이 성공한다', r1.ok === true, r1.msg || '');
+    ok('같은 state 저장은 한 행도 쓰지 않는다', r1.ins === 0 && r1.upd === 0 && r1.del === 0,
+       `ins=${r1.ins} upd=${r1.upd} del=${r1.del}`);
+    ok('건너뛴 행 수가 전체 행 수와 같다', r1.same === total, `same=${r1.same} 전체=${total}`);
+    ok('같은 state 저장 뒤 모든 행의 updated_at 이 그대로다', stamp() === st0, `${st0} → ${stamp()}`);
+    ok('같은 state 저장도 rev 는 1 오른다', Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`)) === rev0 + 1);
+
+    //  ② 일정 하나의 제목만 고친다: 그 행만 UPDATE, 나머지는 그대로
+    const d1 = JSON.parse(JSON.stringify(d0));
+    d1.entries[1].title = '한 행만 고침';
+    const r2 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(d1) });
+    ok('한 행 수정 저장이 성공한다', r2.ok === true, r2.msg || '');
+    ok('한 행만 쓴다', r2.ins === 0 && r2.upd === 1 && r2.del === 0 && r2.same === total - 1,
+       `ins=${r2.ins} upd=${r2.upd} del=${r2.del} same=${r2.same}`);
+    ok('updated_at 이 바뀐 일정은 하나뿐이다', Number(one(
+       `SELECT COUNT(*) FROM cal_entry WHERE user_id=${U} AND updated_at=(SELECT MAX(updated_at) FROM cal_entry WHERE user_id=${U})`)) === 1);
+    {
+      const back = run({ op: 'read', loginId: LOGIN });
+      const diffs = back.ok ? compare(d1, JSON.parse(back.state)) : ['읽기 실패'];
+      ok('한 행 수정 뒤 왕복이 같다', diffs.length === 0, diffs.slice(0, 3).join(' | '));
+    }
+
+    //  ③ 자식만 고친다(반복 예외일, 날짜별 메모): 부모 행과 자식이 다시 쓰인다
+    const d2 = JSON.parse(JSON.stringify(d1));
+    d2.entries[0].recur = { freq: 'weekly', interval: 1, until: '', count: 0 };
+    d2.entries[0].endDate = '';
+    d2.entries[0].recurExcept = ['2026-03-09'];
+    const r3 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(d2) });
+    const d3 = JSON.parse(JSON.stringify(d2));
+    d3.entries[0].recurExcept = ['2026-03-09', '2026-03-16'];
+    const r4 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(d3) });
+    ok('예외일만 늘린 저장이 그 일정 하나를 쓴다', r3.ok === true && r4.ok === true && r4.upd === 1 && r4.same === total - 1,
+       `r3=${r3.ok} r4=${r4.ok} upd=${r4.upd} same=${r4.same} ${r4.msg || r3.msg || ''}`);
+    ok('예외일이 둘 들어갔다', Number(one(`SELECT COUNT(*) FROM cal_entry_except WHERE user_id=${U}`)) >= 2);
+
+    //  ④ 연속 저장(한 스냅샷): 저장 뒤 스냅샷의 state 가 보낸 state 로 바뀌므로 다음 같은 저장도 0행이다
+    const ch = run({ op: 'saveChain', loginId: LOGIN, state: {}, stateJson: JSON.stringify(d3), more: [JSON.stringify(d3)] });
+    ok('연속으로 같은 state 를 저장해도 쓰는 행이 없다', ch.ok === true && ch.upd === 0 && ch.ins === 0 && ch.del === 0 && ch.same === total,
+       `ok=${ch.ok} upd=${ch.upd} same=${ch.same} ${ch.msg || ''}`);
+
+    //  ⑤ 낡은 스냅샷: 먼저 저장한 쪽이 **무관한 행**만 고쳤어도 나중 쪽은 거부된다(rev 검사).
+    //     건너뛴 행은 토큰 검사를 받지 않으므로, 이 검사가 없으면 나중 쪽이 낡은 번호 맵으로 저장해 버린다.
+    const eA = JSON.parse(JSON.stringify(d3)); eA.categories[0].name = 'A가 과제 이름만';
+    const eB = JSON.parse(JSON.stringify(d3)); eB.entries[1].title = 'B가 일정 제목만';
+    const con2 = run({ op: 'concurrent', loginId: LOGIN, state: {}, stateA: JSON.stringify(eA), stateB: JSON.stringify(eB) });
+    ok('무관한 행: 먼저 저장한 쪽은 성공한다', con2.aOk === true, con2.aMsg || '');
+    ok('무관한 행: 나중 저장한 쪽은 충돌로 거부된다', con2.bOk === false && con2.bConflict === true,
+       `bOk=${con2.bOk} bConflict=${con2.bConflict} msg=${con2.bMsg}`);
+    ok('무관한 행: 거부된 쪽의 수정이 들어가지 않았다', Number(one(
+       `SELECT COUNT(*) FROM cal_entry WHERE user_id=${U} AND title='B가 일정 제목만'`)) === 0);
+    ok('무관한 행: 거부된 저장은 rev 를 남기지 않는다',
+       Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`)) === rev0 + 7,
+       `rev0=${rev0} 지금=${one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`)}`);
+
+    // ── 편집 종류별: 쓰는 행 수가 편집한 만큼이고, 다시 읽으면 보낸 것과 같다 ──
+    //    지금 DB 는 eA(과제 이름만 바뀐 d3)다. 단계마다 스냅샷을 DB 에서 새로 읽는다.
+    let cur = eA;
+    const E = cur.entries.length;
+    const step = (name, next, want) => {
+      const r = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(next), ...(want.opt || {}) });
+      const got = `ins=${r.ins} upd=${r.upd} del=${r.del} same=${r.same}`;
+      ok(`${name}: 저장 성공`, r.ok === true, r.msg || '');
+      ok(`${name}: 쓰는 행 수(${want.ins}/${want.upd}/${want.del}, 그대로 ${want.same})`,
+         r.ins === want.ins && r.upd === want.upd && r.del === want.del && r.same === want.same, got);
+      const back = run({ op: 'read', loginId: LOGIN });
+      const diffs = back.ok ? compare(next, JSON.parse(back.state)) : ['읽기 실패'];
+      ok(`${name}: 다시 읽으면 보낸 것과 같다`, diffs.length === 0, diffs.slice(0, 2).join(' | '));
+      cur = next;
+    };
+    const copy = () => JSON.parse(JSON.stringify(cur));
+    const rows = (s) => s.categories.length + s.entries.length + s.todos.length +
+                        Object.values(s.attendance).filter(a => a && a.status).length;
+    let n;
+
+    //  E1 순서 바꾸기: 자리를 바꾼 두 일정만 쓴다(sort_order)
+    n = copy(); [n.entries[E - 1], n.entries[E - 2]] = [n.entries[E - 2], n.entries[E - 1]];
+    step('E1 순서 바꾸기', n, { ins: 0, upd: 2, del: 0, same: rows(n) - 2 });
+
+    //  E2 맨 앞에 끼우기: 새 일정 하나를 넣고, 순서가 밀린 기존 일정을 모두 다시 쓴다
+    n = copy();
+    n.entries.unshift({ id: 'e-610-front', date: '2026-04-20', title: '맨 앞 일정', categoryId: null,
+      allDay: true, startTime: '', endTime: '', hours: null, location: '', remind: null, memo: '', endDate: '',
+      recur: null, recurExcept: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+    step('E2 맨 앞에 끼우기', n, { ins: 1, upd: E, del: 0, same: rows(n) - 1 - E });
+
+    //  E3 맨 뒤에 더하기(보통의 편집): 새 일정 하나만 쓴다
+    n = copy();
+    n.entries.push({ id: 'e-610-tail', date: '2026-04-21', title: '맨 뒤 일정', categoryId: n.categories[0].id,
+      allDay: false, startTime: '09:00', endTime: '10:00', hours: null, location: '', remind: null, memo: '', endDate: '',
+      recur: null, recurExcept: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+    step('E3 맨 뒤에 더하기', n, { ins: 1, upd: 0, del: 0, same: rows(n) - 1 });
+
+    //  E4 과제만 떼기(과제 참조 NULL): 그 일정 하나
+    n = copy(); n.entries[n.entries.length - 1].categoryId = null;
+    step('E4 과제 참조 떼기', n, { ins: 0, upd: 1, del: 0, same: rows(n) - 1 });
+
+    //  E5 없는 값과 0 을 가른다: 미리알림 없음(null)을 0분으로
+    n = copy(); n.entries[n.entries.length - 1].remind = 0;
+    step('E5 미리알림 없음에서 0분', n, { ins: 0, upd: 1, del: 0, same: rows(n) - 1 });
+
+    //  E6 할 일의 날짜별 메모만 바꾼다: 그 할 일 하나(자식 교체)
+    n = copy(); { const t = n.todos.find(x => x.id === 't-610-fix'); t.dayNotes = { '2026-05-01': '고친 메모', '2026-05-02': '새 메모' }; }
+    step('E6 날짜별 메모만', n, { ins: 0, upd: 1, del: 0, same: rows(n) - 1 });
+    ok('E6 날짜별 메모가 DB 에 둘이다', Number(one(
+       `SELECT COUNT(*) FROM cal_todo_day_note d JOIN cal_todo t ON t.user_id=d.user_id AND t.todo_no=d.todo_no WHERE d.user_id=${U} AND t.uid='t-610-fix'`)) === 2);
+
+    //  E7 근태 하루의 초과시간만: 그 날 하나
+    n = copy(); n.attendance['2026-06-16'] = { status: '1', overtime: 3 };
+    step('E7 근태 초과시간만', n, { ins: 0, upd: 1, del: 0, same: rows(n) - 1 });
+
+    //  E8 근태 하루 지우기: 그 날만 DELETE
+    n = copy(); delete n.attendance['2026-06-16'];
+    step('E8 근태 하루 지우기', n, { ins: 0, upd: 0, del: 1, same: rows(n) });
+
+    //  E9 과제와 그 일정을 함께 더했다가 함께 지운다(과제 삭제는 그 과제의 일정과 한 저장으로 온다)
+    n = copy();
+    n.categories.push({ id: 'c-610-tmp', name: '잠깐 과제', color: '#3e5be0', desc: '', createdAt: '2026-01-01T00:00:00.000Z' });
+    n.entries.push({ id: 'e-610-tmp', date: '2026-04-22', title: '잠깐 일정', categoryId: 'c-610-tmp',
+      allDay: true, startTime: '', endTime: '', hours: null, location: '', remind: null, memo: '', endDate: '',
+      recur: null, recurExcept: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+    step('E9a 과제와 일정 더하기', n, { ins: 2, upd: 0, del: 0, same: rows(n) - 2 });
+    n = copy(); n.categories.pop(); n.entries.pop();
+    step('E9b 과제와 일정 함께 지우기', n, { ins: 0, upd: 0, del: 2, same: rows(n) });
+
+    //  E10 스냅샷 state 를 못 읽으면 견주지 않고 전부 쓴다(예전 동작). 결과는 같다
+    step('E10 스냅샷을 못 읽으면 전부 쓴다', copy(), { ins: 0, upd: rows(cur), del: 0, same: 0, opt: { badPrevState: true } });
+
+    //  E11 전량 교체는 같은 내용이어도 전부 새로 넣는다(건너뛰지 않는다)
+    {
+      const r = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(cur), replaceAll: true });
+      ok('E11 전량 교체는 건너뛰지 않는다', r.ok === true && r.ins === rows(cur) && r.same === 0, `ok=${r.ok} ins=${r.ins} same=${r.same} ${r.msg || ''}`);
+      const back = run({ op: 'read', loginId: LOGIN });
+      const diffs = back.ok ? compare(cur, JSON.parse(back.state)) : ['읽기 실패'];
+      ok('E11 전량 교체 뒤 다시 읽으면 같다', diffs.length === 0, diffs.slice(0, 2).join(' | '));
+    }
+    wipe(U);
+  }
 
   // ── 전량 교체(가져오기) — 지우고 통째로 다시 넣는가 ─────────────────────
   console.log('\n[전량 교체] 「XML 가져오기」 — 지우고 통째로 다시 넣는다');
@@ -715,6 +945,8 @@ try {
   }
 
   code = fail === 0 ? (undecided === 0 ? 0 : 2) : 1;
+} catch (e) {
+  if (!(e instanceof BenchDone)) throw e;
 } finally {
   try { if (U) dropUser(U); } catch (e) { console.log('  ! 정리 실패: ' + e.message); }
   if (WORK && existsSync(WORK)) { try { rmSync(WORK, { recursive: true, force: true }); } catch {} }
