@@ -7,7 +7,7 @@
 
 ---
 
-## 🆕 2026-11-11 (다음 판, 번호는 배포 때): 일정과 할 일 순서 바꾸기(⠿ 끌기, Alt+↑↓), 배너 [변경내역] 없앰(F1), 그림 넣은 뒤 포커스(F6)
+## 🆕 2026-11-11, v0.28.0: 일정과 할 일 순서 바꾸기(⠿ 끌기, Alt+↑↓), 배너 [변경내역] 없앰(F1), 그림 넣은 뒤 포커스(F6)
 
 docs/ITEM-ORDER.md(시안 docs/prototypes/day-panel-order.html 손잡이 자리 1번). DB 구조 22 그대로(`cal_entry.sort_order`, `cal_todo.sort_order` 가 이미 배열 자리를 저장한다).
 
@@ -33,7 +33,7 @@ docs/ITEM-ORDER.md(시안 docs/prototypes/day-panel-order.html 손잡이 자리 
   - F6 `rptMFocusBack` 은 사용자가 누르거나(pointerdown) 키를 치면 지켜보기를 멈춘다. 빈 곳을 눌러 포커스가 body 로 간 뒤 늦은 다시 그리기가 칸으로 끌어오던 것.
   - 시험 item-order 에 런타임 여섯(실행 취소 자리, 반복 두 번 끌기, ordIndexOf, 큰 그림 줄, F6 멈춤 둘)과 정적 둘, 변이 일곱. default-tasks 의 실행 취소 변이 앵커를 새 꼴로.
 
-## 🆕 2026-11-11 (다음 판, 번호는 배포 때): 월간 미리 보기 그림 선명하게(F2), 개인 일정 등록 뒤 저장 충돌 고리(F3)
+## 🆕 2026-11-11, v0.28.0: 월간 미리 보기 그림 선명하게(F2), 개인 일정 등록 뒤 저장 충돌 고리(F3)
 
 docs/ITEM-ORDER.md §5 의 F2, F3. DB 구조 22 그대로.
 
@@ -47,7 +47,7 @@ docs/ITEM-ORDER.md §5 의 F2, F3. DB 구조 22 그대로.
   - 웹: 회신에 `personalReloaded: false` 가 오면 토스트를 "개인 일정에 등록했습니다. 화면에는 다시 읽은 뒤에 보입니다." 로. 다시 읽기 실패 자체는 전처럼 `__applyStateError` 가 상자와 재시도로 알린다.
 - 시험: `schedule-image`(⑦ ⑧, 변이 SI23), `monthly-report`(MW8 에 큰 그림 대체와 실패 때 견본), `project-calendar-host`(F3 와 변이), `project-calendar-web`(안내 토스트). 실DB `db-schedule-image`(미리 보기 그림 절), `db-project-calendar`(F3 세 경우)는 아직 돌리지 않았다.
 
-## 🆕 2026-11-11 (다음 판, 번호는 배포 때): 월간 SW/HW 를 바꿀 때 왼쪽 과제 목록이 출렁이던 것
+## 🆕 2026-11-11, v0.28.0: 월간 SW/HW 를 바꿀 때 왼쪽 과제 목록이 출렁이던 것
 
 - 0.27.0 배포 뒤 사용자 지적. HW 에서 그림 칸 자리(`[data-slot]`)를 `hidden`(display:none)으로 빼서 줄 높이가 달라졌다. `ghost`(visibility:hidden)로 자리는 남긴다. 실위젯에서 SW, HW 모두 과제 상자 187px, 줄 46/47px, 기타 상자 위치 같음.
 
