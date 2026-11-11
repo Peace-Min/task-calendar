@@ -12701,15 +12701,17 @@ function dpOrderInit(){
   const itemSel = k => k === 't' ? '.dp-todos > .todo-row' : '.dp-cards > .card';
   const items = () => [...body.querySelectorAll(itemSel(d.k))];
   const clearDrop = () => body.querySelectorAll('.cat-drop-before,.cat-drop-after').forEach(x => x.classList.remove('cat-drop-before', 'cat-drop-after'));
-  //  놓을 자리: 포인터가 어느 항목의 가운데보다 위에 있는가(시안과 같다). 제자리(앞뒤 그대로)면 선을 긋지 않는다
+  //  놓을 자리는 내 과제 순서 바꾸기와 같은 규칙이다(2026-11-11 사용자): 포인터 아래 항목이 대상이고, 위로 옮기면 그 항목의 위쪽,
+  //  아래로 옮기면 그 항목의 아래쪽에 선을 긋고 놓으면 그 항목 자리로 간다. 항목 사이 틈이나 목록 위아래 밖이면 가장 가까운 항목.
+  //  자기 자신 위면 선도 옮기기도 없다. d.to 는 dpOrderApply 의 끼워 넣을 자리(0..n)다.
   const mark = () => {
     clearDrop();
     const its = items(), from = its.findIndex(x => x.dataset.id === d.id);
-    let to = its.length;
-    for(let i = 0; i < its.length; i++){ const r = its[i].getBoundingClientRect(); if(d.y < r.top + r.height / 2){ to = i; break; } }
-    d.to = to;
-    if(from < 0 || to === from || to === from + 1) return;
-    if(to < its.length) its[to].classList.add('cat-drop-before'); else if(its.length) its[its.length - 1].classList.add('cat-drop-after');
+    let ti = its.length - 1;
+    for(let i = 0; i < its.length; i++){ if(d.y < its[i].getBoundingClientRect().bottom){ ti = i; break; } }
+    if(from < 0 || ti < 0 || ti === from){ d.to = null; return; }
+    if(ti < from){ its[ti].classList.add('cat-drop-before'); d.to = ti; }
+    else { its[ti].classList.add('cat-drop-after'); d.to = ti + 1; }
   };
   const autoScroll = () => {
     const r = body.getBoundingClientRect(); if(!r.height) return;

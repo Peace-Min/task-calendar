@@ -234,8 +234,9 @@ if (!JSDOM) {
         const g = W.$('#dpBody .todo-row[data-id="t1"] > .dp-grip');
         assert.ok(g && g.nextElementSibling.classList.contains('todo-check'), '할 일 손잡이가 체크 앞에 없다');
         ptr(W, g, 'pointerdown', yOf(0, 2000));
-        ptr(W, W.doc, 'pointermove', yOf(2, 2000) + 20);   // t3 가운데(2120)보다 아래, t4 가운데(2170)보다 위
-        assert.ok(W.$('#dpBody .todo-row[data-id="t4"]').classList.contains('cat-drop-before'), '할 일 놓을 자리 선이 없다');
+        ptr(W, W.doc, 'pointermove', yOf(2, 2000) + 20);   // t3 위(내 과제와 같은 규칙: 포인터 아래 항목이 대상, 아래로 옮기면 그 항목 아래쪽 선)
+        assert.ok(W.$('#dpBody .todo-row[data-id="t3"]').classList.contains('cat-drop-after'), '할 일을 아래로 옮길 때 대상(t3) 아래쪽에 선이 없다(내 과제와 다른 규칙)');
+        assert.ok(!W.$('#dpBody .todo-row[data-id="t4"]').classList.contains('cat-drop-before'), '다음 항목 위쪽에 선을 긋는다(옛 가운데 규칙)');
         ptr(W, W.doc, 'pointerup', yOf(2, 2000) + 20);
         assert.deepStrictEqual(arr(W, 'todos'), ['t2', 't3', 't1', 't4'], '할 일을 t3 뒤로 옮기지 않았다');
         assert.deepStrictEqual(tdRows(W), ['t2', 't3', 't1', 't4']);
