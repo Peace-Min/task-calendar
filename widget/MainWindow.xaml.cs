@@ -2674,6 +2674,7 @@ namespace TaskCalendarWidget
         private async Task BootFromDbAsync()
         {
             string js;
+            CalendarSnapshot? newSnap = null;
             try
             {
                 var s = UserSession.Load(_dataDir, Log);
@@ -2694,7 +2695,7 @@ namespace TaskCalendarWidget
                 }
                 if (snap == null) { ApplyStateError("서버에서 캘린더를 받지 못했습니다"); return; }
 
-                _calSnap = snap;   // 쓰기가 쓸 토큰·번호 맵. 세션 동안 유지한다(계약 H-2)
+                newSnap = snap;   // 쓰기가 쓸 토큰·번호 맵. 화면에 넣기가 성공한 뒤에 _calSnap 으로 삼는다(아래)
                 //  ★ gate 는 버전 관문의 판정이다(VERSION-GATE §2.1). 여기까지 왔으면 관문을 지났으니 보통 'ok' 다.
                 //    expectedSchema·schemaMismatch 는 옛 웹을 위해 남긴 거울이고 이제 gate 와 관문 상수에서 나온다
                 //    (진짜 방어는 연결마다 관문과 쓰기 계층(CalendarWriteDb)이 한다).
@@ -2702,7 +2703,8 @@ namespace TaskCalendarWidget
                 string expectedSchema = DbGate.AppStructureVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 bool schemaMismatch = gate != "ok" || !string.Equals(snap.SchemaVersion, expectedSchema, StringComparison.Ordinal);
                 var meta = JsonSerializer.Serialize(new { schemaVersion = snap.SchemaVersion, expectedSchema, schemaMismatch, gate, rev = snap.Rev, userId = snap.UserId, canWrite = true, db = DeployConfig.DbName, host = DeployConfig.DbHost });
-                js = "window.__applyState(" + JsonSerializer.Serialize(snap.StateJson) + "," + meta + ")";
+                //  주입이 웹 안에서 실패해도 알 수 있게 결과를 돌려받는다('ok' 가 아니면 실패)
+                js = "(function(){try{window.__applyState(" + JsonSerializer.Serialize(snap.StateJson) + "," + meta + ");return 'ok'}catch(e){return 'err'}})()";
                 Log($"DB 부팅 조회: user_id={snap.UserId} rev={snap.Rev} schema=v{snap.SchemaVersion}");
             }
             catch (CalendarUserNotFoundException ex)
@@ -2719,8 +2721,16 @@ namespace TaskCalendarWidget
                 ApplyStateError("서버에 연결하지 못했습니다: " + ex.Message);
                 return;
             }
-            try { await web.CoreWebView2.ExecuteScriptAsync(js); }
-            catch (Exception ex) { Log("DB 상태 주입 실패: " + ex.Message); }
+            //  스냅샷은 화면에 넣기가 성공했을 때만 바꾼다(0.28.0). 서버 내용으로 스냅샷만 바뀌고 화면은 옛것이면,
+            //  화면에 없는 새 행(예: 방금 개인 일정에 등록한 일정)을 다음 저장이 '지운 것'으로 보고 DB 에서 지운다.
+            //  실패하면 옛 스냅샷을 두어 화면과 짝을 맞춘다(그 rev 차이는 ProjectCalendarHost 의 복사 뒤 맞춤이 다룬다).
+            try
+            {
+                var res = await web.CoreWebView2.ExecuteScriptAsync(js);
+                if (res == "\"ok\"") { if (newSnap != null) _calSnap = newSnap; }
+                else Log("DB 상태 주입 실패(웹): " + res + ", 스냅샷은 그대로");
+            }
+            catch (Exception ex) { Log("DB 상태 주입 실패: " + ex.Message + ", 스냅샷은 그대로"); }
         }
 
         //  DB 모드 저장 — 웹이 상태 전체를 넘기면 CalendarWriteDb 가 차이만 쓴다(§3.1~3.4).
