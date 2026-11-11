@@ -24,6 +24,14 @@ docs/ITEM-ORDER.md(시안 docs/prototypes/day-panel-order.html 손잡이 자리 
 - F1: 업데이트 배너의 [변경내역](`#updNotes`)과 `#updNotesModal`, `dataset.notes`, `.upd-nv`, `.upd-nbody` 를 걷었다. 버전 글, [지금 업데이트], ✕ 는 그대로.
 - F6: 그림 칸 메뉴로 넣은 뒤와 Ctrl+V 로 넣은 뒤 모두 `rptMFocusBack`(rptMBind 안). 칸이 넣는 동안, 그리고 견본이 늦게 와 다시 그려져도 5초 동안 지켜보다가 포커스가 body 로 빠졌으면 칸 단추로 돌린다.
 - 시험: 새 `item-order`(17). 옛 정렬을 못 박던 시험을 새 규칙으로: `day-panel-fold`(5개가 배열 순서, 카드와 강조 시험은 더 보기를 연 뒤), `month-todo-close`(칸 순서, 할 일만 보기), `personal-panel`(pmCellCmp 단위, 칸 순서, 패널 할 일 ★ 와 완료로 자리 그대로, 변이 M④ 를 "중요 먼저 되살리기"로), `peer-overlay-redesign`(내 겹 순서, 변이가 섞임을 잡게 픽스처에서 내 일정 하나를 맨 앞으로), `pc-watch-7`(카드 글줄에서 ⠿ 제외). F1 로 `#updNotesModal` 을 경계로 쓰던 `admin-hub`, `user-login` 은 `#importModal` 로.
+- 검토 P2 고침(같은 판):
+  - 부팅 주입 결과: `__applyState` 가 적용하면 true, 안에서 실패하면 false 를 돌려주고, `BootFromDbAsync` 의 주입 스크립트는 `===false?'err':'ok'` 로 가른다. 예전에는 안쪽 catch 가 삼켜 늘 'ok' 라 화면은 옛것인데 `_calSnap` 이 바뀌었다. 시험 boot-snap-order(반환값과 변이 둘).
+  - 실행 취소 자리: 지우기 전 배열 자리를 잡아 `restoreEntry(e, idx)`, `restoreTodo(t, idx)`(`restoreAt`)가 그 자리에 되돌린다(배열보다 크면 끝). 날짜 패널 일정 삭제와 반복 전체 삭제, 할 일 상세 [삭제], 할 일 수정 창 [삭제] 네 곳.
+  - 날짜 패널 끌어 놓기는 줄 번호 대신 놓을 대상 id 와 앞뒤로(`dpOrderApplyRel`, `orderMoveRel`). 8일 넘는 주간 반복이 한 날 두 번 그려지면 한 칸 어긋났다. Alt+↑↓ 는 그대로 `dpOrderApply`.
+  - `ordIndexOf` 빠른 길(자리표 그대로인데 없음)은 내 겹(`m:`) 열쇠만. 제자리 교체로 길이가 같은 배열에서 새 id 를 못 찾던 것.
+  - 월간 큰 그림(`scheduleImagePreview`)은 줄을 세워 동시에 둘까지(`rptMPrevPump`), 문서 다시 그리기는 한 프레임에 한 번(`rptMPrevPaint`, rAF 없으면 setTimeout 0). 다시 열 때(`rptMOpen`)와 월간을 떠날 때(`atKindSet`) 비우고(`rptMPrevReset`, 늦은 회신은 버림), 다시 들어오면 다시 받는다(`rptMPrevReload`). 견본 대체는 그대로.
+  - F6 `rptMFocusBack` 은 사용자가 누르거나(pointerdown) 키를 치면 지켜보기를 멈춘다. 빈 곳을 눌러 포커스가 body 로 간 뒤 늦은 다시 그리기가 칸으로 끌어오던 것.
+  - 시험 item-order 에 런타임 여섯(실행 취소 자리, 반복 두 번 끌기, ordIndexOf, 큰 그림 줄, F6 멈춤 둘)과 정적 둘, 변이 일곱. default-tasks 의 실행 취소 변이 앵커를 새 꼴로.
 
 ## 🆕 2026-11-11 (다음 판, 번호는 배포 때): 월간 미리 보기 그림 선명하게(F2), 개인 일정 등록 뒤 저장 충돌 고리(F3)
 

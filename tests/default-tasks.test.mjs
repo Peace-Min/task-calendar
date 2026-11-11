@@ -675,8 +675,8 @@ if (!JSDOM) {
     await assert.rejects(() => checks.trimmedNames(bad), /하나 더 만들었다|기본 과제로 보지 않는다/);
   });
   test('변이⑪: 실행 취소가 지워진 과제를 그대로 되살리면 행동⑬ 이 실패한다', async () => {
-    const bad = mutate('function restoreEntry(e){ if(!e) return; state.entries.push(reattachToLiveCat(e)); save(); }',
-      'function restoreEntry(e){ if(!e) return; state.entries.push(e); save(); }', src);
+    const bad = mutate('function restoreEntry(e, idx){ if(!e) return; restoreAt(state.entries, reattachToLiveCat(e), idx); save(); }',
+      'function restoreEntry(e, idx){ if(!e) return; restoreAt(state.entries, e, idx); save(); }', src);
     await assert.rejects(() => checks.undoAndClear(bad), /기타로 붙이지 않았다/);
   });
 }

@@ -2703,8 +2703,8 @@ namespace TaskCalendarWidget
                 string expectedSchema = DbGate.AppStructureVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 bool schemaMismatch = gate != "ok" || !string.Equals(snap.SchemaVersion, expectedSchema, StringComparison.Ordinal);
                 var meta = JsonSerializer.Serialize(new { schemaVersion = snap.SchemaVersion, expectedSchema, schemaMismatch, gate, rev = snap.Rev, userId = snap.UserId, canWrite = true, db = DeployConfig.DbName, host = DeployConfig.DbHost });
-                //  주입이 웹 안에서 실패해도 알 수 있게 결과를 돌려받는다('ok' 가 아니면 실패)
-                js = "(function(){try{window.__applyState(" + JsonSerializer.Serialize(snap.StateJson) + "," + meta + ");return 'ok'}catch(e){return 'err'}})()";
+                //  주입이 웹 안에서 실패해도 알 수 있게 결과를 돌려받는다('ok' 가 아니면 실패). __applyState 는 예외를 삼키고 false 를 돌려주므로 반환값으로 가른다
+                js = "(function(){try{return window.__applyState(" + JsonSerializer.Serialize(snap.StateJson) + "," + meta + ")===false?'err':'ok'}catch(e){return 'err'}})()";
                 Log($"DB 부팅 조회: user_id={snap.UserId} rev={snap.Rev} schema=v{snap.SchemaVersion}");
             }
             catch (CalendarUserNotFoundException ex)

@@ -53,7 +53,7 @@ test('(S) 손잡이 ⠿: 카드 맨 윗줄 과제 표 앞, 할 일 줄 체크 �
   for (const k of ["const C = o.cls || 'cat'", 'classList.add(`${C}-drag-ghost`)', 'classList.add(`${C}-drag-src`)', '`${C}-drop-before`', '`${C}-drop-after`', 'classList.add(`${C}-dragging`)', "ev.key === 'Escape'", "window.addEventListener('blur'", '< 5) return;']) {
     assert.ok(hand.includes(k), '공용 끌기 손이 내 과제 손과 다르다: ' + k);
   }
-  const fns = ['ordKey', 'ordIndexOf', 'itemOrderCmp', 'dpCanOrder', 'dpGripHtml', 'dpOrderIds', 'orderMoveRel', 'dpOrderApply', 'dpOrderFocus', 'dpOrderKey', 'ordDragInit', 'dpOrderInit'].map((n) => extractFunction(app, n)).join('\n');
+  const fns = ['restoreAt', 'restoreEntry', 'restoreTodo', 'ordKey', 'ordIndexOf', 'itemOrderCmp', 'dpCanOrder', 'dpGripHtml', 'dpOrderIds', 'orderMoveRel', 'dpOrderApply', 'dpOrderApplyRel', 'dpOrderFocus', 'dpOrderKey', 'ordDragInit', 'dpOrderInit'].map((n) => extractFunction(app, n)).join('\n');
   assert.ok(!/[—–「」]/.test(fns) && !/(^|\s)·(\s|$)/m.test(fns), '새 함수에 엠 대시, 낫표, 띄어 쓴 가운데 점이 있다');
 });
 test('(S) 끌어서 순서 바꾸기는 공용 손 하나(ordDragInit): 내 과제, 공식 과제 목록, 날짜 패널이 모두 부르고 5px 문턱, 복제본, 놓을 자리 규칙의 사본이 없다', () => {
@@ -122,10 +122,10 @@ if (!JSDOM) {
       taskHours: {}, attendance: {},
     } };
   }
-  async function boot(src, url, meta) {
+  async function boot(src, url, meta, mk) {
     const W = bootWindow(src, url);
     await settle();
-    const T = W.ev('todayYmd()'), d = data(T);
+    const T = W.ev('todayYmd()'), d = (mk || data)(T);
     W.T = T; W.D2 = d.D2;
     W.w.__applyState(JSON.stringify(d.data), meta || META);
     W.ev(`view = {y: ${Number(T.slice(0, 4))}, m: ${Number(T.slice(5, 7)) - 1}}; selectedDate = "${T}"; setCalView("month"); renderAll();`);
@@ -350,9 +350,156 @@ if (!JSDOM) {
     } finally { W.close(); }
   });
 
+  // ── 0.28.0 검토 P2 ──
+  //  실행 취소는 지운 자리로(배열 자리가 곧 순서). 자리를 모르거나 배열이 짧아졌으면 끝
+  checks.undo = async (src) => {
+    const W = await boot(src);
+    try {
+      W.ev(`window.__e = entryById('e3'); window.__ei = state.entries.indexOf(__e); deleteEntry('e3');
+        window.__t = todoById('t2'); window.__ti = state.todos.indexOf(__t); deleteTodo('t2');`);
+      W.ev('restoreEntry(__e, __ei); restoreTodo(__t, __ti); renderAll();');
+      assert.deepStrictEqual(arr(W, 'entries'), ['e1', 'x1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7'], '실행 취소가 일정을 지운 자리로 되돌리지 않았다');
+      assert.deepStrictEqual(arr(W, 'todos'), ['t1', 't2', 't3', 't4'], '실행 취소가 할 일을 지운 자리로 되돌리지 않았다');
+      assert.deepStrictEqual(evRows(W), ['e1', 'e2', 'e3', 'e4', 'e5'], '되살린 일정이 패널에서 원래 자리가 아니다');
+      W.ev("window.__e = entryById('e1'); deleteEntry('e1'); restoreEntry(__e, 99);");
+      assert.strictEqual(arr(W, 'entries').at(-1), 'e1', '자리가 배열보다 크면 끝에 붙이지 않았다');
+    } finally { W.close(); }
+  };
+  //  한 날에 같은 반복 일정이 두 번 그려지면(주간 반복, 8일 이상) 줄 번호와 보이는 id 목록이 한 칸 어긋난다. 놓을 대상 id 로 옮긴다
+  checks.dupDrag = async (src) => {
+    const mk = (T) => ({ D2: T, data: {
+      categories: [CAT('c-a', '(예시) 관제 고도화')],
+      entries: [ENT('e1', T), ENT('r1', ymdAdd(T, -7), { endDate: ymdAdd(T, 1), recur: { freq: 'weekly', interval: 1 } }), ENT('e2', T), ENT('e3', T)],
+      todos: [], taskHours: {}, attendance: {},
+    } });
+    const W = await boot(src, null, null, mk);
+    try {
+      assert.deepStrictEqual(evRows(W), ['e1', 'r1', 'r1', 'e2', 'e3'], '시험 전제: 반복 일정이 그날 두 번 그려지지 않는다');
+      ptr(W, W.$$('#dpBody .card[data-id="e3"] .dp-grip')[0], 'pointerdown', yOf(4));
+      ptr(W, W.doc, 'pointermove', yOf(3));
+      assert.ok(W.$('#dpBody .card[data-id="e2"]').classList.contains('cat-drop-before'), '놓을 자리 선이 e2 위에 없다');
+      ptr(W, W.doc, 'pointerup', yOf(3));
+      assert.deepStrictEqual(arr(W, 'entries'), ['e1', 'r1', 'e3', 'e2'], '선을 그은 e2 앞으로 옮기지 않았다(줄 번호로 옮겨 한 칸 어긋남)');
+      assert.strictEqual(saves(W), 1, '옮긴 뒤 저장하지 않았다');
+      assert.deepStrictEqual(evRows(W), ['e1', 'r1', 'r1', 'e3', 'e2'], '패널이 새 순서로 다시 그려지지 않았다');
+    } finally { W.close(); }
+  };
+  test('(R) 실행 취소는 지운 자리로 되돌린다(일정, 할 일), 자리가 배열보다 크면 끝', () => checks.undo());
+  test('(R) 같은 반복 일정이 한 날 두 번 그려져도 끌어 놓기는 선을 그은 항목 앞뒤로 옮긴다', () => checks.dupDrag());
+  test('(S) 실행 취소를 주는 삭제 네 곳이 지우기 전 자리를 잡아 restoreEntry/restoreTodo 에 넘긴다', () => {
+    const script = app.slice(app.indexOf('</style>'));
+    const calls = script.match(/restore(Entry|Todo)\([^)]*\)/g).filter((c) => !/\(e, idx\)|\(t, idx\)/.test(c));
+    assert.strictEqual(calls.length, 4, '실행 취소 부르는 곳이 넷이 아니다: ' + calls.join(', '));
+    for (const c of calls) assert.ok(/, (ix|at)\)$/.test(c), '지운 자리를 넘기지 않는다: ' + c);
+  });
+  checks.ordIdx = async (src) => {
+    const W = await boot(src);
+    try {
+      const r = JSON.parse(W.ev(`(function(){
+        itemOrderCmp('e', state.entries[0], state.entries[1]);
+        state.entries[2] = Object.assign({}, state.entries[2], { id: 'z9' });
+        return JSON.stringify([ordIndexOf('e', { id: 'z9' }), ordIndexOf('e', { id: 'e1', _mine: true }) === undefined]);
+      })()`));
+      assert.strictEqual(r[0], 2, '제자리 교체로 들어온 id 의 자리를 찾지 못했다(낡은 자리표)');
+      assert.strictEqual(r[1], true, '내 겹 항목에 자리를 주었다');
+    } finally { W.close(); }
+  };
+  test('(R) ordIndexOf: 같은 배열에서 길이는 그대로 내용만 바뀌어도(제자리 교체) 새 id 의 자리를 찾는다. 내 겹(m:)은 여전히 없음', () => checks.ordIdx());
+  test('(M) ordIndexOf 의 빠른 길을 모든 열쇠에 열면 제자리 교체 시험이 잡는다', async () => {
+    const bad = mutate(app, " && c.n === arr.length && k.startsWith('m:')) return undefined;", ' && c.n === arr.length) return undefined;');
+    await assert.rejects(() => checks.ordIdx(bad), /낡은 자리표/);
+  });
+  //  월간 큰 그림: 동시에 둘, 회신 묶음마다 다시 그리기 한 번, 다시 열면 비운다
+  checks.prev = async (src) => {
+    const W = bootWindow(src || app);
+    try {
+      await settle();
+      W.ev(`window.__pend = []; window.__pv = 0;
+        hostRequest = function(cmd, p){ if(cmd !== 'scheduleImagePreview') return new Promise(function(){}); return new Promise(function(res){ __pend.push({ id: p.id, res: res }); }); };
+        rptMPreview = function(){ __pv++; }; rptMZoomSync = function(){};
+        window.__ok = function(i){ __pend[i].res({ ok: true, data: { dataUrl: 'data:image/png;base64,AA' } }); };
+        for(var i = 0; i < 5; i++) rptMImgPrevLoad('u' + i, { id: i, sha256: 's' + i });`);
+      assert.strictEqual(W.ev('__pend.length'), 2, '큰 그림 요청이 한꺼번에 나간다(동시에 둘까지가 아니다)');
+      W.ev('__ok(0); __ok(1);');
+      await settle();
+      assert.strictEqual(W.ev('__pend.length'), 4, '회신 뒤 다음 요청이 이어 나가지 않는다');
+      assert.strictEqual(W.ev('__pv'), 1, '회신 둘에 문서를 두 번 다시 그렸다(한 프레임에 한 번이 아니다)');
+      assert.strictEqual(W.ev('__rptMPrevs.size'), 2);
+      W.ev('__ok(2); __ok(3);');
+      await settle();
+      W.ev('__ok(4);');
+      await settle();
+      assert.strictEqual(W.ev('__rptMPrevs.size'), 5, '큰 그림 다섯을 다 받지 못했다');
+      //  다시 열면 비우고, 그 전 요청의 늦은 회신은 버린다
+      W.ev("rptMImgPrevLoad('u9', { id: 9, sha256: 's9' });");
+      W.ev('rptMOpen();');
+      assert.strictEqual(W.ev('__rptMPrevs.size'), 0, '월간을 다시 열었는데 큰 그림을 비우지 않았다');
+      W.ev('__ok(5);');
+      await settle();
+      assert.strictEqual(W.ev('__rptMPrevs.size'), 0, '다시 연 뒤 지난 요청의 늦은 회신을 받아 두었다');
+      assert.strictEqual(W.ev("rptMImgSrc('s0')"), '', '시험 전제: 견본도 없는데 그림이 있다');
+      W.ev("__rptMThumbs.set('s0', 'data:image/jpeg;base64,BB')");
+      assert.strictEqual(W.ev("rptMImgSrc('s0')"), 'data:image/jpeg;base64,BB', '큰 그림이 없을 때 견본으로 넘어가지 않는다');
+    } finally { W.close(); }
+  };
+  test('(R) 월간 큰 그림: 요청은 동시에 둘, 회신 묶음마다 다시 그리기 한 번, 다시 열면 비우고 늦은 회신은 버린다', () => checks.prev());
+  test('(S) 월간을 떠날 때(일간, 주간으로)와 다시 열 때 큰 그림을 놓고, 다시 들어오면 다시 받는다', () => {
+    assert.ok(extractFunction(app, 'rptMOpen').includes('rptMPrevReset()'), '다시 열 때 큰 그림을 비우지 않는다');
+    assert.ok(extractFunction(app, 'atKindSet').includes("if(ATT.kind === 'sum' && k !== 'sum') rptMPrevReset();"), '월간을 떠날 때 큰 그림을 놓지 않는다');
+    assert.ok(extractFunction(app, 'atSumEnter').includes('rptMPrevReload();'), '다시 들어올 때 큰 그림을 다시 받지 않는다');
+  });
+  //  F6 포커스 되돌리기: 사용자가 누르거나 키를 치면 그만 지킨다
+  checks.focusStop = async (src, evType) => {
+    const W = bootWindow(src || app);
+    try {
+      await settle();
+      W.ev(extractFunction(src || app, 'rptMFocusBack') + '; window.__fb = rptMFocusBack;');
+      const pick = W.$('#rptmPick');
+      pick.innerHTML = '<div class="rptm-it" data-uid="u1"><span class="rptm-slotw" data-slot></span></div>';
+      const slot = (html) => { W.$('#rptmPick .rptm-it[data-uid="u1"] [data-slot]').innerHTML = html; };
+      slot('<span class="rptm-slot has"><button type="button" class="z" data-act="imgZoom">z</button></span>');
+      W.doc.body.focus();
+      W.ev('__fb("u1")');
+      assert.strictEqual(W.doc.activeElement && W.doc.activeElement.dataset.act, 'imgZoom', '시험 전제: 처음 되돌리기가 되지 않았다');
+      //  사용자가 빈 곳을 눌렀다(또는 키를 쳤다): 포커스는 body 로 간다
+      if (evType === 'key') W.doc.body.dispatchEvent(new W.w.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+      else W.doc.body.dispatchEvent(new W.w.MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+      W.doc.activeElement.blur();
+      slot('<span class="rptm-slot has"><button type="button" class="z" data-act="imgZoom"><img alt=""></button></span>');
+      await settle();
+      assert.ok(!W.doc.activeElement || W.doc.activeElement.dataset.act !== 'imgZoom', '사용자가 누른 뒤에도 다시 그리기가 포커스를 칸으로 끌어왔다');
+    } finally { W.close(); }
+  };
+  test('(R) F6: 사용자가 누르면(pointerdown) 포커스 되돌리기를 멈춘다', () => checks.focusStop(app, 'ptr'));
+  test('(R) F6: 사용자가 키를 치면(keydown) 포커스 되돌리기를 멈춘다', () => checks.focusStop(app, 'key'));
+
   // ══════════════════════════════════════════════════════════════════════
   // (M) 변이
   // ══════════════════════════════════════════════════════════════════════
+  test('(M) 실행 취소를 끝에 붙이기(push)로 되돌리면 실행 취소 시험이 잡는다', async () => {
+    const bad = mutate(app, 'if(Number.isInteger(idx) && idx >= 0 && idx <= arr.length) arr.splice(idx, 0, x); else arr.push(x);', 'arr.push(x);');
+    await assert.rejects(() => checks.undo(bad), /지운 자리로/);
+  });
+  test('(M) 끌어 놓기를 줄 번호(dpOrderApply index)로 되돌리면 반복 두 번 시험이 잡는다', async () => {
+    const bad = mutate(app, 'dpOrderApplyRel(d.k, drop.id, drop.target, drop.after)', 'dpOrderApply(d.k, drop.id, drop.index)');
+    await assert.rejects(() => checks.dupDrag(bad), /한 칸 어긋남|저장하지 않았다/);
+  });
+  test('(M) 큰 그림 동시 요청 한도를 빼면 월간 큰 그림 시험이 잡는다', async () => {
+    const bad = mutate(app, 'while(P.busy < RPTM_PREV_MAX && P.q.length){', 'while(P.q.length){');
+    await assert.rejects(() => checks.prev(bad), /동시에 둘/);
+  });
+  test('(M) 다시 그리기 묶기를 빼면 월간 큰 그림 시험이 잡는다', async () => {
+    const bad = mutate(app, '  P.zoom.add(id);\n  if(P.paint) return;\n', '  P.zoom.add(id);\n  P.paint = 0;\n');
+    await assert.rejects(() => checks.prev(bad), /한 프레임에 한 번/);
+  });
+  test('(M) 다시 열 때 큰 그림을 비우지 않으면 월간 큰 그림 시험이 잡는다', async () => {
+    const bad = mutate(app, '  __rptMPrevs.clear(); __rptMPrevReq.clear();\n', '  __rptMPrevReq.clear();\n');
+    await assert.rejects(() => checks.prev(bad), /비우지 않았다/);
+  });
+  test('(M) F6 에서 사용자 입력에 멈추지 않으면 포커스 시험이 잡는다', async () => {
+    const bad = mutate(app, "    document.addEventListener('pointerdown', stop, true); document.addEventListener('keydown', stop, true);\n", '');
+    await assert.rejects(() => checks.focusStop(bad, 'ptr'), /끌어왔다/);
+  });
   test('(M) 일정 비교를 시각순으로 되돌리면 순서 시험이 잡는다', async () => {
     const bad = mutate(app, "function entrySort(a, b){ return itemOrderCmp('e', a, b); }", "function entrySort(a, b){ return (a.startTime||'99:99').localeCompare(b.startTime||'99:99'); }");
     await assert.rejects(() => checks.order(bad), /배열 순서/);
@@ -366,7 +513,7 @@ if (!JSDOM) {
     await assert.rejects(() => checks.dragEvent(bad), /펴지지 않았다/);
   });
   test('(M) 옮긴 뒤 저장하지 않으면 끌기 시험이 잡는다', async () => {
-    const bad = mutate(app, '  if(!ok) return false;\n  save();\n', '  if(!ok) return false;\n');
+    const bad = mutate(app, '  if(!orderMoveRel(arr, id, target, after)) return false;\n  save();\n', '  if(!orderMoveRel(arr, id, target, after)) return false;\n');
     await assert.rejects(() => checks.dragEvent(bad), /저장하지 않았다/);
   });
   test('(M) Esc 를 받지 않으면 Esc 시험이 잡는다', async () => {

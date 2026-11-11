@@ -6121,9 +6121,11 @@ window.__applyState = function(json, meta){
   }catch(e){
     console.warn('DB 상태 적용 실패', e);
     window.__applyStateError('받은 데이터를 해석하지 못했습니다: ' + (e && e.message || e));
-    return;
+    //  false 를 돌려줘야 호스트가 화면이 옛것인 줄 알고 스냅샷을 바꾸지 않는다(BootFromDbAsync 'err').
+    return false;
   }
   hideBootSkeleton();
+  return true;
 };
 
 /* ---------- 부팅 실패 재시도(P1-2) · 꼬리 재시도(OFFLINE-RESILIENCE §5) ----------
@@ -10718,8 +10720,10 @@ function reattachToLiveCat(rec){
   if(rec && !(state.categories || []).some(c => c.id === rec.categoryId)){ const g = gitaTaskId(); if(g) rec.categoryId = g; }
   return rec;
 }
-function restoreEntry(e){ if(!e) return; state.entries.push(reattachToLiveCat(e)); save(); }
-function restoreTodo(t){ if(!t) return; (state.todos || (state.todos = [])).push(reattachToLiveCat(t)); save(); }
+//  배열 자리가 곧 보이는 순서라(ITEM-ORDER) 지울 때 잡아 둔 자리(idx)로 되돌린다. 자리를 모르거나 그사이 배열이 짧아졌으면 끝에.
+function restoreAt(arr, x, idx){ if(Number.isInteger(idx) && idx >= 0 && idx <= arr.length) arr.splice(idx, 0, x); else arr.push(x); }
+function restoreEntry(e, idx){ if(!e) return; restoreAt(state.entries, reattachToLiveCat(e), idx); save(); }
+function restoreTodo(t, idx){ if(!t) return; restoreAt(state.todos || (state.todos = []), reattachToLiveCat(t), idx); save(); }
 function addEntry(d){
   const e = {id:uid('e'), date:d.date, title:d.title, categoryId:catIdOrGita(d.categoryId),
     allDay:!!d.allDay, startTime:d.startTime||'', endTime:d.endTime||'',
@@ -10767,7 +10771,8 @@ function ordIndexOf(kind, x){
   const arr = (kind === 't' ? state.todos : state.entries) || [], c = __ordIdx[kind], k = ordKey(x);
   let i = (c.arr === arr && c.map) ? c.map.get(k) : undefined;
   if(i === undefined || !arr[i] || ordKey(arr[i]) !== k){
-    if(c.arr === arr && c.map && i === undefined && c.n === arr.length) return undefined;   // 자리표가 그대로인데 없다
+    //  자리표가 그대로인데 없다. 내 겹(m:)만 믿는다: 배열에 들어갈 일이 없다. 보통 id 는 제자리 교체(길이 같음)로 새로 들어왔을 수 있어 다시 만든다
+    if(c.arr === arr && c.map && i === undefined && c.n === arr.length && k.startsWith('m:')) return undefined;
     c.arr = arr; c.n = arr.length; c.map = new Map();
     arr.forEach((y, j) => { if(y){ const yk = ordKey(y); if(!c.map.has(yk)) c.map.set(yk, j); } });
     i = c.map.get(k);
@@ -12661,12 +12666,15 @@ function orderMoveRel(arr, id, refId, after){
 }
 //  보이는 목록에서 id 를 to 자리(0..n, 끄는 항목을 센 끼워 넣을 자리)로. 바뀌었으면 저장하고 달력과 패널을 다시 그린다
 function dpOrderApply(kind, id, to){
-  if(!dpCanOrder() || guardEdit()) return false;
   const vis = dpOrderIds(kind), i = vis.indexOf(id);
   if(i < 0 || to === i || to === i + 1 || to < 0 || to > vis.length) return false;
+  return to < i ? dpOrderApplyRel(kind, id, vis[to], false) : dpOrderApplyRel(kind, id, vis[to - 1], true);
+}
+//  끌어 놓기는 놓은 대상 id 와 앞뒤로 옮긴다. 줄 번호(index)는 화면 줄 기준이라 반복이 한 날 두 번 그려지면(dpOrderIds 는 한 번) 한 칸 어긋난다
+function dpOrderApplyRel(kind, id, target, after){
+  if(!dpCanOrder() || guardEdit()) return false;
   const arr = kind === 't' ? state.todos : state.entries;
-  const ok = to < i ? orderMoveRel(arr, id, vis[to], false) : orderMoveRel(arr, id, vis[to - 1], true);
-  if(!ok) return false;
+  if(!orderMoveRel(arr, id, target, after)) return false;
   save();
   renderGrid(); renderPanel();
   return true;
@@ -12802,7 +12810,7 @@ function dpOrderInit(){
     },
     onEnd: (drop, d) => {
       const wasAll = DP.dragAll; DP.dragAll = false;
-      const done = !!drop && dpOrderApply(d.k, drop.id, drop.index);
+      const done = !!drop && dpOrderApplyRel(d.k, drop.id, drop.target, drop.after);
       if(!done && wasAll) renderPanel();   // 접힘을 되돌린다
     },
   });
@@ -17460,6 +17468,7 @@ function atSumInit(){
 }
 function atSumEnter(){
   if(!AS.ready){ atSumInit(); return; }
+  rptMPrevReload();   // 떠날 때 놓은 큰 그림을 다시 받는다(오기 전에는 견본)
   atSumMonthlyRefresh();
   rptMFit();
 }
@@ -17728,6 +17737,10 @@ const __rptMThumbReq = new Set();  // 요청 중이거나 실패한 sha256
 //  문서 미리 보기 그림(긴 변 1600 이하, 0.28.0 F2). 360 견본을 문서 폭으로 늘리면 흐려서 따로 받는다. 오기 전에는 견본을 쓴다
 const __rptMPrevs = new Map();     // sha256 -> data URL(호스트 scheduleImagePreview)
 const __rptMPrevReq = new Set();   // 요청 중이거나 실패한 sha256
+//  큰 그림 요청 줄. 과제가 많으면 한꺼번에 나가 호스트를 막고 회신마다 문서를 통째로 다시 그려서, 동시에 둘까지만 보내고 다시 그리기는 한 프레임에 한 번.
+//  gen 은 월간을 떠나거나 다시 열 때 올려 늦은 회신을 버린다(rptMPrevReset)
+const RPTM_PREV_MAX = 2;
+const __rptMPrev = { q: [], busy: 0, gen: 0, paint: 0, zoom: new Set() };
 const _rptMValid = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
 const _rptMOwn = (o, k) => !!o && k !== '__proto__' && Object.prototype.hasOwnProperty.call(o, k);
 function rptMDays(from, to){
@@ -17842,7 +17855,7 @@ function rptMFresh(from, to, src, etcOff){
 function rptMOpen(){
   rptMBind();
   __rptMGen++;
-  clearNetcusWeeklyMerge(); __rptMImgs.clear();
+  clearNetcusWeeklyMerge(); __rptMImgs.clear(); rptMPrevReset();
   __rptMHover = ''; __rptMTpl = 'sw';
   const r = monthRange(new Date(), -1);
   __rptM = rptMFresh(r[0], r[1], 'cal');
@@ -18100,10 +18113,41 @@ function rptMImgPrevLoad(id, im){
   const sha = String(im.sha256 || '');
   if(!sha || __rptMPrevs.has(sha) || __rptMPrevReq.has(sha)) return;
   __rptMPrevReq.add(sha);
-  hostRequest('scheduleImagePreview', { id: im.id }, 60000).then(r => {
+  const g = __rptMPrev.gen;
+  __rptMPrev.q.push(() => hostRequest('scheduleImagePreview', { id: im.id }, 60000).then(r => {
+    if(g !== __rptMPrev.gen) return;   // 그사이 월간을 떠났다
     const u = r && r.ok && r.data && r.data.dataUrl;
-    if(typeof u === 'string' && /^data:image\/(png|jpeg);base64,/.test(u)){ __rptMPrevs.set(sha, u); __rptMPrevReq.delete(sha); rptMPreview(); rptMZoomSync(id); }
-  });
+    if(typeof u === 'string' && /^data:image\/(png|jpeg);base64,/.test(u)){ __rptMPrevs.set(sha, u); __rptMPrevReq.delete(sha); rptMPrevPaint(id); }
+  }));
+  rptMPrevPump();
+}
+function rptMPrevPump(){
+  const P = __rptMPrev;
+  while(P.busy < RPTM_PREV_MAX && P.q.length){
+    const run = P.q.shift(), g = P.gen;
+    P.busy++;
+    const done = () => { if(g !== P.gen) return; P.busy--; rptMPrevPump(); };
+    let p = null; try{ p = run(); }catch(_){}
+    Promise.resolve(p).then(done, done);
+  }
+}
+//  회신이 몰려도 문서 다시 그리기는 한 프레임에 한 번. jsdom 처럼 rAF 가 없으면 setTimeout 0
+function rptMPrevPaint(id){
+  const P = __rptMPrev;
+  P.zoom.add(id);
+  if(P.paint) return;
+  const fire = () => { P.paint = 0; const ids = [...P.zoom]; P.zoom.clear(); rptMPreview(); ids.forEach(rptMZoomSync); };
+  P.paint = (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(fire) : setTimeout(fire, 0)) || 1;
+}
+//  월간을 떠나거나 다시 열 때 큰 그림(장당 수 MB 의 data URL)을 놓는다. 견본은 남겨 그동안 문서는 견본으로 보인다
+function rptMPrevReset(){
+  const P = __rptMPrev;
+  P.gen++; P.q = []; P.busy = 0; P.zoom.clear();
+  __rptMPrevs.clear(); __rptMPrevReq.clear();
+}
+//  다시 들어오면 이미 읽은 그림 목록으로 큰 그림을 다시 줄 세운다
+function rptMPrevReload(){
+  for(const [id, st] of __rptMImgs) if(st.loaded) for(const im of st.list.slice(0, RPTM_IMG_MAX)) rptMImgPrevLoad(id, im);
 }
 //  큰 그림이 필요한 곳(문서 미리 보기, 크게 보기): 미리 보기 그림, 아직 없으면 견본
 function rptMImgSrc(sha){ return sha ? (__rptMPrevs.get(sha) || __rptMThumbs.get(sha) || '') : ''; }
@@ -18464,7 +18508,11 @@ function rptMBind(){
     const r = rptMRowEl(id), w = r && r.querySelector('[data-slot]');
     if(!w || typeof MutationObserver !== 'function') return;
     const mo = new MutationObserver(back); mo.observe(w, { childList: true });
-    setTimeout(() => mo.disconnect(), 5000);
+    //  사용자가 누르거나 키를 치면 그만 지킨다. 빈 곳을 눌러 포커스가 body 로 가도 뒤늦은 다시 그리기가 칸으로 끌어오지 않게
+    let tm = 0;
+    const stop = () => { mo.disconnect(); clearTimeout(tm); document.removeEventListener('pointerdown', stop, true); document.removeEventListener('keydown', stop, true); };
+    document.addEventListener('pointerdown', stop, true); document.addEventListener('keydown', stop, true);
+    tm = setTimeout(stop, 5000);
   }
   //  그림 칸 메뉴(시안 A, #asPop 의 'img' 모드): 항목을 누르면 닫고 그 방법으로 넣는다. 위아래 화살표, Home, End 로 항목 사이.
   //  Esc 는 다른 띄움 칸과 같은 문서 처리기가 닫고 칸으로 포커스를 돌린다. Tab 은 닫고 칸으로.
@@ -19257,11 +19305,11 @@ function qaSave(){
 //  할 일 수정 창의 [삭제]: 날짜 패널 줄 끝 ✕ 와 같이 바로 지우고 실행 취소를 준다
 function qaDeleteTodo(){
   if(!qaTodoId || guardEdit()) return;
-  const rm = todoById(qaTodoId);
+  const rm = todoById(qaTodoId), ix = rm ? (state.todos || []).indexOf(rm) : -1;   // 실행 취소가 같은 자리로 되돌리게
   qaTodoId = null;
   if(rm) deleteTodo(rm.id);
   closeModal('#quickAdd'); renderAll();
-  if(rm) toast('할 일을 삭제했습니다', 'success', { label:'실행 취소', fn:() => { restoreTodo(rm); renderAll(); } });
+  if(rm) toast('할 일을 삭제했습니다', 'success', { label:'실행 취소', fn:() => { restoreTodo(rm, ix); renderAll(); } });
 }
 //  날짜 패널(일정과 같은 들여쓴 상세)의 할 일 [수정]: [+ 추가] 창을 할 일 수정으로 연다
 function openTodoEdit(id){ if(todoById(id)) openQuickAdd(null, 'todo', null, id); }
@@ -19913,7 +19961,7 @@ function bind(){
       const act = ev.target.dataset.act, id = det.dataset.tid; if(!act || !id) return;
       if(peerReadOnly()){ renderPanel(); return; }   // P2 — 열람 창에는 [수정] [삭제]를 그리지 않는다
       if(act === 'edit'){ openTodoEdit(id); return; }
-      if(act === 'del'){ if(guardEdit()) return; const rm = todoById(id); deleteTodo(id); renderPanel(); renderGrid(); if(rm) toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreTodo(rm); renderPanel(); renderGrid(); }}); }
+      if(act === 'del'){ if(guardEdit()) return; const rm = todoById(id), ix = rm ? (state.todos || []).indexOf(rm) : -1; deleteTodo(id); renderPanel(); renderGrid(); if(rm) toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreTodo(rm, ix); renderPanel(); renderGrid(); }}); }
       return;
     }
     // TODO 행 액션 (제목 누름은 data-dp 라 #dayPanel 핸들러가 펼친다. 일정 상세의 [수정] [삭제]도 아래 #dayPanel 핸들러가 처리)
@@ -20244,6 +20292,7 @@ function bind(){
       if(guardEdit()) return;
       const e = entryById(card.dataset.id);
       if(!e) return;
+      const ix = () => state.entries.indexOf(e);   // 확인 창 사이에 배열이 바뀔 수 있어 지우기 직전에 읽는다(실행 취소가 같은 자리로)
       if(e.recur){   // 반복: 한 모달에서 '이 날짜만' / '전체 삭제' 선택
         const occDate = card.dataset.occ || e.date;
         // 두 선택지 모두 파괴적(범위만 다름) → alt도 danger로 명시. 기본(alt=safe)이면 더 넓게 지우는 쪽이 안전해 보인다.
@@ -20253,12 +20302,12 @@ function bind(){
           e.recurExcept = [...(e.recurExcept||[]), occDate]; e.updatedAt = nowIso(); save(); renderAll();
           toast('이 날짜의 반복을 건너뜁니다');
         } else if(r === 'alt'){
-          deleteEntry(e.id); renderAll();
-          toast('반복 일정을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreEntry(e); renderAll(); }});
+          const at = ix(); deleteEntry(e.id); renderAll();
+          toast('반복 일정을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreEntry(e, at); renderAll(); }});
         }
       } else if(await confirmBox('기록 삭제', `'${e.title}' 기록을 삭제할까요?`, '삭제') === 'ok'){
-        deleteEntry(e.id); renderAll();
-        toast('기록을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreEntry(e); renderAll(); }});
+        const at = ix(); deleteEntry(e.id); renderAll();
+        toast('기록을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreEntry(e, at); renderAll(); }});
       }
     }
   });
@@ -22642,6 +22691,7 @@ function atKindSeg(){
 function atKindSet(kind){
   const k = kind === 'week' ? 'week' : kind === 'sum' ? 'sum' : 'day';
   if(ATT.screen !== 'month') return;   // 편집 화면에서는 바꾸지 않는다(머리 단추는 목록, 달력, 취합에만 있다)
+  if(ATT.kind === 'sum' && k !== 'sum') rptMPrevReset();   // 월간을 떠난다: 큰 그림을 놓는다
   ATT.kind = k;
   if(k !== 'sum'){ try{ localStorage.setItem(ATT_KIND_KEY, k); }catch(_){} }   // 취합은 기억하지 않는다(다시 켜면 일간이나 주간으로 연다)
   atSyncScreen();
