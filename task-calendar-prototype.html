@@ -2717,6 +2717,9 @@ body:not(.at-on) #atView{display:none !important}
 .at-view{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
 .at-month{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:10px 12px 8px}
 .at-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:none;margin-bottom:8px}
+/* 일간의 < 오늘 > 은 [일간 주간 월간] 칸과 같은 32px. 보통 단추(35~37px)면 일간 윗줄만 5px 높아져 탭을 바꿀 때 출렁인다(2026-11-11 사용자) */
+.at-bar .nav .btn{height:32px;min-height:32px;padding-top:0;padding-bottom:0}
+.at-bar .nav .btn.icon{width:32px;min-width:32px}
 .at-range{font-size:var(--fs-title);font-weight:700;padding:0 4px;white-space:nowrap}
 .at-sum{display:flex;gap:14px;flex-wrap:wrap;font-size:var(--fs-meta);color:var(--muted)}
 .at-sum b{color:var(--text);font-size:var(--fs-body)}
