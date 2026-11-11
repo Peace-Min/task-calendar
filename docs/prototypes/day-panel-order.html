@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>날짜 패널 순서 시안</title>
+<style>
+/* 오른쪽 날짜 패널에서 일정과 할 일 순서를 바꾸는 시안 2판(2026-11-11, A안 확정).
+   규칙: 추가한 순서, ⠿ 를 끌어 바꿈, 키보드 Alt+위/아래. 끌기 시작하면 접힌 일정까지 전부 펼치고, 패널 위아래 끝에서는 저절로 스크롤.
+   카드 모양은 실제 패널(.card: 과제 표, 제목, 시각, 수정/삭제)을 옮겨 왔다. 왼쪽 월간 칸도 같은 순서. */
+:root{--panel:#fff;--bg:#eef1f6;--line:#e3e6ee;--line-2:#cfd5e2;--muted:#7a8399;--faint:#a3aabb;--text:#1d2333;--accent:#3e5be0;--accent-2:#2f49c4;--accent-soft:#e8edfd;--danger:#c0392b;--r:8px}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--panel:#1f2430;--bg:#161a22;--line:#323a4b;--line-2:#3d465a;--muted:#98a2b8;--faint:#6f788c;--text:#e6e9f0;--accent:#6c84f0;--accent-2:#8ea1f5;--accent-soft:#273152;--danger:#ef7a6d}}
+:root[data-theme="dark"]{--panel:#1f2430;--bg:#161a22;--line:#323a4b;--line-2:#3d465a;--muted:#98a2b8;--faint:#6f788c;--text:#e6e9f0;--accent:#6c84f0;--accent-2:#8ea1f5;--accent-soft:#273152;--danger:#ef7a6d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 "Malgun Gothic","맑은 고딕",system-ui,sans-serif;padding:20px 16px}
+h1{font-size:16px;margin:0 0 4px}
+.lead{color:var(--muted);margin:0 0 14px;max-width:900px}
+.wrap{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+/* 패널: 실제처럼 높이를 고정하고 안에서 스크롤 */
+.panel{width:240px;height:640px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;overflow:hidden}
+.ph{display:flex;align-items:center;gap:6px;padding:12px 12px 10px;border-bottom:1px solid var(--line);flex:none}
+.ph b{font-size:16px}.ph span{color:var(--muted);font-size:12px}
+.ph .add{margin-left:auto;background:var(--accent);color:#fff;border:0;border-radius:6px;padding:4px 10px;font:inherit;font-size:12px}
+.body{flex:1;min-height:0;overflow-y:auto;position:relative}
+.gh{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;font-size:12px;font-weight:700;color:var(--muted);background:var(--panel);border-bottom:1px solid var(--line)}
+.gh .n{padding:0 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent-2);font-weight:600;font-size:11px}
+.cards{list-style:none;margin:0;padding:4px 8px;display:flex;flex-direction:column;gap:4px}
+.card{position:relative;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:6px;padding:6px 8px 6px 8px;background:var(--panel)}
+.card-top{display:flex;align-items:center;gap:6px}
+.tag{font-size:11px;font-weight:700;padding:0 5px;border-radius:3px;background:color-mix(in srgb,var(--c) 14%,transparent);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-title{font-weight:700;margin-top:2px;overflow-wrap:anywhere}
+.card-when{color:var(--text);margin-top:1px}
+.card-when i{font-style:normal;color:var(--accent-2)}
+.card-act{margin-top:2px;font-size:12px}.card-act a{color:var(--accent-2);margin-right:10px}.card-act a.del{color:var(--danger)}
+.more{margin:2px 8px 8px;border:1px dashed var(--line-2);border-radius:6px;text-align:center;font-size:12px;color:var(--accent-2);padding:4px;cursor:pointer;background:none;width:calc(100% - 16px);font-family:inherit}
+.todos{list-style:none;margin:0;padding:0 12px 8px}
+.todo{display:flex;align-items:center;gap:8px;min-height:32px;border-top:1px solid var(--line);background:var(--panel)}
+.todo:first-child{border-top:0}
+.todo .box{width:14px;height:14px;border:1.5px solid var(--accent);border-radius:3px;flex:none}
+.todo.done .box{background:var(--accent)}
+.todo .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.todo.done .t{color:var(--faint);text-decoration:line-through}
+.todo .dot{width:7px;height:7px;border-radius:50%;background:var(--c);flex:none}
+.todo .st{color:var(--faint);flex:none}
+.hd{flex:none;color:var(--faint);cursor:grab;font-size:13px;line-height:1;user-select:none;touch-action:none}
+.hd:hover{color:var(--accent-2)}
+.dragging,.dragging *{cursor:grabbing!important}
+.it.drag{opacity:.45}
+/* 내 과제와 같은 떠다니는 복제본 */
+.ghost{position:fixed;z-index:60;margin:0;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.18);opacity:.96;background:var(--panel)}
+.card.ghost{border:1px solid var(--line);border-left:4px solid var(--c);border-radius:6px}
+.todo.ghost{border:1px solid var(--line);border-radius:6px;padding:0 8px}
+.it.ins-before::before,.it.ins-after::after{content:"";position:absolute;left:0;right:0;height:2px;background:var(--accent);border-radius:1px}
+.card.ins-before::before{top:-4px}.card.ins-after::after{bottom:-4px}
+.todo{position:relative}.todo.ins-before::before{top:-1px}.todo.ins-after::after{bottom:-1px}
+.it:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.side{max-width:520px}
+.side h2{font-size:14px;margin:0 0 6px}
+.side ol{margin:0 0 14px;padding-left:18px;color:var(--text)}
+.side li{margin-bottom:4px}
+.side .muted{color:var(--muted);font-size:12px}
+.mcell{width:200px;min-height:150px;background:var(--panel);border:2px solid var(--line-2);border-radius:6px;padding:6px}
+.mcell .d{font-weight:700;font-size:12px;margin-bottom:4px}
+.mcell .bar{font-size:11px;border-radius:3px;padding:1px 5px;margin-top:2px;background:color-mix(in srgb,var(--c) 16%,transparent);border-left:3px solid var(--c);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mcell .mm{font-size:11px;color:var(--muted);margin-top:2px}
+.log{font-size:12px;color:var(--muted);min-height:18px;margin-top:6px}
+/* 손잡이 자리 비교 */
+.pos{display:flex;gap:6px;margin:0 0 12px;flex-wrap:wrap}
+.pos button{border:1px solid var(--line-2);background:var(--panel);color:var(--text);border-radius:6px;padding:4px 10px;font:inherit;font-size:12px;cursor:pointer}
+.pos button.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-2);font-weight:700}
+/* 2) 왼쪽 여백 칸: 카드 밖 왼쪽에 손잡이 줄. 할 일 손잡이와 같은 세로줄 */
+.p-gutter .cards{padding-left:22px}
+.p-gutter .card .card-top .hd{position:absolute;left:-17px;top:9px}
+.p-gutter .todos{padding-left:10px}
+/* 3) 오른쪽 위 모서리: 과제 표와 같은 줄 오른쪽 끝 */
+.p-right .card .card-top .hd{order:9;margin-left:auto}
+/* 4) 왼쪽 색 띠: 색 띠를 넓혀 띠 전체가 손잡이 */
+.p-strip .card{border-left-width:0;padding-left:20px}
+.p-strip .card .card-top .hd{position:absolute;left:0;top:0;bottom:0;width:14px;display:flex;align-items:center;justify-content:center;background:var(--c);color:rgba(255,255,255,.85);border-radius:5px 0 0 5px;font-size:12px}
+</style>
+</head>
+<body>
+<h1>날짜 패널: 일정과 할 일 순서 바꾸기 (A안, 2판)</h1>
+<p class="lead">규칙은 하나입니다. 추가한 순서대로 보이고, ⠿ 를 끌어 바꿉니다. 실제 패널처럼 일정은 5개까지 보이고 나머지는 접힙니다. ⠿ 를 잡으면 접힌 일정까지 전부 펼쳐지고, 끄는 동안 패널 위아래 끝에 가까이 가면 저절로 스크롤됩니다. 놓으면 다시 5개로 접힙니다. 키보드는 카드나 줄에 포커스를 두고 Alt+↑ / Alt+↓ 입니다.</p>
+
+<div class="pos" id="pos"><button data-p="in">1. 카드 안 왼쪽 위(지금)</button><button data-p="gutter">2. 카드 밖 왼쪽 여백</button><button data-p="right">3. 카드 안 오른쪽 위</button><button data-p="strip">4. 왼쪽 색 띠 전체</button></div>
+<div class="wrap">
+  <div>
+    <div class="panel" id="panel">
+      <div class="ph"><b>6월 19일</b><span>금요일</span><button class="add" type="button">+ 추가</button></div>
+      <div class="body" id="body"></div>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <div class="side">
+    <h2>해 볼 것</h2>
+    <ol>
+      <li>맨 아래 보이는 카드의 ⠿ 를 잡아 위로 끌기: 접힌 4개가 펼쳐지고, 놓으면 다시 접힙니다.</li>
+      <li>"4개 더 보기"를 눌러 펼친 뒤 맨 아래 카드를 패널 맨 위까지 끌기: 끝에 닿으면 저절로 스크롤됩니다.</li>
+      <li>카드를 하나 누르고 Alt+↑ 를 여러 번: 한 칸씩 올라갑니다.</li>
+      <li>할 일도 같은 방식입니다. 완료한 할 일도 제자리에 남습니다.</li>
+    </ol>
+    <h2>왼쪽 월간 칸 (같은 순서)</h2>
+    <div class="mcell" id="mcell"></div>
+    <p class="muted">칸이 넘치면 앞의 5개만 보입니다. 위로 올린 것이 달력에도 보입니다.</p>
+  </div>
+</div>
+
+<script>
+const CATS = { a: ['뺀비의 폭죽', '#c2770a'], b: ['(예시) 관제 고도화', '#3e5be0'], c: ['(예시) 해양 관측 체계', '#1f9d74'], d: ['사내 업무', '#8a63d2'] };
+let EV = [
+  ['e1', 'a', '시험 장비 대여 신청', '종일'], ['e2', 'b', '주간 회의', '14:00 ~ 15:00'], ['e3', 'c', '현장 점검과 결과 공유 자료 정리, 담당자 확인 받기', '09:30 ~ 12:00'],
+  ['e4', 'd', '사내 교육', '종일'], ['e5', 'b', '요구사항 정리', '10:00'], ['e6', 'a', '납품 서류 준비', '종일'],
+  ['e7', 'c', '센서 교정', '16:00 ~ 17:30'], ['e8', 'd', '보안 서약', '종일'], ['e9', 'b', '코드 검토', '13:00'],
+].map(([id, c, t, w]) => ({ id, c, t, w }));
+let TD = [['t1', 'd', '인사', false], ['t2', 'a', '견적서 회신', true], ['t3', 'b', '시험 결과 정리', false], ['t4', 'c', '장비 반납', false]].map(([id, c, t, done]) => ({ id, c, t, done }));
+const CAP = 5;
+let open = false, dragOpen = false;
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+function render(focusId) {
+  const showAll = open || dragOpen, list = showAll ? EV : EV.slice(0, CAP), hidden = EV.length - list.length;
+  $('#body').innerHTML = `<div class="gh">일정 <span class="n">${EV.length}</span></div>`
+    + `<ul class="cards" data-k="ev">${list.map((e) => { const [nm, col] = CATS[e.c]; return `<li class="card it" tabindex="0" data-id="${e.id}" style="--c:${col}"><div class="card-top"><span class="hd" aria-hidden="true">⠿</span><span class="tag">${esc(nm)}</span></div><div class="card-title">${esc(e.t)}</div><div class="card-when"><i>◷</i> ${esc(e.w)}</div><div class="card-act"><a>수정</a><a class="del">삭제</a></div></li>`; }).join('')}</ul>`
+    + (EV.length > CAP && !dragOpen ? `<button class="more" type="button" id="more">${open ? '접기' : hidden + '개 더 보기'}</button>` : '')
+    + `<div class="gh">할 일 <span class="n">${TD.filter((t) => !t.done).length}/${TD.length}</span></div>`
+    + `<ul class="todos" data-k="td">${TD.map((t) => { const [, col] = CATS[t.c]; return `<li class="todo it${t.done ? ' done' : ''}" tabindex="0" data-id="${t.id}" style="--c:${col}"><span class="hd" aria-hidden="true">⠿</span><span class="box"></span><span class="t">${esc(t.t)}</span><span class="dot"></span><span class="st">☆</span></li>`; }).join('')}</ul>`;
+  renderCell();
+  if (focusId) { const el = document.querySelector(`.it[data-id="${focusId}"]`); if (el) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'nearest' }); } }
+}
+function renderCell() {
+  const vis = EV.slice(0, CAP);
+  $('#mcell').innerHTML = '<div class="d">19</div>' + vis.map((e) => `<div class="bar" style="--c:${CATS[e.c][1]}">${esc(e.t)}</div>`).join('') + (EV.length > CAP ? `<div class="mm">+${EV.length - CAP}개 더보기</div>` : '');
+}
+function arrOf(k) { return k === 'ev' ? EV : TD; }
+function moveTo(k, id, to) {
+  const a = arrOf(k), i = a.findIndex((x) => x.id === id); if (i < 0) return false;
+  const j = Math.max(0, Math.min(a.length - 1, to)); if (i === j) return false;
+  const [x] = a.splice(i, 1); a.splice(j, 0, x); return true;
+}
+// 끌기: 내 과제 순서 바꾸기(.cat-drag-ghost)와 같은 손. 잡은 줄의 복제본이 그림자를 달고 따라오고, 원래 자리는 흐려지고(45%),
+//  놓을 자리에 선. Esc 는 취소. 여기에 더해 일정은 끌기 시작하면 전부 펼치고, 패널 위아래 끝에서는 저절로 스크롤한다.
+let D = null, raf = 0;
+const body = () => $('#body');
+document.addEventListener('pointerdown', (ev) => {
+  const hd = ev.target.closest('.hd'); if (!hd || ev.button !== 0) return;
+  const it = hd.closest('.it'); ev.preventDefault();
+  D = { k: it.parentElement.dataset.k, id: it.dataset.id, x0: ev.clientX, y0: ev.clientY, x: ev.clientX, y: ev.clientY, moved: false, target: null, ghost: null };
+});
+function startDrag() {
+  D.moved = true; document.body.classList.add('dragging');
+  if (D.k === 'ev' && !open && EV.length > CAP) { dragOpen = true; render(); }
+  const el = document.querySelector(`.it[data-id="${D.id}"]`);
+  const rc = el.getBoundingClientRect();
+  D.dx = D.x0 - rc.left; D.dy = D.y0 - rc.top;
+  const gh = el.cloneNode(true); gh.classList.add('ghost'); gh.removeAttribute('data-id'); gh.removeAttribute('tabindex');
+  gh.style.width = rc.width + 'px'; document.body.appendChild(gh); D.ghost = gh;
+  el.classList.add('drag');
+  const tick = () => { if (!D) return; autoScroll(); place(); mark(); raf = requestAnimationFrame(tick); }; raf = requestAnimationFrame(tick);
+}
+function place() { if (D.ghost) { D.ghost.style.left = (D.x - D.dx) + 'px'; D.ghost.style.top = (D.y - D.dy) + 'px'; } }
+function autoScroll() {
+  const b = body(), r = b.getBoundingClientRect(), edge = 48;
+  let v = 0;
+  if (D.y < r.top + edge + 32) v = -Math.ceil((r.top + edge + 32 - D.y) / 6);   // 위쪽은 붙은 머리 32px 만큼 더
+  else if (D.y > r.bottom - edge) v = Math.ceil((D.y - (r.bottom - edge)) / 6);
+  if (v) b.scrollTop += Math.max(-14, Math.min(14, v));
+}
+function mark() {
+  document.querySelectorAll('.ins-before,.ins-after').forEach((e) => e.classList.remove('ins-before', 'ins-after'));
+  const items = [...document.querySelectorAll(`[data-k="${D.k}"] > .it`)];
+  let target = items.length;
+  for (let i = 0; i < items.length; i++) { const r = items[i].getBoundingClientRect(); if (D.y < r.top + r.height / 2) { target = i; break; } }
+  D.target = target;
+  if (target < items.length) items[target].classList.add('ins-before'); else if (items.length) items[items.length - 1].classList.add('ins-after');
+}
+function endDrag(apply) {
+  const d = D; D = null; cancelAnimationFrame(raf); document.body.classList.remove('dragging');
+  if (d.ghost) d.ghost.remove();
+  if (apply && d.moved && d.target != null) {
+    const a = arrOf(d.k), i = a.findIndex((x) => x.id === d.id);
+    let to = d.target; if (to > i) to--;
+    const ok = moveTo(d.k, d.id, to);
+    $('#log').textContent = ok ? `${d.k === 'ev' ? '일정' : '할 일'}을 ${to + 1}번째로 옮겼습니다(시안 확인용 글, 실제 앱에는 없음)` : '';
+  } else if (d.moved) $('#log').textContent = '취소했습니다(시안 확인용 글)';
+  dragOpen = false; render(d.id);
+}
+document.addEventListener('pointermove', (ev) => {
+  if (!D) return; D.x = ev.clientX; D.y = ev.clientY;
+  if (!D.moved && Math.hypot(ev.clientX - D.x0, ev.clientY - D.y0) > 5) startDrag();
+});
+document.addEventListener('pointerup', () => { if (D) endDrag(true); });
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && D && D.moved) { ev.preventDefault(); endDrag(false); } }, true);
+document.addEventListener('keydown', (ev) => {
+  const it = ev.target.closest && ev.target.closest('.it'); if (!it || !ev.altKey || (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown')) return;
+  ev.preventDefault();
+  const k = it.parentElement.dataset.k, a = arrOf(k), i = a.findIndex((x) => x.id === it.dataset.id);
+  const to = i + (ev.key === 'ArrowUp' ? -1 : 1);
+  if (k === 'ev' && !open && to >= CAP) open = true;   // 키보드로 접힌 자리까지 내리면 펼친다
+  if (moveTo(k, it.dataset.id, to)) render(it.dataset.id);
+});
+document.addEventListener('click', (ev) => {
+  if (ev.target.closest('#more')) { open = !open; render(); return; }
+  const pb = ev.target.closest('[data-p]'); if (pb) setPos(pb.dataset.p);
+});
+function setPos(p) {
+  const pn = document.getElementById('panel'); pn.className = 'panel p-' + p;
+  document.querySelectorAll('#pos [data-p]').forEach((b) => b.classList.toggle('on', b.dataset.p === p));
+}
+setPos('in');
+render();
+</script>
+</body>
+</html>
