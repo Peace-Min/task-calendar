@@ -124,10 +124,13 @@ const statics = {
     assert.ok(!/scrollIntoView|catFlash|cat-flash/.test(ro) && !/catFlash|cat-flash|catDropFlash/.test(app), '옮긴 뒤 반짝임이나 자동 스크롤이 남았다(D3)');
     assert.ok(!/catGrip|data-act="grip"|cat-drop-slot|ICON\.move|catMoveBtnsHtml|catSyncMoveBtns|CAT_END_TIP/.test(app), '옛 ✥ 손잡이나 ▲▼ 코드가 남았다');
     //  끌기는 포인터 이벤트다(HTML5 끌어 놓기는 WebView2 와 자동화에서 동작이 달라 쓰지 않는다)
-    const i = app.indexOf("list.addEventListener('pointerdown', ev => {"), j = app.indexOf("closest('[data-catgrip]')", i);
-    assert.ok(i > 0 && j > i && j - i < 400, '⠿ 끌기가 포인터 이벤트(pointerdown → [data-catgrip])로 시작하지 않는다');
-    const k = app.indexOf("const to = state.categories.findIndex(c => c.id === st.over);\n      if(to >= 0) catReorder(st.id, to);");
-    assert.ok(k > 0 && i - k > 0 && i - k < 3000, '끌어 놓기가 catReorder(→ moveCategory)로 가지 않는다 — 저장 1회와 관문을 우회한다');
+    //  2026-11-11: 끌기 손은 공용(ordDragInit)이다. 내 과제는 그 손을 ⠿([data-catgrip])로 부르고 놓으면 catReorder 로 간다
+    const hand = extractFunction(app, 'ordDragInit');
+    assert.ok(/root\.addEventListener\('pointerdown', ev => \{\n[^\n]*\n\s*const h = ev\.target\.closest && ev\.target\.closest\(o\.grip\)/.test(hand), '공용 끌기 손이 포인터 이벤트(pointerdown → 손잡이)로 시작하지 않는다');
+    const i = app.indexOf("ordDragInit({\n      root: list, grip: '[data-catgrip]', row: '.cat-row'");
+    assert.ok(i > 0, '⠿ 끌기가 공용 손(ordDragInit)을 [data-catgrip] 로 부르지 않는다');
+    const k = app.indexOf("const to = state.categories.findIndex(c => c.id === drop.target);\n        if(to >= 0) catReorder(drop.id, to);", i);
+    assert.ok(k > 0 && k - i < 800, '끌어 놓기가 catReorder(→ moveCategory)로 가지 않는다. 저장 1회와 관문을 우회한다');
     assert.ok(!/draggable="true"|'dragstart'/.test(app.slice(app.indexOf('function catRowHtml'), app.indexOf('function catMenuHtml'))), '내 과제 목록이 HTML5 끌어 놓기를 쓴다');
   },
   //  관문 → 자리 옮김 → save() 1회 · 화면 쪽(catReorder)은 저장하지 않고 moveCategory 를 한 번 부른 뒤 줄을 옮긴다

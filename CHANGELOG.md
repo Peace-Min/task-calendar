@@ -20,6 +20,7 @@ docs/ITEM-ORDER.md(시안 docs/prototypes/day-panel-order.html 손잡이 자리 
   - 끄는 동안 `DP.dragAll` 로 접힌 일정을 다 펴고(더 보기 감춤) 놓거나 취소하면 되돌린다. 본문 위아래 끝 40px(위는 붙은 일정 머리 높이만큼 더)에서 자동 스크롤.
   - 놓기는 `dpOrderApply`: 보이는 목록의 끼워 넣을 자리를 보이는 이웃의 앞(뒤)으로 바꿔 `orderMoveRel` 로 배열에서 옮기고 `save()`, 달력과 패널을 다시 그린다. 그날 안 보이는 항목의 상대 순서는 그대로.
   - 키보드 `dpOrderKey`: 카드나 할 일 줄 안에 포커스가 있으면 Alt+↑/↓ 한 칸, 접힌 자리로 내리면 더 보기를 연다. 포커스는 옮긴 항목의 같은 자리(수정, 할 일 제목 등)로.
+  - 끌기 손을 공용 `ordDragInit(o)` 하나로 모았다. 내 과제, 공식 과제 목록(클래스 앞머리 `off`), 날짜 패널이 같이 부르고 5px 문턱, 복제본, 놓을 자리 규칙, 취소, 자동 스크롤, 정리는 한 곳뿐이다(사본이 셋이라 규칙이 갈라졌다). 저장은 각자(`catReorder`, `offOrderMove`, `dpOrderApply`). 시험 item-order 에 사본 없음 검사와 놓을 자리 변이를 더했다.
 - F1: 업데이트 배너의 [변경내역](`#updNotes`)과 `#updNotesModal`, `dataset.notes`, `.upd-nv`, `.upd-nbody` 를 걷었다. 버전 글, [지금 업데이트], ✕ 는 그대로.
 - F6: 그림 칸 메뉴로 넣은 뒤와 Ctrl+V 로 넣은 뒤 모두 `rptMFocusBack`(rptMBind 안). 칸이 넣는 동안, 그리고 견본이 늦게 와 다시 그려져도 5초 동안 지켜보다가 포커스가 body 로 빠졌으면 칸 단추로 돌린다.
 - 시험: 새 `item-order`(17). 옛 정렬을 못 박던 시험을 새 규칙으로: `day-panel-fold`(5개가 배열 순서, 카드와 강조 시험은 더 보기를 연 뒤), `month-todo-close`(칸 순서, 할 일만 보기), `personal-panel`(pmCellCmp 단위, 칸 순서, 패널 할 일 ★ 와 완료로 자리 그대로, 변이 M④ 를 "중요 먼저 되살리기"로), `peer-overlay-redesign`(내 겹 순서, 변이가 섞임을 잡게 픽스처에서 내 일정 하나를 맨 앞으로), `pc-watch-7`(카드 글줄에서 ⠿ 제외). F1 로 `#updNotesModal` 을 경계로 쓰던 `admin-hub`, `user-login` 은 `#importModal` 로.

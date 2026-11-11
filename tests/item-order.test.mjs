@@ -46,12 +46,29 @@ test('(S) 손잡이 ⠿: 카드 맨 윗줄 과제 표 앞, 할 일 줄 체크 �
   assert.ok(g && /width:24px;height:24px/.test(g[1]) && /cursor:grab/.test(g[1]) && !/opacity:0|visibility:hidden|display:none/.test(g[1]), '손잡이가 24px 이 아니거나 늘 보이지 않는다');
   assert.ok(!/:hover \.dp-grip\{[^}]*(opacity|visibility|display)/.test(css), '손잡이가 마우스를 올릴 때만 나타난다');
   assert.ok(/#dpBody \.cat-drag-src\{opacity:\.45\}|#dpBody \.cat-drag-src\{opacity:\.45/.test(css.replace('.cat-row.cat-drag-src,', '')), '원래 자리가 45%로 흐려지지 않는다');
+  //  끌기는 내 과제와 같은 공용 손(ordDragInit)이고 클래스 앞머리는 기본(cat)이다
   const init = extractFunction(app, 'dpOrderInit');
-  for (const k of ["classList.add('cat-drag-ghost')", "classList.add('cat-drag-src')", "'cat-drop-before'", "'cat-drop-after'", "classList.add('cat-dragging')", "ev.key === 'Escape'", "window.addEventListener('blur'", '< 5) return;']) {
-    assert.ok(init.includes(k), '끌기가 내 과제 손과 다르다: ' + k);
+  assert.ok(init.includes('ordDragInit({') && !/cls:/.test(init), '날짜 패널 끌기가 공용 손(ordDragInit, cat- 클래스)을 쓰지 않는다');
+  const hand = extractFunction(app, 'ordDragInit');
+  for (const k of ["const C = o.cls || 'cat'", 'classList.add(`${C}-drag-ghost`)', 'classList.add(`${C}-drag-src`)', '`${C}-drop-before`', '`${C}-drop-after`', 'classList.add(`${C}-dragging`)', "ev.key === 'Escape'", "window.addEventListener('blur'", '< 5) return;']) {
+    assert.ok(hand.includes(k), '공용 끌기 손이 내 과제 손과 다르다: ' + k);
   }
-  const fns = ['ordKey', 'ordIndexOf', 'itemOrderCmp', 'dpCanOrder', 'dpGripHtml', 'dpOrderIds', 'orderMoveRel', 'dpOrderApply', 'dpOrderFocus', 'dpOrderKey', 'dpOrderInit'].map((n) => extractFunction(app, n)).join('\n');
+  const fns = ['ordKey', 'ordIndexOf', 'itemOrderCmp', 'dpCanOrder', 'dpGripHtml', 'dpOrderIds', 'orderMoveRel', 'dpOrderApply', 'dpOrderFocus', 'dpOrderKey', 'ordDragInit', 'dpOrderInit'].map((n) => extractFunction(app, n)).join('\n');
   assert.ok(!/[—–「」]/.test(fns) && !/(^|\s)·(\s|$)/m.test(fns), '새 함수에 엠 대시, 낫표, 띄어 쓴 가운데 점이 있다');
+});
+test('(S) 끌어서 순서 바꾸기는 공용 손 하나(ordDragInit): 내 과제, 공식 과제 목록, 날짜 패널이 모두 부르고 5px 문턱, 복제본, 놓을 자리 규칙의 사본이 없다', () => {
+  const script = app.slice(app.indexOf('</style>'));
+  assert.strictEqual((script.match(/function ordDragInit\(/g) || []).length, 1, '공용 손이 없거나 둘이다');
+  assert.strictEqual((script.match(/ordDragInit\(\{/g) || []).length, 3, '공용 손을 부르는 곳이 셋(내 과제, 공식 목록, 날짜 패널)이 아니다');
+  assert.ok(extractFunction(app, 'dpOrderInit').includes('ordDragInit({'), '날짜 패널이 공용 손을 부르지 않는다');
+  assert.ok(script.includes("ordDragInit({\n      root: list, grip: '[data-catgrip]'"), '내 과제가 공용 손을 부르지 않는다');
+  assert.ok(script.includes("ordDragInit({\n        root: box, grip: '[data-offdrag]', row: '.off-row', cls: 'off'"), '공식 과제 목록이 공용 손을 부르지 않는다');
+  //  사본 흔적: 문턱, 복제본 클래스, 포인터 따라가기 처리기, 놓을 자리 방향 계산은 한 곳뿐
+  assert.strictEqual((script.match(/Math\.hypot\(/g) || []).length, 1, '5px 문턱이 여러 곳에 있다');
+  assert.strictEqual((script.match(/classList\.add\([^)]*drag-ghost/g) || []).length, 1, '복제본(drag-ghost) 만들기가 여러 곳에 있다');
+  assert.strictEqual((script.match(/cloneNode\(true\); gh\./g) || []).length, 1, '줄 복제가 여러 곳에 있다');
+  assert.strictEqual((script.match(/addEventListener\('pointermove', move, true\)/g) || []).length, 1, '끌기 포인터 처리기가 여러 곳에 있다');
+  assert.ok(!/drop-before' : '|-drop-before'\); d\.to|'cat-drop-before'|'off-drop-before'/.test(script.replace(/querySelectorAll\('[^']*'\)/g, '')), '놓을 자리 선을 공용 손 밖에서 긋는다');
 });
 test('(S) F1: 업데이트 배너에 [변경내역]과 그 창이 없다(버전 글과 [지금 업데이트], ✕ 는 남는다). F6: 그림 넣기 두 경로가 칸으로 포커스를 돌린다', () => {
   assert.ok(!/id="updNotes"|id="updNotesModal"|updNotesVer|updNotesBody|dataset\.notes|\.upd-nv\{|\.upd-nbody\{/.test(app), '배너 변경내역 흔적이 남았다');
@@ -353,8 +370,12 @@ if (!JSDOM) {
     await assert.rejects(() => checks.dragEvent(bad), /저장하지 않았다/);
   });
   test('(M) Esc 를 받지 않으면 Esc 시험이 잡는다', async () => {
-    const bad = mutate(app, "  function key(ev){ if(ev.key === 'Escape' && d && d.on){ ev.preventDefault(); ev.stopImmediatePropagation(); end(false); } }\n  body.addEventListener('pointerdown'", "  function key(){}\n  body.addEventListener('pointerdown'");
+    const bad = mutate(app, "  function key(ev){ if(ev.key === 'Escape' && d && d.on){ ev.preventDefault(); ev.stopImmediatePropagation(); end(false); } }\n  root.addEventListener('pointerdown'", "  function key(){}\n  root.addEventListener('pointerdown'");
     await assert.rejects(() => checks.esc(bad), /Esc/);
+  });
+  test('(M) 공용 손의 놓을 자리 규칙을 옛 가운데 기준(늘 다음 항목 위쪽)으로 되돌리면 할 일 끌기 시험이 잡는다', async () => {
+    const bad = mutate(app, '    const after = ti > from;\n', '    const after = false;\n');
+    await assert.rejects(() => checks.dragTodo(bad), /아래쪽에 선이 없다/);
   });
   test('(M) Alt+↓ 가 접힌 자리에서 펴지 않으면 키보드 시험이 잡는다', async () => {
     const bad = mutate(app, "  if(!up && i + 1 >= DP_LIMIT) DP.more.add(kind === 't' ? 'td' : 'ev');", '');
