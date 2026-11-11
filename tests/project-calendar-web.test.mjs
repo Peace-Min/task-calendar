@@ -1080,6 +1080,7 @@ if (!JSDOM) {
     assert.ok(W.el('pcDetailModal').dataset.busy === '1' && W.q('#pcDetailFoot [data-act="copy"]').disabled, '보내는 동안 상세 창과 단추를 붙들지 않는다(다시 눌러 두 건)');
     await W.reply('projectCalendarCopy', { ok: true, data: { entryUid: 'e-copy-1', eventUid: U(1), projectUid: P1, personalRev: 3 } });
     assert.ok(W.toasts().some((t) => /개인 일정에 등록했습니다/.test(t)), '등록 알림이 없다');
+    assert.ok(!W.toasts().some((t) => /다시 읽은 뒤에 보입니다/.test(t)), '다시 읽기가 된 등록에 "다시 읽은 뒤" 안내가 떴다');
     const btn = W.q('#pcDetailFoot [data-act="copy"]');
     assert.ok(btn && !btn.disabled && !/등록됨/.test(W.el('pcDetailFoot').textContent) && !W.el('pcDetailModal').dataset.busy, '등록 뒤 상세가 "등록됨" 으로 바뀌었거나 단추가 꺼졌다(사본이라 다시 등록할 수 있어야 한다)');
     //  두 번째 등록: 확인 창 없이 새 변경 id 로 한 번 더 보낸다(화면이 막지 않는다. 호스트가 새 개인 일정을 하나 더 만든다).
@@ -1088,7 +1089,9 @@ if (!JSDOM) {
     const c2 = W.last('projectCalendarCopy');
     assert.strictEqual(W.cmds('projectCalendarCopy').length, 2, '두 번째 등록을 보내지 않았다(사본은 누를 때마다 새로)');
     assert.notStrictEqual(c2.mutationUid, c.mutationUid, '두 번째 등록이 같은 변경 id 로 나갔다');
-    await W.reply('projectCalendarCopy', { ok: true, data: { entryUid: 'e-copy-2', eventUid: U(1), projectUid: P1, personalRev: 4 } });
+    //  0.28.0 F3: 호스트가 복사 뒤 다시 읽지 못했으면(personalReloaded false) 짧은 안내로 바꾼다
+    await W.reply('projectCalendarCopy', { ok: true, data: { entryUid: 'e-copy-2', eventUid: U(1), projectUid: P1, personalRev: 4, personalReloaded: false } });
+    assert.ok(W.toasts().some((t) => /^개인 일정에 등록했습니다\. 화면에는 다시 읽은 뒤에 보입니다\.$/.test(t)), '다시 읽기 실패 안내가 없다');
     //  호스트가 개인 스냅샷을 다시 실어도(§5.5 3번) 개인 탭 카드는 보통 개인 일정이다(출처 배지 없음).
     W.ev("closeModal('#pcDetailModal')"); W.clock.advance(500); await settle();
     const ent = (id) => ({ id, date: today(), title: '복사할 일정', categoryId: 'db-' + P1, allDay: false, startTime: '', endTime: '', memo: '', location: '', source: '', commits: [], createdAt: '', updatedAt: '' });
@@ -1384,7 +1387,7 @@ if (!JSDOM) {
     } finally { W.close(); }
   });
   test('변이R④: 상세를 "등록됨" 으로 끄면(옛 동작) 화면⑫ 의 두 번째 등록 검사가 잡는다', async () => {
-    const bad = mutate("  toast('개인 일정에 등록했습니다. 개인 탭에서 볼 수 있습니다.', 'success');", "  toast('개인 일정에 등록했습니다. 개인 탭에서 볼 수 있습니다.', 'success'); const zb = document.querySelector('#pcDetailFoot [data-act=\"copy\"]'); if(zb){ zb.disabled = true; zb.textContent = '개인 일정에 등록됨'; }");
+    const bad = mutate("  else toast('개인 일정에 등록했습니다. 개인 탭에서 볼 수 있습니다.', 'success');", "  else toast('개인 일정에 등록했습니다. 개인 탭에서 볼 수 있습니다.', 'success'); const zb = document.querySelector('#pcDetailFoot [data-act=\"copy\"]'); if(zb){ zb.disabled = true; zb.textContent = '개인 일정에 등록됨'; }");
     const W = await boot({ source: bad });
     try {
       await W.enter([EV(1, { rowVersion: 2 })]);

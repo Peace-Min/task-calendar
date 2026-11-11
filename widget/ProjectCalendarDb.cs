@@ -219,8 +219,11 @@ namespace TaskCalendarWidget
                     case "projectCalendarCopy":
                     {
                         //  성공하면 늘 새 개인 일정 한 건이 생긴다. MainWindow 가 개인 스냅샷을 다시 읽는다.
-                        var r = ProjectCalendarReply.Success(await CopyAsync(q, ct));
+                        var data = await CopyAsync(q, ct);
+                        var r = ProjectCalendarReply.Success(data);
                         r.ReloadPersonal = true;
+                        //  다시 읽기가 실패하면 호스트가 이 번호로 스냅샷 rev 를 맞춘다(0.28.0 F3)
+                        if (data is Dictionary<string, object?> d && d.TryGetValue("personalRev", out var pr) && pr is long rev) r.PersonalRev = rev;
                         return r;
                     }
                     case "projectCalendarMembers":   return ProjectCalendarReply.Success(await MembersAsync(q, ct));
@@ -1510,6 +1513,8 @@ namespace TaskCalendarWidget
         public string Message { get; private set; } = "";
         //  개인 복사로 개인 일정이 새로 생겼다. 호스트가 개인 스냅샷을 다시 읽어야 한다(§5.5 3번).
         public bool ReloadPersonal { get; set; }
+        //  복사 트랜잭션이 올린 개인 rev(cal_user_rev). 0 이면 모른다.
+        public long PersonalRev { get; set; }
 
         public static ProjectCalendarReply Success(object data) => new ProjectCalendarReply { Ok = true, Data = data };
         public static ProjectCalendarReply Failure(string kind, string message, object? data = null) =>

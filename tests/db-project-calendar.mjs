@@ -19,6 +19,7 @@
  *      - 공용 일정이 있는 과제는 휴지통에서 영구 삭제가 거부되고, 없는 과제는 지워진다. 지워진 과제에 쓰면 원문 오류가 아니라 forbidden
  *      - 개인 복사: 한 번 찍는 사본(대응표 없음). 같은 원본을 두 번 등록하면 개인 일정 두 건, 부트스트랩에 copies 없음,
  *        복사본을 지워도 공용 일정은 그대로, 복사가 중간에 실패하면 개인 행 0
+ *      - 개인 복사 뒤 다시 읽기 실패(0.28.0 F3): 복사 rev 로 맞춘 스냅샷의 저장이 통과하고 새 일정은 남는다. 다른 PC 저장이 끼면 충돌
  *      - 글자 상한 초과는 invalid(자르지 않고 아무것도 쓰지 않는다)
  *      - 참여자 명단(기획 §6.9): 묶음은 명부와 같은 조직 트리 순서(sort_order, 하위는 부모 뒤, 소속 없음 맨 뒤), 소속 안은 관리자 순번,
  *        비활성 제외, total = 참여자 수, 키는 name, org, title, me 뿐, 내 과제에 없는 과제는 forbidden
@@ -128,6 +129,36 @@ class R
             {
                 var (ok, msg) = await new ProjectDb(dir, log).DeleteTrashAsync("project", s.GetProperty("key").GetString(), s.GetProperty("confirm").GetString());
                 return new { ok, msg };
+            }
+            case "copyReloadFail":
+            {
+                //  0.28.0 F3: 복사 뒤 다시 읽기가 실패한 PC 를 흉내 낸다. 복사 앞 스냅샷을 들고 있다가
+                //  호스트(ProjectCalendarHost)처럼 AfterOwnCopy(복사 rev)로 맞추고 그 스냅샷으로 개인 저장을 한다.
+                //  other: "" 끼어드는 저장 없음, "before" 복사 앞에 다른 PC 저장, "after" 맞춘 뒤에 다른 PC 저장
+                string login = s.GetProperty("loginId").GetString() ?? "";
+                string other = s.GetProperty("other").GetString() ?? "";
+                var snap = await new CalendarDb(log).LoadSnapshotAsync(login);
+                if (snap == null) return new { ok = false, msg = "snapshot null" };
+                async Task<bool> OtherPcSave()
+                {
+                    var o = await new CalendarDb(log).LoadSnapshotAsync(login);
+                    return o != null && (await new CalendarWriteDb(log).SaveAsync(o, o.StateJson)).Ok;
+                }
+                bool otherOk = true;
+                if (other == "before") otherOk = await OtherPcSave();
+                var c = await new ProjectCalendarDb(dir, log).HandleAsync("projectCalendarCopy", s.GetProperty("payload").GetRawText());
+                if (!c.Ok) return new { ok = false, msg = "copy failed", reply = c.ToPayload() };
+                var adv = snap.AfterOwnCopy(c.PersonalRev);
+                if (other == "after") otherOk = await OtherPcSave();
+                //  웹 화면은 새 일정을 모른다(다시 읽기 실패). 화면 상태 그대로(제목 하나만 바꾼 것)를 저장한다
+                var st = JsonNode.Parse(snap.StateJson)!.AsObject();
+                var arr = st["entries"]!.AsArray();
+                if (arr.Count > 0) arr[0]!["title"] = "zz F3 고침 " + other;
+                var w = await new CalendarWriteDb(log).SaveAsync(adv ?? snap, st.ToJsonString());
+                var fresh = await new CalendarDb(log).LoadSnapshotAsync(login);
+                string entryUid = ((System.Collections.Generic.Dictionary<string, object?>)c.Data!)["entryUid"] as string ?? "";
+                bool kept = fresh != null && fresh.EntryNoByUid.ContainsKey(entryUid);
+                return new { ok = true, snapRev = snap.Rev, personalRev = c.PersonalRev, advanced = adv != null, otherOk, saveOk = w.Ok, conflict = w.Conflict, kept, entryUid, edited = arr.Count > 0 };
             }
             case "deletePersonalEntry":
             {
@@ -482,6 +513,20 @@ async function main() {
         num(`SELECT rev FROM cal_user_rev WHERE user_id=${D.u2.id}`) === u2rev, JSON.stringify(r));
     } finally {
       sql(`GRANT INSERT ON \`${OPT.db}\`.\`cal_entry\` TO '${APP_USER}'@'%'`, '개인 일정 INSERT 되돌리기');
+    }
+
+    console.log('\n[개인 복사 뒤 다시 읽기 실패(0.28.0 F3)]');
+    {
+      //  복사 회신의 개인 rev 로 스냅샷 rev 를 맞추면 다음 개인 저장이 통과하고 새 일정은 남는다.
+      //  다른 PC 저장이 복사 앞이나 맞춘 뒤에 끼면 맞추지 않거나(앞) 저장이 충돌한다(뒤). 진짜 충돌은 그대로 잡힌다.
+      const go = (other) => run([{ op: 'copyReloadFail', dataDir: DIRS.u1, loginId: D.u1.login, other,
+        payload: { projectUid: D.p1.uid, eventUid: e1, mutationUid: randomUUID() } }])[0];
+      let f = go('');
+      ok('복사 rev = 스냅샷 rev + 1 이면 맞추고, 그 스냅샷으로 한 개인 저장이 통과, 복사로 생긴 일정은 지워지지 않는다', f.ok && f.personalRev === f.snapRev + 1 && f.advanced && f.saveOk && f.kept && f.edited, JSON.stringify(f));
+      f = go('before');
+      ok('복사 앞에 다른 PC 저장이 끼면 맞추지 않고(rev 가 건너뜀) 저장은 충돌, 새 일정은 남는다', f.ok && f.otherOk && f.personalRev === f.snapRev + 2 && !f.advanced && !f.saveOk && f.conflict && f.kept, JSON.stringify(f));
+      f = go('after');
+      ok('맞춘 뒤에 다른 PC 저장이 끼면 저장은 충돌(진짜 충돌은 그대로 잡힌다), 새 일정은 남는다', f.ok && f.otherOk && f.advanced && !f.saveOk && f.conflict && f.kept, JSON.stringify(f));
     }
 
     console.log('\n[휴지통 영구 삭제]');

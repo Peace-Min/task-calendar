@@ -30,12 +30,14 @@ namespace TaskCalendarWidget
     //    scheduleImageDelete { id }                     실제 행 삭제(휴지통 없음). 남은 그림은 1..n 으로 다시 매긴다
     //    scheduleImageMove   { id, seq }                과제 안 자리를 seq(1부터)로 옮긴다. 과제당 1장이 된 뒤(2026-11-10) 웹은 부르지 않는다. 1장이면 seq 가 1로 잘려 아무것도 쓰지 않는다
     //    scheduleImageThumb  { id }                     → { id, sha256, dataUrl, width, height } 웹 미리 보기(약 40KB 이하 JPEG)
+    //    scheduleImagePreview { id }                    → { id, sha256, dataUrl, mime, width, height } 문서 미리 보기용(긴 변 1600 이하, 0.28.0 F2)
     //    회신은 { ok, data?, error?: { kind, message } }. kind 는 forbidden, invalid, notFound, conflict 와 연결 분류(DbErrorKind).
     //    파일 고르기를 취소하면 { ok:false, cancelled:true }.
     //
     //  【PC 사본】 앱 데이터 폴더 schedule-images\<sha256>.png|jpg. 목록을 읽을 때마다 (로그인 id, 과제)별 메타를 index.json 에 적어 두고,
     //    바이트는 해시가 같은 사본이 없을 때만 DB 에서 받는다. 사본은 읽을 때마다 해시를 다시 보고, 다르면 지우고 새로 받는다.
-    //    DB 가 끊기면 DOCX 저장과 미리 보기는 사본으로 하고(ImagesForExportAsync, ThumbAsync), 추가와 삭제와 순서 바꾸기는 막힌다.
+    //    미리 보기 사본은 schedule-images\thumb\<sha256>.jpg(작은 칸), schedule-images\preview\<sha256>.png|jpg(문서 미리 보기, 원본을 그대로 쓸 때는 두지 않는다).
+    //    DB 가 끊기면 DOCX 저장과 미리 보기는 사본으로 하고(ImagesForExportAsync, ThumbAsync, PreviewAsync), 추가와 삭제와 순서 바꾸기는 막힌다.
     //
     //  【트랜잭션 규칙】
     //    - 연결은 모두 DbGate.OpenAsync(버전 관문). 쓰기는 READ-COMMITTED 한 트랜잭션이고 커밋은 CommitWithGateAsync 한 곳에서
@@ -56,6 +58,10 @@ namespace TaskCalendarWidget
             public const int MaxEdgePx = 16000;              // 가로, 세로 상한(SMALLINT UNSIGNED 안, 압축 폭탄과 거대 그림 막기)
             public const int ThumbMaxBytes = 40 * 1024;      // 미리 보기 JPEG 상한(약 40KB)
             public const int ThumbEdgePx = 360;              // 미리 보기 긴 변(처음 시도). 크면 줄여 가며 다시 만든다
+            //  문서 미리 보기(0.28.0 F2): 미리 보기가 그림을 문서 폭(약 566pt, 고해상도 화면에서 1100px 넘게)으로 그려 360 견본은 흐리다.
+            //  1600 이면 150% 배율 화면에서도 문서 폭을 채운다. 상한은 웹 메모리(과제마다 data URL 하나)를 생각한 값
+            public const int PreviewEdgePx = 1600;
+            public const int PreviewMaxBytes = 1536 * 1024;
         }
 
         //  호스트가 채우는 error.kind. 연결 오류는 DbErrorKind(network, auth, schema, gate, unknown)를 그대로 쓴다.
@@ -67,10 +73,10 @@ namespace TaskCalendarWidget
             public const string Conflict = "conflict";
         }
 
-        //  명령 다섯. MainWindow 의 스위치와 시험이 이 이름을 쓴다.
+        //  명령 여섯. MainWindow 의 스위치와 시험이 이 이름을 쓴다.
         internal static readonly string[] Commands =
         {
-            "scheduleImageList", "scheduleImageAdd", "scheduleImageDelete", "scheduleImageMove", "scheduleImageThumb",
+            "scheduleImageList", "scheduleImageAdd", "scheduleImageDelete", "scheduleImageMove", "scheduleImageThumb", "scheduleImagePreview",
         };
 
         // ── 고정 문구(사용자에게 그대로 보인다) ─────────────────────────────────
@@ -217,6 +223,7 @@ namespace TaskCalendarWidget
                     case "scheduleImageDelete": return await DeleteAsync(ReqId(q));
                     case "scheduleImageMove": return await MoveAsync(ReqId(q), ReqSeq(q));
                     case "scheduleImageThumb": return await ThumbAsync(ReqId(q));
+                    case "scheduleImagePreview": return await PreviewAsync(ReqId(q));
                     default: throw new SiFail(Kind.Invalid, "알 수 없는 요청입니다.");
                 }
             }
@@ -604,6 +611,66 @@ namespace TaskCalendarWidget
             return (Math.Max(1, (int)(w * k)), Math.Max(1, (int)(h * k)));
         }
 
+        // ================================================================================
+        //  5b. 문서 미리 보기 그림(0.28.0 F2): 긴 변 1600 이하. 원본, 끊김 처리, 회신 모양은 견본(ThumbAsync)과 같다
+        // ================================================================================
+        public async Task<ScheduleImageReply> PreviewAsync(long id)
+        {
+            ImageMeta? meta;
+            byte[]? bytes;
+            bool stale = false;
+            string login;
+            try { login = SessionLoginId(); }
+            catch (SiFail f) { return Fail("문서 미리 보기", f); }
+            try
+            {
+                var got = await GetAsync(id);
+                meta = got.meta;
+                bytes = got.bytes;
+            }
+            catch (Exception ex)
+            {
+                if (ex is SiFail || ex is ArgumentException) return Fail("문서 미리 보기", ex);
+                //  끊겼거나 막혔다: 견본과 같이 이 로그인의 색인과 온전한 원본 사본으로 만든다
+                meta = Cache.FindById(_dataDir, login, id);
+                bytes = meta == null ? null : Cache.Load(_dataDir, meta.Sha256, meta.Mime, _log);
+                if (meta == null || bytes == null) return Fail("문서 미리 보기", ex);
+                stale = true;
+            }
+            try
+            {
+                var hit = Cache.LoadPreview(_dataDir, meta.Sha256);
+                byte[] pic; string mime; int pw, ph;
+                (int w, int h)? sz = hit == null ? null : ScheduleImageCodec.PictureSize(hit.Value.bytes, hit.Value.mime);
+                if (hit != null && sz.HasValue)
+                {
+                    pic = hit.Value.bytes; mime = hit.Value.mime; (pw, ph) = sz.Value;
+                }
+                else
+                {
+                    var p = await ScheduleImageCodec.PreviewAsync(bytes!);
+                    pic = p.Bytes; mime = p.Mime; pw = p.Width; ph = p.Height;
+                    //  원본을 그대로 쓴 경우는 원본 사본이 이미 있어 따로 두지 않는다(같은 바이트 두 벌을 막는다)
+                    if (!ReferenceEquals(pic, bytes)) Cache.StorePreview(_dataDir, meta.Sha256, pic, mime, _log);
+                }
+                return ScheduleImageReply.Success(new Dictionary<string, object?>
+                {
+                    ["id"] = meta.Id,
+                    ["sha256"] = meta.Sha256,
+                    ["dataUrl"] = "data:" + mime + ";base64," + Convert.ToBase64String(pic),
+                    ["mime"] = mime,
+                    ["width"] = pw,
+                    ["height"] = ph,
+                    ["stale"] = stale,
+                });
+            }
+            catch (ArgumentException ax)
+            {
+                _log("개발 일정 그림 문서 미리 보기 실패(그림 검사): " + ax.Message);
+                return ScheduleImageReply.Failure(Kind.Invalid, MsgBroken);
+            }
+        }
+
         //  내 그림 한 장의 메타와 바이트. 사본이 해시와 같으면 사본, 아니면 DB 에서 받아 해시를 확인하고 사본을 둔다.
         //  남의 그림 번호는 없는 번호와 같다(notFound).
         //  ★ 해시가 다른 바이트를 DB 가 주면(손댄 데이터) 쓰지 않는다(invalid). 시험(db-schedule-image)이 이 길로 '받기' 를 본다.
@@ -816,6 +883,7 @@ namespace TaskCalendarWidget
 
             public static string Dir(string dataDir) => Path.Combine(dataDir, "schedule-images");
             private static string ThumbDir(string dataDir) => Path.Combine(Dir(dataDir), "thumb");
+            private static string PreviewDir(string dataDir) => Path.Combine(Dir(dataDir), "preview");
             private static string IndexPath(string dataDir) => Path.Combine(Dir(dataDir), "index.json");
 
             public static string? FileFor(string dataDir, string sha, string mime)
@@ -862,6 +930,27 @@ namespace TaskCalendarWidget
                 if (!ShaRe.IsMatch(sha ?? "")) return;
                 try { WriteAtomic(Path.Combine(ThumbDir(dataDir), sha + ".jpg"), jpeg); }
                 catch (Exception ex) { log("개발 일정 그림 미리 보기 사본 쓰기 실패: " + ex.Message); }
+            }
+
+            //  문서 미리 보기 사본. 형식은 확장자로 안다(PNG 를 먼저 본다). 파일 이름은 검사한 해시에서만.
+            public static (byte[] bytes, string mime)? LoadPreview(string dataDir, string sha)
+            {
+                if (!ShaRe.IsMatch(sha ?? "")) return null;
+                foreach (var (ext, mime) in new[] { (".png", "image/png"), (".jpg", "image/jpeg") })
+                {
+                    string p = Path.Combine(PreviewDir(dataDir), sha + ext);
+                    try { if (File.Exists(p)) return (File.ReadAllBytes(p), mime); } catch { }
+                }
+                return null;
+            }
+
+            public static void StorePreview(string dataDir, string sha, byte[] bytes, string mime, Action<string> log)
+            {
+                if (!ShaRe.IsMatch(sha ?? "")) return;
+                string ext = mime == "image/png" ? ".png" : mime == "image/jpeg" ? ".jpg" : "";
+                if (ext.Length == 0) return;
+                try { WriteAtomic(Path.Combine(PreviewDir(dataDir), sha + ext), bytes); }
+                catch (Exception ex) { log("개발 일정 그림 문서 미리 보기 사본 쓰기 실패: " + ex.Message); }
             }
 
             internal static string Key(string login, string projectUid) => login + "|" + projectUid;
@@ -928,7 +1017,7 @@ namespace TaskCalendarWidget
             {
                 var keep = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var l in idx.Values) foreach (var m in l) keep.Add(m.Sha256);
-                foreach (var dir in new[] { Dir(dataDir), ThumbDir(dataDir) })
+                foreach (var dir in new[] { Dir(dataDir), ThumbDir(dataDir), PreviewDir(dataDir) })
                 {
                     if (!Directory.Exists(dir)) continue;
                     foreach (var f in Directory.GetFiles(dir))
@@ -1020,25 +1109,7 @@ namespace TaskCalendarWidget
             Thumb last = default;
             foreach (int edge in new[] { ScheduleImageDb.Limits.ThumbEdgePx, 300, 240, 180, 120 })
             {
-                double k = Math.Min(1.0, (double)edge / Math.Max(info.Width, info.Height));
-                int tw = Math.Max(1, (int)Math.Round(info.Width * k)), th = Math.Max(1, (int)Math.Round(info.Height * k));
-                var src = new BitmapImage();
-                using (var ms = new MemoryStream(bytes, writable: false))
-                {
-                    src.BeginInit();
-                    src.CacheOption = BitmapCacheOption.OnLoad;
-                    src.StreamSource = ms;
-                    if (info.Width >= info.Height) src.DecodePixelWidth = tw; else src.DecodePixelHeight = th;
-                    src.EndInit();
-                }
-                var dv = new DrawingVisual();
-                using (var dc = dv.RenderOpen())
-                {
-                    dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, tw, th));   // 투명한 PNG 가 검게 나오지 않게
-                    dc.DrawImage(src, new Rect(0, 0, tw, th));
-                }
-                var rtb = new RenderTargetBitmap(tw, th, 96, 96, PixelFormats.Pbgra32);
-                rtb.Render(dv);
+                var (rtb, tw, th) = RenderScaled(bytes, info, edge);
                 foreach (int quality in new[] { 80, 65, 50 })
                 {
                     var enc = new JpegBitmapEncoder { QualityLevel = quality };
@@ -1050,6 +1121,90 @@ namespace TaskCalendarWidget
                 }
             }
             return last;   // 가장 작게 만든 것(120 화소, 품질 50). 40KB 를 넘는 일은 사실상 없다
+        }
+
+        //  긴 변 edge 이하(키우지 않는다)로 디코더에서 바로 줄여 흰 바탕에 그린다. 견본과 문서 미리 보기가 같이 쓴다.
+        private static (RenderTargetBitmap rtb, int w, int h) RenderScaled(byte[] bytes, Info info, int edge)
+        {
+            double k = Math.Min(1.0, (double)edge / Math.Max(info.Width, info.Height));
+            int tw = Math.Max(1, (int)Math.Round(info.Width * k)), th = Math.Max(1, (int)Math.Round(info.Height * k));
+            var src = new BitmapImage();
+            using (var ms = new MemoryStream(bytes, writable: false))
+            {
+                src.BeginInit();
+                src.CacheOption = BitmapCacheOption.OnLoad;
+                src.StreamSource = ms;
+                if (info.Width >= info.Height) src.DecodePixelWidth = tw; else src.DecodePixelHeight = th;
+                src.EndInit();
+            }
+            var dv = new DrawingVisual();
+            using (var dc = dv.RenderOpen())
+            {
+                dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, tw, th));   // 투명한 PNG 가 검게 나오지 않게
+                dc.DrawImage(src, new Rect(0, 0, tw, th));
+            }
+            var rtb = new RenderTargetBitmap(tw, th, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(dv);
+            return (rtb, tw, th);
+        }
+
+        internal readonly struct Picture
+        {
+            public byte[] Bytes { get; }
+            public string Mime { get; }
+            public int Width { get; }
+            public int Height { get; }
+            public Picture(byte[] bytes, string mime, int w, int h) { Bytes = bytes; Mime = mime; Width = w; Height = h; }
+        }
+
+        //  문서 미리 보기(0.28.0 F2). 원본이 긴 변 1600 이하이고 상한 안이면 원본 바이트 그대로(다시 압축하지 않아 가장 선명하다).
+        //  아니면 줄인다. PNG 원본은 PNG 로 둔다(일정 그림은 글자와 가는 선이 많아 JPEG 에서 번진다). 상한을 넘거나 JPEG 원본이면 JPEG 품질 90, 85.
+        //  그래도 넘으면 긴 변 1200 으로 한 번 더. 끝까지 넘는 일은 사실상 없고 그때는 마지막 것을 쓴다.
+        public static Task<Picture> PreviewAsync(byte[] bytes) => StaAsync(() => MakePreview(bytes));
+
+        private static Picture MakePreview(byte[] bytes)
+        {
+            var info = Inspect(bytes);
+            int cap = ScheduleImageDb.Limits.PreviewMaxBytes;
+            if (Math.Max(info.Width, info.Height) <= ScheduleImageDb.Limits.PreviewEdgePx && bytes.Length <= cap)
+                return new Picture(bytes, info.Mime, info.Width, info.Height);
+            Picture last = default;
+            foreach (int edge in new[] { ScheduleImageDb.Limits.PreviewEdgePx, 1200 })
+            {
+                var (rtb, tw, th) = RenderScaled(bytes, info, edge);
+                if (info.Mime == "image/png")
+                {
+                    last = new Picture(Encode(new PngBitmapEncoder(), rtb), "image/png", tw, th);
+                    if (last.Bytes.Length <= cap) return last;
+                }
+                foreach (int quality in new[] { 90, 85 })
+                {
+                    last = new Picture(Encode(new JpegBitmapEncoder { QualityLevel = quality }, rtb), "image/jpeg", tw, th);
+                    if (last.Bytes.Length <= cap) return last;
+                }
+            }
+            return last;
+        }
+
+        private static byte[] Encode(BitmapEncoder enc, BitmapSource src)
+        {
+            enc.Frames.Add(BitmapFrame.Create(src));
+            using var ms = new MemoryStream();
+            enc.Save(ms);
+            return ms.ToArray();
+        }
+
+        //  사본의 가로세로를 머리에서 읽는다(PNG 는 IHDR, JPEG 는 SOFn). 못 읽으면 null 이고 부르는 쪽이 새로 만든다.
+        internal static (int w, int h)? PictureSize(byte[] b, string mime)
+        {
+            if (mime == "image/png")
+            {
+                if (b.Length < 24 || Sniff(b) != "image/png") return null;
+                int w = (b[16] << 24) | (b[17] << 16) | (b[18] << 8) | b[19], h = (b[20] << 24) | (b[21] << 16) | (b[22] << 8) | b[23];
+                return w > 0 && h > 0 ? (w, h) : null;
+            }
+            if (mime == "image/jpeg" && Sniff(b) == "image/jpeg") return JpegSize(b);
+            return null;
         }
 
         //  JPEG 의 가로세로(SOF0..SOF15, DHT, JPG, DAC 제외). 못 읽으면 null.

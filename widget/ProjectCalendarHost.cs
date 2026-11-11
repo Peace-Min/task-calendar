@@ -30,8 +30,19 @@ namespace TaskCalendarWidget
             //  웹은 복사 전에 개인 화면의 미저장 변경을 먼저 저장하므로(§5.5 1번) 덮을 것이 없다.
             if (r.Ok && r.ReloadPersonal)
             {
+                var before = _calSnap;
                 try { await BootFromDbAsync(); }
                 catch (Exception ex) { Log("과제 캘린더 복사 뒤 개인 스냅샷 재적재 실패: " + ex.Message); }
+                //  다시 읽기가 실패했다(BootFromDbAsync 는 실패를 웹에 알리고 스냅샷을 그대로 둔다, 성공하면 늘 새 스냅샷으로 바꾼다).
+                //  그대로 두면 스냅샷 rev 가 서버보다 하나 뒤라 다음 개인 저장이 모두 충돌한다(0.28.0 F3). 복사가 낸 rev 로 맞춘다.
+                if (before != null && ReferenceEquals(_calSnap, before))
+                {
+                    var adv = before.AfterOwnCopy(r.PersonalRev);
+                    if (adv != null) _calSnap = adv;
+                    Log("과제 캘린더 복사 뒤 다시 읽기 실패: 스냅샷 rev " + before.Rev + (adv != null ? " -> " + adv.Rev : " 그대로(복사 rev " + r.PersonalRev + ", 사이에 다른 저장)"));
+                    //  웹은 새 일정이 아직 화면에 없다고 알린다(pcCopy 토스트)
+                    if (r.Data is System.Collections.Generic.Dictionary<string, object?> d) d["personalReloaded"] = false;
+                }
             }
             ReplyOnUi(reqId, r.ToPayload());
         }

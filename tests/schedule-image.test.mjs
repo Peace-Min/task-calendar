@@ -44,7 +44,7 @@ const src = {
 };
 
 const TABLE = 'project_schedule_image';
-const COMMANDS = ['scheduleImageList', 'scheduleImageAdd', 'scheduleImageDelete', 'scheduleImageMove', 'scheduleImageThumb'];
+const COMMANDS = ['scheduleImageList', 'scheduleImageAdd', 'scheduleImageDelete', 'scheduleImageMove', 'scheduleImageThumb', 'scheduleImagePreview'];
 const MAIN_ONLY = [...COMMANDS, 'exportMonthlyDocx'];
 const CHECK_EXPR = 'dev_start_date IS NULL OR dev_end_date IS NULL OR dev_start_date <= dev_end_date';
 
@@ -286,7 +286,7 @@ const checks = {
     }
     const listed = /internal static readonly string\[\] Commands =\s*\{([\s\S]*?)\};/.exec(stripCsComments(sidb));
     assert.ok(listed, 'ScheduleImageDb.Commands 가 없다');
-    assert.deepStrictEqual([...listed[1].matchAll(/"(\w+)"/g)].map((x) => x[1]).sort(), [...COMMANDS].sort(), 'ScheduleImageDb.Commands 가 다섯 명령과 다르다');
+    assert.deepStrictEqual([...listed[1].matchAll(/"(\w+)"/g)].map((x) => x[1]).sort(), [...COMMANDS].sort(), 'ScheduleImageDb.Commands 가 여섯 명령과 다르다');
   },
 };
 
@@ -431,4 +431,58 @@ test('변이SI19: 상한을 5로 되돌리거나 문구를 옛것으로 두면 �
   const msg = /internal const string MsgTooMany = "([^"]*)";/.exec(src.sidb)[1];
   assert.throws(() => onePer.host(mutate(src.sidb, msg, '개발 일정 그림은 과제마다 5장까지 올릴 수 있습니다.')), /1장 뜻이 아니다/);
   assert.throws(() => onePer.webMatches(src.sidb, src.html.replace(/const RPTM_IMG_MAX = \d+;/, 'const RPTM_IMG_MAX = 3;')), /다르다/);
+});
+
+// ══ 0.28.0 F2: 문서 미리 보기 그림(scheduleImagePreview) ═══════════════════
+//  미리 보기가 그림을 문서 폭으로 그리게 된 뒤 360 견본이 흐렸다. 긴 변 1600 이하 그림을 따로 만든다.
+//  지키는 것: 상한(1600, 1.5MB), 원본과 끊김 처리는 견본과 같은 길(GetAsync, 이 로그인의 색인과 원본 사본), 사본 폴더 preview 와 해시 이름,
+//  색인 정리(Prune)에 preview 폴더, 웹 명령 목록에 있고 왼쪽 칸은 견본 그대로.
+const preview = {
+  host(sidb) {
+    const code = stripCsComments(sidb);
+    assert.ok(/public const int PreviewEdgePx = 1600;/.test(code) && /public const int PreviewMaxBytes = 1536 \* 1024;/.test(code), '문서 미리 보기 상한이 긴 변 1600, 1.5MB 가 아니다');
+    assert.ok(/case "scheduleImagePreview": return await PreviewAsync\(ReqId\(q\)\);/.test(code), 'scheduleImagePreview 가 PreviewAsync 로 이어지지 않는다');
+    const pa = stripCsComments(extractCsMember(sidb, 'public async Task<ScheduleImageReply> PreviewAsync('));
+    assert.ok(/var got = await GetAsync\(id\);/.test(pa), '문서 미리 보기가 내 그림 확인(GetAsync)을 거치지 않는다');
+    assert.ok(/catch \(Exception ex\)[\s\S]*Cache\.FindById\(_dataDir, login, id\)[\s\S]*Cache\.Load\(_dataDir, meta\.Sha256, meta\.Mime, _log\)[\s\S]*stale = true;/.test(pa), '끊겼을 때 문서 미리 보기가 이 로그인의 색인과 원본 사본으로 넘어가지 않는다');
+    assert.ok(/Cache\.LoadPreview\(_dataDir, meta\.Sha256\)/.test(pa) && /Cache\.StorePreview\(_dataDir, meta\.Sha256, pic, mime, _log\)/.test(pa), '문서 미리 보기를 PC 사본으로 두지 않는다');
+    assert.ok(/\["dataUrl"\] = "data:" \+ mime \+ ";base64,"/.test(pa) && /\["stale"\] = stale,/.test(pa), '문서 미리 보기 회신 모양(dataUrl, stale)이 다르다');
+    assert.ok(/private static string PreviewDir\(string dataDir\) => Path\.Combine\(Dir\(dataDir\), "preview"\);/.test(code), '문서 미리 보기 사본 폴더가 schedule-images\preview 가 아니다');
+    for (const fn of ['public static (byte[] bytes, string mime)? LoadPreview(', 'public static void StorePreview(']) {
+      assert.ok(/if \(!ShaRe\.IsMatch\(sha \?\? ""\)\) return/.test(extractCsMember(sidb, fn)), fn + ' 가 해시 형식을 먼저 보지 않는다(파일 이름)');
+    }
+    assert.ok(/foreach \(var dir in new\[\] \{ Dir\(dataDir\), ThumbDir\(dataDir\), PreviewDir\(dataDir\) \}\)/.test(code), '색인 정리가 문서 미리 보기 사본을 지우지 않는다(쌓인다)');
+    const mk = stripCsComments(extractCsMember(sidb, 'private static Picture MakePreview('));
+    assert.ok(/var info = Inspect\(bytes\);/.test(mk), '문서 미리 보기가 그림 검사를 거치지 않는다');
+    assert.ok(/<= ScheduleImageDb\.Limits\.PreviewEdgePx && bytes\.Length <= cap\)\s*return new Picture\(bytes, info\.Mime/.test(mk), '작은 원본을 그대로 쓰지 않는다(다시 압축해 흐려진다)');
+    assert.ok(/if \(info\.Mime == "image\/png"\)[\s\S]*new PngBitmapEncoder\(\)[\s\S]*new JpegBitmapEncoder \{ QualityLevel = quality \}/.test(mk) && /new\[\] \{ 90, 85 \}/.test(mk), 'PNG 는 PNG 로, 넘치면 JPEG 90, 85 로 만들지 않는다');
+  },
+  web(html) {
+    const cmds = /const RPTM_HOST_CMDS = (\[[^\]]*\]);/.exec(html)[1];
+    assert.ok(cmds.includes("'scheduleImagePreview'"), 'RPTM_HOST_CMDS 에 scheduleImagePreview 가 없다');
+    assert.ok(/const __rptMPrevs = new Map\(\);/.test(html), '문서 미리 보기 그림을 sha256 으로 기억하지 않는다');
+    const load = extractFunction(html, 'rptMImgPrevLoad');
+    assert.ok(/hostRequest\('scheduleImagePreview', \{ id: im\.id \}/.test(load) && /__rptMPrevs\.set\(sha, u\)/.test(load), '문서 미리 보기 그림을 받아 두지 않는다');
+    assert.ok(/rptMImgPrevLoad\(id, im\)/.test(extractFunction(html, 'rptMThumbsLoad')), '견본을 받을 때 문서 미리 보기 그림도 받지 않는다');
+    assert.ok(/__rptMPrevs\.get\(sha\) \|\| __rptMThumbs\.get\(sha\)/.test(extractFunction(html, 'rptMImgSrc')), '문서 미리 보기 그림이 없을 때 견본으로 넘어가지 않는다');
+    assert.ok(/rptMImgSrc\(im\.sha256\)/.test(extractFunction(html, 'rptMPreview')), '문서 미리 보기가 큰 그림(rptMImgSrc)을 쓰지 않는다');
+    const slot = extractFunction(html, 'rptMImgRender');
+    assert.ok(/__rptMThumbs\.get\(im\.sha256\)/.test(slot) && !/__rptMPrevs|rptMImgSrc/.test(slot), '왼쪽 작은 칸이 견본이 아닌 큰 그림을 쓴다');
+  },
+};
+test('그림표⑦ (0.28.0 F2): 문서 미리 보기 그림은 긴 변 1600, 1.5MB 상한, 내 그림 확인과 끊김 사본은 견본과 같은 길, 사본은 preview 폴더(해시 이름, 정리됨)', () => preview.host(src.sidb));
+test('그림표⑧ (0.28.0 F2): 웹은 문서 미리 보기 그림을 sha256 으로 받아 두고, 오기 전에는 견본, 왼쪽 칸은 견본 그대로', () => preview.web(src.html));
+test('변이SI23: 끊김 사본 길을 빼거나, 작은 원본도 다시 압축하거나, 정리에서 preview 를 빼거나, 웹이 견본으로 넘어가지 않으면 ⑦ ⑧ 이 실패한다', () => {
+  const host = [
+    mutate(src.sidb, '                meta = Cache.FindById(_dataDir, login, id);\n                bytes = meta == null ? null : Cache.Load(_dataDir, meta.Sha256, meta.Mime, _log);\n                if (meta == null || bytes == null) return Fail("문서 미리 보기", ex);',
+      '                return Fail("문서 미리 보기", ex);'),
+    mutate(src.sidb, 'if (Math.Max(info.Width, info.Height) <= ScheduleImageDb.Limits.PreviewEdgePx && bytes.Length <= cap)\n                return new Picture(bytes, info.Mime, info.Width, info.Height);\n', ''),
+    mutate(src.sidb, 'new[] { Dir(dataDir), ThumbDir(dataDir), PreviewDir(dataDir) }', 'new[] { Dir(dataDir), ThumbDir(dataDir) }'),
+  ];
+  for (const bad of host) assert.throws(() => preview.host(bad));
+  const web = [
+    mutate(src.html, 'return sha ? (__rptMPrevs.get(sha) || __rptMThumbs.get(sha) || \'\') : \'\';', 'return sha ? (__rptMPrevs.get(sha) || \'\') : \'\';'),
+    mutate(src.html, "'scheduleImageThumb', 'scheduleImagePreview', 'scheduleImageAdd'", "'scheduleImageThumb', 'scheduleImageAdd'"),
+  ];
+  for (const bad of web) assert.throws(() => preview.web(bad));
 });

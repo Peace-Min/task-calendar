@@ -534,3 +534,50 @@ test('생성 경로는 없는 uid 를 잠금 읽기하지 않는다(빈틈 교�
   const want = 'var cur = expected == null\n                    ? await EventWhereAsync(conn, tx, "e.uid=@uid", ct, P("@uid", eventUid))\n                    : await EventByUidForUpdateAsync(conn, tx, eventUid, ct);';
   assert.ok(src.pcdb.replace(/\r\n/g, '\n').includes(want), '생성은 잠그지 않는 읽기, 수정만 FOR UPDATE');
 });
+
+// ══ 0.28.0 F3: [개인 일정에 등록] 뒤 다시 읽기가 실패하면 복사가 낸 rev 로 스냅샷 rev 를 맞춘다 ═══════
+//  다시 읽기가 실패하면 스냅샷 rev 가 서버보다 하나 뒤라 다음 개인 저장이 모두 충돌했다(CalendarWriteDb 1c 의 newRev != prev.Rev + 1).
+//  맞추는 것은 복사 rev 가 스냅샷 바로 다음일 때만이다(사이에 다른 PC 저장이 끼었으면 그 충돌은 진짜라 그대로 둔다).
+//  안전 근거(새 일정이 다음 저장에서 지워지지 않는다): 저장의 삭제는 스냅샷의 번호 맵에 있는 행만 돈다.
+const f3 = {
+  calDb: readText(R('widget/CalendarDb.cs')),
+  check(pcdb, host, calDb, cwdb, html) {
+    const after = stripCsComments(extractCsMember(calDb, 'public CalendarSnapshot? AfterOwnCopy('));
+    assert.ok(/personalRev == Rev \+ 1\s*\?\s*new CalendarSnapshot\(StateJson, Tokens, personalRev, SchemaVersion, UserId, CategoryNoByUid, EntryNoByUid, TodoNoByUid\)\s*:\s*null/.test(after),
+      'AfterOwnCopy 가 바로 다음 rev 일 때만 rev 하나를 바꾼 스냅샷을 만들지 않는다(번호 맵, 토큰은 그대로여야 한다)');
+    const code = stripCsComments(pcdb);
+    assert.ok(/case "projectCalendarCopy":[\s\S]{0,400}d\.TryGetValue\("personalRev", out var pr\) && pr is long rev\) r\.PersonalRev = rev;/.test(code), '복사 회신이 개인 rev 를 호스트에 넘기지 않는다');
+    assert.ok(/data\["personalRev"\] = personalRev;/.test(code) && /long personalRev = await CalendarWriteDb\.BumpUserRevInTxAsync\(conn, tx, me\.UserId, ct\);/.test(code), '복사 트랜잭션이 올린 rev 를 회신에 싣지 않는다');
+    const h = stripCsComments(host);
+    const iBefore = h.indexOf('var before = _calSnap;'), iBoot = h.indexOf('await BootFromDbAsync();'), iSame = h.indexOf('if (before != null && ReferenceEquals(_calSnap, before))');
+    assert.ok(iBefore > 0 && iBoot > iBefore && iSame > iBoot, '다시 읽기 앞의 스냅샷을 잡고, 다시 읽은 뒤 그대로인지(실패) 보지 않는다');
+    assert.ok(/var adv = before\.AfterOwnCopy\(r\.PersonalRev\);\s*if \(adv != null\) _calSnap = adv;/.test(h), '다시 읽기 실패 때 스냅샷 rev 를 복사 rev 로 맞추지 않는다');
+    assert.ok(/d\["personalReloaded"\] = false;/.test(h) && h.indexOf('d["personalReloaded"] = false;') > iSame, '다시 읽기 실패를 웹에 알리지 않는다');
+    assert.ok(h.indexOf('ReplyOnUi(reqId, r.ToPayload());') > h.indexOf('d["personalReloaded"] = false;'), '회신을 보낸 뒤에 표시를 단다(웹에 닿지 않는다)');
+    //  안전 근거: 저장의 일정 삭제는 스냅샷 번호 맵(entNo)만 돈다. 이것이 바뀌면 맞춘 rev 로 새 일정을 지울 수 있다
+    const c = stripCsComments(cwdb);
+    assert.ok(/var entNo = new Dictionary<string, uint>\(prev\.EntryNoByUid, StringComparer\.Ordinal\);/.test(c) && /foreach \(var kv in new List<KeyValuePair<string, uint>>\(entNo\)\)\s*if \(!seenEnt\.Contains\(kv\.Key\)\)/.test(c),
+      '저장의 일정 삭제가 스냅샷 번호 맵만 돌지 않는다(F3 의 rev 맞추기가 안전하지 않다)');
+    assert.ok(/if \(!replaceAll && newRev != prev\.Rev \+ 1\)/.test(c), '저장의 rev 검사(1c)가 바뀌었다');
+    //  웹: 다시 읽기 실패면 짧은 안내, 아니면 지금 문구
+    const m = /if\(r\.data && r\.data\.personalReloaded === false\) toast\('([^']+)', 'warn'\);\s*else toast\('개인 일정에 등록했습니다\. 개인 탭에서 볼 수 있습니다\.', 'success'\);/.exec(html);
+    assert.ok(m, 'pcCopy 가 다시 읽기 실패 표시(personalReloaded false)로 안내를 바꾸지 않는다');
+    assert.ok(m[1].length <= 40, '다시 읽기 실패 안내가 길다: ' + m[1]);
+  },
+};
+test('F3 (0.28.0): 복사 뒤 다시 읽기가 실패하면 복사 rev 가 바로 다음일 때만 스냅샷 rev 를 맞추고 웹에 알린다, 저장의 삭제는 스냅샷 번호 맵만 돈다', () =>
+  f3.check(src.pcdb, src.host, f3.calDb, src.cwdb, src.html));
+test('변이F3: 맞추기 조건을 지우거나(번호가 건너뛰어도 맞춤), 맞추기를 빼거나, 웹 표시를 빼거나, 저장 삭제를 DB 전체로 바꾸면 F3 검사가 잡는다', () => {
+  //  변이는 먼저 만든다(앵커를 못 찾으면 여기서 실패해 '잡혔다' 로 잘못 세지 않는다)
+  const A = [src.pcdb, src.host, f3.calDb, src.cwdb, src.html];
+  const at = (i, v) => { const a = A.slice(); a[i] = v; return a; };
+  const cases = [
+    ['조건 없이 맞춤', at(2, mutate(f3.calDb, 'personalRev == Rev + 1', 'personalRev > Rev'))],
+    ['맞추기 뺌', at(1, mutate(src.host, 'if (adv != null) _calSnap = adv;', 'if (adv != null) { }'))],
+    ['rev 안 넘김', at(0, mutate(src.pcdb, 'pr is long rev) r.PersonalRev = rev;', 'pr is long rev) { }'))],
+    ['웹 표시 뺌', at(1, mutate(src.host, 'd["personalReloaded"] = false;', '{ }'))],
+    ['웹 안내 뺌', at(4, mutate(src.html, "if(r.data && r.data.personalReloaded === false) toast(", "if(false) toast("))],
+    ['삭제가 맵 밖', at(3, mutate(src.cwdb, 'foreach (var kv in new List<KeyValuePair<string, uint>>(entNo))', 'foreach (var kv in new List<KeyValuePair<string, uint>>(AllEntriesOnServer))'))],
+  ];
+  for (const [name, a] of cases) assert.throws(() => f3.check(...a), undefined, '변이가 잡히지 않았다: ' + name);
+});

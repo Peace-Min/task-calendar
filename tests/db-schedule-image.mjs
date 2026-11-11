@@ -14,6 +14,7 @@
  *        invalid 이고 아무것도 쓰지 않는다. 비활성 사용자는 forbidden. 다른 사람은 같은 그림을 넣을 수 있고 상한도 따로다.
  *      - 주인 격리: 목록은 내 그림만. 남의 그림 번호로 미리 보기, 받기, 삭제, 순서 바꾸기를 하면 없는 번호와 같은 notFound 이고 행은 그대로.
  *      - 받기(get): DB 바이트의 해시가 메타와 같고, 두 번째부터는 PC 사본에서 읽는다.
+ *      - 문서 미리 보기 그림(0.28.0 F2): 큰 그림은 긴 변 1600, 작은 그림은 원본 그대로, preview 사본, 끊기면 원본 사본으로(stale), 남의 그림 notFound.
  *      - 미리 보기: JPEG, 40KB 이하. 순서 바꾸기는 웹이 더 부르지 않고 1장에서 무해(seq 1 그대로). 삭제: 주인만(관리자 검사 없음),
  *        남의 그림은 그대로이고, 빼고 다시 넣으면 seq 1 로 들어간다(바꾸기).
  *      - 그림이 있는 사람은 휴지통에서 지울 수 없다(기록 표, FK RESTRICT). 과제를 휴지통에서 지우면 모든 사람의 그림이 지워진다(CASCADE).
@@ -162,6 +163,18 @@ class R
                 string cd = Path.Combine(dir, "schedule-images");
                 return Directory.Exists(cd) ? Directory.GetFiles(cd).Select(Path.GetFileName).ToArray() : Array.Empty<string>();
             }
+            case "previewFiles":
+            {
+                //  문서 미리 보기 사본 폴더(schedule-images 의 preview, 0.28.0 F2)
+                string pd = Path.Combine(dir, "schedule-images", "preview");
+                return Directory.Exists(pd) ? Directory.GetFiles(pd).Select(Path.GetFileName).ToArray() : Array.Empty<string>();
+            }
+            case "clearPreview":
+            {
+                string pd = Path.Combine(dir, "schedule-images", "preview");
+                if (Directory.Exists(pd)) Directory.Delete(pd, true);
+                return new { ok = true };
+            }
             case "cacheIndexKeys":
             {
                 //  PC 사본 색인(schedule-images 폴더의 index.json)의 키. 키 모양은 '<login>|<과제 uid>'(ScheduleImageDb.Cache.Key).
@@ -274,7 +287,7 @@ function seed() {
     D[k] = { login, name, id };
   }
   const sec = num('SELECT MIN(section_id) FROM section_code'), cus = num('SELECT MIN(customer_id) FROM customer');
-  for (const k of ['p1', 'p2']) {
+  for (const k of ['p1', 'p2', 'p3']) {
     const name = `zz_si ${k} ${tag}`;
     sql(`INSERT INTO project (section_id, customer_id, project_name) VALUES (${sec}, ${cus}, '${esc(name)}')`, '과제');
     const [id, uid] = sql(`SELECT id, uid FROM project WHERE project_name='${esc(name)}'`)[0];
@@ -401,6 +414,41 @@ async function main() {
     const id1b = r.ok ? r.data.image.id : 0;
     ok('빼고 다시 넣기(바꾸기): 다른 그림이 seq 1 로 들어간다', r.ok && r.data.image.seq === 1 && r.data.image.sha256 === sha(P[1]) && countU(D.p1.id, D.u1.id) === 1, JSON.stringify(r).slice(0, 200));
 
+    console.log('\n[문서 미리 보기 그림(0.28.0 F2): 긴 변 1600, PC 사본 preview, 끊기면 원본 사본으로]');
+    {
+      //  p3 은 이 절에만 쓴다(DOCX 절은 p1, p2 만 본다). 2400x1200 PNG 는 1600x800 으로 줄어야 한다
+      const BIG = png(2400, 1200, 7);
+      r = add('u1', D.p3.uid, BIG);
+      const idBig = r.ok ? r.data.image.id : 0;
+      ok('큰 PNG(2400x1200) 추가', r.ok && r.data.image.width === 2400, JSON.stringify(r).slice(0, 200));
+      const dec = (x) => { const m = /^data:(image\/(?:png|jpeg));base64,(.*)$/.exec((x && x.data && x.data.dataUrl) || ''); return m ? { mime: m[1], b: Buffer.from(m[2], 'base64') } : null; };
+      const headWH = (d) => d.mime === 'image/png' ? [d.b.readUInt32BE(16), d.b.readUInt32BE(20)] : null;
+      r = cmd('u1', 'scheduleImagePreview', { id: idBig });
+      let pv = dec(r);
+      ok('미리 보기 그림(큰 원본): 긴 변 1600(1600x800), 1.5MB 이하, PNG 는 PNG, 회신 가로세로가 실제와 같다', r.ok && pv && r.data.mime === pv.mime && r.data.width === 1600 && r.data.height === 800 &&
+        pv.b.length <= 1536 * 1024 && (pv.mime !== 'image/png' || JSON.stringify(headWH(pv)) === '[1600,800]') && r.data.stale === false, JSON.stringify(r).slice(0, 200));
+      const pvFirst = r.ok ? r.data.dataUrl : '';
+      const pf = step('u1', { op: 'previewFiles' });
+      ok('미리 보기 사본: schedule-images 의 preview 에 <sha256>.png 또는 .jpg 하나', pf.length === 1 && new RegExp('^' + sha(BIG) + '\\.(png|jpg)$').test(pf[0]), JSON.stringify(pf));
+      r = cmd('u1', 'scheduleImagePreview', { id: idBig });
+      ok('다시 부르면 사본에서 같은 그림', r.ok && r.data.dataUrl === pvFirst && r.data.width === 1600, JSON.stringify(r).slice(0, 160));
+      r = cmd('u1', 'scheduleImagePreview', { id: id1b });
+      pv = dec(r);
+      ok('작은 원본(48x48 PNG): 다시 압축하지 않고 원본 바이트 그대로, 사본을 따로 두지 않는다', r.ok && pv && pv.b.equals(P[1]) && r.data.width === 48 &&
+        !step('u1', { op: 'previewFiles' }).some((f) => f.startsWith(sha(P[1]))), JSON.stringify(r).slice(0, 160));
+      r = cmd('u2', 'scheduleImagePreview', { id: idBig });
+      ok('남의 그림 미리 보기 그림: notFound', !r.ok && r.error.kind === 'notFound', JSON.stringify(r).slice(0, 200));
+      //  끊김: 목록(색인)과 원본 사본을 받아 둔 PC 에서 미리 보기 사본을 지우고 DB 없이 부른다
+      cmd('u1b', 'scheduleImageList', { projectUid: D.p3.uid });
+      r = cmd('u1b', 'scheduleImagePreview', { id: idBig });
+      ok('u1b 에서 미리 보기 그림(원본 사본도 받아 둔다)', r.ok && r.data.width === 1600, JSON.stringify(r).slice(0, 160));
+      step('u1b', { op: 'clearPreview' });
+      r = cmd('u1b', 'scheduleImagePreview', { id: idBig }, { badPw: true });
+      ok('미리 보기 그림(DB 실패): 원본 사본에서 만들고 stale', r.ok && r.data.stale === true && r.data.width === 1600 && r.data.height === 800, JSON.stringify(r).slice(0, 200));
+      r = cmd('u2', 'scheduleImagePreview', { id: idBig }, { badPw: true });
+      ok('미리 보기 그림(DB 실패, 사본 없는 사람): 실패', !r.ok, JSON.stringify(r).slice(0, 200));
+    }
+
     console.log('\n[사람과 과제 삭제]');
     sql(`UPDATE app_user SET is_active=0 WHERE user_id=${D.u2.id}`, 'u2 퇴사');
     r = step('admin', { op: 'trashDelete', kind: 'user', key: String(D.u2.id), confirm: D.u2.name });
@@ -462,7 +510,7 @@ async function main() {
   } finally {
     //  시험 데이터 정리(그림, 과제, 사람). 실패해도 일회용 계정은 지운다.
     try {
-      for (const k of ['p1', 'p2']) if (D[k]) sql(`DELETE FROM project WHERE id=${D[k].id}`, '과제 정리');
+      for (const k of ['p1', 'p2', 'p3']) if (D[k]) sql(`DELETE FROM project WHERE id=${D[k].id}`, '과제 정리');
       for (const k of ['u1', 'u2', 'admin', 'out']) if (D[k]) sql(`DELETE FROM cal_user_rev WHERE user_id=${D[k].id}; DELETE FROM cal_project_watch WHERE user_id=${D[k].id}; DELETE FROM app_user WHERE user_id=${D[k].id}`, '사람 정리');
     } catch (e) { console.error('시험 데이터를 다 지우지 못했다(zz_si 이름으로 남음): ' + e.message); }
     dropAppAccount();

@@ -5,8 +5,8 @@
 //       비모달 팝업(role=dialog, aria-modal 없음) 목록이 정해진 것뿐이고 모두 닫기 단추가 있다(× 는 공용 popXHtml, popHeadHtml, popHeadEl).
 //       × 는 모달 × 와 같은 .x, aria-label 과 title 이 "닫기". 새 글에 금지 기호 없음, 새 CSS 는 토큰만.
 //   (R) jsdom:
-//       §1 월간 칸: 여러 날 막대 다음 하루짜리 일정(시간순), 그다음 하루짜리 할 일(중요 먼저, 안 끝낸 것 먼저). 할 일 많은 날이 옆 칸을 밀지 않는다.
-//          넘치면 일정과 할 일을 합친 "+n개 더보기" 하나, 누르면 그 날짜. 할 일만 보기도 중요 먼저, 일정만 보기는 예전 순서 그대로.
+//       §1 월간 칸: 여러 날 막대 다음 하루짜리 일정, 그다음 하루짜리 할 일(둘 다 배열 순서, 0.28.0 docs/ITEM-ORDER.md. 시각, 중요, 완료로 다시 세우지 않는다). 할 일 많은 날이 옆 칸을 밀지 않는다.
+//          넘치면 일정과 할 일을 합친 "+n개 더보기" 하나, 누르면 그 날짜. 할 일만 보기, 일정만 보기도 같은 배열 순서.
 //       §2 팝업마다(#fbPop, #peerPicker, #awWCal, #pcPop, #pcDrawer, #caWhoPop) 머리줄 × 가 있고, 누르면 닫히고, 포커스는 연 단추로, 고른 상태는 그대로.
 //   (M) 변이: 칸 안에서 할 일을 일정보다 먼저 놓거나, × 를 받는 갈래를 빼면 위 시험이 실패한다.
 // ★ 회사 사이트에는 아무것도 보내지 않는다(호스트 postMessage 는 시험 안에서 버리거나 가짜로 답한다).
@@ -134,7 +134,7 @@ if (!JSDOM) {
       try {
         const { T, N } = W.M;
         assert.strictEqual(W.$$('#grid .td-sep, #grid [data-tdcnt]').length, 0, '할 일 구역 점선이나 개수 칩이 있다');
-        assert.deepStrictEqual(order(W, T), ['eM', 'eA', 'eB', 't2', 't5', 't1', 't4', 't6', 't3'], '칸 안 순서가 막대, 일정(시간순), 할 일(중요 먼저, 안 끝낸 것 먼저)이 아니다');
+        assert.deepStrictEqual(order(W, T), ['eM', 'eB', 'eA', 't1', 't2', 't3', 't4', 't5', 't6'], '칸 안 순서가 막대, 일정(배열 순서), 할 일(배열 순서)이 아니다');
         //  옆 칸: 할 일 많은 T 가 있어도 N 은 막대 바로 아래부터 자기 일정, 할 일
         assert.deepStrictEqual(chipsOf(W, N).sort((a, b) => a.dataset.lane - b.dataset.lane).map((c) => [c.dataset.todo || c.dataset.id, Number(c.dataset.lane)]),
           [['eM', 0], ['eN', 1], ['tN', 2]], '할 일 많은 날이 옆 칸을 밀어냈다');
@@ -145,7 +145,7 @@ if (!JSDOM) {
     },
   };
 
-  test('(R) §1 칸 안 순서: 여러 날 막대, 하루짜리 일정(시간순), 하루짜리 할 일(중요 먼저, 안 끝낸 것 먼저). 할 일 구역과 개수 칩 없음, 할 일 많은 날이 옆 칸을 밀지 않는다', () => checks.cellOrder());
+  test('(R) §1 칸 안 순서: 여러 날 막대, 하루짜리 일정(배열 순서), 하루짜리 할 일(배열 순서, 중요와 완료로 다시 세우지 않음). 할 일 구역과 개수 칩 없음, 할 일 많은 날이 옆 칸을 밀지 않는다', () => checks.cellOrder());
 
   test('(R) §1 넘치면 일정과 할 일을 합친 "+n개 더보기" 하나(할 일만 따로 세지 않는다), 누르면 그 날짜', async () => {
     const W = await bootMonth();
@@ -156,7 +156,7 @@ if (!JSDOM) {
       Object.defineProperty(wk, 'clientHeight', { value: 91, configurable: true });
       W.ev("fitBars(document.getElementById('grid'))");
       const vis = (ds) => chipsOf(W, ds).filter((c) => c.style.display !== 'none').sort((a, b) => a.dataset.lane - b.dataset.lane).map((c) => c.dataset.todo || c.dataset.id);
-      assert.deepStrictEqual(vis(T), ['eM', 'eA'], '보이는 칩이 막대와 첫 일정이 아니다');
+      assert.deepStrictEqual(vis(T), ['eM', 'eB'], '보이는 칩이 막대와 첫 일정(배열 맨 앞)이 아니다');
       assert.deepStrictEqual(vis(N), ['eM', 'eN'], '옆 칸에 보이는 칩이 막대와 자기 일정이 아니다');
       const more = (ds) => wk.querySelector(`.more[data-more="${ds}"]`);
       assert.ok(more(T), '넘친 칸에 +n 이 없다');
@@ -170,14 +170,14 @@ if (!JSDOM) {
     } finally { W.close(); }
   });
 
-  test('(R) §1 할 일만 보기도 중요 먼저, 안 끝낸 것 먼저(2026-11-05 사용자). 일정만 보기는 예전 그대로', async () => {
+  test('(R) §1 할 일만 보기, 일정만 보기도 배열 순서(0.28.0, 중요 먼저와 시각순 없음)', async () => {
     const W = await bootMonth();
     try {
       const { T } = W.M;
       setView(W, 'viewSetKind("td")');
-      assert.deepStrictEqual(order(W, T), ['t2', 't5', 't1', 't4', 't6', 't3'], '할 일만 보기의 칸 순서가 중요 먼저, 안 끝낸 것 먼저가 아니다');
+      assert.deepStrictEqual(order(W, T), ['t1', 't2', 't3', 't4', 't5', 't6'], '할 일만 보기의 칸 순서가 배열 순서가 아니다');
       setView(W, 'viewReset(); viewSetKind("ev")');
-      assert.deepStrictEqual(order(W, T), ['eM', 'eA', 'eB'], '일정만 보기의 칸이 바뀌었다');
+      assert.deepStrictEqual(order(W, T), ['eM', 'eB', 'eA'], '일정만 보기의 칸이 배열 순서가 아니다');
       assert.strictEqual(W.$$('#grid [data-todo]').length, 0);
     } finally { W.close(); }
   });

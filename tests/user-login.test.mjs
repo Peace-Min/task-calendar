@@ -20,8 +20,9 @@ const userSession = readText(new URL('../widget/UserSession.cs', import.meta.url
 function withoutPatchModal(source) {
   const s = source.indexOf('<div class="overlay hidden" id="patchModal">');
   assert.ok(s >= 0, '#patchModal 을 찾지 못했다 — 도려내기 경계가 깨졌다');
-  const e = source.indexOf('<div class="overlay hidden" id="updNotesModal">', s);
-  assert.ok(e > s, '#patchModal 다음 모달(#updNotesModal)을 찾지 못했다 — 도려내기 경계가 깨졌다');
+  //  0.28.0 F1 에서 바로 뒤 #updNotesModal 을 뺐다. 이제 다음 모달은 #importModal 이다(사이에는 주석 한 줄뿐)
+  const e = source.indexOf('<div class="overlay hidden" id="importModal">', s);
+  assert.ok(e > s, '#patchModal 다음 모달(#importModal)을 찾지 못했다 — 도려내기 경계가 깨졌다');
   return source.slice(0, s) + source.slice(e);
 }
 

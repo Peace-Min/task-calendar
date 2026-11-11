@@ -7,6 +7,37 @@
 
 ---
 
+## 🆕 2026-11-11 (다음 판, 번호는 배포 때): 일정과 할 일 순서 바꾸기(⠿ 끌기, Alt+↑↓), 배너 [변경내역] 없앰(F1), 그림 넣은 뒤 포커스(F6)
+
+docs/ITEM-ORDER.md(시안 docs/prototypes/day-panel-order.html 손잡이 자리 1번). DB 구조 22 그대로(`cal_entry.sort_order`, `cal_todo.sort_order` 가 이미 배열 자리를 저장한다).
+
+- 순서 규칙은 배열 자리 하나: `itemOrderCmp(kind, a, b)`(`ordKey`, `ordIndexOf`). 발생 복제본도 id 로 원래 자리를 찾고, 내 겹(`_mine`)은 열쇠를 따로 둔다. 자리표는 배열이 바뀌면(찾은 자리의 항목이 다르면) 다시 만든다.
+  - `entrySort`, `todoZoneCmp` 를 이것으로 바꿨다(호출부는 그대로). 종일 먼저, 시각순, 중요 먼저, 끝낸 것 아래가 없어졌다.
+  - `pmCellCmp` 는 일정 다음 할 일(각각 배열), `segSort` 는 여러 날 막대 위 그대로이고 나머지는 일정 다음 할 일(배열). 주간 줄(`renderWeekRows`)은 `pmCellCmp`, 검색 결과(`groupByDateHtml`)와 날짜 패널은 `entrySort`(배열). 날짜 패널의 따로 정렬(`slice().sort(entrySort)`)을 뺐다.
+  - 일간보고 [캘린더 가져오기](`collectReportData`)는 원래 배열 순서로 돈다(손대지 않음).
+- 날짜 패널 손잡이 ⠿(`dpGripHtml`, 열람 창 없음): 카드 `.card-top` 맨 앞, 할 일 줄 체크 앞(`opts.panel`만). 눌리는 영역 24px, 늘 보인다.
+- 끌기(`dpOrderInit`)는 내 과제 순서 바꾸기와 같은 손이고 같은 클래스(`.cat-drag-ghost`, `.cat-drag-src`, `.cat-drop-before/after`, `body.cat-dragging`)를 `#dpBody` 에도 걸었다. 5px 문턱, Esc, pointercancel, 창 blur 는 취소.
+  - 끄는 동안 `DP.dragAll` 로 접힌 일정을 다 펴고(더 보기 감춤) 놓거나 취소하면 되돌린다. 본문 위아래 끝 40px(위는 붙은 일정 머리 높이만큼 더)에서 자동 스크롤.
+  - 놓기는 `dpOrderApply`: 보이는 목록의 끼워 넣을 자리를 보이는 이웃의 앞(뒤)으로 바꿔 `orderMoveRel` 로 배열에서 옮기고 `save()`, 달력과 패널을 다시 그린다. 그날 안 보이는 항목의 상대 순서는 그대로.
+  - 키보드 `dpOrderKey`: 카드나 할 일 줄 안에 포커스가 있으면 Alt+↑/↓ 한 칸, 접힌 자리로 내리면 더 보기를 연다. 포커스는 옮긴 항목의 같은 자리(수정, 할 일 제목 등)로.
+- F1: 업데이트 배너의 [변경내역](`#updNotes`)과 `#updNotesModal`, `dataset.notes`, `.upd-nv`, `.upd-nbody` 를 걷었다. 버전 글, [지금 업데이트], ✕ 는 그대로.
+- F6: 그림 칸 메뉴로 넣은 뒤와 Ctrl+V 로 넣은 뒤 모두 `rptMFocusBack`(rptMBind 안). 칸이 넣는 동안, 그리고 견본이 늦게 와 다시 그려져도 5초 동안 지켜보다가 포커스가 body 로 빠졌으면 칸 단추로 돌린다.
+- 시험: 새 `item-order`(17). 옛 정렬을 못 박던 시험을 새 규칙으로: `day-panel-fold`(5개가 배열 순서, 카드와 강조 시험은 더 보기를 연 뒤), `month-todo-close`(칸 순서, 할 일만 보기), `personal-panel`(pmCellCmp 단위, 칸 순서, 패널 할 일 ★ 와 완료로 자리 그대로, 변이 M④ 를 "중요 먼저 되살리기"로), `peer-overlay-redesign`(내 겹 순서, 변이가 섞임을 잡게 픽스처에서 내 일정 하나를 맨 앞으로), `pc-watch-7`(카드 글줄에서 ⠿ 제외). F1 로 `#updNotesModal` 을 경계로 쓰던 `admin-hub`, `user-login` 은 `#importModal` 로.
+
+## 🆕 2026-11-11 (다음 판, 번호는 배포 때): 월간 미리 보기 그림 선명하게(F2), 개인 일정 등록 뒤 저장 충돌 고리(F3)
+
+docs/ITEM-ORDER.md §5 의 F2, F3. DB 구조 22 그대로.
+
+- F2: 미리 보기가 그림을 문서 폭(약 566pt)으로 그리면서 긴 변 360 견본이 흐렸다. 호스트 명령 `scheduleImagePreview { id }` 를 더했다(`ScheduleImageDb.PreviewAsync`, `ScheduleImageCodec.PreviewAsync`). 긴 변 1600 이하이고 1.5MB 안이면 원본 바이트 그대로, 크면 줄이고 PNG 는 PNG(글자와 가는 선이 JPEG 에서 번진다), 상한을 넘거나 JPEG 원본이면 JPEG 90, 85, 그래도 넘으면 긴 변 1200.
+  - PC 사본 `schedule-images\preview\<sha256>.png|jpg`(원본을 그대로 쓸 때는 두지 않는다), 색인 정리(Prune)가 함께 지운다. 끊기면 견본과 같이 그 로그인의 색인과 원본 사본으로 만든다(stale).
+  - 웹: `__rptMPrevs`(sha256 → data URL), `rptMImgPrevLoad`, `rptMImgSrc`(큰 그림, 없으면 견본). 문서 미리 보기와 크게 보기가 쓴다. 왼쪽 작은 칸은 견본 그대로, `rptMImgFitStyle` 그대로.
+  - 메인 창 스위치, `ScheduleImageDb.Commands`, `RPTM_HOST_CMDS` 에 더했다. 관리 창, 열람 창 목록에는 없다.
+- F3: [개인 일정에 등록] 뒤 개인 스냅샷 다시 읽기(`BootFromDbAsync`)가 실패하면 스냅샷 rev 가 서버보다 하나 뒤라 다음 개인 저장이 모두 "다른 곳에서 먼저 수정되었습니다" 였다. 복사 회신의 `personalRev` 를 `ProjectCalendarReply.PersonalRev` 로 넘기고, 다시 읽은 뒤에도 스냅샷이 그대로면 `CalendarSnapshot.AfterOwnCopy` 로 rev 만 맞춘다.
+  - 맞추는 것은 복사 rev 가 스냅샷 rev + 1 일 때만이다. 사이에 다른 PC 저장이 끼었으면 그 충돌은 진짜라 그대로 둔다. 맞춘 뒤의 다른 PC 저장도 rev 검사(1c)가 잡는다.
+  - 새 일정이 다음 저장에서 지워지지 않는 근거: 저장의 삭제는 스냅샷 번호 맵(`entNo` 등)에 있는 행만 돈다.
+  - 웹: 회신에 `personalReloaded: false` 가 오면 토스트를 "개인 일정에 등록했습니다. 화면에는 다시 읽은 뒤에 보입니다." 로. 다시 읽기 실패 자체는 전처럼 `__applyStateError` 가 상자와 재시도로 알린다.
+- 시험: `schedule-image`(⑦ ⑧, 변이 SI23), `monthly-report`(MW8 에 큰 그림 대체와 실패 때 견본), `project-calendar-host`(F3 와 변이), `project-calendar-web`(안내 토스트). 실DB `db-schedule-image`(미리 보기 그림 절), `db-project-calendar`(F3 세 경우)는 아직 돌리지 않았다.
+
 ## 🆕 2026-11-11 (다음 판, 번호는 배포 때): 월간 SW/HW 를 바꿀 때 왼쪽 과제 목록이 출렁이던 것
 
 - 0.27.0 배포 뒤 사용자 지적. HW 에서 그림 칸 자리(`[data-slot]`)를 `hidden`(display:none)으로 빼서 줄 높이가 달라졌다. `ghost`(visibility:hidden)로 자리는 남긴다. 실위젯에서 SW, HW 모두 과제 상자 187px, 줄 46/47px, 기타 상자 위치 같음.

@@ -247,13 +247,14 @@ if (!JSDOM) {
   //             9/9: 상대 09–10 · 내 10–11(맞닿기 — 겹침 아님)   9/15~17: 상대 기간 막대 · 9/16~18: 내 기간 막대 · 9/22: 내 것만
   const CATS = [{ id: 'c-A', name: '설계 검토', color: '#c0392b' }, { id: 'c-B', name: '보고서 작성', color: '#2980b9' }];
   const mine = (o) => ({ endDate: '', recur: null, recurExcept: [], categoryId: null, _mine: true, ...o });
+  //  0.28.0(docs/ITEM-ORDER.md): 칸 안 순서는 배열 순서다. 내 m-1030 을 맨 앞에 두어, 묶음 나누기가 없으면 상대 것보다 먼저 서게 한다(변이 시험이 섞임을 잡는다)
   const ENTRIES = [
+    mine({ id: 'm-1030', date: '2026-09-08', title: '나: 회의 준비', allDay: false, startTime: '10:30', endTime: '11:30' }),
     { id: 'p-all', date: '2026-09-08', categoryId: 'c-B', title: '상대: 주간보고', allDay: true, startTime: '', endTime: '' },
     { id: 'p-10', date: '2026-09-08', categoryId: 'c-A', title: '상대: 설계회의', allDay: false, startTime: '10:00', endTime: '11:00' },
     { id: 'p-14', date: '2026-09-08', categoryId: 'c-A', title: '상대: 고객통화', allDay: false, startTime: '14:00', endTime: '15:00' },
     { id: 'p-09', date: '2026-09-09', categoryId: 'c-A', title: '상대: 아침회의', allDay: false, startTime: '09:00', endTime: '10:00' },
     { id: 'p-rng', date: '2026-09-15', categoryId: 'c-A', title: '상대: 통합시험', allDay: true, endDate: '2026-09-17' },
-    mine({ id: 'm-1030', date: '2026-09-08', title: '나: 회의 준비', allDay: false, startTime: '10:30', endTime: '11:30' }),
     mine({ id: 'm-all', date: '2026-09-08', title: '나: 외근', allDay: true, startTime: '10:15', endTime: '' }),
     mine({ id: 'm-10', date: '2026-09-09', title: '나: 정리', allDay: false, startTime: '10:00', endTime: '11:00' }),
     mine({ id: 'm-rng', date: '2026-09-16', title: '나: 출장', allDay: true, startTime: '', endTime: '', endDate: '2026-09-18' }),
@@ -353,7 +354,7 @@ if (!JSDOM) {
     test('(jsdom) R3: 한 칸 안에서 상대 차선 먼저 · 내 일정은 그 아래 차선에 선다(docs/PEER-RANGE-BARS.md 시안 B)', () => {
       const s8 = cellSeq(P, '2026-09-08');
       assert.strictEqual(s8, 'pppmm', '9/8 칸 차선 순서: ' + s8);
-      // 각 묶음 안의 순서는 그대로(종일 → 시간순)
+      // 각 묶음 안의 순서는 배열 순서(0.28.0, 종일과 시각으로 다시 세우지 않는다)
       const t8 = P.evJSON(`(function(){
         var wk = document.querySelector('#grid .cell[data-date="2026-09-08"]').closest('.gridrow');
         return Array.prototype.slice.call(wk.querySelectorAll('.chip-bar'))
@@ -361,7 +362,7 @@ if (!JSDOM) {
           .sort(function(a, b){ return Number(a.dataset.lane) - Number(b.dataset.lane); })
           .map(function(c){ return c.dataset.id; });
       })()`);
-      assert.deepStrictEqual(t8, ['p-all', 'p-10', 'p-14', 'm-all', 'm-1030']);
+      assert.deepStrictEqual(t8, ['p-all', 'p-10', 'p-14', 'm-1030', 'm-all']);
       assert.strictEqual(cellSeq(P, '2026-09-09'), 'pm');
       assert.strictEqual(cellSeq(P, '2026-09-22'), 'm', '상대 것이 없는 날에는 내 일정만');
       assert.strictEqual(cellSeq(P, '2026-09-15'), 'p', '내 것이 없는 날에는 상대 일정만');

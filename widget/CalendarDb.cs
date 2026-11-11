@@ -66,6 +66,15 @@ namespace TaskCalendarWidget
             EntryNoByUid = entryNoByUid;
             TodoNoByUid = todoNoByUid;
         }
+
+        //  [개인 일정에 등록] 뒤 다시 읽기가 실패했을 때(0.28.0 F3, MainWindow.RunProjectCalendarAsync).
+        //  복사가 낸 rev 가 이 스냅샷 바로 다음 번호면 그 사이 다른 저장이 없었다는 뜻이라 rev 만 맞춘 사본을 돌려준다.
+        //  안전한 이유: 저장의 삭제는 이 스냅샷의 번호 맵(EntryNoByUid 등)에 있는 행만 보므로 복사로 생긴 일정은 지워지지 않는다.
+        //  번호가 건너뛰었으면(다른 PC 저장이 끼었다) null. 그 충돌은 진짜라 맞추지 않는다.
+        public CalendarSnapshot? AfterOwnCopy(long personalRev) =>
+            personalRev == Rev + 1
+                ? new CalendarSnapshot(StateJson, Tokens, personalRev, SchemaVersion, UserId, CategoryNoByUid, EntryNoByUid, TodoNoByUid)
+                : null;
     }
 
     // ================================================================================

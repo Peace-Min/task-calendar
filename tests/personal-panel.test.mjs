@@ -150,14 +150,19 @@ test('(U) 저장값에 예전 done, star 가 있어도 읽지 않는다(종류�
   assert.ok(V.kinds().ev || V.kinds().td, '둘 다 꺼진 저장값을 그대로 되살렸다');
   unitStore.v = null;
 });
-test('(U) 칸 안 하루짜리 순서(pmCellCmp): 일정이 먼저(시간순), 그다음 할 일(중요 먼저, 안 끝낸 것 먼저)', () => {
-  const code = ['entrySort', 'todoZoneCmp', 'pmCellCmp'].map((f) => extractFunction(app, f)).join('\n');
-  const C = new Function(code + '\nreturn pmCellCmp;')();
+test('(U) 칸 안 하루짜리 순서(pmCellCmp): 일정이 먼저, 그다음 할 일, 둘 다 배열 순서(0.28.0, 시각, 중요, 완료로 다시 세우지 않는다)', () => {
+  const code = ['ordKey', 'ordIndexOf', 'itemOrderCmp', 'entrySort', 'todoZoneCmp', 'pmCellCmp'].map((f) => extractFunction(app, f)).join('\n');
+  const mk = new Function('state', 'const __ordIdx = { e: { arr: null, map: null }, t: { arr: null, map: null } };\n' + code + '\nreturn pmCellCmp;');
   const E = (id, o) => ({ occ: Object.assign({ id, allDay: false, startTime: '', createdAt: '2026-09-01' }, o) });
   const T = (id, o) => ({ todo: Object.assign({ id, prio: 'normal', done: false, createdAt: '2026-09-0' + id.length }, o) });
   const list = [T('n1'), T('d22', { done: true, prio: 'high' }), E('e9', { startTime: '09:00' }), T('h333', { prio: 'high' }), E('a', { allDay: true }), E('e8', { startTime: '08:00' })];
+  //  배열 순서: 일정 e9, a, e8 / 할 일 n1, d22, h333(시각이 늦은 e9 가 앞, 끝낸 d22 가 중요 h333 앞)
+  const C = mk({ entries: [list[2], list[4], list[5]].map((x) => x.occ), todos: [list[0], list[1], list[3]].map((x) => x.todo) });
   const ids = list.slice().sort(C).map((x) => (x.occ || x.todo).id);
-  assert.deepStrictEqual(ids, ['a', 'e8', 'e9', 'h333', 'd22', 'n1'], '칸 안 순서가 일정(시간순) 다음 할 일(중요, 안 끝낸 것 먼저)이 아니다: ' + ids.join(','));
+  assert.deepStrictEqual(ids, ['e9', 'a', 'e8', 'n1', 'd22', 'h333'], '칸 안 순서가 일정(배열 순서) 다음 할 일(배열 순서)이 아니다: ' + ids.join(','));
+  //  발생 복제본({...e})도 id 로 원래 자리를 찾는다
+  const C2 = mk({ entries: [{ id: 'y' }, { id: 'x' }], todos: [] });
+  assert.deepStrictEqual([E('x'), E('y')].sort(C2).map((x) => x.occ.id), ['y', 'x'], '발생 복제본이 배열 자리를 찾지 못했다');
   assert.ok(!/pmTodoZone|todoCount|tdcnt/.test(app), '할 일 구역(pmTodoZone)이나 개수 칩 코드가 남아 있다');
   assert.ok(!/\.td-sep|\.chip-tdcnt/.test(app), '할 일 구역 점선이나 개수 칩 CSS 가 남아 있다');
 });
@@ -404,18 +409,18 @@ if (!JSDOM) {
         assert.strictEqual(W.w.localStorage.getItem(key), null, '처음대로인데 기억이 남았다');
       } finally { await end(W); }
     },
-    //  칸 안 한 줄 채우기(docs/MONTH-TODO-POPUP-CLOSE.md §1): 할 일 구역, 점선, 개수 칩 없음. 하루짜리는 일정(시간순) 다음 할 일(중요, 안 끝낸 것 먼저)
+    //  칸 안 한 줄 채우기(docs/MONTH-TODO-POPUP-CLOSE.md §1): 할 일 구역, 점선, 개수 칩 없음. 하루짜리는 일정 다음 할 일(둘 다 배열 순서, 0.28.0)
     async cellLane(src) {
       const W = await bootMine(src);
       try {
         const { T, D2 } = W.M;
         const byLane = (l) => l.slice().sort((a, b) => lane(a) - lane(b)).map((c) => c.dataset.todo || c.dataset.id);
         assert.strictEqual(W.$$('#grid .td-sep, #grid [data-tdcnt], #grid .chip-tdcnt').length, 0, '할 일 구역 점선이나 개수 칩이 있다');
-        //  오늘: 일정 둘 다음 할 일 넷(중요 먼저, 같은 중요도에서 안 끝낸 것 먼저. 끝낸 할 일도 칸에 보인다)
-        assert.deepStrictEqual(byLane(chipsOf(W, T)), ['eA', 'eB', 'tC', 'tD', 'tA', 'tB'], '칸 안 순서가 일정 다음 할 일이 아니다');
-        //  D2: 일정 하나 다음 할 일 둘(중요 먼저). 오늘 칸에 할 일이 많아도 D2 는 자기 칸만 쓴다(0차선부터)
+        //  오늘: 일정 둘 다음 할 일 넷(배열 순서. 중요, 완료로 다시 세우지 않는다. 끝낸 할 일도 칸에 보인다)
+        assert.deepStrictEqual(byLane(chipsOf(W, T)), ['eA', 'eB', 'tA', 'tB', 'tC', 'tD'], '칸 안 순서가 일정 다음 할 일(배열 순서)이 아니다');
+        //  D2: 일정 하나 다음 할 일 둘(배열 순서). 오늘 칸에 할 일이 많아도 D2 는 자기 칸만 쓴다(0차선부터)
         const d = chipsOf(W, D2);
-        assert.deepStrictEqual(byLane(d), ['eC', 'tF', 'tE'], '2개인 날 순서가 일정 다음 할 일(중요 먼저)이 아니다');
+        assert.deepStrictEqual(byLane(d), ['eC', 'tE', 'tF'], '2개인 날 순서가 일정 다음 할 일(배열 순서)이 아니다');
         assert.strictEqual(Math.min(...d.map(lane)), 0, '옆 칸의 할 일 때문에 이 칸이 아래로 밀렸다');
         //  중요한 할 일은 제목 앞 ★
         const dt = d.filter((c) => c.dataset.todo);
@@ -446,8 +451,8 @@ if (!JSDOM) {
     async starSort(src) {
       const W = await bootMine(src);
       try {
-        //  T 의 할 일: tA, tB(보통), tC(중요), tD(완료, 중요). 중요 먼저, 같은 중요도에서는 안 끝낸 것 먼저
-        assert.deepStrictEqual(rowIds(W), ['tC', 'tD', 'tA', 'tB'], '패널 할 일이 중요 먼저가 아니다');
+        //  T 의 할 일: tA, tB(보통), tC(중요), tD(완료, 중요). 배열 순서 그대로(0.28.0, 중요 먼저와 완료는 아래가 없다)
+        assert.deepStrictEqual(rowIds(W), ['tA', 'tB', 'tC', 'tD'], '패널 할 일이 배열 순서가 아니다');
         const row = (id) => W.$(`#dpBody .todo-row[data-id="${id}"]`);
         assert.ok(row('tC').querySelector('.todo-star-btn.on') && !row('tA').querySelector('.todo-star-btn.on'));
         assert.strictEqual(row('tA').querySelector('.todo-star-btn').dataset.act, 'star');
@@ -456,14 +461,14 @@ if (!JSDOM) {
         //  줄 끝 ★ 로 켜고 끈다
         click(row('tA').querySelector('.todo-star-btn'));
         assert.strictEqual(W.ev('todoById("tA").prio'), 'high');
-        assert.deepStrictEqual(rowIds(W), ['tA', 'tC', 'tD', 'tB'], '★ 를 켠 할 일이 중요한 안 끝낸 것 쪽으로 오지 않았다');
+        assert.deepStrictEqual(rowIds(W), ['tA', 'tB', 'tC', 'tD'], '★ 를 켜자 자리가 바뀌었다(배열 순서 그대로여야 한다)');
         click(row('tC').querySelector('.todo-star-btn'));
         assert.strictEqual(W.ev('todoById("tC").prio'), 'normal');
-        assert.deepStrictEqual(rowIds(W), ['tA', 'tD', 'tB', 'tC'], '★ 를 끈 할 일이 보통 쪽으로 내려가지 않았다');
-        //  체크로 완료: 같은 중요도에서 뒤로
+        assert.deepStrictEqual(rowIds(W), ['tA', 'tB', 'tC', 'tD'], '★ 를 끄자 자리가 바뀌었다(배열 순서 그대로여야 한다)');
+        //  체크로 완료해도 제자리(완료는 아래가 없다)
         click(row('tB').querySelector('.todo-check'));
         assert.strictEqual(W.ev('todoById("tB").done'), true);
-        assert.deepStrictEqual(rowIds(W), ['tA', 'tD', 'tC', 'tB'], '완료한 할 일이 안 끝낸 것 뒤로 가지 않았다');
+        assert.deepStrictEqual(rowIds(W), ['tA', 'tB', 'tC', 'tD'], '완료한 할 일이 자리를 옮겼다(배열 순서 그대로여야 한다)');
         assert.ok(row('tB').classList.contains('done'));
       } finally { await end(W); }
     },
@@ -614,7 +619,7 @@ if (!JSDOM) {
   test('(R) 보기 팝업: 구성(머리, 기록 종류 seg 셋, 과제), 막는 칸과 보기 옵션 없음, 요약 글자, 단추 강조, 달력과 패널과 밀린 할 일 팝업이 같은 보기, 처음대로', () => checks.viewPop());
   test('(R) 고른 보기는 계정별로 이 PC 에 기억되고, 다시 켜면 되살아나고, 처음대로는 기억을 지운다', () => checks.remember());
   test('(R) 달력 칸: 한 줄 채우기(일정 다음 할 일, 할 일 구역과 개수 칩 없음, 옆 칸에 영향 없음), 한 종류만이면 그 종류만, 주간 줄도 같은 보기', () => checks.cellLane());
-  test('(R) 패널 할 일: 중요(★) 먼저, 안 끝낸 것 먼저, 줄 끝 ★ 로 켜고 끄고, 체크로 완료', () => checks.starSort());
+  test('(R) 패널 할 일: 배열 순서 그대로(★, 완료로 자리가 바뀌지 않는다, 0.28.0), 줄 끝 ★ 로 켜고 끄고, 체크로 완료', () => checks.starSort());
   test('(R) 밀린 할 일 팝업: 묶음 셋(기한 지남, 기한 없음, 완료), 이번 주와 나중과 ★ 묶음 없음, 완료 접힘, 팝업 안 조작, 누르면 그 날짜로 이동하고 강조', () => checks.todoAll());
   test('(R) 맨 아래 줄: 밀린 할 일, 기한 없음 n, 지남 n, 둘 다 0 이면 흐린 글자, 자리와 모양 고정, 과제 보기를 따른다', () => checks.footLine());
   test('(R) 달력 칩을 누르면 그 날짜가 선택되고 패널에서 강조된다(탭 전환 없음, 일정 칩과 같은 동작)', () => checks.chipClick());
@@ -690,9 +695,9 @@ if (!JSDOM) {
     const bad = mutate(app, "if(!!a.todo !== !!b.todo) return a.todo ? 1 : -1;", "if(!!a.todo !== !!b.todo) return a.todo ? -1 : 1;");
     await assert.rejects(() => checks.cellLane(bad), /일정 다음 할 일/);
   });
-  test('변이M④: 할 일 정렬에서 중요 먼저를 빼면 별 시험이 실패한다', async () => {
-    const bad = mutate(app, "function todoZoneCmp(a, b){ return ((b.prio === 'high') - (a.prio === 'high')) || ", 'function todoZoneCmp(a, b){ return ');
-    await assert.rejects(() => checks.starSort(bad), /중요 먼저/);
+  test('변이M④: 할 일 정렬에 중요 먼저를 되살리면 별 시험이 실패한다(0.28.0 배열 순서)', async () => {
+    const bad = mutate(app, "function todoZoneCmp(a, b){ return itemOrderCmp('t', a, b); }", "function todoZoneCmp(a, b){ return ((b.prio === 'high') - (a.prio === 'high')) || itemOrderCmp('t', a, b); }");
+    await assert.rejects(() => checks.starSort(bad), /배열 순서/);
   });
   test('변이M⑤: [+ 추가] 가 늘 일정으로 열면 종류 기본값 시험이 실패한다', async () => {
     const bad = mutate(app, "function openAddOnDate(date){ openQuickAdd(date, viewKinds.ev ? 'event' : 'todo'); }", "function openAddOnDate(date){ openQuickAdd(date, 'event'); }");

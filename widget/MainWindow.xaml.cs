@@ -1108,6 +1108,7 @@ namespace TaskCalendarWidget
                     case "scheduleImageDelete": _ = RunScheduleImageAsync(cmd, DialogOwner(fromWin), GetStr(doc, "reqId"), raw); break;
                     case "scheduleImageMove": _ = RunScheduleImageAsync(cmd, DialogOwner(fromWin), GetStr(doc, "reqId"), raw); break;
                     case "scheduleImageThumb": _ = RunScheduleImageAsync(cmd, DialogOwner(fromWin), GetStr(doc, "reqId"), raw); break;
+                    case "scheduleImagePreview": _ = RunScheduleImageAsync(cmd, DialogOwner(fromWin), GetStr(doc, "reqId"), raw); break;
 
                     case "menu": ShowSettingsMenu(); break;
                     case "pin": TogglePin(); break;

@@ -61,7 +61,7 @@ const S = {
     }
     const allowed = new Set(JSON.parse(/const RPTM_HOST_CMDS = (\[[^\]]*\]);/.exec(src)[1].replace(/'/g, '"')));
     //  2026-11-10 시안 v2 결정 9: 과제당 그림 1장이라 순서 바꾸기(scheduleImageMove)를 화면에서 부르지 않는다(목록에서 뺐다)
-    assert.deepStrictEqual([...allowed].sort(), ['exportMonthlyDocx', 'netcusWeeklyRangeRead', 'openFolder', 'reportWeeklyList', 'scheduleImageAdd', 'scheduleImageDelete', 'scheduleImageList', 'scheduleImageThumb'], '호스트 명령 목록이 바뀌었다');
+    assert.deepStrictEqual([...allowed].sort(), ['exportMonthlyDocx', 'netcusWeeklyRangeRead', 'openFolder', 'reportWeeklyList', 'scheduleImageAdd', 'scheduleImageDelete', 'scheduleImageList', 'scheduleImagePreview', 'scheduleImageThumb'], '호스트 명령 목록이 바뀌었다');
     const used = [...code.matchAll(/hostRequest\('(\w+)'/g)].map((m) => m[1]).concat([...code.matchAll(/hpost\(\{\s*cmd:\s*'(\w+)'/g)].map((m) => m[1]));
     assert.ok(used.length >= 7, '호스트 호출을 거의 찾지 못했다');
     for (const u of used) assert.ok(allowed.has(u), '목록 밖 호스트 명령: ' + u);
@@ -73,8 +73,8 @@ const S = {
   imageCmds(src) {
     const code = rptMNames(src).filter((n) => /^rptMImg|^rptMThumbs/.test(n)).map((n) => extractFunction(src, n)).join('\n');
     const used = [...code.matchAll(/hostRequest\('(\w+)'/g)].map((m) => m[1]);
-    //  2026-11-10 시안 v2 결정 9: 순서 바꾸기(scheduleImageMove)는 없다. 넷만 쓴다
-    assert.deepStrictEqual([...new Set(used)].sort(), ['scheduleImageAdd', 'scheduleImageDelete', 'scheduleImageList', 'scheduleImageThumb'], '그림 함수가 명령 넷(목록, 썸네일, 넣기, 빼기)만 쓰지 않는다');
+    //  2026-11-10 시안 v2 결정 9: 순서 바꾸기(scheduleImageMove)는 없다. 0.28.0 F2 로 문서 미리 보기 그림(scheduleImagePreview)이 더해져 다섯
+    assert.deepStrictEqual([...new Set(used)].sort(), ['scheduleImageAdd', 'scheduleImageDelete', 'scheduleImageList', 'scheduleImagePreview', 'scheduleImageThumb'], '그림 함수가 명령 다섯(목록, 썸네일, 문서 미리 보기, 넣기, 빼기)만 쓰지 않는다');
     assert.ok(/mode: mode === 'clipboard' \? 'clipboard' : 'file'/.test(code), '그림 넣기가 {mode:file|clipboard} 로 가지 않는다');
     //  그림 칸은 과제 줄 안에 그린다: 줄(rptMRowEl) 안의 [data-slot] 하나(예전 서랍 [data-strip] 은 없다)
     const r = extractFunction(src, 'rptMImgRender');
@@ -156,10 +156,10 @@ test('변이 MSM1: 월간 저장에 Platform.report 를 넣거나 목록 밖 명
   assert.throws(() => S.noSend(mutate(app, "function rptMOpenDir(){ if(HOST && __rptMDir) hpost({ cmd: 'openFolder', path: __rptMDir }); }", "function rptMOpenDir(){ if(HOST && __rptMDir) hpost({ cmd: 'netcusSubmit', path: __rptMDir }); }")), /netcusSubmit|목록 밖/);
 });
 test('변이 MSM2: 그림 명령을 바꾸거나 저장소에 기억을 되살리거나 열 때마다 새로 열기를 바꾸면 MS3, MS4, MS5 가 잡는다', () => {
-  assert.throws(() => S.imageCmds(mutate(app, "try{ res = await hostRequest('scheduleImageDelete', { id: im.id }, 30000); }", "try{ res = await hostRequest('scheduleImageReorder', { id: im.id }, 30000); }")), /넷/);
+  assert.throws(() => S.imageCmds(mutate(app, "try{ res = await hostRequest('scheduleImageDelete', { id: im.id }, 30000); }", "try{ res = await hostRequest('scheduleImageReorder', { id: im.id }, 30000); }")), /다섯/);
   assert.throws(() => S.noSend(mutate(app, "try{ res = await hostRequest('scheduleImageDelete', { id: im.id }, 30000); }", "try{ res = await hostRequest(act, { id: im.id }, 30000); }")), /글자로 쓰지 않는|거의/);
   //  순서 바꾸기를 되살리면(scheduleImageMove) 목록 밖 명령으로 잡는다
-  assert.throws(() => S.imageCmds(mutate(app, "try{ res = await hostRequest('scheduleImageDelete', { id: im.id }, 30000); }", "try{ res = await hostRequest('scheduleImageDelete', { id: im.id }, 30000); await hostRequest('scheduleImageMove', { id: im.id, seq: 2 }, 30000); }")), /넷/);
+  assert.throws(() => S.imageCmds(mutate(app, "try{ res = await hostRequest('scheduleImageDelete', { id: im.id }, 30000); }", "try{ res = await hostRequest('scheduleImageDelete', { id: im.id }, 30000); await hostRequest('scheduleImageMove', { id: im.id, seq: 2 }, 30000); }")), /다섯/);
   assert.throws(() => S.noMemory(mutate(app, "  if(on) S.etcOff.delete(key); else S.etcOff.add(key);\n", "  if(on) S.etcOff.delete(key); else S.etcOff.add(key);\n  try{ localStorage.setItem('tc_rptMEtcOff:' + key, '1'); }catch(_){}\n")), /저장소/);
   assert.throws(() => S.noMemory(mutate(app, "  __rptM = rptMFresh(r[0], r[1], 'cal');\n", "  __rptM = __rptM || rptMFresh(r[0], r[1], 'cal');\n")), /새로 열지 않는다/);
 });
@@ -279,6 +279,7 @@ if (!JSDOM) {
   function drainImages(m) {
     for (const x of pending(m, 'scheduleImageList')) reply(m, 'scheduleImageList', { ok: true, data: { projectUid: x.projectUid, images: [], stale: false, notice: '' } }, (y) => y.reqId === x.reqId);
     for (const x of pending(m, 'scheduleImageThumb')) reply(m, 'scheduleImageThumb', { ok: false, error: { kind: 'notFound', message: '없음' } }, (y) => y.reqId === x.reqId);
+    for (const x of pending(m, 'scheduleImagePreview')) reply(m, 'scheduleImagePreview', { ok: false, error: { kind: 'notFound', message: '없음' } }, (y) => y.reqId === x.reqId);
   }
   const overlayOpen = (m, id) => { const o = m.doc.getElementById(id); return !!o && !o.classList.contains('hidden') && !o.classList.contains('closing'); };
   const overlayClosed = (m, id) => { const o = m.doc.getElementById(id); return !o || o.classList.contains('hidden'); };
@@ -648,7 +649,20 @@ if (!JSDOM) {
       reply(W, 'scheduleImageThumb', { ok: true, data: { id: 1, sha256: IMG(1).sha256, dataUrl: 'data:image/jpeg;base64,AAAA', width: 10, height: 4, stale: false } }, (x) => x.id === 1);
       await tick();
       assert.strictEqual(slot(P1).querySelector('img').getAttribute('src'), 'data:image/jpeg;base64,AAAA', '줄의 썸네일이 붙지 않았다');
-      assert.strictEqual(pvTable(W, P1).querySelector('td.img img').getAttribute('src'), 'data:image/jpeg;base64,AAAA', '문서 미리 보기에 그림이 들어가지 않았다');
+      assert.strictEqual(pvTable(W, P1).querySelector('td.img img').getAttribute('src'), 'data:image/jpeg;base64,AAAA', '문서 미리 보기에 그림이 들어가지 않았다(큰 그림이 오기 전에는 견본)');
+      //  0.28.0 F2: 큰 그림(scheduleImagePreview)이 오면 문서 미리 보기만 그것으로 바뀌고 왼쪽 칸은 견본 그대로, 크기 style 은 그대로
+      const st0 = pvTable(W, P1).querySelector('td.img img').getAttribute('style');
+      const pv1 = reply(W, 'scheduleImagePreview', { ok: true, data: { id: 1, sha256: IMG(1).sha256, dataUrl: 'data:image/png;base64,QklH', mime: 'image/png', width: 640, height: 200, stale: false } }, (x) => x.id === 1);
+      assert.strictEqual(pv1.id, 1, '문서 미리 보기 그림을 그림 번호로 묻지 않았다');
+      await tick();
+      assert.strictEqual(pvTable(W, P1).querySelector('td.img img').getAttribute('src'), 'data:image/png;base64,QklH', '큰 그림이 와도 문서 미리 보기가 견본을 쓴다');
+      assert.strictEqual(pvTable(W, P1).querySelector('td.img img').getAttribute('style'), st0, '큰 그림으로 바뀌며 문서 미리 보기 그림 크기가 바뀌었다(rptMImgFitStyle 은 원본 크기 기준)');
+      assert.strictEqual(slot(P1).querySelector('img').getAttribute('src'), 'data:image/jpeg;base64,AAAA', '왼쪽 칸이 견본이 아닌 큰 그림을 쓴다');
+      //  큰 그림이 실패한 과제(P2, 끊김 사본)는 견본 그대로
+      for (const x of pending(W, 'scheduleImagePreview')) reply(W, 'scheduleImagePreview', { ok: false, error: { kind: 'network', message: '연결 안 됨' } }, (y) => y.reqId === x.reqId);
+      reply(W, 'scheduleImageThumb', { ok: true, data: { id: 3, sha256: IMG(3).sha256, dataUrl: 'data:image/jpeg;base64,MzMz', width: 10, height: 4, stale: true } }, (x) => x.id === 3);
+      await tick();
+      assert.strictEqual(pvTable(W, P2).querySelector('td.img img').getAttribute('src'), 'data:image/jpeg;base64,MzMz', '큰 그림이 실패하면 문서 미리 보기가 견본으로 남지 않는다');
       //  빈 칸 누르기 → 메뉴(시안 A) → 파일 고르기(취소)
       slot(P4).querySelector('[data-act="imgAdd"]').click(); await tick();
       W.doc.querySelector('#asPop [data-imgmode="file"]').click(); await tick();
@@ -681,7 +695,7 @@ if (!JSDOM) {
       assert.strictEqual(adds(), before, '줄 밖, 날짜 칸, 취합 화면 밖의 Ctrl+V 가 그림 넣기를 불렀다');
       //  그동안 나간 그림 명령은 넷뿐(순서 바꾸기 없음)
       const cmds = new Set(W.posted.slice(ln0).map((x) => x && x.cmd).filter((c) => /^scheduleImage|Monthly|netcus/i.test(c || '')));
-      for (const c of cmds) assert.ok(['scheduleImageList', 'scheduleImageThumb', 'scheduleImageAdd', 'scheduleImageDelete'].includes(c), '그림 칸이 다른 명령을 보냈다: ' + c);
+      for (const c of cmds) assert.ok(['scheduleImageList', 'scheduleImageThumb', 'scheduleImagePreview', 'scheduleImageAdd', 'scheduleImageDelete'].includes(c), '그림 칸이 다른 명령을 보냈다: ' + c);
       //  다시 열면: 사람별 DB 목록을 다시 물어 썸네일 칸이 보인다(그림만 DB 에 있다)
       reopen(W); await tick();
       assert.ok(pending(W, 'scheduleImageList').some((x) => x.projectUid === P1), '다시 열었는데 그림 목록을 묻지 않았다');

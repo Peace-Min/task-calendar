@@ -140,7 +140,8 @@ if (!JSDOM) {
   }
   const end = async (W) => { try { W.ev("closeModal('#quickAdd'); closeModal('#todoAllModal')"); } catch (_) {} await later(); W.close(); };
   const card = (W, id) => W.$(`#dpBody .card[data-id="${id}"]`);
-  const cardLines = (el) => [...el.querySelectorAll('.card-top, .card-title, .card-when, .card-span, .card-recur, .card-memo')].map((x) => x.textContent.replace(/\s+/g, ' ').trim());
+  //  맨 윗줄의 순서 바꾸기 손잡이 ⠿(0.28.0, docs/ITEM-ORDER.md)는 글줄이 아니라 뺀다(손잡이 시험은 tests/item-order.test.mjs)
+  const cardLines = (el) => [...el.querySelectorAll('.card-top, .card-title, .card-when, .card-span, .card-recur, .card-memo')].map((x) => { const c = x.cloneNode(true); c.querySelectorAll('.dp-grip').forEach((g) => g.remove()); return c.textContent.replace(/\s+/g, ' ').trim(); });
   const lines = (el) => [...el.querySelectorAll('.dp-det-ln, .dp-det-memo')].map((x) => x.textContent.replace(/\s+/g, ' ').trim());
   const opened = (W) => W.$$('#dpBody .todo-row.open').map((r) => r.dataset.id);
 

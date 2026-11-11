@@ -134,7 +134,7 @@ const S = {
     assert.match(src, /<h2>🏷️ 내 과제<\/h2><button type="button" class="cat-x" data-close aria-label="닫기"/, '모달 제목 + ✕ (부제 없음)');
     assert.ok(!/cat-sub|내 캘린더에서 쓰는 과제\(색, 순서\)/.test(src), '내 과제 부제가 되살아났다');
     //  사용자에게 보이는 문자열에 옛 이름이 남지 않는다 — 패치노트(역사 기록)·주석은 제외.
-    const ps = src.indexOf('<div class="overlay hidden" id="patchModal">'), pe = src.indexOf('<div class="overlay hidden" id="updNotesModal">');
+    const ps = src.indexOf('<div class="overlay hidden" id="patchModal">'), pe = src.indexOf('<div class="overlay hidden" id="importModal">');   // 0.28.0 F1 에서 바로 뒤 #updNotesModal 을 뺐다
     assert.ok(ps > 0 && pe > ps, '패치노트 경계');
     const visible = (src.slice(0, ps) + src.slice(pe)).replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
     const left = visible.split('\n').filter((l) => l.includes('과제 관리'));

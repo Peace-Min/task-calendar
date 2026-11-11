@@ -9,7 +9,7 @@
 //       새 함수와 CSS 에 금지 기호와 hex 색이 없다.
 //   (R) 런타임(jsdom):
 //       카드 내용(꼬리표, 제목, 시각과 장소, 기간 n일째, 반복, 메모 전부와 링크, [수정] [삭제]), [수정]은 일정 수정 창, 반복 [삭제]는 반복 확인 창.
-//       정렬(종일 먼저, 시각순) 뒤 5개, n개 더 보기와 줄이기, 날짜를 바꾸면 다시 5개. 할 일 머리 숫자는 남은 개수/전체.
+//       배열 순서(0.28.0, 넣은 차례 그대로) 5개, n개 더 보기와 줄이기, 날짜를 바꾸면 다시 5개. 할 일 머리 숫자는 남은 개수/전체.
 //       머리 누르기: 위에 붙은 일정 머리는 일정 맨 위로, 아래에 붙은 할 일 머리와 위에 붙은 할 일 머리는 할 일 처음으로(접지 않음), 제자리면 접는다.
 //       붙은 머리의 읽히는 이름과 그림자. 접기와 줄이기 뒤 누른 것이 같은 자리(출렁임 없음). 접기 기억. 달력 칩 강조(카드 강조, 5개 밖이면 더 보기, 접혔으면 편다).
 //   (M) 변이: 5개 제한, 날짜 바뀜 정리, 접기 기억, 강조 더 보기, 붙은 머리 이동, 출렁임 맞춤, 남은 개수, 꼬리표 섞는 몫을 망가뜨리면 위 시험이 잡는다.
@@ -77,7 +77,7 @@ test('(S) 일정은 카드(cardHtml), 한 줄 줄과 줄 펼침 상세는 없다
   assert.ok(dd.includes("dpLimit('ev', list).map(e => cardHtml(e))") && dd.includes("dpMoreHtml('ev', list.length)"), '일정 묶음이 카드 5개 제한이 아니다');
   assert.ok(dd.includes("dpLimit('td', tds)") && dd.includes("dpMoreHtml('td', tds.length)"), '할 일 묶음에 5개 제한이 없다');
   assert.ok(dd.includes('dpLimit(cls, items).map(card)') && dd.includes('dpMoreHtml(cls, items.length)') && dd.includes('const card = e => cardHtml(e, ov[ovlKey(e)]);'), '열람 창 두 묶음(상대 일정, 내 일정)이 같은 카드와 제한이 아니다');
-  assert.ok(dd.includes('entriesOn(selectedDate).slice().sort(entrySort)'), '일정이 종일 먼저, 시각순(entrySort)으로 서지 않는다');
+  assert.ok(dd.includes('const list = evOn ? entriesOn(selectedDate) : []') && !/\.sort\(/.test(dd), '일정을 배열 순서(0.28.0, docs/ITEM-ORDER.md) 말고 다시 정렬한다');
   assert.ok(dd.indexOf('dpSync()') < dd.indexOf('dpReveal('), '날짜 바뀜 정리(dpSync)가 강조 펼치기(dpReveal)보다 먼저가 아니다');
   const card = extractFunction(app, 'cardHtml');
   assert.ok(/\(PEER \? '' : '<div class="card-actions">/.test(card), '열람 창에서 카드의 [수정] [삭제]를 그린다');
@@ -238,18 +238,18 @@ if (!JSDOM) {
   const G = (W) => JSON.parse(W.ev('JSON.stringify({ st: __G.st, to: __G.to })'));
 
   const checks = {
-    //  5개 제한(종일 먼저, 시각순), 더 보기와 줄이기, 날짜를 바꾸면 다시 5개, 보통 날은 더 보기 없음
+    //  5개 제한(배열 순서 그대로, 0.28.0), 더 보기와 줄이기, 날짜를 바꾸면 다시 5개, 보통 날은 더 보기 없음
     async limit(src) {
       const W = await boot(src);
       try {
         assert.deepStrictEqual(W.$$('#dpBody > .dp-grp').map((g) => g.dataset.grp), ['ev', 'td'], '두 묶음 고정이 깨졌다');
-        assert.deepStrictEqual(evRows(W), ['e0', 'e1', 'e2', 'e3', 'e4'], '일정이 종일 먼저, 시각순으로 5개까지가 아니다(넣은 차례와 무관)');
+        assert.deepStrictEqual(evRows(W), ['e7', 'e6', 'e5', 'e4', 'e3'], '일정이 배열 순서(넣은 차례)로 5개까지가 아니다(시각, 종일로 다시 세우지 않는다)');
         assert.strictEqual(tdRows(W).length, 5, '할 일이 5개까지만 보이지 않는다');
         assert.strictEqual(more(W, 'ev').textContent, '3개 더 보기');
         assert.strictEqual(more(W, 'td').textContent, '2개 더 보기');
         assert.ok(/일정\s*8/.test(W.$('#dpBody .dp-grp[data-grp="ev"] .dp-grp-h').textContent), '묶음 머리 수는 전체 수여야 한다');
         more(W, 'ev').click();
-        assert.deepStrictEqual(evRows(W), ['e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7'], '더 보기가 다 펼치지 않았거나 차례가 틀렸다');
+        assert.deepStrictEqual(evRows(W), ['e7', 'e6', 'e5', 'e4', 'e3', 'e2', 'e1', 'e0'], '더 보기가 다 펼치지 않았거나 차례가 틀렸다');
         assert.strictEqual(more(W, 'ev').textContent, '줄이기');
         assert.strictEqual(W.doc.activeElement, more(W, 'ev'), '더 보기 뒤 포커스가 줄이기 단추가 아니다');
         assert.strictEqual(tdRows(W).length, 5, '일정 더 보기가 할 일까지 펼쳤다');
@@ -283,6 +283,7 @@ if (!JSDOM) {
       const W = await boot(src);
       try {
         assert.ok(!W.$('#dpBody .dp-er, #dpBody .dp-edet'), '한 줄 일정이나 줄 펼침 상세가 남았다');
+        more(W, 'ev').click();   // 배열 순서(0.28.0)라 e1, e0 은 5개 밖이다
         const c1 = W.$('#dpBody .card[data-id="e1"]');
         assert.ok(c1 && /--c:#3e5be0/.test(c1.getAttribute('style')), '카드에 과제 색(--c)이 없다');
         const tag = c1.querySelector('.card-top .badge.cat-tag');
@@ -406,10 +407,10 @@ if (!JSDOM) {
       const W = await boot(src, (w) => { w.localStorage.setItem(FOLD_KEY, '["ev"]'); });
       try {
         pick(W, W.D2);
-        W.ev(`selectedDate = "${W.T}"; flashTargetId = "e7"; renderAll();`);
+        W.ev(`selectedDate = "${W.T}"; flashTargetId = "e0"; renderAll();`);   // e0 은 배열 맨 뒤(5개 밖)
         assert.strictEqual(head(W, 'ev').getAttribute('aria-expanded'), 'true', '강조한 일정의 묶음이 접힌 채다');
         assert.strictEqual(evRows(W).length, 8, '5개 밖의 일정을 강조했는데 더 보기가 열리지 않았다');
-        assert.deepStrictEqual(W.$$('#dpBody .card.flash').map((c) => c.dataset.id), ['e7'], '강조한 일정 카드만 강조되지 않았다');
+        assert.deepStrictEqual(W.$$('#dpBody .card.flash').map((c) => c.dataset.id), ['e0'], '강조한 일정 카드만 강조되지 않았다');
         W.ev('flashTodoId = "t7"; renderPanel();');
         assert.strictEqual(tdRows(W).length, 7, '5개 밖의 할 일을 강조했는데 더 보기가 열리지 않았다');
         assert.ok(W.$('#dpBody .todo-row.flash[data-id="t7"]'));
@@ -446,7 +447,7 @@ if (!JSDOM) {
     },
   };
 
-  test('(R) 일정은 종일 먼저, 시각순으로 5개, n개 더 보기와 줄이기, 날짜를 바꾸면 다시 5개, 보통 날은 더 보기 없음', () => checks.limit());
+  test('(R) 일정은 배열 순서(넣은 차례)로 5개, n개 더 보기와 줄이기, 날짜를 바꾸면 다시 5개, 보통 날은 더 보기 없음', () => checks.limit());
   test('(R) 할 일 머리 숫자는 남은 개수/전체(끝내면 줄어든다), 일정 머리는 개수 그대로', () => checks.count());
   test('(R) 카드: 꼬리표, 제목, 시각과 장소, 기간 n일째, 반복, 메모 전부와 링크, [수정]은 일정 수정 창, 반복 [삭제]는 반복 확인 창', () => checks.cards());
   test('(R) 머리 누르기: 위에 붙은 일정 머리는 맨 위로, 아래에 붙은 할 일 머리와 위에 붙은 할 일 머리는 할 일 처음으로, 제자리면 접는다(읽히는 이름, 그림자)', () => checks.heads());
@@ -459,7 +460,7 @@ if (!JSDOM) {
   // (M) 변이
   // ══════════════════════════════════════════════════════════════════════
   test('(M) 5개 제한을 빼면 제한 시험이 잡는다', async () => {
-    const bad = mutate(app, 'function dpLimit(k, items){ return DP.more.has(k) ? items : items.slice(0, DP_LIMIT); }', 'function dpLimit(k, items){ return items; }');
+    const bad = mutate(app, "function dpLimit(k, items){ return (DP.more.has(k) || (DP.dragAll && k === 'ev')) ? items : items.slice(0, DP_LIMIT); }", 'function dpLimit(k, items){ return items; }');
     await assert.rejects(() => checks.limit(bad));
   });
   test('(M) 날짜를 바꿔도 더 보기를 남기면 제한 시험이 잡는다', async () => {
