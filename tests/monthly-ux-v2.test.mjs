@@ -351,13 +351,13 @@ if (!JSDOM) {
       const lsw0 = M.ev('__lsw.length');
       //  SW 처음
       assert.strictEqual(M.ev('rptMPayload(__rptM).template'), 'sw', 'payload template 이 처음에 sw 가 아니다');
-      assert.ok(M.shown('#asPlanBtn') && !row(M, P1).querySelector('[data-slot]').classList.contains('hidden'), 'SW 인데 계획이나 그림 칸이 숨었다');
+      assert.ok(M.shown('#asPlanBtn') && !row(M, P1).querySelector('[data-slot]').classList.contains('ghost'), 'SW 인데 계획이나 그림 칸이 숨었다');
       assert.ok(row(M, P2).querySelector('.rptm-slot.has img'), '전제: P2 에 썸네일이 있다');
       //  HW
       M.$('#rptmTpl [data-tpl="hw"]').click(); await tick();
       assert.ok(M.$('#rptmTpl [data-tpl="hw"]').classList.contains('active') && M.$('#rptmTpl [data-tpl="hw"]').getAttribute('aria-pressed') === 'true', 'HW 세그가 켜지지 않았다');
       assert.ok(!M.shown('#asPlanBtn'), 'HW 인데 계획 단추가 보인다');
-      assert.ok([P1, P2].every((id) => row(M, id).querySelector('[data-slot]').classList.contains('hidden')), 'HW 인데 그림 칸이 보인다');
+      assert.ok([P1, P2].every((id) => row(M, id).querySelector('[data-slot]').classList.contains('ghost')), 'HW 인데 그림 칸이 보인다');
       assert.ok(row(M, P1) === rowEl, '양식을 바꾸니 과제 목록을 다시 그렸다(출렁임)');
       const p = M.evJSON('rptMPayload(__rptM)');
       assert.strictEqual(p.template, 'hw', 'payload template 이 hw 가 아니다');
@@ -389,7 +389,7 @@ if (!JSDOM) {
       assert.strictEqual(M.ev('rptMCheck(__rptM)'), '', 'HW 인데 계획 기간 때문에 저장을 막는다');
       //  SW 로 돌아오면 계획과 그림 칸, 그림이 그대로
       M.$('#rptmTpl [data-tpl="sw"]').click(); await tick();
-      assert.ok(M.shown('#asPlanBtn') && !row(M, P2).querySelector('[data-slot]').classList.contains('hidden') && row(M, P2).querySelector('.rptm-slot.has img'), 'SW 로 돌아왔는데 계획이나 그림 칸이 숨어 있거나 그림이 사라졌다');
+      assert.ok(M.shown('#asPlanBtn') && !row(M, P2).querySelector('[data-slot]').classList.contains('ghost') && row(M, P2).querySelector('.rptm-slot.has img'), 'SW 로 돌아왔는데 계획이나 그림 칸이 숨어 있거나 그림이 사라졌다');
       assert.ok(!sheet.classList.contains('hw') && sheet.querySelector('td.a') && sheet.querySelector('td.img img'), 'SW 로 돌아왔는데 미리 보기가 SW 모양이 아니다');
       assert.ok(M.ev('rptMCheck(__rptM)').includes('계획 기간'), 'SW 에서는 계획 기간을 검사해야 한다');
       //  기억하지 않는다: 저장소를 쓰지 않고, 다시 열면 SW

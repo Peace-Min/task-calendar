@@ -3078,6 +3078,8 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
 .rptm-it.norec .nm{color:var(--muted)}
 .rptm-it.off .nm{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line-2)}
 /* 그림 칸(과제당 1장): 비면 그림 아이콘 단추, 있으면 썸네일(누르면 크게 보기), 마우스를 올리면 ✕ */
+/* HW 에서는 그림 칸을 보이지 않게만 한다(자리와 줄 높이는 SW 와 같게, 탭과 읽기에서도 빠진다) */
+.rptm-slotw.ghost{visibility:hidden}
 .rptm-slot{position:relative;width:84px;height:34px;flex:none;border:1px dashed var(--ctl-border);border-radius:5px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:var(--dim-bg);padding:0;cursor:pointer;overflow:hidden;font:inherit}
 .rptm-slot:hover:not(:disabled),.rptm-slot:focus-visible{border-color:var(--accent);color:var(--accent-2)}
 .rptm-slot:disabled{cursor:default;opacity:.55}
@@ -17677,7 +17679,7 @@ function rptMTplUi(){
   $$('#rptmTpl [data-tpl]').forEach(b => { const on = b.dataset.tpl === __rptMTpl; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   $$('#asHead .rptm-plan').forEach(e => e.classList.toggle('hidden', hw));
   if(hw && (__asPopK === 'plan' || __asPopK === 'img')) asPopClose();
-  $$('#rptmPick [data-slot]').forEach(e => e.classList.toggle('hidden', hw));
+  $$('#rptmPick [data-slot]').forEach(e => e.classList.toggle('ghost', hw));   // 자리는 남긴다(숨기면 줄 높이가 달라져 SW, HW 를 바꿀 때마다 목록이 출렁인다)
 }
 //  양식을 골랐다: 숨김과 미리 보기만 바꾼다(전체 다시 그리기 없음). 계획 기간 값과 그림은 그대로 둔다. 기억하지 않는다.
 function rptMTplSet(t){
@@ -17705,7 +17707,7 @@ function rptMPickRowHtml(id){
   const S = __rptM, on = !!S.checked[id], nr = rptMNoRec(S, id), nm = rptMCatName(id);
   return `<div class="rptm-it${on ? '' : ' off'}${nr ? ' norec' : ''}" data-uid="${esc(id)}">`
     + `<label class="check"><input type="checkbox" data-act="pick"${on ? ' checked' : ''}><span class="nm"${nr ? ' title="이 기간 기록 없음"' : ''}>${esc(nm)}</span></label>`
-    + (HOST ? `<span class="rptm-slotw${__rptMTpl === 'hw' ? ' hidden' : ''}" data-slot></span>` : '')
+    + (HOST ? `<span class="rptm-slotw${__rptMTpl === 'hw' ? ' ghost' : ''}" data-slot></span>` : '')
     + '</div>';
 }
 //  줄의 기록 없음 표시만 바꾼다(미식별 넣을 곳을 바꿨을 때)
