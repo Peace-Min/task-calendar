@@ -495,7 +495,9 @@ async function main() {
     c = cmdFull('u1', 'projectCalendarCopy', { projectUid: D.p1.uid, eventUid: e1, mutationUid: randomUUID() });
     const entryUid2 = c.reply.ok ? c.reply.data.entryUid : '';
     ok('같은 원본 다시 등록: 새 개인 일정이 하나 더(막지 않는다, 재적재 표시)', c.reply.ok && !!entryUid2 && entryUid2 !== entryUid && c.reload === true && u1Entries() === n0 + 2, JSON.stringify(c).slice(0, 300));
-    ok('과제 캘린더 표가 둘뿐이다(대응표, 감시점 없음)', num(`SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='${OPT.db}' AND TABLE_NAME LIKE 'cal_project%'`) === 2);
+    //  복사 대응표가 없다는 뜻(한 번 찍는 사본). 표 수로 세면 뒤에 생긴 표(cal_project_watch 구조 21 등)에 걸려 낡는다(2026-11-11 실DB 실행에서 드러남).
+    //  그래서 복사 대응이나 원본 추적용 표(이름에 copy, map, link)가 없는지를 본다.
+    ok('과제 캘린더에 복사 대응표가 없다(copy, map, link 표 없음)', num(`SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='${OPT.db}' AND TABLE_NAME LIKE 'cal_project%' AND (TABLE_NAME LIKE '%copy%' OR TABLE_NAME LIKE '%map%' OR TABLE_NAME LIKE '%link%')`) === 0);
     r = cmd('u1', 'projectCalendarBootstrap', {});
     ok('부트스트랩이 복사 대응(copies)을 돌려주지 않는다', r.ok && !('copies' in r.data), JSON.stringify(r).slice(0, 200));
     r = cmd('u1', 'projectCalendarCopy', { projectUid: D.p2.uid, eventUid: e1, mutationUid: randomUUID() });
