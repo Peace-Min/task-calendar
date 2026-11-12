@@ -38,6 +38,8 @@ h1{font-size:16px;margin:0 0 4px}
 .grp{display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;background:var(--bg);border-top:1px solid var(--line);font-size:12px;font-weight:700;color:var(--muted)}
 .grp:first-of-type{border-top:0}
 .grp.off{background:var(--accent-soft);color:var(--accent-2)}
+.grp.def{background:transparent;border-top:1px dashed var(--line-2);color:var(--faint)}
+.v-a2 .cat-row[data-g="def"] .nm{font-weight:400;color:var(--muted)}
 .grp .c{font-weight:400}
 .cat-row.gap{border-top:2px solid var(--line-2)}
 .add{margin-top:10px;border:1px dashed var(--accent);border-radius:8px;text-align:center;padding:9px;color:var(--accent-2);font-weight:700}
@@ -67,9 +69,9 @@ h1{font-size:16px;margin:0 0 4px}
     <div class="log" data-log="a"></div>
   </div>
   <div class="col">
-    <h2>A'. 묶음 머리 + 공식 과제 정보 (추천)</h2>
-    <p>A 에 더해 공식 과제 머리만 옅은 파랑, 공식 과제 둘째 줄에 발주처와 개발 기간(DB 정보). 일반 과제 둘째 줄은 지금처럼 메모입니다.</p>
-    <div class="modal"><div class="mh">🏷 내 과제<span class="x">✕</span></div><div class="mb"><div class="cat-wrap" data-v="a2"></div><div class="add">⊕ 과제 추가</div></div></div>
+    <h2>A'. 묶음마다 다른 머리 (추천)</h2>
+    <p>공식 과제 머리는 옅은 파랑, 일반 과제 머리는 지금 표 머리와 같은 회색, 기본 머리는 바탕 없이 점선 경계와 흐린 글. 기본(휴가, 기타) 이름은 굵지 않게. 둘째 줄은 모두 지금처럼 설명입니다.</p>
+    <div class="modal"><div class="mh">🏷 내 과제<span class="x">✕</span></div><div class="mb"><div class="cat-wrap v-a2" data-v="a2"></div><div class="add">⊕ 과제 추가</div></div></div>
     <div class="log" data-log="a2"></div>
   </div>
   <div class="col">
@@ -87,9 +89,9 @@ const ALL = [
   { id: 'p2', g: 'mine', n: '시스템 점검', s: '정기 시스템, 서버 점검', c: '#1f9d74', e: 2, t: 0 },
   { id: 'p3', g: 'mine', n: '보고서 작성', s: '주간/월간 보고서 작업', c: '#3e5be0', e: 0, t: 0 },
   { id: 'p4', g: 'mine', n: '(예시) 사내 정리', c: '#3e5be0', e: 1, t: 0 },
-  { id: 'o1', g: 'off', n: '(예시) 관제 고도화', o: '(예시) 발주처 가', term: '2026/03 ~ 2026/12', c: '#3e5be0', e: 24, t: 2 },
-  { id: 'o2', g: 'off', n: '(예시) 해양 관측 체계', o: '(예시) 발주처 나', term: '2026/01 ~ 2026/11', c: '#c2770a', e: 0, t: 0 },
-  { id: 'o3', g: 'off', n: '(예시) 장비 시험', o: '(예시) 발주처 가', term: '2026/05 ~', c: '#c2770a', e: 3, t: 2 },
+  { id: 'o1', g: 'off', n: '(예시) 관제 고도화', s: '화면 응답 개선', c: '#3e5be0', e: 24, t: 2 },
+  { id: 'o2', g: 'off', n: '(예시) 해양 관측 체계', c: '#c2770a', e: 0, t: 0 },
+  { id: 'o3', g: 'off', n: '(예시) 장비 시험', c: '#c2770a', e: 3, t: 2 },
   { id: 'd1', g: 'def', n: '휴가', c: '#1f9d74', e: 0, t: 0 },
   { id: 'd2', g: 'def', n: '기타', c: '#5b6476', e: 7, t: 8 },
 ];
@@ -101,14 +103,14 @@ S.a = norm(ALL); S.a2 = norm(ALL); S.b = norm(ALL);
 const esc = (s) => String(s).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
 function row(v, x, gap) {
   const tag = (v !== 'a' && v !== 'a2' && x.g === 'off') ? '<span class="tag">공식</span>' : '<span></span>';
-  const sub = (v === 'a2' && x.g === 'off') ? `${x.o}, ${x.term}` : x.s;
+  const sub = x.s;
   return `<div class="cat-row${gap ? ' gap' : ''}" data-id="${x.id}" data-g="${x.g}" style="--c:${x.c}"><span class="grip">⠿</span><span class="dot"></span><span class="nm">${esc(x.n)}${sub ? `<small>${esc(sub)}</small>` : ''}</span>${tag}<span class="num">${x.e}</span><span class="num">${x.t}</span><span class="more">⋯</span></div>`;
 }
 function render(v) {
   const el = document.querySelector(`.cat-wrap[data-v="${v}"]`), arr = S[v];
   let h = '<div class="cat-head"><span></span><span></span><span>과제</span><span></span><span class="n">일정</span><span class="n">할 일</span><span></span></div>';
   if (v === 'a' || v === 'a2') {
-    for (const [g, label] of GRP) { const xs = arr.filter((x) => x.g === g); if (!xs.length) continue; h += `<div class="grp${v === 'a2' && g === 'off' ? ' off' : ''}">${label} <span class="c">${xs.length}</span></div>` + xs.map((x) => row(v, x)).join(''); }
+    for (const [g, label] of GRP) { const xs = arr.filter((x) => x.g === g); if (!xs.length) continue; h += `<div class="grp${v === 'a2' ? ' ' + g : ''}">${label} <span class="c">${xs.length}</span></div>` + xs.map((x) => row(v, x)).join(''); }
   } else if (v === 'b') {
     let prev = null; for (const x of arr) { h += row(v, x, prev && prev !== x.g); prev = x.g; }
   } else h += arr.map((x) => row(v, x)).join('');
