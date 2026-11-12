@@ -38,8 +38,8 @@ h1{font-size:16px;margin:0 0 4px}
 .grp{display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;background:var(--bg);border-top:1px solid var(--line);font-size:12px;font-weight:700;color:var(--muted)}
 .grp:first-of-type{border-top:0}
 .grp.off{background:var(--accent-soft);color:var(--accent-2)}
-.grp.def{background:transparent;border-top:1px dashed var(--line-2);color:var(--faint)}
-.v-a2 .cat-row[data-g="def"] .nm{font-weight:400;color:var(--muted)}
+/* 기본 머리: 일반과 같은 글 색, 바탕만 패널색으로 두고 위 경계를 두 줄로(흐리게 하면 꺼진 것처럼 보인다, 2026-11-12 사용자) */
+.grp.def{background:var(--panel);border-top:2px solid var(--line-2)}
 .grp .c{font-weight:400}
 .cat-row.gap{border-top:2px solid var(--line-2)}
 .add{margin-top:10px;border:1px dashed var(--accent);border-radius:8px;text-align:center;padding:9px;color:var(--accent-2);font-weight:700}
@@ -70,7 +70,7 @@ h1{font-size:16px;margin:0 0 4px}
   </div>
   <div class="col">
     <h2>A'. 묶음마다 다른 머리 (추천)</h2>
-    <p>공식 과제 머리는 옅은 파랑, 일반 과제 머리는 지금 표 머리와 같은 회색, 기본 머리는 바탕 없이 점선 경계와 흐린 글. 기본(휴가, 기타) 이름은 굵지 않게. 둘째 줄은 모두 지금처럼 설명입니다.</p>
+    <p>공식 과제 머리는 옅은 파랑, 일반 과제 머리는 지금 표 머리와 같은 회색, 기본 머리는 바탕 없이 굵은 경계선(줄과 이름은 다른 과제와 똑같이). 둘째 줄은 모두 지금처럼 설명입니다.</p>
     <div class="modal"><div class="mh">🏷 내 과제<span class="x">✕</span></div><div class="mb"><div class="cat-wrap v-a2" data-v="a2"></div><div class="add">⊕ 과제 추가</div></div></div>
     <div class="log" data-log="a2"></div>
   </div>
