@@ -115,7 +115,7 @@
 5. 내 PC 에서 업데이트 버튼을 눌러 새 버전이 정상 동작하는지 본다.
 
 **Setup 과 SQL 은 같은 빌드에서 나온 짝이어야 한다.** `release-v<버전>.sql` 은 그 빌드의 Setup 해시를 `app_installer_sha256` 에 적는다. 같은 소스라도 빌드할 때마다 Setup 해시가 달라지므로, 공유 폴더에 올린 Setup 을 만든 바로 그 빌드의 SQL 을 쓴다(폐쇄망에서 빌드했으면 폐쇄망 `dist\installer\` 의 SQL). 다른 PC 나 다른 빌드의 SQL 을 쓰면 DB 이관은 되지만 0.23 이상 앱의 자동 업데이트가 해시 불일치로 실패한다(2026-11-02 사고 기록).
-- SQL 만 다시 만들어야 하면(조각을 고쳤을 때) **빌드를 다시 돌리지 않는다.** 올린 Setup 의 해시로 조립기만 돌린다: `installer\release-sql.ps1 -FragmentDir db\deploy\migrations -Structure <앱 구조 번호> -Version <버전> -InstallerFile TaskCalendarWidget-Setup-v<버전>.exe -Sha256 <올린 Setup 해시> -Notes "<요약>" -OutFile dist\installer\release-v<버전>.sql`. 해시는 같은 빌드의 `latest.json` 의 `sha256` 과 같다.
+- SQL 만 다시 만들어야 하면(조각을 고쳤을 때) **빌드를 다시 돌리지 않는다.** 올린 Setup 의 해시로 조립기만 돌린다: `installer\release-sql.ps1 -FragmentDir db\deploy\migrations -Structure <앱 구조 번호> -Version <버전> -InstallerFile TaskCalendarWidget-Setup-v<버전>.exe -Sha256 <올린 Setup 해시> -Notes "<요약>" -OutFile dist\installer\release-v<버전>.sql`. 해시는 같은 빌드의 `latest.json` 의 `sha256` 과 같다. 판 데이터 단계(5.4)는 `-FragmentDir` 옆의 `db\deploy\data` 에서 저절로 읽는다.
 - 이미 다른 해시로 실행했으면 Workbench 에서 한 줄로 바로잡는다: `UPDATE cal_schema_meta SET v = '<올린 Setup 해시>', updated_at = UTC_TIMESTAMP(3) WHERE k = 'app_installer_sha256';`
 
 이 SQL 이 하는 일(순서대로):
@@ -126,6 +126,7 @@
 | 닫기 | 구조 번호가 앱보다 낮을 때만 `db_updating = 1`(키가 없던 13 에서는 만든다). 앱만 바뀌는 배포는 닫지 않는다 |
 | 이관 조각 | 지금 번호부터 앱 번호까지의 조각을 차례로. 조각마다 이미 지난 번호면 스스로 건너뛴다. 그래서 배포를 몇 번 건너뛴 DB 도 이 파일 하나로 올라간다 |
 | 끝 확인 | 구조 번호가 앱과 같고, 옛 키가 없고, 키 다섯 개가 있는지. 틀리면 멈춘다 |
+| 판 데이터 단계(있는 판만) | 그 버전의 데이터 단계(5.4). `app_latest_version` 이 그 버전보다 낮을 때만 값을 고친다. 0.28.0 은 일정과 할 일 순서를 0.27.0 화면 순서로 한 번 맞춘다 |
 | 열기(한 트랜잭션) | `app_latest_version`, `app_installer_file`, `app_installer_sha256`, `db_updating = 0`. 구조 번호와 새 배포 정보가 함께 보이게 된다. 값이 이미 같으면 0행이라, 성공한 뒤 다시 돌려도 바뀌는 것이 없다 |
 
 앱만 바뀌는 배포는 아무도 막히지 않고, 배너를 보고 편할 때 업데이트한다.
@@ -162,13 +163,31 @@
 5. **구조 번호 올리기(끝에서 한 줄):** `UPDATE cal_schema_meta SET v = 'N+1', updated_at = UTC_TIMESTAMP(3)` 다음 줄 `WHERE k = 'db_structure_version' AND v = 'N';`. 이미 올라가 있으면 0행이다. `db_updating` 은 그대로 1 이라 앱은 끝의 열기까지 계속 기다린다.
 6. **쓰지 않는 것:** `db_updating`(닫기와 열기는 감싸개의 몫), 감싸개 변수 `@r_`.
 
-조립기(`release-sql.ps1`)가 빌드 전에 확인한다: 머리 형식, 한 칸, 구조 번호 올리기 줄, `db_updating` 쓰기와 저장 프로그램과 `@r_` 없음, 사슬에 빈틈과 겹침 없음, 마지막 도착 번호 = `DbGate.AppStructureVersion`. 어긋나면 빌드가 실패한다. 시험(`tests/release-sql.test.mjs`)은 만든 SQL 의 순서와, 흉내 실행으로 처음, 앱만, 재실행, 건너뛴 배포, 단계마다 실패 뒤 재실행을 본다.
+조립기(`release-sql.ps1`)가 빌드 전에 확인한다(판 데이터 단계의 규칙은 5.4): 머리 형식, 한 칸, 구조 번호 올리기 줄, `db_updating` 쓰기와 저장 프로그램과 `@r_` 없음, 사슬에 빈틈과 겹침 없음, 마지막 도착 번호 = `DbGate.AppStructureVersion`. 어긋나면 빌드가 실패한다. 시험(`tests/release-sql.test.mjs`)은 만든 SQL 의 순서와, 흉내 실행으로 처음, 앱만, 재실행, 건너뛴 배포, 단계마다 실패 뒤 재실행을 본다.
 
 ### 5.3 앱 쪽 짝
 
 - 앱의 구조 번호 상수(`DbGate.AppStructureVersion`)와 정본 스키마 `db/deploy/schema-calendar.sql` 의 시드 값을 새 조각과 같은 커밋에서 올린다. `tests/schema-guards.test.mjs` 가드가 어긋남을 잡는다.
 - 만든 `release-v<버전>.sql` 은 개발 PC 의 MySQL 에서 **같은 권한의 시험 계정**(`taskcalendar.*` 전체 권한만)으로, 개발 DB 사본에 먼저 끝까지 돌려 본 뒤 넘긴다(옛 번호 사본에서 처음, 다시 돌리기, 중간에 멈춘 상태에서 다시 돌리기).
 - **새 표를 만드는 조각과 권한.** release SQL 은 권한을 줄 수 없다(GRANT 금지). 폐쇄망 서버의 앱 계정은 `taskcalendar.*` 전체 권한이라 새 표도 바로 쓴다. 반면 표마다 권한을 주는 환경(외부망 개발 PC 의 최소 권한 앱 계정)에서는 새 표에 권한이 없어 1142 로 실패한다. 그런 환경은 정본 권한 파일(`grants-calendar.sql`, `create-app-user.sql`)대로 root 로 따로 GRANT 한다(2026-10-21 회의실 공용화 QA 에서 확인: `room_code` 권한을 주고 지운 `cal_room` 권한은 거둠).
+
+### 5.4 판 데이터 단계 (구조는 그대로, 그 판에서 한 번만 값 고치기)
+
+구조 번호를 올릴 일은 아니지만 배포 때 한 번 데이터를 고쳐야 할 때 쓴다(첫 사용: 0.28.0 순서 고정, docs/ITEM-ORDER.md §4). 이관 조각과 따로 `db/deploy/data/<버전>-<이름>.sql` 에 둔다.
+
+- **첫 줄 머리:** `-- @data version=X.Y.Z`. 조립기는 **그 버전을 만들 때만** release SQL 에 넣는다(다른 버전의 SQL 은 글자까지 예전과 같다). 그래서 그 판의 release SQL 을 건너뛴 DB 는 이 단계를 받지 않는다. 폐쇄망은 판마다 배포하므로 문제가 없지만, 판을 건너뛰어야 하면 그 판의 SQL 을 먼저 돌린다.
+- **자리:** 끝 확인 뒤, 열기 트랜잭션 앞(4.5 단계). 앱만 바뀐 배포라 닫지 않은 채 돈다.
+- **문:** 감싸개가 `app_latest_version` 을 읽어 `@data_go` 를 정한다. 비었거나 그 버전보다 낮으면 1, 아니면 0. 버전은 글자가 아니라 숫자로 견준다(`주 * 1000000 + 부 * 1000 + 수`, 0.28.0 은 28000. 글자로 견주면 0.100.0 이 0.28.0 보다 낮다). 숫자 세 마디가 아니면 1146 으로 멈춘다. 열기가 새 버전을 적으므로 성공한 뒤 다시 돌리면 0 이라 아무것도 바꾸지 않는다(그 뒤 사용자가 바꾼 값을 지킨다).
+- **규칙(조립기가 -CheckOnly 에서도 검사, 어기면 종료코드 3):** 바꾸는 문장(INSERT, UPDATE, DELETE, REPLACE)마다 `@data_go = 1` 조건. UPDATE, DELETE 는 키 칸 WHERE(`user_id > 0` 등, 1175). `@data_go` 를 스스로 정하지 않는다. 조각과 같은 금지(`db_updating` 쓰기, 저장 프로그램과 DELIMITER, `@r_`)에 더해 `cal_schema_meta` 쓰기, 구조 바꾸기(CREATE, ALTER, DROP, RENAME, TRUNCATE), `SET SESSION` 도 쓰지 않는다. 바꾸는 문장은 한 표로 쓴다(여러 표 UPDATE 는 1175 위험, 5.2).
+- **앱 계정 권한 안에서:** 임시 표(CREATE TEMPORARY TABLES 권한 없음)와 저장 프로그램을 쓰지 않는다. 다시 매기기는 창 함수 파생 표를 상관 부분 조회로 읽는 한 표 UPDATE 로 쓴다. 창 함수가 든 파생 표는 병합되지 않고 먼저 만들어져 같은 표를 고쳐도 1093 이 나지 않는다.
+- **다른 PC 의 열린 앱:** 사용자 데이터를 바꾸면 그 사람의 `cal_user_rev` 를 같은 트랜잭션에서 먼저 1 올린다(바꾸기 전에 바뀔 사람을 센다). 열려 있던 앱은 다음 저장이 충돌해 다시 읽는다.
+
+**0.28.0 `0.28.0-item-order.sql`(순서 고정).** 0.27.0 은 그릴 때 정렬했고 0.28.0 은 저장된 순서(`ORDER BY sort_order, uid`)를 그대로 보인다. 사람마다 0.27.0 화면 순서로 `sort_order` 를 0 부터 빈틈 없이 다시 매긴다.
+- 일정(0.27.0 `entrySort`): `(all_day <> 0) DESC, COALESCE(DATE_FORMAT(start_time, '%H:%i'), '99:99'), created_at, sort_order, uid`. 시작 시각은 앱이 읽는 모양(초 버림), 없으면 '99:99' 로 시각 있는 것 뒤.
+- 할 일(0.27.0 `todoZoneCmp`): `(prio = 'high') DESC, (done <> 0), created_at, sort_order, uid`.
+- 앱은 만든 시각을 ISO 글자(24자 고정)로 `localeCompare` 했다. 자리가 같은 글자라 DATETIME(3) 순서와 같다(리허설에서 기본 로캘, ko 로캘, 글자 코드 비교가 모두 같은 결과). 동률은 JS 안정 정렬이라 배열 순서(부팅의 `sort_order, uid`)가 그대로 보였다.
+- 0.27.0 의 할 일 모아 보기(기한 지남 묶음)는 기한 순이었다. 날짜 패널 순서(`todoZoneCmp`)를 기준으로 삼았다.
+- 리허설(2026-11-12, MySQL 8.4.9, 개발 DB 사본 `zz_ord028`, `mysql --safe-updates`): 사용자 89, 일정 3,639행, 할 일 567행(동률, 시각 없음, 종일, 초 있는 시각, 중요, 완료를 꾸민 17행 포함). 1회차 0.27.0 에서 rc 0, 약 0.2초, 모든 사람의 새 순서가 옛 JS 비교 함수(06e9bd0 의 `entrySort`, `todoZoneCmp` 글자 그대로)로 정렬한 순서와 같고 0 부터 빈틈 없음, rev 는 순서가 바뀐 89명만 1 올랐다(개발 DB 는 시드 순서가 화면 순서와 달라 모두 바뀜). 열기는 0.28.0 과 Setup 해시. 2회차 rc 0, 순서와 rev 그대로. 열린 뒤 바꾼 순서는 다시 돌려도 그대로, `0.100.0` 은 건너뜀, 한 사람만 흐트러진 채 `0.9.0` 으로 돌리면 그 사람만 다시 매기고 rev +1, `abc` 는 1146 으로 멈춤.
 
 ## 6. 실패했을 때
 

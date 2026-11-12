@@ -41,12 +41,13 @@ process.on('exit', () => { try { rmSync(TMP, { recursive: true, force: true }); 
 let seq = 0;
 
 // 조립기를 실제로 돌린다. 종료코드와 출력(ASCII 꼬리표 [XXX])과 만들어진 SQL 을 돌려준다.
-function gen(fragDir, structure, { checkOnly = false, script = GEN } = {}) {
+function gen(fragDir, structure, { checkOnly = false, script = GEN, version = VER, dataDir = null } = {}) {
   const out = join(TMP, `out-${++seq}.sql`);
   const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script,
     '-FragmentDir', fragDir, '-Structure', String(structure)];
+  if (dataDir) args.push('-DataDir', dataDir);
   if (checkOnly) args.push('-CheckOnly');
-  else args.push('-Version', VER, '-InstallerFile', FILE, '-Sha256', SHA, '-Notes', 'test notes', '-OutFile', out, '-Stamp', '2026-10-21 00:00');
+  else args.push('-Version', version, '-InstallerFile', FILE, '-Sha256', SHA, '-Notes', 'test notes', '-OutFile', out, '-Stamp', '2026-10-21 00:00');
   const r = spawnSync('powershell', args, { encoding: 'utf8', windowsHide: true, timeout: 120000 });
   if (r.error) throw new Error(`powershell 을 실행하지 못했다(판정 불가): ${r.error.message}`);
   return { code: r.status, log: (r.stdout || '') + (r.stderr || ''), sql: existsSync(out) ? readFileSync(out, 'utf8') : null };
@@ -1456,4 +1457,116 @@ test('변이R46: v22 가 표 셋을 검증 앞에서 지우면 검증에서 멈�
 test('변이R47: v22 가 개인 과제 줄을 채우지 않으면 ③r 이 실패한다', () => {
   const bad = mutate(realSql(), "SET @s := IF(@go,\n  'UPDATE cal_report_weekly_hours h SET", "SET @s := IF(0,\n  'UPDATE cal_report_weekly_hours h SET");
   assert.throws(() => checks.v22Upgraded(bad), /cat_uid 채우기가 다르다/);
+});
+
+// ══ 판 데이터 단계(db/deploy/data, DB-RELEASE-OPS §5.4, 2026-11-12) ═══════════════════════════════
+//  구조는 그대로 두고 그 판에서 한 번만 값을 고친다. 첫 데이터 단계는 0.28.0 의 순서 고정(0.27.0 화면 순서로 sort_order 다시 매기기).
+//  흉내 실행기는 창 함수를 모른다. 실제 MySQL 8.4 리허설(개발 DB 사본, --safe-updates, 재실행)은 DB-RELEASE-OPS §5.4 에 적었다.
+const DATA_DIR = join(ROOT, 'db', 'deploy', 'data');
+const DATA_FILES = readdirSync(DATA_DIR).filter((f) => f.endsWith('.sql')).sort();
+const ORD028 = '0.28.0-item-order.sql';
+const dataCode = (t) => t.replace(/\r\n/g, '\n').split('\n').filter((l) => !/^\s*--/.test(l)).join('\n');
+const dataStatements = (t) => dataCode(t).replace(/ON\s+DUPLICATE\s+KEY\s+UPDATE/gi, 'ON_DUP').split(';').map((x) => x.trim()).filter(Boolean);
+let _sql028 = null;
+const sql028 = () => {
+  if (_sql028 === null) {
+    const r = gen(FRAG_DIR, APP, { version: '0.28.0' });
+    assert.strictEqual(r.code, 0, `0.28.0 배포 SQL 을 만들지 못했다(exit ${r.code}): ${r.log}`);
+    _sql028 = r.sql;
+  }
+  return _sql028;
+};
+
+test('데이터 단계a: 0.28.0 순서 고정은 0.28.0 을 만들 때만 들어가고, 끝 확인 뒤 열기 트랜잭션 앞에 자리한다', () => {
+  assert.ok(DATA_FILES.includes(ORD028), `${ORD028} 가 없다(판정 불가)`);
+  const sql = sql028();
+  const at = (needle, from = 0) => { const i = sql.indexOf(needle, from); assert.ok(i >= 0, `0.28.0 SQL 에 ${needle} 가 없다`); return i; };
+  const endCheck = at('`중단: 끝 확인 실패');
+  const head = at('--  4.5) 판 데이터 단계(0.28.0 에서 한 번)');
+  const body = at(`-- ---------- 데이터 단계 ${ORD028} (0.28.0) ----------`);
+  const reset = at('SET @data_go := 0;', body);
+  const open = at("START TRANSACTION;\nUPDATE cal_schema_meta SET v = '0.28.0'");
+  assert.ok(endCheck < head && head < body && body < reset && reset < open, '데이터 단계가 끝 확인과 열기 사이에 있지 않다');
+  assert.strictEqual(sql.split('-- @data version=0.28.0').length - 1, 1, '데이터 단계가 한 번만 들어가야 한다');
+  //  다른 판에는 없다(끝 확인과 열기 사이 모양도 예전 그대로)
+  for (const v of ['0.27.0', '0.28.1', '0.29.0', VER]) {
+    const r = v === VER ? { code: 0, sql: realSql() } : gen(FRAG_DIR, APP, { version: v });
+    assert.strictEqual(r.code, 0, `${v} 배포 SQL 을 만들지 못했다`);
+    assert.ok(!r.sql.includes('@data_go') && !r.sql.includes('4.5) 판 데이터 단계'), `${v} 배포 SQL 에 0.28.0 데이터 단계가 들어갔다`);
+    assert.ok(r.sql.includes('DEALLOCATE PREPARE _g;\n\n-- =====================================================================\n--  5) 열기'), `${v}: 끝 확인과 열기 사이 모양이 예전과 다르다`);
+  }
+});
+
+test('데이터 단계b: 감싸개가 app_latest_version 을 숫자로 견주어 @data_go 를 정한다(빈 값은 낮음, 모양이 아니면 멈춤)', () => {
+  const sql = sql028();
+  assert.ok(sql.includes("SET @r_lv := (SELECT v FROM cal_schema_meta WHERE k = 'app_latest_version');"), '지금 app_latest_version 을 읽지 않는다');
+  assert.ok(sql.includes("SET @g := IF(COALESCE(@r_lv, '') = '' OR @r_lv REGEXP '^[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}$', 'DO 0',"), '버전 모양 확인이 없다');
+  const gate = "SET @data_go := IF(COALESCE(@r_lv, '') = '' OR\n  CAST(SUBSTRING_INDEX(@r_lv, '.', 1) AS UNSIGNED) * 1000000\n  + CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(@r_lv, '.', 2), '.', -1) AS UNSIGNED) * 1000\n  + CAST(SUBSTRING_INDEX(@r_lv, '.', -1) AS UNSIGNED) < 28000, 1, 0);";
+  assert.ok(sql.includes(gate), '0.28.0 판 문(숫자 비교 < 28000)이 없다');
+  //  문의 뜻을 JS 로 따라 해 본다(글자 비교였다면 '0.100.0' < '0.28.0' 이 참이 된다)
+  const num = (v) => { const [a, b, c] = v.split('.').map(Number); return a * 1000000 + b * 1000 + c; };
+  for (const [v, go] of [['', 1], ['0.27.0', 1], ['0.27.99', 1], ['0.9.0', 1], ['0.28.0', 0], ['0.28.1', 0], ['0.100.0', 0], ['1.0.0', 0]]) {
+    assert.strictEqual(v === '' || num(v) < 28000 ? 1 : 0, go, `${v || '빈 값'} 의 판정이 다르다`);
+  }
+});
+
+test('데이터 단계c: 데이터 파일의 바꾸는 문장은 모두 @data_go 조건이고, UPDATE 는 한 표에 키 칸 WHERE 다(1175, 1093 방지)', () => {
+  assert.ok(DATA_FILES.length >= 1, '데이터 단계 파일이 없다(판정 불가)');
+  for (const f of DATA_FILES) {
+    const t = readText(join(DATA_DIR, f));
+    assert.ok(/^-- @data version=\d+\.\d+\.\d+\n/.test(t.replace(/\r\n/g, '\n')), `${f}: 첫 줄이 '-- @data version=X.Y.Z' 가 아니다`);
+    for (const st of dataStatements(t)) {
+      if (/\b(INSERT|UPDATE|DELETE|REPLACE)\b/i.test(st)) assert.ok(/@data_go = 1/.test(st), `${f}: @data_go 조건이 없는 바꾸는 문장: ${st.slice(0, 80)}`);
+      //  맨 바깥 WHERE(마지막 줄)에 키 칸 조건
+      if (/^(UPDATE|DELETE)\b/i.test(st)) assert.ok(/\n\s*WHERE\s+(\w+\.)?user_id > 0 AND @data_go = 1$/.test(st), `${f}: 키 칸 WHERE(user_id > 0)가 없다: ${st.slice(0, 80)}`);
+    }
+    assert.deepStrictEqual(multiTableWrites(t), [], `${f} 에 여러 표 UPDATE, DELETE 가 있다`);
+    assert.ok(!/@r_|\bdb_updating\b|cal_schema_meta|\b(CREATE|ALTER|DROP|RENAME|TRUNCATE|DELIMITER|PROCEDURE|FUNCTION|TRIGGER|GRANT)\b/i.test(dataCode(t)), `${f}: 데이터 단계에 금지 문장이 있다`);
+  }
+  //  0.28.0 순서 고정: 같은 표의 rev 세기와 다시 매기기가 같은 순서식이고, 그 끝은 부팅 조회와 같은 sort_order, uid
+  const t = readText(join(DATA_DIR, ORD028)).replace(/\r\n/g, '\n');
+  const orders = (tbl) => [...dataCode(t).matchAll(/ORDER BY ([^;]*?\buid) *\) - 1 AS rn\s+FROM (\w+)\)/g)].filter((m) => m[2] === tbl).map((m) => m[1].replace(/\s+/g, ' '));
+  const ENTRY_ORDER = "(all_day <> 0) DESC, COALESCE(DATE_FORMAT(start_time, '%H:%i'), '99:99'), created_at, sort_order, uid";
+  const TODO_ORDER = "(prio = 'high') DESC, (done <> 0), created_at, sort_order, uid";
+  assert.deepStrictEqual(orders('cal_entry'), [ENTRY_ORDER, ENTRY_ORDER], '일정 순서식이 rev 세기와 다시 매기기에서 다르거나 0.27.0 entrySort 와 다르다');
+  assert.deepStrictEqual(orders('cal_todo'), [TODO_ORDER, TODO_ORDER], '할 일 순서식이 rev 세기와 다시 매기기에서 다르거나 0.27.0 todoZoneCmp 와 다르다');
+  //  순서: 한 트랜잭션 안에서 rev 올리기(바꾸기 전에 센다), 일정, 할 일
+  const seq = ['START TRANSACTION;', 'INSERT INTO cal_user_rev (user_id, rev)', 'ON DUPLICATE KEY UPDATE rev = rev + 1;', 'UPDATE cal_entry e', 'UPDATE cal_todo t', 'COMMIT;'];
+  const pos = seq.map((n) => { const i = t.indexOf(n); assert.ok(i >= 0, `${ORD028} 에 ${n} 가 없다`); return i; });
+  for (let k = 1; k < pos.length; k++) assert.ok(pos[k - 1] < pos[k], `${ORD028} 의 순서가 틀렸다: ${seq[k - 1]} 가 ${seq[k]} 보다 뒤다`);
+  //  다시 매기기는 창 함수 파생 표(병합되지 않아 1093 이 없다)를 실제 기본 키로 짝짓는다
+  assert.ok(t.includes('WHERE r.user_id = e.user_id AND r.entry_no = e.entry_no)'), '일정 다시 매기기가 기본 키(user_id, entry_no)로 짝짓지 않는다');
+  assert.ok(t.includes('WHERE r.user_id = t.user_id AND r.todo_no = t.todo_no)'), '할 일 다시 매기기가 기본 키(user_id, todo_no)로 짝짓지 않는다');
+  const schema = readText(join(ROOT, 'db', 'deploy', 'schema-calendar.sql'));
+  assert.ok(/CREATE TABLE cal_entry \([\s\S]*?PRIMARY KEY \(user_id, entry_no\)/.test(schema) && /CREATE TABLE cal_todo \([\s\S]*?PRIMARY KEY \(user_id, todo_no\)/.test(schema), '정본의 기본 키가 바뀌었다(데이터 단계의 짝짓기를 다시 볼 것)');
+});
+
+test('데이터 단계d: 규칙을 어긴 데이터 파일은 -CheckOnly 에서도 종료코드 3 과 꼬리표로 멈춘다', () => {
+  const good = readText(join(DATA_DIR, ORD028)).replace(/\r\n/g, '\n');
+  const okDir = join(TMP, `data-${++seq}`); mkdirSync(okDir); writeFileSync(join(okDir, ORD028), good, 'utf8');
+  const ok = gen(FRAG_DIR, APP, { checkOnly: true, dataDir: okDir });
+  assert.strictEqual(ok.code, 0, `규칙을 지킨 데이터 파일을 거부했다: ${ok.log}`);
+  const tail = (s) => good + '\n' + s + '\n';
+  const cases = [
+    ['머리 없음', good.replace(/^-- @data version=0\.28\.0\n/, ''), 'BAD_DATA_HEADER'],
+    ['머리 모양', good.replace('-- @data version=0.28.0', '-- @data version=0.28'), 'BAD_DATA_HEADER'],
+    ['db_updating 쓰기', tail("UPDATE cal_schema_meta SET v = '0' WHERE k = 'db_updating' AND @data_go = 1;"), 'WRITES_UPDATING'],
+    ['저장 프로그램', tail('DROP PROCEDURE IF EXISTS p;'), 'STORED_PROGRAM'],
+    ['DELIMITER', tail('DELIMITER //'), 'STORED_PROGRAM'],
+    ['감싸개 변수', tail('SET @r_lv := 0;'), 'USES_R_VAR'],
+    ['meta 쓰기', tail("UPDATE cal_schema_meta SET v = '23' WHERE k = 'db_structure_version' AND @data_go = 1;"), 'WRITES_META'],
+    ['구조 바꾸기', tail('ALTER TABLE cal_todo ADD COLUMN x INT;'), 'DATA_DDL'],
+    ['세션 바꾸기', tail('SET SESSION sql_safe_updates = 0;'), 'DATA_DDL'],
+    ['문 없는 UPDATE', tail('UPDATE cal_todo SET sort_order = 0 WHERE user_id > 0;'), 'NO_DATA_GATE'],
+    ['문 스스로 정하기', tail('SET @data_go := 1;'), 'NO_DATA_GATE'],
+    ['WHERE 없는 UPDATE', tail('UPDATE cal_todo SET sort_order = @data_go;'), 'NO_WHERE'],
+    ['WHERE 없는 DELETE', tail('DELETE FROM cal_todo_day_note LIMIT @data_go;'), 'NO_WHERE'],
+  ];
+  for (const [label, body, tag] of cases) {
+    assert.notStrictEqual(body, good, `변이 준비 실패: ${label}`);
+    const d = join(TMP, `data-${++seq}`); mkdirSync(d); writeFileSync(join(d, ORD028), body, 'utf8');
+    const r = gen(FRAG_DIR, APP, { checkOnly: true, dataDir: d });
+    assert.strictEqual(r.code, 3, `${label}: 데이터 단계 규칙 위반을 잡지 못한다(exit ${r.code})`);
+    assert.ok(r.log.includes(`[${tag}]`), `${label}: 꼬리표가 ${tag} 가 아니다: ${r.log}`);
+  }
 });

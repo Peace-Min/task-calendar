@@ -10,7 +10,9 @@
     2) 닫기       구조 번호가 앱보다 낮을 때만 db_updating = 1(키가 없던 13 에서는 만든다)
     3) 이관 조각  db\deploy\migrations\*.sql 을 구조 번호 순서로. 조각마다 이미 지난 번호면 스스로 건너뛴다
     4) 끝 확인    구조 번호 = 앱, 옛 키 없음, 키 다섯 개
-    5) 열기       한 트랜잭션: app_latest_version, app_installer_file, app_installer_sha256, db_updating = 0
+    4.5) 판 데이터 단계(있을 때만) db\deploy\data\*.sql 중 머리 버전이 -Version 과 같은 것. app_latest_version 이
+                  그 버전보다 낮을 때만 바꾼다(@data_go). 구조 번호와 무관하다
+    5) 열기      한 트랜잭션: app_latest_version, app_installer_file, app_installer_sha256, db_updating = 0
     6) 결과 표
 
   조각 규칙(DB-RELEASE-OPS §5.2):
@@ -21,6 +23,16 @@
     - 저장 프로그램(PROCEDURE, FUNCTION, TRIGGER, DELIMITER)을 쓰지 않는다.
   사슬: from 순서로 빈틈과 겹침 없이 이어지고, 마지막 to 가 앱 구조 번호(DbGate.AppStructureVersion)와 같아야 한다.
 
+  판 데이터 단계 규칙(DB-RELEASE-OPS §5.4). 구조는 그대로 두고 그 판에서 한 번만 데이터를 고칠 때 쓴다:
+    - 폴더는 -DataDir(비우면 -FragmentDir 옆의 data 폴더. 없으면 데이터 단계 없음). 이름 순서로 넣는다.
+    - 첫 줄 '-- @data version=X.Y.Z'. 그 버전을 만들 때(-Version 이 같을 때)만 release SQL 에 들어간다.
+    - 바꾸는 문장(INSERT, UPDATE, DELETE, REPLACE)마다 @data_go 를 조건으로 쓴다. @data_go 는 감싸개가 정한다:
+      app_latest_version 이 비었거나 그 버전보다 낮으면 1(숫자로 견준다. 0.28.0 은 28000). 열린 뒤 다시 돌리면 0 이다.
+    - UPDATE, DELETE 는 WHERE 가 있어야 한다(키 칸 조건, 안전 갱신 모드 1175).
+    - 쓰지 않는 것: 조각과 같은 금지(db_updating 쓰기, 저장 프로그램, @r_), 그리고 cal_schema_meta 쓰기, 구조 바꾸기
+      (CREATE, ALTER, DROP, RENAME, TRUNCATE), SET SESSION.
+    - 검사는 -CheckOnly 에서도 한다(머리가 틀리거나 금지 문장이 있으면 3).
+
   사용 예:
     release-sql.ps1 -FragmentDir ..\db\deploy\migrations -Structure 14 -CheckOnly
     release-sql.ps1 -FragmentDir ..\db\deploy\migrations -Structure 14 -Version 0.23.0 `
@@ -29,7 +41,7 @@
   --- EXITCODES (ASCII copy for tests)
   0 ok
   2 bad arguments (version, file name, sha256, missing parameter)
-  3 bad fragment (header, step, to-version UPDATE, forbidden statement)
+  3 bad fragment or data step (header, step, to-version UPDATE, forbidden statement, missing WHERE or @data_go)
   4 chain broken (gap or duplicate start)
   5 chain end differs from app structure (or no fragment)
   --- END EXITCODES ---
@@ -44,7 +56,8 @@ param(
   [string]$Sha256 = "",
   [string]$Notes = "",
   [string]$OutFile = "",
-  [string]$Stamp = ""             # 머리 주석의 시각. 비우면 지금(시험은 고정값을 준다)
+  [string]$Stamp = "",            # 머리 주석의 시각. 비우면 지금(시험은 고정값을 준다)
+  [string]$DataDir = ""           # 판 데이터 단계 폴더. 비우면 -FragmentDir 옆의 data(없으면 데이터 단계 없음)
 )
 $ErrorActionPreference = 'Stop'
 
@@ -88,6 +101,40 @@ $lastTo = $frags[$frags.Count - 1].To
 if ($lastTo -ne $Structure) { Stop-Gen 'CHAIN_END' "사슬의 끝($lastTo)이 앱 구조 번호($Structure, DbGate.AppStructureVersion)와 다르다" 5 }
 $chainText = ($frags | ForEach-Object { "$($_.Name)($($_.From) 에서 $($_.To))" }) -join ', '
 Write-Host "* 이관 조각 사슬: $chainText" -ForegroundColor Cyan
+
+# ── 2.5) 판 데이터 단계 읽기와 검사(DB-RELEASE-OPS §5.4) ──────────────────
+if (-not $DataDir) { $DataDir = Join-Path (Split-Path -Parent ([System.IO.Path]::GetFullPath($FragmentDir))) 'data' }
+$datas = @()
+if (Test-Path -LiteralPath $DataDir -PathType Container) {
+  foreach ($f in @(Get-ChildItem -LiteralPath $DataDir -Filter '*.sql' -File | Sort-Object Name)) {
+    $text = [System.IO.File]::ReadAllText($f.FullName, (New-Object System.Text.UTF8Encoding($false)))
+    $text = $text.TrimStart([char]0xFEFF) -replace "`r`n", "`n"
+    $first = ($text -split "`n", 2)[0]
+    $hm = [regex]::Match($first, '^-- @data version=(\d{1,3})\.(\d{1,3})\.(\d{1,3})[ \t]*$')
+    if (-not $hm.Success) { Stop-Gen 'BAD_DATA_HEADER' "$($f.Name): 첫 줄이 '-- @data version=X.Y.Z' 가 아니다" 3 }
+    if ([regex]::Matches($text, '(?m)^-- @(data|migration) ').Count -ne 1) { Stop-Gen 'BAD_DATA_HEADER' "$($f.Name): 머리 줄이 둘 이상이다" 3 }
+    $dver = "$([int]$hm.Groups[1].Value).$([int]$hm.Groups[2].Value).$([int]$hm.Groups[3].Value)"
+    $code = [regex]::Replace($text, '(?m)^[ \t]*--.*$', '')
+    if ([regex]::IsMatch($code, "(?i)\b(UPDATE|INSERT|REPLACE|DELETE)\b[^;]*db_updating")) { Stop-Gen 'WRITES_UPDATING' "$($f.Name): db_updating 을 쓴다(닫기와 열기는 release SQL 의 몫)" 3 }
+    if ([regex]::IsMatch($code, '(?i)\b(DELIMITER|PROCEDURE|FUNCTION|TRIGGER|DEFINER)\b')) { Stop-Gen 'STORED_PROGRAM' "$($f.Name): 저장 프로그램이나 DELIMITER 를 쓴다" 3 }
+    if ($code.Contains('@r_')) { Stop-Gen 'USES_R_VAR' "$($f.Name): 감싸개 변수(@r_)를 쓴다" 3 }
+    if ([regex]::IsMatch($code, "(?i)\b(UPDATE|INSERT|REPLACE|DELETE)\b[^;]*cal_schema_meta")) { Stop-Gen 'WRITES_META' "$($f.Name): cal_schema_meta 를 쓴다(구조 번호와 배포 정보는 감싸개의 몫)" 3 }
+    if ([regex]::IsMatch($code, '(?i)\b(CREATE|ALTER|DROP|RENAME|TRUNCATE)\b|\bSET\s+SESSION\b')) { Stop-Gen 'DATA_DDL' "$($f.Name): 구조를 바꾸거나 세션을 바꾼다(데이터 단계는 값만 고친다. 구조는 이관 조각)" 3 }
+    if ([regex]::IsMatch($code, '(?i)\bSET\s+@data_go\b|@data_go\s*:=')) { Stop-Gen 'NO_DATA_GATE' "$($f.Name): @data_go 를 스스로 정한다(감싸개의 몫)" 3 }
+    #  문장(; 단위)마다: 바꾸는 문장은 @data_go 조건, UPDATE 와 DELETE 는 WHERE(ODKU 와 FK 규칙의 UPDATE 는 문장이 아니다)
+    $plain = [regex]::Replace($code, '(?i)ON\s+DUPLICATE\s+KEY\s+UPDATE|ON\s+(UPDATE|DELETE)\s+(RESTRICT|CASCADE|SET\s+NULL|NO\s+ACTION|CURRENT_TIMESTAMP)', ' _odku_ ')
+    foreach ($st in ($plain -split ';')) {
+      if ([regex]::IsMatch($st, '(?i)\b(INSERT|UPDATE|DELETE|REPLACE)\b')) {
+        if (-not $st.Contains('@data_go')) { Stop-Gen 'NO_DATA_GATE' "$($f.Name): 바꾸는 문장에 @data_go 조건이 없다: $((($st -replace '\s+', ' ').Trim()).Substring(0, [Math]::Min(60, (($st -replace '\s+', ' ').Trim()).Length)))" 3 }
+      }
+      if ([regex]::IsMatch($st, '(?i)\b(DELETE\s+FROM|UPDATE)\s+[`\w]') -and -not [regex]::IsMatch($st, '(?i)\bWHERE\b')) {
+        Stop-Gen 'NO_WHERE' "$($f.Name): WHERE 없는 UPDATE 나 DELETE(안전 갱신 모드 1175)" 3
+      }
+    }
+    $datas += [pscustomobject]@{ Name = $f.Name; Version = $dver; Text = $text.TrimEnd("`n") }
+  }
+}
+if ($datas.Count -gt 0) { Write-Host "* 판 데이터 단계: $(($datas | ForEach-Object { "$($_.Name)($($_.Version))" }) -join ', ')" -ForegroundColor Cyan }
 if ($CheckOnly) { exit 0 }
 
 # ── 3) 값 검사 ────────────────────────────────────────────────────────
@@ -103,6 +150,41 @@ $notesLine = (($Notes -replace "[\r\n]+", " ").Trim())
 $fragBlocks = ($frags | ForEach-Object {
   "-- ---------- 조각 $($_.Name) ($($_.From) 에서 $($_.To)) ----------`n" + $_.Text + "`n-- ---------- 조각 $($_.Name) 끝 ----------"
 }) -join "`n`n"
+
+#  판 데이터 단계(§5.4): 머리 버전이 이 배포 버전과 같은 것만. 없으면 빈 글자라 SQL 은 예전과 글자까지 같다.
+$dataBlock = ''
+$myDatas = @($datas | Where-Object { $_.Version -eq $Version })
+if ($myDatas.Count -gt 0) {
+  $vp = $Version.Split('.')
+  if ([int]$vp[0] -gt 999 -or [int]$vp[1] -gt 999 -or [int]$vp[2] -gt 999) { Stop-Gen 'BAD_VERSION' "데이터 단계가 있는 버전은 칸마다 999 이하여야 한다: '$Version'" 2 }
+  $vnum = [int]$vp[0] * 1000000 + [int]$vp[1] * 1000 + [int]$vp[2]
+  $dataBody = ($myDatas | ForEach-Object {
+    "-- ---------- 데이터 단계 $($_.Name) ($($_.Version)) ----------`n" + $_.Text + "`n-- ---------- 데이터 단계 $($_.Name) 끝 ----------"
+  }) -join "`n`n"
+  $dataTpl = @'
+
+
+-- =====================================================================
+--  4.5) 판 데이터 단계({{VERSION}} 에서 한 번): app_latest_version 이 {{VERSION}} 보다 낮을 때만 바꾼다
+-- =====================================================================
+--  버전은 숫자로 견준다(주 * 1000000 + 부 * 1000 + 수). 비었으면 낮은 것으로 본다. X.Y.Z 가 아니면 멈춘다.
+--  아래 열기가 {{VERSION}} 을 적으므로, 성공한 뒤 이 파일을 다시 돌리면 @data_go = 0 이라 아무것도 바꾸지 않는다.
+SET @r_lv := (SELECT v FROM cal_schema_meta WHERE k = 'app_latest_version');
+SET @g := IF(COALESCE(@r_lv, '') = '' OR @r_lv REGEXP '^[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}$', 'DO 0',
+             'SELECT 1 FROM `중단: app_latest_version 이 숫자 세 마디 버전이 아니다`');
+PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
+SET @data_go := IF(COALESCE(@r_lv, '') = '' OR
+  CAST(SUBSTRING_INDEX(@r_lv, '.', 1) AS UNSIGNED) * 1000000
+  + CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(@r_lv, '.', 2), '.', -1) AS UNSIGNED) * 1000
+  + CAST(SUBSTRING_INDEX(@r_lv, '.', -1) AS UNSIGNED) < {{VNUM}}, 1, 0);
+SELECT @r_lv AS `지금 app_latest_version`, IF(@data_go = 1, '{{VERSION}} 데이터 단계를 한다', '이미 {{VERSION}} 이상이라 건너뛴다') AS `데이터 단계`;
+
+{{BODY}}
+SET @data_go := 0;
+'@
+  $dataBlock = $dataTpl.Replace("`r`n", "`n").Replace('{{VNUM}}', [string]$vnum).Replace('{{VERSION}}', $Version).TrimEnd("`n")
+  $dataBlock = $dataBlock.Replace('{{BODY}}', $dataBody)
+}
 
 $tpl = @'
 -- release-v{{VERSION}}.sql  (installer\publish-update.ps1 이 {{STAMP}} 에 만들었다)
@@ -201,7 +283,7 @@ SET @r_keys := (SELECT COUNT(*) FROM cal_schema_meta
                              'app_installer_file', 'app_installer_sha256'));
 SET @g := IF(@r_cur <=> '{{APP}}' AND @r_nold = 0 AND @r_keys = 5 AND (@r_upd <=> '0' OR @r_upd <=> '1'), 'DO 0',
              'SELECT 1 FROM `중단: 끝 확인 실패 - 구조 번호가 {{APP}} 가 아니거나 키가 모자란다`');
-PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
+PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;{{DATA}}
 
 -- =====================================================================
 --  5) 열기(한 트랜잭션): 배포 정보 세 키와 db_updating = 0
@@ -228,6 +310,7 @@ $sql = $sql.Replace('{{VERSION}}', $Version).Replace('{{FILE}}', $InstallerFile)
 $sql = $sql.Replace('{{APP}}', [string]$Structure).Replace('{{FIRST}}', [string]$firstFrom)
 $sql = $sql.Replace('{{CHAIN}}', $chainText).Replace('{{STAMP}}', $Stamp).Replace('{{NOTES}}', $notesLine)
 $sql = $sql.Replace('{{FRAGMENTS}}', $fragBlocks)   # 마지막에 넣는다(조각 본문은 자리 채우기에 닿지 않는다)
+$sql = $sql.Replace('{{DATA}}', $dataBlock)         # 데이터 단계도 본문이라 자리 채우기 뒤에 넣는다
 
 # BOM 없는 UTF-8, 줄끝 LF(Workbench 는 둘 다 읽는다)
 $outDir = Split-Path -Parent ([System.IO.Path]::GetFullPath($OutFile))
