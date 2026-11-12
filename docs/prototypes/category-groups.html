@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내 과제 묶음 시안</title>
+<style>
+/* 내 과제 창을 공식, 일반, 기본(휴가, 기타) 묶음으로 나누는 시안(2026-11-12). 순서 규칙: 공식 위, 일반 가운데, 기본 맨 아래. 끌기는 같은 묶음 안에서만.
+   모양은 실제 내 과제 창(.cat-wrap, .cat-head, .cat-row)을 옮겨 왔다. */
+:root{--panel:#fff;--bg:#f2f4f8;--page:#e9ecf2;--line:#e3e6ee;--line-2:#cfd5e2;--muted:#7a8399;--faint:#a3aabb;--text:#1d2333;--accent:#3e5be0;--accent-2:#2f49c4;--accent-soft:#e8edfd;--r:10px}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--panel:#1f2430;--bg:#262c3a;--page:#161a22;--line:#323a4b;--line-2:#3d465a;--muted:#98a2b8;--faint:#6f788c;--text:#e6e9f0;--accent:#6c84f0;--accent-2:#8ea1f5;--accent-soft:#273152}}
+:root[data-theme="dark"]{--panel:#1f2430;--bg:#262c3a;--page:#161a22;--line:#323a4b;--line-2:#3d465a;--muted:#98a2b8;--faint:#6f788c;--text:#e6e9f0;--accent:#6c84f0;--accent-2:#8ea1f5;--accent-soft:#273152}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font:13px/1.5 "Malgun Gothic","맑은 고딕",system-ui,sans-serif;padding:20px 16px}
+h1{font-size:16px;margin:0 0 4px}
+.lead{color:var(--muted);margin:0 0 16px;max-width:980px}
+.wrap{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+.col h2{font-size:14px;margin:0 0 2px}
+.col p{margin:0 0 8px;color:var(--muted);font-size:12px;max-width:420px}
+.modal{width:420px;background:var(--panel);border-radius:var(--r);box-shadow:0 10px 30px rgba(0,0,0,.12);overflow:hidden}
+.mh{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line);font-weight:700;font-size:15px}
+.mh .x{margin-left:auto;color:var(--muted);font-weight:400}
+.mb{padding:12px 14px 14px}
+.cat-wrap{border:1px solid var(--line);border-radius:8px}
+.cat-head,.cat-row{display:grid;grid-template-columns:14px 10px minmax(0,1fr) 3.2em 34px 34px 22px;align-items:center;column-gap:9px}
+.cat-head{height:34px;padding:0 6px 0 8px;background:var(--bg);border-bottom:1px solid var(--line);border-radius:7px 7px 0 0;font-size:12px;color:var(--muted)}
+.cat-head .n{text-align:right}
+.cat-row{position:relative;min-height:38px;padding:5px 6px 5px 8px;background:var(--panel)}
+.cat-row + .cat-row{border-top:1px solid var(--line)}
+.grip{color:var(--faint);cursor:grab;user-select:none;touch-action:none;text-align:center}
+.grip.off{visibility:hidden}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--c)}
+.nm{font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nm small{display:block;font-weight:400;color:var(--muted);font-size:11px}
+.tag{font-size:11px;color:var(--accent-2);background:var(--accent-soft);border-radius:4px;padding:0 5px;justify-self:end}
+.num{text-align:right;font-size:12px;color:var(--muted)}
+.more{color:var(--muted);text-align:center}
+.grp{display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;background:var(--bg);border-top:1px solid var(--line);font-size:12px;font-weight:700;color:var(--muted)}
+.grp:first-of-type{border-top:0}
+.grp.off{background:var(--accent-soft);color:var(--accent-2)}
+.grp .c{font-weight:400}
+.cat-row.gap{border-top:2px solid var(--line-2)}
+.add{margin-top:10px;border:1px dashed var(--accent);border-radius:8px;text-align:center;padding:9px;color:var(--accent-2);font-weight:700}
+.drag{opacity:.45}
+.ins-b{box-shadow:inset 0 2px 0 var(--accent)}.ins-a{box-shadow:inset 0 -2px 0 var(--accent)}
+.ghost{position:fixed;z-index:50;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.18);border:1px solid var(--line);border-radius:8px;opacity:.96}
+.dragging,.dragging *{cursor:grabbing!important}
+.note{font-size:12px;color:var(--muted);margin-top:8px;max-width:420px}
+.note b{color:var(--text)}
+.log{font-size:12px;color:var(--muted);min-height:18px;margin-top:4px}
+</style>
+</head>
+<body>
+<h1>내 과제: 공식, 일반, 기본 묶음</h1>
+<p class="lead">순서 규칙: 공식 과제가 위, 일반 과제가 가운데, 휴가와 기타가 맨 아래입니다. 끌기는 같은 묶음 안에서만 됩니다. 새로 추가하거나 공식 과제로 연결한 과제는 그 묶음의 끝에 들어갑니다. 이 순서를 근태 보고, 월간, 필터, 선택 상자가 그대로 따릅니다. 세 창 모두 실제로 끌어 볼 수 있습니다.</p>
+
+<div class="wrap">
+  <div class="col">
+    <h2>지금</h2>
+    <p>한 줄 목록. 일반과 공식이 섞이고, 끌면 어디든 갑니다.</p>
+    <div class="modal"><div class="mh">🏷 내 과제<span class="x">✕</span></div><div class="mb"><div class="cat-wrap" data-v="now"></div><div class="add">⊕ 과제 추가</div></div></div>
+  </div>
+  <div class="col">
+    <h2>A. 묶음 머리</h2>
+    <p>표 안에 묶음 머리 줄을 둡니다. "공식" 표는 머리가 대신하니 뺍니다. 휴가, 기타는 기본 묶음에 고정됩니다.</p>
+    <div class="modal"><div class="mh">🏷 내 과제<span class="x">✕</span></div><div class="mb"><div class="cat-wrap" data-v="a"></div><div class="add">⊕ 과제 추가</div></div></div>
+    <div class="log" data-log="a"></div>
+  </div>
+  <div class="col">
+    <h2>A'. 묶음 머리 + 공식 과제 정보 (추천)</h2>
+    <p>A 에 더해 공식 과제 머리만 옅은 파랑, 공식 과제 둘째 줄에 발주처와 개발 기간(DB 정보). 일반 과제 둘째 줄은 지금처럼 메모입니다.</p>
+    <div class="modal"><div class="mh">🏷 내 과제<span class="x">✕</span></div><div class="mb"><div class="cat-wrap" data-v="a2"></div><div class="add">⊕ 과제 추가</div></div></div>
+    <div class="log" data-log="a2"></div>
+  </div>
+  <div class="col">
+    <h2>B. 구분선만</h2>
+    <p>머리 글 없이 묶음 사이에 굵은 선만 둡니다. "공식" 표는 그대로입니다.</p>
+    <div class="modal"><div class="mh">🏷 내 과제<span class="x">✕</span></div><div class="mb"><div class="cat-wrap" data-v="b"></div><div class="add">⊕ 과제 추가</div></div></div>
+    <div class="log" data-log="b"></div>
+  </div>
+</div>
+<p class="note"><b>휴가, 기타의 ⠿:</b> 둘 사이 순서만 바꿀 수 있게 남겼습니다(기본 묶음 안에서). 둘 다 고정하려면 ⠿ 를 숨깁니다.</p>
+
+<script>
+const ALL = [
+  { id: 'p1', g: 'mine', n: 'asdasd', c: '#3e5be0', e: 0, t: 0 },
+  { id: 'p2', g: 'mine', n: '시스템 점검', s: '정기 시스템, 서버 점검', c: '#1f9d74', e: 2, t: 0 },
+  { id: 'p3', g: 'mine', n: '보고서 작성', s: '주간/월간 보고서 작업', c: '#3e5be0', e: 0, t: 0 },
+  { id: 'p4', g: 'mine', n: '(예시) 사내 정리', c: '#3e5be0', e: 1, t: 0 },
+  { id: 'o1', g: 'off', n: '(예시) 관제 고도화', o: '(예시) 발주처 가', term: '2026/03 ~ 2026/12', c: '#3e5be0', e: 24, t: 2 },
+  { id: 'o2', g: 'off', n: '(예시) 해양 관측 체계', o: '(예시) 발주처 나', term: '2026/01 ~ 2026/11', c: '#c2770a', e: 0, t: 0 },
+  { id: 'o3', g: 'off', n: '(예시) 장비 시험', o: '(예시) 발주처 가', term: '2026/05 ~', c: '#c2770a', e: 3, t: 2 },
+  { id: 'd1', g: 'def', n: '휴가', c: '#1f9d74', e: 0, t: 0 },
+  { id: 'd2', g: 'def', n: '기타', c: '#5b6476', e: 7, t: 8 },
+];
+const GRP = [['off', '공식 과제'], ['mine', '일반 과제'], ['def', '기본']];
+const S = { now: ALL.slice(), a: null, a2: null, b: null };
+// 규칙대로 한 번 정리(묶음 순서, 묶음 안 순서는 그대로): 앱이 켜질 때 하는 정리와 같다
+const norm = (arr) => GRP.flatMap(([g]) => arr.filter((x) => x.g === g));
+S.a = norm(ALL); S.a2 = norm(ALL); S.b = norm(ALL);
+const esc = (s) => String(s).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+function row(v, x, gap) {
+  const tag = (v !== 'a' && v !== 'a2' && x.g === 'off') ? '<span class="tag">공식</span>' : '<span></span>';
+  const sub = (v === 'a2' && x.g === 'off') ? `${x.o}, ${x.term}` : x.s;
+  return `<div class="cat-row${gap ? ' gap' : ''}" data-id="${x.id}" data-g="${x.g}" style="--c:${x.c}"><span class="grip">⠿</span><span class="dot"></span><span class="nm">${esc(x.n)}${sub ? `<small>${esc(sub)}</small>` : ''}</span>${tag}<span class="num">${x.e}</span><span class="num">${x.t}</span><span class="more">⋯</span></div>`;
+}
+function render(v) {
+  const el = document.querySelector(`.cat-wrap[data-v="${v}"]`), arr = S[v];
+  let h = '<div class="cat-head"><span></span><span></span><span>과제</span><span></span><span class="n">일정</span><span class="n">할 일</span><span></span></div>';
+  if (v === 'a' || v === 'a2') {
+    for (const [g, label] of GRP) { const xs = arr.filter((x) => x.g === g); if (!xs.length) continue; h += `<div class="grp${v === 'a2' && g === 'off' ? ' off' : ''}">${label} <span class="c">${xs.length}</span></div>` + xs.map((x) => row(v, x)).join(''); }
+  } else if (v === 'b') {
+    let prev = null; for (const x of arr) { h += row(v, x, prev && prev !== x.g); prev = x.g; }
+  } else h += arr.map((x) => row(v, x)).join('');
+  el.innerHTML = h;
+}
+// 끌기: 내 과제와 같은 손(포인터 아래 줄이 대상, 위로면 위쪽 선, 아래로면 아래쪽 선). A, B 는 같은 묶음 안에서만
+let D = null;
+document.addEventListener('pointerdown', (ev) => {
+  const g = ev.target.closest('.grip'); if (!g) return;
+  const r = g.closest('.cat-row'), v = r.closest('.cat-wrap').dataset.v; ev.preventDefault();
+  D = { v, id: r.dataset.id, g: r.dataset.g, row: r, x0: ev.clientX, y0: ev.clientY, on: false, tgt: null, after: false };
+});
+document.addEventListener('pointermove', (ev) => {
+  if (!D) return;
+  if (!D.on) { if (Math.hypot(ev.clientX - D.x0, ev.clientY - D.y0) < 5) return; D.on = true; const rc = D.row.getBoundingClientRect(); D.dx = D.x0 - rc.left; D.dy = D.y0 - rc.top; const gh = D.row.cloneNode(true); gh.classList.add('ghost'); gh.style.width = rc.width + 'px'; document.body.appendChild(gh); D.ghost = gh; D.row.classList.add('drag'); document.body.classList.add('dragging'); }
+  D.ghost.style.left = (ev.clientX - D.dx) + 'px'; D.ghost.style.top = (ev.clientY - D.dy) + 'px';
+  document.querySelectorAll('.ins-b,.ins-a').forEach((e) => e.classList.remove('ins-b', 'ins-a'));
+  const el = document.elementFromPoint(ev.clientX, ev.clientY), r = el && el.closest && el.closest(`.cat-wrap[data-v="${D.v}"] .cat-row`);
+  D.tgt = null;
+  if (!r || r.dataset.id === D.id) return;
+  if (D.v !== 'now' && r.dataset.g !== D.g) return;   // 다른 묶음에는 놓을 자리가 없다
+  const arr = S[D.v], from = arr.findIndex((x) => x.id === D.id), to = arr.findIndex((x) => x.id === r.dataset.id);
+  D.tgt = r.dataset.id; D.after = to > from; r.classList.add(D.after ? 'ins-a' : 'ins-b');
+});
+document.addEventListener('pointerup', () => {
+  if (!D) return; const d = D; D = null;
+  document.querySelectorAll('.ins-b,.ins-a').forEach((e) => e.classList.remove('ins-b', 'ins-a'));
+  if (d.ghost) d.ghost.remove(); d.row.classList.remove('drag'); document.body.classList.remove('dragging');
+  if (!d.on) return;
+  const log = document.querySelector(`[data-log="${d.v}"]`);
+  if (!d.tgt) { if (log) log.textContent = d.v === 'now' ? '' : '다른 묶음으로는 옮길 수 없습니다(시안 확인용 글, 실제 앱에는 없음)'; return; }
+  const arr = S[d.v], i = arr.findIndex((x) => x.id === d.id); const [x] = arr.splice(i, 1);
+  let j = arr.findIndex((y) => y.id === d.tgt); if (d.after) j++; arr.splice(j, 0, x);
+  if (log) log.textContent = '';
+  render(d.v);
+});
+['now', 'a', 'a2', 'b'].forEach(render);
+</script>
+</body>
+</html>
