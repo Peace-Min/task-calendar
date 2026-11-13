@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>상태 칸 폭 시안</title>
+<style>
+/* 과제 추가 창의 상태 칸이 잘리는 것(64px 고정)을 내용 폭으로 정하는 시안(2026-11-13).
+   지금: 줄마다 따로 grid, 상태 칸 64px 고정. 고친 안: 목록 전체가 grid 하나, 줄은 subgrid 로 그 열을 같이 쓰고, 상태와 기간 칸은 max-content.
+   모양은 실제 과제 추가 창(.ca-grid, .ca-r, .off-st)을 옮겨 왔다. */
+:root{--panel:#fff;--dim:#f6f7fb;--line:#e3e6ee;--line-2:#cfd5e2;--muted:#7a8399;--faint:#a3aabb;--text:#1d2333;--accent:#3e5be0;--accent-2:#2f49c4;--ok:#1f9d55;--warn:#b7791f;--page:#e9ecf2}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--panel:#1f2430;--dim:#262c3a;--line:#323a4b;--line-2:#3d465a;--muted:#98a2b8;--faint:#6f788c;--text:#e6e9f0;--accent:#6c84f0;--accent-2:#8ea1f5;--ok:#4cc38a;--warn:#e0a84a;--page:#161a22}}
+:root[data-theme="dark"]{--panel:#1f2430;--dim:#262c3a;--line:#323a4b;--line-2:#3d465a;--muted:#98a2b8;--faint:#6f788c;--text:#e6e9f0;--accent:#6c84f0;--accent-2:#8ea1f5;--ok:#4cc38a;--warn:#e0a84a;--page:#161a22}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font:13px/1.5 "Malgun Gothic","맑은 고딕",system-ui,sans-serif;padding:20px 16px}
+h1{font-size:16px;margin:0 0 4px}
+.lead{color:var(--muted);margin:0 0 14px;max-width:980px}
+.ctl{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 14px;font-size:12px}
+.ctl label{display:flex;gap:6px;align-items:center}
+.ctl input[type=range]{width:220px}
+.case{margin-bottom:22px}
+.case h2{font-size:14px;margin:0 0 2px}
+.case p{margin:0 0 8px;color:var(--muted);font-size:12px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;container-type:inline-size;max-width:100%}
+.c{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.h{background:var(--dim);border-bottom:1px solid var(--line-2);font-size:11px;font-weight:600;color:var(--muted)}
+.r{border-bottom:1px solid var(--line)}
+.r:last-child{border-bottom:0}
+.nm{font-weight:600}
+.st{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.st i{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.st.run{color:var(--ok)}.st.warn{color:var(--warn)}.st.end{color:var(--muted)}
+.per{font-variant-numeric:tabular-nums;color:var(--muted)}
+.act{text-align:right}.act b{color:var(--accent-2);font-size:11px}
+/* 지금: 줄마다 grid, 상태 64px */
+.now .row{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1.1fr) minmax(0,1fr) 64px 168px 74px;gap:10px;align-items:center;padding:8px 12px}
+/* 고친 안: 목록 하나가 grid, 줄은 subgrid. 상태와 기간은 max-content(가장 긴 값), 남는 폭은 이름, 발주처, 계약명이 나눈다 */
+.fix .list{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1.1fr) minmax(0,1fr) max-content max-content 74px;column-gap:10px}
+.fix .row{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;align-items:center;padding:8px 12px}
+/* 좁은 창(680px 미만): 지금과 같은 규칙으로 계약명, 기간을 빼고 상태는 점 하나 */
+@container (max-width:679px){
+  .now .row{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) 30px 74px}
+  .fix .list{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) max-content 74px}
+  .ctr,.pc{display:none}
+  .stx{display:none}
+}
+.note{font-size:12px;color:var(--muted);margin-top:6px}
+.note b{color:var(--text)}
+</style>
+</head>
+<body>
+<h1>과제 추가 창: 상태 칸 폭</h1>
+<p class="lead">지금은 상태 칸이 64px 로 고정이라 "1차 납품완료"가 잘립니다. 고친 안은 목록 전체를 표 하나로 묶고, 상태와 기간 칸 폭을 그 목록에서 가장 긴 값으로 정합니다. 관리 화면에서 더 긴 상태를 추가해도 저절로 맞습니다. 아래 막대로 창 폭을 바꿔 보고, 긴 상태를 하나 더해 보세요.</p>
+<div class="ctl">
+  <label>창 폭 <input type="range" id="w" min="520" max="900" value="860"> <span id="wv"></span></label>
+  <label><input type="checkbox" id="extra"> 관리 화면에서 새 상태 "2차 검수 대기 중" 을 추가했다고 치기</label>
+</div>
+
+<div class="case now"><h2>지금 (상태 64px 고정)</h2><p>줄마다 따로 표라 칸 폭을 숫자로 박아 두었습니다.</p><div class="box" id="now"></div></div>
+<div class="case fix"><h2>고친 안 (목록 하나, 상태와 기간은 가장 긴 값 폭)</h2><p>줄들이 같은 열을 씁니다. 상태 칸이 가장 긴 상태 이름에 맞고, 이름과 발주처가 남은 폭을 나눕니다.</p><div class="box" id="fix"></div>
+<div class="note">공식 과제 관리 창(지금 96px 고정)과 과제 추가의 보기 모드도 같은 방식으로 바꿉니다. <b>좁은 창(680px 미만)</b>에서는 지금처럼 상태를 점 하나로 줄이고 이름은 마우스를 올리면 보입니다.</div></div>
+
+<script>
+const BASE = [
+  ['(예시) 관제 고도화', '(예시) 발주처 가', '(예시) 관제 체계 고도화 용역', 'run', '진행중', '2026/03/02 ~ 2026/12/31'],
+  ['(예시) 해양 관측 체계', '(예시) 발주처 나', '(예시) 관측 장비 개선 사업', 'warn', '1차 납품완료', '2025/08/01 ~ 2026/11/30'],
+  ['(예시) 장비 시험', '(예시) 발주처 가', '(예시) 시험 장비 구매', 'end', '종료', '2024/01/02 ~ 2025/06/30'],
+  ['(예시) 사업부 관리 과제', '(예시) 발주처 다', '(예시) 사업부 관리 계약', 'warn', '미정', '2026/05/01 ~'],
+];
+const EXTRA = ['(예시) 신규 검수 과제', '(예시) 발주처 라', '(예시) 검수 용역', 'warn', '2차 검수 대기 중', '2026/09/01 ~ 2027/02/28'];
+const esc = (s) => String(s).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+function rowHtml(r, head) {
+  if (head) return '<div class="row h"><span class="c">통상명칭</span><span class="c">발주처</span><span class="c ctr">계약명</span><span class="c">상태</span><span class="c pc">기간</span><span class="c act">동작</span></div>';
+  return `<div class="row r"><span class="c nm" title="${esc(r[0])}">${esc(r[0])}</span><span class="c">${esc(r[1])}</span><span class="c ctr">${esc(r[2])}</span><span class="c" title="${esc(r[4])}"><span class="st ${r[3]}"><i></i><span class="stx">${esc(r[4])}</span></span></span><span class="c per pc">${esc(r[5])}</span><span class="c act"><b>+ 추가</b></span></div>`;
+}
+function render() {
+  const rows = document.getElementById('extra').checked ? BASE.concat([EXTRA]) : BASE;
+  const w = +document.getElementById('w').value; document.getElementById('wv').textContent = w + 'px';
+  document.getElementById('now').style.width = w + 'px';
+  document.getElementById('fix').style.width = w + 'px';
+  document.getElementById('now').innerHTML = rowHtml(null, true) + rows.map((r) => rowHtml(r)).join('');
+  document.getElementById('fix').innerHTML = '<div class="list">' + rowHtml(null, true) + rows.map((r) => rowHtml(r)).join('') + '</div>';
+}
+document.getElementById('w').addEventListener('input', render);
+document.getElementById('extra').addEventListener('change', render);
+render();
+</script>
+</body>
+</html>
