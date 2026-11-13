@@ -51,6 +51,18 @@ h1{font-size:16px;margin:0 0 4px}
 .mi .dot{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
 .mi:hover{background:var(--bg)}
 .note{font-size:12px;color:var(--muted);margin-top:8px;max-width:640px}
+/* 월간 왼쪽 상자(실제 #rptmPick, #rptmEtc 모양) */
+.mbox{width:300px;background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:10px;overflow:hidden}
+.mbh{display:flex;align-items:center;gap:6px;padding:8px 12px;font-weight:700;border-bottom:1px solid var(--line)}
+.mbh .cnt{font-weight:400;color:var(--muted);font-size:12px}
+.mbh.off{background:var(--accent-soft);color:var(--accent-2)}
+.mbh.off .cnt{color:var(--accent-2)}
+.mcb{width:14px;height:14px;border-radius:3px;background:var(--accent);display:inline-block;flex:none}
+.mrow{display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid var(--line);min-height:40px}
+.mrow:first-of-type{border-top:0}
+.mrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mrow .slot{width:64px;height:28px;border:1px dashed var(--line-2);border-radius:5px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:11px}
+.mrow.defgap{border-top:2px solid var(--line-2)}
 .note b{color:var(--text)}
 </style>
 </head>
@@ -87,6 +99,16 @@ h1{font-size:16px;margin:0 0 4px}
   <p class="note">근태 일간의 블록 순서, 주간의 시간 줄, 입력 창의 과제 고르기 상자는 이미 이 순서이고 줄마다 과제 이름이 보여서 머리를 넣지 않습니다(넣으면 줄 높이가 출렁입니다).</p>
 </div>
 
+<div class="sec">
+  <h2>4. 월간 왼쪽 과제, 기타 상자</h2>
+  <p>상자 두 개가 이미 공식(과제 상자)과 그 밖(기타 상자)으로 나뉘어 있고 순서도 내 과제 순서입니다. 다만 과제 상자 머리 색이 내 과제와 다르고, 기타 상자 안에서 일반 과제와 휴가, 기타가 구분 없이 붙어 있습니다.</p>
+  <div class="pair">
+    <div class="col"><h3>before</h3><div id="mo0"></div></div>
+    <div class="col"><h3>after <small>과제 상자 머리 옅은 파랑, 휴가 위 굵은 경계선</small></h3><div id="mo1"></div>
+      <div class="note">상자 이름(과제, 기타), 머리 체크와 개수, 그림 칸은 그대로입니다. 월간 보고서의 과제 표, 기타 표와 이름이 맞물려 있어 상자 이름은 바꾸지 않습니다.</div></div>
+  </div>
+</div>
+
 <script>
 const C = [
   { n: '(예시) 관제 고도화', g: 'off', c: '#3e5be0', ev: 24, td: 2 },
@@ -112,6 +134,14 @@ const mi = (x, i) => `<div class="mi" style="--c:${x.c}"><span class="ck">${i % 
 const plain = '<div class="srch">과제 검색</div>' + C.map(mi).join('');
 let k = 0; const grp = '<div class="srch">과제 검색</div>' + grouped((x) => mi(x, k++));
 document.getElementById('ad0').innerHTML = plain; document.getElementById('ad1').innerHTML = grp;
+function monthly(after) {
+  const offs = C.filter((x) => x.g === 'off'), etc = C.filter((x) => x.g !== 'off');
+  const row = (x, img, gap) => `<div class="mrow${gap ? ' defgap' : ''}"><span class="mcb"></span><span class="nm">${esc(x.n)}</span>${img ? '<span class="slot">그림</span>' : ''}</div>`;
+  let prev = null;
+  return `<div class="mbox"><div class="mbh${after ? ' off' : ''}"><span class="mcb"></span>과제 <span class="cnt">${offs.length}/${offs.length}</span></div>${offs.map((x) => row(x, true)).join('')}</div>`
+    + `<div class="mbox"><div class="mbh"><span class="mcb"></span>기타 <span class="cnt">${etc.length}/${etc.length}</span></div>${etc.map((x) => { const gap = after && prev && prev !== 'def' && x.g === 'def'; prev = x.g; return row(x, false, gap); }).join('')}</div>`;
+}
+document.getElementById('mo0').innerHTML = monthly(false); document.getElementById('mo1').innerHTML = monthly(true);
 document.getElementById('aw0').innerHTML = plain; k = 0; document.getElementById('aw1').innerHTML = '<div class="srch">과제 검색</div>' + grouped((x) => mi(x, k++));
 </script>
 </body>
