@@ -1,25 +1,32 @@
 #!/usr/bin/env node
 /* =====================================================================================
- *  tests/loop-default-tasks.mjs — 기본 과제 휴가, 기타 **실동작** 루프(docs/DEFAULT-TASKS.md §3~§6)
+ *  tests/loop-default-tasks.mjs: 기본 과제 휴가, 기타 **실동작** 루프(docs/DEFAULT-TASKS.md §3~§6, docs/CATEGORY-GROUPS.md)
  * -------------------------------------------------------------------------------------
- *  계약 시험(default-tasks.test.mjs)은 jsdom 으로 규칙을 잠근다. 이 루프는 실제 위젯(Debug, TC_DEBUG_PORT)에 붙어
- *  로그인한 사용자 **자신의** 캘린더에서 진짜 버튼을 누르고, 그 결과가 실 호스트, 실 DB 를 지나 다시 읽혀도 그대로인지 본다.
+ *  계약 시험(default-tasks.test.mjs, category-groups.test.mjs)은 jsdom 으로 규칙을 잠근다. 이 루프는 실제 위젯(Debug, TC_DEBUG_PORT)에
+ *  붙어 로그인한 사용자 **자신의** 캘린더에서 진짜 버튼을 누르고, 그 결과가 실 호스트, 실 DB 를 지나 다시 읽혀도 그대로인지 본다.
  *  영속은 DB 를 직접 보지 않고 **앱을 통해** 확인한다: reloadState 를 보내 호스트가 다시 읽어 준 state(__applyState)에서 센다.
  *
+ *  묶음 규칙(CATEGORY-GROUPS §1, 2026-11-13): 휴가, 기타는 맨 아래 고정이다(휴가, 기타 순서). ⠿ 와 ⋯ 가 없고 줄을 누르면 수정 창이 열린다.
+ *    합치기, 옮기기, 공식 과제로 연결은 양쪽 다 막는다(휴가, 기타가 출발도 대상도 아니다). 새 일반 과제는 휴가 위(일반 묶음 끝)에 들어간다.
+ *
  *  케이스:
- *    O0   전제 — 로그인, conn ok, bootOk, 새 기능(ensureDefaultTasks, moveCategoryData)이 있는 빌드, 지난 실행 잔재 정리
- *    D1   부팅 보장 — reloadState 뒤 개인 과제 휴가, 기타가 **정확히 하나씩**. 한 번 더 다시 읽어도 같은 id(서버에 저장됐다)
- *    D2   기본 과제는 지울 수 없다 — 행에 [삭제]가 없고, deleteCategory 가 거부하고, 다시 읽어도 그대로다
- *    D3   과제 삭제 = 데이터 삭제 — zz 과제에 일정 2, 할 일 1 을 만들고 [삭제] → 확인창 숫자 → [삭제]
+ *    O0   전제: 로그인, conn ok, bootOk, 새 기능(ensureDefaultTasks, moveCategoryData, catOrderable)이 있는 빌드, 지난 실행 잔재 정리
+ *    D1   부팅 보장: reloadState 뒤 개인 과제 휴가, 기타가 **정확히 하나씩**이고 목록 맨 아래 두 줄(휴가, 기타 순서)이다.
+ *         한 번 더 다시 읽어도 같은 id, 같은 자리(서버에 저장됐다)
+ *    D2   고정 줄: 휴가, 기타 줄에 ⠿ 와 ⋯ 가 없다(그래서 삭제, 합치기, 순서 단추도 없다). 줄을 진짜 마우스로 누르면 수정 창이 열리고
+ *         이름은 고칠 수 없다. deleteCategory, moveCategory 가 거부하고 저장도 없다. 다시 읽어도 그대로다
+ *    D3   과제 삭제 = 데이터 삭제: zz 과제에 일정 2, 할 일 1 을 만들고 [삭제] → 확인창 숫자 → [삭제]
  *         → 저장 ok(과제 DELETE 가 FK 로 실패하지 않는다) → 다시 읽으면 과제, 일정, 할 일이 모두 없다
- *    D4   옮기기 — zz 과제 A(일정 2, 할 일 1) → B 를 화면으로 옮긴다
+ *    D4   합치기: zz 과제 A(일정 2, 할 일 1) → B 를 화면으로 합친다. 새 zz 과제는 휴가 위에 붙고, 대상 목록에 휴가, 기타가 없다
  *         → 다시 읽으면 일정, 할 일이 B, A 는 빈 과제로 남는다
+ *    D5   합치기, 연결 양쪽 막기: 휴가, 기타에서 합치기 창이 열리지 않고 moveCategoryData 가 휴가 → B, B → 기타를 모두 거부한다
+ *         (데이터, 저장 변화 0). 공식 과제로 연결 목록에 휴가, 기타가 없고 그 고르기 창도 열리지 않는다
  *    정리 zz 과제를 [삭제]로 지운다(딸린 일정, 할 일도 함께 지워진다) → 다시 읽어 잔재 0 확인
  *  (작성 중 시간(과제별 시간, taskHours)은 구조 22 에서 없앴다. 삭제와 옮기기가 시간을 다루던 확인은 함께 뺐다)
  *
  *  ★ 남기지 않는다: 시험 데이터는 전부 zz 접두어(과제 `zzDEF-<seed>-`, 일정과 할 일 제목도 같은 접두어)이고,
- *    날짜는 2099-12 만 쓴다(실데이터와 겹치지 않게). finally 에서 앱으로 지운다.
- *  ★ DB 에 직접 붙지 않는다 — 비밀번호가 필요 없다.
+ *    날짜는 2099-12 만 쓴다(실데이터와 겹치지 않게). finally 에서 앱으로 지운다. 휴가, 기타 수정 창은 저장하지 않고 닫는다.
+ *  ★ DB 에 직접 붙지 않는다. 비밀번호가 필요 없다.
  *
  *  실행:
  *    TC_DEBUG_PORT=9222 로 위젯을 로그인된 채 띄운 뒤(예: powershell -File dist/promo/win.ps1 start)
@@ -41,7 +48,7 @@ if (ARG.has('help') || ARG.has('h')) {
 }
 const ZZ_ALL = 'zzDEF-';
 const ZZ = `${ZZ_ALL}${OPT.seed}-`;
-//  시험 일정과 할 일의 날짜 — 실데이터와 겹치지 않는 먼 미래
+//  시험 일정과 할 일의 날짜: 실데이터와 겹치지 않는 먼 미래
 const D1 = '2099-12-01', D2 = '2099-12-02';
 
 const T0 = Date.now();
@@ -120,7 +127,7 @@ async function waitFor(expr, ms, every = 250) {
   }
 }
 
-/* ── 페이지 기록기 — hostRequest, toast, __applyState, __applyStateError 를 감싼다(원본을 그대로 부른다) ── */
+/* ── 페이지 기록기: hostRequest, toast, __applyState, __applyStateError 를 감싼다(원본을 그대로 부른다) ── */
 //  ★ 감싸기만 한다. 동작은 바꾸지 않는다. finally 에서 반드시 원본으로 되돌린다.
 const INSTALL = `(function(){
   if (window.__defRec) return 'already';
@@ -168,14 +175,14 @@ async function reload(ms = 20000) {
   }
   return 'timeout';
 }
-//  기본 과제 현황 — 개인 과제 중 이름이 정확히 휴가/기타 인 것(공식 과제는 이름이 같아도 아니다)
+//  기본 과제 현황: 개인 과제 중 이름이 정확히 휴가/기타 인 것(공식 과제는 이름이 같아도 아니다)
 const defaults = () => J(`(function(){ const p = state.categories.filter(function(c){ return !isOfficialCat(c); });
   return { vac: p.filter(function(c){ return c.name === '휴가'; }).map(function(c){ return c.id; }),
            etc: p.filter(function(c){ return c.name === '기타'; }).map(function(c){ return c.id; }),
            vacDef: !!defaultTaskOf('휴가') && isDefaultTask(defaultTaskOf('휴가')), etcDef: !!defaultTaskOf('기타') && isDefaultTask(defaultTaskOf('기타')) }; })()`);
 const catIdByName = (name) => cdp.ev(`(function(){ const c = state.categories.find(function(c){ return c.name === ${JSON.stringify(name)}; }); return c ? c.id : null; })()`);
 const zzCats = () => J(`state.categories.filter(function(c){ return String(c.name || '').indexOf(${JSON.stringify(ZZ_ALL)}) === 0; }).map(function(c){ return { id: c.id, name: c.name }; })`);
-//  한 과제에 딸린 것 — 일정 제목, 할 일 글(작성 중 시간은 구조 22 에서 없앴다)
+//  한 과제에 딸린 것: 일정 제목, 할 일 글(작성 중 시간은 구조 22 에서 없앴다)
 const dataOf = (id) => J(`(function(){ const id = ${JSON.stringify(id)};
   return { entries: state.entries.filter(function(e){ return e.categoryId === id; }).map(function(e){ return e.title; }).sort(),
            todos: (state.todos || []).filter(function(t){ return t.categoryId === id; }).map(function(t){ return t.text; }).sort() }; })()`);
@@ -185,7 +192,7 @@ const zzLeft = () => J(`(function(){ const z = ${JSON.stringify(ZZ_ALL)};
            todos: (state.todos || []).filter(function(t){ return String(t.text || '').indexOf(z) === 0; }).length }; })()`);
 
 async function closeAll() {
-  await cdp.ev(`(function(){ ['#confirmModal','#catMoveModal','#catEditModal','#catAddModal','#quickAdd','#categoryModal'].forEach(function(s){
+  await cdp.ev(`(function(){ try{ catMenuClose(false); }catch(_){} ['#confirmModal','#relinkPickModal','#relinkModal','#catMoveModal','#catEditModal','#catAddModal','#quickAdd','#categoryModal'].forEach(function(s){
     try { const m = document.querySelector(s); if (m && !m.classList.contains('hidden')) closeModal(s); } catch (_) {} }); return 1; })()`);
   await sleep(400);
 }
@@ -197,7 +204,7 @@ async function openCat() {
   await sleep(350);
   return opened;
 }
-//  개인 과제를 사람이 만드는 길로 만든다 — [＋ 과제 추가] → 일반 과제 탭 → 이름 → [추가](TASK-ADD-UX, 2026-10-30)
+//  개인 과제를 사람이 만드는 길로 만든다: [＋ 과제 추가] → 일반 과제 탭 → 이름 → [추가](TASK-ADD-UX, 2026-10-30)
 async function addCatViaUi(name) {
   if (!(await cdp.ev(isOpen('#categoryModal')))) await openCat();
   await saveIdle();
@@ -210,16 +217,39 @@ async function addCatViaUi(name) {
   return got ? catIdByName(name) : null;
 }
 //  줄의 ⋯ 메뉴 항목을 누른다(그 줄이 없거나 항목이 없으면 이유를 돌려준다). 옛 줄 버튼 이름을 메뉴 항목으로 옮긴다(TASK-ADD-UX D5).
+//   휴가, 기타처럼 ⋯ 가 없는 줄은 'nomore' 다(CATEGORY-GROUPS §1-5).
 const MENU_ACT = { del: 'del', movedata: 'merge', unsub: 'unsub', edit: 'edit' };
 const rowBtn = (id, act) => cdp.ev(`(function(){
   const row = [].find.call(document.querySelectorAll('#catList .cat-row'), function(x){ return x.dataset.id === ${JSON.stringify(id)}; });
   if (!row) return 'norow';
   try { row.scrollIntoView({ block: 'nearest' }); } catch (_) {}
+  if (!row.querySelector('[data-catmore]')) return 'nomore';
   if (!row.querySelector('.cat-menu')) row.querySelector('[data-catmore]').click();
   const b = row.querySelector('.cat-menu [data-catdo="${MENU_ACT[act] || act}"]');
   if (!b || b.disabled){ catMenuClose(false); return 'nobtn'; }
   b.click(); return 'ok'; })()`);
-//  과제를 사람이 지우는 길로 지운다 — 그 행의 [삭제] → 확인 상자의 문구를 읽고 [삭제](#cfOk). 돌려주는 값 = { gone, msg, saves }
+//  줄을 진짜 마우스로 누른다(CDP Input.dispatchMouseEvent, 이름 칸 가운데). 사람이 줄을 누르는 것과 같은 길이다.
+async function clickRow(id) {
+  const g = await J(`(function(){
+    const row = [].find.call(document.querySelectorAll('#catList .cat-row'), function(x){ return x.dataset.id === ${JSON.stringify(id)}; });
+    if (!row) return null;
+    try { row.scrollIntoView({ block: 'nearest' }); } catch (_) {}
+    const q = (row.querySelector('.cat-nm') || row).getBoundingClientRect();
+    return q.width ? { x: q.left + Math.min(q.width / 2, 30), y: q.top + q.height / 2 } : null; })()`);
+  if (!g) return false;
+  const mk = (type, extra) => cdp.send('Input.dispatchMouseEvent', Object.assign({ type, x: Math.round(g.x), y: Math.round(g.y), button: 'left', pointerType: 'mouse' }, extra));
+  await mk('mouseMoved', { button: 'none', buttons: 0 });
+  await mk('mousePressed', { buttons: 1, clickCount: 1 });
+  await mk('mouseReleased', { buttons: 0, clickCount: 1 });
+  return true;
+}
+//  목록 끝 두 줄과 일반 묶음 끝(묶음 규칙 확인용)
+const tailInfo = () => J(`(function(){ const a = state.categories, n = a.length;
+  return { tail: a.slice(-2).map(function(c){ return { id: c.id, name: c.name, def: isDefaultTask(c) }; }),
+           ranks: a.map(function(c){ return catGroupRank(c); }).join('') }; })()`);
+const sortedRanks = (s) => s.split('').every((ch, i) => i === 0 || s[i - 1] <= ch);
+
+//  과제를 사람이 지우는 길로 지운다: 그 행의 [삭제] → 확인 상자의 문구를 읽고 [삭제](#cfOk). 돌려주는 값 = { gone, msg, saves }
 async function deleteCatViaUi(id) {
   if (!(await cdp.ev(isOpen('#categoryModal')))) await openCat();
   await saveIdle();
@@ -235,7 +265,7 @@ async function deleteCatViaUi(id) {
   const L = await since(m);
   return { gone, msg, saves: reqs(L, 'saveState'), toasts: L.filter((x) => x.toast).map((x) => x.toast) };
 }
-//  시험 데이터 — 앱의 데이터 함수로 만든다(addEntry, addTodo 는 저장까지 한다)
+//  시험 데이터: 앱의 데이터 함수로 만든다(addEntry, addTodo 는 저장까지 한다)
 async function seedData(catId, tag) {
   await saveIdle();
   await cdp.ev(`(function(){ const c = ${JSON.stringify(catId)}, z = ${JSON.stringify(ZZ + tag)};
@@ -248,7 +278,7 @@ async function seedData(catId, tag) {
 
 /* ── 본체 ─────────────────────────────────────────────────────────── */
 console.log('═'.repeat(74));
-console.log(`기본 과제 실동작 루프 — 시드 ${OPT.seed}, 포트 ${OPT.port}, 시험 과제 ${ZZ}*`);
+console.log(`기본 과제 실동작 루프: 시드 ${OPT.seed}, 포트 ${OPT.port}, 시험 과제 ${ZZ}*`);
 console.log('═'.repeat(74));
 
 let started = false;       // 전제가 서서 시험 데이터를 만들기 시작했다(정리 대상이 있을 수 있다)
@@ -260,10 +290,10 @@ async function main() {
   cdp = await Cdp.attach(OPT.port);
 
   /* ── O0 전제 ── */
-  head('O0 전제 — 로그인, 정상 연결, 새 빌드, 지난 실행 잔재 정리');
+  head('O0 전제: 로그인, 정상 연결, 새 빌드, 지난 실행 잔재 정리');
   vlog('기록기:', await cdp.ev(INSTALL));
-  if (await cdp.ev("typeof ensureDefaultTasks !== 'function' || typeof moveCategoryData !== 'function' || typeof isDefaultTask !== 'function'")) {
-    notReady = true; undecide('O0 기능 존재', '위젯에 ensureDefaultTasks/moveCategoryData 가 없다. 낡은 빌드다(dotnet build -c Debug 후 재시작)'); return;
+  if (await cdp.ev("typeof ensureDefaultTasks !== 'function' || typeof moveCategoryData !== 'function' || typeof isDefaultTask !== 'function' || typeof catOrderable !== 'function'")) {
+    notReady = true; undecide('O0 기능 존재', '위젯에 ensureDefaultTasks/moveCategoryData/catOrderable 이 없다. 낡은 빌드다(dotnet build -c Debug 후 재시작)'); return;
   }
   const user = await cdp.ev("(typeof currentUser !== 'undefined' && currentUser && currentUser.loginId) || ''");
   if (!user) { notReady = true; undecide('O0 로그인', '위젯이 로그인 상태가 아니다'); return; }
@@ -289,7 +319,7 @@ async function main() {
   }
 
   /* ── D1 부팅 보장 ── */
-  head('D1 부팅 보장 — 다시 읽은 뒤 휴가, 기타가 정확히 하나씩 · 서버에 저장돼 id 가 그대로');
+  head('D1 부팅 보장: 다시 읽은 뒤 휴가, 기타가 정확히 하나씩, 맨 아래 고정, 서버에 저장돼 id 가 그대로');
   {
     const m = await mark();
     const r1 = await reload();
@@ -302,32 +332,63 @@ async function main() {
     ok('D1 개인 과제 휴가가 정확히 하나', a.vac.length === 1, JSON.stringify(a));
     ok('D1 개인 과제 기타가 정확히 하나', a.etc.length === 1, JSON.stringify(a));
     ok('D1 둘 다 기본 과제로 판정된다(isDefaultTask)', a.vacDef && a.etcDef, JSON.stringify(a));
+    const t1 = await tailInfo();
+    ok('D1 맨 아래 두 줄 = 휴가, 기타(그 순서, CATEGORY-GROUPS §1-1)', t1.tail.length === 2 && t1.tail[0].id === a.vac[0] && t1.tail[1].id === a.etc[0], JSON.stringify(t1));
+    ok('D1 목록 전체가 묶음 순서다(공식, 일반, 휴가, 기타)', sortedRanks(t1.ranks), t1.ranks);
     const m2 = await mark();
     const r2 = await reload();
     const b = await defaults();
     ok('D1 한 번 더 다시 읽어도 같은 id(서버에 저장돼 있다, 새로 만들지 않는다)', r2 === 'applied' && same(a.vac, b.vac) && same(a.etc, b.etc), JSON.stringify({ a, b }));
+    ok('D1 다시 읽어도 맨 아래 두 줄이 휴가, 기타다', same((await tailInfo()).tail, t1.tail));
     ok('D1 이미 있으면 부팅이 저장하지 않는다', reqs(await since(m2), 'saveState').length === 0);
   }
 
-  /* ── D2 기본 과제 보호 ── */
-  head('D2 기본 과제는 지울 수 없다 — [삭제] 없음 · deleteCategory 거부 · 다시 읽어도 그대로');
+  /* ── D2 고정 줄 ── */
+  head('D2 휴가, 기타는 고정 줄: ⠿ ⋯ 없음, 누르면 수정 창(이름 고정), 삭제와 순서 함수 거부, 다시 읽어도 그대로');
   {
     const gita = await cdp.ev('gitaTaskId()');
     const vac = await cdp.ev("(defaultTaskOf('휴가') || {}).id || null");
+    const order0 = await J('state.categories.map(function(c){ return c.id; })');
     await openCat();
-    ok('D2 기타 행에 [삭제] 버튼이 없다', (await rowBtn(gita, 'del')) === 'nobtn');
-    ok('D2 휴가 행에 [삭제] 버튼이 없다', (await rowBtn(vac, 'del')) === 'nobtn');
+    for (const [nm, id] of [['휴가', vac], ['기타', gita]]) {
+      const row = await J(`(function(){ const r = [].find.call(document.querySelectorAll('#catList .cat-row'), function(x){ return x.dataset.id === ${JSON.stringify(id)}; });
+        return r ? { grip: !!r.querySelector('[data-catgrip]'), more: !!r.querySelector('[data-catmore]'), def: r.dataset.default === '1', label: r.getAttribute('aria-label') } : null; })()`);
+      ok(`D2 ${nm} 줄에 ⠿ 와 ⋯ 가 없다(§1-5)`, !!row && !row.grip && !row.more && row.def, JSON.stringify(row));
+      ok(`D2 ${nm} 줄에서 메뉴 항목(삭제, 합치기)에 닿을 길이 없다`, (await rowBtn(id, 'del')) === 'nomore' && (await rowBtn(id, 'movedata')) === 'nomore');
+      //  줄을 진짜 마우스로 누르면 수정 창이 열린다. 기본 과제 이름은 글자로만 보인다(입력칸이 아니다). 저장하지 않고 닫는다.
+      const m = await mark();
+      const clicked = await clickRow(id);
+      const opened = clicked && await waitFor(isOpen('#catEditModal'), 3000, 100);
+      ok(`D2 ${nm} 줄을 누르면 수정 창이 열린다`, opened, JSON.stringify({ clicked }));
+      if (opened) {
+        const ed = await J(`({ fixed: !document.getElementById('ceFixed').classList.contains('hidden'), text: document.getElementById('ceFixed').textContent,
+          nameHidden: document.getElementById('ceName').classList.contains('hidden'), menu: !!document.querySelector('#catList .cat-menu') })`);
+        ok(`D2 ${nm} 수정 창의 이름은 고칠 수 없다(글자로만 보인다), 메뉴는 열리지 않았다`, ed.fixed && ed.text === nm && ed.nameHidden && !ed.menu, JSON.stringify(ed));
+        await cdp.ev("closeModal('#catEditModal'); 1"); await sleep(400);
+      }
+      await saveIdle();
+      ok(`D2 ${nm} 수정 창을 열고 닫아도 저장이 없다`, reqs(await since(m), 'saveState').length === 0);
+    }
     const m = await mark();
-    ok('D2 deleteCategory(기타) 가 거부한다(화면 우회 방어)', (await cdp.ev(`deleteCategory(${JSON.stringify(gita)})`)) === false);
+    ok('D2 deleteCategory(기타), deleteCategory(휴가) 가 거부한다(화면 우회 방어)',
+      (await cdp.ev(`deleteCategory(${JSON.stringify(gita)})`)) === false && (await cdp.ev(`deleteCategory(${JSON.stringify(vac)})`)) === false);
+    ok('D2 moveCategory 가 휴가, 기타를 옮기지 않는다(위로, 서로 맞바꿈 모두 거부)',
+      (await cdp.ev(`moveCategory(${JSON.stringify(vac)}, -1)`)) === false && (await cdp.ev(`moveCategory(${JSON.stringify(gita)}, -1)`)) === false
+      && (await cdp.ev(`moveCategory(${JSON.stringify(vac)}, 1)`)) === false);
+    //  일반 묶음 끝 줄도 휴가 아래로 내려가지 못한다(묶음 경계)
+    const lastOwn = await cdp.ev("(function(){ const a = state.categories.filter(function(c){ return catGroupRank(c) === 1; }); return a.length ? a[a.length - 1].id : null; })()");
+    if (lastOwn) ok('D2 일반 묶음 끝 과제를 아래로 옮겨도 휴가 아래로 가지 않는다(moveCategory 거부)', (await cdp.ev(`moveCategory(${JSON.stringify(lastOwn)}, 1)`)) === false);
     await saveIdle();
-    ok('D2 거부했으니 저장도 없다', reqs(await since(m), 'saveState').length === 0);
+    ok('D2 거부했으니 저장도 없고 순서도 그대로다', reqs(await since(m), 'saveState').length === 0
+      && same(await J('state.categories.map(function(c){ return c.id; })'), order0));
     await closeAll();
     const r = await reload();
-    ok('D2 다시 읽어도 기타가 그대로 있다', r === 'applied' && (await cdp.ev('gitaTaskId()')) === gita);
+    ok('D2 다시 읽어도 휴가, 기타가 그대로 맨 아래에 있다', r === 'applied' && (await cdp.ev('gitaTaskId()')) === gita
+      && same((await tailInfo()).tail.map((x) => x.id), [vac, gita]));
   }
 
   /* ── D3 과제 삭제 = 데이터 삭제 ── */
-  head('D3 과제 삭제 = 그 과제의 일정, 할 일도 삭제 — 확인창 숫자, 저장 ok(FK), 다시 읽어 0');
+  head('D3 과제 삭제 = 그 과제의 일정, 할 일도 삭제: 확인창 숫자, 저장 ok(FK), 다시 읽어 0');
   {
     const x = await addCatViaUi(ZZ + 'X');
     if (!x) { undecide('D3 zz 과제 만들기', `${ZZ}X 를 폼으로 만들지 못했다`); }
@@ -355,12 +416,17 @@ async function main() {
   }
 
   /* ── D4 옮기기 ── */
-  head('D4 다른 과제로 옮기기 — 일정, 할 일이 옮겨지고 출발 과제는 남는다');
+  head('D4 다른 과제와 합치기: 일정, 할 일이 옮겨지고 출발 과제는 남는다, 대상 목록에 휴가, 기타 없음');
+  let A = null, B = null;
   {
     const a = await addCatViaUi(ZZ + 'A');
     const b = a && await addCatViaUi(ZZ + 'B');
+    A = a; B = b;
     if (!a || !b) { undecide('D4 zz 과제 만들기', 'A/B 를 폼으로 만들지 못했다'); }
     else {
+      const t = await tailInfo();
+      const ids = await J('state.categories.map(function(c){ return c.id; })');
+      ok('D4 새 일반 과제는 일반 묶음 끝(휴가 위)에 붙는다(A, B, 휴가, 기타 순서, §1-7)', same(ids.slice(-4), [a, b, t.tail[0].id, t.tail[1].id]) && t.tail[0].def && t.tail[1].def, JSON.stringify(ids.slice(-4)));
       await seedData(a, 'A');
       await reload();
       await openCat();
@@ -371,6 +437,8 @@ async function main() {
       if (opened) {
         const opts = await J("[].map.call(document.querySelectorAll('#cmvTarget option'), function(o){ return o.value; })");
         ok('D4 대상 목록에 자기 자신이 없다', !opts.includes(a) && opts.includes(b), JSON.stringify(opts));
+        const defIds = (await tailInfo()).tail.map((x) => x.id);
+        ok('D4 대상 목록에 휴가, 기타가 없다(다른 과제를 휴가, 기타로 합칠 수 없다, §1-6)', defIds.every((id) => !opts.includes(id)), JSON.stringify({ opts, defIds }));
         await cdp.ev(`(function(){ const s = document.getElementById('cmvTarget'); s.value = ${JSON.stringify(b)}; s.dispatchEvent(new Event('change')); document.getElementById('cmvRun').click(); return 1; })()`);
         //  합치기 창이 확인이다(D6): 확인창 없이 바로 옮기고, 결과 토스트가 무엇을 어디로 합쳤는지 숫자로 말한다
         await waitFor(`!state.entries.some(function(e){ return e.categoryId === ${JSON.stringify(a)}; })`, 4000, 100);
@@ -390,6 +458,47 @@ async function main() {
       }
     }
   }
+
+  /* ── D5 합치기, 연결 양쪽 막기 ── */
+  head('D5 휴가, 기타는 합치기, 옮기기, 공식 과제로 연결의 출발도 대상도 아니다(양쪽 다)');
+  if (!B) undecide('D5 합치기 막기', 'D4 의 zz 과제 B 가 없다');
+  else {
+    await reload();
+    const vac = await cdp.ev("(defaultTaskOf('휴가') || {}).id || null");
+    const gita = await cdp.ev('gitaTaskId()');
+    const dB0 = await dataOf(B), dV0 = await dataOf(vac), dG0 = await dataOf(gita);
+    ok('D5 전제: zz 과제 B 에 합칠 데이터가 있다(일정 2, 할 일 1)', dB0.entries.length === 2 && dB0.todos.length === 1, JSON.stringify(dB0));
+    await openCat();
+    const m = await mark();
+    //  화면: 휴가, 기타에서 합치기 창을 여는 길(openCatMoveModal)이 아무것도 열지 않는다(⋯ 가 없어 메뉴 항목도 없다).
+    await cdp.ev(`openCatMoveModal(${JSON.stringify(vac)}); openCatMoveModal(${JSON.stringify(gita)}); 1`);
+    await sleep(300);
+    ok('D5 휴가, 기타에서 합치기 창이 열리지 않는다(나가는 쪽)', !(await cdp.ev(isOpen('#catMoveModal'))));
+    //  데이터 함수: 나가는 쪽(휴가 → B)과 들어오는 쪽(B → 기타, B → 휴가) 모두 거부한다(화면 우회 방어).
+    const out = await J(`moveCategoryData(${JSON.stringify(vac)}, ${JSON.stringify(B)})`);
+    const in1 = await J(`moveCategoryData(${JSON.stringify(B)}, ${JSON.stringify(gita)})`);
+    const in2 = await J(`moveCategoryData(${JSON.stringify(B)}, ${JSON.stringify(vac)})`);
+    const out2 = await J(`moveCategoryData(${JSON.stringify(gita)}, ${JSON.stringify(B)})`);
+    ok('D5 moveCategoryData 가 휴가 → B, 기타 → B 를 거부한다(나가는 쪽)', out === null && out2 === null, JSON.stringify({ out, out2 }));
+    ok('D5 moveCategoryData 가 B → 기타, B → 휴가 를 거부한다(들어오는 쪽)', in1 === null && in2 === null, JSON.stringify({ in1, in2 }));
+    await saveIdle();
+    ok('D5 거부했으니 저장이 없다', reqs(await since(m), 'saveState').length === 0);
+    ok('D5 B, 휴가, 기타의 일정과 할 일이 그대로다', same(await dataOf(B), dB0) && same(await dataOf(vac), dV0) && same(await dataOf(gita), dG0),
+      JSON.stringify({ B: await dataOf(B), vac: (await dataOf(vac)).entries.length, gita: (await dataOf(gita)).entries.length }));
+    //  공식 과제로 연결: 연결 창의 일반 과제 목록에 휴가, 기타가 없고(B 는 있다), 고르기 창도 열리지 않는다.
+    await closeAll();
+    await cdp.ev('openRelinkModal(); 1');
+    const rlOpen = await waitFor(isOpen('#relinkModal'), 3000, 100);
+    const rl = await J("[].map.call(document.querySelectorAll('#rlList .rl-row'), function(r){ return r.dataset.cat; })");
+    ok('D5 공식 과제로 연결 창의 목록에 휴가, 기타가 없다(일반 과제 B 는 있다)', rlOpen && !rl.includes(vac) && !rl.includes(gita) && rl.includes(B), JSON.stringify({ rlOpen, rl }));
+    await cdp.ev(`openRelinkPick(${JSON.stringify(vac)}); openRelinkPick(${JSON.stringify(gita)}); 1`);
+    await sleep(300);
+    ok('D5 휴가, 기타로는 공식 과제 고르기 창이 열리지 않는다', !(await cdp.ev(isOpen('#relinkPickModal'))));
+    ok('D5 연결 선택이 하나도 생기지 않았다', (await cdp.ev('rlPick.size')) === 0);
+    await closeAll();
+    const r = await reload();
+    ok('D5 다시 읽어도 B, 휴가, 기타의 데이터가 그대로다', r === 'applied' && same(await dataOf(B), dB0) && same(await dataOf(vac), dV0) && same(await dataOf(gita), dG0));
+  }
 }
 
 let aborted = null;
@@ -403,7 +512,7 @@ try {
 } finally {
   //  ★ 무슨 일이 있어도 zz 과제를 앱으로 지운다(삭제가 딸린 일정, 할 일을 함께 지운다) → 다시 읽어 잔재 0 을 본다.
   if (cdp && started) {
-    head('정리 — zz 과제 삭제(딸린 데이터 포함) · 다시 읽어 잔재 0');
+    head('정리: zz 과제 삭제(딸린 데이터 포함), 다시 읽어 잔재 0');
     try {
       healthyAtEnd = await waitFor(isHealthy, 30000, 300);
       if (!healthyAtEnd) {
@@ -437,7 +546,7 @@ try {
 
 const secs = ((Date.now() - T0) / 1000).toFixed(1);
 console.log('\n' + '═'.repeat(74));
-console.log(`기본 과제 루프 요약 — 시드 ${OPT.seed}, 소요 ${secs}s`);
+console.log(`기본 과제 루프 요약: 시드 ${OPT.seed}, 소요 ${secs}s`);
 if (F.length) { console.log(`실패 ${F.length}건:`); F.forEach((f) => console.log('  ✗ ' + f)); }
 if (UD.length) { console.log(`판정 불가 ${UD.length}건:`); UD.forEach((f) => console.log('  ? ' + f)); }
 if (started && healthyAtEnd === false) console.log('\n★★ 경고: 끝날 때 위젯이 정상으로 돌아오지 않았다. 화면을 확인하고 필요하면 재시작하세요.');
