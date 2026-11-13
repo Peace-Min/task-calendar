@@ -5,83 +5,146 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>상태 칸 폭 시안</title>
 <style>
-/* 과제 추가 창의 상태 칸이 잘리는 것(64px 고정)을 내용 폭으로 정하는 시안(2026-11-13).
-   지금: 줄마다 따로 grid, 상태 칸 64px 고정. 고친 안: 목록 전체가 grid 하나, 줄은 subgrid 로 그 열을 같이 쓰고, 상태와 기간 칸은 max-content.
-   모양은 실제 과제 추가 창(.ca-grid, .ca-r, .off-st)을 옮겨 왔다. */
+/* 과제 추가 창 상태 칸 폭 시안 2판(2026-11-13).
+   지금: 줄마다 grid, 상태 64px 고정이라 "1차 납품완료"가 잘린다.
+   1판: 목록 하나 grid 와 줄 subgrid, 상태와 기간 max-content. 보이는 줄 기준이라 거를 때 열이 출렁인다.
+   2판: 1판에 (1) 보이지 않는 기준 줄(코드표 상태 이름 전부, 가장 긴 기간 모양)을 넣어 폭을 고정하고,
+        (2) 끌 때 복제본에 실제 열 폭을 박아 준다(부모 밖에서는 subgrid 가 빌릴 열이 없다). */
 :root{--panel:#fff;--dim:#f6f7fb;--line:#e3e6ee;--line-2:#cfd5e2;--muted:#7a8399;--faint:#a3aabb;--text:#1d2333;--accent:#3e5be0;--accent-2:#2f49c4;--ok:#1f9d55;--warn:#b7791f;--page:#e9ecf2}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--panel:#1f2430;--dim:#262c3a;--line:#323a4b;--line-2:#3d465a;--muted:#98a2b8;--faint:#6f788c;--text:#e6e9f0;--accent:#6c84f0;--accent-2:#8ea1f5;--ok:#4cc38a;--warn:#e0a84a;--page:#161a22}}
 :root[data-theme="dark"]{--panel:#1f2430;--dim:#262c3a;--line:#323a4b;--line-2:#3d465a;--muted:#98a2b8;--faint:#6f788c;--text:#e6e9f0;--accent:#6c84f0;--accent-2:#8ea1f5;--ok:#4cc38a;--warn:#e0a84a;--page:#161a22}
 *{box-sizing:border-box}
 body{margin:0;background:var(--page);color:var(--text);font:13px/1.5 "Malgun Gothic","맑은 고딕",system-ui,sans-serif;padding:20px 16px}
 h1{font-size:16px;margin:0 0 4px}
-.lead{color:var(--muted);margin:0 0 14px;max-width:980px}
+.lead{color:var(--muted);margin:0 0 12px;max-width:1000px}
 .ctl{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 14px;font-size:12px}
 .ctl label{display:flex;gap:6px;align-items:center}
-.ctl input[type=range]{width:220px}
-.case{margin-bottom:22px}
+.ctl input[type=range]{width:200px}
+.ctl input[type=search]{width:180px;padding:3px 8px;border:1px solid var(--line-2);border-radius:5px;background:var(--panel);color:var(--text);font:inherit}
+.case{margin-bottom:20px}
 .case h2{font-size:14px;margin:0 0 2px}
 .case p{margin:0 0 8px;color:var(--muted);font-size:12px}
-.box{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;container-type:inline-size;max-width:100%}
+.case .meas{font-size:11px;color:var(--accent-2);margin-left:6px;font-weight:400}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;container-type:inline-size}
 .c{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .h{background:var(--dim);border-bottom:1px solid var(--line-2);font-size:11px;font-weight:600;color:var(--muted)}
-.r{border-bottom:1px solid var(--line)}
-.r:last-child{border-bottom:0}
+.r{border-bottom:1px solid var(--line);background:var(--panel)}
 .nm{font-weight:600}
 .st{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .st i{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
 .st.run{color:var(--ok)}.st.warn{color:var(--warn)}.st.end{color:var(--muted)}
 .per{font-variant-numeric:tabular-nums;color:var(--muted)}
 .act{text-align:right}.act b{color:var(--accent-2);font-size:11px}
-/* 지금: 줄마다 grid, 상태 64px */
-.now .row{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1.1fr) minmax(0,1fr) 64px 168px 74px;gap:10px;align-items:center;padding:8px 12px}
-/* 고친 안: 목록 하나가 grid, 줄은 subgrid. 상태와 기간은 max-content(가장 긴 값), 남는 폭은 이름, 발주처, 계약명이 나눈다 */
-.fix .list{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1.1fr) minmax(0,1fr) max-content max-content 74px;column-gap:10px}
-.fix .row{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;align-items:center;padding:8px 12px}
-/* 좁은 창(680px 미만): 지금과 같은 규칙으로 계약명, 기간을 빼고 상태는 점 하나 */
+.grip{color:var(--faint);cursor:grab;user-select:none;touch-action:none}
+.empty{padding:12px;color:var(--muted)}
+/* 지금 */
+.nowr{display:grid;grid-template-columns:18px minmax(0,1.7fr) minmax(0,1.1fr) minmax(0,1fr) 64px 168px 74px;gap:10px;align-items:center;padding:8px 12px}
+/* 1판, 2판: 목록 하나가 grid, 줄은 subgrid */
+.sg .list{display:grid;grid-template-columns:18px minmax(0,1.7fr) minmax(0,1.1fr) minmax(0,1fr) max-content max-content 74px;column-gap:10px}
+.sgr{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;align-items:center;padding:8px 12px}
+.sg .full{grid-column:1 / -1}
+/* 2판의 기준 줄: 폭 계산에만 들고 보이지도 읽히지도 않는다(높이 0) */
+.sizer{display:grid;grid-column:1 / -1;grid-template-columns:subgrid;height:0;overflow:hidden;visibility:hidden;padding:0 12px}
+.sizer .c{display:flex;flex-direction:column}
 @container (max-width:679px){
-  .now .row{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) 30px 74px}
-  .fix .list{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) max-content 74px}
+  .nowr{grid-template-columns:18px minmax(0,1.7fr) minmax(0,1fr) 30px 74px}
+  .sg .list{grid-template-columns:18px minmax(0,1.7fr) minmax(0,1fr) max-content 74px}
   .ctr,.pc{display:none}
   .stx{display:none}
 }
-.note{font-size:12px;color:var(--muted);margin-top:6px}
+/* 끌기(내 과제와 같은 손) */
+.drag{opacity:.45}
+.ins-b{box-shadow:inset 0 2px 0 var(--accent)}.ins-a{box-shadow:inset 0 -2px 0 var(--accent)}
+.ghost{position:fixed;z-index:50;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.18);border:1px solid var(--line);border-radius:6px;opacity:.96;margin:0}
+.dragging,.dragging *{cursor:grabbing!important}
+.note{font-size:12px;color:var(--muted);margin-top:6px;max-width:1000px}
 .note b{color:var(--text)}
 </style>
 </head>
 <body>
-<h1>과제 추가 창: 상태 칸 폭</h1>
-<p class="lead">지금은 상태 칸이 64px 로 고정이라 "1차 납품완료"가 잘립니다. 고친 안은 목록 전체를 표 하나로 묶고, 상태와 기간 칸 폭을 그 목록에서 가장 긴 값으로 정합니다. 관리 화면에서 더 긴 상태를 추가해도 저절로 맞습니다. 아래 막대로 창 폭을 바꿔 보고, 긴 상태를 하나 더해 보세요.</p>
+<h1>과제 추가 창: 상태 칸 폭 (2판)</h1>
+<p class="lead">세 목록이 같은 데이터를 보여 줍니다. 검색 칸에 "관제"를 쳐서 "1차 납품완료" 과제를 목록에서 빼 보고, 각 목록의 ⠿ 를 끌어 보세요. 목록 제목 옆 파란 숫자는 지금 상태 칸 폭입니다.</p>
 <div class="ctl">
-  <label>창 폭 <input type="range" id="w" min="520" max="900" value="860"> <span id="wv"></span></label>
-  <label><input type="checkbox" id="extra"> 관리 화면에서 새 상태 "2차 검수 대기 중" 을 추가했다고 치기</label>
+  <label>창 폭 <input type="range" id="w" min="520" max="940" value="900"> <span id="wv"></span></label>
+  <label>찾기 <input type="search" id="q" placeholder="예: 관제"></label>
+  <label><input type="checkbox" id="extra"> 관리 화면에서 새 상태 "2차 검수 대기 중" 추가</label>
 </div>
 
-<div class="case now"><h2>지금 (상태 64px 고정)</h2><p>줄마다 따로 표라 칸 폭을 숫자로 박아 두었습니다.</p><div class="box" id="now"></div></div>
-<div class="case fix"><h2>고친 안 (목록 하나, 상태와 기간은 가장 긴 값 폭)</h2><p>줄들이 같은 열을 씁니다. 상태 칸이 가장 긴 상태 이름에 맞고, 이름과 발주처가 남은 폭을 나눕니다.</p><div class="box" id="fix"></div>
-<div class="note">공식 과제 관리 창(지금 96px 고정)과 과제 추가의 보기 모드도 같은 방식으로 바꿉니다. <b>좁은 창(680px 미만)</b>에서는 지금처럼 상태를 점 하나로 줄이고 이름은 마우스를 올리면 보입니다.</div></div>
+<div class="case now"><h2>지금 <span class="meas" data-m="now"></span></h2><p>상태 64px 고정. "1차 납품완료"가 잘립니다.</p><div class="box" id="now"></div></div>
+<div class="case sg"><h2>1판: 보이는 줄 기준 <span class="meas" data-m="v1"></span></h2><p>잘리지는 않지만, 찾기로 긴 상태 과제가 빠지면 상태 칸이 좁아지고 다른 칸이 넓어집니다(출렁임). 끌면 복제본의 칸이 뭉개집니다.</p><div class="box" id="v1"></div></div>
+<div class="case sg"><h2>2판: 기준 줄 + 끌기 복제본 폭 (추천) <span class="meas" data-m="v2"></span></h2><p>보이지 않는 기준 줄이 코드표의 상태 이름 전부와 가장 긴 기간 모양을 들고 있어, 무엇을 걸러도 폭이 그대로입니다. 끌 때는 실제 열 폭을 복제본에 박아 모양이 그대로입니다.</p><div class="box" id="v2"></div>
+<div class="note">기준 줄은 화면에 높이 0 으로 숨어 있고 읽히지도 않습니다(눈에 보이는 변화 없음). 상태 이름은 코드표에서 받으므로 관리 화면에서 상태를 추가하면 다음에 그릴 때 기준 줄도 따라갑니다. <b>좁은 창(680px 미만)</b>에서는 지금처럼 상태를 점 하나로 줄입니다.</div></div>
 
 <script>
-const BASE = [
-  ['(예시) 관제 고도화', '(예시) 발주처 가', '(예시) 관제 체계 고도화 용역', 'run', '진행중', '2026/03/02 ~ 2026/12/31'],
-  ['(예시) 해양 관측 체계', '(예시) 발주처 나', '(예시) 관측 장비 개선 사업', 'warn', '1차 납품완료', '2025/08/01 ~ 2026/11/30'],
-  ['(예시) 장비 시험', '(예시) 발주처 가', '(예시) 시험 장비 구매', 'end', '종료', '2024/01/02 ~ 2025/06/30'],
-  ['(예시) 사업부 관리 과제', '(예시) 발주처 다', '(예시) 사업부 관리 계약', 'warn', '미정', '2026/05/01 ~'],
+const CODES0 = [['run', '진행중'], ['end', '종료'], ['warn', '1차 납품완료'], ['warn', '미정']];
+const ROWS0 = [
+  { id: 'a', nm: '(예시) 관제 고도화', cu: '(예시) 발주처 가', ct: '(예시) 관제 체계 고도화 용역', k: 'run', st: '진행중', pe: '2026/03/02 ~ 2026/12/31' },
+  { id: 'b', nm: '(예시) 해양 관측 체계', cu: '(예시) 발주처 나', ct: '(예시) 관측 장비 개선 사업', k: 'warn', st: '1차 납품완료', pe: '2025/08/01 ~ 2026/11/30' },
+  { id: 'c', nm: '(예시) 관제 장비 시험', cu: '(예시) 발주처 가', ct: '(예시) 시험 장비 구매', k: 'end', st: '종료', pe: '2024/01/02 ~ 2025/06/30' },
+  { id: 'd', nm: '(예시) 사업부 관리 과제', cu: '(예시) 발주처 다', ct: '(예시) 사업부 관리 계약', k: 'warn', st: '미정', pe: '2026/05/01 ~' },
 ];
-const EXTRA = ['(예시) 신규 검수 과제', '(예시) 발주처 라', '(예시) 검수 용역', 'warn', '2차 검수 대기 중', '2026/09/01 ~ 2027/02/28'];
+const EXTRA = { id: 'e', nm: '(예시) 신규 검수 과제', cu: '(예시) 발주처 라', ct: '(예시) 검수 용역', k: 'warn', st: '2차 검수 대기 중', pe: '2026/09/01 ~ 2027/02/28' };
+const S = { now: ROWS0.slice(), v1: ROWS0.slice(), v2: ROWS0.slice() };
 const esc = (s) => String(s).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
-function rowHtml(r, head) {
-  if (head) return '<div class="row h"><span class="c">통상명칭</span><span class="c">발주처</span><span class="c ctr">계약명</span><span class="c">상태</span><span class="c pc">기간</span><span class="c act">동작</span></div>';
-  return `<div class="row r"><span class="c nm" title="${esc(r[0])}">${esc(r[0])}</span><span class="c">${esc(r[1])}</span><span class="c ctr">${esc(r[2])}</span><span class="c" title="${esc(r[4])}"><span class="st ${r[3]}"><i></i><span class="stx">${esc(r[4])}</span></span></span><span class="c per pc">${esc(r[5])}</span><span class="c act"><b>+ 추가</b></span></div>`;
+const head = (k) => '<div class="row h ' + k + '"><span></span><span class="c">통상명칭</span><span class="c">발주처</span><span class="c ctr">계약명</span><span class="c">상태</span><span class="c pc">기간</span><span class="c act">동작</span></div>';
+const row = (r, k) => `<div class="row r ${k}" data-id="${r.id}"><span class="grip">⠿</span><span class="c nm" title="${esc(r.nm)}">${esc(r.nm)}</span><span class="c">${esc(r.cu)}</span><span class="c ctr">${esc(r.ct)}</span><span class="c sc" title="${esc(r.st)}"><span class="st ${r.k}"><i></i><span class="stx">${esc(r.st)}</span></span></span><span class="c per pc">${esc(r.pe)}</span><span class="c act"><b>+ 추가</b></span></div>`;
+//  기준 줄: 상태 칸에 코드표 이름 전부(점 포함 같은 모양), 기간 칸에 가장 긴 기간 모양. 데이터가 아니라 코드표와 형식에서 온다
+function sizer(codes) {
+  return `<div class="sizer" aria-hidden="true"><span></span><span></span><span></span><span class="ctr"></span><span class="c">${codes.map(([k, n]) => `<span class="st ${k}"><i></i><span class="stx">${esc(n)}</span></span>`).join('')}</span><span class="c per pc">0000/00/00 ~ 0000/00/00</span><span></span></div>`;
 }
 function render() {
-  const rows = document.getElementById('extra').checked ? BASE.concat([EXTRA]) : BASE;
   const w = +document.getElementById('w').value; document.getElementById('wv').textContent = w + 'px';
-  document.getElementById('now').style.width = w + 'px';
-  document.getElementById('fix').style.width = w + 'px';
-  document.getElementById('now').innerHTML = rowHtml(null, true) + rows.map((r) => rowHtml(r)).join('');
-  document.getElementById('fix').innerHTML = '<div class="list">' + rowHtml(null, true) + rows.map((r) => rowHtml(r)).join('') + '</div>';
+  const q = document.getElementById('q').value.trim(), ex = document.getElementById('extra').checked;
+  const codes = ex ? CODES0.concat([['warn', '2차 검수 대기 중']]) : CODES0;
+  for (const v of ['now', 'v1', 'v2']) {
+    if (ex && !S[v].some((r) => r.id === 'e')) S[v].push(EXTRA);
+    if (!ex) S[v] = S[v].filter((r) => r.id !== 'e');
+    const rows = S[v].filter((r) => !q || r.nm.includes(q));
+    const k = v === 'now' ? 'nowr' : 'sgr';
+    const body = rows.length ? rows.map((r) => row(r, k)).join('') : `<div class="${v === 'now' ? '' : 'full '}empty">찾는 과제가 없습니다</div>`;
+    const el = document.getElementById(v); el.style.width = w + 'px';
+    el.innerHTML = v === 'now' ? head(k) + body : `<div class="list">${head(k)}${v === 'v2' ? sizer(codes) : ''}${body}</div>`;
+    const sc = el.querySelector('.row.h > :nth-child(5)');
+    document.querySelector(`[data-m="${v}"]`).textContent = sc ? '상태 칸 ' + Math.round(sc.getBoundingClientRect().width) + 'px' : '';
+  }
 }
-document.getElementById('w').addEventListener('input', render);
+// 끌기: 1판은 복제본을 그대로 body 에 붙여 칸이 뭉개지고, 2판은 실제 열 폭을 박는다
+let D = null;
+document.addEventListener('pointerdown', (ev) => {
+  const g = ev.target.closest('.grip'); if (!g) return;
+  const r = g.closest('.row'), v = r.closest('.box').id; ev.preventDefault();
+  D = { v, id: r.dataset.id, row: r, x0: ev.clientX, y0: ev.clientY, on: false };
+});
+document.addEventListener('pointermove', (ev) => {
+  if (!D) return;
+  if (!D.on) {
+    if (Math.hypot(ev.clientX - D.x0, ev.clientY - D.y0) < 5) return;
+    D.on = true; const rc = D.row.getBoundingClientRect(); D.dx = D.x0 - rc.left; D.dy = D.y0 - rc.top;
+    const gh = D.row.cloneNode(true); gh.classList.add('ghost'); gh.style.width = rc.width + 'px';
+    if (D.v === 'v2') {
+      //  부모 밖에서는 subgrid 가 빌릴 열이 없다. 끌기 시작 때 실제 열 폭을 읽어 복제본에 그대로 박는다
+      const list = D.row.parentElement;
+      gh.style.gridTemplateColumns = getComputedStyle(list).gridTemplateColumns;
+      gh.style.columnGap = getComputedStyle(list).columnGap;
+    }
+    document.body.appendChild(gh); D.ghost = gh; D.row.classList.add('drag'); document.body.classList.add('dragging');
+  }
+  D.ghost.style.left = (ev.clientX - D.dx) + 'px'; D.ghost.style.top = (ev.clientY - D.dy) + 'px';
+  document.querySelectorAll('.ins-b,.ins-a').forEach((e) => e.classList.remove('ins-b', 'ins-a'));
+  const el = document.elementFromPoint(ev.clientX, ev.clientY), r = el && el.closest && el.closest(`#${D.v} .row.r`);
+  D.tgt = null; if (!r || r.dataset.id === D.id) return;
+  const arr = S[D.v], from = arr.findIndex((x) => x.id === D.id), to = arr.findIndex((x) => x.id === r.dataset.id);
+  D.tgt = r.dataset.id; D.after = to > from; r.classList.add(D.after ? 'ins-a' : 'ins-b');
+});
+document.addEventListener('pointerup', () => {
+  if (!D) return; const d = D; D = null;
+  document.querySelectorAll('.ins-b,.ins-a').forEach((e) => e.classList.remove('ins-b', 'ins-a'));
+  if (d.ghost) d.ghost.remove(); d.row.classList.remove('drag'); document.body.classList.remove('dragging');
+  if (!d.on || !d.tgt) return;
+  const arr = S[d.v], i = arr.findIndex((x) => x.id === d.id); const [x] = arr.splice(i, 1);
+  let j = arr.findIndex((y) => y.id === d.tgt); if (d.after) j++; arr.splice(j, 0, x); render();
+});
+['w', 'q'].forEach((id) => document.getElementById(id).addEventListener('input', render));
 document.getElementById('extra').addEventListener('change', render);
 render();
 </script>
