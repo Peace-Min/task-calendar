@@ -714,7 +714,7 @@ body.db-locked #btnAddHere{opacity:.5}
 
 /* ---------- category modal (내 과제: 목록만, docs/TASK-ADD-UX.md D1~D5, 목록 정리 2026-10-30) ----------
    머리 = 제목과 ✕ 만. 목록은 테두리 하나짜리 한 상자(#catWrap)이고 줄은 1px 가로선으로 가른다.
-   줄 = ⠿ 손잡이, 색 점, 이름(공식이면 바로 뒤에 작은 '공식' 표, 그 아래 메모), 기록 수, ⋯ 하나. 상자 맨 위 줄이 열 머리글(과제, 기록).
+   줄 = ⠿ 손잡이, 색 점, 이름(그 아래 메모), 기록 수, ⋯ 하나. 상자 맨 위 줄이 열 머리글(과제, 기록). 공식, 일반, 기본은 묶음 머리 줄로 가른다(CATEGORY-GROUPS).
    ★ 열 폭은 머리글과 줄이 한 규칙이다(두 벌이면 갈린다). 추가는 상자 아래의 점선 단추 하나이고 본문이 스크롤돼도 아래에 붙는다(sticky).
    ★ 목록 칸(#catWrap)의 폭이 기준이다(container). 380px 미만이면 ⠿ 를 숨기고 순서는 ⋯ 메뉴로 바꾼다.
    ★ 상자에 overflow:hidden 을 걸지 않는다(줄 ⋯ 메뉴가 줄 아래로 뜨기 때문). 둥근 모서리는 첫 줄(머리글)과 마지막 줄이 직접 진다. */
@@ -741,6 +741,12 @@ body.db-locked #btnAddHere{opacity:.5}
 .cat-count{text-align:right;font-size:var(--fs-meta);color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
 .cat-count.zero{color:var(--faint-text)}
 .cat-empty{padding:18px;text-align:center;color:var(--muted);font-size:var(--fs-body)}
+/* 묶음 머리 줄(A', docs/CATEGORY-GROUPS.md): 공식은 옅은 파랑, 일반은 표 머리와 같은 회색, 기본은 바탕 없이 위 굵은 선. 줄 모양은 묶음과 상관없이 같다 */
+.cat-grp{display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;background:var(--bg);border-top:1px solid var(--line);font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
+#catList > .cat-grp:first-child{border-top:0}
+.cat-grp.off{background:var(--accent-soft);color:var(--accent-2)}
+.cat-grp.def{background:var(--panel);border-top:2px solid var(--line-2)}
+.cat-grp-n{font-weight:400}
 .cat-more{border:1px solid transparent;background:none;border-radius:var(--r-sm);width:30px;height:28px;padding:0;cursor:pointer;font-size:16px;line-height:1;color:var(--muted);font-family:inherit}
 .cat-more:hover,.cat-more[aria-expanded="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2)}
 /* 머리 ✕ — 아이콘 단추(32px) */
@@ -5281,6 +5287,51 @@ const pad = n => String(n).padStart(2, '0');
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const parseYmd = s => { const [y,m,dd] = s.split('-').map(Number); return new Date(y, m-1, dd); };
 const todayYmd = () => ymd(new Date());
+//  오늘 표시 맞추기(docs/DAY-ROLLOVER-FABLE.md). 칸을 다시 그리지 않고 표시만 옮긴다.
+//  대상은 원래 오늘 표시가 붙는 칸뿐이다. 주간 몸통 칸(wr-c, pc-wday)은 머리에만 표시가 있어 뺀다. 주 고르기 달력(cal-pkc)은 열 때 그린다.
+//  calCellCls 에 today 를 넘기는 칸을 더하면 여기도 고친다(tests/today-mark.test.mjs 시험 1 이 기존 달력의 어긋남을 잡는다).
+const DAY_CELLS = '.cal-c.cell:not(.wr-c)[data-date], .cal-c.pc-day[data-date], .cal-c.pc-whday[data-hdate], .cal-c.at-day[data-date]';
+function dayMark(){
+  const t = todayYmd();
+  document.querySelectorAll(DAY_CELLS).forEach(el => {
+    const ds = el.dataset.date || el.dataset.hdate, on = ds === t;
+    if(el.classList.contains('today') === on) return;             // 이미 맞다
+    //  이름에 쓸 글을 클래스보다 먼저 구한다. 여기서 던지면 클래스도 그대로라 다음 번에 이 칸을 다시 맞춘다
+    //  (클래스를 먼저 바꾸면 다음 번은 "이미 맞다" 로 건너뛰어 색과 이름이 어긋난 채 남는다)
+    const a = el.getAttribute('aria-label');
+    const from = a ? calAria(ds, on ? '' : ds) : '', to = a ? calAria(ds, on ? ds : '') : '';
+    el.classList.toggle('today', on);
+    //  읽어 주는 이름은 날짜 부분만 바꿔 끼운다. 뒤에 붙은 글(기록 n건, 보고함)은 그대로. 앞부분이 다르면 건드리지 않는다
+    if(a && a.startsWith(from)) el.setAttribute('aria-label', to + a.slice(from.length));
+  });
+}
+let dayTimer = 0;
+function dayArm(){
+  clearTimeout(dayTimer);
+  const n = new Date(), next = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1);
+  dayTimer = setTimeout(dayTick, Math.max(1000, next - n + 1000));   // 다음 자정 + 1초, 하한 1초(타이머가 몇 ms 일찍 떠도 같은 날을 되풀이하지 않게)
+}
+function daySync(){ try{ dayMark(); }catch(e){ try{ console.warn('[day]', e); }catch(_){} } }
+function dayTick(){ dayArm(); daySync(); dayRemCheck(); }          // 예약이 먼저다. 표시가 실패해도 다음 자정은 산다
+function dayInstall(){
+  if(SUBWIN) return;                                              // 메인 창, 브라우저, 열람 프레임만
+  const back = () => { if(document.visibilityState !== 'hidden'){ dayArm(); daySync(); dayRemCheck(); } };
+  document.addEventListener('visibilitychange', back);
+  window.addEventListener('focus', back);
+  window.addEventListener('pageshow', back);
+  window.addEventListener('pagehide', () => { clearTimeout(dayTimer); dayTimer = 0; });
+  dayArm();
+}
+/* ---- 알림 끊김 고침(docs/DAY-ROLLOVER-FABLE.md "범위 밖 결함", 2026-11-13) ----
+ *  호스트에 보낸 알림 목록은 오늘부터 모레까지다(buildReminderOccs). 편집 없이 켜 두면 그 뒤 일정의 알림이 뜨지 않았다.
+ *  날이 바뀐 것을 자정 타이머나 창 복귀에서 알면 메인 창이 한 번 다시 보낸다. 호스트는 같은 키의 단계, 창, 확인을 지키므로(Reminders.cs) 겹치지 않는다.
+ *  알림 주인은 메인 창뿐이다. 열람 프레임과 따로 뜨는 창은 적지도 보내지도 않는다. 기간(+2일)은 그대로다. */
+let dayRemSent = '';   // 메인 창이 알림 목록을 마지막으로 보낸 날(pushReminders 가 적는다). 비었으면 아직 보낸 적이 없어 여기서도 보내지 않는다
+function dayRemCheck(){
+  try{ if(HOST && !PEER && !SUBWIN && dayRemSent && dayRemSent !== todayYmd()) pushReminders(); }
+  catch(e){ try{ console.warn('[day] reminders', e); }catch(_){} }
+}
+/* ---- /알림 끊김 고침 ---- */
 const uid = p => (p||'x') + '-' + (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,10));
 const nowIso = () => new Date().toISOString();
@@ -5327,6 +5378,7 @@ function calWeekTitle(ds, vy, vm){
 function calTone(ds){ const w = calDow(ds); return (w === 0 || holidayOn(ds)) ? 'sun' : w === 6 ? 'sat' : ''; }
 //  칸 클래스. base = 화면의 칸 클래스('cell', 'at-day', 'pc-day'), o = { m: 보고 있는 달(0부터), today, sel }. 공용 칸 디자인 클래스 cal-c 를 늘 앞에 붙인다(CSS 는 .cal-c 블록 하나).
 //  o.m 이 있으면 다른 달 칸은 dim, 주말 틴트는 wknd-sun, wknd-sat.
+//  오늘 표시를 받는 칸을 더하면 DAY_CELLS 도 고친다(자정에 표시만 옮기는 dayMark 의 대상 목록).
 function calCellCls(ds, base, o){
   o = o || {};
   const w = calDow(ds);
@@ -5846,8 +5898,51 @@ function ensureDefaultTasks(s){
     s.categories.push({ id: uid('c'), name: d.name, color: d.color, desc: '', createdAt: nowIso() });
     changed = true;
   }
-  return changed;
+  //  기본 과제는 맨 아래 고정이라(CATEGORY-GROUPS §1) 보장과 함께 묶음 순서도 맞춘다. 부르는 곳(load, 부팅 주입, 가져오기, 초기화)이 같다.
+  const moved = catGroupNormalize(s);
+  return changed || moved;
 }
+/* ---------- 과제 묶음 순서(docs/CATEGORY-GROUPS.md) ----------
+   state.categories 의 순서 규칙: 공식(DB 과제) → 일반 → 휴가 → 기타. 묶음 안 순서는 사용자가 정한 배열 순서 그대로다.
+   ★ 묶음 번호는 과제 하나만 보고 정한다(다른 줄과 상관없음): 0 공식, 1 일반, 2 휴가, 3 기타.
+     이름이 휴가, 기타인 개인 과제가 둘 이상인 옛 데이터도 이름 묶음(2, 3)에 모인다. 묶음 안 순서를 지키므로 앞의 것(기본 과제,
+     defaultTaskOf)이 늘 앞이다. 그래서 몇 번을 돌려도 같은 결과다(기본 과제가 바뀌며 순서가 오가는 일이 없다).
+   ★ 배포 SQL 의 판 데이터 단계(db/deploy/data/*-category-groups.sql)가 같은 규칙으로 cal_category.sort_order 를 다시 매긴다.
+   ★ 이 묶음도 `let state = …load()` 앞이다(load 가 ensureDefaultTasks 를 거쳐 부른다). 공식 판정은 isOfficialCat 과 같은 식. */
+function catGroupRank(c){
+  if(c && c.source === 'db') return 0;
+  const k = DEFAULT_TASK_NAMES.indexOf(catNameKey(c));
+  return k < 0 ? 1 : 2 + k;
+}
+//  안정 분할: 묶음 번호 순, 같은 묶음은 원래 자리 순. 배열은 제자리에서 바꾼다(다른 곳이 쥔 참조가 낡지 않게).
+//  저장하지 않는다. 돌려주는 값 = 순서가 바뀌었나(true 면 부르는 쪽이 저장할 차이가 생겼다).
+function catGroupNormalize(s){
+  s = s || state;
+  const a = s && s.categories;
+  if(!Array.isArray(a) || a.length < 2) return false;
+  const sorted = a.map((c, i) => [catGroupRank(c), i, c]).sort((x, y) => x[0] - y[0] || x[1] - y[1]).map(x => x[2]);
+  if(sorted.every((c, i) => c === a[i])) return false;
+  a.splice(0, a.length, ...sorted);
+  return true;
+}
+//  새 과제를 그 묶음의 끝에 넣는다(일반은 휴가, 기타 위, 공식은 일반 위). 추가와 공식 과제 편입이 쓴다.
+function catGroupInsert(s, c){
+  const r = catGroupRank(c), i = s.categories.findIndex(x => catGroupRank(x) > r);
+  if(i < 0) s.categories.push(c); else s.categories.splice(i, 0, c);
+  return c;
+}
+//  과제가 들어 있는 묶음의 [처음, 끝] 자리(state.categories 기준). 묶음은 이어져 있다(정리된 순서).
+function catGroupRange(id){
+  const a = state.categories, i = a.findIndex(c => c.id === id);
+  if(i < 0) return null;
+  const r = catGroupRank(a[i]);
+  let lo = i, hi = i;
+  while(lo > 0 && catGroupRank(a[lo - 1]) === r) lo--;
+  while(hi < a.length - 1 && catGroupRank(a[hi + 1]) === r) hi++;
+  return [lo, hi];
+}
+//  순서를 바꿀 수 있는 과제인가: 공식과 일반만. 휴가, 기타(이름 묶음 2, 3)는 고정이다(⠿ 와 순서 단추가 없다).
+const catOrderable = c => !!c && catGroupRank(c) <= 1;
 let state = (HOST || PEER) ? buildStateFrom({ categories: [], entries: [] }) : load();
 
 //  보고서 서식(머리기호, 들여쓰기)은 고정값이다(구조 22, 2026-11-06). 예전에는 일간과 주간 서식을 저장했지만(cal_user_pref)
@@ -6089,7 +6184,10 @@ window.__applyState = function(json, meta){
     //    이미 있으면 아무것도 바뀌지 않아 저장도 생기지 않는다.
     //    다시 주입될 때마다 플래그를 새로 정한다(정정 이력 2차). 앞 주입의 저장이 잠금으로 미뤄졌어도, 서버가 이미 기본 과제를
     //    갖고 돌려줬으면 보낼 것이 없다. 남겨 두면 쓸데없는 전체 저장이 한 번 나간다.
+    //  묶음 순서(CATEGORY-GROUPS §1-8)도 ensureDefaultTasks 가 함께 맞춘다. 바뀌었으면 같은 플래그로 한 번 저장한다.
+    //  열람 창은 보이는 순서만 맞춘다(저장 없음. save() 는 열람 창에서 되돌린다).
     if(!PEER) __bootDefaultsDirty = ensureDefaultTasks(state);
+    else catGroupNormalize(state);
     //  ★ 원본을 붙잡아 둔다 — save() 가 이걸로 되돌린다(peerRevert). 여기서 떠야 그 사람의
     //    데이터가 들어온 **직후**의 모습이 기준이 된다.
     if(PEER) __peerPristine = JSON.stringify(data);
@@ -10575,7 +10673,7 @@ function subscribeDbCat(src, s){
   const color = (/^#[0-9a-fA-F]{6}$/.test(src.color || '')) ? src.color : sectionColor(src.sectionId);   // 신규 편입의 '초기값'
   const c = { id: src.id, source:'db', dbGone: !!src.dbGone, name: src.name || '(공식 과제)', color,
     desc:'', createdAt: nowIso() };
-  s.categories.push(c); return c;
+  return catGroupInsert(s, c);   // 공식 묶음 끝(추가, 공식 과제로 연결 모두, CATEGORY-GROUPS §1-7)
 }
 // 편입분의 '로컬 소유' 필드만 갱신 — 소유권 분리의 쓰기 쪽 단일 출입구(2026-07-27, color 편입 2026-07-30).
 // ★ name만 DB 소유다: 보고서에 찍히는 과제명이 사업부 관리 과제명과 글자 하나까지 같아야
@@ -10853,12 +10951,16 @@ function entriesOn(date){
 }
 function addCategory(name, color, desc){
   const c = {id:uid('c'), name, color, desc:desc||'', createdAt:nowIso()};
-  state.categories.push(c); save(); return c;
+  catGroupInsert(state, c); save(); return c;   // 일반 묶음 끝(휴가, 기타 위, CATEGORY-GROUPS §1-7)
 }
 function updateCategory(id, name, color, desc){
   const c = catById(id); if(!c) return;
   if(isDefaultTask(c)) name = c.name;   // 기본 과제(휴가, 기타)의 이름은 바꾸지 않는다(DEFAULT-TASKS §4.4, 폼 우회 방어)
-  Object.assign(c, {name, color, desc:desc||''}); save();
+  Object.assign(c, {name, color, desc:desc||''});
+  //  옛 중복 줄(이름이 휴가, 기타인 두 번째 개인 과제)의 이름을 바꾸면 묶음이 바뀐다. 같은 저장에 싣는다. 돌려주는 값 = 순서가 바뀌었나
+  const moved = catGroupNormalize(state);
+  save();
+  return moved;
 }
 //  한 과제에 딸린 데이터 건수, 삭제 확인창과 옮기기 확인창이 같은 숫자를 말한다(DEFAULT-TASKS §4.5, §4.6).
 //    entries = 일정, todos = 할 일. (과제별 작성 중 시간은 구조 22 에서 없앴다. 보고한 공수는 과제를 지워도 보고 기록에 남는다.)
@@ -10902,6 +11004,7 @@ function moveCategoryData(fromId, toId){
   if(guardEdit()) return null;
   const from = state.categories.find(c => c.id === fromId), to = state.categories.find(c => c.id === toId);
   if(!from || !to || fromId === toId || !isPickableCat(to)) return null;
+  if(isDefaultTask(from) || isDefaultTask(to)) return null;   // 휴가, 기타는 출발도 대상도 아니다(CATEGORY-GROUPS §1-6, 화면 우회 방어)
   const n = catMoveRefs(fromId, toId);
   save();
   return n;
@@ -10923,6 +11026,8 @@ function moveCategory(id, delta){
   const i = state.categories.findIndex(c => c.id === id);
   const j = i + delta;
   if(i < 0 || j === i || j < 0 || j >= state.categories.length) return false;
+  //  같은 묶음 안에서만 옮긴다(CATEGORY-GROUPS §1-4). 휴가, 기타는 고정이다. 묶음은 이어져 있어 도착 자리의 묶음만 보면 된다.
+  if(!catOrderable(state.categories[i]) || catGroupRank(state.categories[j]) !== catGroupRank(state.categories[i])) return false;
   const t = state.categories.splice(i, 1)[0]; state.categories.splice(j, 0, t);
   save();
   return true;
@@ -13605,6 +13710,8 @@ function ensureCatOption(sel, id){
    줄 = ⠿, 색 점, 이름과 메모, 구분 열(공식, 기본, 일반), 건수, ⋯ 하나. 줄을 누르면 수정 창(#catEditModal)이 열린다.
    ⋯ 메뉴 = 수정 / 다른 과제와 합치기(데이터가 있을 때) / 공식 과제로 연결(일반) / 순서 묶음 / 내 캘린더에서 빼기(공식) 또는 삭제(일반).
    ★ 목록은 state.categories 를 그 순서 그대로 그린다(CATEGORY-ORDER R1). 배열의 자리가 곧 화면의 자리다.
+   ★ 묶음(docs/CATEGORY-GROUPS.md): 배열은 늘 공식, 일반, 휴가, 기타 순이고(catGroupNormalize) 묶음마다 머리 줄이 선다.
+     끌기와 순서 단추는 묶음 안에서만 움직인다. 휴가, 기타는 ⠿ 와 ⋯ 가 없고 줄을 누르면 수정 창만 열린다.
    ★ 순서 바꾸기는 끌기(⠿)와 ⋯ 메뉴의 순서 묶음 두 길이고, 둘 다 catReorder → moveCategory(관문, 저장 1회)를 지난다.
      옮긴 뒤 반짝임과 자동 스크롤은 없다(D3). 낭독(#catLive)은 남긴다. */
 const CAT_KIND_LABEL = { official: '공식', default: '기본', personal: '일반' };
@@ -13656,12 +13763,13 @@ function catFitWatch(){
 // 줄 하나. 숫자는 일정, 할 일 두 칸(catUsageSplit, 합은 빼기 관문 catUsageCount 와 같다)이고 title 은 catUsageTip(docs/CAT-COUNTS-SPLIT.md).
 //   공식 과제가 DB 에서 사라졌으면(dbGone) 구분 칸에 '삭제됨'(라벨 유지용으로만 남은 과제).
 function catRowHtml(c){
-  const kind = catKindOf(c), nm = esc(c.name), u = catUsageSplit(c.id);
+  const kind = catKindOf(c), nm = esc(c.name), u = catUsageSplit(c.id), g = catGroupRank(c), fixed = kind === 'default';
+  //  "공식" 표는 없다. 묶음 머리(공식 과제 n)가 대신한다(CATEGORY-GROUPS §1-3). 사라진 공식 과제의 "삭제됨" 만 남는다.
   const tag = (kind === 'official' && c.dbGone)
-    ? `<span class="cat-tag gone" title="공식 과제 목록에서 사라진 과제입니다">삭제됨</span>`
-    : (kind === 'official' ? `<span class="cat-tag">${CAT_KIND_LABEL.official}</span>` : '');
-  return `<div class="cat-row" role="listitem" tabindex="0" data-id="${esc(c.id)}" data-kind="${kind}"${kind === 'default' ? ' data-default="1"' : ''} aria-label="${nm} 수정">`
-    + `<span class="cat-grip" data-catgrip aria-hidden="true" title="끌어서 순서 바꾸기">⠿</span>`
+    ? `<span class="cat-tag gone" title="공식 과제 목록에서 사라진 과제입니다">삭제됨</span>` : '';
+  //  휴가, 기타는 고정이라 ⠿ 와 ⋯ 가 없다(§1-5). 칸은 비워 둔다(줄 격자가 다른 줄과 같게). 같은 이름의 옛 중복 줄도 ⠿ 는 없다(catOrderable).
+  return `<div class="cat-row" role="listitem" tabindex="0" data-id="${esc(c.id)}" data-kind="${kind}" data-grp="${g > 1 ? 2 : g}"${fixed ? ' data-default="1"' : ''} aria-label="${nm} 수정">`
+    + (catOrderable(c) ? `<span class="cat-grip" data-catgrip aria-hidden="true" title="끌어서 순서 바꾸기">⠿</span>` : `<span class="cat-grip" aria-hidden="true"></span>`)
     + `<span class="cat-dot" style="background:${validColor(c.color)}"></span>`
     + `<div class="cat-main"><div class="cat-name"><span class="cat-nm" data-full="${nm}" title="${nm}">${nm}</span></div>`
     +   (c.desc ? `<div class="cat-desc" title="${esc(c.desc)}">${esc(c.desc)}</div>` : '')
@@ -13669,8 +13777,14 @@ function catRowHtml(c){
     + `<span class="cat-tagcol">${tag}</span>`   // 공식, 삭제됨 표시는 이름 뒤가 아니라 고정 칸(이름 길이에 따라 움직이지 않게, 2026-11-02 사용자)
     + `<span class="cat-count${u.ev ? '' : ' zero'}" title="${esc(catUsageTip(c.name, u))}">${u.ev}</span>`
     + `<span class="cat-count${u.td ? '' : ' zero'}" title="${esc(catUsageTip(c.name, u))}">${u.td}</span>`
-    + `<button type="button" class="cat-more" data-catmore aria-haspopup="menu" aria-expanded="false" aria-label="${nm} 더 보기" title="더 보기">⋯</button>`
+    + (fixed ? `<span></span>` : `<button type="button" class="cat-more" data-catmore aria-haspopup="menu" aria-expanded="false" aria-label="${nm} 더 보기" title="더 보기">⋯</button>`)
     + `</div>`;
+}
+//  묶음 머리 줄(A'): 공식 과제 n(옅은 파랑), 일반 과제 n(표 머리 회색), 기본 n(바탕 없이 위 굵은 선). 비는 묶음은 머리도 없다.
+const CAT_GROUP_HEAD = [['off', '공식 과제'], ['own', '일반 과제'], ['def', '기본']];
+function catGroupHeadHtml(g, n){
+  const [k, label] = CAT_GROUP_HEAD[g];
+  return `<div class="cat-grp ${k}" role="presentation">${label} <span class="cat-grp-n">${n}</span></div>`;
 }
 //  숫자 문구 뒤 조사. "일정 3개" 처럼 받침이 없다. 목록의 마지막 낱말(일/개)로 고른다(일로 끝나면 받침이 있다).
 const catCountJosa = (what, withB, withoutB) => /일$/.test(what) ? withB : withoutB;
@@ -13681,10 +13795,10 @@ let __catMoveFrom = null;   // '다른 과제와 합치기' 창이 지금 다루
 function openCatMoveModal(fromId){
   if(PEER) return;
   if(guardEdit()) return;
-  const from = state.categories.find(c => c.id === fromId); if(!from) return;
+  const from = state.categories.find(c => c.id === fromId); if(!from || isDefaultTask(from)) return;   // 휴가, 기타는 합치지 않는다(CATEGORY-GROUPS §1-6)
   const what = catDataCountText(catDataCounts(fromId));
   if(!what){ toast(`'${from.name}' 과제에는 합칠 일정, 할 일이 없습니다`, 'info'); return; }
-  const targets = state.categories.filter(c => c.id !== fromId && isPickableCat(c));
+  const targets = state.categories.filter(c => c.id !== fromId && isPickableCat(c) && !isDefaultTask(c));   // 대상에도 휴가, 기타는 없다
   if(!targets.length){ toast('합칠 다른 과제가 없습니다', 'warn'); return; }
   __catMoveFrom = fromId;
   $('#cmvInfo').innerHTML = `<b>${esc(from.name)}</b> 과제의 ${esc(what)}${catCountJosa(what, '을', '를')} 합칠 과제를 고르세요.`;
@@ -13724,8 +13838,18 @@ function renderCatModal(){
   catMenuClose(false);
   const list = $('#catList'); if(!list) return;
   const has = state.categories.length > 0;
-  // 실제 순서 그대로 한 줄로(개인·공식 섞임, R1). 이 순서가 보고서 행·필터 막대·과제 선택에 그대로 쓰인다(R4).
-  list.innerHTML = has ? state.categories.map(c => catRowHtml(c)).join('') : `<div class="cat-empty">등록된 과제가 없습니다.</div>`;
+  // 실제 순서 그대로(R1). 배열은 늘 공식, 일반, 기본 묶음 순서라(CATEGORY-GROUPS) 묶음이 바뀌는 자리마다 머리 줄을 넣는다(A').
+  //  이 순서가 근태 보고, 월간, 필터 막대, 과제 선택에 그대로 쓰인다(R4).
+  let html = '';
+  if(has){
+    const a = state.categories, grp = c => Math.min(2, catGroupRank(c));
+    for(let i = 0; i < a.length; i++){
+      const g = grp(a[i]);
+      if(i === 0 || grp(a[i - 1]) !== g){ let n = 0; while(i + n < a.length && grp(a[i + n]) === g) n++; html += catGroupHeadHtml(g, n); }
+      html += catRowHtml(a[i]);
+    }
+  }
+  list.innerHTML = has ? html : `<div class="cat-empty">등록된 과제가 없습니다.</div>`;
   { const h = document.getElementById('catHead'); if(h) h.classList.toggle('hidden', !has); }
   // 수정 창이 다루던 과제가 사라졌으면(빼기, 재연결, DB 재조회) 창을 닫는다. 남겨 두면 저장이 조용히 아무 일도 안 하는 유령 창이 된다.
   if(__catEditId && !state.categories.some(c => c.id === __catEditId)){ __catEditId = null; closeModal('#catEditModal'); }
@@ -13755,8 +13879,10 @@ function catAnnounce(c, from, to){
 function catReorder(id, to){
   const list = document.getElementById('catList'); if(!list) return false;
   const i = state.categories.findIndex(c => c.id === id);
-  if(i < 0) return false;
-  const j = Math.max(0, Math.min(state.categories.length - 1, to));
+  if(i < 0 || !catOrderable(state.categories[i])) return false;
+  //  묶음 안으로 자른다(CATEGORY-GROUPS §1-4): 맨 위로는 묶음 첫 자리, 맨 아래로는 묶음 끝 자리다.
+  const rg = catGroupRange(id), j = Math.max(rg[0], Math.min(rg[1], to));
+  if(j === i) return false;
   const rows = [...list.querySelectorAll('.cat-row')];
   //  화면과 배열이 같은 순서일 때만 그 자리에서 옮긴다. 어긋나 있으면(드문 경우) 통째로 다시 그린다(순서가 옳은 것이 먼저다).
   const inSync = rows.length === state.categories.length && rows.every((r, k) => r.dataset && r.dataset.id === state.categories[k].id);
@@ -13764,8 +13890,12 @@ function catReorder(id, to){
   const af = document.activeElement, hadFocus = !!(row && af && row.contains(af));
   if(!moveCategory(id, j - i)) return false;
   if(row){
-    const next = state.categories[j + 1];
-    list.insertBefore(row, next ? rows.find(r => r.dataset.id === next.id) : null);
+    //  묶음 안 다음 줄 앞에. 묶음 끝이면 앞 줄 뒤에(다음 묶음의 머리 줄 아래로 들어가지 않게).
+    const next = state.categories[j + 1], prev = state.categories[j - 1];
+    const rowOf = c => rows.find(r => r.dataset.id === c.id);
+    if(next && catGroupRank(next) === catGroupRank(state.categories[j])) list.insertBefore(row, rowOf(next));
+    else if(prev) rowOf(prev).after(row);
+    else list.insertBefore(row, list.firstChild);
     if(hadFocus){ const b = row.querySelector('[data-catmore]'); if(b) try{ b.focus({ preventScroll: true }); }catch(_){} }
   }else{
     renderCatModal();
@@ -13780,21 +13910,22 @@ function catReorder(id, to){
    ★ 공식 과제의 「내 캘린더에서 빼기」는 일정이나 할 일이 있으면 꺼지고, 그 아래에 이유를 짧게 적는다(D7). 기본 과제는 빼기와 삭제가 없다. */
 let __catMenu = null;   // { id, el, btn }: 열린 ⋯ 메뉴
 function catMenuHtml(c){
-  const i = state.categories.indexOf(c), last = state.categories.length - 1, kind = catKindOf(c);
+  //  순서 단추는 묶음 안에서만 움직인다. 묶음 첫 자리면 위로 둘, 끝 자리면 아래로 둘이 꺼진다(CATEGORY-GROUPS §1-4).
+  const i = state.categories.indexOf(c), rg = catGroupRange(c.id) || [i, i], kind = catKindOf(c);
   const item = (act, label, o) => `<button type="button" role="menuitem" tabindex="-1" data-catdo="${act}"`
     + `${o && o.cls ? ` class="${o.cls}"` : ''}${o && o.off ? ' disabled' : ''}>${label}${o && o.why ? `<small>${esc(o.why)}</small>` : ''}</button>`;
   const sep = `<div class="cat-menu-sep" role="separator"></div>`;
   let h = item('edit', '수정');
-  if(catDataCountText(catDataCounts(c.id))) h += item('merge', '다른 과제와 합치기…');
+  if(kind !== 'default' && catDataCountText(catDataCounts(c.id))) h += item('merge', '다른 과제와 합치기…');
   if(kind === 'personal') h += item('link', '공식 과제로 연결…');
   //  순서 넷은 한 줄 그림 단추(맨 위로, 위로, 아래로, 맨 아래로). 메뉴 높이를 줄여 작은 창에서도 ⋯ 바로 아래에 다 들어가게(2026-11-10 B안)
   const ord = (act, label, d, off) => `<button type="button" role="menuitem" tabindex="-1" data-catdo="${act}" title="${label}" aria-label="${label}"${off ? ' disabled' : ''}>`
     + `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="${d}"/></svg></button>`;
-  h += sep + `<div class="cat-menu-ord" role="group" aria-label="순서"><span aria-hidden="true">순서</span>`
-    + ord('top', '맨 위로', 'M3 2.5h10M8 13.5V6M4.5 9.5 8 6l3.5 3.5', i <= 0)
-    + ord('up', '위로', 'M8 13.5V3M4.5 6.5 8 3l3.5 3.5', i <= 0)
-    + ord('down', '아래로', 'M8 2.5V13M4.5 9.5 8 13l3.5-3.5', i >= last)
-    + ord('bottom', '맨 아래로', 'M3 13.5h10M8 2.5V10M4.5 6.5 8 10l3.5-3.5', i >= last)
+  if(catOrderable(c)) h += sep + `<div class="cat-menu-ord" role="group" aria-label="순서"><span aria-hidden="true">순서</span>`
+    + ord('top', '맨 위로', 'M3 2.5h10M8 13.5V6M4.5 9.5 8 6l3.5 3.5', i <= rg[0])
+    + ord('up', '위로', 'M8 13.5V3M4.5 6.5 8 3l3.5 3.5', i <= rg[0])
+    + ord('down', '아래로', 'M8 2.5V13M4.5 9.5 8 13l3.5-3.5', i >= rg[1])
+    + ord('bottom', '맨 아래로', 'M3 13.5h10M8 2.5V10M4.5 6.5 8 10l3.5-3.5', i >= rg[1])
     + `</div>`;
   if(kind === 'official'){
     const n = catUsageCount(c.id);
@@ -13808,7 +13939,7 @@ function catMenuOpen(btn){
   const row = btn && btn.closest('.cat-row'), c = row ? state.categories.find(x => x.id === row.dataset.id) : null;
   const same = !!(__catMenu && __catMenu.btn === btn);
   catMenuClose(false);
-  if(same || !c) return;   // 같은 ⋯ 를 다시 누르면 닫기만 한다
+  if(same || !c || isDefaultTask(c)) return;   // 같은 ⋯ 를 다시 누르면 닫기만 한다. 휴가, 기타는 ⋯ 가 없다(§1-5)
   const m = document.createElement('div');
   m.className = 'cat-menu'; m.setAttribute('role', 'menu'); m.setAttribute('aria-label', c.name);
   m.innerHTML = catMenuHtml(c);
@@ -13918,17 +14049,19 @@ function saveCatEdit(){
   const id = __catEditId, c = state.categories.find(x => x.id === id);
   if(!c){ closeModal('#catEditModal'); return; }
   const color = palValue($('#cePalette')), desc = $('#ceDesc').value.trim();
+  let moved = false;
   if(isOfficialCat(c)) updateOfficialLocalFields(id, desc, color);
   else if(isDefaultTask(c)) updateCategory(id, c.name, color, desc);
   else{
     const name = catNameClean($('#ceName').value);
     if(!name){ toast('과제 이름을 입력하세요', 'warn'); try{ $('#ceName').focus(); }catch(_){} return; }
     if(state.categories.some(x => x.name === name && x.id !== id)){ toast('같은 이름의 과제가 이미 있습니다', 'warn'); return; }
-    updateCategory(id, name, color, desc);
+    if(updateCategory(id, name, color, desc)) moved = true;
   }
   __catEditId = null;
   closeModal('#catEditModal');
-  catRowRefresh(id); renderAll();
+  if(moved) renderCatModal(); else catRowRefresh(id);
+  renderAll();
   toast('과제를 수정했습니다', 'success');
 }
 /* ---------- 장소 칸: 직접 입력 + 공용 회의실 추천(콤보박스, docs/SHARED-ROOMS.md A안) ----------
@@ -16494,6 +16627,7 @@ function rlpToggleGroup(sec){
 function openRelinkPick(catId){
   const c = (state.categories || []).find(x => x.id === catId && !isOfficialCat(x));
   if(!c){ toast('대상 과제를 찾을 수 없습니다', 'error'); return; }
+  if(isDefaultTask(c)) return;   // 휴가, 기타는 공식 과제로 연결하지 않는다(CATEGORY-GROUPS §1-6, 목록에도 없다)
   if(!dbCatalog.length){
     toast(!dbOnline ? '서버에 연결되어야 공식 과제를 고를 수 있습니다. 설정에서 새로고침하세요' : '등록된 공식 과제가 없습니다', 'warn');
     return;
@@ -16510,7 +16644,7 @@ function openRelinkPick(catId){
 function rlpChoose(dbId){
   const src = dbCatalogById(dbId);
   if(!src){ toast('대상 과제를 찾을 수 없습니다. 새로고침 후 다시 시도하세요', 'error'); return; }
-  if(rlpFor) rlPick.set(rlpFor, dbId);
+  if(rlpFor && !isDefaultTask(catById(rlpFor))) rlPick.set(rlpFor, dbId);
   closeModal('#relinkPickModal');
   rlpFor = null;
   renderRelink();
@@ -20379,8 +20513,10 @@ function bind(){
     });
     //  끌어서 순서 바꾸기(공용 손 ordDragInit). 다른 줄 위에서 놓으면 그 줄의 자리로 간다(catReorder → moveCategory, 저장 1회).
     //  목록 밖이나 줄 사이에서 놓으면 아무것도 하지 않는다(nearest 없음).
+    //  놓을 자리는 같은 묶음 줄뿐이다(rows 가 잡은 줄의 묶음만 준다). 다른 묶음 위에서는 선이 생기지 않고 놓아도 그대로다(CATEGORY-GROUPS §1-4).
     ordDragInit({
-      root: list, grip: '[data-catgrip]', row: '.cat-row', rows: () => [...list.querySelectorAll('.cat-row')],
+      root: list, grip: '[data-catgrip]', row: '.cat-row', rows: src => [...list.querySelectorAll('.cat-row')].filter(r => !src || r.dataset.grp === src.dataset.grp),
+      canStart: row => catOrderable(catById(row.dataset.id)),
       ghostIn: () => document.getElementById('categoryModal'),
       ghost: gh => { gh.removeAttribute('tabindex'); gh.querySelectorAll('button').forEach(b => b.remove()); },
       onStart: () => catMenuClose(false),
@@ -26420,6 +26556,7 @@ else if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/
   hpost({ cmd:'loadProjects' });            // 호스트가 DB에서 최신 공식 과제를 읽어 __applyProjects로 회신(실패 시 목록은 빈 채로)
   hpost({ cmd:'loadCodes' });               // 구분/상태 코드목록 → __applyCodes(드롭다운·그룹 정렬 소스)
 }
+dayInstall();             // 자정에 달력의 오늘 표시만 옮긴다(docs/DAY-ROLLOVER-FABLE.md). 첫 renderAll 뒤, 따로 뜨는 창은 안에서 빠진다
 //  ★ 호스트로 나가는 **유일한 문**이다(부팅 ready 하나만 이 함수 밖에 있고, 그것도 PEER 에선 안 보낸다).
 //    그래서 여기 한 곳을 잠그면 쓰기 명령 전부가 한꺼번에 막힌다 — 지금 있는 22개도,
 //    **앞으로 생길 명령도** 자동으로. 그게 이 방식이 유지보수를 안 늘리는 이유다.
@@ -26486,7 +26623,7 @@ function buildReminderOccs(){   // startTime 있는 일정만, 향후 48h 발생
   }
   return out;
 }
-function pushReminders(){ if(!HOST) return; try{ hpost({ cmd:'reminderSync', occ: buildReminderOccs(), theme: reminderTheme() }); }catch(_){} }
+function pushReminders(){ if(!HOST) return; try{ hpost({ cmd:'reminderSync', occ: buildReminderOccs(), theme: reminderTheme() }); if(!PEER && !SUBWIN) dayRemSent = todayYmd(); }catch(_){} }   // 보낸 날을 적는다(알림 끊김 고침, dayRemCheck)
 let __gesture = null; // {type:'move'|'resize', sx, sy, dpr}
 let __pinned = true;  // 바탕화면 부착 상태 — 부착 중에는 이동(드래그) 잠금
 let __winMax = false; // 창 버튼 최대화 상태(호스트가 __setWinState 로 알린다)

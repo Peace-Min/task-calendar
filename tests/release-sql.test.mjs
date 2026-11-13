@@ -1488,8 +1488,8 @@ test('데이터 단계a: 0.28.0 순서 고정은 0.28.0 을 만들 때만 들어
   const open = at("START TRANSACTION;\nUPDATE cal_schema_meta SET v = '0.28.0'");
   assert.ok(endCheck < head && head < body && body < reset && reset < open, '데이터 단계가 끝 확인과 열기 사이에 있지 않다');
   assert.strictEqual(sql.split('-- @data version=0.28.0').length - 1, 1, '데이터 단계가 한 번만 들어가야 한다');
-  //  다른 판에는 없다(끝 확인과 열기 사이 모양도 예전 그대로)
-  for (const v of ['0.27.0', '0.28.1', '0.29.0', VER]) {
+  //  다른 판에는 없다(끝 확인과 열기 사이 모양도 예전 그대로). 0.29.0 은 자기 데이터 단계(과제 묶음)가 있어 데이터 단계e 가 본다
+  for (const v of ['0.27.0', '0.28.1', '0.29.1', VER]) {
     const r = v === VER ? { code: 0, sql: realSql() } : gen(FRAG_DIR, APP, { version: v });
     assert.strictEqual(r.code, 0, `${v} 배포 SQL 을 만들지 못했다`);
     assert.ok(!r.sql.includes('@data_go') && !r.sql.includes('4.5) 판 데이터 단계'), `${v} 배포 SQL 에 0.28.0 데이터 단계가 들어갔다`);
@@ -1569,4 +1569,104 @@ test('데이터 단계d: 규칙을 어긴 데이터 파일은 -CheckOnly 에서�
     assert.strictEqual(r.code, 3, `${label}: 데이터 단계 규칙 위반을 잡지 못한다(exit ${r.code})`);
     assert.ok(r.log.includes(`[${tag}]`), `${label}: 꼬리표가 ${tag} 가 아니다: ${r.log}`);
   }
+});
+
+// ── 0.29.0(계획 판) 과제 묶음 순서(docs/CATEGORY-GROUPS.md §2) ────────────────────────────────────
+//  ★ 판 번호는 배포 때 정한다. 실제 판이 다르면 파일 이름, 첫 줄 머리, 아래 GRP029 와 판 문 숫자를 함께 바꾼다.
+//  cal_category.sort_order 를 사람마다 공식(source = 'db'), 일반, 휴가, 기타 순으로 다시 매긴다. 묶음 안은 sort_order, uid.
+const GRP029 = '0.29.0-category-groups.sql';
+const GRP_RANK = "(CASE WHEN source = 'db' THEN 0 WHEN TRIM(name) = '휴가' THEN 2 WHEN TRIM(name) = '기타' THEN 3 ELSE 1 END), sort_order, uid";
+const grp029Text = () => readText(join(DATA_DIR, GRP029)).replace(/\r\n/g, '\n');
+let _sql029 = null;
+const sql029 = () => {
+  if (_sql029 === null) {
+    const r = gen(FRAG_DIR, APP, { version: '0.29.0' });
+    assert.strictEqual(r.code, 0, `0.29.0 배포 SQL 을 만들지 못했다(exit ${r.code}): ${r.log}`);
+    _sql029 = r.sql;
+  }
+  return _sql029;
+};
+const grpChecks = {
+  //  같은 순서식이 rev 세기와 다시 매기기 둘 다에 있고, 한 트랜잭션 안에서 rev 먼저, 기본 키로 짝짓는다
+  shape(t) {
+    const orders = [...dataCode(t).matchAll(/ORDER BY ([^;]*?\buid) *\) - 1 AS rn\s+FROM (\w+)\)/g)].map((m) => [m[2], m[1].replace(/\s+/g, ' ').replace(/\( /g, '(')]);
+    assert.deepStrictEqual(orders, [['cal_category', GRP_RANK], ['cal_category', GRP_RANK]], '과제 묶음 순서식이 rev 세기와 다시 매기기에서 다르거나 앱 규칙(공식, 일반, 휴가, 기타, 그다음 sort_order, uid)과 다르다: ' + JSON.stringify(orders));
+    const seq = ['START TRANSACTION;', 'INSERT INTO cal_user_rev (user_id, rev)', 'WHERE x.sort_order <> x.rn', 'ON DUPLICATE KEY UPDATE rev = rev + 1;', 'UPDATE cal_category c', 'COMMIT;'];
+    const pos = seq.map((n) => { const i = t.indexOf(n); assert.ok(i >= 0, `${GRP029} 에 ${n} 가 없다`); return i; });
+    for (let k = 1; k < pos.length; k++) assert.ok(pos[k - 1] < pos[k], `${GRP029} 의 순서가 틀렸다: ${seq[k - 1]} 가 ${seq[k]} 보다 뒤다`);
+    assert.ok(t.includes('WHERE r.user_id = c.user_id AND r.cat_no = c.cat_no)'), '과제 다시 매기기가 기본 키(user_id, cat_no)로 짝짓지 않는다');
+    assert.ok(/WHERE d\.user_id > 0 AND @data_go = 1\nON DUPLICATE KEY UPDATE rev = rev \+ 1;/.test(t), 'rev 올리기에 키 칸 조건과 판 문이 없다');
+  },
+};
+test('데이터 단계e: 0.29.0 과제 묶음은 0.29.0 을 만들 때만 들어가고(0.28.0 단계와 섞이지 않는다), 판 문은 < 29000', () => {
+  assert.ok(DATA_FILES.includes(GRP029), `${GRP029} 가 없다(판정 불가)`);
+  const sql = sql029();
+  const at = (needle, from = 0) => { const i = sql.indexOf(needle, from); assert.ok(i >= 0, `0.29.0 SQL 에 ${needle} 가 없다`); return i; };
+  const endCheck = at('`중단: 끝 확인 실패');
+  const body = at(`-- ---------- 데이터 단계 ${GRP029} (0.29.0) ----------`);
+  const reset = at('SET @data_go := 0;', body);
+  const open = at("START TRANSACTION;\nUPDATE cal_schema_meta SET v = '0.29.0'");
+  assert.ok(endCheck < body && body < reset && reset < open, '데이터 단계가 끝 확인과 열기 사이에 있지 않다');
+  assert.strictEqual(sql.split('-- @data version=0.29.0').length - 1, 1, '0.29.0 데이터 단계가 한 번만 들어가야 한다');
+  assert.ok(!sql.includes('-- @data version=0.28.0') && !sql.includes(ORD028), '0.29.0 배포 SQL 에 0.28.0 데이터 단계가 들어갔다');
+  assert.ok(!sql028().includes(GRP029), '0.28.0 배포 SQL 에 0.29.0 데이터 단계가 들어갔다');
+  assert.ok(sql.includes("  + CAST(SUBSTRING_INDEX(@r_lv, '.', -1) AS UNSIGNED) < 29000, 1, 0);"), '0.29.0 판 문(숫자 비교 < 29000)이 없다');
+});
+test('데이터 단계f: 0.29.0 과제 묶음 SQL 은 같은 순서식 둘, rev 먼저, 기본 키 짝짓기, 정본 칸(source, name, sort_order, uid)과 맞는다', () => {
+  grpChecks.shape(grp029Text());
+  const schema = readText(join(ROOT, 'db', 'deploy', 'schema-calendar.sql'));
+  const tbl = /CREATE TABLE cal_category \(([\s\S]*?)\) ENGINE/.exec(schema);
+  assert.ok(tbl, '정본에 cal_category 가 없다');
+  assert.ok(/PRIMARY KEY \(user_id, cat_no\)/.test(tbl[1]), '정본 cal_category 의 기본 키가 바뀌었다(짝짓기를 다시 볼 것)');
+  for (const col of ['source', 'name', 'sort_order', 'uid']) assert.ok(new RegExp('\\n\\s*' + col + '\\s').test(tbl[1]), `정본 cal_category 에 ${col} 칸이 없다`);
+});
+test('데이터 단계g: 0.29.0 SQL 의 순서는 앱의 부팅 정리(catGroupNormalize)와 같은 결과다(같은 이름 중복, 앞뒤 공백, 공식 이름 휴가 포함)', () => {
+  //  앱 쪽: 부팅 조회 순서(sort_order, uid)로 받은 배열에 catGroupNormalize. SQL 쪽: CASE 묶음, sort_order, uid
+  const app = readText(join(ROOT, 'task-calendar-prototype.html'));
+  const fx = (n) => {
+    const m = new RegExp('function ' + n + '\\(').exec(app); assert.ok(m, `앱에 ${n} 가 없다`);
+    let d = 0;
+    for (let j = app.indexOf('{', m.index); j < app.length; j++) { if (app[j] === '{') d++; else if (app[j] === '}' && --d === 0) return app.slice(m.index, j + 1); }
+    throw new Error(n);
+  };
+  const names = /const DEFAULT_TASKS = (\[[^\n]*\]);/.exec(app);
+  assert.ok(names, '앱의 DEFAULT_TASKS 를 찾지 못했다');
+  const appNorm = new Function(`const DEFAULT_TASKS = ${names[1]}; const DEFAULT_TASK_NAMES = DEFAULT_TASKS.map(d => d.name);
+    const catNameKey = c => String((c && c.name) || '').trim(); ${fx('catGroupRank')} ${fx('catGroupNormalize')} return (s) => { catGroupNormalize(s); return s.categories; };`)();
+  const sqlRank = (r) => r.source === 'db' ? 0 : r.name.trim() === '휴가' ? 2 : r.name.trim() === '기타' ? 3 : 1;
+  const byKey = (a, b) => (a.sort_order - b.sort_order) || (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0);
+  const rows = [
+    { uid: 'c-z', source: 'local', name: '기타', sort_order: 0 }, { uid: 'db-b', source: 'db', name: '휴가', sort_order: 1 },
+    { uid: 'c-a', source: 'local', name: '알파', sort_order: 2 }, { uid: 'c-v', source: 'local', name: ' 휴가', sort_order: 3 },
+    { uid: 'db-a', source: 'db', name: '공식', sort_order: 3 }, { uid: 'c-b', source: 'local', name: '베타', sort_order: 5 },
+    { uid: 'c-v2', source: 'local', name: '휴가', sort_order: 6 }, { uid: 'c-e2', source: 'local', name: '기타 ', sort_order: 7 },
+    { uid: 'c-c', source: 'local', name: '감마', sort_order: 7 },
+  ];
+  const asCats = (ids) => ids.map((id) => { const r = rows.find((x) => x.uid === id); return { id, name: r.name, source: r.source === 'db' ? 'db' : undefined }; });
+  const viaApp = appNorm({ categories: asCats(rows.slice().sort(byKey).map((r) => r.uid)) }).map((c) => c.id);
+  const viaSql = rows.slice().sort((a, b) => (sqlRank(a) - sqlRank(b)) || byKey(a, b)).map((r) => r.uid);
+  assert.deepStrictEqual(viaSql, ['db-b', 'db-a', 'c-a', 'c-b', 'c-c', 'c-v', 'c-v2', 'c-z', 'c-e2'], 'SQL 순서 흉내가 기대와 다르다');
+  assert.deepStrictEqual(viaApp, viaSql, '앱의 부팅 정리와 배포 SQL 의 묶음 순서가 다르다');
+  //  한 번 더 돌려도 같다(앱 정리의 멱등)
+  assert.deepStrictEqual(appNorm({ categories: asCats(viaApp) }).map((c) => c.id), viaApp, '앱 정리를 두 번 돌리면 결과가 다르다');
+});
+test('변이R60: 다시 매기기의 묶음 순서식에서 휴가 자리를 바꾸면 데이터 단계f 가 실패한다', () => {
+  const t = grp029Text();
+  const i = t.indexOf('UPDATE cal_category c');
+  const bad = t.slice(0, i) + mutate(t.slice(i), "WHEN TRIM(name) = '휴가' THEN 2", "WHEN TRIM(name) = '휴가' THEN 4");
+  assert.throws(() => grpChecks.shape(bad), /순서식이 rev 세기와 다시 매기기에서 다르거나/);
+});
+test('변이R61: rev 올리기를 다시 매기기 뒤로 보내면 데이터 단계f 가 실패한다', () => {
+  const t = grp029Text();
+  const a = t.indexOf('-- 1) 순서가 바뀌는 사람의'), b = t.indexOf('-- 2) 과제:'), c = t.indexOf('COMMIT;');
+  const bad = t.slice(0, a) + t.slice(b, c) + t.slice(a, b) + t.slice(c);
+  assert.throws(() => grpChecks.shape(bad), /순서가 틀렸다/);
+});
+test('변이R62: 0.29.0 데이터 파일의 UPDATE 에서 키 칸 WHERE 를 빼면 조립기가 종료코드 3 으로 멈춘다', () => {
+  const good = grp029Text();
+  const bad = mutate(good, ' WHERE c.user_id > 0 AND @data_go = 1;', ';');
+  const d = join(TMP, `data-${++seq}`); mkdirSync(d); writeFileSync(join(d, GRP029), bad, 'utf8');
+  const r = gen(FRAG_DIR, APP, { checkOnly: true, dataDir: d });
+  assert.strictEqual(r.code, 3, `키 칸 WHERE 없는 과제 다시 매기기를 잡지 못한다(exit ${r.code})`);
+  assert.ok(/\[(NO_WHERE|NO_DATA_GATE)\]/.test(r.log), `꼬리표가 다르다: ${r.log}`);
 });

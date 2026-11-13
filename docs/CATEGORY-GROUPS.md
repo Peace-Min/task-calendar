@@ -26,6 +26,7 @@
   - 모든 바꾸는 문장에 키 칸 WHERE 를 붙인다. 한 표 UPDATE 이고 창 함수를 쓴다.
   - 저장 프로그램과 임시 표를 쓰지 않는다.
 - 공식, 휴가, 기타를 가르는 DB 칸은 구현 때 schema-calendar.sql 과 앱의 `isOfficialCat`, `isDefaultTask` 판정에 맞춰 정하고 문서에 적는다.
+  - 구현(2026-11-13): `db/deploy/data/0.29.0-category-groups.sql`(계획 판. 배포 판이 다르면 파일 이름과 머리를 바꾼다). 공식 = `source = 'db'`, 휴가 = `source <> 'db'` 이고 `TRIM(name) = '휴가'`, 기타 = 같은 꼴로 `'기타'`, 그 밖은 일반. 앱의 묶음 번호 `catGroupRank` 와 같다. 이름이 같은 개인 과제가 둘이면 둘 다 그 이름 묶음에 모이고 앞의 것(기본 과제)이 앞이다(그래야 몇 번 돌려도 같다). 리허설은 DB-RELEASE-OPS §5.4.
 
 ## 3. 같은 작업: 자정 넘김 오늘 표시(docs/DAY-ROLLOVER-FABLE.md)와 알림 끊김
 - 구현 기준은 DAY-ROLLOVER-FABLE.md 다. 오늘 표시만 옮기고, 알림 목록 다시 보내기는 별도 커밋으로 한다.

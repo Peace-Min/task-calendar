@@ -189,6 +189,11 @@
 - 0.27.0 의 할 일 모아 보기(기한 지남 묶음)는 기한 순이었다. 날짜 패널 순서(`todoZoneCmp`)를 기준으로 삼았다.
 - 리허설(2026-11-12, MySQL 8.4.9, 개발 DB 사본 `zz_ord028`, `mysql --safe-updates`): 사용자 89, 일정 3,639행, 할 일 567행(동률, 시각 없음, 종일, 초 있는 시각, 중요, 완료를 꾸민 17행 포함). 1회차 0.27.0 에서 rc 0, 약 0.2초, 모든 사람의 새 순서가 옛 JS 비교 함수(06e9bd0 의 `entrySort`, `todoZoneCmp` 글자 그대로)로 정렬한 순서와 같고 0 부터 빈틈 없음, rev 는 순서가 바뀐 89명만 1 올랐다(개발 DB 는 시드 순서가 화면 순서와 달라 모두 바뀜). 열기는 0.28.0 과 Setup 해시. 2회차 rc 0, 순서와 rev 그대로. 열린 뒤 바꾼 순서는 다시 돌려도 그대로, `0.100.0` 은 건너뜀, 한 사람만 흐트러진 채 `0.9.0` 으로 돌리면 그 사람만 다시 매기고 rev +1, `abc` 는 1146 으로 멈춤.
 
+**다음 판(계획 0.29.0) `0.29.0-category-groups.sql`(내 과제 묶음, docs/CATEGORY-GROUPS.md §2).** 판 번호는 배포 때 정한다. 실제 판이 0.29.0 이 아니면 **파일 이름과 첫 줄 머리(`-- @data version=`)를 그 판으로 바꾼다**(조립기는 머리 판 = 빌드 판일 때만 넣는다. 안 바꾸면 이 단계가 빠진다). `tests/release-sql.test.mjs` 의 `GRP029` 와 판 문 숫자도 함께.
+- `cal_category.sort_order` 를 사람마다 묶음 순서로 0 부터 빈틈 없이 다시 매긴다: `CASE WHEN source = 'db' THEN 0 WHEN TRIM(name) = '휴가' THEN 2 WHEN TRIM(name) = '기타' THEN 3 ELSE 1 END, sort_order, uid`. 공식은 앱 `isOfficialCat`(`source === 'db'`, 칸은 _bin), 휴가와 기타는 앱 `isDefaultTask` 의 이름 판정(개인 과제, 앞뒤 공백 뺀 이름). 이름이 같은 개인 과제가 둘 이상이면 둘 다 그 이름 묶음이고 앞의 것이 앞이다(앱 `catGroupNormalize` 와 같은 결과, 시험 데이터 단계g).
+- rev 는 sort_order 가 하나라도 바뀌는 사람만 먼저 +1, 같은 트랜잭션. 짝짓기는 기본 키(user_id, cat_no).
+- 리허설(2026-11-13, MySQL 8.4.9, 개발 DB 사본 `zz_cat_ord`, `mysql --safe-updates`, 조립기로 만든 0.29.0 release SQL, 열기 전 `app_latest_version = 0.28.0`): 사용자 89, 과제 718행(개발 DB 713행에 휴가 둘, ' 기타 ', 동률 sort_order, 맨 앞 기타를 꾸민 5행 더함, 한 사람은 미리 묶음 순서로 맞춰 둠). 1회차 rc 0, 약 0.2초, 89명 모두 묶음 순서이고 묶음 안은 옛 순서(sort_order, uid) 그대로, 0 부터 빈틈 없음, rev 는 순서가 바뀐 88명만 +1(미리 맞춘 1명은 그대로). 2회차는 판 문이 닫혀 건너뛰고 행과 rev 그대로. `app_latest_version` 을 0.28.0 으로 되돌려 다시 돌려도(이미 맞음) 행과 rev 그대로. 사본은 지웠다.
+
 ## 6. 실패했을 때
 
 - MySQL 은 구조 변경 문장이 하나씩 즉시 확정되어, SQL 파일 전체의 원자성은 없다. 위 순서가 그것을 대신한다.

@@ -26,7 +26,9 @@ function defaultTasksSrc(source) {
     assert.ok(m, `소스에서 const ${n} 선언을 찾지 못했다`);
     return m[0];
   });
-  return consts.join('\n') + '\n' + extractFunction(source, 'defaultTaskOf') + '\n' + extractFunction(source, 'ensureDefaultTasks') + '\n';
+  return consts.join('\n') + '\n' + extractFunction(source, 'defaultTaskOf') + '\n' + extractFunction(source, 'ensureDefaultTasks') + '\n'
+    //  보장 함수는 끝에서 묶음 순서 정리(catGroupNormalize, docs/CATEGORY-GROUPS.md)를 부른다. 그 두 함수도 소스에서 잘라 온다
+    + extractFunction(source, 'catGroupRank') + '\n' + extractFunction(source, 'catGroupNormalize') + '\n';
 }
 function buildDefaultState(source) {
   return new Function(

@@ -1,7 +1,9 @@
 // 과제 순서 설정(docs/CATEGORY-ORDER.md — R1~R9 · 수용 C1~C8)의 웹 쪽 계약.
 //
 // 이 파일이 지키는 것:
-//   ① 「내 과제」 목록은 state.categories 를 **그 순서 그대로** 그린다(개인·공식 섞임 · 다시 묶지 않는다 — R1·C1).
+//   ① 「내 과제」 목록은 state.categories 를 **그 순서 그대로** 그린다(R1·C1). 2026-11-13(docs/CATEGORY-GROUPS.md)부터 배열은
+//      늘 공식, 일반, 휴가, 기타 묶음 순서이고(catGroupNormalize) 목록은 묶음마다 머리 줄을 넣을 뿐 다시 정렬하지 않는다.
+//      순서 단추와 끌기는 묶음 안에서만 움직인다(끝은 묶음 끝). 휴가, 기타는 ⠿ 와 ⋯ 가 없다. 묶음 시험은 category-groups.test.mjs.
 //   ② 순서 바꾸기(2026-10-30 TASK-ADD-UX D3, D5): 줄마다 ▲▼ 버튼 대신 ⠿ 끌기(포인터 이벤트)와 ⋯ 메뉴의 순서 묶음
 //      (위로, 아래로, 맨 위로, 맨 아래로). 끝(첫 줄의 위로·맨 위로, 마지막 줄의 아래로·맨 아래로)은 꺼져 있다.
 //      ★ 2026-10-06(docs/ADMIN-HUB-4.md N3)의 ▲▼ 는 2026-10-30 에 ⋯ 메뉴로 모였다. ✥ 끌기(category-drag)는 그 전에 지웠다.
@@ -45,8 +47,8 @@ const fnBody = (app, name) => stripJs(extractFunction(app, name));
 const MUT = {
   //  개인 먼저·공식 뒤로 다시 묶던 옛 판(R1 위반)
   regroup: (s) => mutate(
-    "list.innerHTML = has ? state.categories.map(c => catRowHtml(c)).join('') :",
-    "list.innerHTML = has ? state.categories.filter(c => !isOfficialCat(c)).concat(state.categories.filter(isOfficialCat)).map(catRowHtml).join('') :",
+    "    const a = state.categories, grp = c => Math.min(2, catGroupRank(c));",
+    "    const a = state.categories.filter(c => !isOfficialCat(c)).concat(state.categories.filter(isOfficialCat)), grp = c => Math.min(2, catGroupRank(c));",
     s),
   //  관문 없이 바로 바꾼다(R7 위반)
   noGuard: (s) => mutate(
@@ -63,20 +65,20 @@ const MUT = {
     '  .cat-grip,.cat-head .ch-grip{display:none}\n',
     '',
     s),
-  //  끝 막기를 지운다 — 맨 위에서 위로 = 배열 밖(-1)으로 빠진다(메뉴 끝 항목 계약의 데이터 쪽 짝)
-  noEndStop: (s) => mutate(
-    '  if(i < 0 || j === i || j < 0 || j >= state.categories.length) return false;',
-    '  if(i < 0 || j === i) return false;',
+  //  묶음 막기를 지운다: 일반 묶음 첫 줄을 위로 = 공식 묶음으로 넘어간다(메뉴 끝 항목 계약의 데이터 쪽 짝, CATEGORY-GROUPS §1-4)
+  noGroupStop: (s) => mutate(
+    '  if(!catOrderable(state.categories[i]) || catGroupRank(state.categories[j]) !== catGroupRank(state.categories[i])) return false;\n',
+    '',
     s),
   //  메뉴의 끝 항목을 끄지 않는다(첫 줄의 위로가 켜져 있다)
   noMenuEnds: (s) => mutate(
-    "ord('up', '위로', 'M8 13.5V3M4.5 6.5 8 3l3.5 3.5', i <= 0)",
+    "ord('up', '위로', 'M8 13.5V3M4.5 6.5 8 3l3.5 3.5', i <= rg[0])",
     "ord('up', '위로', 'M8 13.5V3M4.5 6.5 8 3l3.5 3.5', false)",
     s),
   //  옮길 때 목록을 통째로 다시 그린다(R3 위반: 스크롤과 포커스가 날아간다)
   rerender: (s) => mutate(
-    '  if(row){\n    const next = state.categories[j + 1];',
-    '  if(false){\n    const next = state.categories[j + 1];',
+    '  if(row){\n    //  묶음 안 다음 줄 앞에.',
+    '  if(false){\n    //  묶음 안 다음 줄 앞에.',
     s),
   //  보고서 행을 이름순으로 정렬한다(R4 위반)
   sortReport: (s) => mutate(
@@ -104,7 +106,8 @@ const statics = {
   //  목록 = state.categories 그대로(다시 묶지 않는다 · 정렬하지 않는다). 옛 안내 한 줄(R8)은 D1 에서 없앴다(설명 문구 없음).
   listInRealOrder(app) {
     const b = fnBody(app, 'renderCatModal');
-    assert.ok(/list\.innerHTML\s*=\s*has \? state\.categories\.map\(c => catRowHtml\(c\)\)/.test(b), 'renderCatModal 이 state.categories 를 그대로 그리지 않는다(R1)');
+    //  배열 순서 그대로 한 줄씩(묶음이 바뀌는 자리에 머리 줄만 넣는다, CATEGORY-GROUPS A')
+    assert.ok(/const a = state\.categories, grp = /.test(b) && /html \+= catRowHtml\(a\[i\]\)/.test(b) && /list\.innerHTML = has \? html :/.test(b), 'renderCatModal 이 state.categories 를 그대로 그리지 않는다(R1)');
     assert.ok(!/isOfficialCat/.test(b), 'renderCatModal 이 공식/개인을 가른다 — 목록이 실제 순서와 갈린다(R1)');
     assert.ok(!/\.concat\(|\.sort\(|\.reverse\(/.test(b), 'renderCatModal 이 목록을 재배열한다(R1)');
     assert.ok(!app.includes('순서는 보고서·필터에 그대로 반영됩니다') && !/catOrderHint/.test(app), '없앤 안내 한 줄(#catOrderHint)이 되살아났다(D1)');
@@ -116,8 +119,9 @@ const statics = {
     assert.ok(/<span class="cat-grip" data-catgrip aria-hidden="true"/.test(row), '줄에 ⠿ 손잡이(data-catgrip, 마우스 전용 aria-hidden)가 없다(D3)');
     assert.ok(/data-catmore aria-haspopup="menu" aria-expanded="false" aria-label="\$\{nm\} 더 보기"/.test(row), '줄의 ⋯ 가 메뉴 버튼(aria-haspopup, aria-expanded, aria-label)이 아니다(D5)');
     const m = fnBody(app, 'catMenuHtml');
-    assert.ok(/ord\('top', '맨 위로', '[^']+', i <= 0\)/.test(m) && /ord\('up', '위로', '[^']+', i <= 0\)/.test(m)
-      && /ord\('down', '아래로', '[^']+', i >= last\)/.test(m) && /ord\('bottom', '맨 아래로', '[^']+', i >= last\)/.test(m),
+    //  끝은 묶음 끝이다(catGroupRange, CATEGORY-GROUPS §1-4)
+    assert.ok(/rg = catGroupRange\(c\.id\)/.test(m) && /ord\('top', '맨 위로', '[^']+', i <= rg\[0\]\)/.test(m) && /ord\('up', '위로', '[^']+', i <= rg\[0\]\)/.test(m)
+      && /ord\('down', '아래로', '[^']+', i >= rg\[1\]\)/.test(m) && /ord\('bottom', '맨 아래로', '[^']+', i >= rg\[1\]\)/.test(m),
       '⋯ 메뉴의 순서 묶음(위로, 아래로, 맨 위로, 맨 아래로)이 없거나 끝 항목을 끄지 않는다(D3, D5)');
     assert.ok(/role="menuitem"/.test(m) && /' disabled'/.test(m), '메뉴 항목이 menuitem 이 아니거나 끝 항목이 disabled 가 아니다');
     const ro = fnBody(app, 'catReorder');
@@ -245,15 +249,15 @@ if (!JSDOM) {
   const ENT = (id, categoryId) => ({ id, date: '2026-10-01', title: '업무 ' + id, categoryId, allDay: true, startTime: '', endTime: '',
     memo: '', location: '', source: '', commits: [], createdAt: CA, updatedAt: CA });
   //  이름은 '이름순 정렬'이 실제 순서와 갈리도록 고른다(감마 < 공식 < 베타 < 알파 · ko).
-  //  기본 과제(휴가, 기타 · DEFAULT-TASKS §2)는 늘 있으므로 서버에 이미 있는 것으로 맨 뒤에 둔다(없으면 부팅 보장이 맨 뒤에 붙인다).
+  //  서버 순서는 일부러 섞어 둔다(공식이 일반 사이). 부팅이 묶음 순서(공식, 일반, 휴가, 기타)로 맞춘다(CATEGORY-GROUPS §1-8).
   //  e-u(과제 없는 옛 기록)는 남긴다 — 보고서에 합성 행을 만들지 않는다는 것을 행동②가 본다.
   const DATA = {
-    categories: [CAT('c-a', '알파'), CAT('c-b', '베타'), CAT('c-c', '감마'), CAT('db-o', '공식 오메가', { source: 'db' }), CAT('c-v', '휴가'), CAT('c-e', '기타')],
+    categories: [CAT('c-a', '알파'), CAT('c-b', '베타'), CAT('db-o', '공식 오메가', { source: 'db' }), CAT('c-c', '감마'), CAT('db-p', '공식 파이', { source: 'db' }), CAT('c-v', '휴가'), CAT('c-e', '기타')],
     entries: [ENT('e-a', 'c-a'), ENT('e-b', 'c-b'), ENT('e-c', 'c-c'), ENT('e-o', 'db-o'), ENT('e-u', null)],
     todos: [], rooms: ['201호'],
   };
-  const ALL = ['c-a', 'c-b', 'c-c', 'db-o', 'c-v', 'c-e'];
-  //  「기타」 과제가 가운데 있는 판(휴가는 부팅 보장이 맨 뒤에 붙인다) — 미분류는 그쪽으로 **합쳐지지 않는다**(2026-10-07).
+  const ALL = ['db-o', 'db-p', 'c-a', 'c-b', 'c-c', 'c-v', 'c-e'];
+  //  「기타」 과제가 가운데 있는 판(휴가는 부팅 보장이 만든다). 부팅이 기타를 맨 아래로 옮긴다. 미분류는 그쪽으로 **합쳐지지 않는다**(2026-10-07).
   const DATA_GITA = {
     categories: [CAT('c-a', '알파'), CAT('c-b', '베타'), CAT('c-g', '기타'), CAT('c-c', '감마')],
     entries: [ENT('e-a', 'c-a'), ENT('e-b', 'c-b'), ENT('e-g', 'c-g'), ENT('e-c', 'c-c'), ENT('e-u', null)],
@@ -351,53 +355,58 @@ if (!JSDOM) {
   const saveOrders = (W) => JSON.parse(JSON.stringify(W.reqs('saveState').map((x) => x.params.state.categories.map((c) => c.id))));
 
   const checks = {
-    //  C1·C2·C5·⑤ — 목록 순서 · 한 칸 이동 · 저장 1회 · payload 순서 · 끝 비활성 · 필터 막대·선택 상자 순서
+    //  C1, C2, C5, ⑤: 목록 순서, 한 칸 이동, 저장 1회, payload 순서, 묶음 끝 비활성, 필터 막대와 선택 상자 순서
     async moveAndSave(source) {
       await withBoot(source, DATA, async (W) => {
-        assert.deepStrictEqual(W.order(), ALL, '시드 순서가 다르다');
-        assert.ok(W.ev("isOfficialCat(state.categories[3])"), '공식 과제가 공식으로 실리지 않았다(시드 문제)');
+        assert.deepStrictEqual(W.order(), ALL, '시드 순서가 다르다(부팅이 묶음 순서로 맞추지 않았다)');
+        assert.ok(W.ev("isOfficialCat(state.categories[0])"), '공식 과제가 공식으로 실리지 않았다(시드 문제)');
         assert.deepStrictEqual(W.domOrder(), W.order(), '목록이 state.categories 순서가 아니다(C1)');
         assert.strictEqual(W.w.document.querySelectorAll('#catList [data-act="up"], #catList [data-act="down"]').length, 0, '줄에 ▲▼ 버튼이 남았다(D3)');
-        //  끝 항목은 꺼져 있다(첫 줄의 위로, 맨 위로 · 마지막 줄의 아래로, 맨 아래로)
-        for (const [id, acts, on] of [['c-a', ['up', 'top'], ['down', 'bottom']], ['c-e', ['down', 'bottom'], ['up', 'top']]]) {
+        //  끝 항목은 묶음 끝에서 꺼져 있다(묶음 첫 줄의 위로, 맨 위로. 묶음 끝 줄의 아래로, 맨 아래로)
+        for (const [id, acts, on] of [['c-a', ['up', 'top'], ['down', 'bottom']], ['c-c', ['down', 'bottom'], ['up', 'top']],
+          ['db-o', ['up', 'top'], ['down', 'bottom']], ['db-p', ['down', 'bottom'], ['up', 'top']]]) {
           for (const a of acts) assert.strictEqual(W.item(id, a).disabled, true, `${id} 의 ${a} 가 꺼져 있지 않다(끝)`);
           for (const a of on) assert.strictEqual(W.item(id, a).disabled, false, `${id} 의 ${a} 가 꺼져 있다`);
           W.ev('catMenuClose(false)');
         }
         //  꺼진 항목을 눌러도 아무것도 바뀌지 않는다(저장 0)
         await press(W, 'c-a', 'up');
-        await press(W, 'c-e', 'bottom');
+        await press(W, 'c-c', 'bottom');
         assert.deepStrictEqual(W.order(), ALL, '끝 항목을 눌렀더니 순서가 바뀌었다');
         assert.strictEqual(saveOrders(W).length, 0, '끝 항목을 눌렀더니 저장이 나갔다');
         assert.strictEqual(W.more('c-c').getAttribute('aria-label'), '감마 더 보기', '⋯ 의 aria-label 이 다르다');
         assert.strictEqual(W.more('c-c').tagName, 'BUTTON');
 
         await press(W, 'c-c', 'up');
-        assert.deepStrictEqual(W.order(), ['c-a', 'c-c', 'c-b', 'db-o', 'c-v', 'c-e'], '「위로」 한 번이 한 칸 이동이 아니다(C2)');
-        assert.deepStrictEqual(saveOrders(W), [['c-a', 'c-c', 'c-b', 'db-o', 'c-v', 'c-e']], '한 번 옮겼는데 저장이 1회가 아니거나 payload 순서가 다르다(C2)');
+        assert.deepStrictEqual(W.order(), ['db-o', 'db-p', 'c-a', 'c-c', 'c-b', 'c-v', 'c-e'], '「위로」 한 번이 한 칸 이동이 아니다(C2)');
+        assert.deepStrictEqual(saveOrders(W), [['db-o', 'db-p', 'c-a', 'c-c', 'c-b', 'c-v', 'c-e']], '한 번 옮겼는데 저장이 1회가 아니거나 payload 순서가 다르다(C2)');
         await press(W, 'c-c', 'up');
-        assert.deepStrictEqual(W.order(), ['c-c', 'c-a', 'c-b', 'db-o', 'c-v', 'c-e'], '「위로」 두 번 뒤 순서가 C,A,B,O 가 아니다');
+        assert.deepStrictEqual(W.order(), ['db-o', 'db-p', 'c-c', 'c-a', 'c-b', 'c-v', 'c-e'], '「위로」 두 번 뒤 순서가 C,A,B 가 아니다');
         let saves = saveOrders(W);
         assert.strictEqual(saves.length, 2, '두 번 옮겼는데 저장이 ' + saves.length + '회다(한 번 = 저장 1회)');
-        assert.deepStrictEqual(saves[1], ['c-c', 'c-a', 'c-b', 'db-o', 'c-v', 'c-e'], '저장 payload 의 categories 순서가 화면 순서가 아니다(호스트는 배열 자리를 sort_order 로 쓴다)');
+        assert.deepStrictEqual(saves[1], ['db-o', 'db-p', 'c-c', 'c-a', 'c-b', 'c-v', 'c-e'], '저장 payload 의 categories 순서가 화면 순서가 아니다(호스트는 배열 자리를 sort_order 로 쓴다)');
         assert.deepStrictEqual(W.domOrder(), W.order(), '옮긴 뒤 목록이 state.categories 순서가 아니다');
-        assert.strictEqual(W.item('c-c', 'up').disabled, true, '맨 위로 온 줄의 「위로」가 꺼지지 않았다');
+        assert.strictEqual(W.item('c-c', 'up').disabled, true, '묶음 맨 위로 온 줄의 「위로」가 꺼지지 않았다');
         W.ev('catMenuClose(false)');
-        assert.strictEqual(W.item('c-a', 'up').disabled, false, '맨 위에서 밀려난 줄의 「위로」가 꺼진 채다');
+        assert.strictEqual(W.item('c-a', 'up').disabled, false, '묶음 맨 위에서 밀려난 줄의 「위로」가 꺼진 채다');
         W.ev('catMenuClose(false)');
-        //  맨 아래로 = 여러 칸이어도 저장 한 번
+        //  맨 아래로 = 묶음 끝(휴가, 기타 위). 여러 칸이어도 저장 한 번
         await press(W, 'c-c', 'bottom');
-        assert.deepStrictEqual(W.order(), ['c-a', 'c-b', 'db-o', 'c-v', 'c-e', 'c-c'], '「맨 아래로」가 맨 아래로 옮기지 않았다');
+        assert.deepStrictEqual(W.order(), ['db-o', 'db-p', 'c-a', 'c-b', 'c-c', 'c-v', 'c-e'], '「맨 아래로」가 묶음 끝으로 옮기지 않았다');
         saves = saveOrders(W);
         assert.strictEqual(saves.length, 3, '여러 칸 옮겼는데 저장이 한 번이 아니다(R2)');
         await press(W, 'c-c', 'top');
-        assert.deepStrictEqual(W.order(), ['c-c', 'c-a', 'c-b', 'db-o', 'c-v', 'c-e'], '「맨 위로」가 맨 위로 옮기지 않았다');
+        assert.deepStrictEqual(W.order(), ['db-o', 'db-p', 'c-c', 'c-a', 'c-b', 'c-v', 'c-e'], '「맨 위로」가 묶음 첫 자리로 옮기지 않았다');
         assert.strictEqual(saveOrders(W).length, 4, '「맨 위로」의 저장이 한 번이 아니다');
         assert.deepStrictEqual(W.domOrder(), W.order(), '맨 위로, 맨 아래로 뒤 목록이 state.categories 순서가 아니다');
-        //  데이터 쪽 끝 막기 — 화면을 거치지 않고 불러도 배열 밖으로 빠지지 않는다(moveCategory 가 마지막 관문이다)
-        assert.strictEqual(W.ev("moveCategory('c-c', -1)"), false, '맨 위 과제를 위로 옮기라는 요청을 받아들였다(R2)');
+        //  데이터 쪽 묶음 막기: 화면을 거치지 않고 불러도 묶음 밖으로 빠지지 않는다(moveCategory 가 마지막 관문이다)
+        assert.strictEqual(W.ev("moveCategory('c-c', -1)"), false, '일반 묶음 첫 과제를 공식 묶음으로 옮기라는 요청을 받아들였다(§1-4)');
+        assert.strictEqual(W.ev("moveCategory('db-p', 1)"), false, '공식 과제를 일반 묶음으로 옮기라는 요청을 받아들였다(§1-4)');
+        assert.strictEqual(W.ev("moveCategory('c-v', -1)"), false, '휴가를 옮기라는 요청을 받아들였다(§1-5)');
+        assert.strictEqual(W.ev("moveCategory('db-o', -1)"), false, '맨 위 과제를 위로 옮기라는 요청을 받아들였다(R2)');
         await settle();
-        assert.deepStrictEqual(W.order(), ['c-c', 'c-a', 'c-b', 'db-o', 'c-v', 'c-e'], '맨 위에서 위로 옮기자 순서가 깨졌다(R2): ' + JSON.stringify(W.order()));
+        assert.deepStrictEqual(W.order(), ['db-o', 'db-p', 'c-c', 'c-a', 'c-b', 'c-v', 'c-e'], '묶음 밖으로 옮기자 순서가 깨졌다(§1-4): ' + JSON.stringify(W.order()));
+        assert.strictEqual(saveOrders(W).length, 4, '막힌 옮기기가 저장했다');
 
         //  필터 막대 · 과제 선택 상자 — 같은 순서(C5)
         //  보기에서 고른 과제(filterSelCats)는 목록 순서다. 모두 고르면 전체라 맨 끝 하나를 빼고 고른다
@@ -408,30 +417,51 @@ if (!JSDOM) {
         const opts = W.evJSON("(function(){ var s = document.createElement('select'); fillCatSelect(s); return [].map.call(s.querySelectorAll('option'), function(o){ return o.value; }).filter(Boolean); })()");
         assert.deepStrictEqual(opts, W.order(), '과제 선택 상자가 목록 순서를 따르지 않는다(C5)');
 
-        //  공식을 개인 사이로 — 다시 열어도(새로 그려도) 섞인 그대로다(R1 — 개인 먼저로 다시 묶지 않는다)
-        await press(W, 'db-o', 'up');
-        assert.deepStrictEqual(W.order(), ['c-c', 'c-a', 'db-o', 'c-b', 'c-v', 'c-e']);
+        //  공식 묶음 안에서 옮기기. 다시 열어도 그대로다
+        await press(W, 'db-p', 'up');
+        assert.deepStrictEqual(W.order(), ['db-p', 'db-o', 'c-c', 'c-a', 'c-b', 'c-v', 'c-e']);
         W.ev("closeModal('#categoryModal'); openCatModal();");
-        assert.deepStrictEqual(W.domOrder(), ['c-c', 'c-a', 'db-o', 'c-b', 'c-v', 'c-e'], '다시 연 목록이 실제 순서가 아니다 — 개인/공식으로 다시 묶었다(R1)');
+        assert.deepStrictEqual(W.domOrder(), ['db-p', 'db-o', 'c-c', 'c-a', 'c-b', 'c-v', 'c-e'], '다시 연 목록이 실제 순서가 아니다(R1)');
       });
     },
-    //  ⠿ 끌기(포인터 이벤트) — 다른 줄 위에 놓으면 그 줄의 자리로, 저장 1회. 5px 안의 움직임은 끌기가 아니다. Esc 는 취소한다.
+    //  ⠿ 끌기(포인터 이벤트): 같은 묶음의 다른 줄 위에 놓으면 그 줄의 자리로, 저장 1회. 5px 안의 움직임은 끌기가 아니다. Esc 는 취소한다.
+    //  다른 묶음 위에서는 선이 생기지 않고 놓아도 그대로다(CATEGORY-GROUPS §1-4).
     async dragReorder(source) {
       await withBoot(source, DATA, async (W) => {
         dragTo(W, 'c-c', 'c-a', 3);   // 5px 미만: 끌기가 시작되지 않는다
         assert.deepStrictEqual(W.order(), ALL, '5px 안의 움직임으로 순서가 바뀌었다');
         dragTo(W, 'c-c', 'c-a');
         await settle();
-        assert.deepStrictEqual(W.order(), ['c-c', 'c-a', 'c-b', 'db-o', 'c-v', 'c-e'], '첫 줄 위에 놓았는데 그 자리로 가지 않았다');
-        assert.deepStrictEqual(saveOrders(W), [['c-c', 'c-a', 'c-b', 'db-o', 'c-v', 'c-e']], '끌어 놓기의 저장이 1회가 아니거나 payload 순서가 다르다');
+        assert.deepStrictEqual(W.order(), ['db-o', 'db-p', 'c-c', 'c-a', 'c-b', 'c-v', 'c-e'], '묶음 첫 줄 위에 놓았는데 그 자리로 가지 않았다');
+        assert.deepStrictEqual(saveOrders(W), [['db-o', 'db-p', 'c-c', 'c-a', 'c-b', 'c-v', 'c-e']], '끌어 놓기의 저장이 1회가 아니거나 payload 순서가 다르다');
         assert.deepStrictEqual(W.domOrder(), W.order(), '끌어 놓은 뒤 목록이 state.categories 순서가 아니다');
         assert.strictEqual(W.w.document.querySelectorAll('.cat-drag-ghost, .cat-drag-src, .cat-drop-before, .cat-drop-after').length, 0, '끌기가 끝났는데 끌기 표시가 남았다');
-        dragTo(W, 'c-a', 'c-e');
+        dragTo(W, 'c-a', 'c-b');
         await settle();
-        assert.deepStrictEqual(W.order(), ['c-c', 'c-b', 'db-o', 'c-v', 'c-e', 'c-a'], '마지막 줄 위에 놓았는데 맨 아래로 가지 않았다');
-        //  Esc 는 취소한다(저장 0)
+        assert.deepStrictEqual(W.order(), ['db-o', 'db-p', 'c-c', 'c-b', 'c-a', 'c-v', 'c-e'], '묶음 끝 줄 위에 놓았는데 묶음 끝으로 가지 않았다');
+        //  다른 묶음 위: 선 없음, 놓아도 그대로, 저장 0
         W.clear();
         const ME = W.w.MouseEvent;
+        for (const [id, over] of [['c-a', 'db-o'], ['c-a', 'c-e'], ['db-o', 'c-c']]) {
+          const grip = W.w.document.querySelector('#catList .cat-row[data-id="' + id + '"] [data-catgrip]');
+          const ov = W.w.document.querySelector('#catList .cat-row[data-id="' + over + '"]');
+          grip.dispatchEvent(new ME('pointerdown', { bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: 10 }));
+          ov.dispatchEvent(new ME('pointermove', { bubbles: true, cancelable: true, clientX: 10, clientY: 40 }));
+          assert.ok(W.w.document.querySelector('.cat-drag-ghost'), '끌기가 시작되지 않았다(시험 전제)');
+          assert.strictEqual(W.w.document.querySelectorAll('.cat-drop-before, .cat-drop-after').length, 0, `${id} 를 다른 묶음(${over}) 위로 끌었는데 놓을 선이 생겼다`);
+          ov.dispatchEvent(new ME('pointerup', { bubbles: true, cancelable: true, clientX: 10, clientY: 40 }));
+          await settle();
+        }
+        assert.deepStrictEqual(W.order(), ['db-o', 'db-p', 'c-c', 'c-b', 'c-a', 'c-v', 'c-e'], '다른 묶음 위에 놓았더니 순서가 바뀌었다');
+        assert.strictEqual(W.reqs('saveState').length, 0, '다른 묶음 위에 놓았더니 저장했다');
+        //  휴가, 기타에는 ⠿ 가 없다(끌 손잡이 자체가 없다)
+        assert.strictEqual(W.w.document.querySelectorAll('#catList .cat-row[data-id="c-v"] [data-catgrip], #catList .cat-row[data-id="c-e"] [data-catgrip]').length, 0, '휴가, 기타에 ⠿ 가 있다');
+        //  공식 묶음 안 끌기
+        dragTo(W, 'db-o', 'db-p');
+        await settle();
+        assert.deepStrictEqual(W.order(), ['db-p', 'db-o', 'c-c', 'c-b', 'c-a', 'c-v', 'c-e'], '공식 묶음 안 끌기가 되지 않았다');
+        //  Esc 는 취소한다(저장 0)
+        W.clear();
         const grip = W.w.document.querySelector('#catList .cat-row[data-id="c-b"] [data-catgrip]');
         const over = W.w.document.querySelector('#catList .cat-row[data-id="c-c"]');
         grip.dispatchEvent(new ME('pointerdown', { bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: 10 }));
@@ -439,7 +469,7 @@ if (!JSDOM) {
         W.w.document.dispatchEvent(new W.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
         over.dispatchEvent(new ME('pointerup', { bubbles: true, cancelable: true, clientX: 10, clientY: 40 }));
         await settle();
-        assert.deepStrictEqual(W.order(), ['c-c', 'c-b', 'db-o', 'c-v', 'c-e', 'c-a'], 'Esc 로 취소했는데 순서가 바뀌었다');
+        assert.deepStrictEqual(W.order(), ['db-p', 'db-o', 'c-c', 'c-b', 'c-a', 'c-v', 'c-e'], 'Esc 로 취소했는데 순서가 바뀌었다');
         assert.strictEqual(W.reqs('saveState').length, 0, 'Esc 로 취소했는데 저장했다');
         assert.strictEqual(W.ev("$('#categoryModal').classList.contains('hidden')"), false, '끌기 취소의 Esc 가 창까지 닫았다');
       });
@@ -450,23 +480,25 @@ if (!JSDOM) {
         await press(W, 'c-c', 'up');
         await press(W, 'c-c', 'up');
         const keys = W.evJSON("collectReportData('2026-10-01', '2026-10-01').rows.map(function(r){ return r.key; })");
-        assert.deepStrictEqual(keys, ['c-c', 'c-a', 'c-b', 'db-o', 'c-v', 'c-e'], '보고서 행 순서가 목록 순서가 아니다(C4 · 미분류 합성 행 없음): ' + JSON.stringify(keys));
+        assert.deepStrictEqual(keys, ['db-o', 'db-p', 'c-c', 'c-a', 'c-b', 'c-v', 'c-e'], '보고서 행 순서가 목록 순서가 아니다(C4, 미분류 합성 행 없음): ' + JSON.stringify(keys));
       });
     },
-    //  옛 R5 폐기(2026-10-07) — 「기타」 과제를 맨 위로 옮기면 보고서에서도 맨 위다. 과제 없는 기록은 그리로 합쳐지지 않는다.
+    //  옛 R5 폐기(2026-10-07) 뒤 2026-11-13 묶음: 파일 가운데 있던 「기타」 과제는 부팅이 맨 아래(휴가 다음)로 옮긴다.
+    //  보고서도 그 순서다. 과제 없는 기록은 그리로 합쳐지지 않는다.
     async gitaInListOrder(source) {
       await withBoot(source, DATA_GITA, async (W) => {
-        assert.deepStrictEqual(W.order().slice(0, 4), ['c-a', 'c-b', 'c-g', 'c-c'], '시드 순서가 다르다');
+        const ord = W.order();
+        assert.deepStrictEqual([ord[0], ord[1], ord[2], ord[4]], ['c-a', 'c-b', 'c-c', 'c-g'], '가운데 있던 기타가 맨 아래로 가지 않았다: ' + JSON.stringify(ord));
+        assert.strictEqual(W.ev("state.categories[3].name"), '휴가', '부팅이 만든 휴가가 기타 바로 위가 아니다');
         assert.strictEqual(W.ev("state.categories.filter(function(c){ return c.name === '기타'; }).length"), 1, "파일의 '기타' 가 있는데 기본 과제 기타를 또 만들었다");
-        await press(W, 'c-g', 'up');
-        await press(W, 'c-g', 'up');
-        assert.deepStrictEqual(W.order().slice(0, 4), ['c-g', 'c-a', 'c-b', 'c-c'], '「기타」 가 맨 위로 오지 않았다');
+        assert.strictEqual(W.more('c-g'), null, '기타 줄에 ⋯ 가 있다');
         const rows = W.evJSON("collectReportData('2026-10-01', '2026-10-01').rows.map(function(r){ return [r.key, r.titles.length]; })");
-        assert.deepStrictEqual(rows.map((r) => r[0]).slice(0, 4), ['c-g', 'c-a', 'c-b', 'c-c'], '「기타」 과제가 목록 자리(맨 위)에 있지 않다 — 맨 뒤 규칙이 되살아났다: ' + JSON.stringify(rows));
-        assert.strictEqual(rows[0][1], 1, '과제 없는 기록이 「기타」 과제로 합쳐졌다(gitaCat 병합이 되살아났다)');
+        assert.deepStrictEqual(rows.map((r) => r[0]), ord, '보고서 행이 목록 순서가 아니다: ' + JSON.stringify(rows));
+        assert.strictEqual(rows[4][1], 1, '과제 없는 기록이 「기타」 과제로 합쳐졌다(gitaCat 병합이 되살아났다)');
       });
     },
     //  C7 — 목록을 다시 만들지 않는다(옮긴 줄 하나만 새 자리로) · 메뉴로 옮기면 포커스는 그 줄의 ⋯ · 낭독
+    //  묶음 끝으로 옮겨도 다음 묶음 머리 줄 아래로 들어가지 않는다(CATEGORY-GROUPS A')
     async focusKept(source) {
       await withBoot(source, DATA, async (W) => {
         const rowNode = W.row('c-c'), others = ['c-a', 'c-b', 'db-o'].map((id) => W.row(id)), listNode = W.w.document.getElementById('catList');
@@ -475,12 +507,18 @@ if (!JSDOM) {
         assert.strictEqual(W.row('c-c'), rowNode, '옮길 때 목록을 새로 만들었다 — 스크롤·포커스가 날아간다(R3)');
         assert.deepStrictEqual(['c-a', 'c-b', 'db-o'].map((id) => W.row(id)), others, '옮길 때 다른 줄을 새로 만들었다(R3)');
         assert.strictEqual(W.w.document.getElementById('catList'), listNode);
-        assert.strictEqual(W.w.document.getElementById('catLive').textContent, '감마: 3번째에서 2번째로 옮겼습니다', 'aria-live 낭독이 없다');
+        assert.strictEqual(W.w.document.getElementById('catLive').textContent, '감마: 5번째에서 4번째로 옮겼습니다', 'aria-live 낭독이 없다');
         assert.ok(!rowNode.classList.contains('cat-flash'), '옮긴 줄이 반짝인다(D3)');
         await press(W, 'c-c', 'bottom');
         assert.strictEqual(W.row('c-c'), rowNode, '맨 아래로 옮길 때 목록을 새로 만들었다');
-        assert.strictEqual(W.w.document.getElementById('catLive').textContent, '감마: 2번째에서 6번째로 옮겼습니다');
-        assert.deepStrictEqual(W.order(), ['c-a', 'c-b', 'db-o', 'c-v', 'c-e', 'c-c']);
+        assert.strictEqual(W.w.document.getElementById('catLive').textContent, '감마: 4번째에서 5번째로 옮겼습니다');
+        assert.deepStrictEqual(W.order(), ['db-o', 'db-p', 'c-a', 'c-b', 'c-c', 'c-v', 'c-e']);
+        //  묶음 끝 줄 다음은 기본 묶음 머리 줄이다(머리 아래로 들어가지 않았다)
+        const nx = rowNode.nextElementSibling;
+        assert.ok(nx && nx.classList.contains('cat-grp') && nx.classList.contains('def'), '묶음 끝으로 옮긴 줄이 다음 묶음 머리 줄 아래로 들어갔다');
+        await press(W, 'c-c', 'top');
+        const pv = rowNode.previousElementSibling;
+        assert.ok(pv && pv.classList.contains('cat-grp') && pv.classList.contains('own'), '묶음 첫 자리로 옮긴 줄이 일반 묶음 머리 줄 바로 아래가 아니다');
       });
     },
     //  C6 — 오프라인 잠금 중에는 상태·저장 변화 0 + 토스트
@@ -502,7 +540,7 @@ if (!JSDOM) {
   test('행동①: ⋯ 의 위로 = 한 칸 · 맨 위로/맨 아래로도 저장 1회 · payload 순서 · 끝 항목 꺼짐 · 필터 막대·선택 상자 같은 순서 · 다시 열어도 섞인 순서(C1·C2·C5)', () => checks.moveAndSave(src));
   test('행동①-b: ⠿ 끌기(포인터 이벤트) — 놓은 줄의 자리로 · 저장 1회 · 5px 안은 끌기 아님 · Esc 취소(창은 그대로)', () => checks.dragReorder(src));
   test('행동②: 보고서 행 순서 = 목록 순서 그대로 · 미분류 합성 행 없음(C4)', () => checks.reportRows(src));
-  test('행동③: 「기타」 과제를 맨 위로 옮기면 보고서에서도 맨 위 · 과제 없는 기록은 합쳐지지 않는다(옛 R5 폐기)', () => checks.gitaInListOrder(src));
+  test('행동③: 가운데 있던 「기타」 는 부팅이 맨 아래로 옮기고 보고서도 그 순서, 과제 없는 기록은 합쳐지지 않는다(옛 R5 폐기)', () => checks.gitaInListOrder(src));
   test('행동④: 옮긴 뒤 목록을 다시 만들지 않는다 · 포커스는 그 줄의 ⋯ · 낭독 · 반짝임 없음(C7, D3)', () => checks.focusKept(src));
   test('행동⑤: 오프라인 잠금 중 이동 불가 — 상태·화면·저장 0 · 토스트(C6)', () => checks.lockedNoop(src));
 
@@ -516,8 +554,8 @@ if (!JSDOM) {
   test('변이③: 한 번 옮기는데 두 번 저장하면 행동① 이 실패한다', async () => {
     await assert.rejects(() => checks.moveAndSave(MUT.saveTwice(src)), /저장이 1회가 아니거나|저장이 d+회다/);
   });
-  test('변이⑤: moveCategory 의 끝 막기를 지우면 행동① 이 실패한다', async () => {
-    await assert.rejects(() => checks.moveAndSave(MUT.noEndStop(src)), /맨 위 과제를 위로 옮기라는 요청을 받아들였다|순서가 깨졌다/);
+  test('변이⑤: moveCategory 의 묶음 막기를 지우면 행동① 이 실패한다', async () => {
+    await assert.rejects(() => checks.moveAndSave(MUT.noGroupStop(src)), /옮기라는 요청을 받아들였다|순서가 깨졌다/);
   });
   test('변이⑥: 메뉴의 끝 항목을 끄지 않아도 데이터는 끝 막기가 지키지만 행동① 이 잡는다', async () => {
     await assert.rejects(() => checks.moveAndSave(MUT.noMenuEnds(src)), /꺼져 있지 않다/);
@@ -530,9 +568,6 @@ if (!JSDOM) {
   });
   test('변이④: 보고서 행을 이름순으로 정렬하면 행동② 가 실패한다', async () => {
     await assert.rejects(() => checks.reportRows(MUT.sortReport(src)), /보고서 행 순서/);
-  });
-  test('변이⑦: 「기타」 맨 뒤 규칙을 되살리면 행동③ 이 실패한다', async () => {
-    await assert.rejects(() => checks.gitaInListOrder(MUT.gitaLastBack(src)), /맨 뒤 규칙이 되살아났다/);
   });
   test('변이⑧: 미분류 합성 행을 되살리면 행동② 가 실패한다', async () => {
     await assert.rejects(() => checks.reportRows(MUT.uncatBack(src)), /보고서 행 순서/);

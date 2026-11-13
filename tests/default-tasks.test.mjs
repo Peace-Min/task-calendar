@@ -303,14 +303,16 @@ if (!JSDOM) {
         for (const id of ['c-v', 'c-e']) {
           assert.strictEqual(W.row(id).dataset.kind, 'default', `기본 과제(${id}) 줄의 data-kind 가 'default' 가 아니다`);
           assert.strictEqual(W.row(id).querySelector('.cat-tag'), null, `기본 과제(${id}) 줄에 표(공식)가 붙었다`);
-          assert.strictEqual(W.item(id, 'del'), null, `기본 과제(${id}) 메뉴에 삭제가 있다`);
-          assert.strictEqual(W.item(id, 'unsub'), null, `기본 과제(${id}) 메뉴에 빼기가 있다`);
-          assert.ok(W.item(id, 'edit') && W.item(id, 'merge') && W.item(id, 'down'), `기본 과제(${id}) 메뉴에 수정, 합치기, 순서 항목이 없다`);
+          //  2026-11-13(CATEGORY-GROUPS §1-5): 휴가, 기타는 고정이라 ⋯ 와 ⠿ 가 없다(삭제, 빼기, 합치기, 순서 항목도 없다)
+          assert.strictEqual(W.row(id).querySelector('[data-catmore]'), null, `기본 과제(${id}) 줄에 ⋯ 가 있다`);
+          assert.strictEqual(W.row(id).querySelector('[data-catgrip]'), null, `기본 과제(${id}) 줄에 ⠿ 가 있다`);
+          W.ev("catMenuOpen(document.querySelector('#catList .cat-row[data-id=\"" + id + "\"] .cat-more') || document.querySelector('#catList .cat-row[data-id=\"" + id + "\"] .cat-dot'))");
+          assert.strictEqual(W.row(id).querySelector('.cat-menu'), null, `기본 과제(${id}) 줄에 ⋯ 메뉴가 열렸다`);
         }
         assert.ok(W.item('c-p', 'del'), '대조군: 일반 과제 메뉴에는 삭제가 있다');
-        //  삭제 항목을 주입해 눌러도 확인창조차 뜨지 않는다(catDelete 가 먼저 돌아온다)
-        W.item('c-e', 'edit');
-        W.ev("(function(){ var m = document.querySelector('#catList .cat-row[data-id=\"c-e\"] .cat-menu'); var b = document.createElement('button'); b.setAttribute('role', 'menuitem'); b.dataset.catdo = 'del'; m.appendChild(b); b.click(); })()");
+        W.ev('catMenuClose(false)');
+        //  삭제를 직접 불러도 확인창조차 뜨지 않는다(catDelete 가 먼저 돌아온다)
+        W.ev("catDelete('c-e')");
         await settle();
         assert.strictEqual(W.confirms().length, 0, '기본 과제에서 삭제 확인창이 떴다');
         assert.strictEqual(W.ev("deleteCategory('c-e')"), false, 'deleteCategory 가 기본 과제를 지웠다(화면 우회)');
@@ -430,16 +432,17 @@ if (!JSDOM) {
         await settle();
         assert.ok(W.ev("!$('#catMoveModal').classList.contains('hidden')"), '합치기 창이 열리지 않았다');
         const opts = W.evJSON("[].map.call(document.querySelectorAll('#cmvTarget option'), function(o){ return o.value; })");
-        assert.deepStrictEqual(opts, ['', 'c-b', 'c-v', 'c-e'], '대상 목록이 자기 자신을 빼고 고를 수 있는 과제(isPickableCat)만이 아니다: ' + JSON.stringify(opts));
+        //  대상: 자기 자신, 사라진 공식(dbGone), 휴가와 기타(CATEGORY-GROUPS §1-6)를 뺀 과제
+        assert.deepStrictEqual(opts, ['', 'c-b'], '대상 목록이 자기 자신, 사라진 공식, 휴가와 기타를 뺀 과제만이 아니다: ' + JSON.stringify(opts));
         assert.strictEqual(W.ev("$('#cmvRun').disabled"), true, '대상을 고르기 전에 [합치기]가 켜져 있다');
-        W.ev("$('#cmvTarget').value = 'c-v'; $('#cmvTarget').dispatchEvent(new Event('change'));");
+        W.ev("$('#cmvTarget').value = 'c-b'; $('#cmvTarget').dispatchEvent(new Event('change'));");
         assert.strictEqual(W.ev("$('#cmvRun').disabled"), false);
         W.ev("$('#cmvRun').click();");
         await settle();
         assert.strictEqual(W.confirms().length, 0, '합치기 창이 확인인데 확인창을 또 띄웠다(D6)');
-        assert.ok(W.toasts().includes("'연차' 과제의 일정 2개, 할 일 1개를 '휴가' 과제로 합쳤습니다"), '결과 토스트의 숫자, 문구가 다르다: ' + JSON.stringify(W.toasts()));
-        assert.deepStrictEqual(W.evJSON("state.entries.map(function(e){ return e.id + ':' + e.categoryId; })"), ['e-a1:c-v', 'e-a2:c-v', 'e-b:c-b'], '일정이 옮겨지지 않았다');
-        assert.deepStrictEqual(W.evJSON("state.todos.map(function(t){ return t.id + ':' + t.categoryId; })"), ['t-a:c-v', 't-b:c-b'], '할 일이 옮겨지지 않았다');
+        assert.ok(W.toasts().includes("'연차' 과제의 일정 2개, 할 일 1개를 '프로젝트' 과제로 합쳤습니다"), '결과 토스트의 숫자, 문구가 다르다: ' + JSON.stringify(W.toasts()));
+        assert.deepStrictEqual(W.evJSON("state.entries.map(function(e){ return e.id + ':' + e.categoryId; })"), ['e-a1:c-b', 'e-a2:c-b', 'e-b:c-b'], '일정이 옮겨지지 않았다');
+        assert.deepStrictEqual(W.evJSON("state.todos.map(function(t){ return t.id + ':' + t.categoryId; })"), ['t-a:c-b', 't-b:c-b'], '할 일이 옮겨지지 않았다');
         assert.strictEqual(named(W, '연차').length, 1, '출발 과제가 사라졌다 — 체크하지 않은 합치기는 지우지 않는다');
         assert.strictEqual(W.saves().length, 1, '합치기가 한 번의 저장으로 나가지 않았다');
         assert.ok(W.ev("$('#catMoveModal').classList.contains('hidden')"), '합친 뒤 창이 닫히지 않았다');
@@ -452,12 +455,12 @@ if (!JSDOM) {
     },
     //  ⑥ 잠금 중에는 옮기지 않는다 · 대상이 같거나 없으면 거부
     async moveGuarded(source) {
-      await withBoot(source, WITH_DEFAULTS({ categories: [CAT('c-a', '가'), CAT('c-v', '휴가'), CAT('c-e', '기타')], entries: [ENT('e-1', 'c-a')] }), async (W) => {
+      await withBoot(source, WITH_DEFAULTS({ categories: [CAT('c-a', '가'), CAT('c-b', '나'), CAT('c-v', '휴가'), CAT('c-e', '기타')], entries: [ENT('e-1', 'c-a')] }), async (W) => {
         assert.strictEqual(W.ev("moveCategoryData('c-a', 'c-a')"), null, '자기 자신으로 옮겼다');
         assert.strictEqual(W.ev("moveCategoryData('c-a', 'nope')"), null, '없는 과제로 옮겼다');
         W.ev("__dbConnLost({ kind:'network', detail:'x' })");
         W.clear();
-        assert.strictEqual(W.ev("moveCategoryData('c-a', 'c-e')"), null, '잠긴 채 옮겼다');
+        assert.strictEqual(W.ev("moveCategoryData('c-a', 'c-b')"), null, '잠긴 채 옮겼다');
         assert.strictEqual(W.ev("entryById('e-1').categoryId"), 'c-a', '잠긴 채 기록의 과제가 바뀌었다');
         assert.strictEqual(W.ev("deleteCategory('c-a')"), false, '잠긴 채 과제를 지웠다');
         assert.strictEqual(W.reqs('saveState').length, 0, '잠긴 채 저장을 보냈다');
@@ -474,7 +477,8 @@ if (!JSDOM) {
         };
         W.ev('pendingImport = ' + JSON.stringify(FILE) + '; applyImport({ quiet: true });');
         await settle();
-        assert.deepStrictEqual(W.cats().map((c) => c.id === 'f-g' || c.id === 'f-p' || c.id === 'db-o' ? c.id : c.name), ['f-g', 'f-p', 'db-o', '휴가'],
+        //  묶음 순서(CATEGORY-GROUPS §1-8): 공식, 일반, 휴가, 기타. 파일 맨 앞의 '기타' 는 맨 아래로 간다
+        assert.deepStrictEqual(W.cats().map((c) => c.id === 'f-g' || c.id === 'f-p' || c.id === 'db-o' ? c.id : c.name), ['db-o', 'f-p', '휴가', 'f-g'],
           "파일의 '기타' 를 쓰지 않고 하나 더 만들었거나, 휴가를 만들지 않았다: " + JSON.stringify(W.cats()));
         assert.deepStrictEqual(W.evJSON("state.entries.map(function(e){ return e.id + ':' + e.categoryId; })"), ['e-null:f-g', 'e-gone:f-g', 'e-p:f-p', 'e-o:db-o'],
           '과제 없는 기록, 없는 과제를 가리키는 기록이 기타로 가지 않았다(또는 멀쩡한 기록이 바뀌었다)');
@@ -621,7 +625,7 @@ if (!JSDOM) {
 
   //  변이 — 되돌아가면 안 되는 판을 만들고 같은 검사가 잡는지 본다
   test('변이①: 부팅 보장을 지우면 행동① 이 실패한다', async () => {
-    const bad = mutate('    if(!PEER) __bootDefaultsDirty = ensureDefaultTasks(state);\n', '', src);
+    const bad = mutate('    if(!PEER) __bootDefaultsDirty = ensureDefaultTasks(state);\n    else catGroupNormalize(state);\n', '', src);
     await assert.rejects(() => checks.bootCreatesOnce(bad), /하나씩 생기지 않았다/);
   });
   test('변이②: 보장 저장이 잠금을 보지 않으면 행동④ 가 실패한다', async () => {

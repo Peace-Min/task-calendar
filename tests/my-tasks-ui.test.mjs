@@ -3,7 +3,8 @@
 //   (a) 정적: 머리 = 제목과 SVG ✕ 뿐(부제, 추가 단추 없음) · 관리 입구 줄과 푸터 없음 · 열 머리글 과제, 기록 ·
 //       한 상자 목록(테두리 하나, 줄 사이 1px 가로선) · 공식 표 토큰 · 0 은 흐린 색 · 아래 점선 [+ 과제 추가] 는 sticky ·
 //       금지 문장부호(엠 대시, en 대시, 낫표, 띄어 쓴 가운데 점) · 새 hex 없음.
-//   (b) jsdom 런타임: 공식 줄에만 「공식」 표 · 기록 수는 숫자만(0 은 zero 클래스, title) · 아래 단추가 과제 추가 창을 연다 ·
+//   (b) jsdom 런타임: 줄마다 붙던 「공식」 표는 없고 묶음 머리 줄(공식 과제 n, 일반 과제 n, 기본 n, docs/CATEGORY-GROUPS.md A')이 대신한다 ·
+//       기록 수는 숫자만(0 은 zero 클래스, title) · 아래 단추가 과제 추가 창을 연다 ·
 //       일반 줄 ⋯ 메뉴에 「공식 과제로 연결…」이 있고 누르면 연결 창이 열린다.
 //   (c) 변이: 표를 모든 줄에 붙이거나, 푸터를 되살리거나, 단추 sticky 를 지우면 같은 검사가 실패한다.
 import { test, skip, assert, loadAppSource, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
@@ -77,7 +78,14 @@ const statics = {
     assert.ok(/\.cat-count\.zero\{color:var\(--faint-text\)\}/.test(css), '0 을 흐리게 하는 규칙이 없다');
     assert.ok(!/#b0612a/i.test(css), '갈색이 남았다');
     const fn = app.slice(app.indexOf('function catRowHtml(c){'), app.indexOf('//  숫자 문구 뒤 조사'));
-    assert.ok(/kind === 'official' \? `<span class="cat-tag">/.test(fn), '공식 표가 공식 줄에만 붙지 않는다');
+    //  줄의 「공식」 표는 없다(묶음 머리가 대신, CATEGORY-GROUPS §1-3). 사라진 공식 과제의 「삭제됨」만 그 칸에 남는다
+    assert.ok(!/CAT_KIND_LABEL\.official|>공식<|<span class="cat-tag">/.test(fn) && /\(kind === 'official' && c\.dbGone\)\s*\? `<span class="cat-tag gone"/.test(fn), '줄에 「공식」 표가 남았다(묶음 머리가 대신한다)');
+    //  묶음 머리 줄(A'): 공식은 옅은 파랑, 일반은 표 머리 회색, 기본은 바탕 없이 위 굵은 선
+    const grp = rule('.cat-grp');
+    assert.ok(/background:var\(--bg\)/.test(grp) && /border-top:1px solid var\(--line\)/.test(grp) && /font-weight:700/.test(grp) && /color:var\(--muted\)/.test(grp), '묶음 머리(.cat-grp)가 표 머리 회색이 아니다');
+    assert.ok(/\.cat-grp\.off\{background:var\(--accent-soft\);color:var\(--accent-2\)\}/.test(css), '공식 묶음 머리가 옅은 파랑이 아니다');
+    assert.ok(/\.cat-grp\.def\{background:var\(--panel\);border-top:2px solid var\(--line-2\)\}/.test(css), '기본 묶음 머리가 바탕 없이 위 굵은 선이 아니다');
+    assert.ok(/#catList > \.cat-grp:first-child\{border-top:0\}/.test(css), '첫 묶음 머리가 열 머리글 아래에 선을 하나 더 긋는다');
     //  두 칸(일정, 할 일), 칸마다 0 은 흐림, title 은 catUsageTip("과제명, 일정 N개, 할 일 N개") 하나(docs/CAT-COUNTS-SPLIT.md)
     assert.ok(fn.includes('<span class="cat-count${u.ev ? \'\' : \' zero\'}" title="${esc(catUsageTip(c.name, u))}">${u.ev}</span>')
       && fn.includes('<span class="cat-count${u.td ? \'\' : \' zero\'}" title="${esc(catUsageTip(c.name, u))}">${u.td}</span>') && !/\}건/.test(fn), '기록 수가 일정, 할 일 두 칸(catUsageTip title)이 아니거나 「건」이 붙었다');
@@ -116,9 +124,9 @@ test('정적②: 관리 입구 줄, 푸터, 연결 단추, 구분 열이 없다'
 test('정적③: 한 상자 목록 · 열 머리글(과제, 일정, 할 일) · 공식 표와 기록 수 모양', () => statics.list(src));
 test('정적④: [+ 과제 추가] 는 목록 아래 점선 단추이고 sticky 로 아래에 붙는다', () => statics.addButton(src));
 test('정적⑤: 새 문구와 CSS 에 금지 문장부호와 hex 가 없다', () => statics.punct(src));
-test('변이①s: 표를 모든 줄에 붙이면 정적③ 이 실패한다', () => {
-  const bad = mutate("(kind === 'official' ? `<span class=\"cat-tag\">${CAT_KIND_LABEL.official}</span>` : '')", "`<span class=\"cat-tag\">${CAT_KIND_LABEL[kind]}</span>`", src);
-  assert.throws(() => statics.list(bad), /공식 줄에만/);
+const MUT_TAG = (s) => mutate("삭제됨</span>` : '';", "삭제됨</span>` : (kind === 'official' ? `<span class=\"cat-tag\">${CAT_KIND_LABEL.official}</span>` : '');", s);
+test('변이①s: 줄의 「공식」 표를 되살리면 정적③ 이 실패한다', () => {
+  assert.throws(() => statics.list(MUT_TAG(src)), /「공식」 표가 남았다/);
 });
 test('변이②s: 푸터를 되살리면 정적② 가 실패한다', () => {
   const bad = mutate('<div id="catList" role="list" aria-label="내 과제 목록"></div>', '<div id="catList" role="list" aria-label="내 과제 목록"></div><div class="modal-foot"><button class="btn" data-close>닫기</button></div>', src);
@@ -186,7 +194,10 @@ if (!JSDOM) {
     async rows(source) {
       await withBoot(source, async (W) => {
         const tags = Object.fromEntries(W.$$('#catList .cat-row').map((r) => [r.dataset.id, r.querySelector('.cat-tag') ? r.querySelector('.cat-tag').textContent : null]));
-        assert.deepStrictEqual(tags, { 'c-p': null, 'c-q': null, 'db-1': '공식', 'db-2': '공식', 'c-v': null, 'c-e': null }, '공식 줄에만 「공식」 표가 붙어야 한다: ' + JSON.stringify(tags));
+        assert.deepStrictEqual(tags, { 'c-p': null, 'c-q': null, 'db-1': null, 'db-2': null, 'c-v': null, 'c-e': null }, '줄에 「공식」 표가 붙었다(묶음 머리가 대신한다): ' + JSON.stringify(tags));
+        //  묶음 머리 줄과 줄 순서(공식, 일반, 기본)
+        const seq = W.$$('#catList > *').map((x) => x.classList.contains('cat-grp') ? '#' + [...x.classList].filter((k) => k !== 'cat-grp').join('') + ':' + x.textContent : x.dataset.id);
+        assert.deepStrictEqual(seq, ['#off:공식 과제 2', 'db-1', 'db-2', '#own:일반 과제 2', 'c-p', 'c-q', '#def:기본 2', 'c-v', 'c-e'], '묶음 머리 줄과 순서가 다르다: ' + JSON.stringify(seq));
         assert.ok(!W.$('#catList .cat-kind'), '구분 열이 남았다');
         //  줄마다 일정, 할 일 두 칸(docs/CAT-COUNTS-SPLIT.md). 0 은 흐림, title 은 "과제명, 일정 N개, 할 일 N개"
         const cnts = (id) => [...W.row(id).querySelectorAll('.cat-count')];
@@ -225,12 +236,11 @@ if (!JSDOM) {
     },
   };
 
-  test('런타임①: 공식 줄에만 표 · 기록 수는 숫자만(0 은 흐림, title) · 열 머리글 · 없앤 요소 없음', () => checks.rows(src));
+  test('런타임①: 줄에 「공식」 표 없음 · 묶음 머리 줄 · 기록 수는 숫자만(0 은 흐림, title) · 열 머리글 · 없앤 요소 없음', () => checks.rows(src));
   test('런타임②: 아래 [+ 과제 추가] 가 과제 추가 창을 연다(머리에는 없다)', () => checks.addOpens(src));
   test('런타임③: 일반 줄 ⋯ 메뉴의 「공식 과제로 연결」이 연결 창을 연다(공식 줄에는 없다)', () => checks.linkMenu(src));
-  test('변이④: 표를 모든 줄에 붙이면 런타임① 이 실패한다', async () => {
-    const bad = mutate("(kind === 'official' ? `<span class=\"cat-tag\">${CAT_KIND_LABEL.official}</span>` : '')", "`<span class=\"cat-tag\">${CAT_KIND_LABEL[kind]}</span>`", src);
-    await assert.rejects(() => checks.rows(bad), /공식 줄에만/);
+  test('변이④: 줄의 「공식」 표를 되살리면 런타임① 이 실패한다', async () => {
+    await assert.rejects(() => checks.rows(MUT_TAG(src)), /「공식」 표가 붙었다/);
   });
   test('변이⑤: 메뉴에서 연결 항목을 빼면 런타임③ 이 실패한다', async () => {
     const bad = mutate("  if(kind === 'personal') h += item('link', '공식 과제로 연결…');\n", '', src);

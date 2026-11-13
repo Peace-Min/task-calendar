@@ -1618,7 +1618,8 @@ if (!JSDOM) {
       // 과제 관리 행
       const row = ev("catRowHtml(state.categories.find(function(c){return c.id==='db-u1';}))");
       assert.ok(!/cat-desc/.test(row), '과제관리 행에 부제(cat-desc)가 남아 있다');
-      assert.ok(/통상u1/.test(row) && /<span class="cat-tag">공식<\/span>/.test(row), '이름과 공식 표는 유지돼야 한다');
+      //  줄의 "공식" 표는 2026-11-13 에 없앴다(묶음 머리가 대신, docs/CATEGORY-GROUPS.md §1-3)
+      assert.ok(/통상u1/.test(row) && !/<span class="cat-tag">/.test(row) && /data-grp="0"/.test(row), '이름은 유지되고 "공식" 표는 없이 공식 묶음(data-grp 0) 줄이어야 한다');
       assert.ok(!/cat-badge|>DB</.test(row), '「DB」 배지가 남았다(TASK-ADD-UX D17: 구분 열의 「공식」)');
     });
 
@@ -1892,7 +1893,8 @@ if (!JSDOM) {
     test('소유권 분리: 공식 과제 줄이 메모를 표시하고 ⋯ 에 [수정]과 [내 캘린더에서 빼기]를 준다', () => {
       seedOfficialLocal();
       const row = ev("catRowHtml(state.categories.find(function(c){return c.id==='db-u1';}))");
-      assert.ok(row.includes('<span class="cat-tag">공식</span>'), '이름 뒤 표에 「공식」이 없다(출처 표시)');
+      //  출처 표시는 줄의 "공식" 표가 아니라 묶음(공식 과제 머리 줄)이다(2026-11-13, docs/CATEGORY-GROUPS.md §1-3)
+      assert.ok(!row.includes('<span class="cat-tag">공식</span>') && row.includes('data-kind="official" data-grp="0"'), '공식 과제 줄이 공식 묶음 줄이 아니거나 "공식" 표가 남았다');
       assert.ok(row.includes('레이더 담당분'), '메모가 표시되지 않는다');
       assert.ok(!row.includes('cat-git') && !/Git:|SVN:/.test(row), '저장소 경로 표시가 남았다(Git 기능 삭제)');
       ev('openCatModal();');

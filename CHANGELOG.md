@@ -7,6 +7,26 @@
 
 ---
 
+## 🆕 2026-11-13 (다음 판, 번호는 배포 때): 내 과제 묶음(공식, 일반, 기본), 같은 묶음 안에서만 순서 바꾸기, 휴가와 기타 고정과 합치기 막기
+
+docs/CATEGORY-GROUPS.md(시안 docs/prototypes/category-groups.html 의 A'). DB 구조 22 그대로, 호스트(C#)와 인스톨러는 그대로. 배포 SQL 에 판 데이터 단계 하나를 더한다.
+
+- 순서 규칙: `state.categories` 는 늘 공식(`source === 'db'`), 일반, 휴가, 기타 순이고 묶음 안은 배열 순서 그대로다. 묶음 번호 `catGroupRank(c)`(0 공식, 1 일반, 2 휴가, 3 기타. 이름은 앞뒤 공백을 뺀 `catNameKey`, 과제 하나만 보고 정한다), 정리 `catGroupNormalize(s)`(안정 분할, 제자리, 바뀌었나를 돌려준다, 멱등), 묶음 끝 넣기 `catGroupInsert(s, c)`, 묶음 범위 `catGroupRange(id)`, `catOrderable(c)`(공식과 일반만). 이 묶음은 `let state = …load()` 앞에 있다.
+  - 이름이 휴가, 기타인 개인 과제가 둘 이상인 옛 데이터도 이름 묶음에 모은다. 앞의 것(기본 과제)이 늘 앞이라 정리를 거듭해도 기본 과제가 바뀌며 순서가 오가지 않는다.
+  - 정리 자리: `ensureDefaultTasks` 끝(부팅 `__applyState`, 다시 읽기 reloadState 도 같은 주입, `load`, 가져오기 `applyImport` 의 정리, 초기화)이라 바뀌었으면 `__bootDefaultsDirty` 로 부팅 뒤 한 번 저장. 열람 창은 저장 없이 `catGroupNormalize(state)` 만. 일반 과제 추가(`addCategory`)와 공식 과제 편입(`subscribeDbCat`, 추가와 공식 과제로 연결 모두)은 `catGroupInsert`. 옛 중복 줄의 이름을 바꾸면 `updateCategory` 가 같은 저장에 정리를 싣는다.
+- 내 과제 창(A'): 묶음 머리 줄 `.cat-grp`(`off` 옅은 파랑, `own` 표 머리 회색, `def` 바탕 없이 위 2px 선, 글은 "공식 과제 n" 꼴), 줄의 "공식" 표 없앰("삭제됨"만 남음). 휴가와 기타 줄은 ⠿ 와 ⋯ 자리를 빈 칸으로 둔다(격자 그대로). 줄은 `data-grp` 를 갖는다.
+- 순서 바꾸기는 묶음 안에서만: 끌기는 `ordDragInit` 의 `rows(src)` 가 같은 `data-grp` 줄만 주고 `canStart` 가 휴가, 기타를 막는다(다른 묶음 위는 선 없음, 놓아도 그대로). ⋯ 순서 단추는 묶음 끝에서 꺼지고(`catGroupRange`), `catReorder` 는 묶음 안으로 자르며, 묶음 끝으로 옮긴 줄은 다음 묶음 머리 줄 위에 선다. `moveCategory` 가 마지막 관문(다른 묶음, 휴가와 기타 거부). 키보드 단축키는 없다(⋯ 메뉴와 Enter 만).
+- 합치기, 옮기기, 연결 양쪽 막기: `openCatMoveModal`(출발이 휴가, 기타면 열지 않음, 대상에서 뺌), `moveCategoryData`(출발이나 대상이 기본 과제면 null), `catMenuOpen`, `catMenuHtml`(기본 과제는 합치기 항목 없음), `openRelinkPick`, `rlpChoose`(기본 과제에 짝을 짓지 않음). `renderRelink` 와 `runRelink` 는 이미 거른다. 공식 과제로 연결의 대상은 공식 과제뿐이라 휴가, 기타가 대상이 될 수 없다.
+- 판 데이터 단계 `db/deploy/data/0.29.0-category-groups.sql`(계획 판 0.29.0, 배포 판이 다르면 파일 이름과 머리를 그 판으로): `cal_category.sort_order` 를 사람마다 묶음(`source = 'db'` 0, `TRIM(name) = '휴가'` 2, `'기타'` 3, 그 밖 1), `sort_order`, `uid` 순으로 0 부터. 순서가 바뀌는 사람만 `cal_user_rev` +1(먼저, 같은 트랜잭션), 키 칸 WHERE, 한 표 UPDATE 와 창 함수 파생 표, 임시 표와 저장 프로그램 없음(0.28.0 과 같은 꼴). 리허설은 DB-RELEASE-OPS §5.4.
+- 시험: 새 `category-groups`(§4 의 소비처, 묶음 끝, 휴가와 기타, 합치기와 연결 양쪽, 새 과제 자리, 부팅 정리 멱등, 열람 창, 가져오기와 변이 8개). `category-order`, `my-tasks-ui`, `task-add`, `default-tasks` 를 묶음 순서로 고쳤다(공식 표 시험은 "표 없음"으로, 기본 과제 ⋯ 메뉴 시험은 "⋯ 없음"으로). `release-sql` 에 데이터 단계e~g 와 변이 R60~R62.
+
+## 🆕 2026-11-13 (다음 판, 번호는 배포 때): 자정에 달력의 오늘 표시 옮기기, 켜 둔 채 날이 바뀌면 알림 목록 다시 보내기
+
+docs/DAY-ROLLOVER-FABLE.md(구현 기준, docs/DAY-ROLLOVER.md 는 보류). DB 구조, 호스트(C#), 인스톨러는 그대로.
+
+- 오늘 표시: `todayYmd` 옆에 `DAY_CELLS`, `dayMark`, `dayArm`, `daySync`, `dayTick`, `dayInstall`. 칸을 다시 그리지 않고 이미 그려진 칸의 `today` 클래스와 읽어 주는 이름의 날짜 부분(`calAria(ds, '')` 와 `calAria(ds, ds)` 의 앞부분 바꿔 끼우기, 앞부분이 다르면 이름은 그대로)만 옮긴다. 대상은 개인 월간 `.cell`, 개인 주간 머리 `.wr-hd`, 과제 월간 `.pc-day`, 과제 주간 머리 `.pc-whday`(`data-hdate`), 근태 일간 `.at-day` 이고 주간 몸통(`wr-c`, `pc-wday`)과 주 고르기 달력(`cal-pkc`)은 뺀다. 계기는 다음 자정 + 1초(하한 1초) 타이머 하나(걸기 전에 늘 지운다, 예약을 먼저 걸고 맞추기는 try/catch)와 창 복귀(`visibilitychange` 보임, `focus`, `pageshow`), `pagehide` 는 예약을 지운다. 부팅 끝에서 `dayInstall()` 한 번, 따로 뜨는 창(`SUBWIN`)은 안 한다(메인 창, 브라우저, 열람 프레임만). `calCellCls` 에 "오늘 표시를 받는 칸을 더하면 DAY_CELLS 도 고친다" 주석. 시험 새 `today-mark`(문서의 시험 13개와 변이 9개, 기준은 "표시만 옮긴 칸이 같은 날짜로 새로 그린 칸과 같다").
+- 알림 끊김: 웹은 오늘부터 모레까지의 알림 목록을 부팅, 저장, 재연결, 테마 변경 때만 보내서, 편집 없이 켜 두면 그 뒤 일정의 알림이 뜨지 않았다. `pushReminders` 가 메인 창에서 보낸 날을 `dayRemSent` 에 적고, 자정 타이머와 창 복귀의 `dayRemCheck` 가 그 날과 오늘이 다르면 한 번 다시 보낸다. 열람 프레임과 따로 뜨는 창은 적지도 보내지도 않는다. 호스트는 같은 키의 단계, 창, 확인을 지키므로(Reminders.cs `reminderSync`) 알림이 겹치지 않는다. 기간 +7일은 절전 실측 뒤에 정한다. 시험 `today-mark` R1~R3 과 변이 둘.
+
 ## 🆕 2026-11-11, v0.28.0: 일정과 할 일 순서 바꾸기(⠿ 끌기, Alt+↑↓), 배너 [변경내역] 없앰(F1), 그림 넣은 뒤 포커스(F6)
 
 docs/ITEM-ORDER.md(시안 docs/prototypes/day-panel-order.html 손잡이 자리 1번). DB 구조 22 그대로(`cal_entry.sort_order`, `cal_todo.sort_order` 가 이미 배열 자리를 저장한다).

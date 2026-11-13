@@ -159,8 +159,9 @@ if (!JSDOM) {
     start_date: '2026-01-01', end_date: '2026-12-31', dev_start_date: '2026-02-01', dev_end_date: '' }, extra || {});
   const CATALOG = [ROW('1', '공식 하나', '일반계약', 1), ROW('2', '공식 둘', '일반계약', 1), ROW('3', '공식 셋', '선진행', 2), ROW('4', '공식 넷', '일반계약', 1)];
   const DATA = {
+    //  부팅이 묶음 순서(공식, 일반, 휴가, 기타)로 맞춘다(CATEGORY-GROUPS): db-1, db-2, db-g, c-p, c-q, c-v, c-e
     categories: [CAT('c-p', '프로젝트', { desc: '내 메모' }), CAT('db-1', '공식 하나', { source: 'db' }), CAT('db-2', '공식 둘', { source: 'db' }),
-      CAT('db-g', '사라진 공식', { source: 'db' }), CAT('c-v', '휴가'), CAT('c-e', '기타')],
+      CAT('db-g', '사라진 공식', { source: 'db' }), CAT('c-q', '둘째 일반'), CAT('c-v', '휴가'), CAT('c-e', '기타')],
     entries: [ENT('e-p', 'c-p'), ENT('e-1', 'db-1')],
     todos: [TODO('t-p', 'c-p')], rooms: [],
   };
@@ -249,7 +250,12 @@ if (!JSDOM) {
         assert.deepStrictEqual(W.$$('#catList .cat-row').map((r) => r.dataset.id), W.ids(), '목록이 state.categories 순서가 아니다');
         assert.ok(W.open('categoryModal') && !W.$('#catHead').classList.contains('hidden'), '열 머리글이 안 보인다');
         const kinds = W.$$('#catList .cat-row').map((r) => r.dataset.id + ':' + (r.querySelector('.cat-tag') ? r.querySelector('.cat-tag').textContent : ''));
-        assert.deepStrictEqual(kinds, ['c-p:', 'db-1:공식', 'db-2:공식', 'db-g:삭제됨', 'c-v:', 'c-e:'], '이름 뒤 표가 다르다(공식과 삭제됨만 붙는다): ' + JSON.stringify(kinds));
+        //  줄의 「공식」 표는 없다(묶음 머리가 대신, CATEGORY-GROUPS §1-3). 사라진 공식 과제의 「삭제됨」만 붙는다
+        assert.deepStrictEqual(kinds, ['db-1:', 'db-2:', 'db-g:삭제됨', 'c-p:', 'c-q:', 'c-v:', 'c-e:'], '이름 뒤 표가 다르다(삭제됨만 붙는다): ' + JSON.stringify(kinds));
+        //  휴가, 기타 줄: 칸 수는 같고(격자 그대로) ⠿ 와 ⋯ 만 비어 있다
+        const v = W.row('c-v');
+        assert.deepStrictEqual([...v.children].map((c) => c.className), ['cat-grip', 'cat-dot', 'cat-main', 'cat-tagcol', 'cat-count zero', 'cat-count zero', ''], '기본 과제 줄의 칸 수가 다르다(격자가 어긋난다)');
+        assert.ok(!v.querySelector('[data-catgrip]') && !v.querySelector('[data-catmore]') && v.querySelector('.cat-grip').textContent === '', '기본 과제 줄에 ⠿ 나 ⋯ 가 있다');
         const r = W.row('c-p');
         assert.deepStrictEqual([...r.children].map((c) => c.className), ['cat-grip', 'cat-dot', 'cat-main', 'cat-tagcol', 'cat-count', 'cat-count', 'cat-more'], '줄의 칸 순서가 다르다(D2, 숫자는 일정과 할 일 두 칸)');
         const nm = r.querySelector('.cat-nm');
@@ -268,13 +274,16 @@ if (!JSDOM) {
     //  ⋯ 메뉴 항목이 종류마다 맞다(D5, D7) · 한 번에 하나 · Esc 는 메뉴만 · 바깥 클릭 · 화살표
     async menuItems(source) {
       await withBoot(source, async (W) => {
+        //  순서 단추의 끝은 묶음 끝이다(c-p 는 일반 묶음 첫 줄, db-1 은 공식 묶음 첫 줄)
         assert.deepStrictEqual(W.menu('c-p'), ['edit', 'merge', 'link', 'top:off', 'up:off', 'down', 'bottom', 'del'], '일반 과제 메뉴가 다르다');
-        assert.deepStrictEqual(W.menu('db-1'), ['edit', 'merge', 'top', 'up', 'down', 'bottom', 'unsub:off'], '사용 중 공식 과제 메뉴가 다르다');
+        assert.deepStrictEqual(W.menu('db-1'), ['edit', 'merge', 'top:off', 'up:off', 'down', 'bottom', 'unsub:off'], '사용 중 공식 과제 메뉴가 다르다');
         assert.strictEqual(W.item('db-1', 'unsub').querySelector('small').textContent, '일정과 할 일 1건이 있습니다', '빼기가 꺼진 이유가 없다(D7)');
+        assert.deepStrictEqual(W.menu('c-q'), ['edit', 'link', 'top', 'up', 'down:off', 'bottom:off', 'del'], '일반 묶음 끝 줄 메뉴가 다르다(아래로가 꺼져야 한다)');
         assert.deepStrictEqual(W.menu('db-2'), ['edit', 'top', 'up', 'down', 'bottom', 'unsub'], '데이터 없는 공식 과제 메뉴가 다르다(합치기 없음, 빼기 켜짐)');
-        assert.deepStrictEqual(W.menu('c-e'), ['edit', 'top', 'up', 'down:off', 'bottom:off'], '기본 과제 메뉴에 빼기나 삭제가 있다(D5)');
+        //  휴가, 기타는 ⋯ 가 없다(CATEGORY-GROUPS §1-5)
+        for (const id of ['c-v', 'c-e']) assert.strictEqual(W.row(id).querySelector('[data-catmore]'), null, '기본 과제(휴가, 기타) 줄에 ⋯ 가 있다');
         assert.strictEqual(W.$$('.cat-menu').length, 1, '메뉴가 한 번에 하나만 열리지 않는다');
-        assert.strictEqual(W.row('c-e').querySelector('[data-catmore]').getAttribute('aria-expanded'), 'true');
+        assert.strictEqual(W.row('db-2').querySelector('[data-catmore]').getAttribute('aria-expanded'), 'true');
         //  화살표: 꺼진 항목을 건너뛴다
         const first = W.item('c-p', 'edit');
         assert.strictEqual(W.d.activeElement, first, '메뉴를 열면 첫 항목에 포커스가 가지 않는다');
@@ -351,8 +360,13 @@ if (!JSDOM) {
         W.key(W.row('db-1'), 'Enter');
         assert.ok(W.open('catEditModal') && W.ev('__catEditId') === 'db-1', '줄에서 Enter 로 수정 창이 열리지 않았다');
         W.ev("closeModal('#catEditModal')");
-        W.item('c-e', 'edit').click();
-        assert.ok(W.open('catEditModal') && W.ev('__catEditId') === 'c-e', '⋯ 의 「수정」이 수정 창을 열지 않았다');
+        W.item('c-q', 'edit').click();
+        assert.ok(W.open('catEditModal') && W.ev('__catEditId') === 'c-q', '⋯ 의 「수정」이 수정 창을 열지 않았다');
+        //  휴가, 기타는 ⋯ 가 없어도 줄을 누르면 수정 창이 열린다(이름은 글자로만, CATEGORY-GROUPS §1-5)
+        W.ev("closeModal('#catEditModal')");
+        W.row('c-e').querySelector('.cat-nm').click();
+        assert.ok(W.open('catEditModal') && W.ev('__catEditId') === 'c-e', '기타 줄을 눌렀는데 수정 창이 열리지 않았다');
+        assert.ok(W.$('#ceName').classList.contains('hidden') && W.$('#ceFixed').textContent === '기타', '기타 이름이 글자로만 보이지 않는다');
       });
     },
     //  수정 저장: 일반 이름 바꾸기(줄바꿈은 공백, 글자 수) · 같은 이름, 빈 이름 거절 · 공식 과제는 이름을 읽지 않는다
@@ -392,32 +406,30 @@ if (!JSDOM) {
     //  합치기(D6): 확인창 없음 · 체크하면 일반은 삭제, 공식은 빼기 · 기본 과제는 체크 없음 · 기본값 꺼짐
     async mergeAfter(source) {
       await withBoot(source, async (W) => {
-        W.item('c-e', 'edit'); W.ev('catMenuClose(false)');
-        //  기본 과제: 데이터를 하나 주고 합치기 창 열기 → 체크 없음
+        //  기본 과제(휴가, 기타)는 합치기 출발이 아니다: 데이터가 있어도 창이 열리지 않는다(CATEGORY-GROUPS §1-6)
         W.ev("addEntry({ date:'2026-10-03', title:'휴가 기록', categoryId:'c-v' }); renderCatModal();");
-        W.item('c-v', 'merge').click();
-        assert.ok(W.open('catMoveModal'), '합치기 창이 열리지 않았다');
-        assert.ok(W.$('#cmvAfterWrap').classList.contains('hidden'), '기본 과제의 합치기 창에 체크가 있다(D6)');
-        W.ev("closeModal('#catMoveModal')");
-        //  일반 과제 + 체크 → 합친 뒤 삭제
+        W.ev("openCatMoveModal('c-v')");
+        assert.ok(!W.open('catMoveModal'), '휴가에서 합치기 창이 열렸다');
+        //  일반 과제 + 체크 → 합친 뒤 삭제. 대상 목록에 휴가, 기타가 없다
         W.clear();
         W.item('c-p', 'merge').click();
+        assert.deepStrictEqual(W.$$('#cmvTarget option').map((o) => o.value), ['', 'db-1', 'db-2', 'c-q'], '합치기 대상이 다르다(사라진 공식, 휴가, 기타는 빠진다)');
         assert.strictEqual(W.$('#cmvAfterLb').textContent, '합친 뒤 이 과제 삭제');
         assert.ok(!W.$('#cmvAfterWrap').classList.contains('hidden') && W.$('#cmvAfter').checked === false, '체크가 안 보이거나 기본값이 켜져 있다');
-        W.ev("$('#cmvTarget').value = 'c-e'; $('#cmvTarget').dispatchEvent(new Event('change')); $('#cmvAfter').checked = true; $('#cmvRun').click();");
+        W.ev("$('#cmvTarget').value = 'c-q'; $('#cmvTarget').dispatchEvent(new Event('change')); $('#cmvAfter').checked = true; $('#cmvRun').click();");
         await settle();
         assert.strictEqual(W.confirms().length, 0, '합치기 창이 확인인데 확인창을 또 띄웠다(D6)');
         assert.ok(!W.ids().includes('c-p'), '체크했는데 일반 과제가 지워지지 않았다');
-        assert.strictEqual(W.ev("entryById('e-p').categoryId"), 'c-e', '일정이 합칠 과제로 옮겨지지 않았다');
-        assert.strictEqual(W.ev("todoById('t-p').categoryId"), 'c-e', '할 일이 합칠 과제로 옮겨지지 않았다');
+        assert.strictEqual(W.ev("entryById('e-p').categoryId"), 'c-q', '일정이 합칠 과제로 옮겨지지 않았다');
+        assert.strictEqual(W.ev("todoById('t-p').categoryId"), 'c-q', '할 일이 합칠 과제로 옮겨지지 않았다');
         assert.ok(!W.open('catMoveModal'), '합친 뒤 창이 닫히지 않았다');
         //  공식 과제 + 체크 → 합친 뒤 빼기
         W.item('db-1', 'merge').click();
         assert.strictEqual(W.$('#cmvAfterLb').textContent, '합친 뒤 내 캘린더에서 빼기');
-        W.ev("$('#cmvTarget').value = 'c-e'; $('#cmvTarget').dispatchEvent(new Event('change')); $('#cmvAfter').checked = true; $('#cmvRun').click();");
+        W.ev("$('#cmvTarget').value = 'c-q'; $('#cmvTarget').dispatchEvent(new Event('change')); $('#cmvAfter').checked = true; $('#cmvRun').click();");
         await settle();
         assert.ok(!W.ids().includes('db-1'), '체크했는데 공식 과제가 내 캘린더에서 빠지지 않았다');
-        assert.strictEqual(W.ev("entryById('e-1').categoryId"), 'c-e');
+        assert.strictEqual(W.ev("entryById('e-1').categoryId"), 'c-q');
         assert.strictEqual(W.confirms().length, 0);
       });
     },
@@ -441,9 +453,9 @@ if (!JSDOM) {
     async orderViaMoveCategory(source) {
       await withBoot(source, async (W) => {
         W.ev("window.__mc = 0; (function(){ var f = moveCategory; moveCategory = function(){ window.__mc++; return f.apply(this, arguments); }; })();");
-        W.item('c-e', 'top').click();
+        W.item('db-g', 'top').click();
         await settle();
-        assert.strictEqual(W.ids()[0], 'c-e', '「맨 위로」가 맨 위로 옮기지 않았다');
+        assert.strictEqual(W.ids()[0], 'db-g', '「맨 위로」가 묶음 맨 위로 옮기지 않았다');
         assert.strictEqual(W.ev('window.__mc'), 1, '「맨 위로」가 moveCategory 를 한 번 거치지 않았다(관문, 저장 1회)');
         assert.strictEqual(W.saves(), 1, '여러 칸 옮겼는데 저장이 한 번이 아니다');
         assert.deepStrictEqual(W.$$('#catList .cat-row').map((r) => r.dataset.id), W.ids(), '화면 순서가 state 와 다르다');
@@ -619,8 +631,8 @@ if (!JSDOM) {
     const bad = mutate("    if(t && t.nodeType === 1 && __catMenu.el.contains(t)) return;\n    catMenuClose(false);", "    return;", src);
     await assert.rejects(() => checks.menuPlace(bad), /스크롤했는데/);
   });
-  test('변이⑧: 메뉴가 기본 과제에도 삭제를 주면 런타임② 가 실패한다', async () => {
-    const bad = mutate("  }else if(kind === 'personal'){\n    h += sep + item('del', '삭제…', { cls: 'danger' });", "  }else{\n    h += sep + item('del', '삭제…', { cls: 'danger' });", src);
-    await assert.rejects(() => checks.menuItems(bad), /기본 과제 메뉴/);
+  test('변이⑧: 기본 과제 줄에도 ⋯ 를 주면 런타임② 가 실패한다', async () => {
+    const bad = mutate("    + (fixed ? `<span></span>` : `<button", "    + (false ? `<span></span>` : `<button", src);
+    await assert.rejects(() => checks.menuItems(bad), /기본 과제/);
   });
 }
