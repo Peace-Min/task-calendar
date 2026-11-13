@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>과제 목록 묶음 시안</title>
+<style>
+/* 과제 목록 3곳 before/after(2026-11-13). 내 과제 묶음(공식, 일반, 기본)과 순서를 따른다.
+   1) 개인 달력 보기 팝업 과제 필터 2) 근태 일간 [과제 추가] 3) 근태 주간 과제투입시간 추가.
+   모양은 실제 화면(보기 팝업 .fb, 근태 추가 목록 .at-mi)을 옮겨 왔다. 묶음 머리는 내 과제 창과 같은 색 규칙. */
+:root{--panel:#fff;--bg:#f2f4f8;--page:#e9ecf2;--line:#e3e6ee;--line-2:#cfd5e2;--muted:#7a8399;--faint:#a3aabb;--text:#1d2333;--accent:#3e5be0;--accent-2:#2f49c4;--accent-soft:#e8edfd}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--panel:#1f2430;--bg:#262c3a;--page:#161a22;--line:#323a4b;--line-2:#3d465a;--muted:#98a2b8;--faint:#6f788c;--text:#e6e9f0;--accent:#6c84f0;--accent-2:#8ea1f5;--accent-soft:#273152}}
+:root[data-theme="dark"]{--panel:#1f2430;--bg:#262c3a;--page:#161a22;--line:#323a4b;--line-2:#3d465a;--muted:#98a2b8;--faint:#6f788c;--text:#e6e9f0;--accent:#6c84f0;--accent-2:#8ea1f5;--accent-soft:#273152}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font:13px/1.5 "Malgun Gothic","맑은 고딕",system-ui,sans-serif;padding:20px 16px}
+h1{font-size:16px;margin:0 0 4px}
+.lead{color:var(--muted);margin:0 0 16px;max-width:1000px}
+.sec{margin-bottom:26px}
+.sec > h2{font-size:15px;margin:0 0 4px}
+.sec > p{margin:0 0 10px;color:var(--muted);font-size:12px;max-width:900px}
+.pair{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+.col h3{font-size:13px;margin:0 0 6px}
+.col h3 small{font-weight:400;color:var(--muted)}
+.pop{width:320px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.12);padding:12px 14px}
+.ph{display:flex;align-items:center;font-weight:700;font-size:14px;margin-bottom:8px}.ph span{margin-left:auto;font-weight:400;color:var(--faint);font-size:12px}
+.lbl{font-size:12px;color:var(--muted);margin:6px 0 4px}
+.seg{display:flex;border:1px solid var(--line-2);border-radius:7px;overflow:hidden;font-size:12px}.seg b{flex:1;text-align:center;padding:4px 0;font-weight:400}.seg b.on{background:var(--panel);font-weight:700;box-shadow:inset 0 0 0 1.5px var(--line-2);border-radius:6px}
+.srch{width:100%;border:1px solid var(--line-2);border-radius:6px;padding:5px 8px;color:var(--faint);font-size:12px;margin-bottom:4px}
+.all{font-size:12px;color:var(--accent-2);display:flex;gap:10px;margin-bottom:4px}.all span:first-child{color:var(--faint)}
+.chd{display:grid;grid-template-columns:18px 10px minmax(0,1fr) 34px 34px;gap:8px;font-size:11px;color:var(--muted);padding:2px 6px}
+.chd span:nth-child(4),.chd span:nth-child(5){text-align:right}
+.it{display:grid;grid-template-columns:18px 10px minmax(0,1fr) 34px 34px;gap:8px;align-items:center;padding:4px 6px;border-radius:5px}
+.it.z{color:var(--faint)}
+.it .cb{width:14px;height:14px;border-radius:3px;background:var(--accent);display:inline-block}
+.it.z .cb{background:var(--panel);border:1.5px solid var(--line-2)}
+.it .dot{width:9px;height:9px;border-radius:50%;background:var(--c)}
+.it .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.it.z .nm{font-weight:400}
+.it .n{text-align:right;font-size:12px}
+.it .n.zero{color:var(--faint)}
+.sep{height:1px;background:var(--line);margin:4px 6px}
+.grp{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted);padding:3px 6px;margin-top:4px;border-radius:4px;background:var(--bg)}
+.grp .c{font-weight:400}
+.grp.off{background:var(--accent-soft);color:var(--accent-2)}
+.grp.def{background:transparent;border-top:2px solid var(--line-2);border-radius:0}
+/* 근태 추가 목록 */
+.ap{width:300px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px}
+.ap .srch{margin-bottom:6px}
+.mi{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px}
+.mi .ck{width:14px;color:var(--accent-2);font-weight:700}
+.mi .dot{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
+.mi:hover{background:var(--bg)}
+.note{font-size:12px;color:var(--muted);margin-top:8px;max-width:640px}
+.note b{color:var(--text)}
+</style>
+</head>
+<body>
+<h1>과제 목록 묶음: before / after</h1>
+<p class="lead">세 곳 모두 내 과제와 같은 순서(공식, 일반, 휴가, 기타)와 같은 묶음 머리를 씁니다. 공식 머리는 옅은 파랑, 일반은 회색, 기본은 굵은 경계선입니다. 데이터는 같고 (예시) 이름입니다.</p>
+
+<div class="sec">
+  <h2>1. 개인 달력 보기 팝업: 과제 필터</h2>
+  <p>지금은 기록 수가 많은 순이라 같은 과제의 자리가 기록을 넣을 때마다 바뀌고, 휴가와 기타가 위나 가운데에 섞입니다. 0건은 선 아래에 모입니다.</p>
+  <div class="pair">
+    <div class="col"><h3>before <small>기록 수 순, 0건은 선 아래</small></h3><div class="pop" id="fb0"></div></div>
+    <div class="col"><h3>after <small>내 과제 순서와 묶음, 0건은 제자리에서 흐리게</small></h3><div class="pop" id="fb1"></div>
+      <div class="note">숫자 두 칸, 찾기, 전체 선택/해제는 그대로입니다. 찾기로 거르면 <b>남은 과제가 없는 묶음은 머리도 숨깁니다</b>. 다른 사람 일정 보기 팝업도 같은 모양입니다.</div></div>
+  </div>
+</div>
+
+<div class="sec">
+  <h2>2. 근태 일간 [과제 추가]</h2>
+  <p>순서는 이미 내 과제 순서이고, 묶음 표시만 없습니다. 이미 넣은 과제는 ✓ 입니다.</p>
+  <div class="pair">
+    <div class="col"><h3>before</h3><div class="ap" id="ad0"></div></div>
+    <div class="col"><h3>after <small>묶음 머리</small></h3><div class="ap" id="ad1"></div></div>
+  </div>
+</div>
+
+<div class="sec">
+  <h2>3. 근태 주간 과제투입시간 추가</h2>
+  <p>2번과 같은 목록 모양이라 같은 규칙을 씁니다.</p>
+  <div class="pair">
+    <div class="col"><h3>before</h3><div class="ap" id="aw0"></div></div>
+    <div class="col"><h3>after <small>묶음 머리</small></h3><div class="ap" id="aw1"></div></div>
+  </div>
+  <p class="note">근태 일간의 블록 순서, 주간의 시간 줄, 입력 창의 과제 고르기 상자는 이미 이 순서이고 줄마다 과제 이름이 보여서 머리를 넣지 않습니다(넣으면 줄 높이가 출렁입니다).</p>
+</div>
+
+<script>
+const C = [
+  { n: '(예시) 관제 고도화', g: 'off', c: '#3e5be0', ev: 24, td: 2 },
+  { n: '(예시) 해양 관측 체계', g: 'off', c: '#c2770a', ev: 0, td: 0 },
+  { n: '(예시) 장비 시험', g: 'off', c: '#c2770a', ev: 3, td: 2 },
+  { n: '시스템 점검', g: 'mine', c: '#1f9d74', ev: 2, td: 0 },
+  { n: '보고서 작성', g: 'mine', c: '#3e5be0', ev: 0, td: 0 },
+  { n: '(예시) 사내 정리', g: 'mine', c: '#3e5be0', ev: 1, td: 0 },
+  { n: '휴가', g: 'def', c: '#1f9d74', ev: 0, td: 0 },
+  { n: '기타', g: 'def', c: '#5b6476', ev: 3, td: 0 },
+];
+const G = [['off', '공식 과제'], ['mine', '일반 과제'], ['def', '기본']];
+const esc = (s) => String(s).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+const top = '<div class="ph">달력에 보일 것<span>처음대로</span></div><div class="lbl">기록 종류</div><div class="seg"><b class="on">전체</b><b>일정</b><b>할 일</b></div><div class="lbl">과제</div><div class="srch">과제 검색</div><div class="all"><span>전체 선택</span><span>전체 해제</span></div><div class="chd"><span></span><span></span><span></span><span>일정</span><span>할 일</span></div>';
+const it = (x) => { const z = !(x.ev + x.td); return `<div class="it${z ? ' z' : ''}" style="--c:${x.c}"><span class="cb"></span><span class="dot"></span><span class="nm">${esc(x.n)}</span><span class="n${x.ev ? '' : ' zero'}">${x.ev}</span><span class="n${x.td ? '' : ' zero'}">${x.td}</span></div>`; };
+// before: 기록 수 순, 같으면 가나다, 0건은 선 아래 가나다
+const live = C.filter((x) => x.ev + x.td).sort((a, b) => (b.ev + b.td) - (a.ev + a.td) || a.n.localeCompare(b.n, 'ko'));
+const zero = C.filter((x) => !(x.ev + x.td)).sort((a, b) => a.n.localeCompare(b.n, 'ko'));
+document.getElementById('fb0').innerHTML = top + live.map(it).join('') + '<div class="sep"></div>' + zero.map(it).join('');
+const grouped = (rowFn) => G.map(([g, l]) => { const xs = C.filter((x) => x.g === g); return xs.length ? `<div class="grp ${g}">${l} <span class="c">${xs.length}</span></div>` + xs.map(rowFn).join('') : ''; }).join('');
+document.getElementById('fb1').innerHTML = top + grouped(it);
+const mi = (x, i) => `<div class="mi" style="--c:${x.c}"><span class="ck">${i % 3 === 0 ? '✓' : ''}</span><span class="dot"></span><span>${esc(x.n)}</span></div>`;
+const plain = '<div class="srch">과제 검색</div>' + C.map(mi).join('');
+let k = 0; const grp = '<div class="srch">과제 검색</div>' + grouped((x) => mi(x, k++));
+document.getElementById('ad0').innerHTML = plain; document.getElementById('ad1').innerHTML = grp;
+document.getElementById('aw0').innerHTML = plain; k = 0; document.getElementById('aw1').innerHTML = '<div class="srch">과제 검색</div>' + grouped((x) => mi(x, k++));
+</script>
+</body>
+</html>
