@@ -239,7 +239,7 @@ const checks = {
     assert.match(member(s.main, 'private void HostReply(string reqId, object payload)'), /ReplyCore\(reqId\)\?\.ExecuteScriptAsync\(call\)/, '회신이 보낸 창(ReplyCore)으로 가지 않는다');
   },
 
-  // ⑪ 새 과제 만들기: 근태 창만 받고, 메인 창을 앞으로 가져온 뒤 메인 창(JsCall)의 __attendCatNew 를 인자 없이 부른다
+  // ⑪ 내 과제 열기(예전 새 과제 만들기): 근태 창만 받고, 메인 창을 앞으로 가져온 뒤 메인 창(JsCall)의 __attendCatNew 를 인자 없이 부른다
   catNew(s) {
     const d = onWeb(s);
     assert.match(d, /case "attendCatNew":[^\n]*\n\s*if \(fromWin == WinKind\.Attend\) AttendCatNewToMain\(\);/, '새 과제 만들기를 근태 창에서만 받지 않는다');
@@ -249,7 +249,7 @@ const checks = {
     assert.ok(call > 0, '메인 창의 __attendCatNew 를 부르지 않는다');
     assert.ok(front < call, '과제 창을 연 뒤에 메인 창을 가져온다');
     assert.ok(!/GetStr|GetRawText|doc/.test(m), '새 과제 만들기가 근태 창이 보낸 값을 싣는다');
-    assert.match(s.app, /window\.__attendCatNew = function\(\)\{\s*if\(!HOST \|\| PEER \|\| SUBWIN\) return;\s*try\{ openCatModal\(\); openCatAdd\('own'\); \}catch\(_\)\{\}/,'웹 메인 창의 __attendCatNew 가 과제 추가 창을 일반 과제 탭으로 열지 않거나 다른 창에서도 연다(TASK-ADD-UX)');
+    assert.match(s.app, /window\.__attendCatNew = function\(\)\{\s*if\(!HOST \|\| PEER \|\| SUBWIN\) return;\s*try\{ openCatModal\(\); \}catch\(_\)\{\}/,'웹 메인 창의 __attendCatNew 가 내 과제 창만 열지 않거나 다른 창에서도 연다(2026-11-16 [내 과제 열기])');
   },
 
   // ⑫ 주간보고(결정 13): 목록 읽기, 회의내용 저장, 저장 성공 알림, 회의내용 넘기기

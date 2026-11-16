@@ -484,7 +484,7 @@ namespace TaskCalendarWidget
         //  근태 창(ATTENDANCE-PLAN §3.2): 준비 알림, 날짜 이동 요청(메인 창이 payload 를 다시 만든다), 보고한 날 목록, 회사 보고 전송.
         //  ★ 웹의 ATTENDWIN_CMD 와 같아야 한다(tests/attendance-host.test.mjs). 근태 창은 내 달력을 읽거나 저장하지 않는다.
         //  과제 블록(결정 12, 2026-10-29): 인트라넷 불러오기(netcusWeekMerge)를 근태 창에서 뺐다(주간보고 병합은 메인 창에서 그대로 쓴다).
-        //    attendCatNew 는 [+ 캘린더에 새 과제 만들기]: 메인 창의 과제 창을 연다(근태 창은 내 과제를 만들 수 없다).
+        //    attendCatNew 는 [내 과제 열기]: 메인 창의 내 과제 창을 연다(근태 창은 내 과제를 만들 수 없다).
         //  주간보고(결정 13, 2026-10-29): 근태 창의 주간 모드가 주간 기록을 읽고(reportWeeklyList) 회사 주간 폼을 채운다(netcusWeekSubmit).
         internal static readonly HashSet<string> AttendWinCommands = new(StringComparer.Ordinal)
         {
@@ -923,7 +923,7 @@ namespace TaskCalendarWidget
                     case "attendSourceReq":  // 근태 창의 가져오기(캘린더, 다른 날짜). 메인 창의 __attendSourceFor 로 넘긴다(메인 창이 attendSourcePush 로 돌려준다)
                         if (fromWin == WinKind.Attend) AttendSourceToMain(GetStr(doc, "date"));
                         break;
-                    case "attendCatNew":     // 근태 창의 [+ 캘린더에 새 과제 만들기]. 메인 창을 앞으로 가져와 과제 창(openCatModal)을 연다
+                    case "attendCatNew":     // 근태 창의 [내 과제 열기]. 메인 창을 앞으로 가져와 내 과제 창(openCatModal)을 연다
                         if (fromWin == WinKind.Attend) AttendCatNewToMain();
                         break;
                     case "attendSourcePush": // 메인 창이 만든 그 날짜의 캘린더 기록. 근태 창의 __attendSource 로 넘긴다

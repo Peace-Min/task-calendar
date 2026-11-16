@@ -2004,6 +2004,10 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
 .qa-tblock .rem-block{margin-top:0}
 .modal .qa-tblock .rem-block > .qa-lb{margin:0 0 3px;font-size:var(--fs-meta);font-weight:400}   /* 다른 칸 라벨(.pcf-f)과 같은 크기와 굵기 */
 .qa-one .qa-foot{justify-content:flex-end}
+/* 일정과 할 일을 바꿔도 창 크기와 자리가 그대로(2026-11-16 사용자: 할 일로 바꾸면 창이 줄며 가운데로 움직였다).
+   열 때 일정 모양의 높이를 재어 --qa-lock 으로 묶는다. 할 일은 남는 자리가 본문(.qa-body flex:1) 아래 빈칸이 되고 단추 줄은 제자리다.
+   창 높이 상한(.modal 92vh, 좁은 폭 88vh)을 넘지 않게 min() 으로 자른다 */
+#quickAdd .qa-modal.qa-lock{min-height:min(var(--qa-lock),92vh)}
 /* 칸 간격은 규칙 하나(2026-10-23 사용자: 칸마다 간격이 달랐다). 칸과 칸 사이 14px, 라벨과 칸 4px(.pcf-f),
    안내 줄은 바로 위 칸에 4px 로 붙는다. 비어 있는 안내 줄은 자리를 차지하지 않는다. 종일은 시각 칸의 선택이라 시각 칸에 8px 로 붙인다 */
 .qa-one .pcf-grid{row-gap:14px}
@@ -2202,6 +2206,7 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
   .overlay{align-items:flex-end;padding:0}
   .modal,.modal.wide,.qa-modal{width:100%;max-width:100%;max-height:88vh;border-radius:14px 14px 0 0}
   .qa-modal{padding-bottom:16px}
+  #quickAdd .qa-modal.qa-lock{min-height:min(var(--qa-lock),88vh)}   /* 하단 시트: 높이가 바뀌면 위 끝이 오르내린다. 같은 묶음을 시트 상한에 맞춘다 */
   .modal::before{content:"";display:block;width:38px;height:4px;border-radius:2px;background:var(--line-2);margin:8px auto 2px;flex:none}  /* 시트 그립 어포던스 */
   .overlay:not(.hidden) .modal{animation:sheetUp .24s cubic-bezier(.2,.8,.2,1)}
   /* 시트는 위로 올라왔으니 아래로 내려가야 한다 — 이 폭에서 scale로 닫으면 열림/닫힘 방향이 어긋난다 */
@@ -3436,7 +3441,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
               <input type="search" id="atAddQ" class="at-sel" placeholder="과제 검색" aria-label="과제 검색" autocomplete="off">
               <div class="aw-mall"><button type="button" class="at-lnk" id="atAddAll">전체 선택</button><button type="button" class="at-lnk" id="atAddNone">전체 해제</button></div>
               <div class="at-mlist" id="atAddList"></div>
-              <div class="aw-mfoot"><button type="button" class="at-mi at-mnew" id="atAddNew">+ 캘린더에 새 과제 만들기</button><button type="button" class="btn sm" id="atAddDone">닫기</button></div>
+              <div class="aw-mfoot"><button type="button" class="at-mi at-mnew" id="atAddNew">내 과제 열기</button><button type="button" class="btn sm" id="atAddDone">닫기</button></div>
             </div>
           </div>
           </div>
@@ -3518,7 +3523,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
                     <input type="search" id="awAddQ" class="at-sel" placeholder="과제 검색" aria-label="과제 검색" autocomplete="off">
                     <div class="aw-mall"><button type="button" class="at-lnk" id="awAddAll">전체 선택</button><button type="button" class="at-lnk" id="awAddNone">전체 해제</button></div>
                     <div class="at-mlist" id="awAddList"></div>
-                    <div class="aw-mfoot"><button type="button" class="at-mi at-mnew" id="awAddNew">+ 캘린더에 새 과제 만들기</button><button type="button" class="btn sm" id="awAddDone">닫기</button></div>
+                    <div class="aw-mfoot"><button type="button" class="at-mi at-mnew" id="awAddNew">내 과제 열기</button><button type="button" class="btn sm" id="awAddDone">닫기</button></div>
                   </div></div>
                 <div class="aw-hsum" id="awHSum"></div></div>
               <div class="aw-k">차주계획</div>
@@ -14849,7 +14854,7 @@ function caSetTab(t){
   $('#caAdded').classList.toggle('hidden', own);   // 하단: 공식 탭 = 이번에 추가한 개수, 일반 탭 = [추가]. [닫기] 는 두 탭에서 같은 자리다
   $('#caAddOwn').classList.toggle('hidden', !own);
 }
-// 과제 추가 창 열기. tab = 'off'(공식, 기본) | 'own'(일반). 근태 창의 「캘린더에 새 과제 만들기」는 일반 탭으로 연다.
+// 과제 추가 창 열기. tab = 'off'(공식, 기본) | 'own'(일반).
 //  tab = 'watch' 면 같은 창을 "다른 과제 보기"(보기 모드)로 연다(docs/PC-WATCH.md §5.2). 그 밖은 과제 추가 모드 그대로.
 function openCatAdd(tab){
   if(PEER) return;
@@ -19335,8 +19340,21 @@ function openQuickAdd(date, type, entryId, todoId){
   remSetUi('qa', e ? e.remind : null);   // 편집=저장값 역환산, 신규=놓침 방지(기본)
   qaSyncType();
   openModal('#quickAdd');
+  qaLockHeight();
   var _qa=$('#quickAdd'); _qa.__openSnap = formSnapshot(_qa);   // dirty-check 기준(폼 채운 뒤)
   setTimeout(() => $('#qaTitle').focus(), 30);
+}
+//  창 높이 묶기: 새 기록(유형 단추가 보일 때)만. 할 일로 열었어도 일정 모양으로 잠깐 바꿔 재고 되돌린다(같은 틱이라 그려지지 않는다).
+//    수정은 유형을 못 바꾸니 묶지 않는다. 잴 수 없으면(높이 0) 묶지 않는다.
+function qaLockHeight(){
+  const m = $('#quickAdd .qa-modal'); if(!m) return;
+  m.classList.remove('qa-lock'); m.style.removeProperty('--qa-lock');
+  if($('#quickAdd .qa-tg').classList.contains('hidden')) return;
+  const keep = qaType;
+  if(keep !== 'event'){ qaType = 'event'; qaSyncType(); }
+  const h = m.offsetHeight;
+  if(keep !== 'event'){ qaType = keep; qaSyncType(); }
+  if(h > 0){ m.style.setProperty('--qa-lock', h + 'px'); m.classList.add('qa-lock'); }
 }
 //  유형에 맞는 칸만 보이고 라벨과 안내를 맞춘다(값은 건드리지 않는다).
 function qaSyncType(){
@@ -21238,7 +21256,7 @@ function atHoursPayload(blocks){
   }
   return out;
 }
-//  보내기를 막는 까닭(없으면 ''). 블록이 하나도 없는 것은 atSubmit 이 따로 본다. 합계 검사(정근 8 등)는 하지 않는다.
+//  보내기를 막는 까닭(없으면 ''). 블록이 하나도 없는 것은 atSubmit 이 따로 본다. 근무시간과 과제 시간 합계가 다른 것은 막지 않고 보낼 때 한 번 묻는다(atHoursMismatch).
 //    list = 그날 블록 전부(주면 같은 과제 id 블록의 시간 합도 본다). 호스트는 같은 과제 id 블록을 한 줄로 합치는데 24 를 넘으면
 //    말없이 24 로 잘라 기록한다(ReportDb 의 마지막 관문). 그래서 보내기 전에 여기서 막는다.
 function atBlockProblem(b, list){
@@ -21500,12 +21518,12 @@ window.__attendSourceFor = function(date){
 };
 //  호스트: 회사 보고와 DB 저장이 둘 다 성공했다(두 창 모두에 온다). 메인 창은 개인 캘린더의 그날 근태와 근태 달력을 고친다.
 //    미기록(null)으로 보냈으면 개인 캘린더의 근태는 지우지 않는다(미기록 = 회사의 기존 근태를 그대로 둔다는 뜻이다).
-//  근태 창의 [+ 캘린더에 새 과제 만들기](결정 12): 호스트가 메인 창을 앞으로 가져오고 이 함수를 부른다. 메인 창의 내 과제 창 위에
-//    과제 추가 창을 일반 과제 탭으로 연다(TASK-ADD-UX, 2026-10-30).
+//  근태 창의 [내 과제 열기](결정 12): 호스트가 메인 창을 앞으로 가져오고 이 함수를 부른다. 내 과제 창만 연다.
+//    만들기, 고치기, 숨기기를 사용자가 고르게 과제 추가 창은 띄우지 않는다(2026-11-16 사용자 요청, 이전엔 일반 과제 탭까지 열었다).
 //    만든 과제는 근태 창이 다시 앞으로 올 때(attendNav refresh) 새 payload 의 과제 목록으로 넘어간다.
 window.__attendCatNew = function(){
   if(!HOST || PEER || SUBWIN) return;
-  try{ openCatModal(); openCatAdd('own'); }catch(_){}
+  try{ openCatModal(); }catch(_){}
 };
 window.__reportDailySaved = function(o){
   if(PEER || !o || typeof o !== 'object' || !atIsYmd(o.date)) return;
@@ -22122,12 +22140,12 @@ function atAddAll(on){
   else { const keep = ATE.blocks.filter(b => !(names.includes(b.name) && atBlockEmpty(b))); if(keep.length === ATE.blocks.length) return; ATE.blocks = keep; }
   atAddApplied(added);
 }
-//  [+ 캘린더에 새 과제 만들기]: 근태 창은 메인 창의 과제 창을 연다(attendCatNew, 호스트가 메인 창을 앞으로 가져온다).
-//    만들고 이 창으로 돌아오면 새로고침(attendNav refresh)이 과제 목록을 바꾼다. 브라우저는 같은 화면에서 과제 추가 창(일반 과제 탭)을 연다.
+//  [내 과제 열기]: 근태 창은 메인 창의 내 과제 창을 연다(attendCatNew, 호스트가 메인 창을 앞으로 가져온다).
+//    고치고 이 창으로 돌아오면 새로고침(attendNav refresh)이 과제 목록을 바꾼다. 브라우저는 같은 화면에서 내 과제 창만 연다.
 function atCatNew(){
   atAddOpen(false);
-  if(ATTENDWIN){ hpost({ cmd: 'attendCatNew' }); atMsg('메인 창에서 과제를 만든 뒤 이 창으로 돌아오면 과제 목록에 나옵니다.'); return; }
-  if(typeof openCatModal === 'function'){ openCatModal(); openCatAdd('own'); }   // 과제 추가 창의 일반 과제 탭(TASK-ADD-UX)
+  if(ATTENDWIN){ hpost({ cmd: 'attendCatNew' }); atMsg('메인 창의 내 과제 창에서 고친 뒤 이 창으로 돌아오면 과제 목록에 반영됩니다.'); return; }
+  if(typeof openCatModal === 'function') openCatModal();   // 내 과제 창만(과제 추가 창은 사용자가 그 안에서 연다)
 }
 /* ── 오른쪽 패널 탭: [미리보기][가져오기](2026-10-29 사용자 2차, [글로 보기] 대신) ──
  *  미리보기 = 보낼 때와 같은 조립(atCompose) 결과, 읽기만, 입력 뒤 0.2초 모아 고친다. 막는 블록의 줄은 빨갛다.
@@ -22406,11 +22424,34 @@ function atSubmitBlocked(){
   atMsg('보내지 않았습니다. 고칠 과제가 ' + bad.length + '개 있습니다(빨간 블록).', 'err');
   return true;
 }
+//  근무시간 확인(2026-11-16 사용자): 정근, 야근 8시간, 반차 4시간에 초과시간을 더한 값이 과제 시간 합계와 다르면 보내기 전에 한 번 묻는다.
+//    막지 않는다([보내기]면 그대로 보낸다). 끄는 설정은 없다. 그 밖의 근태(특근, 외근, 출장, 휴가, 병가, 조퇴, 지각, 지각+야근, 미기록)는 보지 않는다.
+const AT_WORK_HOURS = { '1': 8, '2': 8, '12': 4 };
+//  물을 글(맞으면 ''). c = atCur() 모양. 합계는 상태 줄(atStatRender)과 같이 범위 안 시간만 센다.
+function atHoursMismatch(c){
+  const base = AT_WORK_HOURS[String(c.status || '')];
+  if(base == null) return '';
+  const ot = atOt(c.overtime), want = base + ot;
+  const sum = Math.round(c.blocks.reduce((a, b) => a + (atHoursOk(b.hours) ? b.hours : 0), 0) * 100) / 100;
+  if(Math.abs(sum - want) < 0.001) return '';
+  const lb = (ATTEND_STATUS.find(x => x.v === String(c.status)) || {}).label || '';
+  return '근무시간 ' + atHoursText(want) + '시간(근태 ' + lb + (ot > 0 ? ', 초과 +' + ot : '') + ')과 과제 시간 합계 ' + atHoursText(sum) + '시간이 맞지 않습니다. 그래도 보낼까요?';
+}
 function atSubmit(){
-  if(!ATE.p || ATE.sending) return;
+  if(!ATE.p || ATE.sending || ATE.asking) return;
   //  보내기 직전: 지금 과제 목록에 없는 id 의 블록을 과제 미정으로 돌린다(죽은 id 로 보내지 않는다). 그러면 아래 검사가 막는다.
   if(atBlocksDropDead(ATE.blocks, atProjectsAll())){ atSortBlocks(); atBlocksRender(); atOnEdit(); }
   if(atSubmitBlocked()) return;
+  const warn = atHoursMismatch(atCur());
+  if(!warn){ atSubmitGo(); return; }
+  //  [취소](와 Esc, 바깥 누름)는 아무것도 보내지 않고 편집으로 돌아간다. 묻는 동안 다시 눌러도 창은 하나다(ATE.asking)
+  ATE.asking = true;
+  confirmBox('근무시간 확인', warn, '보내기', '', { ok: 'safe' }).then(r => {
+    ATE.asking = false;
+    if(r === 'ok' && ATE.p && !ATE.sending) atSubmitGo();
+  }, () => { ATE.asking = false; });
+}
+function atSubmitGo(){
   const payload = atBuildSubmit();
   atDraftFlushNow(true);
   if(!Platform.caps.reportAuto){
@@ -22689,7 +22730,9 @@ const AWE = { p: null, mon: '', base: null, subj: '', picked: '', prog: '', plan
 //  근태 창의 화면('day' 일간 보고 | 'wlist' 주간 목록 | 'wedit' 주간 편집)과 받은 신원, 과제 목록(주간 목록에서 다른 주를 열 때 쓴다).
 const ATW = { view: 'day', ctx: { me: null, projects: [] } };
 const __awDraftMem = new Map();            // 저장소가 막혔을 때만 쓰는 메모리본(일간 __attDraftMem 과 같다)
-const __awSentSig = new Map();             // 월요일 → 폼을 채워 보낸 상태의 모양. DB 저장 알림이 오면 이 모양 그대로인 임시 저장만 지운다
+const __awSentSig = new Map();             // 월요일 → { sig, s }: 폼을 채워 보낸 상태와 그 모양. DB 저장 알림이 오면 이 모양 그대로인 임시 저장만 지운다
+//  보낸 모양의 임시 저장을 DB 기록 알림 전에 지우지 않는다. 그 사이 다시 열면 기록이 아직 없어 처음 여는 주(일간 가져오기 기본 목록)로 열렸다(2026-11-16 사용자 결함).
+function awSentKeep(mon){ const x = __awSentSig.get(mon); return !!x && !!AWE.p && AWE.mon === mon && awSig(awCur()) === x.sig; }
 
 //  날짜: 한 주 = 달력 한 줄(일~토), 회사 보고 기간 = 그 줄의 월~토, DB 키(period_start)는 월요일(§13.2, 공용 달력 docs/CALENDAR-COMMON.md).
 function awIsMon(s){ return atIsYmd(s) && calDow(s) === 1; }
@@ -23131,6 +23174,8 @@ function awEdOpen(raw, opt){
     dr = Object.assign({}, dr, { hrs: awSortHrs(dr.hrs, names), subj: picked || dr.picked || AWE.base.subj, picked: picked || dr.picked });
   }
   if(dr && awSig(dr) === awSig(AWE.base)){ awDraftDel(p.mon); dr = null; }   // 처음 상태와 같은 임시 저장은 남길 까닭이 없다
+  //  DB 기록 알림을 기다리는 보낸 모양 그대로면 그것이 처음 상태다(보낸 뒤 고친 것이 없다)
+  { const x = __awSentSig.get(p.mon); if(dr && x && awSig(dr) === x.sig) AWE.base = Object.assign({}, dr, { hrs: dr.hrs.slice(), hours: Object.assign({}, dr.hours) }); }
   awApply(dr || AWE.base);
   AWE.savedAt = dr ? dr.savedAt : '';
   AWE.daily = { mon: p.mon, rows: null };
@@ -23391,8 +23436,8 @@ function awAddAll(on){
 }
 function awCatNew(){
   awAddOpen('');
-  if(ATTENDWIN){ hpost({ cmd: 'attendCatNew' }); awMsg('메인 창에서 과제를 만든 뒤 이 창으로 돌아오면 과제 목록에 나옵니다.'); return; }
-  if(typeof openCatModal === 'function'){ openCatModal(); openCatAdd('own'); }   // 과제 추가 창의 일반 과제 탭(TASK-ADD-UX)
+  if(ATTENDWIN){ hpost({ cmd: 'attendCatNew' }); awMsg('메인 창의 내 과제 창에서 고친 뒤 이 창으로 돌아오면 과제 목록에 반영됩니다.'); return; }
+  if(typeof openCatModal === 'function') openCatModal();   // 내 과제 창만(과제 추가 창은 사용자가 그 안에서 연다)
 }
 function awHoursInput(el){
   const n = AWE.hrs[Number(el.dataset.wh)]; if(n == null) return;
@@ -23452,14 +23497,14 @@ function awOnEdit(save){
   awStatRender();
   if(save === false){ awSavedRender(); return; }
   clearTimeout(AWE.timer); AWE.timer = null;
-  if(!awDirty()){ awDraftDel(AWE.mon); AWE.savedAt = ''; awSavedRender(); return; }
+  if(!awDirty()){ if(!awSentKeep(AWE.mon)) awDraftDel(AWE.mon); AWE.savedAt = ''; awSavedRender(); return; }
   AWE.timer = setTimeout(() => awDraftFlushNow(), AT_DRAFT_DEBOUNCE_MS);
   const s = $('#awSaved'); if(s && !AWE.savedAt) s.textContent = '';
 }
 function awDraftFlushNow(force){
   clearTimeout(AWE.timer); AWE.timer = null;
   if(!AWE.p || PEER) return;
-  if(!force && !awDirty()){ awDraftDel(AWE.mon); AWE.savedAt = ''; awSavedRender(); return; }
+  if(!force && !awDirty()){ if(!awSentKeep(AWE.mon)) awDraftDel(AWE.mon); AWE.savedAt = ''; awSavedRender(); return; }   // 보낸 모양은 DB 기록 알림까지 둔다
   const v = awDraftPut(AWE.mon, awCur());
   AWE.savedAt = v ? v.savedAt : '';
   awSavedRender();
@@ -23514,8 +23559,9 @@ function awOnNetcusResult(ok, msg, extra){
   AWE.armed = false; AWE.sending = false; clearTimeout(AWE.wd);
   if(ok === true){
     const s = awCur();
-    __awSentSig.set(AWE.mon, awSig(s));
+    __awSentSig.set(AWE.mon, { sig: awSig(s), s: Object.assign({}, s, { hrs: s.hrs.slice(), hours: Object.assign({}, s.hours) }) });
     AWE.base = s;
+    AWL.from = ''; AWL.to = '';   // 보내기 전에 읽은 목록 캐시는 이 주가 옛 기록(또는 없음)이다. 다음에 열 때 다시 읽는다
     awSetBusy(false);
     awOnEdit(false);
     awMsg(String(msg || '주간보고 임시저장을 마쳤습니다. 제출은 인트라넷에서 하세요.'), 'ok');
@@ -23533,10 +23579,12 @@ window.__reportWeeklySaved = function(o){
   if(PEER || !o || typeof o !== 'object') return;
   const mon = String(o.periodStart || '');
   if(!awIsMon(mon)) return;
-  const sig = __awSentSig.get(mon), dr = awDraftGet(mon);
+  //  임시 저장은 주 고르기로 정한 제목만 남긴다(awDraftNorm). 비교는 awEdOpen 처럼 보낸 제목을 채워서 한다(안 채우면 늘 달라 지우지 못했다)
+  const sent = __awSentSig.get(mon), sig = sent ? sent.sig : '', d0 = awDraftGet(mon), dr = d0 && sent ? Object.assign({}, d0, { subj: d0.picked || sent.s.subj }) : d0;
   if(sig && dr && awSig(dr) === sig) awDraftDel(mon);
   if(sig) __awSentSig.delete(mon);
   if(AWE.p && AWE.mon === mon){
+    if(sent) AWE.base = sent.s;   // DB 에 남은 것은 보낸 모양이다(알림 전에 다시 열어 처음 상태가 옛 기록이어도)
     const c = awCompose(AWE.base || awCur());
     const b = AWE.base || awCur();
     AWE.p.saved = { periodStart: mon, periodEnd: calReportPeriod(mon).sat, subject: b.subj, content: c.content, endwork: c.endwork, plan: c.planwork, meeting: c.resultwork, composedAt: new Date().toISOString(),

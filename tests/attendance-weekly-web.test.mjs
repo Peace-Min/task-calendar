@@ -810,10 +810,12 @@ if (!JSDOM) {
       assert.strictEqual(A.ev('AWE.prog'), prog, '새로고침이 진행사항을 바꿨다');
       A.$('#awEd [data-awadd="hours"]').click();
       assert.ok(A.$('#awAddList [data-awaddname="엡실론"]'), '새 과제가 과제 추가 목록에 없다');
-      //  새 과제 만들기는 메인 창에 청한다
+      //  [내 과제 열기]는 메인 창에 청한다(메인 창은 내 과제 창만 연다)
       const k = A.posted.length;
+      assert.strictEqual(A.$('#awAddNew').textContent.trim(), '내 과제 열기');
       A.$('#awAddNew').click();
       assert.deepStrictEqual(A.posted.slice(k), [{ cmd: 'attendCatNew' }]);
+      assert.ok(A.$('#awMsg').textContent.includes('메인 창의 내 과제 창') && !A.$('#awMsg').textContent.includes('만든 뒤'), '주간 안내가 바뀌지 않았다');
       //  일간 payload(새로고침 아님)는 일간 보고로 바꾼다(쓰던 주간 글은 임시 저장)
       input(A, '#awMeet', '주간 글');
       A.ev('__attendWinOpen(' + JSON.stringify(Object.assign({}, daily, { refresh: false })) + ')');
@@ -844,6 +846,69 @@ if (!JSDOM) {
       const out = A.posted.slice(n).find((m) => m.cmd === 'netcusWeekSubmit');
       assert.deepStrictEqual(out.hours, [{ name: '공식', catUid: 'db-' + U, projectUid: U, hours: 7.5 }, { name: '감마', catUid: 'c-c', projectUid: '', hours: 2 }]);
       assert.deepStrictEqual(A.errors, []);
+    } finally { A.close(); }
+  });
+
+  //  2026-11-16 사용자 결함: 기본 목록에 없는 과제를 [+ 과제 추가]로 넣고 시간을 쓴 뒤 [보고], 그 주를 다시 열면 그 과제가 빠져 있었다.
+  //    호스트 흉내: netcusWeekSubmit 을 받아 DB(window.__db)에 SaveWeeklyAsync 처럼 남기고(0 시간 줄 빼기), reportWeeklyList 는 그 DB 를 읽는다.
+  const fakeDbHost = (A) => {
+    A.ev(`window.__db = {};
+      var __rq = hostRequest;
+      hostRequest = function(cmd, p){
+        if(cmd === 'reportWeeklyList'){ __calls.push([cmd, JSON.parse(JSON.stringify(p || {}))]);
+          var rows = Object.keys(__db).filter(function(k){ return k >= p.from && k <= p.to; }).map(function(k){ return JSON.parse(JSON.stringify(__db[k])); });
+          return Promise.resolve({ ok: true, rows: rows }); }
+        return __rq(cmd, p); };`);
+  };
+  const dbStore = (A, m) => A.ev(`__db[${JSON.stringify(m.sdate)}] = ${JSON.stringify({ periodStart: m.sdate, periodEnd: m.edate, subject: m.subject, content: m.content, endwork: m.endwork, plan: m.planwork, meeting: m.resultwork, composedAt: '2026-11-16T01:00:00.000Z',
+    hours: (m.hours || []).filter((h) => h.hours > 0).map((h) => ({ name: h.name, projectUid: h.projectUid, hours: h.hours, catUid: h.catUid })) })}`);
+  test('(A) 결함 재현: 기본 목록에 없는 과제를 더해 보낸 주를 다시 열면(목록 행, ‹ ›, 창 다시 열기) 보낸 과제투입시간 그대로다', async () => {
+    const A = bootAttend();
+    try {
+      fakeDbHost(A);
+      await openNewA(A);
+      assert.deepStrictEqual(hrs(A), ['알파', '베타', '휴가']);
+      addHours(A, '감마');
+      const gi = A.ev("AWE.hrs.indexOf('감마')");
+      input(A, `#awHours [data-wh="${gi}"]`, '3'); blur(A, `#awHours [data-wh="${gi}"]`);
+      const sent = sendWeekly(A);
+      assert.ok(sent.hours.some((h) => h.name === '감마' && h.hours === 3), '보낸 hours 에 더한 과제가 없다: ' + JSON.stringify(sent.hours));
+      A.ev("__netcusResult(true, '주간보고 임시저장을 마쳤습니다. 제출은 인트라넷에서 하세요.')");
+      const want = hoursRows(A);
+      assert.ok(want.some((r) => r[0] === '감마' && r[1] === '3'));
+      //  ⓪ DB 기록 알림 전(호스트가 아직 쓰는 중이거나 재시도 중)에 목록으로 갔다가 그 주를 다시 연다.
+      //    예전: [목록]의 임시 저장 쓰기가 '고친 것 없음'으로 보고 보낸 모양의 임시 저장을 지웠고, 기록도 없어 처음 여는 주처럼 일간 가져오기(기본 목록)로 열렸다.
+      A.$('#awBack').click(); await tick(40);
+      assert.ok(A.ev(`localStorage.getItem('${KEYA}')`), 'DB 기록 알림 전에 [목록]이 보낸 모양의 임시 저장을 지웠다');
+      A.ev(`awOpen('${MON}')`); await tick(40);
+      assert.deepStrictEqual(hoursRows(A), want, 'DB 기록 알림 전에 다시 연 주가 보낸 과제투입시간이 아니다(기본 목록으로 열렸다)');
+      assert.strictEqual(A.ev('awDirty()'), false, '보낸 모양 그대로인데 고친 것으로 본다');
+      //  기록이 저장됐다는 알림: 임시 저장을 지우고, 이 화면의 처음 상태와 기록은 보낸 모양이다
+      dbStore(A, sent);
+      A.ev(`__reportWeeklySaved({ periodStart: '${MON}' })`); await tick(40);
+      assert.strictEqual(A.ev(`localStorage.getItem('${KEYA}')`), null, 'DB 기록 알림 뒤 임시 저장이 남았다');
+      assert.strictEqual(A.ev('awDirty()'), false);
+      assert.ok(A.evJSON('AWE.p.saved.hours').some((h) => h.name === '감마' && h.hours === 3), '알림 뒤 이 화면의 기록이 보낸 모양이 아니다');
+      //  ① 목록으로 갔다가 그 주 행을 다시 연다
+      A.$('#awBack').click(); await tick(40);
+      A.$(`#awList tr[data-awmon="${MON}"]`).click(); await tick(40);
+      assert.deepStrictEqual(hoursRows(A), want, '목록에서 다시 연 주가 보낸 과제투입시간이 아니다');
+      //  ② 다른 주로 갔다가 돌아온다
+      A.$('#awPrev').click(); await tick(40);
+      A.$('#awNext').click(); await tick(40);
+      assert.strictEqual(A.ev('AWE.mon'), MON);
+      assert.deepStrictEqual(hoursRows(A), want, '‹ › 로 돌아온 주가 보낸 과제투입시간이 아니다');
+      assert.deepStrictEqual(A.errors, []);
+      //  ③ 근태 창을 닫고 다시 연다: 메인 창이 그 주 기록(DB)을 실어 보낸다
+      const row = A.evJSON(`__db['${MON}']`);
+      const B = boot(app, ATTEND_URL, true);
+      try {
+        stubHost(B, REP);
+        B.ev('__attendWinOpen(' + JSON.stringify(wpayload(MON, row)) + ')'); await tick(40);
+        assert.deepStrictEqual(hoursRows(B), want, '창을 다시 열어 연 주가 보낸 과제투입시간이 아니다');
+        assert.strictEqual(B.ev('awDirty()'), false);
+        assert.deepStrictEqual(B.errors, []);
+      } finally { B.close(); }
     } finally { A.close(); }
   });
 

@@ -545,13 +545,13 @@ if (!JSDOM) {
         assert.strictEqual(W.row(c.id).dataset.kind, 'personal'); assert.strictEqual(W.row(c.id).querySelector('.cat-tag'), null);
       });
     },
-    //  근태 창의 「캘린더에 새 과제 만들기」(호스트가 __attendCatNew 를 부른다) = 과제 추가 창 일반 탭
+    //  근태 창의 [내 과제 열기](호스트가 __attendCatNew 를 부른다) = 내 과제 창만(과제 추가 창은 열지 않는다, 2026-11-16)
     async attendEntry(source) {
       await withBoot(source, async (W) => {
         W.ev("closeModal('#categoryModal')");
         W.ev('__attendCatNew()');
-        assert.ok(W.open('categoryModal') && W.open('catAddModal'), '근태 창 진입이 과제 추가 창을 열지 않았다');
-        assert.strictEqual(W.$('#caTabOwn').getAttribute('aria-selected'), 'true', '근태 창 진입이 일반 과제 탭이 아니다');
+        assert.ok(W.open('categoryModal'), '근태 창 진입이 내 과제 창을 열지 않았다');
+        assert.ok(!W.open('catAddModal'), '근태 창 진입이 과제 추가 창까지 열었다');
       });
     },
     //  긴 이름(D14): 두 줄을 넘으면 앞부분 … 끝 8자 · 원래 이름은 data-full · 들어가면 그대로
@@ -587,7 +587,7 @@ if (!JSDOM) {
   test('런타임⑦: 순서 메뉴는 moveCategory 를 한 번 거쳐 저장 한 번', () => checks.orderViaMoveCategory(src));
   test('런타임⑧: 추가 창 공식 탭 — 표, 그룹, 펼침, [추가] 뒤 그 줄만 「✓ 내 과제」, 창은 열린 채, 연결 안 됨 상태', () => checks.addOfficial(src));
   test('런타임⑨: 추가 창 일반 탭 — 추가 뒤 창이 닫힘, [닫기] 는 같은 자리, 빈 이름 거절', () => checks.addOwn(src));
-  test('런타임⑩: 근태 창의 새 과제 만들기는 과제 추가 창을 일반 과제 탭으로 연다', () => checks.attendEntry(src));
+  test('런타임⑩: 근태 창의 [내 과제 열기]는 내 과제 창만 연다(과제 추가 창 없음)', () => checks.attendEntry(src));
   test('런타임⑪: 긴 이름은 앞부분 … 끝 8자(두 줄을 넘을 때만)', () => checks.fitName(src));
 
   //  (c) 변이 — 되돌아가면 안 되는 판을 만들고 같은 검사가 잡는지 본다

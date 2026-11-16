@@ -62,7 +62,7 @@ function windowFn(src, name) {
 // 근태 화면의 일간 보내기(보고서 창의 [회사 전송]은 없앴다): payload 를 만드는 atBuildSubmit 과 보내는 atSubmit.
 //  제출 전 확인 창은 두지 않는다(UI-FEEDBACK-ATTENDANCE §2.2: 다시 하면 되는 동작은 묻지 않는다).
 function dailySendBranch(src) {
-  return windowFnDecl(src, 'atBuildSubmit') + '\n' + windowFnDecl(src, 'atSubmit');
+  return windowFnDecl(src, 'atBuildSubmit') + '\n' + windowFnDecl(src, 'atSubmit') + '\n' + windowFnDecl(src, 'atSubmitGo');
 }
 function windowFnDecl(src, name) {
   const a = src.indexOf('function ' + name + '(');
@@ -127,7 +127,8 @@ const S = {
     assert.ok(!/\bncMode\s*\(/.test(src), 'ncMode() 가 남아 있다');
   },
   // U3 · V3 — 일간 보내기는 늘 dryRun:false 상수, 모드 분기와 예전 저장값이 없고, 보내기는 막을 것을 거른 뒤에만 한다.
-  //  (U4 의 제출 전 확인 창은 보고서 창의 [회사 전송]과 함께 없앴다. 근태 화면은 묻지 않는다. 실행 쪽은 attendance-web 의 (A) 보내기 시험이 본다.)
+  //  (U4 의 제출 전 확인 창은 보고서 창의 [회사 전송]과 함께 없앴다. 근태 화면은 근무시간과 과제 시간 합계가 다를 때만 한 번 묻는다(2026-11-16, atHoursMismatch).
+  //   실행 쪽은 attendance-web 의 (A) 보내기 시험과 근무시간 확인 시험이 본다.)
   dailyAlwaysReal(src) {
     const d = dailySendBranch(src);
     const b = windowFnDecl(src, 'atBuildSubmit');
@@ -136,8 +137,9 @@ const S = {
     assert.ok(!d.includes('localStorage') && !d.includes('tc_netcusMode'), '일간 보내기가 저장값을 읽는다(전송 모드 저장값은 없다)');
     const s = windowFnDecl(src, 'atSubmit');
     const blocked = s.indexOf('if(atSubmitBlocked()) return;');
-    const send = s.indexOf('Platform.report.submitDaily(payload);');
-    assert.ok(blocked > 0 && send > blocked, '막을 블록을 거르기 전에 보낸다');
+    const go = s.indexOf('atSubmitGo()');
+    assert.ok(blocked > 0 && go > blocked && !s.includes('submitDaily'), '막을 블록을 거르기 전에 보낸다');
+    assert.ok(windowFnDecl(src, 'atSubmitGo').includes('Platform.report.submitDaily(payload);'), '보내기가 atSubmitGo 에 없다');
     // 어댑터는 payload 의 값을 그대로 싣는다(여기서 다시 true 로 바꾸는 길이 없다).
     assert.ok(/submitDaily\(p\)\{ hpost\(\{ cmd: 'netcusSubmit',[^\n]*dryRun: p\.dryRun,/.test(src), 'WidgetPlatform.submitDaily 가 payload 의 dryRun 을 그대로 싣지 않는다');
     // 주간은 「채우고 열어두기」(직접 제출) — dryRun 개념이 없다. 그래도 true 를 싣는 길이 생기면 안 된다.

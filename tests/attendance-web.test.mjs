@@ -371,11 +371,13 @@ if (!JSDOM) {
       esc(X);
       assert.ok(!shown(X, '#atAddMenu') && shown(X, '#atEd'), 'Esc 가 메뉴만 닫지 않았다');
       assert.strictEqual(X.doc.activeElement, X.$('#atAdd'), 'Esc 뒤 포커스가 추가 단추로 돌아가지 않았다');
-      //  브라우저의 새 과제 만들기는 같은 화면의 과제 추가 창(일반 과제 탭)을 연다. 만든 과제는 바로 목록에 나온다(지금 내 달력을 본다)
-      X.$('#atAdd').click(); X.$('#atAddNew').click();
-      assert.ok(shown(X, '#categoryModal') && shown(X, '#catAddModal'), '브라우저에서 과제 추가 창이 열리지 않았다');
-      assert.strictEqual(X.$('#caTabOwn').getAttribute('aria-selected'), 'true', '과제 추가 창이 일반 과제 탭으로 열리지 않았다');
-      X.ev("$('#caName').value = '엡실론'; catAddOwn();");
+      //  브라우저의 [내 과제 열기]는 같은 화면의 내 과제 창만 연다(과제 추가 창은 그 안에서 고른다). 만든 과제는 바로 목록에 나온다(지금 내 달력을 본다)
+      X.$('#atAdd').click();
+      assert.strictEqual(X.$('#atAddNew').textContent.trim(), '내 과제 열기', '단추 이름이 내 과제 열기가 아니다');
+      X.$('#atAddNew').click();
+      assert.ok(shown(X, '#categoryModal'), '브라우저에서 내 과제 창이 열리지 않았다');
+      assert.ok(!shown(X, '#catAddModal'), '브라우저에서 과제 추가 창까지 열었다');
+      X.ev("openCatAdd('own'); $('#caName').value = '엡실론'; catAddOwn();");
       assert.ok(!shown(X, '#catAddModal') || X.$('#catAddModal').classList.contains('closing'), '일반 과제를 추가했는데 과제 추가 창이 닫히지 않았다');
       X.ev("closeTopModal()");
       X.$('#atAdd').click();
@@ -886,15 +888,13 @@ if (!JSDOM) {
     } finally { X.close(); }
   });
 
-  test('(W) __attendCatNew: 메인 창은 과제 추가 창을 일반 과제 탭으로 연다(근태 창의 새 과제 만들기 요청)', async () => {
+  test('(W) __attendCatNew: 메인 창은 내 과제 창만 연다(근태 창의 [내 과제 열기] 요청, 과제 추가 창은 열지 않는다)', async () => {
     const X = await bootMain();
     try {
       assert.ok(!shown(X, '#categoryModal') && !shown(X, '#catAddModal'));
       X.ev('__attendCatNew()');
       assert.ok(shown(X, '#categoryModal'), '메인 창이 과제 창을 열지 않았다');
-      assert.ok(shown(X, '#catAddModal'), '메인 창이 과제 추가 창을 열지 않았다');
-      assert.strictEqual(X.$('#caTabOwn').getAttribute('aria-selected'), 'true', '과제 추가 창이 일반 과제 탭이 아니다');
-      assert.ok(!X.$('#caPaneOwn').hidden && X.$('#caPaneOff').hidden, '일반 과제 탭의 칸이 보이지 않는다');
+      assert.ok(!shown(X, '#catAddModal'), '메인 창이 과제 추가 창까지 열었다');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });
@@ -994,7 +994,7 @@ if (!JSDOM) {
     } finally { A.close(); }
   });
 
-  test('(A) 새 과제 만들기: [+ 캘린더에 새 과제 만들기]는 attendCatNew 하나를 보내고 안내한다(근태 창은 과제를 만들지 않는다)', () => {
+  test('(A) 내 과제 열기: [내 과제 열기]는 attendCatNew 하나를 보내고 안내한다(근태 창은 과제를 만들지 않는다)', () => {
     const A = bootAttend();
     try {
       openA(A);
@@ -1003,7 +1003,9 @@ if (!JSDOM) {
       A.$('#atAddNew').click();
       assert.deepStrictEqual(A.posted.slice(n), [{ cmd: 'attendCatNew' }], 'attendCatNew 를 보내지 않았다');
       assert.ok(!shown(A, '#atAddMenu'), '메뉴가 닫히지 않았다');
-      assert.ok(A.$('#atMsg').textContent.includes('메인 창'), '안내가 없다');
+      assert.ok(A.$('#atMsg').textContent.includes('메인 창의 내 과제 창'), '안내가 없다');
+      assert.ok(!A.$('#atMsg').textContent.includes('만든 뒤'), '안내가 아직 과제를 만든다고 한다');
+      assert.strictEqual(A.$('#atAddNew').textContent.trim(), '내 과제 열기');
       assert.ok(!shown(A, '#categoryModal'), '근태 창에서 과제 창을 열었다');
     } finally { A.close(); }
   });
@@ -1121,7 +1123,7 @@ if (!JSDOM) {
     typeBlock(A, 0, '\n    - 납품 준비\n\t- 탭 줄\n\n');
     setHours(A, 0, '2.5');
     typeBlock(A, 1, '- 회신');
-    setHours(A, 1, '3');
+    setHours(A, 1, '7.5');   // 합계 10 = 야근 8 + 초과 2(근무시간 확인 창이 뜨지 않는다)
     setHours(A, 2, '0'); typeBlock(A, 2, '');
     A.$('#atSend').click(); A.$('#atSend').click();   // 연속 클릭
     const sub = A.posted.filter((m) => m.cmd === 'netcusSubmit');
@@ -1133,8 +1135,8 @@ if (!JSDOM) {
     try {
       const s = sendFlow(A);
       const NB = '&nbsp;';
-      assert.strictEqual(s.content, '* 대전 출장\n\n[알파] : 2.5\n' + NB.repeat(4) + '- 납품 준비\n' + NB.repeat(4) + '- 탭 줄\n\n[베타] : 3\n- 회신\n\n[감마] : 0');
-      assert.deepStrictEqual(s.hours, [{ name: '알파', catUid: 'c-a', projectUid: null, hours: 2.5, body: '    - 납품 준비\n\t- 탭 줄' }, { name: '베타', catUid: 'c-b', projectUid: null, hours: 3, body: '- 회신' }]);
+      assert.strictEqual(s.content, '* 대전 출장\n\n[알파] : 2.5\n' + NB.repeat(4) + '- 납품 준비\n' + NB.repeat(4) + '- 탭 줄\n\n[베타] : 7.5\n- 회신\n\n[감마] : 0');
+      assert.deepStrictEqual(s.hours, [{ name: '알파', catUid: 'c-a', projectUid: null, hours: 2.5, body: '    - 납품 준비\n\t- 탭 줄' }, { name: '베타', catUid: 'c-b', projectUid: null, hours: 7.5, body: '- 회신' }]);
       assert.strictEqual(s.memo, '* 대전 출장', '자유 메모를 기록용으로 넘기지 않는다(구조 22)');
       assert.strictEqual(s.status, '2', '고른 근태 코드가 아니다(이 화면은 null 을 보내지 않는다)');
       assert.strictEqual(s.overtime, 2);
@@ -1192,6 +1194,73 @@ if (!JSDOM) {
       A.ev("__netcusResult(true, '다음 회신')");
       assert.strictEqual(A.w.__closeCalls, 0, '이미 받은 뒤의 회신에 창을 닫았다');
     } finally { A.close(); }
+  });
+
+  //  근무시간 확인(2026-11-16): 정근, 야근 8, 반차 4 에 초과시간을 더한 값과 과제 시간 합계가 다르면 보내기 전에 한 번 묻는다. 막지는 않는다.
+  const cfOpen = (X) => !X.$('#confirmModal').classList.contains('hidden');
+  const subs = (A) => A.posted.filter((m) => m.cmd === 'netcusSubmit').length;
+  function hoursCase(A, st, ot, hs) {
+    input(A, '#atStatus', st); input(A, '#atOt', String(ot));
+    hs.forEach((h, i) => setHours(A, i, String(h)));
+    A.$('#atSend').click();
+  }
+  test('(A) 근무시간 확인: 합계가 근무시간과 다르면 [보내기] [취소] 창 하나(취소는 보내지 않음, 보내기는 그대로 보냄), 맞거나 보지 않는 근태면 묻지 않는다', async () => {
+    const A = bootAttend();
+    try {
+      openA(A);
+      //  정근 + 6시간: 묻고, [취소]는 아무것도 보내지 않고 편집으로 돌아간다
+      hoursCase(A, '1', 0, [4, 2, 0]);
+      assert.ok(cfOpen(A), '정근인데 합계 6시간에 묻지 않았다');
+      assert.strictEqual(A.$('#cfMsg').textContent, '근무시간 8시간(근태 정근)과 과제 시간 합계 6시간이 맞지 않습니다. 그래도 보낼까요?');
+      assert.strictEqual(A.$('#cfOk').textContent, '보내기');
+      assert.ok(A.$('#cfOk').classList.contains('primary') && !A.$('#cfOk').classList.contains('danger-solid'), '[보내기]가 삭제 확인처럼 빨갛다');
+      assert.strictEqual(A.$('#cfAlt').style.display, 'none', '세 번째 단추가 보인다');
+      assert.strictEqual(subs(A), 0, '묻기 전에 보냈다');
+      A.$('#atSend').click();   // 묻는 동안 다시 눌러도 창은 하나, 보내지 않는다
+      assert.strictEqual(subs(A), 0);
+      A.$('#confirmModal .modal-foot [data-close]').click(); await tick(300);   // 닫힘 움직임(MD_OUT) 뒤에 hidden
+      assert.ok(!cfOpen(A), '[취소]가 창을 닫지 않았다');
+      assert.strictEqual(subs(A), 0, '[취소]인데 보냈다');
+      assert.strictEqual(A.ev('ATE.sending'), false); assert.strictEqual(A.$('#atSend').disabled, false, '[취소] 뒤 편집으로 돌아가지 않았다');
+      //  야근 + 초과 2, 합계 8: 묻고 [보내기]면 그대로 보낸다
+      hoursCase(A, '2', 2, [4, 4, 0]);
+      assert.ok(cfOpen(A), '야근 +2 인데 합계 8시간에 묻지 않았다');
+      assert.strictEqual(A.$('#cfMsg').textContent, '근무시간 10시간(근태 야근, 초과 +2)과 과제 시간 합계 8시간이 맞지 않습니다. 그래도 보낼까요?');
+      A.$('#cfOk').click(); await tick(300);   // 닫힘 움직임(MD_OUT) 뒤에 hidden
+      assert.strictEqual(subs(A), 1, '[보내기]인데 보내지 않았다');
+      const s = A.posted.filter((m) => m.cmd === 'netcusSubmit')[0];
+      assert.deepStrictEqual([s.status, s.overtime], ['2', 2]);
+      assert.strictEqual(A.ev('ATE.sending'), true);
+      A.ev("__netcusResult(false, '시험 실패')");
+      //  맞거나(반차 4, 정근 8) 보지 않는 근태(출장)는 묻지 않고 바로 보낸다
+      for (const [st, hs, n] of [['12', [4, 0, 0], 2], ['1', [5, 3, 0], 3], ['5', [3, 0, 0], 4]]) {
+        hoursCase(A, st, 0, hs);
+        assert.ok(!cfOpen(A), `근태 ${st} 합계 ${hs.reduce((a, b) => a + b, 0)}시간에 물었다`);
+        assert.strictEqual(subs(A), n, `근태 ${st} 를 바로 보내지 않았다`);
+        A.ev("__netcusResult(false, '시험 실패')");
+      }
+      //  0.5 단위 합계도 같은 글자(atHoursText)
+      hoursCase(A, '1', 0, [7.5, 0, 0]);
+      assert.ok(A.$('#cfMsg').textContent.includes('과제 시간 합계 7.5시간'));
+      A.$('#confirmModal .modal-foot [data-close]').click(); await tick(300);   // 닫힘 움직임(MD_OUT) 뒤에 hidden
+      assert.deepStrictEqual(A.errors, []);
+    } finally { A.close(); }
+  });
+  test('(B) 근무시간 확인은 브라우저 보내기에도 같다(정근 + 2시간이면 묻고, [보내기]면 보낸다)', async () => {
+    const X = bootBrowser();
+    try {
+      openB(X);
+      X.ev('window.__cap = []; Platform.report.submitDaily = function(p){ __cap.push(JSON.parse(JSON.stringify(p))); };');
+      input(X, '#atStatus', '1'); input(X, '#atOt', '0');
+      X.ev('ATE.blocks.forEach(function(b, i){ b.hours = i === 0 ? 2 : 0; }); atBlocksRender();');
+      X.$('#atSend').click();
+      assert.ok(cfOpen(X), '브라우저에서 묻지 않았다');
+      assert.ok(X.$('#cfMsg').textContent.startsWith('근무시간 8시간(근태 정근)과 과제 시간 합계 2시간'));
+      assert.strictEqual(X.evJSON('__cap').length, 0);
+      X.$('#cfOk').click(); await tick(300);   // 닫힘 움직임(MD_OUT) 뒤에 hidden
+      assert.strictEqual(X.evJSON('__cap').length, 1, '[보내기]인데 보내지 않았다');
+      assert.deepStrictEqual(X.errors, []);
+    } finally { X.close(); }
   });
 
   //  닫을 때 묻지 않는다(2026-10-30): 고친 글이 있어도 'close' 이고, 닫기 전에 임시 저장을 쓴다.

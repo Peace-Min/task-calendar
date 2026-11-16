@@ -533,6 +533,16 @@ async function main() {
   ok('A7 조립 글과 미리보기 = 회사로 나갈 글(빨간 줄 없음)', (await A.ev('atCompose(ATE.blocks, ATE.memo)')) === sendText(P)
     && (await A.ev(`(function(){ atPTabSet('pv', false); return document.querySelector('#atPreview .nf-box[data-nf="내용"]').textContent; })()`)) === sendText(P) && (await A.ev(`!document.querySelector('#atPreview .bad')`)));
   if (!(await interceptOkA())) throw new Error('전송 가로채기가 제자리에 없다. 실제 전송 위험이라 누르지 않는다');
+  //  근무시간 확인(2026-11-16): 정근 8시간인데 합계 5.5시간이면 한 번 묻는다. [취소]는 아무것도 보내지 않는다
+  const n7c = await A.ev('__atLoopW.cap.length');
+  await click(A, 'atSend'); await sleep(200);
+  const c7 = await A.J(`({ open: !document.getElementById('confirmModal').classList.contains('hidden'), msg: document.getElementById('cfMsg').textContent, ok: document.getElementById('cfOk').textContent, sending: ATE.sending })`);
+  ok('A7 정근 8시간과 합계 5.5시간이 다르면 근무시간 확인 창([보내기])을 띄우고 아직 보내지 않는다', c7.open && c7.msg === '근무시간 8시간(근태 정근)과 과제 시간 합계 5.5시간이 맞지 않습니다. 그래도 보낼까요?' && c7.ok === '보내기' && !c7.sending && (await A.ev('__atLoopW.cap.length')) === n7c, JSON.stringify(c7));
+  await A.ev(`document.querySelector('#confirmModal [data-close].btn').click(); 1`); await sleep(300);
+  ok('A7 [취소]는 보내지 않고 편집으로 돌아간다', (await A.ev(`document.getElementById('confirmModal').classList.contains('hidden') && !ATE.sending && !ATE.asking`)) && (await A.ev('__atLoopW.cap.length')) === n7c);
+  //  아래 잠금 검사는 누르는 즉시 보내야 하므로 근태를 보지 않는 출장으로 바꾼다
+  ok('A7 근태 = 출장(5), 초과 없음', (await setSel('atStatus', '5')) === '5');
+  if (!(await interceptOkA())) throw new Error('전송 가로채기가 제자리에 없다. 실제 전송 위험이라 누르지 않는다');
   const n7 = await A.ev('__atLoopW.cap.length');
   const r7 = await A.J(`(function(){ const b = document.getElementById('atSend'); b.click(); const busy = { disabled: b.disabled, label: b.textContent, ta: document.querySelector('#atBlocks textarea[data-bt="0"]').disabled,
     memo: document.querySelector('#atBlocks textarea[data-memo]').disabled, add: document.getElementById('atAdd').disabled,
@@ -542,7 +552,7 @@ async function main() {
   ok('A7 연속 클릭과 다시 부르기에도 한 번만 붙잡았다', (await A.ev('__atLoopW.cap.length')) === n7 + 1, String((await A.ev('__atLoopW.cap.length')) - n7));
   const cap7 = await A.J('__atLoopW.cap[__atLoopW.cap.length - 1]');
   ok('A7 payload kind daily, 날짜, dryRun false', !!cap7 && cap7.kind === 'daily' && same(cap7.date, { y: 2099, m: 12, d: 2 }) && cap7.dryRun === false && cap7.__tc === 'netcus-report', JSON.stringify(cap7 && { kind: cap7.kind, date: cap7.date, dryRun: cap7.dryRun }));
-  ok('A7 status = "1"(정근, null 없음), overtime = 0', !!cap7 && cap7.fields.status === '1' && cap7.fields.overtime === 0, JSON.stringify(cap7 && cap7.fields.status));
+  ok('A7 status = "5"(출장, null 없음), overtime = 0', !!cap7 && cap7.fields.status === '5' && cap7.fields.overtime === 0, JSON.stringify(cap7 && cap7.fields.status));
   ok('A7 content = 자유 메모, [과제] : 시간 조립(2.5, 3, 빈 과제 : 0), 줄 앞 공백은 &nbsp;', !!cap7 && cap7.fields.content === nbsp(sendText(P)), JSON.stringify(cap7 && cap7.fields.content));
   ok('A7 hours = 블록 시간(0 은 없다)', !!cap7 && same(cap7.hours, sendHours(P)), JSON.stringify(cap7 && cap7.hours));
   ok('A7 netcus 명령은 하나도 호스트로 나가지 않았다(두 창)', same(await A.J('__atLoopW.blocked'), []) && same(await M.J('__atLoop.blocked'), []), JSON.stringify([await A.J('__atLoopW.blocked'), await M.J('__atLoop.blocked')]));
@@ -561,7 +571,11 @@ async function main() {
   ok('A7 근태 = 야근(2), 초과 +2시간', (await setSel('atStatus', '2')) === '2' && (await setSel('atOt', '2')) === '2');
   if (!(await interceptOkA())) throw new Error('전송 가로채기가 제자리에 없다. 실제 전송 위험이라 누르지 않는다');
   await click(A, 'atSend');
-  await sleep(150);
+  await sleep(200);
+  //  야근 8 + 초과 2 = 10시간인데 합계 5.5시간: 근무시간 확인 창에서 [보내기]를 누르면 그대로 보낸다
+  ok('A7 야근 +2 와 합계가 다르면 근무시간 확인 창', (await A.ev(`!document.getElementById('confirmModal').classList.contains('hidden') && document.getElementById('cfMsg').textContent.indexOf('근무시간 10시간(근태 야근, 초과 +2)') === 0`)));
+  await A.ev(`document.getElementById('cfOk').click(); 1`);
+  await sleep(300);
   const cap7b = await A.J('__atLoopW.cap[__atLoopW.cap.length - 1]');
   ok('A7 다시 보내기 payload status = "2", overtime = 2, 글 같음', (await A.ev('__atLoopW.cap.length')) === n7 + 2 && cap7b.fields.status === '2' && cap7b.fields.overtime === 2 && cap7b.fields.content === nbsp(sendText(P)), JSON.stringify(cap7b && cap7b.fields.status));
   ok('A7 메인 창은 근태 창이 보낸 것에 묶이지 않았다(보고서 창 대기 표지 없음)', (await M.ev('__rptSendArmed')) === false && (await M.ev('ATE.armed')) === false);

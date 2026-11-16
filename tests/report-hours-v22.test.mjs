@@ -608,7 +608,8 @@ if (!JSDOM) {
   test('(A) 보고한 새 보고는 메모와 줄로 연다(이름이 바뀐 과제는 id 로 지금 이름), 열린 채 이름이 바뀌면 따라가고 보낼 때 지금 이름과 id 로 보낸다', () => {
     const A = bootAttend();
     try {
-      const saved = { status: '1', overtime: 0, content: '* 메모\n\n[베타] : 2\n- 둘', sentAt: '', memo: '* 메모', lines: [{ catUid: 'c-b', name: '베타', hours: 2, body: '- 둘' }, { catUid: 'c-a', name: '알파', hours: 0, body: '- 0시간 메모' }] };
+      //  근태는 출장(근무시간 확인 창을 띄우지 않는 근태). 이 시험은 보내는 줄만 본다
+      const saved = { status: '5', overtime: 0, content: '* 메모\n\n[베타] : 2\n- 둘', sentAt: '', memo: '* 메모', lines: [{ catUid: 'c-b', name: '베타', hours: 2, body: '- 둘' }, { catUid: 'c-a', name: '알파', hours: 0, body: '- 0시간 메모' }] };
       A.ev('__attendWinOpen(' + JSON.stringify(payloadFrom(A.T, saved, '베타 새 이름')) + ')');
       assert.strictEqual(A.ev('ATE.memo'), '* 메모', '메모 칸을 memo 로 채우지 않았다');
       assert.deepStrictEqual(blocks(A), [['알파', 'c-a', 0, '- 0시간 메모'], ['베타 새 이름', 'c-b', 2, '- 둘']], '줄을 id 로 지금 과제에 잇지 않았다');

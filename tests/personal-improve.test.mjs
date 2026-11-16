@@ -671,7 +671,44 @@ if (!JSDOM) {
         assert.deepStrictEqual([ps.value, pe.value, pv().ok], ['', '', true], '지우기로 날짜만 있는 일정이 되지 않는다');
       });
     },
+    //  일정과 할 일을 바꿔도 창이 움직이지 않는다(2026-11-16 사용자): 새 기록은 열 때 일정 모양 높이로 묶고(--qa-lock, .qa-lock), 할 일로 열어도 같다.
+    //    jsdom 에는 배치가 없어 높이를 시험이 정한다(시각 칸 묶음 #qaWhen 이 보이면 일정 600, 아니면 420).
+    async formLock(source) {
+      await withBoot(source, async (W) => {
+        const m = W.$('#quickAdd .qa-modal');
+        Object.defineProperty(m, 'offsetHeight', { configurable: true, get: () => (W.$('#qaWhen').classList.contains('hidden') ? 420 : 600) });
+        const lock = () => [m.classList.contains('qa-lock'), m.style.getPropertyValue('--qa-lock')];
+        W.ev("openQuickAdd('2026-10-15')");
+        assert.deepStrictEqual(lock(), [true, '600px'], '새 일정 창을 일정 높이로 묶지 않았다');
+        W.$('#quickAdd [data-qatype="todo"]').dispatchEvent(new W.w.MouseEvent('click', { bubbles: true }));
+        assert.ok(W.$('#qaWhen').classList.contains('hidden'));
+        assert.deepStrictEqual(lock(), [true, '600px'], '할 일로 바꾸니 묶음이 풀렸다(창이 줄며 움직인다)');
+        W.$('#quickAdd [data-qatype="event"]').dispatchEvent(new W.w.MouseEvent('click', { bubbles: true }));
+        assert.deepStrictEqual(lock(), [true, '600px']);
+        W.ev("closeModal('#quickAdd')"); await settle();
+        //  할 일로 열어도 일정 높이(재는 동안만 일정 모양, 열린 모양은 할 일)
+        W.ev("openQuickAdd('2026-10-15', 'todo')");
+        assert.deepStrictEqual(lock(), [true, '600px'], '할 일로 연 창을 일정 높이로 묶지 않았다(일정으로 바꾸면 커지며 움직인다)');
+        assert.strictEqual(W.ev('qaType'), 'todo'); assert.ok(W.$('#qaWhen').classList.contains('hidden') && !W.$('#qaPrioWrap').classList.contains('hidden'), '재고 나서 할 일 모양으로 돌아오지 않았다');
+        assert.strictEqual(W.$('#quickAdd [data-qatype="todo"]').getAttribute('aria-pressed'), 'true');
+        W.ev("closeModal('#quickAdd')"); await settle();
+        //  잴 수 없으면(높이 0) 묶지 않는다
+        Object.defineProperty(m, 'offsetHeight', { configurable: true, get: () => 0 });
+        W.ev("openQuickAdd('2026-10-15')");
+        assert.deepStrictEqual(lock(), [false, ''], '높이를 못 쟀는데 묶었다');
+      });
+      const css = source;
+      assert.ok(css.includes('#quickAdd .qa-modal.qa-lock{min-height:min(var(--qa-lock),92vh)}'), '넓은 창의 높이 묶음 규칙(창 상한 92vh 안)이 없다');
+      assert.ok(css.includes('#quickAdd .qa-modal.qa-lock{min-height:min(var(--qa-lock),88vh)}'), '좁은 창(아래 시트)의 높이 묶음 규칙(88vh 안)이 없다');
+      assert.ok(/\.qa-body\{flex:1 1 auto;/.test(css), '본문이 남는 높이를 채우지 않아 단추 줄이 제자리에 있지 않다');
+    },
   };
+
+  test('R⑩: 일정과 할 일을 바꿔도 입력 창 크기와 자리가 그대로(열 때 일정 높이로 묶음, 할 일로 열어도, 넓은 창과 아래 시트)', () => R.formLock(src));
+  test('변이R⑩: 할 일로 열 때 일정 모양으로 재지 않으면 R⑩ 이 잡는다', async () => {
+    const bad = mutate("  if(keep !== 'event'){ qaType = 'event'; qaSyncType(); }\n", '');
+    await assert.rejects(() => R.formLock(bad), /일정 높이로 묶지 않았다/);
+  });
 
   test('R①: 막대 모양(주 경계 나눔, ◂ ▸, 기간 글자, 할 일 점선과 완료와 별, 시간 일정 점, 반복 발생, 휴일)', () => R.bars(src));
   test('R②: +N(넘친 칸만, 누르면 그 날짜)과 월 보기 밀도(고정, 촘촘히, 펼침)', () => R.moreAndDensity(src));
