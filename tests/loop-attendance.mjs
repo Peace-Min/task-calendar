@@ -18,16 +18,18 @@
  *    A3c  가져오기 이전 보고(어제): reportDailyList(DB 읽기만) 하루로 읽는다(오류 없음, 보고가 있으면 카드, 없으면 없는 날 안내). 회사 사이트 명령은 없다
  *    A4   임시 저장: 입력 뒤 2초 안에 tc_attDraft:<who>:2099-12-02 가 근태 창 저장소에 생기고({v:2, memo, blocks}) 메인 창에서도 보인다(같은 출처).
  *         메인 근태 달력의 그 칸에 ✎ 작성 중
- *    A5   닫기: 쓰던 글이 있어도 __winCloseRequest() = 'close', 묻는 창 없이 [닫기]면 창이 닫힌다(키는 남는다, 2026-10-30).
- *         다시 열면 안내 없이 글이 되살아나고, 처음 상태와 같아지면 키를 지운다
+ *    A5   닫기: 쓰던 글이 있어도 __winCloseRequest() = 'close', 묻는 창 없이 [닫기]면 창이 숨겨진다(키는 남는다, 2026-10-30).
+ *         0.25.1 부터 근태 창은 닫으면 숨겨 두고 다시 쓴다(대상이 남는다, html.at-idle, 문서 hidden). 다시 열면 같은 창이 안내 없이 글을 되살리고,
+ *         처음 상태와 같아지면 키를 지운다
  *    A6   날짜 이동: › 가 호스트와 메인 창을 거쳐 같은 창에 2099-12-03 으로 돌아온다. 넘기기 전에 12-02 글을 바로 임시 저장한다
- *    A7   보내기(가로채기, 실제 전송 없음): 막는 블록(내용 있는 0시간)은 보내지 않는다. payload(kind, date, 자유 메모와 블록 조립, &nbsp; 들여쓰기,
- *         블록 시간, 빈 과제 : 0, status 코드), 잠금, 연속 클릭 한 번,
+ *    A7   보내기(가로채기, 실제 전송 없음): 막는 블록(시간 범위 밖)은 보내지 않는다. 내용 있는 0시간은 막지 않고(구조 22) 근무시간 확인만 묻는다.
+ *         근무시간 확인(정근, 야근 8시간, 반차 4시간 + 초과가 합계와 다름)은 [취소]면 보내지 않고 [보내기]면 보낸다. payload(kind, date, 자유 메모와 블록 조립, &nbsp; 들여쓰기,
+ *         시간 줄(과제 id, 공식 과제 uid, 내용), 빈 과제 : 0, status 코드), 잠금, 연속 클릭 한 번,
  *         실패 회신 흉내 = 공통 안내와 창, 키 유지. 다시 보내고 __reportDailySaved 와 성공 회신 흉내 = 키 삭제, 창은 남고 쓰기 화면에 보낸 글,
- *         고친 것이 없으니 닫기로 창 닫힘
- *    A8   메인 창 무시: 보고서 창이 보내지 않았을 때 __netcusResult 와 __netcusProgress 는 #rptSendStatus 와 토스트를 건드리지 않는다
- *    A9   보고한 날: 이 달에 앱으로 보고한 날(DB, 읽기만)을 열면 바로 쓰기 화면에 DB 의 글을 되살린 블록과 자유 메모가 뜨고, 고치지 않았으면 Esc 로 닫힌다. 없으면 건너뛴다
- *    정리 두 창의 2099 임시 저장 키 삭제, 근태 창 닫기, 탭과 탭 기억 되돌리기, 잔재 0 확인
+ *         고친 것이 없으니 닫기로 창 숨김
+ *    A8   메인 창 무시: 메인 창이 보내지 않았을 때 __netcusResult 와 __netcusProgress 는 메인 창 근태 상태 줄(#atMsg, #awMsg), 대기 표지, 토스트를 건드리지 않는다
+ *    A9   보고한 날: 이 달에 앱으로 보고한 날(DB, 읽기만)을 열면 바로 쓰기 화면에 DB 의 글을 되살린 블록과 자유 메모가 뜨고, 고치지 않았으면 Esc 로 숨겨진다. 없으면 건너뛴다
+ *    정리 두 창의 2099 임시 저장 키 삭제, 근태 창 닫기(숨김)와 숨겨 둔 창의 기록기 걷기, 탭과 탭 기억 되돌리기, 잔재 0 확인
  *
  *  ★ 실제로 회사에 보내지 않는다(두 겹, loop-report-edit 와 같은 방식): 근태 창의 Platform.report.submitDaily 를 가로채 payload 만 붙잡고,
  *    두 창의 hpost 를 감싸 'netcus' 로 시작하는 명령은 호스트로 넘기지 않고 기록만 한다. 회신은 __netcusResult 를 직접 불러 흉내 낸다.
@@ -152,11 +154,21 @@ let M = null;   // 메인 창
 let A = null;   // 근태 창(열릴 때마다 새로 붙는다)
 
 async function attendTargets() { try { return (await pageTargets()).filter((x) => isAttendUrl(x.url)); } catch (_) { return []; } }
-//  근태 창 대상이 뜰 때까지(gone 이면 사라질 때까지) 기다린다
+//  근태 창은 닫으면 없애지 않고 숨겨 두었다가 다시 쓴다(0.25.1, AppWindow ReuseOnClose). 그래서 CDP 대상은 남는다.
+//    숨김 = 호스트가 Hide 직전에 __attendWinHidden 을 불러 화면을 비웠다(html.at-idle, ATE.p 없음)이고 문서가 hidden 이다.
+const HIDDEN_JS = `(document.visibilityState === 'hidden' && document.documentElement.classList.contains('at-idle') && typeof ATE === 'object' && !ATE.p)`;
+async function isHiddenTarget(t) {
+  if (A && !A.closed && A.targetId === t.id) { try { return !!(await A.ev(HIDDEN_JS)); } catch (_) { return false; } }
+  let c = null;
+  try { c = await Cdp.attach(t); return !!(await c.ev(HIDDEN_JS)); } catch (_) { return false; } finally { if (c) c.close(); }
+}
+//  보이는(숨기지 않은) 근태 창 대상
+async function shownAttendTargets() { const out = []; for (const t of await attendTargets()) if (!(await isHiddenTarget(t))) out.push(t); return out; }
+//  근태 창 대상이 뜰 때까지 기다린다. gone 이면 보이는 근태 창이 없어질 때까지(숨겨졌거나 대상이 사라졌다) 기다린다.
 async function waitAttendTarget({ timeout = 20000, gone = false } = {}) {
   const t0 = Date.now();
   for (;;) {
-    const L = await attendTargets();
+    const L = gone ? await shownAttendTargets() : await attendTargets();
     if (gone ? !L.length : L.length) return gone ? true : L[0];
     if (Date.now() - t0 > timeout) return gone ? false : null;
     await sleep(200);
@@ -241,15 +253,19 @@ const curBlocks = () => A.J(`({ memo: ATE.memo, blocks: ATE.blocks.map(function(
 const setSel = (id, v) => A.ev(`(function(){ const s = document.getElementById(${JSON.stringify(id)}); s.value = ${JSON.stringify(v)}; s.dispatchEvent(new Event('change', { bubbles: true })); return s.value; })()`);
 const click = (C, id) => C.ev(`(function(){ const b = document.getElementById(${JSON.stringify(id)}); if (!b) return 'none'; if (b.disabled) return 'disabled'; b.click(); return 'ok'; })()`);
 const shown = (C, id) => C.ev(`(function(){ const e = document.getElementById(${JSON.stringify(id)}); if (!e || e.classList.contains('hidden')) return false; const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; })()`);
-//  근태 창을 강제로 닫는다(정리, 전제). 보내는 중 표지와 글을 내려 놓고 window.close(). 임시 저장을 다시 쓰지 않게 ATE.p 를 비운다.
+//  근태 창을 강제로 닫는다(정리, 전제). 보내는 중 표지와 글을 내려 놓고 window.close()(호스트가 숨긴다). 임시 저장을 다시 쓰지 않게 ATE.p 를 비운다.
+//    숨겨 둔 창은 페이지가 살아 있으므로 이 루프의 기록기(__atLoopW)를 걷어 원래 hpost, toast, submitDaily 로 되돌린다.
 async function forceCloseAttend() {
-  const t = (await attendTargets())[0];
-  if (!t) return true;
-  try {
-    if (!A || A.closed || A.targetId !== t.id) { if (A) A.close(); A = await Cdp.attach(t); }
-    await A.ev(`(function(){ try { ATE.armed = false; ATE.sending = false; clearTimeout(ATE.wd); clearTimeout(ATE.timer); ATE.timer = null; ATE.p = null; } catch (_) {}
-      ${LOOP_KEYS_JS}.forEach(function(k){ localStorage.removeItem(k); }); try { window.close(); } catch (_) {} return 1; })()`).catch(() => 0);
-  } catch (_) { /* 붙지 못했다 */ }
+  for (const t of await attendTargets()) {
+    try {
+      if (!A || A.closed || A.targetId !== t.id) { if (A) A.close(); A = await Cdp.attach(t); }
+      await A.ev(`(function(){ const hid = ${HIDDEN_JS};
+        if (!hid) { try { ATE.armed = false; ATE.sending = false; clearTimeout(ATE.wd); clearTimeout(ATE.timer); ATE.timer = null; ATE.p = null; } catch (_) {} }
+        ${LOOP_KEYS_JS}.forEach(function(k){ localStorage.removeItem(k); });
+        const R = window.__atLoopW; if (R) { hpost = R.orig.hpost; toast = R.orig.toast; Platform.report.submitDaily = R.orig.submitDaily; delete window.__atLoopW; }
+        if (!hid) { try { window.close(); } catch (_) {} } return 1; })()`).catch(() => 0);
+    } catch (_) { /* 붙지 못했다 */ }
+  }
   return await waitAttendTarget({ gone: true, timeout: 8000 });
 }
 
@@ -287,12 +303,12 @@ async function main() {
   ok('O0 메인 창 netcus 명령 차단(hpost)과 보고서 전송 가로채기 설치', await M.ev(`!!window.__atLoop && hpost !== window.__atLoop.orig.hpost`));
   started = true;
   if ((await attendTargets()).length) {
-    note('지난 실행의 근태 창이 떠 있어 닫는다');
-    ok('O0 떠 있던 근태 창을 닫았다', await forceCloseAttend());
+    if ((await shownAttendTargets()).length) note('근태 창이 떠 있어 닫는다(호스트가 숨긴다)');
+    ok('O0 근태 창은 숨김(떠 있던 창은 닫고, 숨겨 둔 창에 남은 기록기는 걷었다)', await forceCloseAttend());
   }
   const left0 = await dropLoopKeys(M);
   if (left0) note(`지난 실행의 2099 임시 저장 키 ${left0}건을 지웠다`);
-  ok('O0 잔재 없음(근태 창 없음, 2099 키 없음)', !(await attendTargets()).length && !(await loopKeys(M)).length);
+  ok('O0 잔재 없음(보이는 근태 창 없음, 2099 키 없음)', !(await shownAttendTargets()).length && !(await loopKeys(M)).length);
 
   /* ── A1 근태 탭 ── */
   head('A1 근태 탭: 달력이 보이고 이번 달을 실제로 읽어 그린다, 미보고 표시 없음');
@@ -369,7 +385,10 @@ async function main() {
   ok('A3 불러오기를 눌렀다', (await click(A, 'atLoad')) === 'ok');
   await sleep(150);
   const t3 = await curBlocks();
-  ok('A3 왼쪽이 체크한 과제의 블록으로 바뀌었다(끈 과제는 없다, 기록 없는 과제는 0시간)', t3.blocks.length === p3.rows.length - 1 && t3.blocks[0].name === p3.rows[0] && !t3.blocks.some((b) => b.name === p3.rows[1])
+  //  4-2(2026-11-16): 불러온 과제만 덮는다. 끈 과제의 블록은 원래 있었으면 그대로 남고, 없었으면 생기지 않는다.
+  const off3 = b3.blocks.find((b) => b.name === p3.rows[1]);
+  ok('A3 체크한 과제는 블록이 되고 끈 과제의 블록은 그대로(있었으면 남고 없었으면 없다), 기록 없는 과제는 0시간', p3.rows.filter((n, i) => i !== 1).every((n) => t3.blocks.some((b) => b.name === n)) && t3.blocks[0].name === p3.rows[0]
+    && (off3 ? same(t3.blocks.find((b) => b.name === p3.rows[1]), off3) : !t3.blocks.some((b) => b.name === p3.rows[1]))
     && t3.blocks.every((b) => typeof b.hours === 'number' && b.hours >= 0), JSON.stringify(t3.blocks.slice(0, 3).map((b) => [b.name, b.hours])));
   await typeBlock(0, t3.blocks[0].text + '\n- 루프가 고친 줄');
   ok('A3 고친 뒤 불러오기를 눌렀다', (await click(A, 'atLoad')) === 'ok');
@@ -424,7 +443,8 @@ async function main() {
   ok('A3b 카드 = 그 날짜의 출처 과제, 보는 날짜는 그대로', c3c.cards === c3c.items && c3c.date === D, JSON.stringify(c3c));
   if (c3c.items > 0) {
     await click(A, 'atLoad'); await sleep(150);
-    ok('A3b 불러오기가 그 날짜의 블록(공수표 시간)으로 바로 바꾼다', same((await curBlocks()).blocks, await A.J('atLoadBlocks().map(function(b){ return { name: b.name, hours: b.hours, text: b.text }; })'))
+    //  A3 끝의 전체 초기화로 왼쪽이 비어 있어 합친 결과 = 불러온 블록(4-2)
+    ok('A3b 빈 왼쪽에 불러오기가 그 날짜의 블록(공수표 시간)을 바로 넣는다',same((await curBlocks()).blocks, await A.J('atLoadBlocks().map(function(b){ return { name: b.name, hours: b.hours, text: b.text }; })'))
       && same((await curBlocks()).blocks.map((b) => b.hours), (await A.J('atCalRows().map(function(r){ return r.hours == null ? 0 : r.hours; })'))));
   } else note('오늘 캘린더에 기록이 있는 과제가 없어 불러오기는 건너뛴다(카드 0)');
 
@@ -442,9 +462,19 @@ async function main() {
   ok('A3c 회신이 왔고 오류가 없다', got3n && n3.err === '', JSON.stringify(n3));
   ok('A3c 보고가 있으면 카드(자유 메모, 블록, 과제 미정), 없으면 없는 날 안내', n3.has ? (n3.items === n3.cards) : /보낸 보고가 없습니다/.test(n3.none), JSON.stringify(n3));
   if (n3.items > 0) {
+    await A.ev(`(function(){ window.__pre3n = ATE.blocks.map(function(b){ return [b.name, b.hours, b.text]; }); return 1; })()`);
     await click(A, 'atLoad'); await sleep(150);
-    ok('A3c 불러오기가 이전 보고의 블록(캘린더 순서, 과제 미정은 맨 끝)으로 바로 바꾼다(&nbsp; 없이)', await A.ev(`(function(){ const want = atSortedCopy(atLoadBlocks(), atProjNames()); return JSON.stringify(ATE.blocks.map(function(b){ return [b.name, b.hours, b.text]; })) === JSON.stringify(want.map(function(b){ return [b.name, b.hours, b.text]; }))
-      && ATE.blocks.every(function(b){ return b.text.indexOf('&nbsp;') < 0; }); })()`));
+    //  4-2(2026-11-16): 불러온 과제는 이전 보고 내용으로 덮이고(한 과제 한 블록), 불러오지 않은 과제의 블록은 그대로, 순서는 캘린더 순서(과제 미정은 맨 끝)
+    ok('A3c 불러오기가 이전 보고의 과제 블록만 바로 덮고 나머지는 그대로 둔다(캘린더 순서, 과제 미정은 맨 끝, &nbsp; 없이)', await A.ev(`(function(){
+      const cur = ATE.blocks.map(function(b){ return [b.name, b.hours, b.text]; }), imp = atLoadBlocks().filter(function(b){ return b.name; }), inm = imp.map(function(b){ return b.name; });
+      const s = function(x){ return JSON.stringify(x); };
+      const okImp = imp.every(function(b){ const hit = cur.filter(function(c){ return c[0] === b.name; }); return hit.length === 1 && s(hit[0]) === s([b.name, b.hours, b.text]); });
+      const okKeep = window.__pre3n.filter(function(p){ return p[0] && inm.indexOf(p[0]) < 0; }).every(function(p){ return cur.some(function(c){ return s(c) === s(p); }); });
+      const okSort = s(atSortedCopy(ATE.blocks, atProjNames()).map(function(b){ return b.name; })) === s(ATE.blocks.map(function(b){ return b.name; }));
+      return okImp && okKeep && okSort && ATE.blocks.every(function(b){ return b.text.indexOf('&nbsp;') < 0; }); })()`));
+    const once3n = await curBlocks();
+    await click(A, 'atLoad'); await sleep(150);
+    ok('A3c 불러오기를 두 번 눌러도 블록이 같다(4-2)', same(await curBlocks(), once3n));
   }
   note(`이전 보고 어제 ${n3.has ? n3.len + '자' : '없음'}, 카드 ${n3.items}개`);
   //  캘린더 출처, 보는 날짜로 되돌리고 처음 상태로 돌려 둔다(다음 단계가 깨끗한 상태에서 시작한다)
@@ -478,13 +508,15 @@ async function main() {
   head('A5 닫기: 묻지 않고 닫기, 다시 열어 되살리기, 버리기');
   ok('A5 쓰던 글이 있어도 __winCloseRequest() = close(창 X 는 묻지 않는다)', (await A.ev('window.__winCloseRequest()')) === 'close');
   ok('A5 묻는 창이 없다', !(await A.ev(`!!document.getElementById('atAsk')`)));
+  const tid5 = A.targetId;
   await click(A, 'atClose').catch(() => 'closed');
   const gone5 = await waitAttendTarget({ gone: true, timeout: 8000 });
-  ok('A5 닫기면 근태 창이 닫혔다(대상이 사라짐)', gone5);
+  //  0.25.1 부터 닫기는 창을 숨겨 두고 다음 열기에 다시 쓴다(대상은 남는다). 숨기기 전에 화면을 비운다(at-idle, ATE.p 없음, 날짜 없음)
+  ok('A5 [닫기]면 근태 창이 숨겨졌다(같은 대상이 남고 화면을 비웠다)', gone5 && (await attendTargets()).some((t) => t.id === tid5) && (await A.ev(`ATE.date === '' && ATE.blocks.length === 0`)));
   const k5 = await storedIn(M, KEY);
   ok('A5 닫아도 임시 저장은 남는다', !!k5 && k5.memo === TXT4, JSON.stringify(k5));
   await M.ev(`atOpen(${JSON.stringify(D)})`);
-  ok('A5 다시 열었다(새 근태 창)', !!(await attachAttend(D, 20000)));
+  ok('A5 다시 열었다(숨겨 둔 같은 창을 다시 쓴다, 화면 비움 걷힘)', !!(await attachAttend(D, 20000)) && A.targetId === tid5 && (await A.ev(`document.visibilityState === 'visible' && !document.documentElement.classList.contains('at-idle')`)));
   vlog('근태 창 기록기:', await A.ev(INSTALL_A));
   ok('A5 되살림 안내 없이 연다(2026-10-29 사용자)', !(await A.ev(`!!document.getElementById('atRestore')`)));
   ok('A5 글이 되살아났다(자유 메모 칸)', (await A.ev(`ATE.memo === ${JSON.stringify(TXT4)} && document.querySelector('#atBlocks textarea[data-memo]').value === ${JSON.stringify(TXT4)}`)));
@@ -520,12 +552,22 @@ async function main() {
   ok('A7 근태 창 가로채기(submitDaily)와 netcus 차단(hpost)이 제자리', await interceptOkA());
   const P = await A.J('ATE.p.projects.map(function(x){ return x.name; })');
   if (P.length < 3) { undecide('A7 보내기', `이 계정의 캘린더 과제가 ${P.length}개라 블록 셋을 만들 수 없다`); return; }
-  //  막기: 내용이 있는데 0시간이면 보내지 않고 그 블록을 빨갛게 한다
-  ok('A7 막을 블록을 만들었다(내용 있는 0시간)', (await setBlocks('', [{ name: P[0], hours: 0, text: '- 시간을 안 적은 줄' }])) === 'ok');
+  //  막기: 시간이 범위(0~24) 밖이면 보내지 않고 그 블록을 빨갛게 한다(묻는 창도 띄우지 않는다)
+  ok('A7 막을 블록을 만들었다(시간 25)', (await setBlocks('', [{ name: P[0], hours: 25, text: '- 시간이 범위 밖인 줄' }])) === 'ok');
+  ok('A7 근태 = 정근(1), 초과 없음(막기 확인)', (await setSel('atStatus', '1')) === '1' && (await setSel('atOt', '0')) === '0');
   if (!(await interceptOkA())) throw new Error('전송 가로채기가 제자리에 없다. 실제 전송 위험이라 누르지 않는다');
   const n7a = await A.ev('__atLoopW.cap.length');
   await click(A, 'atSend'); await sleep(100);
-  ok('A7 내용 있는 0시간이면 보내지 않고 빨간 블록과 안내', (await A.ev('__atLoopW.cap.length')) === n7a && (await A.ev(`document.querySelector('#atBlocks .at-blk[data-bi="0"]').classList.contains('bad') && /고칠 과제가 1개/.test(document.getElementById('atMsg').textContent) && !ATE.sending`)));
+  ok('A7 시간이 범위 밖이면 보내지 않고 빨간 블록과 안내(근무시간 확인 창도 없다)', (await A.ev('__atLoopW.cap.length')) === n7a && (await A.ev(`document.querySelector('#atBlocks .at-blk[data-bi="0"]').classList.contains('bad') && /고칠 과제가 1개/.test(document.getElementById('atMsg').textContent) && !ATE.sending
+    && document.getElementById('confirmModal').classList.contains('hidden') && !ATE.asking`)));
+  //  구조 22 부터 내용 있는 0시간 블록은 막지 않는다(`[과제] : 0` 아래 내용이 나간다). 정근 8시간과 합계 0시간이 달라 근무시간 확인만 묻고, [취소]면 보내지 않는다
+  ok('A7 내용 있는 0시간 블록을 만들었다', (await setBlocks('', [{ name: P[0], hours: 0, text: '- 시간을 안 적은 줄' }])) === 'ok');
+  if (!(await interceptOkA())) throw new Error('전송 가로채기가 제자리에 없다. 실제 전송 위험이라 누르지 않는다');
+  await click(A, 'atSend'); await sleep(200);
+  const z7 = await A.J(`({ bad: !!document.querySelector('#atBlocks .at-blk.bad'), open: !document.getElementById('confirmModal').classList.contains('hidden'), msg: document.getElementById('cfMsg').textContent, sending: ATE.sending })`);
+  ok('A7 내용 있는 0시간은 막지 않는다(빨간 블록 없음), 합계 0시간이라 근무시간 확인 창, 아직 보내지 않음', !z7.bad && z7.open && z7.msg === '근무시간 8시간(근태 정근)과 과제 시간 합계 0시간이 맞지 않습니다. 그래도 보낼까요?' && !z7.sending && (await A.ev('__atLoopW.cap.length')) === n7a, JSON.stringify(z7));
+  await A.ev(`document.querySelector('#confirmModal [data-close].btn').click(); 1`); await sleep(300);
+  ok('A7 [취소]로 닫고 보내지 않았다', (await A.ev(`document.getElementById('confirmModal').classList.contains('hidden') && !ATE.sending && !ATE.asking`)) && (await A.ev('__atLoopW.cap.length')) === n7a);
   ok('A7 보낼 블록 셋과 자유 메모를 만들었다(과제 추가 메뉴, 시간 칸, 내용 칸)', (await setBlocks(SEND_MEMO, sendBlocks(P))) === 'ok');
   ok('A7 근태 = 정근(1), 초과 없음', (await setSel('atStatus', '1')) === '1' && (await setSel('atOt', '0')) === '0');
   ok('A7 상태 줄 = 합계 5.5시간(과제 수는 쓰지 않는다)', (await A.ev(`document.getElementById('atHours').textContent`)) === '합계 5.5시간');
@@ -554,7 +596,11 @@ async function main() {
   ok('A7 payload kind daily, 날짜, dryRun false', !!cap7 && cap7.kind === 'daily' && same(cap7.date, { y: 2099, m: 12, d: 2 }) && cap7.dryRun === false && cap7.__tc === 'netcus-report', JSON.stringify(cap7 && { kind: cap7.kind, date: cap7.date, dryRun: cap7.dryRun }));
   ok('A7 status = "5"(출장, null 없음), overtime = 0', !!cap7 && cap7.fields.status === '5' && cap7.fields.overtime === 0, JSON.stringify(cap7 && cap7.fields.status));
   ok('A7 content = 자유 메모, [과제] : 시간 조립(2.5, 3, 빈 과제 : 0), 줄 앞 공백은 &nbsp;', !!cap7 && cap7.fields.content === nbsp(sendText(P)), JSON.stringify(cap7 && cap7.fields.content));
-  ok('A7 hours = 블록 시간(0 은 없다)', !!cap7 && same(cap7.hours, sendHours(P)), JSON.stringify(cap7 && cap7.hours));
+  //  구조 22: 시간 줄 = { name, catUid(블록의 과제 id), projectUid(공식 과제 uid, 개인 과제면 null), hours, body(내용, &nbsp; 없음) }. 0시간 빈 과제는 넣지 않는다
+  const K7 = await A.J(`(function(){ const all = atProjectsAll(); return ${JSON.stringify(P.slice(0, 2))}.map(function(n){ const p = all.find(function(x){ return x.name === n; }); return p ? String(p.key || '') : ''; }); })()`);
+  const uid7 = (k) => (/^db-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/.exec(k || '') || [])[1] || null;
+  const want7 = sendHours(P).map((h, i) => ({ name: h.name, catUid: K7[i] || null, projectUid: uid7(K7[i]), hours: h.hours, body: sendBlocks(P)[i].text }));
+  ok('A7 hours = 블록 시간 줄(과제 id, 공식 과제 uid, 시간, 내용), 0시간 빈 과제는 없다', !!cap7 && K7.every((k) => !!k) && same(cap7.hours, want7), JSON.stringify(cap7 && cap7.hours));
   ok('A7 netcus 명령은 하나도 호스트로 나가지 않았다(두 창)', same(await A.J('__atLoopW.blocked'), []) && same(await M.J('__atLoop.blocked'), []), JSON.stringify([await A.J('__atLoopW.blocked'), await M.J('__atLoop.blocked')]));
   const st7 = (await storedIn(M, KEY)) || {};
   ok('A7 보내기 직전에 임시 저장을 썼다', st7.memo === SEND_MEMO && same((st7.blocks || []).map((b) => b.name), P.slice(0, 3)), JSON.stringify(st7));
@@ -566,7 +612,7 @@ async function main() {
   ok('A7 실패 회신 흉내 = 공통 안내', f7.msg === FAIL_MSG && /\berr\b/.test(f7.cls), JSON.stringify(f7));
   ok('A7 호스트 원래 문구는 title 로만', f7.title === '시험 실패 회신(루프)');
   ok('A7 잠금이 풀리고 블록 그대로', !f7.send && !f7.ta && !f7.sending && f7.label === '보고' && same(await curBlocks(), { memo: SEND_MEMO, blocks: sendBlocks(P) }));
-  ok('A7 실패해도 창은 남고 임시 저장도 남는다', (await attendTargets()).length === 1 && ((await storedIn(M, KEY)) || {}).memo === SEND_MEMO);
+  ok('A7 실패해도 창은 남고(보이는 근태 창 하나) 임시 저장도 남는다', (await shownAttendTargets()).length === 1 && ((await storedIn(M, KEY)) || {}).memo === SEND_MEMO);
   //  다시 보내기: 근태 코드와 초과시간
   ok('A7 근태 = 야근(2), 초과 +2시간', (await setSel('atStatus', '2')) === '2' && (await setSel('atOt', '2')) === '2');
   if (!(await interceptOkA())) throw new Error('전송 가로채기가 제자리에 없다. 실제 전송 위험이라 누르지 않는다');
@@ -578,14 +624,15 @@ async function main() {
   await sleep(300);
   const cap7b = await A.J('__atLoopW.cap[__atLoopW.cap.length - 1]');
   ok('A7 다시 보내기 payload status = "2", overtime = 2, 글 같음', (await A.ev('__atLoopW.cap.length')) === n7 + 2 && cap7b.fields.status === '2' && cap7b.fields.overtime === 2 && cap7b.fields.content === nbsp(sendText(P)), JSON.stringify(cap7b && cap7b.fields.status));
-  ok('A7 메인 창은 근태 창이 보낸 것에 묶이지 않았다(보고서 창 대기 표지 없음)', (await M.ev('__rptSendArmed')) === false && (await M.ev('ATE.armed')) === false);
+  //  보고서 창은 9e4be87 에서 없앴다(__rptSendArmed 도 없다). 메인 창의 근태 일간, 주간 화면이 회신을 기다리지 않는지 본다
+  ok('A7 메인 창은 근태 창이 보낸 것에 묶이지 않았다(메인 창 일간, 주간 대기 표지 없음)', (await M.ev('!ATE.armed && !ATE.sending && !AWE.armed && !AWE.sending')) === true);
   //  호스트의 DB 저장 알림 흉내(근태 창에서만): 그날 이전 보고 기억을 비운다(다음에 고르면 다시 읽는다). 창은 남는다.
   await A.ev(`(function(){ ATE.prev.date = ${JSON.stringify(D)}; ATE.prev.loading = false; return 1; })()`);
   await A.ev(`window.__reportDailySaved({ date: ${JSON.stringify(D)}, status: '2', overtime: 2 }); 1`);
-  ok('A7 __reportDailySaved 흉내: 그날 이전 보고 기억을 비우고 창은 남는다', (await A.ev(`ATE.prev.date === '' && ATE.sending === true`)) && (await attendTargets()).length === 1);
+  ok('A7 __reportDailySaved 흉내: 그날 이전 보고 기억을 비우고 창은 남는다', (await A.ev(`ATE.prev.date === '' && ATE.sending === true`)) && (await shownAttendTargets()).length === 1);
   await A.ev(`window.__netcusResult(true, '시험 회신(루프, 실제 전송 아님)'); 1`);
   await sleep(300);
-  ok('A7 성공 회신 흉내 = 근태 창은 닫히지 않는다', (await attendTargets()).length === 1 && !A.closed);
+  ok('A7 성공 회신 흉내 = 근태 창은 닫히지도 숨지도 않는다', (await shownAttendTargets()).length === 1 && !A.closed);
   ok('A7 성공 회신 = 임시 저장이 지워졌다', (await storedIn(M, KEY)) === null);
   const v7 = await A.J(`({ title: document.getElementById('atEdTitle').textContent, date: document.getElementById('atEdDate').textContent,
     st: document.getElementById('atStatus').value, ot: document.getElementById('atOt').value, label: document.getElementById('atSend').textContent,
@@ -597,29 +644,33 @@ async function main() {
     return r.memo === ATE.memo && JSON.stringify(r.blocks.map(function(b){ return [b.name, b.hours, b.text]; })) === JSON.stringify(ATE.blocks.map(function(b){ return [b.name, b.hours, b.text]; })); })()`));
   ok('A7 성공 문구', v7.msg === '시험 회신(루프, 실제 전송 아님)');
   ok('A7 성공 뒤 고친 것이 없다(__winCloseRequest = close)', !v7.dirty && (await A.ev('window.__winCloseRequest()')) === 'close');
-  ok('A7 고친 것이 없으면 닫기 단추가 창을 닫는다', (await click(A, 'atClose').catch(() => 'closed')) !== 'disabled');
+  ok('A7 고친 것이 없으면 닫기 단추가 창을 닫는다(숨긴다)', (await click(A, 'atClose').catch(() => 'closed')) !== 'disabled');
   const gone7 = await waitAttendTarget({ gone: true, timeout: 8000 });
-  ok('A7 근태 창이 닫혔다', gone7);
+  ok('A7 근태 창이 숨겨졌다(보이는 근태 창 없음, 화면 비움)', gone7 && (await A.ev(`ATE.date === '' && !ATE.p`)));
   ok('A7 메인 창으로는 netcus 명령이 나가지 않았다', same(await M.J('__atLoop.blocked'), []));
 
   /* ── A8 메인 창 무시 ── */
-  head('A8 메인 창 무시: 보고서 창이 보내지 않았으면 회신 알림이 문구와 토스트를 건드리지 않는다');
-  ok('A8 보고서 창 대기 표지 없음', (await M.ev('__rptSendArmed')) === false);
+  //  보고서 창(#rptSendStatus, __rptSendArmed)은 9e4be87 에서 없앴다. 지금 메인 창에서 회신을 받을 수 있는 곳은 근태 일간(atOnNetcusResult)과
+  //    주간(awOnNetcusResult)뿐이고 둘 다 자기가 보냈을 때(armed)만 받는다. 그 상태 줄과 대기 표지, 잠금이 그대로이고 토스트가 없는지 본다.
+  head('A8 메인 창 무시: 메인 창이 보내지 않았으면 회신 알림이 근태 상태 줄, 대기 표지, 토스트를 건드리지 않는다');
+  ok('A8 메인 창 대기 표지 없음(일간, 주간)', (await M.ev('!ATE.armed && !ATE.sending && !AWE.armed && !AWE.sending')) === true);
   //  빈 칸이면 "안 바뀜" 이 약하다. 표지 문구를 넣어 두고 알림 뒤에도 그대로인지 본 다음 원래 값으로 되돌린다.
-  const s80 = await M.J(`(function(){ const s = document.getElementById('rptSendStatus'); if (!s) return null; const o = { t: s.innerHTML, c: s.className };
-    s.innerHTML = '루프 표지 문구'; s.className = 'rpt-send-status'; return o; })()`);
-  ok('A8 #rptSendStatus 가 있다', !!s80);
+  const SNAP8 = `(function(){ const g = function(id){ const e = document.getElementById(id); return e ? { t: e.textContent, c: e.className } : null; };
+    return { at: g('atMsg'), aw: g('awMsg'), armed: [!!ATE.armed, !!ATE.sending, !!AWE.armed, !!AWE.sending], busy: document.body.classList.contains('nc-busy') }; })()`;
+  const s80 = await M.J(`(function(){ const o = {}; ['atMsg', 'awMsg'].forEach(function(id){ const e = document.getElementById(id); if (e) { o[id] = { t: e.textContent, c: e.className }; e.textContent = '루프 표지 문구'; } }); return o; })()`);
+  ok('A8 메인 창에 근태 일간, 주간 상태 줄(#atMsg, #awMsg)이 있다', !!s80.atMsg && !!s80.awMsg, JSON.stringify(Object.keys(s80)));
+  const s8a = await M.J(SNAP8);
   const m8 = await markM();
   await M.ev(`window.__netcusProgress('루프 진행 알림(무시돼야 함)'); window.__netcusResult(true, '루프 성공 알림(무시돼야 함)'); window.__netcusResult(false, '루프 실패 알림(무시돼야 함)'); 1`);
   await sleep(300);
-  const s8b = await M.J(`(function(){ const s = document.getElementById('rptSendStatus'); return s ? { t: s.innerHTML, c: s.className } : null; })()`);
-  if (s80) await M.ev(`(function(){ const s = document.getElementById('rptSendStatus'); s.innerHTML = ${JSON.stringify(s80.t)}; s.className = ${JSON.stringify(s80.c)}; return 1; })()`);
-  ok('A8 #rptSendStatus 문구와 모양이 그대로(표지 문구 유지)', same(s8b, { t: '루프 표지 문구', c: 'rpt-send-status' }), JSON.stringify(s8b));
+  const s8b = await M.J(SNAP8);
+  await M.ev(`(function(){ const o = ${JSON.stringify(s80)}; Object.keys(o).forEach(function(id){ const e = document.getElementById(id); if (e) { e.textContent = o[id].t; e.className = o[id].c; } }); return 1; })()`);
+  ok('A8 상태 줄 문구와 모양, 대기 표지, 잠금이 그대로(표지 문구 유지)', same(s8b, s8a) && s8b.at.t === '루프 표지 문구' && s8b.aw.t === '루프 표지 문구', JSON.stringify(s8b));
   const toasts8 = (await sinceM(m8)).filter((x) => x.toast);
-  ok('A8 보고서 토스트가 뜨지 않았다', !toasts8.length, JSON.stringify(toasts8));
+  ok('A8 토스트가 뜨지 않았다', !toasts8.length, JSON.stringify(toasts8));
 
-  /* ── A9 보고한 날(실제, 읽기만): 바로 쓰기 화면, 고치지 않았으면 Esc 로 닫힌다 ── */
-  head('A9 보고한 날: 이 달에 앱으로 보고한 날을 열면 바로 쓰기 화면에 보고한 글이 뜨고, Esc 로 닫힌다');
+  /* ── A9 보고한 날(실제, 읽기만): 바로 쓰기 화면, 고치지 않았으면 Esc 로 숨겨진다 ── */
+  head('A9 보고한 날: 이 달에 앱으로 보고한 날을 열면 바로 쓰기 화면에 보고한 글이 뜨고, Esc 로 숨겨진다');
   await M.ev(`(async function(){ ATT.anchor = todayYmd(); await atLoadMonth(); return 1; })()`);
   const R9 = await M.J(`(function(){ const a = Array.from(ATT.rows.values()).filter(function(r){ return atDecode(r.content).trim() && attDraftGet(r.date) == null; });
     a.sort(function(x, y){ return x.date < y.date ? -1 : 1; }); const r = a[a.length - 1]; if (!r) return null;
@@ -636,7 +687,7 @@ async function main() {
     ok('A9 내용 = DB 의 그날 보고를 되살린 블록과 자유 메모, 근태, 보낸 시각, 고친 것 없음', v9.memo === R9.memo && same(v9.blocks, R9.blocks) && v9.st === R9.status && v9.ot === R9.overtime && v9.sent === (R9.sent ? '보낸 시각 ' + R9.sent : '') && !v9.dirty,
       JSON.stringify({ st: [v9.st, R9.status], ot: [v9.ot, R9.overtime], sent: [v9.sent, R9.sent] }));
     await A.ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); 1`).catch(() => 0);
-    ok('A9 고친 것이 없으면 Esc 로 근태 창이 닫혔다', await waitAttendTarget({ gone: true, timeout: 8000 }));
+    ok('A9 고친 것이 없으면 Esc 로 근태 창이 숨겨졌다', await waitAttendTarget({ gone: true, timeout: 8000 }));
   }
 }
 
@@ -661,10 +712,10 @@ try {
       await M.ev(`pcSetTab(${JSON.stringify(tab0)}); 1`);
       if (pcalKey && pcalRaw0 !== undefined) await M.ev(`(function(){ try { const v = ${JSON.stringify(pcalRaw0)}; if (v == null) localStorage.removeItem(${JSON.stringify(pcalKey)}); else localStorage.setItem(${JSON.stringify(pcalKey)}, v); } catch (_) {} return 1; })()`);
       healthyAtEnd = await M.waitFor(isHealthy, 20000, 300);
-      const left = { attend: (await attendTargets()).length, keys: await loopKeys(M), tab: await M.ev('PCAL.tab'),
+      const left = { attend: (await shownAttendTargets()).length, keys: await loopKeys(M), tab: await M.ev('PCAL.tab'),
         pcal: pcalKey ? await M.ev(`localStorage.getItem(${JSON.stringify(pcalKey)})`) : null };
       cleaned = closedA && left.attend === 0 && left.keys.length === 0 && left.tab === tab0 && (pcalRaw0 === undefined || left.pcal === pcalRaw0);
-      ok('정리: 근태 창 없음, 2099 키 0, 탭과 탭 기억이 처음 그대로', cleaned, JSON.stringify({ ...left, pcal: left.pcal === pcalRaw0 ? 'same' : left.pcal }));
+      ok('정리: 보이는 근태 창 없음(숨김), 2099 키 0, 탭과 탭 기억이 처음 그대로', cleaned, JSON.stringify({ ...left, pcal: left.pcal === pcalRaw0 ? 'same' : left.pcal }));
     } catch (e) {
       cleaned = false;
       F.push('정리 중 예외: ' + e.message); fail++;

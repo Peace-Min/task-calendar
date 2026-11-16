@@ -285,7 +285,8 @@ if (!JSDOM) {
       assert.strictEqual(X.ev('ATE.memo'), '* 외근', '캘린더 불러오기가 자유 메모를 바꿨다');
       click('atODesc'); click('atOEvent');
       b = loadNow();
-      assert.ok(!b[0].text.includes('로그인 화면 리뷰') && b[0].text.includes('보고서 정리') && !b.some((x) => x.name === '베타'), '일정을 끄면 일정과 일정만 있던 과제가 빠져야 한다');
+      assert.ok(!b[0].text.includes('로그인 화면 리뷰') && b[0].text.includes('보고서 정리') && !X.ev("atLoadBlocks().some(function(x){ return x.name === '베타'; })"), '일정을 끄면 일정과 일정만 있던 과제가 불러올 것에서 빠져야 한다');
+      assert.ok(b.some((x) => x.name === '베타'), '불러오지 않은 과제(베타) 블록은 왼쪽에 그대로 남아야 한다(4-2)');
       click('atOEvent'); click('atOTodo');
       b = loadNow();
       assert.ok(b[0].text.includes('로그인 화면 리뷰') && !b[0].text.includes('보고서 정리') && b.some((x) => x.name === '베타'));
@@ -295,7 +296,8 @@ if (!JSDOM) {
       assert.strictEqual(X.$('#atPick').textContent, '과제 4 / 4개 선택');
       const cb = X.$('#atCards input[data-atid="c:c-b"]'); cb.checked = false; cb.dispatchEvent(new X.w.Event('change', { bubbles: true }));
       assert.deepStrictEqual(names(X), ['알파', '베타', '감마', '델타'], '체크만으로 왼쪽이 바뀌었다');
-      assert.deepStrictEqual(loadNow().map((x) => x.name), ['알파', '감마', '델타']);
+      assert.strictEqual(X.ev('JSON.stringify(atLoadBlocks().map(function(x){ return x.name; }))'), JSON.stringify(['알파', '감마', '델타']));
+      assert.deepStrictEqual(loadNow().map((x) => x.name), ['알파', '베타', '감마', '델타'], '체크를 뺀 과제(베타) 블록은 불러오기 뒤에도 남아야 한다(4-2)');
       X.$('#atNone').click();
       assert.strictEqual(X.$('#atLoad').disabled, true, '고른 과제가 없는데 불러오기가 켜져 있다');
       X.$('#atAll').click();
@@ -629,7 +631,9 @@ if (!JSDOM) {
       assert.deepStrictEqual(X.evJSON("[].map.call(document.querySelectorAll('#atCards .at-cnm'), function(x){ return x.textContent; })"), ['[델타]'], '고른 날짜의 캘린더 기록이 아니다');
       X.$('#atLoad').click();
       const b = blk(X);
-      assert.ok(b.length === 1 && b[0].name === '델타' && b[0].hours === 0 && b[0].text.includes('어제 일'), '고른 날짜의 블록으로 바뀌지 않았다: ' + JSON.stringify(b));
+      const d = b.find((x) => x.name === '델타');
+      assert.ok(d && d.hours === 0 && d.text.includes('어제 일'), '고른 날짜의 블록이 들어오지 않았다: ' + JSON.stringify(b));
+      assert.deepStrictEqual(b.map((x) => x.name), ['알파', '베타', '감마', '델타'], '불러오지 않은 과제 블록이 지워졌거나 새 과제가 순서 자리에 들어가지 않았다(4-2)');
       assert.strictEqual(X.ev('ATE.date'), X.T, '가져오기가 보는 날짜를 바꿨다');
       X.$('[data-atsrc="prev"]').click();
       assert.ok(X.$('#atCards').textContent.includes('위젯에서만'), '브라우저에서 이전 보고 안내가 없다');
@@ -1053,9 +1057,10 @@ if (!JSDOM) {
     assert.deepStrictEqual(A.evJSON("[].map.call(document.querySelectorAll('#atCards .at-cnm'), function(x){ return x.textContent; })"), ['[베타]'], '중계로 받은 기록이 카드가 아니다');
     typeBlock(A, 0, '고친 글');
     A.$('#atLoad').click();
-    const b = blk(A);
-    assert.ok(b.length === 1 && b[0].name === '베타' && b[0].hours === 0 && b[0].text.includes('고객 회신'), '불러오기가 그 날짜의 블록(0시간으로 시작)으로 바로 바꾸지 않았다: ' + JSON.stringify(b));
-    assert.strictEqual(A.ev('ATE.blocks[0].catId'), 'c-b', '불러온 블록에 과제 id 가 없다(구조 22)');
+    const b = blk(A), bi = b.findIndex((x) => x.name === '베타');
+    assert.ok(bi >= 0 && b[bi].hours === 0 && b[bi].text.includes('고객 회신'), '불러오기가 그 날짜의 블록(0시간으로 시작)으로 바로 덮지 않았다: ' + JSON.stringify(b));
+    assert.ok(b[0].name === '알파' && b[0].text === '고친 글', '불러오지 않은 과제(알파)의 고친 글이 바뀌었다(4-2): ' + JSON.stringify(b));
+    assert.strictEqual(A.ev('ATE.blocks[' + bi + '].catId'), 'c-b', '불러온 블록에 과제 id 가 없다(구조 22)');
     assert.strictEqual(A.ev('ATE.date'), A.T);
   }
   test('(A) 가져오기 캘린더: 다른 날짜는 attendSourceReq 로 메인 창에 청하고 __attendSource 회신(그 날짜만)으로 카드, 불러오기는 바로 바꾼다', () => {
@@ -1080,12 +1085,15 @@ if (!JSDOM) {
       assert.ok(!shown(A, '#atOpts'), '이전 보고인데 캘린더 옵션이 보인다');
       assert.deepStrictEqual(A.evJSON("[].map.call(document.querySelectorAll('#atCards .at-cnm'), function(x){ return x.textContent; })"), ['자유 메모', '[알파]', '과제 미정', '[베타]']);
       assert.strictEqual(A.$('#atPick').textContent, '과제 4 / 4개 선택');
+      const gamma = blk(A).find((x) => x.name === '감마');
+      assert.ok(gamma, '처음 블록에 감마가 없다(시험 전제)');
       A.$('#atLoad').click();
       assert.strictEqual(A.ev('ATE.memo'), '* 외근', '이전 보고의 자유 메모를 불러오지 않았다');
-      assert.deepStrictEqual(blk(A), [{ name: '알파', hours: 5, text: '[일정]\n  - 연동' }, { name: '베타', hours: 0, text: '' }, { name: '', hours: 2, text: '[모름] : 2\n- 기타 일' }], '불러온 블록이 캘린더 순서(과제 미정은 맨 끝)가 아니다');
-      assert.ok(isBad(A, 2) && !isBad(A, 0), '과제 미정 블록만 빨갛지 않다');
-      input(A, '#atBlocks select[data-bpick="2"]', '감마');
-      assert.deepStrictEqual(blk(A)[2], { name: '감마', hours: 2, text: '- 기타 일' }, '과제를 고르면 원래 머리 줄을 지워야 한다');
+      //  4-2: 불러온 알파, 베타만 덮고 불러오지 않은 감마는 그대로, 과제 미정은 맨 끝
+      assert.deepStrictEqual(blk(A), [{ name: '알파', hours: 5, text: '[일정]\n  - 연동' }, { name: '베타', hours: 0, text: '' }, gamma, { name: '', hours: 2, text: '[모름] : 2\n- 기타 일' }], '불러온 블록이 캘린더 순서(과제 미정은 맨 끝)가 아니거나 감마가 바뀌었다');
+      assert.ok(isBad(A, 3) && !isBad(A, 0), '과제 미정 블록만 빨갛지 않다');
+      input(A, '#atBlocks select[data-bpick="3"]', '델타');
+      assert.deepStrictEqual(blk(A)[3], { name: '델타', hours: 2, text: '- 기타 일' }, '과제를 고르면 원래 머리 줄을 지워야 한다');
       //  메모 카드를 끄고 불러오면 메모는 그대로
       typeMemo(A, '지금 메모');
       const cm = A.$('#atCards input[data-atid="p:memo"]'); cm.checked = false; cm.dispatchEvent(new A.w.Event('change', { bubbles: true }));
@@ -1109,6 +1117,99 @@ if (!JSDOM) {
       A.$('#atCards [data-atretry]').click(); await tick();
       assert.deepStrictEqual(A.evJSON("[].map.call(document.querySelectorAll('#atCards .at-cnm'), function(x){ return x.textContent; })"), ['[감마]'], '다시 읽기가 되지 않았다');
       assert.ok(!A.posted.some((m) => /^netcus/.test(m.cmd)), '이전 보고가 회사 사이트 명령을 보냈다');
+      assert.deepStrictEqual(A.errors, []);
+    } finally { A.close(); }
+  });
+
+  //  4-2(docs/REPORT-FEEDBACK-1116.md): [← 불러오기]는 불러온 과제의 블록만 덮는다. 왼쪽 블록을 직접 놓고 실제 패널 체크와 단추로 누른다.
+  const setLeft = (X, blocks) => X.ev('ATE.blocks = ' + JSON.stringify(blocks) + '; atBlocksRender();');
+  const checkOnly = (X, ids) => {
+    X.$('#atNone').click();
+    for (const id of ids) { const c = X.$(`#atCards input[data-atid="${id}"]`); c.checked = true; c.dispatchEvent(new X.w.Event('change', { bubbles: true })); }
+  };
+  const blkFull = (X) => X.evJSON('ATE.blocks.map(function(b){ return { name: b.name, catId: b.catId || null, hours: b.hours, text: b.text, raw: b.raw || \'\' }; })');
+
+  test('(B) 4-2 캘린더 출처: A, B, C 에 A, B 를 불러오면 C 는 남고 A, B 는 덮인다, 과제 미정 블록과 자유 메모는 그대로, 두 번 눌러도 같다', () => {
+    const X = bootBrowser();
+    try {
+      openB(X);
+      typeMemo(X, '* 외근');
+      setLeft(X, [{ name: '알파', catId: 'c-a', hours: 1, text: 'L-A', raw: '' }, { name: '베타', catId: 'c-b', hours: 2, text: 'L-B', raw: '' },
+        { name: '감마', catId: 'c-c', hours: 3, text: 'L-C', raw: '' }, { name: '', catId: null, hours: 1, text: '[모름] : 1\n- 미정 글', raw: '[모름] : 1' }]);
+      checkOnly(X, ['c:c-a', 'c:c-b']);
+      X.$('#atLoad').click();
+      const b = blkFull(X);
+      assert.deepStrictEqual(b.map((x) => x.name), ['알파', '베타', '감마', ''], '블록 목록이 다르다(C 와 과제 미정이 남아야 한다): ' + JSON.stringify(b));
+      assert.ok(b[0].hours === 0 && b[0].text.includes('로그인 화면 리뷰') && b[0].catId === 'c-a', '알파가 불러온 내용과 시간으로 덮이지 않았다: ' + JSON.stringify(b[0]));
+      assert.ok(b[1].hours === 0 && b[1].text.includes('고객 회신') && b[1].catId === 'c-b', '베타가 불러온 내용과 시간으로 덮이지 않았다: ' + JSON.stringify(b[1]));
+      assert.deepStrictEqual(b[2], { name: '감마', catId: 'c-c', hours: 3, text: 'L-C', raw: '' }, '불러오지 않은 감마가 바뀌었다');
+      assert.deepStrictEqual(b[3], { name: '', catId: null, hours: 1, text: '[모름] : 1\n- 미정 글', raw: '[모름] : 1' }, '과제 미정 블록이 바뀌었다');
+      assert.strictEqual(X.ev('ATE.memo'), '* 외근', '캘린더 불러오기가 자유 메모를 바꿨다');
+      X.$('#atLoad').click();
+      assert.deepStrictEqual(blkFull(X), b, '두 번 누르면 블록이 달라진다');
+      assert.deepStrictEqual(X.errors, []);
+    } finally { X.close(); }
+  });
+
+  test('(B) 4-2 캘린더 출처: 왼쪽에 없던 과제는 과제 순서 자리에 들어가고, 같은 과제 두 블록(id 와 옛 이름)은 첫 블록을 덮고 하나로', () => {
+    const X = bootBrowser();
+    try {
+      openB(X);
+      setLeft(X, [{ name: '알파', catId: 'c-a', hours: 1, text: 'L-A', raw: '' }, { name: '감마', catId: 'c-c', hours: 3, text: 'L-C', raw: '' }]);
+      checkOnly(X, ['c:c-b']);
+      X.$('#atLoad').click();
+      let b = blkFull(X);
+      assert.deepStrictEqual(b.map((x) => x.name), ['알파', '베타', '감마'], '새 과제 베타가 과제 순서 자리에 들어가지 않았다');
+      assert.ok(b[1].catId === 'c-b' && b[1].text.includes('고객 회신'), '새 블록이 불러온 내용이 아니다');
+      assert.ok(b[0].text === 'L-A' && b[2].text === 'L-C', '불러오지 않은 블록이 바뀌었다');
+      //  같은 과제 둘: id 있는 블록과 id 없는 옛 블록(이름으로 맞춘다)
+      setLeft(X, [{ name: '알파', catId: 'c-a', hours: 1, text: 'x1', raw: '' }, { name: '알파', catId: null, hours: 2, text: 'x2', raw: '' }, { name: '감마', catId: 'c-c', hours: 3, text: 'L-C', raw: '' }]);
+      checkOnly(X, ['c:c-a']);
+      X.$('#atLoad').click();
+      b = blkFull(X);
+      assert.deepStrictEqual(b.map((x) => x.name), ['알파', '감마'], '같은 과제 블록이 하나로 줄지 않았다: ' + JSON.stringify(b));
+      assert.ok(b[0].catId === 'c-a' && b[0].hours === 0 && b[0].text.includes('로그인 화면 리뷰'), '남은 알파 블록이 불러온 내용이 아니다');
+      //  id 없는 옛 블록 하나만 있으면 이름으로 맞춰 덮고 id 를 싣는다
+      setLeft(X, [{ name: '알파', catId: null, hours: 2, text: 'old', raw: '' }]);
+      X.$('#atLoad').click();
+      b = blkFull(X);
+      assert.ok(b.length === 1 && b[0].catId === 'c-a' && b[0].text.includes('로그인 화면 리뷰'), '이름으로 옛 블록을 덮지 않았다: ' + JSON.stringify(b));
+      assert.deepStrictEqual(X.errors, []);
+    } finally { X.close(); }
+  });
+
+  test('(A) 4-2 이전 보고 출처: 불러온 과제만 덮고 감마와 과제 미정은 남는다, 불러온 과제 미정은 한 번만 들어간다, 메모는 메모 카드를 체크했을 때만', async () => {
+    const A = bootAttend();
+    try {
+      const Y = A.ev('addDays(todayYmd(), -1)');
+      stubHost(A, `{ reportDailyList: function(p){ return window.__prevReply(p); } }`);
+      A.ev(`window.__prevReply = function(p){ return { ok: true, rows: [{ date: p.from, status: '1', overtime: 0, sentAt: '',
+        content: '* 외근\\n\\n[알파] : 5\\n- 어제 알파\\n\\n[모름] : 2\\n- 기타 일' }] }; }`);
+      openA(A);
+      typeMemo(A, '지금 메모');
+      const sd = A.$('#atSrcDate'); sd.value = Y; sd.dispatchEvent(new A.w.Event('change', { bubbles: true }));
+      A.$('[data-atsrc="prev"]').click();
+      await tick();
+      const mine = { name: '', catId: null, hours: 1, text: '[내 미정] : 1\n- 내 글', raw: '[내 미정] : 1' };
+      setLeft(A, [{ name: '알파', catId: null, hours: 1, text: 'old', raw: '' }, { name: '감마', catId: 'c-c', hours: 3, text: 'L-C', raw: '' }, mine]);
+      //  메모 카드를 빼고 불러오면 메모는 그대로
+      const cm = A.$('#atCards input[data-atid="p:memo"]'); cm.checked = false; cm.dispatchEvent(new A.w.Event('change', { bubbles: true }));
+      A.$('#atLoad').click();
+      assert.strictEqual(A.ev('ATE.memo'), '지금 메모', '메모 카드를 빼고 불러왔는데 메모가 바뀌었다');
+      const b = blkFull(A);
+      assert.deepStrictEqual(b.map((x) => x.name), ['알파', '감마', '', ''], '블록 목록이 다르다: ' + JSON.stringify(b));
+      assert.ok(b[0].hours === 5 && b[0].text === '- 어제 알파' && b[0].catId === 'c-a', '이전 보고의 알파로 덮이지 않았다(옛 블록은 이름으로): ' + JSON.stringify(b[0]));
+      assert.deepStrictEqual(b[1], { name: '감마', catId: 'c-c', hours: 3, text: 'L-C', raw: '' }, '불러오지 않은 감마가 바뀌었다');
+      assert.deepStrictEqual(b[2], mine, '왼쪽의 과제 미정 블록이 바뀌었다');
+      assert.ok(b[3].hours === 2 && b[3].text === '[모름] : 2\n- 기타 일', '불러온 과제 미정 블록이 새로 들어가지 않았다: ' + JSON.stringify(b[3]));
+      //  두 번 눌러도 같다(불러온 과제 미정이 또 붙지 않는다)
+      A.$('#atLoad').click();
+      assert.deepStrictEqual(blkFull(A), b, '두 번 누르면 블록이 달라진다');
+      //  메모 카드를 체크하면 메모도 바꾼다
+      const cm2 = A.$('#atCards input[data-atid="p:memo"]'); cm2.checked = true; cm2.dispatchEvent(new A.w.Event('change', { bubbles: true }));
+      A.$('#atLoad').click();
+      assert.strictEqual(A.ev('ATE.memo'), '* 외근', '메모 카드를 체크했는데 메모를 바꾸지 않았다');
+      assert.deepStrictEqual(blkFull(A), b, '메모를 불러오며 블록이 달라졌다');
       assert.deepStrictEqual(A.errors, []);
     } finally { A.close(); }
   });
@@ -1259,6 +1360,28 @@ if (!JSDOM) {
       assert.strictEqual(X.evJSON('__cap').length, 0);
       X.$('#cfOk').click(); await tick(300);   // 닫힘 움직임(MD_OUT) 뒤에 hidden
       assert.strictEqual(X.evJSON('__cap').length, 1, '[보내기]인데 보내지 않았다');
+      assert.deepStrictEqual(X.errors, []);
+    } finally { X.close(); }
+  });
+  //  0.29.0 검토 P2-1: 묻는 사이 날짜가 바뀌면 [보내기]여도 보내지 않는다. 막는 블록(범위 밖 시간)이 생겼어도 보내지 않는다.
+  test('(B) 근무시간 확인 중 날짜가 바뀌거나 막는 블록이 생기면 [보내기]여도 보내지 않는다', async () => {
+    const X = bootBrowser();
+    try {
+      openB(X);
+      X.ev('window.__cap = []; Platform.report.submitDaily = function(p){ __cap.push(JSON.parse(JSON.stringify(p))); };');
+      input(X, '#atStatus', '1'); input(X, '#atOt', '0');
+      X.ev('ATE.blocks.forEach(function(b, i){ b.hours = i === 0 ? 2 : 0; }); atBlocksRender();');
+      X.$('#atSend').click();
+      assert.ok(cfOpen(X));
+      X.ev("ATE.date = addDays(ATE.date, 1);");   // 다른 날짜로 열린 것처럼
+      X.$('#cfOk').click(); await tick(300);
+      assert.strictEqual(X.evJSON('__cap').length, 0, '날짜가 바뀌었는데 보냈다');
+      X.ev("ATE.date = addDays(ATE.date, -1);");
+      X.$('#atSend').click();
+      assert.ok(cfOpen(X));
+      X.ev("ATE.blocks[1].hours = 25;");   // 범위 밖 시간 = 막는 블록(atBlockProblem)
+      X.$('#cfOk').click(); await tick(300);
+      assert.strictEqual(X.evJSON('__cap').length, 0, '막는 블록이 있는데 보냈다');
       assert.deepStrictEqual(X.errors, []);
     } finally { X.close(); }
   });

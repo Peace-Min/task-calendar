@@ -16,8 +16,8 @@
  *    W6   보내기(가로채기, 실제 전송 없음): 과제투입시간 0개는 막고, payload(기간, 제목, 네 칸, resultwork, &nbsp;, hours 구조), 잠금, 연속 클릭 한 번,
  *         실패 회신 흉내 = 공통 안내, 성공 회신 흉내 = 처음 상태(임시 저장은 남음), 저장 알림 흉내 = 임시 저장 지움
  *    W7   창 안 목록: [‹ 목록]이 창 안의 목록(reportWeeklyList)을 보이고 [일간][주간]은 없다. [작성]은 이번 주를 그 자리에서 연다
- *    W8   닫기 지키기: 고친 글이 있으면 __winCloseRequest() = ask, [닫기]면 창이 닫히고 키는 남는다
- *    정리 근태 창 닫기, 두 창의 2099 주간 임시 저장 키 삭제, 탭과 [일간][주간] 기억 되돌리기, 잔재 0 확인
+ *    W8   닫기: 고친 글이 있어도 __winCloseRequest() = close(묻지 않는다), [닫기]면 창이 숨겨지고(0.25.1, 대상은 남는다) 키는 남는다
+ *    정리 근태 창 닫기(숨김)와 숨겨 둔 창의 기록기 걷기, 두 창의 2099 주간 임시 저장 키 삭제, 탭과 [일간][주간] 기억 되돌리기, 잔재 0 확인
  *
  *  ★ 실제로 회사에 보내지 않는다(두 겹, loop-attendance 와 같은 방식): 근태 창의 Platform.report.submitWeekly 를 가로채 payload 만 붙잡고,
  *    두 창의 hpost 를 감싸 'netcus' 로 시작하는 명령은 호스트로 넘기지 않고 기록만 한다. 회신은 __netcusResult 를 직접 불러 흉내 낸다.
@@ -132,10 +132,21 @@ let M = null;   // 메인 창
 let A = null;   // 근태 창
 
 async function attendTargets() { try { return (await pageTargets()).filter((x) => isAttendUrl(x.url)); } catch (_) { return []; } }
+//  근태 창은 닫으면 없애지 않고 숨겨 두었다가 다시 쓴다(0.25.1, AppWindow ReuseOnClose). 그래서 CDP 대상은 남는다.
+//    숨김 = 호스트가 Hide 직전에 __attendWinHidden 을 불러 화면을 비웠다(html.at-idle, ATE.p, AWE.p 없음)이고 문서가 hidden 이다.
+const HIDDEN_JS = `(document.visibilityState === 'hidden' && document.documentElement.classList.contains('at-idle') && typeof ATE === 'object' && !ATE.p && typeof AWE === 'object' && !AWE.p)`;
+async function isHiddenTarget(t) {
+  if (A && !A.closed && A.targetId === t.id) { try { return !!(await A.ev(HIDDEN_JS)); } catch (_) { return false; } }
+  let c = null;
+  try { c = await Cdp.attach(t); return !!(await c.ev(HIDDEN_JS)); } catch (_) { return false; } finally { if (c) c.close(); }
+}
+//  보이는(숨기지 않은) 근태 창 대상
+async function shownAttendTargets() { const out = []; for (const t of await attendTargets()) if (!(await isHiddenTarget(t))) out.push(t); return out; }
+//  근태 창 대상이 뜰 때까지 기다린다. gone 이면 보이는 근태 창이 없어질 때까지(숨겨졌거나 대상이 사라졌다) 기다린다.
 async function waitAttendTarget({ timeout = 20000, gone = false } = {}) {
   const t0 = Date.now();
   for (;;) {
-    const L = await attendTargets();
+    const L = gone ? await shownAttendTargets() : await attendTargets();
     if (gone ? !L.length : L.length) return gone ? true : L[0];
     if (Date.now() - t0 > timeout) return gone ? false : null;
     await sleep(200);
@@ -214,15 +225,22 @@ const setWeek = (list, meet) => A.ev(`(function(){
   put('awMeet', ${JSON.stringify(meet)});
   return 'ok'; })()`);
 const curWeek = () => A.J(`({ prog: AWE.prog, plan: AWE.plan, hrs: AWE.hrs.slice(), hours: awHoursFor(AWE.hrs, AWE.hours), meet: AWE.meet })`);
+//  근태 창을 강제로 닫는다(정리, 전제). window.close() 면 호스트가 숨긴다. 숨겨 둔 창은 페이지가 살아 있으므로
+//    이 루프의 기록기(__awLoopW)를 걷어 원래 hpost, hostRequest, submitDaily, submitWeekly 로 되돌린다.
 async function forceCloseAttend() {
-  const t = (await attendTargets())[0];
-  if (!t) return true;
-  try {
-    if (!A || A.closed || A.targetId !== t.id) { if (A) A.close(); A = await Cdp.attach(t); }
-    await A.ev(`(function(){ try { AWE.armed = false; AWE.sending = false; clearTimeout(AWE.wd); clearTimeout(AWE.timer); AWE.timer = null; AWE.p = null; } catch (_) {}
-      try { ATE.armed = false; ATE.sending = false; clearTimeout(ATE.timer); ATE.timer = null; ATE.p = null; } catch (_) {}
-      ${LOOP_KEYS_JS}.forEach(function(k){ localStorage.removeItem(k); }); try { window.close(); } catch (_) {} return 1; })()`).catch(() => 0);
-  } catch (_) { /* 붙지 못했다 */ }
+  for (const t of await attendTargets()) {
+    try {
+      if (!A || A.closed || A.targetId !== t.id) { if (A) A.close(); A = await Cdp.attach(t); }
+      await A.ev(`(function(){ const hid = ${HIDDEN_JS};
+        if (!hid) {
+          try { AWE.armed = false; AWE.sending = false; clearTimeout(AWE.wd); clearTimeout(AWE.timer); AWE.timer = null; AWE.p = null; } catch (_) {}
+          try { ATE.armed = false; ATE.sending = false; clearTimeout(ATE.timer); ATE.timer = null; ATE.p = null; } catch (_) {}
+        }
+        ${LOOP_KEYS_JS}.forEach(function(k){ localStorage.removeItem(k); });
+        const R = window.__awLoopW; if (R) { hpost = R.orig.hpost; hostRequest = R.orig.hostRequest; Platform.report.submitDaily = R.orig.submitDaily; Platform.report.submitWeekly = R.orig.submitWeekly; delete window.__awLoopW; }
+        if (!hid) { try { window.close(); } catch (_) {} } return 1; })()`).catch(() => 0);
+    } catch (_) { /* 붙지 못했다 */ }
+  }
   return await waitAttendTarget({ gone: true, timeout: 8000 });
 }
 
@@ -259,16 +277,20 @@ async function main() {
   vlog('기록기:', await M.ev(INSTALL_M));
   ok('O0 메인 창 netcus 명령 차단(hpost)과 보고서 전송 가로채기 설치', await M.ev(`!!window.__awLoop && hpost !== window.__awLoop.orig.hpost`));
   started = true;
-  if ((await attendTargets()).length) { note('떠 있던 근태 창을 닫는다'); ok('O0 떠 있던 근태 창을 닫았다', await forceCloseAttend()); }
+  if ((await attendTargets()).length) {
+    if ((await shownAttendTargets()).length) note('근태 창이 떠 있어 닫는다(호스트가 숨긴다)');
+    ok('O0 근태 창은 숨김(떠 있던 창은 닫고, 숨겨 둔 창에 남은 기록기는 걷었다)', await forceCloseAttend());
+  }
   const left0 = await dropLoopKeys(M);
   if (left0) note(`지난 실행의 2099 주간 임시 저장 키 ${left0}건을 지웠다`);
-  ok('O0 잔재 없음(근태 창 없음, 2099 키 없음)', !(await attendTargets()).length && !(await loopKeys(M)).length);
+  ok('O0 잔재 없음(보이는 근태 창 없음, 2099 키 없음)', !(await shownAttendTargets()).length && !(await loopKeys(M)).length);
 
   /* ── W1 [일간][주간] ── */
   head('W1 [일간][주간]: [주간]을 누르면 주간 목록이 보이고 reportWeeklyList 를 읽는다');
   await M.ev(`(function(){ if (ATT.screen === 'edit' || ATT.screen === 'wedit') { ATT.screen = 'month'; } ATT.kind = 'day'; pcSetTab('attend', { force: true }); return 1; })()`);
   const m1 = await markM();
-  ok('W1 근태 달력 머리에 [일간][주간]', same(await M.J(`[].map.call(document.querySelectorAll('#atMonth [data-atkind]'), function(b){ return b.textContent; })`), ['일간', '주간']));
+  //  9e4be87 부터 머리 단추는 [일간][주간][월간] 셋이다(월간 = 취합 화면, 기억하지 않는다)
+  ok('W1 근태 달력 머리에 [일간][주간][월간]', same(await M.J(`[].map.call(document.querySelectorAll('#atMonth [data-atkind]'), function(b){ return b.textContent; })`), ['일간', '주간', '월간']));
   await M.ev(`(function(){ document.querySelector('#atMonth [data-atkind="week"]').click(); return 1; })()`);
   const got1 = await M.waitFor(`!AWL.loading && !!AWL.from`, 15000);
   ok('W1 주간 목록이 보이고 달력은 숨김', (await shown(M, 'awList')) && !(await shown(M, 'atMonth')));
@@ -294,7 +316,8 @@ async function main() {
     back: document.getElementById('awBack').textContent, backIc: !!document.querySelector('#awBack svg.ic'), seg: !!document.querySelector('#awEd [data-atkind]'),
     resetInMeta: document.getElementById('awReset').parentElement === document.querySelector('#awEd .aw-meta'), how: !!document.getElementById('awSubjHow') || !!document.getElementById('awStat') || !!document.getElementById('awPvStat') })`);
   ok('W2 주간 편집만 보인다(일간 보고 화면과 목록은 숨김)', (await shown(A, 'awEd')) && !(await shown(A, 'atEd')) && !(await shown(A, 'awList')) && v2.view === 'wedit');
-  ok('W2 제목 = 월요일이 든 달 기준(12월 둘째주), 머리에 기간, 문서 제목', v2.subj === '12월 둘째주' && v2.head === '12월 둘째주 (12/7~12/13)' && v2.title === '주간보고 12월 둘째주 (12/7~12/13)', JSON.stringify(v2));
+  //  05380e1(11/02) 부터 머리의 기간은 회사 보고 기간 월~토다(payload sdate~edate 와 같다)
+  ok('W2 제목 = 월요일이 든 달 기준(12월 둘째주), 머리에 기간(월~토), 문서 제목', v2.subj === '12월 둘째주' && v2.head === '12월 둘째주 (12/7~12/12)' && v2.title === '주간보고 12월 둘째주 (12/7~12/12)', JSON.stringify(v2));
   ok('W2 머리 = [‹ 목록](아이콘) | 주간 보고 ‹ 제목 (기간) ›, [전체 초기화]는 기간, 제목 줄 끝', v2.back === '목록' && v2.backIc && v2.h2 === '주간 보고' && v2.resetInMeta, JSON.stringify({ back: v2.back, h2: v2.h2 }));
   ok('W2 보이는 것을 되풀이하는 안내 글이 없다(제목 기준, 개수, 미리보기 줄 수)', !v2.how);
   ok('W2 처음 여는 주의 가져오기 결과: 바닥은 한 문장(흐린 색), 지난주 없음은 가져오기 패널, 고친 것 없음', v2.msg === '이번 주 일간 보고가 없습니다.' && v2.msgCls === 'at-msg' && v2.imp === '지난주 주간보고가 없습니다.' && !v2.dirty, JSON.stringify({ msg: v2.msg, imp: v2.imp }));
@@ -327,8 +350,12 @@ async function main() {
   const got4 = await A.waitFor(`localStorage.getItem(${JSON.stringify(KEY)}) !== null`, 2500, 100);
   const s4 = await storedIn(M, KEY);
   ok('W4 키가 생겼고 값 = {v:2, prog, plan, hrs, hours, meet}', got4 && !!s4 && s4.v === 2 && s4.prog === LIST.prog && s4.plan === LIST.plan && same(s4.hrs, [P[0], P[1]]) && s4.meet === MEET, JSON.stringify(s4));
-  await M.ev('awListRender(); 1');
-  ok('W4 메인 창 목록에 그 주가 작성 중', (await M.ev(`(function(){ const r = document.querySelector('#awList tr[data-awmon="${W}"] .aw-badge'); return r ? r.textContent : ''; })()`)) === '작성 중');
+  //  목록에는 기간 고르기가 있다(기본 최근 3개월). 2099 주는 그 밖이라 [직접 지정]으로 2099년 12월을 고른 뒤 보고 원래 기간으로 되돌린다
+  const awf4 = await M.J('Object.assign({}, AWF)');
+  await M.ev(`(function(){ AWF.kind = 'custom'; AWF.from = '2099-12-01'; AWF.to = '2099-12-31'; AWF.q = ''; AWF.page = 1; awListRender(); return 1; })()`);
+  const b4 = await M.J(`(function(){ const r = document.querySelector('#awList tr[data-awmon="${W}"] .aw-badge'); return r ? { t: r.textContent, draft: r.classList.contains('draft') } : null; })()`);
+  await M.ev(`(function(){ Object.assign(AWF, ${JSON.stringify(awf4)}); awListRender(); return 1; })()`);
+  ok('W4 메인 창 목록(기간 2099년 12월)에 그 주가 작성 중', !!b4 && b4.t === '작성 중' && b4.draft, JSON.stringify(b4));
 
   /* ── W5 이동 ── */
   head('W5 이동: › 로 다음 주(그 주 기록 읽기), ‹ 로 돌아오면 글이 그대로, 주 고르기 달력');
@@ -367,7 +394,8 @@ async function main() {
     && cap6.fields.planwork === LIST.plan && cap6.fields.resultwork === MEET, JSON.stringify(cap6 && cap6.fields));
   const PK = await A.J('ATW.ctx.projects.slice(0, 2).map(function(x){ return x.key; })');
   const uidOf = (k) => (/^db-([0-9a-fA-F-]{36})$/.exec(k || '') || [])[1] || '';
-  ok('W6 hours 구조 = 과제투입시간(이름, 공식 과제 uid, 시간)', !!cap6 && same(cap6.hours, [{ name: P[0], projectUid: uidOf(PK[0]), hours: 12.5 }, { name: P[1], projectUid: uidOf(PK[1]), hours: 3 }]), JSON.stringify(cap6 && cap6.hours));
+  //  구조 22: 줄마다 과제 id(catUid = 캘린더 과제 키)도 싣는다(공식 과제 이관의 열쇠)
+  ok('W6 hours 구조 = 과제투입시간(이름, 과제 id, 공식 과제 uid, 시간)', !!cap6 && PK.every((k) => !!k) && same(cap6.hours, [{ name: P[0], catUid: PK[0], projectUid: uidOf(PK[0]), hours: 12.5 }, { name: P[1], catUid: PK[1], projectUid: uidOf(PK[1]), hours: 3 }]), JSON.stringify(cap6 && cap6.hours));
   ok('W6 netcus 명령은 하나도 호스트로 나가지 않았다(두 창)', same(await A.J('__awLoopW.blocked'), []) && same(await M.J('__awLoop.blocked'), []));
   ok('W6 보내는 중에는 창 닫기 요청 = busy', (await A.ev('window.__winCloseRequest()')) === 'busy');
   await A.ev(`window.__netcusResult(false, '시험 실패 회신(루프)'); 1`);
@@ -379,7 +407,10 @@ async function main() {
   await click(A, 'awSend'); await sleep(150);
   await A.ev(`window.__netcusResult(true, '주간보고 임시저장을 마쳤습니다. 제출은 인트라넷에서 하세요.(루프, 실제 전송 아님)'); 1`);
   await sleep(200);
-  ok('W6 성공 회신 흉내 = 창은 남고 고친 것 없음, 임시 저장은 아직 남는다(DB 저장 알림 전)', (await attendTargets()).length === 1 && !(await A.ev('awDirty()')) && !!(await storedIn(M, KEY)));
+  ok('W6 성공 회신 흉내 = 창은 남고 고친 것 없음, 임시 저장은 아직 남는다(DB 저장 알림 전)', (await shownAttendTargets()).length === 1 && !(await A.ev('awDirty()')) && !!(await storedIn(M, KEY)));
+  //  2026-11-16 결함 고침: 보낸 모양({sig, s})을 기억해 DB 저장 알림 전에는 그 모양의 임시 저장을 지우지 않는다(그 사이 다시 열면 처음 여는 주로 열리던 결함)
+  ok('W6 보낸 모양을 기억한다(__awSentSig 의 {sig, s}, awSentKeep), 임시 저장 쓰기를 다시 불러도 남는다', await A.ev(`(function(){ const x = __awSentSig.get(${JSON.stringify(W)}); if (!x || typeof x.sig !== 'string' || !x.s || x.sig !== awSig(awCur()) || !awSentKeep(${JSON.stringify(W)})) return false;
+    awDraftFlushNow(); return localStorage.getItem(${JSON.stringify(KEY)}) !== null; })()`));
   await A.ev(`window.__reportWeeklySaved({ periodStart: ${JSON.stringify(W)} }); 1`);
   await sleep(200);
   ok('W6 저장 알림 흉내 = 보낸 모양 그대로인 임시 저장을 지웠다, 작성한 시각', (await storedIn(M, KEY)) === null && /^작성한 시각 /.test(await A.ev(`document.getElementById('awSent').textContent`)));
@@ -406,8 +437,10 @@ async function main() {
   if (own8) {
     await A.ev(`(function(){ const m = document.getElementById('awMeet'); m.value = '루프 닫기 시험'; m.dispatchEvent(new Event('input', { bubbles: true })); return 1; })()`);
     ok('W8 쓰던 글이 있어도 __winCloseRequest() = close(창 X 는 묻지 않는다)', (await A.ev('window.__winCloseRequest()')) === 'close');
+    const tid8 = A.targetId;
     await click(A, 'awClose').catch(() => 'closed');
-    ok('W8 [닫기]면 근태 창이 닫혔다', await waitAttendTarget({ gone: true, timeout: 8000 }));
+    //  0.25.1 부터 닫기는 창을 숨겨 두고 다음 열기에 다시 쓴다(대상은 남는다)
+    ok('W8 [닫기]면 근태 창이 숨겨졌다(같은 대상이 남고 화면을 비웠다)', (await waitAttendTarget({ gone: true, timeout: 8000 })) && (await attendTargets()).some((t) => t.id === tid8));
     ok('W8 닫아도 임시 저장은 남는다', ((await storedIn(M, KEY8)) || {}).meet === '루프 닫기 시험');
   } else note('2099 주로 돌아가지 못해 닫기 지키기는 건너뛴다');
 }
@@ -432,9 +465,9 @@ try {
       await M.ev(`pcSetTab(${JSON.stringify(tab0)}); 1`);
       if (pcalKey && pcalRaw0 !== undefined) await M.ev(`(function(){ try { const v = ${JSON.stringify(pcalRaw0)}; if (v == null) localStorage.removeItem(${JSON.stringify(pcalKey)}); else localStorage.setItem(${JSON.stringify(pcalKey)}, v); } catch (_) {} return 1; })()`);
       healthyAtEnd = await M.waitFor(isHealthy, 20000, 300);
-      const left = { attend: (await attendTargets()).length, keys: await loopKeys(M), tab: await M.ev('PCAL.tab'), kind: await M.ev(`localStorage.getItem('tc_attKind')`) };
+      const left = { attend: (await shownAttendTargets()).length, keys: await loopKeys(M), tab: await M.ev('PCAL.tab'), kind: await M.ev(`localStorage.getItem('tc_attKind')`) };
       cleaned = closedA && left.attend === 0 && left.keys.length === 0 && left.tab === tab0 && left.kind === kind0;
-      ok('정리: 근태 창 없음, 2099 주간 키 0, 탭과 [일간][주간] 기억이 처음 그대로', cleaned, JSON.stringify(left));
+      ok('정리: 보이는 근태 창 없음(숨김), 2099 주간 키 0, 탭과 [일간][주간] 기억이 처음 그대로', cleaned, JSON.stringify(left));
     } catch (e) {
       cleaned = false;
       F.push('정리 중 예외: ' + e.message); fail++;

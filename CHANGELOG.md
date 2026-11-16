@@ -15,6 +15,9 @@ docs/REPORT-FEEDBACK-1116.md. DB 구조, 배포 SQL 그대로. 호스트(C#)는 
 - 주간 결함: [보고] 성공 직후 [목록], 창 닫기가 보낸 모양의 임시 저장을 지웠고(`awDraftFlushNow`), DB 기록 알림(`__reportWeeklySaved`, 호스트 Task.Run 저장과 재시도) 전에 다시 열면 처음 여는 주처럼 일간 가져오기 기본 목록으로 열려 더한 과제가 빠졌다. 알림까지 임시 저장을 남기고(`awSentKeep`), 다시 열면 그것을 처음 상태로, 성공 때 목록 캐시를 비운다. 알림의 임시 저장 비교가 제목 차이로 늘 어긋나던 것도 고쳤다.
 - 일정/할 일 창: 새 기록 창을 열 때 일정 모양 높이로 min-height 를 묶어(`qaLockHeight`, `.qa-lock`) 유형을 바꿔도 크기와 자리가 그대로.
 - 시험: attendance-web, attendance-weekly-web, attendance-host, task-add, personal-improve, report-hours-v22, ui-clarity, 실위젯 루프 loop-attendance A7.
+- 일간 [← 불러오기](4-2): `ATE.blocks = atLoadBlocks()` 통째 교체를 `atLoadMerge` 로. 같은 과제(둘 다 catId 면 id, 아니면 이름) 블록만 덮고, 같은 과제 여러 블록은 첫 블록 하나로, 없던 과제는 넣고 `atSortBlocks` 가 자리, 불러오지 않은 과제와 과제 미정 블록은 그대로. 불러온 과제 미정 블록은 내용이 같은 왼쪽 미정 블록이 있으면 시간만 맞춰 두 번 눌러도 늘지 않는다. 덮이거나 들어간 블록은 반짝인다(`atFlash`). 주간 불러오기는 그대로 전체 교체.
+- 근무시간 확인 창이 떠 있는 사이 날짜가 바뀌거나(창 복귀 새로고침, 다른 날짜 열기) 막는 블록이 생기면 [보내기]여도 보내지 않는다(0.29.0 배포 전 검토 P2-1).
+- 실위젯 루프 loop-attendance, loop-attendance-weekly 를 지금 동작으로 고침(근태 창은 닫으면 숨김, 보고서 창과 `__rptSendArmed` 삭제, 구조 22 줄 payload, 주간 목록 기간 거르기, 월~토 제목, 보낸 뒤 `awSentKeep`).
 
 ## 🆕 2026-11-16 (다음 판, 번호는 배포 때): 과제 목록 묶음 머리(보기 팝업, 근태 일간 주간 과제 추가, 월간 상자)
 
