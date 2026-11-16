@@ -257,7 +257,11 @@ header.topbar .nav{flex-wrap:wrap;row-gap:6px}   /* 자리가 모자라면 보�
 .fb-lk:disabled{color:var(--faint-text);cursor:default;background:transparent}
 .fb-lk:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
 .fb-opts{overflow-y:auto;padding:4px 4px 6px;outline:none}   /* fb-list 는 문의 창 목록 이름이라 쓰지 않는다 */
-.fb-gap{height:1px;background:var(--line);margin:4px 6px}
+/* 보기 팝업 묶음 머리(docs/CATEGORY-LIST-GROUPS.md): 내 과제 머리(.cat-grp)와 같은 색 규칙, 높이와 여백만 목록 줄(.fb-opt)에 맞춘다 */
+.fb-cgrp{display:flex;align-items:center;gap:6px;height:24px;margin-top:4px;padding:0 8px;border-radius:var(--r-sm);background:var(--bg);font-size:var(--fs-meta);font-weight:700;color:var(--muted);cursor:default;user-select:none}
+.fb-cgrp:first-child{margin-top:0}
+.fb-cgrp.off{background:var(--accent-soft);color:var(--accent-2)}
+.fb-cgrp.def{background:none;border-top:2px solid var(--line-2);border-radius:0}
 .fb-opt{display:flex;align-items:center;gap:8px;height:30px;padding:0 6px 0 8px;border-radius:var(--r-sm);cursor:pointer}
 .fb-opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fb-opt .n{flex:none;min-width:28px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
@@ -2801,6 +2805,11 @@ body:not(.at-on) #atView{display:none !important}
 .at-mi:disabled{color:var(--faint-text);cursor:default;background:none}
 .at-mi small{margin-left:auto;color:var(--faint-text)}
 .at-mi .cat-nm{flex:1;min-width:0}
+/* 근태 추가 목록 묶음 머리(docs/CATEGORY-LIST-GROUPS.md): 내 과제 머리와 같은 색 규칙, 여백만 체크 줄(.at-mi)에 맞춘다 */
+.at-grp{display:flex;align-items:center;gap:6px;flex:none;margin-top:4px;padding:3px 8px;border-radius:var(--r-sm);background:var(--bg);font-size:var(--fs-meta);font-weight:700;color:var(--muted);cursor:default;user-select:none}
+.at-grp:first-child{margin-top:0}
+.at-grp.off{background:var(--accent-soft);color:var(--accent-2)}
+.at-grp.def{background:none;border-top:2px solid var(--line-2);border-radius:0}
 .aw-mi[aria-disabled="true"]{cursor:default;opacity:.6}
 .aw-mi[aria-disabled="true"]:hover{background:none}
 /* 일간 [+ 과제 추가] 체크 목록: 목록이 스크롤되는 칸 안에 있어도 잘리지 않게 화면 기준(fixed)으로 둔다. 자리는 atAddPlace 가 [+ 과제 추가] 줄의 오른쪽 끝에 맞춘다 */
@@ -2900,6 +2909,12 @@ html.at-idle #atEd,html.at-idle #awEd,html.at-idle #awList{ visibility:hidden } 
 .as-view .rptm-list label{margin:0;font-weight:400}
 /* 상자 머리의 모두 선택 체크(v7 결정 26). 읽기 전 빈 아이콘 자리는 결정 28 로 없앴다 */
 .as-boxh .as-all{margin:0;gap:6px;font-weight:700;flex:none}
+/* 월간 과제 상자 머리: 공식 과제 묶음 머리와 같은 옅은 파랑(docs/CATEGORY-LIST-GROUPS.md §1.4). 상자 모서리를 따라 위만 둥글게 */
+.as-boxh.grp-off{background:var(--accent-soft);color:var(--accent-2);border-radius:var(--r-md) var(--r-md) 0 0}
+.as-boxh.grp-off .rptm-cnt{color:var(--accent-2)}
+.as-boxh.grp-off .as-all{color:var(--accent-2) !important}   /* 체크 라벨(.check)이 글자색을 !important 로 고정해 같은 힘으로 덮는다 */
+/* 기타 상자: 일반 과제 다음 첫 기본 과제(휴가, 기타) 줄 위 굵은 선(기본 묶음 머리와 같은 선) */
+.rptm-it.defgap{border-top:2px solid var(--line-2)}
 #asDoc .rptm-pv{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden}
 #asDoc .rptm-pvwrap{flex:1;min-height:0}
 @media (max-width:900px){
@@ -3347,7 +3362,7 @@ html[data-attendwin] #awEd,html[data-attendwin] #awList{height:100%}
       <div class="as-main" id="asRight">
         <div class="as-boxes" id="asBoxes">
           <!-- 상자 머리의 체크(v7 결정 26): 그 상자를 모두 켜거나 끈다. 일부만 켜져 있으면 indeterminate(rptMAllSync) -->
-          <div class="as-box" id="rptmPickBox"><div class="as-boxh"><label class="check as-all"><input type="checkbox" id="rptmPickAll" aria-label="과제 모두 선택">과제</label> <span class="rptm-cnt" id="rptmPickCnt"></span></div><div class="rptm-list" id="rptmPick"></div></div>
+          <div class="as-box" id="rptmPickBox"><div class="as-boxh grp-off"><label class="check as-all"><input type="checkbox" id="rptmPickAll" aria-label="과제 모두 선택">과제</label> <span class="rptm-cnt" id="rptmPickCnt"></span></div><div class="rptm-list" id="rptmPick"></div></div>
           <div class="as-box" id="rptmEtcBox"><div class="as-boxh"><label class="check as-all"><input type="checkbox" id="rptmEtcAll" aria-label="기타 모두 선택">기타</label> <span class="rptm-cnt" id="rptmEtcCnt"></span></div><div class="rptm-list" id="rptmEtc"></div></div>
           <div class="as-box hidden" id="rptmUnid"></div>
         </div>
@@ -11397,16 +11412,6 @@ function viewRestore(){
     if(keep.length){ filterCats = new Set(keep); filterNormalize(); }
   }
 }
-//  팝업 목록 순서: 기록 많은 순, 같으면 가나다순. 0건은 구분선 뒤 묶음
-//  순서와 숫자는 일정과 할 일 합계(과제 관리 목록과 같은 셈, docs/CAT-COUNTS-SPLIT.md). 둘 다 0 이면 구분선 아래.
-function filterSorted(){
-  const m = catUsageMap(), byName = (x, y) => String(x.c.name).localeCompare(String(y.c.name), 'ko');
-  const live = [], zero = [];
-  for(const c of state.categories){ const v = m.get(c.id) || { ev: 0, td: 0 }, k = v.ev + v.td; (k ? live : zero).push({ c, n: k, ev: v.ev, td: v.td }); }
-  live.sort((x, y) => (y.n - x.n) || byName(x, y));
-  zero.sort(byName);
-  return { live, zero };
-}
 
 function renderFilterbar(){
   const bar = $('#filterbar'); if(!bar) return;
@@ -11486,7 +11491,7 @@ function filterMarkQ(s, q){
    관심 과제 추가 창의 [참여자]는 겉(fbHeadMarkup 의 찾기 칸과 [전체 선택] [전체 해제], fbPopEdgeKey 의 Esc 와 Tab)만 같이 쓰고
    속은 다른 사람 일정 보기의 조직도(pkTreeEl, pkUnitListEl)를 체크 모드로 쓴다(caWhoOpen).
    src = { idp: 항목 id 머리, rows(q): 그릴 줄, none(): 빈 목록 글, canAll(), canNone(), toggle(id), setAll(on), apply() }.
-   줄 = { kind:'opt', id, name, n, dot(색, 없으면 점 없음), tip, on } | { kind:'gap' }.
+   줄 = { kind:'opt', id, name, n, dot(색, 없으면 점 없음), tip, on } | { kind:'head', g, n }(묶음 머리, 고를 수 없는 줄).
    ★ 개인 보기 팝업의 마크업, 클래스, id, aria, 키보드는 이 함수로 옮기기 전과 같다(시험 filter-multi, personal-panel). */
 //  겉: 찾기 칸과 [전체 선택] [전체 해제]. id = 찾기 칸이 가리키는 목록(aria-controls)
 //  팝업 머리줄과 닫기 ×(docs/MONTH-TODO-POPUP-CLOSE.md §2). 왼쪽 제목, 오른쪽 동작(right, 마크업)과 ×. cls = 더할 클래스(개인 보기 팝업은 vp-head).
@@ -11527,14 +11532,14 @@ function fbFill(S, initial){
   const src = S.src, q = S.q.value.trim().toLowerCase(), rows = src.rows(q);
   let i = 0;
   const h = rows.map(r => {
-    if(r.kind === 'gap') return '<div class="fb-gap" role="presentation"></div>';
+    if(r.kind === 'head') return catGroupHeadHtml(r.g, r.n, 'fb-cgrp');   // .fb-opt 가 아니라 화살표, 전체 선택, 누름 대상에서 빠진다
     return `<div class="fb-opt${r.n ? '' : ' zero'}" role="option" id="${src.idp}${i++}" data-id="${esc(r.id)}" aria-selected="${r.on}" title="${esc(r.tip)}">`
       + `<span class="fb-ind" aria-hidden="true">${FB_CHECK}</span>` + (r.dot != null ? `<span class="dot" style="background:${validColor(r.dot)}"></span>` : '')
       + `<span class="nm">${filterMarkQ(r.name, q)}</span>`
       + (r.ev != null ? `<span class="n2${r.ev ? '' : ' c0'}">${r.ev}</span><span class="n2${r.td ? '' : ' c0'}">${r.td}</span>` : `<span class="n">${r.n}</span>`) + '</div>';
   }).join('');
   const st = S.lb.scrollTop;
-  S.lb.innerHTML = rows.some(r => r.kind !== 'gap') ? h : `<div class="fb-none">${src.none(q)}</div>`;
+  S.lb.innerHTML = rows.some(r => r.kind === 'opt') ? h : `<div class="fb-none">${src.none(q)}</div>`;
   if(!initial) S.lb.scrollTop = st;
   fbColhSync(S);
   S.items = [...S.lb.querySelectorAll('.fb-opt')];
@@ -11623,16 +11628,16 @@ function fbListKey(S, ev, done){
   }
   return false;
 }
-//  개인 보기 팝업의 과제 목록 출처. 순서: 기록 많은 순, 같으면 가나다순, 0건은 구분선 뒤(FILTER-MULTI §3)
+//  개인 보기 팝업의 과제 목록 출처(다른 사람 일정 보기 팝업도 이것). 순서: 내 과제 순서(state.categories, 공식, 일반, 기본 묶음)와 묶음 머리.
+//  기록 수 순은 기록을 넣을 때마다 자리가 바뀌어 버렸다(docs/CATEGORY-LIST-GROUPS.md). 0건은 제자리에서 흐리게(zero), 구분선 없음.
+//  숫자는 일정과 할 일(과제 관리 목록과 같은 셈, docs/CAT-COUNTS-SPLIT.md).
 const FB_SRC = {
   idp: 'fbo-',
   rows(q){
-    const hit = x => !q || String(x.c.name).toLowerCase().includes(q);
-    const { live, zero } = filterSorted(), L = live.filter(hit), Z = zero.filter(hit);
-    const row = x => ({ kind: 'opt', id: x.c.id, name: x.c.name, n: x.n, ev: x.ev, td: x.td, dot: x.c.color, tip: catUsageTip(x.c.name, x), on: filterCats === null || filterCats.has(x.c.id) });
-    const out = L.map(row);
-    if(Z.length){ if(L.length) out.push({ kind: 'gap' }); out.push(...Z.map(row)); }
-    return out;
+    const m = catUsageMap(), hit = state.categories.filter(c => !q || String(c.name).toLowerCase().includes(q));
+    const row = c => { const v = m.get(c.id) || { ev: 0, td: 0 };
+      return { kind: 'opt', id: c.id, name: c.name, n: v.ev + v.td, ev: v.ev, td: v.td, dot: c.color, tip: catUsageTip(c.name, v), on: filterCats === null || filterCats.has(c.id) }; };
+    return catGroupWithHeads(hit, catGroupRank).map(r => r.head ? Object.assign({ kind: 'head' }, r.head) : row(r.item));
   },
   none(){ return state.categories.length ? '일치하는 과제 없음' : '과제 없음'; },
   canAll(){ return !(filterCats === null || !state.categories.length); },
@@ -13782,9 +13787,22 @@ function catRowHtml(c){
 }
 //  묶음 머리 줄(A'): 공식 과제 n(옅은 파랑), 일반 과제 n(표 머리 회색), 기본 n(바탕 없이 위 굵은 선). 비는 묶음은 머리도 없다.
 const CAT_GROUP_HEAD = [['off', '공식 과제'], ['own', '일반 과제'], ['def', '기본']];
-function catGroupHeadHtml(g, n){
+function catGroupHeadHtml(g, n, cls){
   const [k, label] = CAT_GROUP_HEAD[g];
-  return `<div class="cat-grp ${k}" role="presentation">${label} <span class="cat-grp-n">${n}</span></div>`;
+  return `<div class="${cls || 'cat-grp'} ${k}" role="presentation">${label} <span class="cat-grp-n">${n}</span></div>`;
+}
+//  고르기 목록(보기 팝업, 근태 추가 목록)에 머리를 끼운다(docs/CATEGORY-LIST-GROUPS.md). items = 지금 보이는 줄(찾기로 거른 뒤)이라
+//  비는 묶음은 머리도 없고 개수는 보이는 줄 수다. gOf = 묶음 번호(0~3). 번호가 없는 줄이 하나라도 있으면(옛 payload) 머리 없이 둔다.
+//  돌려주는 값 = [{ head: { g, n } } | { item }] (g 는 머리 번호 0~2, 휴가와 기타는 한 머리).
+function catGroupWithHeads(items, gOf){
+  const gs = items.map(x => { const g = gOf(x); return Number.isInteger(g) && g >= 0 && g <= 3 ? Math.min(2, g) : -1; });
+  if(gs.includes(-1)) return items.map(item => ({ item }));
+  const out = [];
+  for(let i = 0; i < items.length; i++){
+    if(i === 0 || gs[i - 1] !== gs[i]){ let n = 0; while(i + n < items.length && gs[i + n] === gs[i]) n++; out.push({ head: { g: gs[i], n } }); }
+    out.push({ item: items[i] });
+  }
+  return out;
 }
 //  숫자 문구 뒤 조사. "일정 3개" 처럼 받침이 없다. 목록의 마지막 낱말(일/개)로 고른다(일로 끝나면 받침이 있다).
 const catCountJosa = (what, withB, withoutB) => /일$/.test(what) ? withB : withoutB;
@@ -18083,8 +18101,10 @@ function rptMEtcShown(S){
 function rptMRenderEtc(){
   const S = __rptM, box = $('#rptmEtc'); if(!box || !S) return;
   const list = rptMEtcShown(S);
-  box.innerHTML = list.map(e => { const on = !S.etcOff.has(e.key);
-    return `<div class="rptm-it${on ? '' : ' off'}" data-etc-key="${esc(e.key)}"><label class="check"><input type="checkbox" data-etc="${esc(e.key)}"${on ? ' checked' : ''}><span class="nm">${esc(e.name)}</span></label></div>`; }).join('');
+  //  일반 과제 다음 첫 기본 묶음(휴가, 기타) 줄에만 굵은 선. 일반 과제가 없으면(읽은 뒤 기본만 남아도) 선이 없다. 보고서 내용은 그대로.
+  const cats = new Map(state.categories.map(c => [c.id, c])), isDef = e => { const c = cats.get(e.key); return !!c && catGroupRank(c) >= 2; };
+  box.innerHTML = list.map((e, i) => { const on = !S.etcOff.has(e.key), gap = i > 0 && isDef(e) && !isDef(list[i - 1]);
+    return `<div class="rptm-it${on ? '' : ' off'}${gap ? ' defgap' : ''}" data-etc-key="${esc(e.key)}"><label class="check"><input type="checkbox" data-etc="${esc(e.key)}"${on ? ' checked' : ''}><span class="nm">${esc(e.name)}</span></label></div>`; }).join('');
   const w = $('#rptmEtcBox'); if(w) w.classList.toggle('hidden', !list.length);
   rptMEtcCount(S, list);
 }
@@ -21316,14 +21336,17 @@ function atBlocksRename(blocks, all){
 function atBlocksSig(blocks){ return JSON.stringify((blocks || []).map(b => [b.name, b.catId || null, Number(b.hours), String(b.text)])); }
 function atSame(a, b){ return !!a && !!b && String(a.memo || '') === String(b.memo || '') && atBlocksSig(a.blocks) === atBlocksSig(b.blocks) && a.status === b.status && a.overtime === b.overtime; }
 //  내 캘린더 과제 목록(과제 추가 메뉴와 미정 블록의 고르기 칸). 근태 창은 payload 의 것, 브라우저는 지금 내 달력(과제 창에서 막 만든 과제도 바로 나온다).
-function atBuildProjects(){ return (state.categories || []).map(c => ({ key: String(c.id), name: String(c.name), color: validColor(c.color) })); }
+//  g = 묶음 번호(catGroupRank 0~3). 근태 창은 내 달력이 없어 이 번호로 추가 목록의 묶음 머리를 그린다(docs/CATEGORY-LIST-GROUPS.md).
+function atBuildProjects(){ return (state.categories || []).map(c => ({ key: String(c.id), name: String(c.name), color: validColor(c.color), g: catGroupRank(c) })); }
 function atNormProjects(list){
   const out = [], seen = new Set();
   for(const x of (Array.isArray(list) ? list : [])){
     if(!x || typeof x !== 'object' || x.name == null) continue;
     const name = String(x.name);
     if(!name.trim() || seen.has(name)) continue;
-    seen.add(name); out.push({ key: String(x.key == null ? '' : x.key), name, color: validColor(x.color) });
+    const p = { key: String(x.key == null ? '' : x.key), name, color: validColor(x.color) };
+    if(Number.isInteger(x.g) && x.g >= 0 && x.g <= 3) p.g = x.g;   // 묶음 번호. 없거나 이상하면 빼고, 그러면 목록이 머리 없이 그려진다(옛 payload)
+    seen.add(name); out.push(p);
   }
   return out;
 }
@@ -22030,6 +22053,10 @@ function atCkItem(x, attr, checked, locked){
     + '<span class="aw-ck" aria-hidden="true">✓</span><i class="at-dot" style="background:' + x.color + '" aria-hidden="true"></i>'
     + '<span class="cat-nm" data-full="' + esc(x.name) + '"' + (locked ? '' : ' title="' + esc(x.name) + '"') + '>' + esc(x.name) + '</span></button>';
 }
+//  체크 목록에 묶음 머리를 끼운다(일간, 주간 공용). 머리는 data-addname 이 없는 div 라 체크, 전체 선택, 해제, Enter 대상이 아니다.
+function atCkGrouped(list, itemHtml){
+  return catGroupWithHeads(list, x => x.g).map(r => r.head ? catGroupHeadHtml(r.head.g, r.head.n, 'at-grp') : itemHtml(r.item)).join('');
+}
 function atCkFit(L){ try{ if(L && typeof catFitNames === 'function') catFitNames(L); }catch(_){} }
 const atBlockEmpty = b => !String(b.text || '').trim() && !b.hours;
 function atAddShown(){ const m = $('#atAddMenu'); return !!m && !m.classList.contains('hidden'); }
@@ -22063,7 +22090,7 @@ function atAddRender(){
   const qe = $('#atAddQ'), q = (qe ? qe.value : '').trim().toLowerCase();
   const byName = new Map(ATE.blocks.filter(b => b.name).map(b => [b.name, b]));
   const list = atProjects().filter(x => !q || x.name.toLowerCase().includes(q));
-  L.innerHTML = list.length ? list.map(x => { const b = byName.get(x.name); return atCkItem(x, 'data-addname', !!b, !!b && !atBlockEmpty(b)); }).join('')
+  L.innerHTML = list.length ? atCkGrouped(list, x => { const b = byName.get(x.name); return atCkItem(x, 'data-addname', !!b, !!b && !atBlockEmpty(b)); })
     : '<div class="at-none">' + (atProjects().length ? '맞는 과제가 없습니다.' : '내 과제가 없습니다.') + '</div>';
   atCkFit(L);
 }
@@ -23339,7 +23366,7 @@ function awAddRender(){
   const qe = $('#awAddQ'), q = (qe ? qe.value : '').trim().toLowerCase();
   const used = new Set(AWE.hrs), all = awProjects();
   const list = all.filter(x => !q || x.name.toLowerCase().includes(q));
-  L.innerHTML = list.length ? list.map(x => atCkItem(x, 'data-awaddname', used.has(x.name), false)).join('')
+  L.innerHTML = list.length ? atCkGrouped(list, x => atCkItem(x, 'data-awaddname', used.has(x.name), false))
     : '<div class="at-none">' + (all.length ? '맞는 과제가 없습니다.' : '내 과제가 없습니다.') + '</div>';
   atCkFit(L);
 }

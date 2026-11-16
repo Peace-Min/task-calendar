@@ -262,19 +262,21 @@ if (!JSDOM) {
     assert.ok(q && q.getAttribute('placeholder') === '과제 검색' && q.getAttribute('aria-label') === '과제 검색' && q.getAttribute('aria-controls') === 'fbList' && q.getAttribute('role') === 'searchbox');
     assert.ok(lb && lb.classList.contains('fb-opts') && lb.getAttribute('role') === 'listbox' && lb.getAttribute('aria-label') === '과제' && lb.getAttribute('aria-multiselectable') === 'true' && lb.tabIndex === 0);
     assert.deepStrictEqual([...pop.querySelectorAll('.fb-acts .fb-lk')].map((b) => [b.dataset.act, b.textContent]), [['all', '전체 선택'], ['none', '전체 해제']]);
-    //  항목 한 줄의 마크업(체크, 색점, 이름, 일정 수, 할 일 수)과 id 머리 fbo-, 묶음 머리 없음. 두 칸 머리는 목록 상자 밖(docs/CAT-COUNTS-SPLIT.md)
-    const o = pop.querySelector('.fb-opt');
+    //  항목 한 줄의 마크업(체크, 색점, 이름, 일정 수, 할 일 수)과 id 머리 fbo-. 두 칸 머리는 목록 상자 밖(docs/CAT-COUNTS-SPLIT.md)
+    //  2026-11-13 CATEGORY-LIST-GROUPS: 내 과제 순서(공식 먼저)라 휴가 줄은 둘째(fbo-1), 묶음 머리(.fb-cgrp)는 고를 수 없는 줄
+    const o = pop.querySelector('.fb-opt[data-id="c-1"]');
     const colh = pop.querySelector('.fb-colh');
     assert.ok(colh && colh.getAttribute('aria-hidden') === 'true' && colh.nextElementSibling === lb && [...colh.children].map((x) => x.textContent).join('|') === '일정|할 일', '두 칸 머리(일정, 할 일)가 목록 바로 위, 목록 상자 밖에 없다');
-    assert.ok(/^<div class="fb-opt" role="option" id="fbo-0" data-id="c-1" aria-selected="true" title="휴가, 일정 1개, 할 일 0개"><span class="fb-ind" aria-hidden="true"><svg[^>]*>.*<\/svg><\/span><span class="dot" style="background:#9aa2b3"><\/span><span class="nm">휴가<\/span><span class="n2">1<\/span><span class="n2 c0">0<\/span><\/div>$/.test(o.outerHTML.replace(/ class="act"|(class="fb-opt) act"/, '$1"')), '개인 보기 팝업 항목 마크업이 바뀌었다: ' + o.outerHTML);
-    assert.ok(!pop.querySelector('.fb-gh, .fb-car, .fb-sub'), '개인 보기 팝업에 묶음 머리가 생겼다');
+    assert.ok(/^<div class="fb-opt" role="option" id="fbo-1" data-id="c-1" aria-selected="true" title="휴가, 일정 1개, 할 일 0개"><span class="fb-ind" aria-hidden="true"><svg[^>]*>.*<\/svg><\/span><span class="dot" style="background:#9aa2b3"><\/span><span class="nm">휴가<\/span><span class="n2">1<\/span><span class="n2 c0">0<\/span><\/div>$/.test(o.outerHTML.replace(/ class="act"|(class="fb-opt) act"/, '$1"')), '개인 보기 팝업 항목 마크업이 바뀌었다: ' + o.outerHTML);
+    assert.ok(!pop.querySelector('.fb-car, .fb-sub'), '개인 보기 팝업에 접기 묶음이 생겼다');
+    assert.ok([...pop.querySelectorAll('.fb-cgrp')].every((h) => h.getAttribute('role') === 'presentation' && !h.classList.contains('fb-opt')), '묶음 머리가 고를 수 있는 줄이다');
     assert.strictEqual(lb.getAttribute('aria-activedescendant'), 'fbo-0');
     //  키보드: 찾기 칸 ↓ 로 목록, Space 로 끄기, Esc 로 닫고 단추로
     await W.key(q, 'ArrowDown');
     assert.strictEqual(W.doc.activeElement, lb);
     await W.key(lb, ' ');
     assert.strictEqual(W.ev('filterCats === null'), false, 'Space 로 과제를 끄지 못했다');
-    assert.strictEqual(W.q('#fbList .fb-opt[data-id="c-1"]').getAttribute('aria-selected'), 'false');
+    assert.strictEqual(W.q('#fbList #fbo-0').getAttribute('aria-selected'), 'false');
     await W.key(lb, 'Escape');
     assert.ok(!W.el('fbPop'), 'Esc 로 닫히지 않았다');
     assert.strictEqual(W.doc.activeElement && W.doc.activeElement.id, 'fbBtn');

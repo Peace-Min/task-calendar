@@ -8,12 +8,12 @@
 //       넘침 페이드(syncOverflowFade, .ovf-fade)가 남지 않았다. 필터 줄은 한 줄 고정이고 줄바꿈, 스크롤이 없다.
 //       보기 단추는 aria-haspopup="dialog", 과제 목록은 다중 선택 listbox. 통과 판정은 filterCats === null || filterCats.has(...).
 //   (R) 런타임(jsdom):
-//       내 창: 단추 요약(전체, 과제 0, 과제 n), 팝업(검색칸 포커스, 기록 많은 순, 0건 뒤 구분선),
+//       내 창: 단추 요약(전체, 과제 0, 과제 n), 팝업(검색칸 포커스, 내 과제 순서와 묶음 머리, 0건은 제자리 흐리게, docs/CATEGORY-LIST-GROUPS.md),
 //       전체 해제와 두 과제 켜기 뒤 월간 막대와 주간 과제별 줄이 고른 과제만, 밀린 할 일 팝업도 같은 필터,
 //       켜고 끄는 동안 팝업이 열린 채 목록에 포커스, 목록에서 하나 빼기, 전체 선택으로 null, Esc 로 닫고 버튼으로.
 //       과제 삭제 정리(묶음에서 빼고, 비면 전체로), 새 기록 기본 과제.
 //       열람 창: 같은 단추가 그 사람의 과제로 그려지고, 필터를 바꿔도 내 일정 겹은 그대로.
-//       숫자 두 칸(docs/CAT-COUNTS-SPLIT.md): 일정, 할 일(끝낸 것 포함)을 따로 보이고, 순서는 합계, 둘 다 0 만 구분선 아래,
+//       숫자 두 칸(docs/CAT-COUNTS-SPLIT.md): 일정, 할 일(끝낸 것 포함)을 따로 보이고, 순서는 내 과제 순서, 둘 다 0 만 흐리게,
 //       보기 팝업과 과제 관리가 같은 숫자와 title("과제명, 일정 N개, 할 일 N개").
 //   (M) 변이: passFilter 가 필터를 무시, 할 일 거르기가 과제를 무시, 과제 삭제가 빈 묶음을 남김 → 위 런타임 시험이 실패한다.
 //       팝업이 할 일을 안 세거나, 끝낸 할 일을 빼거나, 과제 관리가 다른 셈을 쓰면 런타임⑦ 이 실패한다.
@@ -179,13 +179,14 @@ if (!JSDOM) {
         assert.ok(pop, '팝업이 열리지 않았다');
         assert.strictEqual(btn.getAttribute('aria-expanded'), 'true');
         assert.strictEqual(W.doc.activeElement, pop.querySelector('.fb-q'), '열면 검색칸에 포커스가 가야 한다');
-        //  기록(일정 + 할 일) 많은 순(같으면 가나다), 둘 다 0 이면 구분선 뒤 흐리게. 줄마다 일정, 할 일 두 칸
+        //  내 과제 순서(state.categories, 일반 다음 휴가, 기타)와 묶음 머리, 둘 다 0 이면 제자리에서 흐리게. 줄마다 일정, 할 일 두 칸
         assert.deepStrictEqual(W.$$('#fbPop .fb-opt').map(optText),
-          ['알파 2/1', '감마 1/1', '베타 1/1', '기타 0/0', '델타 0/0', '휴가 0/0'], '팝업 목록이 기록 많은 순, 같으면 가나다순이 아니다(0건 묶음 포함)');
+          ['알파 2/1', '베타 1/1', '감마 1/1', '델타 0/0', '휴가 0/0', '기타 0/0'], '팝업 목록이 내 과제 순서가 아니다(0건도 제자리)');
+        assert.deepStrictEqual(W.$$('#fbPop .fb-cgrp').map((h) => h.textContent), ['일반 과제 4', '기본 2'], '팝업 묶음 머리가 다르다');
         assert.ok(!pop.querySelector('.fb-opt .n'), '보기 팝업에 옛 한 칸 숫자(.n)가 남았다');
         assert.deepStrictEqual([...pop.querySelectorAll('.fb-colh span')].map((x) => x.textContent), ['일정', '할 일'], '두 칸 머리가 일정, 할 일이 아니다');
         assert.strictEqual(W.$$('#fbPop .fb-opt')[0].querySelector('.nm').textContent, '알파');
-        assert.ok(optOf(W, '델타').classList.contains('zero') && W.$$('#fbPop .fb-gap').length === 1, '0건 과제가 구분선 뒤 흐린 묶음이 아니다');
+        assert.ok(optOf(W, '델타').classList.contains('zero') && !W.$$('#fbPop .fb-gap').length, '0건 과제가 흐리지 않거나 옛 구분선이 남았다');
         assert.ok(W.$$('#fbPop .fb-opt').every((o) => o.getAttribute('aria-selected') === 'true'), '전체일 때 모든 과제가 켜져 있어야 한다');
         assert.strictEqual(pop.querySelector('[data-act="all"]').disabled, true, '전체일 때 전체 선택이 꺼져 있어야 한다');
         //  전체 해제 → 선택 없음, 아무것도 안 보인다
@@ -334,7 +335,8 @@ if (!JSDOM) {
       const theirs = () => [...new Set(P.$$('#grid .chip[data-id]:not(.chip-mine)').map((c) => c.dataset.id))].sort();
       assert.strictEqual(mineN(), 2, '사전조건: 내 겹이 보여야 한다');
       click(P.doc.querySelector('#filterbar .fb-btn'));
-      assert.deepStrictEqual(P.$$('#fbPop .fb-opt .nm').map((n) => n.textContent), ['상대 베타', '상대 알파'].sort((a, b) => a.localeCompare(b, 'ko')), '열람 창 팝업이 그 사람 과제가 아니다');
+      assert.deepStrictEqual(P.$$('#fbPop .fb-opt .nm').map((n) => n.textContent), ['상대 알파', '상대 베타'], '열람 창 팝업이 그 사람 과제(그 사람 과제 순서)가 아니다');
+      assert.deepStrictEqual(P.$$('#fbPop .fb-cgrp').map((h) => h.textContent), ['일반 과제 2'], '열람 창 팝업 묶음 머리가 다르다');
       click(P.doc.querySelector('#fbPop [data-act="none"]'));
       assert.deepStrictEqual(theirs(), [], '선택 없음인데 그 사람 기록이 보인다');
       assert.strictEqual(mineN(), 2, '과제 필터가 내 일정 겹까지 걷어냈다');
@@ -345,7 +347,7 @@ if (!JSDOM) {
   }
   test('런타임⑥: 열람 창도 같은 필터 줄(그 사람 과제), 필터를 바꿔도 내 일정 겹은 그대로', () => peerFlow());
 
-  //  숫자 두 칸(docs/CAT-COUNTS-SPLIT.md): 할 일만 있는 과제도 위 묶음, 둘 다 0 만 구분선 아래, 보기 팝업과 과제 관리가 같은 숫자, title 문구
+  //  숫자 두 칸(docs/CAT-COUNTS-SPLIT.md): 할 일만 있는 과제도 숫자가 맞고, 둘 다 0 만 흐리게, 보기 팝업과 과제 관리가 같은 숫자, title 문구
   //   일정만 1(에코), 할 일만 2(하나는 끝냄, 브라보), 일정 1과 할 일 1(찰리), 아무것도 없음(델타). 기본 과제 기타, 휴가도 0.
   const SPLIT_DATA = {
     categories: [CAT('s-e', '에코'), CAT('s-b', '브라보'), CAT('s-c', '찰리'), CAT('s-d', '델타')],
@@ -362,10 +364,10 @@ if (!JSDOM) {
       await settle();
       click(W.doc.querySelector('#filterbar .fb-btn'));
       const pop = W.doc.getElementById('fbPop');
-      //  팝업 줄: 위 묶음(합계 많은 순, 같으면 가나다), 구분선, 둘 다 0 묶음(가나다)
-      const kids = [...pop.querySelector('.fb-opts').children].map((o) => o.classList.contains('fb-gap') ? '|' : optText(o));
-      assert.deepStrictEqual(kids, ['브라보 0/2', '찰리 1/1', '에코 1/0', '|', '기타 0/0', '델타 0/0', '휴가 0/0'],
-        '할 일만 있는 과제가 위 묶음에 서지 않거나(일정만 세었다) 둘 다 0 인 과제가 구분선 아래가 아니다: ' + JSON.stringify(kids));
+      //  팝업 줄: 내 과제 순서 그대로(기록 수로 섞지 않는다), 묶음 머리(#), 구분선 없음(docs/CATEGORY-LIST-GROUPS.md)
+      const kids = [...pop.querySelector('.fb-opts').children].map((o) => o.classList.contains('fb-cgrp') ? '#' + o.textContent : o.classList.contains('fb-gap') ? '|' : optText(o));
+      assert.deepStrictEqual(kids, ['#일반 과제 4', '에코 1/0', '브라보 0/2', '찰리 1/1', '델타 0/0', '#기본 2', '휴가 0/0', '기타 0/0'],
+        '보기 팝업 줄의 숫자나 순서가 다르다(할 일까지 세고, 내 과제 순서와 묶음 머리): ' + JSON.stringify(kids));
       assert.ok(!optOf(W, '브라보').classList.contains('zero') && optOf(W, '델타').classList.contains('zero'), '흐림(zero)이 둘 다 0 인 줄에만 붙지 않는다');
       assert.deepStrictEqual([...optOf(W, '에코').querySelectorAll('.n2')].map((x) => x.classList.contains('c0')), [false, true], '한쪽만 0 인 칸만 옅게(c0) 그려야 한다');
       assert.strictEqual(optOf(W, '브라보').title, '브라보, 일정 0개, 할 일 2개', '팝업 줄 title 이 "과제명, 일정 N개, 할 일 N개" 가 아니다');
@@ -385,7 +387,7 @@ if (!JSDOM) {
       assert.strictEqual(W.ev('catUsageCount("s-b")'), 2, '빼기 관문 합계가 끝낸 할 일까지 세지 않는다');
     } finally { W.close(); }
   }
-  test('런타임⑦: 숫자 두 칸, 할 일만 있는 과제는 위 묶음, 둘 다 0 만 구분선 아래, 보기 팝업과 과제 관리 숫자와 title 이 같다(CAT-COUNTS-SPLIT)', () => splitFlow());
+  test('런타임⑦: 숫자 두 칸, 내 과제 순서와 묶음 머리, 둘 다 0 만 흐리게, 보기 팝업과 과제 관리 숫자와 title 이 같다(CAT-COUNTS-SPLIT)', () => splitFlow());
 
   // ══════════════════════════════════════════════════════════════════════
   // (M) 변이: 위 런타임 시험이 실제로 잡는가
@@ -404,11 +406,11 @@ if (!JSDOM) {
   });
   test('변이M⑤: 팝업이 일정만 세면(옛 filterCatCounts) 런타임⑦ 이 실패한다', async () => {
     const bad = mutate(app, "  for(const t of (state.todos || [])) if(t && t.categoryId) get(t.categoryId).td++;\n", '');
-    await assert.rejects(() => splitFlow(bad), /할 일만 있는 과제가 위 묶음에 서지 않거나/);
+    await assert.rejects(() => splitFlow(bad), /보기 팝업 줄의 숫자나 순서가 다르다/);
   });
   test('변이M⑥: 끝낸 할 일을 빼고 세면 런타임⑦ 이 실패한다', async () => {
     const bad = mutate(app, "  for(const t of (state.todos || [])) if(t && t.categoryId) get(t.categoryId).td++;", "  for(const t of (state.todos || [])) if(t && t.categoryId && !t.done) get(t.categoryId).td++;");
-    await assert.rejects(() => splitFlow(bad), /위 묶음에 서지 않거나/);
+    await assert.rejects(() => splitFlow(bad), /보기 팝업 줄의 숫자나 순서가 다르다/);
   });
   test('변이M⑦: 과제 관리가 팝업과 다른 셈(일정만)을 쓰면 런타임⑦ 이 실패한다', async () => {
     const bad = mutate(app, "  for(const t of (state.todos || [])) if(t && t.categoryId === id) v.td++;\n", '');

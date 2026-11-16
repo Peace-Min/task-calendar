@@ -1,6 +1,6 @@
 # 과제 목록 묶음: 보기 팝업, 근태 추가 목록, 월간 상자
 
-상태: 기획(2026-11-13, 사용자 시안 확정). 시안 `docs/prototypes/category-lists-groups.html` 1~4번의 after. 조사 `docs/CATEGORY-LIST-SCREENS.md`, 앞선 작업 `docs/CATEGORY-GROUPS.md`(내 과제 묶음 A').
+상태: 구현(2026-11-16, 다음 판). 기획 2026-11-13 사용자 시안 확정. 시안 `docs/prototypes/category-lists-groups.html` 1~4번의 after. 조사 `docs/CATEGORY-LIST-SCREENS.md`, 앞선 작업 `docs/CATEGORY-GROUPS.md`(내 과제 묶음 A').
 
 ## 1. 결정
 1. **묶음 규칙은 내 과제와 같다.** 공식(`catGroupRank` 0), 일반(1), 기본(휴가 2, 기타 3) 순서이고 묶음 안은 `state.categories` 순서다. 머리 모양도 내 과제 창 A' 와 같은 색 규칙이다.

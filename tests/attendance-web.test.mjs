@@ -852,8 +852,9 @@ if (!JSDOM) {
       assert.deepStrictEqual(p.source.rows[0].titleMeta, [{ kind: 'event', details: ['UI 확인'] }, { kind: 'todo', details: ['세부 메모'] }]);
       assert.ok(!('hours' in p.source), '가져오기 출처에 없앤 작성 중 시간(공수표)이 있다(구조 22)');
       assert.deepStrictEqual(p.source.fmt, { mkSpec: { kind: 'const', ch: '-' }, indent: 2 });
-      assert.deepStrictEqual(p.projects.slice(0, 4), [{ key: 'c-a', name: '알파', color: '#3e5be0' }, { key: 'c-b', name: '베타', color: '#2e9e6b' },
-        { key: 'c-c', name: '감마', color: '#d97706' }, { key: 'c-d', name: '델타', color: '#5b6b7d' }], 'payload 에 내 과제 목록(이름, 키, 색, 목록 순서)이 없다');
+      //  g = 묶음 번호(일반 1), 근태 창 추가 목록의 묶음 머리용(CATEGORY-LIST-GROUPS)
+      assert.deepStrictEqual(p.projects.slice(0, 4), [{ key: 'c-a', name: '알파', color: '#3e5be0', g: 1 }, { key: 'c-b', name: '베타', color: '#2e9e6b', g: 1 },
+        { key: 'c-c', name: '감마', color: '#d97706', g: 1 }, { key: 'c-d', name: '델타', color: '#5b6b7d', g: 1 }], 'payload 에 내 과제 목록(이름, 키, 색, 묶음 번호, 목록 순서)이 없다');
       //  구조 22: 보고한 날은 메모와 줄까지(detail) 그날 하루를 다시 읽는다(달력 목록에는 줄이 없다). 캐시에 없는 날(보고 없음)은 읽지 않는다
       const dl = X.evJSON("__calls.filter(function(c){ return c[0] === 'reportDailyList'; }).map(function(c){ return c[1]; })");
       assert.strictEqual(dl.length, 2, '보고한 날을 줄까지 다시 읽지 않았거나 더 읽었다');

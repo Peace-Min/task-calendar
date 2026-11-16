@@ -7,6 +7,15 @@
 
 ---
 
+## 🆕 2026-11-16 (다음 판, 번호는 배포 때): 과제 목록 묶음 머리(보기 팝업, 근태 일간 주간 과제 추가, 월간 상자)
+
+docs/CATEGORY-LIST-GROUPS.md(시안 docs/prototypes/category-lists-groups.html, 조사 docs/CATEGORY-LIST-SCREENS.md). DB 구조, 호스트(C#), 배포 SQL 그대로.
+- 보기 팝업(개인, 다른 사람 일정 보기): 기록 수 순(`filterSorted`, 0건 구분선 `fb-gap`)을 없애고 `state.categories` 순서와 묶음 머리(`.fb-cgrp`). 머리는 `.fb-opt` 가 아니라 화살표, 전체 선택, 누름에서 빠진다. 공용 `catGroupWithHeads(items, gOf)`(찾기 뒤 보이는 줄로 개수, 번호 없는 줄이 있으면 머리 없음), `catGroupHeadHtml` 에 class 인자.
+- 근태 일간 `atAddRender`, 주간 `awAddRender`: `atCkGrouped` 로 머리(`.at-grp`). 근태 창 payload 의 과제에 묶음 번호 `g`(`atBuildProjects`, `atNormProjects` 는 0~3 정수만 남김). 번호가 없는 옛 payload 는 머리 없이.
+- 월간: 과제 상자 머리 `.as-boxh.grp-off`(라벨 `.check` 의 `!important` 글자색을 같은 힘으로 덮음, 실위젯 QA 에서 찾음), 기타 상자 일반 다음 첫 기본 과제 줄 `.rptm-it.defgap`. 보고서 내용 불변.
+- 결함 후보 셋(내보내기와 보기 팝업의 삭제된 공식, 근태 이름 중복 거름)은 의도 또는 이름 키 구조라 고치지 않음(기획 §2).
+- 시험: 새 tests/category-list-groups.test.mjs, 고침 filter-multi, pc-watch-2, attend-summary, attendance-web. report-hours-v22 의 임시 저장 시각 고정값(11-01)이 14일 보관(AT_DRAFT_KEEP_DAYS)을 넘겨 날짜에 따라 실패하던 것을 지금 시각으로.
+
 ## 🆕 2026-11-13 (다음 판, 번호는 배포 때): 내 과제 묶음(공식, 일반, 기본), 같은 묶음 안에서만 순서 바꾸기, 휴가와 기타 고정과 합치기 막기
 
 docs/CATEGORY-GROUPS.md(시안 docs/prototypes/category-groups.html 의 A'). DB 구조 22 그대로, 호스트(C#)와 인스톨러는 그대로. 배포 SQL 에 판 데이터 단계 하나를 더한다.

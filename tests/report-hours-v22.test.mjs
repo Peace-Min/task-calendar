@@ -508,8 +508,10 @@ if (!JSDOM) {
     const X = bootBrowser();
     try {
       const D1 = X.ev('addDays(todayYmd(), -2)'), MONW = X.ev('(function(){ var d = todayYmd(); while(calDow(d) !== 1) d = addDays(d, -1); return d; })()');
-      const daily = { v: 2, memo: '', blocks: [{ name: '베타', catId: 'c-b', hours: 3, text: '- 회신' }, { name: '알파', catId: 'c-a', hours: 1, text: '' }], status: '1', overtime: 0, savedAt: '2026-11-01T00:00:00.000Z' };
-      const weekly = { v: 2, subj: '', picked: '', prog: '[베타]\n- 회신', plan: '', hrs: ['알파', '베타'], hours: { '알파': 2, '베타': 4 }, meet: '', savedAt: '2026-11-01T00:00:00.000Z' };
+      const NOW = new Date().toISOString();
+      //  저장 시각은 지금으로 한다. 고정 날짜(11-01)는 14일 보관(AT_DRAFT_KEEP_DAYS)을 넘기면 열 때 지워져 날짜에 따라 실패했다
+      const daily = { v: 2, memo: '', blocks: [{ name: '베타', catId: 'c-b', hours: 3, text: '- 회신' }, { name: '알파', catId: 'c-a', hours: 1, text: '' }], status: '1', overtime: 0, savedAt: NOW };
+      const weekly = { v: 2, subj: '', picked: '', prog: '[베타]\n- 회신', plan: '', hrs: ['알파', '베타'], hours: { '알파': 2, '베타': 4 }, meet: '', savedAt: NOW };
       const other = 'tc_attDraft:zz9:' + D1;
       X.ev(`localStorage.setItem('tc_attDraft:me:${D1}', ${JSON.stringify(JSON.stringify(daily))})`);
       X.ev(`localStorage.setItem('tc_attWDraft:me:${MONW}', ${JSON.stringify(JSON.stringify(weekly))})`);
