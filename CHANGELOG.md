@@ -7,7 +7,7 @@
 
 ---
 
-## 🆕 2026-11-16 (다음 판, 번호는 배포 때): 보고 창 피드백 묶음(내 과제 열기, 근무시간 경고, 주간 보낸 뒤 다시 열기, 일정/할 일 창 고정)
+## 🆕 2026-11-16, v0.29.0: 보고 창 피드백 묶음(내 과제 열기, 근무시간 경고, 주간 보낸 뒤 다시 열기, 일정/할 일 창 고정)
 
 docs/REPORT-FEEDBACK-1116.md. DB 구조, 배포 SQL 그대로. 호스트(C#)는 주석만.
 - 일간, 주간 과제 추가 목록의 "+ 캘린더에 새 과제 만들기"를 "내 과제 열기"로 바꾸고 내 과제 창만 연다(과제 추가 창은 안 연다).
@@ -19,7 +19,7 @@ docs/REPORT-FEEDBACK-1116.md. DB 구조, 배포 SQL 그대로. 호스트(C#)는 
 - 근무시간 확인 창이 떠 있는 사이 날짜가 바뀌거나(창 복귀 새로고침, 다른 날짜 열기) 막는 블록이 생기면 [보내기]여도 보내지 않는다(0.29.0 배포 전 검토 P2-1).
 - 실위젯 루프 loop-attendance, loop-attendance-weekly 를 지금 동작으로 고침(근태 창은 닫으면 숨김, 보고서 창과 `__rptSendArmed` 삭제, 구조 22 줄 payload, 주간 목록 기간 거르기, 월~토 제목, 보낸 뒤 `awSentKeep`).
 
-## 🆕 2026-11-16 (다음 판, 번호는 배포 때): 과제 목록 묶음 머리(보기 팝업, 근태 일간 주간 과제 추가, 월간 상자)
+## 🆕 2026-11-16, v0.29.0: 과제 목록 묶음 머리(보기 팝업, 근태 일간 주간 과제 추가, 월간 상자)
 
 docs/CATEGORY-LIST-GROUPS.md(시안 docs/prototypes/category-lists-groups.html, 조사 docs/CATEGORY-LIST-SCREENS.md). DB 구조, 호스트(C#), 배포 SQL 그대로.
 - 보기 팝업(개인, 다른 사람 일정 보기): 기록 수 순(`filterSorted`, 0건 구분선 `fb-gap`)을 없애고 `state.categories` 순서와 묶음 머리(`.fb-cgrp`). 머리는 `.fb-opt` 가 아니라 화살표, 전체 선택, 누름에서 빠진다. 공용 `catGroupWithHeads(items, gOf)`(찾기 뒤 보이는 줄로 개수, 번호 없는 줄이 있으면 머리 없음), `catGroupHeadHtml` 에 class 인자.
@@ -28,7 +28,7 @@ docs/CATEGORY-LIST-GROUPS.md(시안 docs/prototypes/category-lists-groups.html, 
 - 결함 후보 셋(내보내기와 보기 팝업의 삭제된 공식, 근태 이름 중복 거름)은 의도 또는 이름 키 구조라 고치지 않음(기획 §2).
 - 시험: 새 tests/category-list-groups.test.mjs, 고침 filter-multi, pc-watch-2, attend-summary, attendance-web. report-hours-v22 의 임시 저장 시각 고정값(11-01)이 14일 보관(AT_DRAFT_KEEP_DAYS)을 넘겨 날짜에 따라 실패하던 것을 지금 시각으로.
 
-## 🆕 2026-11-13 (다음 판, 번호는 배포 때): 내 과제 묶음(공식, 일반, 기본), 같은 묶음 안에서만 순서 바꾸기, 휴가와 기타 고정과 합치기 막기
+## 🆕 2026-11-13, v0.29.0: 내 과제 묶음(공식, 일반, 기본), 같은 묶음 안에서만 순서 바꾸기, 휴가와 기타 고정과 합치기 막기
 
 docs/CATEGORY-GROUPS.md(시안 docs/prototypes/category-groups.html 의 A'). DB 구조 22 그대로, 호스트(C#)와 인스톨러는 그대로. 배포 SQL 에 판 데이터 단계 하나를 더한다.
 
@@ -41,7 +41,7 @@ docs/CATEGORY-GROUPS.md(시안 docs/prototypes/category-groups.html 의 A'). DB 
 - 판 데이터 단계 `db/deploy/data/0.29.0-category-groups.sql`(계획 판 0.29.0, 배포 판이 다르면 파일 이름과 머리를 그 판으로): `cal_category.sort_order` 를 사람마다 묶음(`source = 'db'` 0, `TRIM(name) = '휴가'` 2, `'기타'` 3, 그 밖 1), `sort_order`, `uid` 순으로 0 부터. 순서가 바뀌는 사람만 `cal_user_rev` +1(먼저, 같은 트랜잭션), 키 칸 WHERE, 한 표 UPDATE 와 창 함수 파생 표, 임시 표와 저장 프로그램 없음(0.28.0 과 같은 꼴). 리허설은 DB-RELEASE-OPS §5.4.
 - 시험: 새 `category-groups`(§4 의 소비처, 묶음 끝, 휴가와 기타, 합치기와 연결 양쪽, 새 과제 자리, 부팅 정리 멱등, 열람 창, 가져오기와 변이 8개). `category-order`, `my-tasks-ui`, `task-add`, `default-tasks` 를 묶음 순서로 고쳤다(공식 표 시험은 "표 없음"으로, 기본 과제 ⋯ 메뉴 시험은 "⋯ 없음"으로). `release-sql` 에 데이터 단계e~g 와 변이 R60~R62.
 
-## 🆕 2026-11-13 (다음 판, 번호는 배포 때): 자정에 달력의 오늘 표시 옮기기, 켜 둔 채 날이 바뀌면 알림 목록 다시 보내기
+## 🆕 2026-11-13, v0.29.0: 자정에 달력의 오늘 표시 옮기기, 켜 둔 채 날이 바뀌면 알림 목록 다시 보내기
 
 docs/DAY-ROLLOVER-FABLE.md(구현 기준, docs/DAY-ROLLOVER.md 는 보류). DB 구조, 호스트(C#), 인스톨러는 그대로.
 
